@@ -1,0 +1,355 @@
+export type UserRole = "admin" | "user" | "viewer";
+
+export type AgreementStatus = "Current" | "Expired" | "Under_Negotiation" | "Terminated";
+
+export type WorksiteType =
+  | "FPSO"
+  | "FLNG"
+  | "Platform"
+  | "Onshore_LNG"
+  | "Gas_Plant"
+  | "Hub"
+  | "Drill_Centre"
+  | "Region"
+  | "Heliport"
+  | "Pipeline"
+  | "Airfield"
+  | "Onshore_Facilities"
+  | "CPF"
+  | "Gas_Field"
+  | "Other";
+
+export type EmployerCategory =
+  | "Producer"
+  | "Major_Contractor"
+  | "Subcontractor"
+  | "Labour_Hire"
+  | "Specialist";
+
+export type EmployerRoleType =
+  | "Owner"
+  | "Operator"
+  | "Principal_Contractor"
+  | "Subcontractor"
+  | "Labour_Hire"
+  | "Catering"
+  | "Maintenance"
+  | "Drilling"
+  | "ROV"
+  | "Inspection"
+  | "Transport"
+  | "Decommissioning"
+  | "Aviation"
+  | "Other";
+
+export type DuesIncreaseType = "Fixed" | "WPI" | "CPI" | "FWC" | "Other";
+
+export type CampaignType = "bargaining" | "organising" | "mobilisation" | "political";
+export type CampaignStatus = "planning" | "active" | "completed" | "suspended";
+
+export type ActionType =
+  | "door_knock"
+  | "phone_call"
+  | "text_blast"
+  | "meeting"
+  | "petition"
+  | "rally"
+  | "worksite_visit"
+  | "sign_up"
+  | "survey"
+  | "custom";
+
+export type ActionResultType =
+  | "contacted"
+  | "not_home"
+  | "refused"
+  | "signed"
+  | "attended"
+  | "left_message"
+  | "wrong_number"
+  | "moved"
+  | "other";
+
+export type CommunicationChannel = "sms" | "email" | "phone" | "in_person";
+export type CommunicationDirection = "inbound" | "outbound";
+
+export type UniverseRuleType = "agreement" | "worksite" | "employer" | "member_role" | "sector";
+
+export interface Sector {
+  sector_id: number;
+  sector_name: string;
+  description: string | null;
+}
+
+export interface Union {
+  union_id: number;
+  union_code: string;
+  union_name: string;
+  is_oa_member: boolean;
+}
+
+export interface MemberRoleType {
+  role_type_id: number;
+  role_name: string;
+  display_name: string;
+  is_default: boolean;
+  is_active: boolean;
+  sort_order: number;
+}
+
+export interface Employer {
+  employer_id: number;
+  employer_name: string;
+  trading_name: string | null;
+  abn: string | null;
+  employer_category: EmployerCategory | null;
+  parent_company: string | null;
+  website: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  state: string | null;
+  postcode: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Worksite {
+  worksite_id: number;
+  worksite_name: string;
+  worksite_type: WorksiteType;
+  operator_id: number | null;
+  location_description: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  basin: string | null;
+  is_offshore: boolean;
+  is_active: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Agreement {
+  agreement_id: number;
+  decision_no: string;
+  agreement_name: string;
+  short_name: string | null;
+  sector_id: number | null;
+  employer_id: number | null;
+  industry_classification: string | null;
+  date_of_decision: string | null;
+  commencement_date: string | null;
+  expiry_date: string | null;
+  status: AgreementStatus;
+  is_greenfield: boolean;
+  is_variation: boolean;
+  fwc_link: string | null;
+  supersedes_id: number | null;
+  variation_of_id: number | null;
+  notes: string | null;
+  source_sheet: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DuesIncrease {
+  increase_id: number;
+  agreement_id: number;
+  increase_number: number;
+  effective_date: string | null;
+  increase_type: DuesIncreaseType | null;
+  percentage: number | null;
+  minimum_pct: number | null;
+  maximum_pct: number | null;
+  raw_description: string | null;
+}
+
+export interface Organiser {
+  organiser_id: number;
+  organiser_name: string;
+  email: string | null;
+  phone: string | null;
+  is_active: boolean;
+}
+
+export interface Worker {
+  worker_id: number;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  suburb: string | null;
+  state: string | null;
+  postcode: string | null;
+  date_of_birth: string | null;
+  gender: string | null;
+  occupation: string | null;
+  classification: string | null;
+  employer_id: number | null;
+  worksite_id: number | null;
+  member_role_type_id: number | null;
+  union_id: number | null;
+  member_number: string | null;
+  join_date: string | null;
+  resignation_date: string | null;
+  engagement_score: number;
+  engagement_level: string;
+  action_network_id: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Campaign {
+  campaign_id: number;
+  name: string;
+  description: string | null;
+  campaign_type: CampaignType;
+  status: CampaignStatus;
+  start_date: string | null;
+  end_date: string | null;
+  organiser_id: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CampaignUniverse {
+  universe_id: number;
+  campaign_id: number;
+  name: string;
+  description: string | null;
+}
+
+export interface CampaignUniverseRule {
+  rule_id: number;
+  universe_id: number;
+  rule_type: UniverseRuleType;
+  rule_entity_id: number;
+  include: boolean;
+}
+
+export interface CampaignAction {
+  action_id: number;
+  campaign_id: number;
+  action_type: ActionType;
+  title: string;
+  description: string | null;
+  due_date: string | null;
+  status: string;
+  universe_id: number | null;
+  assigned_organiser_id: number | null;
+  created_at: string;
+}
+
+export interface CampaignActionResult {
+  result_id: number;
+  action_id: number;
+  worker_id: number;
+  organiser_id: number | null;
+  result_type: ActionResultType;
+  notes: string | null;
+  action_date: string;
+}
+
+export interface Document {
+  document_id: number;
+  title: string;
+  document_type: string;
+  file_path: string;
+  agreement_id: number | null;
+  employer_id: number | null;
+  uploaded_by: string | null;
+  created_at: string;
+}
+
+export interface OrganiserPatch {
+  patch_id: number;
+  organiser_id: number;
+  patch_name: string;
+  description: string | null;
+}
+
+export interface CommunicationsLog {
+  log_id: number;
+  worker_id: number;
+  channel: CommunicationChannel;
+  direction: CommunicationDirection;
+  content: string | null;
+  yabbr_message_id: string | null;
+  action_network_id: string | null;
+  sent_by: number | null;
+  sent_at: string;
+}
+
+export interface UserProfile {
+  user_id: string;
+  role: UserRole;
+  display_name: string;
+  organiser_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Tag {
+  tag_id: number;
+  tag_name: string;
+  tag_category: string | null;
+  color: string | null;
+}
+
+// View types with joined data
+export interface AgreementWithRelations extends Agreement {
+  sector?: Sector;
+  employer?: Employer;
+  unions?: Union[];
+  worksites?: Worksite[];
+  organisers?: Organiser[];
+  dues_increases?: DuesIncrease[];
+}
+
+export interface WorkerWithRelations extends Worker {
+  employer?: Employer;
+  worksite?: Worksite;
+  member_role_type?: MemberRoleType;
+  union?: Union;
+  agreements?: Agreement[];
+}
+
+export interface WorksiteWithRelations extends Worksite {
+  operator?: Employer;
+  agreements?: Agreement[];
+  employer_roles?: (EmployerWorksiteRole & { employer?: Employer })[];
+}
+
+export interface EmployerWithRelations extends Employer {
+  sectors?: Sector[];
+  agreements?: Agreement[];
+  worksite_roles?: (EmployerWorksiteRole & { worksite?: Worksite })[];
+}
+
+export interface EmployerWorksiteRole {
+  id: number;
+  employer_id: number;
+  worksite_id: number;
+  role_type: EmployerRoleType;
+  is_current: boolean;
+  start_date: string | null;
+  end_date: string | null;
+  notes: string | null;
+}
+
+export interface ImportLog {
+  import_id: number;
+  file_name: string;
+  import_type: string;
+  records_created: number;
+  records_updated: number;
+  errors: string | null;
+  imported_by: string | null;
+  imported_at: string;
+}

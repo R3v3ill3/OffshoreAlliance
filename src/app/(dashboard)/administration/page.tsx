@@ -47,6 +47,7 @@ import {
   Copy,
   Check,
   Mail,
+  Trash2,
 } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 
@@ -56,40 +57,16 @@ interface UserRow extends UserProfile {
   [key: string]: unknown;
 }
 
-const userColumns: Column<UserRow>[] = [
-  { key: "display_name", header: "Name" },
-  {
-    key: "role",
-    header: "Role",
-    render: (row) => (
-      <Badge
-        variant={
-          row.role === "admin"
-            ? "default"
-            : row.role === "user"
-              ? "info"
-              : "secondary"
-        }
-      >
-        {row.role}
-      </Badge>
-    ),
-  },
-  {
-    key: "created_at",
-    header: "Joined",
-    render: (row) => new Date(row.created_at).toLocaleDateString("en-AU"),
-  },
-];
-
 function UsersTab() {
   const supabase = createClient();
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuth();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<UserRole>("user");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
 
@@ -104,6 +81,62 @@ function UsersTab() {
       return data as UserRow[];
     },
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await fetch(`/api/admin/delete-user?userId=${userId}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to delete user");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      setConfirmDeleteId(null);
+    },
+  });
+
+  const userColumns: Column<UserRow>[] = [
+    { key: "display_name", header: "Name" },
+    {
+      key: "role",
+      header: "Role",
+      render: (row) => (
+        <Badge
+          variant={
+            row.role === "admin"
+              ? "default"
+              : row.role === "user"
+                ? "info"
+                : "secondary"
+          }
+        >
+          {row.role}
+        </Badge>
+      ),
+    },
+    {
+      key: "created_at",
+      header: "Joined",
+      render: (row) => new Date(row.created_at).toLocaleDateString("en-AU"),
+    },
+    {
+      key: "actions",
+      header: "",
+      sortable: false,
+      render: (row) =>
+        row.user_id === currentUser?.id ? null : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setConfirmDeleteId(row.user_id)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        ),
+    },
+  ];
 
   const inviteMutation = useMutation({
     mutationFn: async () => {
@@ -272,6 +305,48 @@ function UsersTab() {
         searchKeys={["display_name"]}
         loading={isLoading}
       />
+
+      {/* Delete confirmation dialog */}
+      <Dialog
+        open={!!confirmDeleteId}
+        onOpenChange={(isOpen) => !isOpen && setConfirmDeleteId(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete User</DialogTitle>
+            <DialogDescription>
+              This will permanently delete the user account and all associated
+              data. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteMutation.error && (
+            <p className="text-sm text-destructive">
+              {(deleteMutation.error as Error).message}
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDeleteId(null)}
+              disabled={deleteMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() =>
+                confirmDeleteId && deleteMutation.mutate(confirmDeleteId)
+              }
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending && (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
+              Delete User
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

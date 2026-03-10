@@ -56,8 +56,15 @@ export async function POST(request: NextRequest) {
     // redirectTo sends the user to /auth/callback after Supabase verifies the
     // token. The callback route exchanges the code for a session, then
     // redirects to /auth/set-password so the user can choose a password.
-    const siteUrl =
-      process.env.NEXT_PUBLIC_SITE_URL ?? request.nextUrl.origin;
+    // request.nextUrl.origin returns localhost in Vercel serverless functions.
+    // Use x-forwarded-host (set by Vercel/proxies) to get the real public domain.
+    const forwardedHost = request.headers.get("x-forwarded-host");
+    const forwardedProto =
+      request.headers.get("x-forwarded-proto") ?? "https";
+    const derivedOrigin = forwardedHost
+      ? `${forwardedProto}://${forwardedHost}`
+      : request.nextUrl.origin;
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? derivedOrigin;
     const { data: linkData, error: linkError } =
       await adminClient.auth.admin.generateLink({
         type: "invite",

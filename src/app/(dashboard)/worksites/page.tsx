@@ -46,8 +46,15 @@ const WORKSITE_TYPES: WorksiteType[] = [
   "Other",
 ];
 
+type EmployerRole = {
+  role_type: string;
+  employer?: { employer_id: number; employer_name: string };
+};
+
 type WorksiteRow = Worksite & {
   operator?: { employer_name: string };
+  agreement_worksites?: { agreement_id: number }[];
+  employer_worksite_roles?: EmployerRole[];
 } & Record<string, unknown>;
 
 const INITIAL_FORM = {
@@ -78,7 +85,15 @@ export default function WorksitesPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("worksites")
-        .select("*, operator:employers!operator_id(employer_name)")
+        .select(`
+          *,
+          operator:employers!operator_id(employer_name),
+          agreement_worksites(agreement_id),
+          employer_worksite_roles(
+            role_type,
+            employer:employers(employer_id, employer_name)
+          )
+        `)
         .order("worksite_name");
       if (error) throw error;
       return data as WorksiteRow[];
@@ -110,9 +125,41 @@ export default function WorksitesPage() {
         ),
       },
       {
-        key: "operator_name",
-        header: "Operator",
-        render: (item) => item.operator?.employer_name ?? "—",
+        key: "employers",
+        header: "Employers",
+        render: (item) => {
+          const roles = item.employer_worksite_roles ?? [];
+          // Collect unique employer names from roles; fall back to operator_id link
+          const uniqueNames = [
+            ...new Map(
+              roles
+                .filter((r) => r.employer?.employer_name)
+                .map((r) => [r.employer!.employer_id, r.employer!.employer_name])
+            ).values(),
+          ];
+          if (uniqueNames.length === 0) {
+            return <span className="text-muted-foreground">{item.operator?.employer_name ?? "—"}</span>;
+          }
+          const [first, ...rest] = uniqueNames;
+          return (
+            <span className="flex items-center gap-1.5">
+              <span className="truncate max-w-[180px]" title={first}>{first}</span>
+              {rest.length > 0 && (
+                <Badge variant="secondary">+{rest.length}</Badge>
+              )}
+            </span>
+          );
+        },
+      },
+      {
+        key: "agreement_count",
+        header: "Agreements",
+        render: (item) => {
+          const count = item.agreement_worksites?.length ?? 0;
+          return count === 0
+            ? <span className="text-muted-foreground">—</span>
+            : <Badge variant="secondary">{count}</Badge>;
+        },
       },
       { key: "location_description", header: "Location" },
       { key: "basin", header: "Basin" },

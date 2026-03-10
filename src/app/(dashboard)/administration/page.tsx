@@ -67,6 +67,11 @@ function UsersTab() {
   const [role, setRole] = useState<UserRole>("user");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [setPasswordUserId, setSetPasswordUserId] = useState<string | null>(null);
+  const [setPasswordUserName, setSetPasswordUserName] = useState("");
+  const [tempPassword, setTempPassword] = useState("");
+  const [setPasswordError, setSetPasswordError] = useState<string | null>(null);
+  const [setPasswordDone, setSetPasswordDone] = useState(false);
   const [copied, setCopied] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
 
@@ -95,6 +100,40 @@ function UsersTab() {
       setConfirmDeleteId(null);
     },
   });
+
+  const setPasswordMutation = useMutation({
+    mutationFn: async ({
+      userId,
+      password,
+    }: {
+      userId: string;
+      password: string;
+    }) => {
+      setSetPasswordError(null);
+      const res = await fetch("/api/admin/set-user-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, password }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to set password");
+    },
+    onSuccess: () => {
+      setSetPasswordDone(true);
+    },
+    onError: (err: Error) => {
+      setSetPasswordError(err.message);
+    },
+  });
+
+  const handleCloseSetPassword = () => {
+    setSetPasswordUserId(null);
+    setSetPasswordUserName("");
+    setTempPassword("");
+    setSetPasswordError(null);
+    setSetPasswordDone(false);
+    setPasswordMutation.reset();
+  };
 
   const userColumns: Column<UserRow>[] = [
     { key: "display_name", header: "Name" },
@@ -126,14 +165,28 @@ function UsersTab() {
       sortable: false,
       render: (row) =>
         row.user_id === currentUser?.id ? null : (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive hover:text-destructive"
-            onClick={() => setConfirmDeleteId(row.user_id)}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <div className="flex gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              title="Set temporary password"
+              onClick={() => {
+                setSetPasswordUserId(row.user_id);
+                setSetPasswordUserName(row.display_name);
+              }}
+            >
+              <Key className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              title="Delete user"
+              onClick={() => setConfirmDeleteId(row.user_id)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         ),
     },
   ];
@@ -305,6 +358,69 @@ function UsersTab() {
         searchKeys={["display_name"]}
         loading={isLoading}
       />
+
+      {/* Set temporary password dialog */}
+      <Dialog
+        open={!!setPasswordUserId}
+        onOpenChange={(isOpen) => !isOpen && handleCloseSetPassword()}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set Temporary Password</DialogTitle>
+            <DialogDescription>
+              Set a temporary password for{" "}
+              <strong>{setSetPasswordUserName}</strong>. Share it with them
+              directly — they can change it after logging in.
+            </DialogDescription>
+          </DialogHeader>
+          {setPasswordDone ? (
+            <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+              <Check className="h-4 w-4 shrink-0" />
+              Password set. The user can now log in with it.
+            </div>
+          ) : (
+            <div className="space-y-3 py-1">
+              <div className="space-y-1.5">
+                <Label>Temporary Password</Label>
+                <Input
+                  type="text"
+                  value={tempPassword}
+                  onChange={(e) => setTempPassword(e.target.value)}
+                  placeholder="Min. 8 characters"
+                  autoComplete="off"
+                />
+              </div>
+              {setPasswordError && (
+                <p className="text-sm text-destructive">{setPasswordError}</p>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCloseSetPassword}>
+              {setPasswordDone ? "Close" : "Cancel"}
+            </Button>
+            {!setPasswordDone && (
+              <Button
+                onClick={() =>
+                  setPasswordUserId &&
+                  setPasswordMutation.mutate({
+                    userId: setPasswordUserId,
+                    password: tempPassword,
+                  })
+                }
+                disabled={
+                  tempPassword.length < 8 || setPasswordMutation.isPending
+                }
+              >
+                {setPasswordMutation.isPending && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                Set Password
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete confirmation dialog */}
       <Dialog

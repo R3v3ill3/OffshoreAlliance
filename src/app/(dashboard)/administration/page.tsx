@@ -369,7 +369,7 @@ function UsersTab() {
             <DialogTitle>Set Temporary Password</DialogTitle>
             <DialogDescription>
               Set a temporary password for{" "}
-              <strong>{setSetPasswordUserName}</strong>. Share it with them
+              <strong>{setPasswordUserName}</strong>. Share it with them
               directly — they can change it after logging in.
             </DialogDescription>
           </DialogHeader>

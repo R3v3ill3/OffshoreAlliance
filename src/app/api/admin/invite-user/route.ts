@@ -52,6 +52,11 @@ export async function POST(request: NextRequest) {
     // Generate an invite link — this creates the user in auth.users and
     // triggers handle_new_user to create their user_profiles row (role=viewer),
     // without sending any email. The link is returned for manual distribution.
+    //
+    // redirectTo sends the user to /auth/callback after Supabase verifies the
+    // token. The callback route exchanges the code for a session, then
+    // redirects to /auth/set-password so the user can choose a password.
+    const siteUrl = request.nextUrl.origin;
     const { data: linkData, error: linkError } =
       await adminClient.auth.admin.generateLink({
         type: "invite",
@@ -60,6 +65,7 @@ export async function POST(request: NextRequest) {
           data: {
             display_name: displayName,
           },
+          redirectTo: `${siteUrl}/auth/callback`,
         },
       });
 

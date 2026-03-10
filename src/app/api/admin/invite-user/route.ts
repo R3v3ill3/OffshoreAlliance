@@ -79,6 +79,13 @@ export async function POST(request: NextRequest) {
 
     const newUserId = linkData.user.id;
 
+    // Confirm the email immediately so the user is not stuck in
+    // "waiting for email confirmation" — the invite link itself is
+    // proof the admin controls who gets access.
+    await adminClient.auth.admin.updateUserById(newUserId, {
+      email_confirm: true,
+    });
+
     // The trigger creates user_profiles with role='viewer'. Update it to
     // the intended role if it's different.
     if (role !== "viewer") {

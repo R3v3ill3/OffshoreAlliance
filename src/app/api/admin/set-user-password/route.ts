@@ -41,9 +41,11 @@ export async function POST(request: NextRequest) {
     }
 
     const adminClient = createAdminClient();
+    // email_confirm: true clears the "waiting for email confirmation" status
+    // that Supabase sets on admin-created users regardless of dashboard settings.
     const { error: updateError } = await adminClient.auth.admin.updateUserById(
       userId,
-      { password }
+      { password, email_confirm: true }
     );
 
     if (updateError) {

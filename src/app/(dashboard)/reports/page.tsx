@@ -27,8 +27,8 @@ import {
   Calendar,
   Download,
   ArrowLeft,
-  Loader2,
 } from "lucide-react";
+import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 
 type ReportType =
   | "agreement_expiry"
@@ -379,7 +379,7 @@ export default function ReportsPage() {
 
         {loadingAgreements ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <EurekaLoadingSpinner size="lg" />
           </div>
         ) : (
           <DataTable<AgreementExpiryRow>

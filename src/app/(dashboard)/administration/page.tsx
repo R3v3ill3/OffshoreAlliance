@@ -44,7 +44,11 @@ import {
   Key,
   Link,
   AlertTriangle,
+  Copy,
+  Check,
+  Mail,
 } from "lucide-react";
+import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 
 // ---------- Users Tab ----------
 
@@ -85,6 +89,9 @@ function UsersTab() {
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<UserRole>("user");
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["admin-users"],
@@ -100,27 +107,50 @@ function UsersTab() {
 
   const inviteMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("user_profiles").insert({
-        user_id: crypto.randomUUID(),
-        display_name: displayName,
-        role,
+      setInviteError(null);
+      const res = await fetch("/api/admin/invite-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, displayName, role }),
       });
-      if (error) throw error;
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to invite user");
+      return json as { inviteLink: string; userId: string };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-      setOpen(false);
+      setInviteLink(data.inviteLink);
+    },
+    onError: (err: Error) => {
+      setInviteError(err.message);
+    },
+  });
+
+  const handleCopy = async () => {
+    if (!inviteLink) return;
+    await navigator.clipboard.writeText(inviteLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleClose = (isOpen: boolean) => {
+    setOpen(isOpen);
+    if (!isOpen) {
       setEmail("");
       setDisplayName("");
       setRole("user");
-    },
-  });
+      setInviteLink(null);
+      setCopied(false);
+      setInviteError(null);
+      inviteMutation.reset();
+    }
+  };
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">User Management</h2>
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={handleClose}>
           <DialogTrigger asChild>
             <Button size="sm">
               <Plus className="h-4 w-4" />
@@ -128,58 +158,110 @@ function UsersTab() {
             </Button>
           </DialogTrigger>
           <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Invite User</DialogTitle>
-              <DialogDescription>
-                Add a new user to the platform.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              <div className="space-y-1.5">
-                <Label>Email</Label>
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="user@example.com"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Display Name</Label>
-                <Input
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Full name"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Role</Label>
-                <Select
-                  value={role}
-                  onValueChange={(v) => setRole(v as UserRole)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="user">User</SelectItem>
-                    <SelectItem value="viewer">Viewer</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                onClick={() => inviteMutation.mutate()}
-                disabled={!displayName || inviteMutation.isPending}
-              >
-                {inviteMutation.isPending && (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                )}
-                Invite
-              </Button>
-            </DialogFooter>
+            {inviteLink ? (
+              <>
+                <DialogHeader>
+                  <DialogTitle>Invite Link Ready</DialogTitle>
+                  <DialogDescription>
+                    The account for <strong>{email}</strong> has been created.
+                    Copy the link below and send it to the user — they will be
+                    prompted to set a password when they open it.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
+                  <div className="flex items-center gap-2 rounded-md border bg-muted/50 p-3">
+                    <span className="flex-1 break-all text-xs font-mono text-muted-foreground">
+                      {inviteLink}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleCopy}
+                      className="shrink-0"
+                    >
+                      {copied ? (
+                        <Check className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                      {copied ? "Copied" : "Copy"}
+                    </Button>
+                  </div>
+                  <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                    <Mail className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>
+                      Paste this link into an email to <strong>{email}</strong>.
+                      The link is single-use and will expire after 24 hours.
+                    </span>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button onClick={() => handleClose(false)}>Done</Button>
+                </DialogFooter>
+              </>
+            ) : (
+              <>
+                <DialogHeader>
+                  <DialogTitle>Invite User</DialogTitle>
+                  <DialogDescription>
+                    Create an account and generate an invite link to send
+                    manually. The user will set their own password on first
+                    login.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
+                  <div className="space-y-1.5">
+                    <Label>Email</Label>
+                    <Input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="user@example.com"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Display Name</Label>
+                    <Input
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      placeholder="Full name"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Role</Label>
+                    <Select
+                      value={role}
+                      onValueChange={(v) => setRole(v as UserRole)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="user">User</SelectItem>
+                        <SelectItem value="viewer">Viewer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {inviteError && (
+                    <p className="text-sm text-destructive">{inviteError}</p>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button
+                    onClick={() => inviteMutation.mutate()}
+                    disabled={
+                      !email || !displayName || inviteMutation.isPending
+                    }
+                  >
+                    {inviteMutation.isPending && (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    )}
+                    Generate Invite Link
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
           </DialogContent>
         </Dialog>
       </div>
@@ -637,7 +719,7 @@ export default function AdministrationPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <EurekaLoadingSpinner size="lg" />
       </div>
     );
   }

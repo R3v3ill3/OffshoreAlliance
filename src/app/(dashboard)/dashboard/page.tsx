@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/supabase/auth-context";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Users, Building2, FileText, Megaphone, AlertTriangle } from "lucide-react";
+import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { differenceInDays, format } from "date-fns";
 
 export default function DashboardPage() {
@@ -141,8 +142,12 @@ export default function DashboardPage() {
               <stat.icon className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {stat.loading ? "..." : stat.value.toLocaleString()}
+              <div className="text-2xl font-bold min-h-[2rem] flex items-center">
+                {stat.loading ? (
+                  <EurekaLoadingSpinner size="sm" />
+                ) : (
+                  stat.value.toLocaleString()
+                )}
               </div>
             </CardContent>
           </Card>
@@ -167,7 +172,9 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {loadingExpiring ? (
-              <p className="text-sm text-muted-foreground">Loading...</p>
+              <div className="flex items-center justify-center py-6">
+                <EurekaLoadingSpinner size="md" />
+              </div>
             ) : expiringAgreements.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No agreements expiring in the next 90 days.

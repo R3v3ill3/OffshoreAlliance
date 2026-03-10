@@ -53,6 +53,7 @@ import {
   Loader2,
   X,
 } from "lucide-react";
+import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 
 interface PatchWithOrganiser extends OrganiserPatch {
   organiser: { organiser_name: string } | null;
@@ -307,7 +308,7 @@ export default function OrganiserPatchesPage() {
     if (loadingAssignments) {
       return (
         <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <EurekaLoadingSpinner size="md" />
         </div>
       );
     }
@@ -424,7 +425,7 @@ export default function OrganiserPatchesPage() {
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <EurekaLoadingSpinner size="lg" />
         </div>
       ) : patches.length === 0 ? (
         <Card>

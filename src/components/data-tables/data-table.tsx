@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, Search } from "lucide-react";
+import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 
 export interface Column<T> {
   key: string;
@@ -133,7 +134,7 @@ export function DataTable<T extends Record<string, unknown>>({
             {loading ? (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">
-                  Loading...
+                  <EurekaLoadingSpinner size="md" />
                 </TableCell>
               </TableRow>
             ) : paged.length === 0 ? (

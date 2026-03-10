@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ArrowLeft, Pencil, X, Save } from "lucide-react";
+import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { format } from "date-fns";
 
 const EMPLOYER_CATEGORIES: EmployerCategory[] = [
@@ -259,7 +260,7 @@ export default function EmployerDetailPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Loading employer...</p>
+        <EurekaLoadingSpinner size="lg" />
       </div>
     );
   }

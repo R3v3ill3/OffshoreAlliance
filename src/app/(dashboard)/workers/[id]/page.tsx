@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ArrowLeft, Pencil } from "lucide-react";
+import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { format } from "date-fns";
 
 interface WorkerDetail {
@@ -114,7 +115,7 @@ export default function WorkerDetailPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Loading worker details...</p>
+        <EurekaLoadingSpinner size="lg" />
       </div>
     );
   }
@@ -258,7 +259,9 @@ export default function WorkerDetailPage() {
             </CardHeader>
             <CardContent>
               {loadingAgreements ? (
-                <p className="text-sm text-muted-foreground">Loading agreements...</p>
+                <div className="flex justify-center py-4">
+                  <EurekaLoadingSpinner size="sm" />
+                </div>
               ) : workerAgreements.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No agreements linked to this worker.

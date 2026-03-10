@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MapPin, Layers, Filter } from "lucide-react";
+import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import type { Worksite, Sector } from "@/types/database";
 
 interface WorksiteMapProps {
@@ -95,8 +96,8 @@ export function WorksiteMap({
     return (
       <Card>
         <CardContent className="flex items-center justify-center" style={{ height }}>
-          <div className="text-center text-muted-foreground">
-            <MapPin className="h-12 w-12 mx-auto mb-2 opacity-50" />
+          <div className="flex flex-col items-center gap-2 text-muted-foreground">
+            <EurekaLoadingSpinner size="lg" />
             <p>Loading map...</p>
           </div>
         </CardContent>

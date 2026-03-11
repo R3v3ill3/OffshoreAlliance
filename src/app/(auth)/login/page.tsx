@@ -40,14 +40,16 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-4">
-          <div className="mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-primary/10">
+          <div className="relative mx-auto h-24 w-24 overflow-hidden rounded-full bg-primary/10">
             <video
               src="/heritage_Eureka.mp4"
               autoPlay
               loop
               muted
               playsInline
-              className="h-full w-full object-cover"
+              width={96}
+              height={96}
+              className="absolute inset-0 h-full w-full object-cover"
               aria-hidden
             />
           </div>

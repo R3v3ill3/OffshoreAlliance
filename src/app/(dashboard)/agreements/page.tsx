@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Plus } from "lucide-react";
+import { Plus, LayoutList, CalendarDays } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
@@ -29,6 +29,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { AgreementsCalendar } from "@/components/agreements/agreements-calendar";
 import type { AgreementStatus } from "@/types/database";
 
 interface AgreementRow {
@@ -147,6 +148,7 @@ export default function AgreementsPage() {
   const queryClient = useQueryClient();
 
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [viewMode, setViewMode] = useState<"table" | "calendar">("table");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState(INITIAL_FORM);
 
@@ -232,7 +234,29 @@ export default function AgreementsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Agreements</h1>
-        {canWrite && (
+        <div className="flex items-center gap-2">
+          {/* View toggle */}
+          <div className="flex items-center rounded-md border bg-muted/30 p-0.5">
+            <Button
+              variant={viewMode === "table" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => setViewMode("table")}
+              aria-label="Table view"
+            >
+              <LayoutList className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === "calendar" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => setViewMode("calendar")}
+              aria-label="Calendar view"
+            >
+              <CalendarDays className="h-4 w-4" />
+            </Button>
+          </div>
+          {canWrite && (
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button>
@@ -419,6 +443,7 @@ export default function AgreementsPage() {
             </DialogContent>
           </Dialog>
         )}
+        </div>
       </div>
 
       <div className="flex items-center gap-4">
@@ -437,14 +462,18 @@ export default function AgreementsPage() {
         </Select>
       </div>
 
-      <DataTable<AgreementRow>
-        data={filtered}
-        columns={columns}
-        searchPlaceholder="Search by decision no, agreement name…"
-        searchKeys={["decision_no", "agreement_name", "short_name"]}
-        onRowClick={(row) => router.push(`/agreements/${row.agreement_id}`)}
-        loading={isLoading}
-      />
+      {viewMode === "table" ? (
+        <DataTable<AgreementRow>
+          data={filtered}
+          columns={columns}
+          searchPlaceholder="Search by decision no, agreement name…"
+          searchKeys={["decision_no", "agreement_name", "short_name"]}
+          onRowClick={(row) => router.push(`/agreements/${row.agreement_id}`)}
+          loading={isLoading}
+        />
+      ) : (
+        <AgreementsCalendar agreements={filtered} />
+      )}
     </div>
   );
 }

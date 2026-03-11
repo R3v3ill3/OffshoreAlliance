@@ -41,7 +41,7 @@ export default function LoginPage() {
             Offshore Alliance
           </h1>
           <p className="mt-1 text-xs uppercase tracking-widest text-zinc-500">
-            Campaign Database Platform
+            Campaign Database
           </p>
         </div>
 

@@ -19,7 +19,7 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_P
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const SPREADSHEET_PATH = path.join(__dirname, "..", "Public", "OA_EBA_Consolidated_Analysis_1.xlsx");
+const SPREADSHEET_PATH = path.join(__dirname, "..", "public", "OA_EBA_Consolidated_Analysis_1.xlsx");
 
 interface RawAgreement {
   "Decision No": string;

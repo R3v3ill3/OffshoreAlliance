@@ -240,20 +240,20 @@ export default function AgreementsPage() {
             <Button
               variant={viewMode === "table" ? "secondary" : "ghost"}
               size="sm"
-              className="h-7 px-2"
+              className="h-7 px-2 gap-1.5"
               onClick={() => setViewMode("table")}
-              aria-label="Table view"
             >
               <LayoutList className="h-4 w-4" />
+              <span className="text-xs">Table</span>
             </Button>
             <Button
               variant={viewMode === "calendar" ? "secondary" : "ghost"}
               size="sm"
-              className="h-7 px-2"
+              className="h-7 px-2 gap-1.5"
               onClick={() => setViewMode("calendar")}
-              aria-label="Calendar view"
             >
               <CalendarDays className="h-4 w-4" />
+              <span className="text-xs">Calendar</span>
             </Button>
           </div>
           {canWrite && (

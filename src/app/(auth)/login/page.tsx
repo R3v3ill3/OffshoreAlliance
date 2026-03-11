@@ -42,7 +42,6 @@ export default function LoginPage() {
         <CardHeader className="text-center space-y-4">
           <div className="relative mx-auto h-24 w-24 overflow-hidden rounded-full bg-primary/10">
             <video
-              src="/heritage_Eureka.mp4"
               autoPlay
               loop
               muted
@@ -51,7 +50,9 @@ export default function LoginPage() {
               height={96}
               className="absolute inset-0 h-full w-full object-cover"
               aria-hidden
-            />
+            >
+              <source src="/heritage_Eureka.mp4" type="video/mp4" />
+            </video>
           </div>
           <div>
             <CardTitle className="text-2xl font-bold">Offshore Alliance</CardTitle>

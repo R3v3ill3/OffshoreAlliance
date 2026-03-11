@@ -42,7 +42,7 @@ export default function LoginPage() {
         <CardHeader className="text-center space-y-4">
           <div className="mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-primary/10">
             <video
-              src="/EurekaFlagVintage_2min.mp4"
+              src="/heritage_Eureka.mp4"
               autoPlay
               loop
               muted

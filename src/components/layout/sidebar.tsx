@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
 import { useAuth } from "@/lib/supabase/auth-context";
 import {
-  Anchor,
   LayoutDashboard,
   Users,
   Building2,
@@ -51,7 +50,17 @@ export function Sidebar() {
       )}
     >
       <div className="flex h-16 items-center gap-2 border-b px-4">
-        <Anchor className="h-6 w-6 shrink-0 text-primary" />
+        <div className="h-8 w-8 shrink-0 overflow-hidden rounded">
+          <video
+            src="/heritage_Eureka.mp4"
+            autoPlay
+            loop
+            muted
+            playsInline
+            className="h-full w-full object-cover"
+            aria-hidden
+          />
+        </div>
         {!collapsed && (
           <span className="font-bold text-lg truncate">Offshore Alliance</span>
         )}

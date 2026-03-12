@@ -4,6 +4,10 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
+// #region agent log - debug helper
+const _dbgDash = (msg: string, data: Record<string, unknown>) =>
+  fetch('http://127.0.0.1:7432/ingest/c8c97c5f-af35-4118-b37c-4421b9062a9c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3b174c'},body:JSON.stringify({sessionId:'3b174c',location:'dashboard/page.tsx',message:msg,data,hypothesisId:'H5',timestamp:Date.now()})}).catch(()=>{});
+// #endregion
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Users, Building2, FileText, Megaphone, AlertTriangle } from "lucide-react";
@@ -14,12 +18,19 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const supabase = createClient();
 
+  // #region agent log - H1/H5: track user and query enabled state
+  _dbgDash('DashboardPage render', { userId: user?.id ?? null, userEnabled: !!user });
+  // #endregion
+
   const { data: workerCount = 0, isLoading: loadingWorkers } = useQuery({
     queryKey: ["workers-count"],
     queryFn: async () => {
-      const { count } = await supabase
+      const { count, error } = await supabase
         .from("workers")
         .select("*", { count: "exact", head: true });
+      // #region agent log - H5: worker count query result
+      _dbgDash('workers-count queryFn', { count, error: (error as {message?: string} | null)?.message ?? null });
+      // #endregion
       return count ?? 0;
     },
     enabled: !!user,

@@ -1,5 +1,15 @@
 export type UserRole = "admin" | "user" | "viewer";
 
+export type WorkRole =
+  | "coordinator"
+  | "lead_organiser"
+  | "organiser"
+  | "industrial_officer"
+  | "industrial_coordinator"
+  | "specialist";
+
+export type AgreementOrgRole = "organiser" | "lead" | "industrial_officer";
+
 export type AgreementStatus = "Current" | "Expired" | "Under_Negotiation" | "Terminated";
 
 export type WorksiteType =
@@ -289,10 +299,20 @@ export interface CommunicationsLog {
 export interface UserProfile {
   user_id: string;
   role: UserRole;
+  work_role: WorkRole | null;
+  reports_to: string | null;
   display_name: string;
   organiser_id: number | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface AgreementOrganiser {
+  id: number;
+  agreement_id: number;
+  organiser_id: number;
+  is_primary: boolean;
+  agreement_role: AgreementOrgRole;
 }
 
 export interface Tag {
@@ -308,7 +328,7 @@ export interface AgreementWithRelations extends Agreement {
   employer?: Employer;
   unions?: Union[];
   worksites?: Worksite[];
-  organisers?: Organiser[];
+  organisers?: (AgreementOrganiser & { organiser?: Organiser })[];
   dues_increases?: DuesIncrease[];
 }
 

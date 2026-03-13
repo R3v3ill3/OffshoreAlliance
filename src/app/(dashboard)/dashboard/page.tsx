@@ -14,6 +14,8 @@ import {
   PrincipalEmployerEbaChart,
   EbaSummaryLegend,
 } from "@/components/reports/principal-employer-eba-chart";
+import { AgreementsCalendar } from "@/components/agreements/agreements-calendar";
+import { WorksiteDistributionChart } from "@/components/dashboard/worksite-distribution-chart";
 import type { PrincipalEmployerEbaSummary } from "@/types/database";
 import { useRouter } from "next/navigation";
 
@@ -79,12 +81,58 @@ export default function DashboardPage() {
 
       const { data } = await supabase
         .from("agreements")
-        .select("agreement_id, decision_no, agreement_name, expiry_date")
+        .select(
+          `
+          agreement_id,
+          decision_no,
+          agreement_name,
+          short_name,
+          expiry_date,
+          status,
+          employer:employers(employer_name)
+          `
+        )
         .gte("expiry_date", now.toISOString().split("T")[0])
         .lte("expiry_date", cutoff.toISOString().split("T")[0])
-        .order("expiry_date", { ascending: true })
-        .limit(10);
+        .order("expiry_date", { ascending: true });
       return data ?? [];
+    },
+    enabled: !!user,
+  });
+
+  const { data: activeCampaigns = [], isLoading: loadingActiveCampaigns } = useQuery({
+    queryKey: ["active-campaigns"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("campaigns")
+        .select("*")
+        .eq("status", "active")
+        .order("start_date", { ascending: false })
+        .limit(5);
+      return data ?? [];
+    },
+    enabled: !!user,
+  });
+
+  const { data: worksiteDistribution = [], isLoading: loadingWorksiteDist } = useQuery({
+    queryKey: ["worksite-distribution"],
+    queryFn: async () => {
+      // Fetch worksite types to aggregate
+      const { data } = await supabase
+        .from("worksites")
+        .select("worksite_type")
+        .eq("is_active", true);
+
+      if (!data) return [];
+
+      // Aggregate counts
+      const counts: Record<string, number> = {};
+      data.forEach((w) => {
+        const type = w.worksite_type || "Unknown";
+        counts[type] = (counts[type] || 0) + 1;
+      });
+
+      return Object.entries(counts).map(([name, value]) => ({ name, value }));
     },
     enabled: !!user,
   });
@@ -177,69 +225,8 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Recent activity + expiring agreements */}
-      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Campaign activity and recent updates will appear here.
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Agreements Expiring Soon</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loadingExpiring ? (
-              <div className="flex items-center justify-center py-6">
-                <EurekaLoadingSpinner size="md" />
-              </div>
-            ) : expiringAgreements.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No agreements expiring in the next 90 days.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {expiringAgreements.map((ag) => {
-                  const daysRemaining = differenceInDays(
-                    new Date(ag.expiry_date!),
-                    new Date()
-                  );
-                  return (
-                    <div
-                      key={ag.agreement_id}
-                      className="flex items-center justify-between gap-2 rounded-md border p-3"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">{ag.decision_no}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {ag.agreement_name}
-                        </p>
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <span className="text-xs text-muted-foreground">
-                          {format(new Date(ag.expiry_date!), "dd MMM yyyy")}
-                        </span>
-                        <Badge variant={getBadgeVariant(daysRemaining)}>
-                          {daysRemaining}d
-                        </Badge>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
       {/* EBA Coverage by Principal Employer */}
-      <Card>
+      <Card className="col-span-full">
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div className="space-y-1">
             <CardTitle className="flex items-center gap-2">
@@ -317,6 +304,93 @@ export default function DashboardPage() {
               </div>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Agreements Calendar */}
+      <Card className="col-span-full">
+        <CardHeader>
+          <CardTitle>Agreements Expiring Soon (Calendar View)</CardTitle>
+          <CardDescription>
+            Interactive timeline of agreements expiring within the next 90 days.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loadingExpiring ? (
+            <div className="flex items-center justify-center py-8">
+              <EurekaLoadingSpinner size="md" />
+            </div>
+          ) : expiringAgreements.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              No agreements expiring in the next 90 days.
+            </div>
+          ) : (
+            // Cast to force TS to accept the extended shape if strict
+            <AgreementsCalendar agreements={expiringAgreements as any[]} />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Grid: Active Campaigns & Worksite Distribution */}
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
+        {/* Active Campaigns */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Megaphone className="h-4 w-4 text-muted-foreground" />
+              Active Campaigns
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loadingActiveCampaigns ? (
+              <div className="flex items-center justify-center py-6">
+                <EurekaLoadingSpinner size="md" />
+              </div>
+            ) : activeCampaigns.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No active campaigns at the moment.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {activeCampaigns.map((camp) => (
+                  <div
+                    key={camp.campaign_id}
+                    className="flex items-center justify-between border-b last:border-0 pb-3 last:pb-0"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">{camp.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {camp.description || "No description"}
+                      </p>
+                    </div>
+                    <Badge variant="secondary" className="capitalize">
+                      {camp.campaign_type}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Worksite Distribution */}
+        <div className="h-[400px]">
+          <WorksiteDistributionChart
+            data={worksiteDistribution}
+            isLoading={loadingWorksiteDist}
+          />
+        </div>
+      </div>
+
+      {/* Recent Activity (Moved to bottom) */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Activity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Campaign activity and recent updates will appear here.
+          </p>
         </CardContent>
       </Card>
     </div>

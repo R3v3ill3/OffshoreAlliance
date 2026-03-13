@@ -14,6 +14,7 @@ import {
 import { MapPin, Layers, Filter } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import type { Worksite, Sector } from "@/types/database";
+import type { ReactNode } from "react";
 
 interface WorksiteMapProps {
   worksites: (Worksite & { operator_name?: string; agreement_count?: number; worker_count?: number })[];
@@ -21,6 +22,9 @@ interface WorksiteMapProps {
   height?: string;
   showFilters?: boolean;
   onWorksiteClick?: (worksite: Worksite) => void;
+  markerColorResolver?: (worksite: Worksite) => string | undefined;
+  popupExtraContent?: (worksite: Worksite) => ReactNode;
+  selectedWorksiteId?: number | null;
 }
 
 const WORKSITE_TYPE_COLORS: Record<string, string> = {
@@ -47,6 +51,9 @@ export function WorksiteMap({
   height = "500px",
   showFilters = true,
   onWorksiteClick,
+  markerColorResolver,
+  popupExtraContent,
+  selectedWorksiteId = null,
 }: WorksiteMapProps) {
   const [mounted, setMounted] = useState(false);
   const [filterType, setFilterType] = useState<string>("all");
@@ -166,12 +173,18 @@ export function WorksiteMap({
             <CircleMarker
               key={ws.worksite_id}
               center={[ws.latitude!, ws.longitude!]}
-              radius={8}
+              radius={selectedWorksiteId === ws.worksite_id ? 11 : 8}
               pathOptions={{
-                color: WORKSITE_TYPE_COLORS[ws.worksite_type] || "#9CA3AF",
-                fillColor: WORKSITE_TYPE_COLORS[ws.worksite_type] || "#9CA3AF",
+                color:
+                  markerColorResolver?.(ws) ||
+                  WORKSITE_TYPE_COLORS[ws.worksite_type] ||
+                  "#9CA3AF",
+                fillColor:
+                  markerColorResolver?.(ws) ||
+                  WORKSITE_TYPE_COLORS[ws.worksite_type] ||
+                  "#9CA3AF",
                 fillOpacity: 0.7,
-                weight: 2,
+                weight: selectedWorksiteId === ws.worksite_id ? 3 : 2,
               }}
               eventHandlers={{
                 click: () => onWorksiteClick?.(ws),
@@ -200,6 +213,11 @@ export function WorksiteMap({
                     )}
                     {ws.worker_count !== undefined && (
                       <p><span className="font-medium">Workers:</span> {ws.worker_count}</p>
+                    )}
+                    {popupExtraContent && (
+                      <div className="pt-1">
+                        {popupExtraContent(ws)}
+                      </div>
                     )}
                   </div>
                   {onWorksiteClick && (

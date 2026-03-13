@@ -21,6 +21,8 @@ import type {
   Sector,
   AgreementStatus,
   Employer,
+  Worksite,
+  EmployerWorksiteRole,
   PrincipalEmployerEbaSummary,
   WorksiteEmployerEbaStatus,
   EbaStatusCategory,
@@ -35,6 +37,7 @@ import {
   Download,
   ArrowLeft,
   Star,
+  Network,
 } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import {
@@ -43,6 +46,7 @@ import {
   ebaStatusLabel,
   ebaStatusVariant,
 } from "@/components/reports/principal-employer-eba-chart";
+import { WorksiteRelationshipExplorer } from "@/components/reports/worksite-relationship-explorer";
 
 // ---------------------------------------------------------------
 // Report type registry
@@ -50,6 +54,7 @@ import {
 type ReportType =
   | "agreement_expiry"
   | "principal_employer_coverage"
+  | "worksite_relationship_explorer"
   | "membership_density"
   | "organiser_patches"
   | "campaign_activity"
@@ -77,6 +82,14 @@ const reportOptions: ReportOption[] = [
     description:
       "EBA status breakdown for Shell, Woodside, Inpex and Chevron assets — coverage by worksite and employer group.",
     icon: <Star className="h-8 w-8 text-amber-500" />,
+    isNew: true,
+  },
+  {
+    type: "worksite_relationship_explorer",
+    title: "Worksite Relationship Explorer",
+    description:
+      "Hybrid map + network drilldown for employer, parent company and principal employer connections with EBA overlays.",
+    icon: <Network className="h-8 w-8 text-blue-500" />,
     isNew: true,
   },
   {
@@ -458,6 +471,57 @@ export default function ReportsPage() {
     );
   }, [filteredEbaCoverage, peFilter, principalEmployers]);
 
+  // ---- Worksite Relationship Explorer (Option A) ----
+  const { data: explorerWorksites = [], isLoading: loadingExplorerWorksites } = useQuery({
+    queryKey: ["explorer-worksites"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worksites")
+        .select("*")
+        .order("worksite_name");
+      if (error) throw error;
+      return data as Worksite[];
+    },
+    enabled: !!user && selectedReport === "worksite_relationship_explorer",
+  });
+
+  const { data: explorerCoverage = [], isLoading: loadingExplorerCoverage } = useQuery({
+    queryKey: ["explorer-coverage"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worksite_employer_eba_status")
+        .select("*");
+      if (error) throw error;
+      return data as WorksiteEmployerEbaStatus[];
+    },
+    enabled: !!user && selectedReport === "worksite_relationship_explorer",
+  });
+
+  const { data: explorerRoles = [], isLoading: loadingExplorerRoles } = useQuery({
+    queryKey: ["explorer-worksite-roles"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employer_worksite_roles")
+        .select("*")
+        .eq("is_current", true);
+      if (error) throw error;
+      return data as EmployerWorksiteRole[];
+    },
+    enabled: !!user && selectedReport === "worksite_relationship_explorer",
+  });
+
+  const { data: explorerEmployers = [], isLoading: loadingExplorerEmployers } = useQuery({
+    queryKey: ["explorer-employers"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employers")
+        .select("employer_id, employer_name, parent_employer_id, employer_category");
+      if (error) throw error;
+      return data as Pick<Employer, "employer_id" | "employer_name" | "parent_employer_id" | "employer_category">[];
+    },
+    enabled: !!user && selectedReport === "worksite_relationship_explorer",
+  });
+
   // ---------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------
@@ -734,6 +798,42 @@ export default function ReportsPage() {
             )}
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  // ---- Worksite Relationship Explorer ----
+  if (selectedReport === "worksite_relationship_explorer") {
+    const explorerLoading =
+      loadingExplorerWorksites ||
+      loadingExplorerCoverage ||
+      loadingExplorerRoles ||
+      loadingExplorerEmployers;
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedReport(null)}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Network className="h-7 w-7 text-blue-500" />
+            Worksite Relationship Explorer
+          </h1>
+        </div>
+
+        <WorksiteRelationshipExplorer
+          worksites={explorerWorksites}
+          coverageRows={explorerCoverage}
+          worksiteRoles={explorerRoles}
+          employers={explorerEmployers}
+          isLoading={explorerLoading}
+        />
       </div>
     );
   }

@@ -31,6 +31,7 @@ import {
 import type {
   UserProfile,
   UserRole,
+  WorkRole,
   MemberRoleType,
   Sector,
   ImportLog,
@@ -48,7 +49,22 @@ import {
   Check,
   Mail,
   Trash2,
+  Pencil,
 } from "lucide-react";
+
+const WORK_ROLES: { value: WorkRole; label: string }[] = [
+  { value: "coordinator", label: "Co-ordinator" },
+  { value: "lead_organiser", label: "Lead Organiser" },
+  { value: "organiser", label: "Organiser" },
+  { value: "industrial_officer", label: "Industrial Officer" },
+  { value: "industrial_coordinator", label: "Industrial Co-ordinator" },
+  { value: "specialist", label: "Specialist" },
+];
+
+function workRoleLabel(role: WorkRole | null | undefined) {
+  if (!role) return null;
+  return WORK_ROLES.find((r) => r.value === role)?.label ?? role;
+}
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 
 // ---------- Users Tab ----------
@@ -65,8 +81,13 @@ function UsersTab() {
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<UserRole>("user");
+  const [inviteWorkRole, setInviteWorkRole] = useState<WorkRole | "">("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [editUser, setEditUser] = useState<UserRow | null>(null);
+  const [editWorkRole, setEditWorkRole] = useState<WorkRole | "">("");
+  const [editReportsTo, setEditReportsTo] = useState<string>("");
+  const [editError, setEditError] = useState<string | null>(null);
   const [setPasswordUserId, setSetPasswordUserId] = useState<string | null>(null);
   const [setPasswordUserName, setSetPasswordUserName] = useState("");
   const [tempPassword, setTempPassword] = useState("");
@@ -135,11 +156,39 @@ function UsersTab() {
     setPasswordMutation.reset();
   };
 
+  const updateUserMutation = useMutation({
+    mutationFn: async ({
+      userId,
+      workRole,
+      reportsTo,
+    }: {
+      userId: string;
+      workRole: WorkRole | null;
+      reportsTo: string | null;
+    }) => {
+      setEditError(null);
+      const res = await fetch("/api/admin/update-user", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, workRole, reportsTo }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to update user");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      setEditUser(null);
+    },
+    onError: (err: Error) => {
+      setEditError(err.message);
+    },
+  });
+
   const userColumns: Column<UserRow>[] = [
     { key: "display_name", header: "Name" },
     {
       key: "role",
-      header: "Role",
+      header: "Permission",
       render: (row) => (
         <Badge
           variant={
@@ -155,6 +204,30 @@ function UsersTab() {
       ),
     },
     {
+      key: "work_role",
+      header: "Work Role",
+      render: (row) => {
+        const label = workRoleLabel(row.work_role as WorkRole | null);
+        return label ? (
+          <Badge variant="outline">{label}</Badge>
+        ) : (
+          <span className="text-muted-foreground text-xs">—</span>
+        );
+      },
+    },
+    {
+      key: "reports_to_name",
+      header: "Reports To",
+      render: (row) => {
+        const manager = users.find((u) => u.user_id === row.reports_to);
+        return manager ? (
+          <span className="text-sm">{manager.display_name}</span>
+        ) : (
+          <span className="text-muted-foreground text-xs">—</span>
+        );
+      },
+    },
+    {
       key: "created_at",
       header: "Joined",
       render: (row) => new Date(row.created_at).toLocaleDateString("en-AU"),
@@ -163,31 +236,47 @@ function UsersTab() {
       key: "actions",
       header: "",
       sortable: false,
-      render: (row) =>
-        row.user_id === currentUser?.id ? null : (
-          <div className="flex gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              title="Set temporary password"
-              onClick={() => {
-                setSetPasswordUserId(row.user_id);
-                setSetPasswordUserName(row.display_name);
-              }}
-            >
-              <Key className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-destructive hover:text-destructive"
-              title="Delete user"
-              onClick={() => setConfirmDeleteId(row.user_id)}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        ),
+      render: (row) => (
+        <div className="flex gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            title="Edit work role & reporting line"
+            onClick={() => {
+              setEditUser(row);
+              setEditWorkRole((row.work_role as WorkRole) ?? "");
+              setEditReportsTo(row.reports_to ?? "");
+              setEditError(null);
+            }}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          {row.user_id !== currentUser?.id && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                title="Set temporary password"
+                onClick={() => {
+                  setSetPasswordUserId(row.user_id);
+                  setSetPasswordUserName(row.display_name);
+                }}
+              >
+                <Key className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                title="Delete user"
+                onClick={() => setConfirmDeleteId(row.user_id)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
+          )}
+        </div>
+      ),
     },
   ];
 
@@ -197,7 +286,7 @@ function UsersTab() {
       const res = await fetch("/api/admin/invite-user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, displayName, role }),
+        body: JSON.stringify({ email, displayName, role, workRole: inviteWorkRole || null }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Failed to invite user");
@@ -225,6 +314,7 @@ function UsersTab() {
       setEmail("");
       setDisplayName("");
       setRole("user");
+      setInviteWorkRole("");
       setInviteLink(null);
       setCopied(false);
       setInviteError(null);
@@ -314,7 +404,7 @@ function UsersTab() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Role</Label>
+                    <Label>Permission Level</Label>
                     <Select
                       value={role}
                       onValueChange={(v) => setRole(v as UserRole)}
@@ -326,6 +416,24 @@ function UsersTab() {
                         <SelectItem value="admin">Admin</SelectItem>
                         <SelectItem value="user">User</SelectItem>
                         <SelectItem value="viewer">Viewer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Work Role <span className="text-muted-foreground">(optional)</span></Label>
+                    <Select
+                      value={inviteWorkRole}
+                      onValueChange={(v) => setInviteWorkRole(v as WorkRole)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select work role..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {WORK_ROLES.map((r) => (
+                          <SelectItem key={r.value} value={r.value}>
+                            {r.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -358,6 +466,102 @@ function UsersTab() {
         searchKeys={["display_name"]}
         loading={isLoading}
       />
+
+      {/* Edit user work role & reporting line dialog */}
+      <Dialog
+        open={!!editUser}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setEditUser(null);
+            setEditError(null);
+            updateUserMutation.reset();
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit User — {editUser?.display_name}</DialogTitle>
+            <DialogDescription>
+              Update the work role and reporting line for this user.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Work Role</Label>
+              <Select
+                value={editWorkRole}
+                onValueChange={(v) => setEditWorkRole(v as WorkRole)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="No work role assigned" />
+                </SelectTrigger>
+                <SelectContent>
+                  {WORK_ROLES.map((r) => (
+                    <SelectItem key={r.value} value={r.value}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Reports To</Label>
+              <Select
+                value={editReportsTo}
+                onValueChange={setEditReportsTo}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="No manager assigned" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— None —</SelectItem>
+                  {users
+                    .filter((u) => u.user_id !== editUser?.user_id)
+                    .map((u) => (
+                      <SelectItem key={u.user_id} value={u.user_id}>
+                        {u.display_name}
+                        {u.work_role
+                          ? ` (${workRoleLabel(u.work_role as WorkRole)})`
+                          : ""}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {editError && (
+              <p className="text-sm text-destructive">{editError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditUser(null)}
+              disabled={updateUserMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() =>
+                editUser &&
+                updateUserMutation.mutate({
+                  userId: editUser.user_id,
+                  workRole: (editWorkRole as WorkRole) || null,
+                  reportsTo:
+                    editReportsTo && editReportsTo !== "none"
+                      ? editReportsTo
+                      : null,
+                })
+              }
+              disabled={updateUserMutation.isPending}
+            >
+              {updateUserMutation.isPending && (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Set temporary password dialog */}
       <Dialog

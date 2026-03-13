@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ArrowLeft, ExternalLink, Pencil } from "lucide-react";
+import { ArrowLeft, ExternalLink, Pencil, Plus, Trash2, Star, Loader2, Users } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -12,6 +13,22 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -20,7 +37,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { AgreementStatus, DuesIncreaseType } from "@/types/database";
+import type { AgreementStatus, DuesIncreaseType, AgreementOrgRole, WorkRole } from "@/types/database";
+
+const AGREEMENT_ROLE_LABELS: Record<AgreementOrgRole, string> = {
+  organiser: "Organiser",
+  lead: "Lead",
+  industrial_officer: "Industrial Officer",
+};
+
+const WORK_ROLE_LABELS: Record<WorkRole, string> = {
+  coordinator: "Co-ordinator",
+  lead_organiser: "Lead Organiser",
+  organiser: "Organiser",
+  industrial_officer: "Industrial Officer",
+  industrial_coordinator: "Industrial Co-ordinator",
+  specialist: "Specialist",
+};
 
 interface AgreementDetail {
   agreement_id: number;
@@ -84,6 +116,31 @@ interface SuccessorAgreement {
   status: AgreementStatus;
 }
 
+interface AgreementOrganiserRow {
+  id: number;
+  organiser_id: number;
+  is_primary: boolean;
+  agreement_role: AgreementOrgRole;
+  organiser: { organiser_id: number; organiser_name: string; email: string | null } | null;
+  user_profile: {
+    user_id: string;
+    display_name: string;
+    work_role: WorkRole | null;
+    reports_to: string | null;
+  } | null;
+}
+
+interface OrganiserOption {
+  organiser_id: number;
+  organiser_name: string;
+  user_profile: {
+    user_id: string;
+    display_name: string;
+    work_role: WorkRole | null;
+    reports_to: string | null;
+  } | null;
+}
+
 const STATUS_VARIANT: Record<AgreementStatus, "success" | "destructive" | "info" | "secondary"> = {
   Current: "success",
   Expired: "destructive",
@@ -110,7 +167,16 @@ export default function AgreementDetailPage() {
   const router = useRouter();
   const { user, canWrite } = useAuth();
   const supabase = createClient();
+  const queryClient = useQueryClient();
   const id = params.id as string;
+
+  // Organiser tab state
+  const [addOrgOpen, setAddOrgOpen] = useState(false);
+  const [addOrgId, setAddOrgId] = useState<string>("");
+  const [addOrgRole, setAddOrgRole] = useState<AgreementOrgRole>("organiser");
+  const [addOrgPrimary, setAddOrgPrimary] = useState(false);
+  const [addOrgError, setAddOrgError] = useState<string | null>(null);
+  const [suggestLead, setSuggestLead] = useState<{ name: string; organiserId: number } | null>(null);
 
   const { data: agreement, isLoading } = useQuery({
     queryKey: ["agreement", id],
@@ -183,6 +249,137 @@ export default function AgreementDetailPage() {
       return (data ?? []) as unknown as SuccessorAgreement[];
     },
     enabled: !!user,
+  });
+
+  // Agreement organisers
+  const { data: agreementOrganisers = [], isLoading: orgLoading } = useQuery({
+    queryKey: ["agreement-organisers", id],
+    queryFn: async () => {
+      const res = await fetch(`/api/agreements/${id}/organisers`);
+      if (!res.ok) throw new Error("Failed to load organisers");
+      return res.json() as Promise<AgreementOrganiserRow[]>;
+    },
+    enabled: !!user,
+  });
+
+  // All organisers linked to user accounts, for the add dialog
+  const { data: availableOrganisers = [] } = useQuery({
+    queryKey: ["organisers-with-users"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("organisers")
+        .select(
+          `organiser_id, organiser_name,
+           user_profile:user_profiles(user_id, display_name, work_role, reports_to)`
+        )
+        .eq("is_active", true)
+        .order("organiser_name");
+      if (error) throw error;
+      return (data ?? []) as unknown as OrganiserOption[];
+    },
+    enabled: !!user,
+  });
+
+  const addOrgMutation = useMutation({
+    mutationFn: async () => {
+      setAddOrgError(null);
+      const res = await fetch(`/api/agreements/${id}/organisers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organiserId: parseInt(addOrgId, 10),
+          agreementRole: addOrgRole,
+          isPrimary: addOrgPrimary,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to add organiser");
+      return json;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agreement-organisers", id] });
+      // Check if we should suggest a lead
+      if (addOrgPrimary) {
+        const selected = availableOrganisers.find(
+          (o) => o.organiser_id === parseInt(addOrgId, 10)
+        );
+        const reportsTo = selected?.user_profile?.reports_to;
+        if (reportsTo) {
+          const alreadyAdded = agreementOrganisers.some(
+            (ao) => ao.user_profile?.user_id === reportsTo
+          );
+          if (!alreadyAdded) {
+            // Find the manager's organiser record
+            const managerOrg = availableOrganisers.find(
+              (o) => o.user_profile?.user_id === reportsTo
+            );
+            if (
+              managerOrg &&
+              (managerOrg.user_profile?.work_role === "lead_organiser" ||
+                managerOrg.user_profile?.work_role === "coordinator")
+            ) {
+              setSuggestLead({
+                name: managerOrg.organiser_name,
+                organiserId: managerOrg.organiser_id,
+              });
+            }
+          }
+        }
+      }
+      setAddOrgOpen(false);
+      setAddOrgId("");
+      setAddOrgRole("organiser");
+      setAddOrgPrimary(false);
+    },
+    onError: (err: Error) => {
+      setAddOrgError(err.message);
+    },
+  });
+
+  const setPrimaryMutation = useMutation({
+    mutationFn: async (assignmentId: number) => {
+      const res = await fetch(`/api/agreements/${id}/organisers`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignmentId, isPrimary: true }),
+      });
+      if (!res.ok) throw new Error("Failed to set primary");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agreement-organisers", id] });
+    },
+  });
+
+  const removeOrgMutation = useMutation({
+    mutationFn: async (assignmentId: number) => {
+      const res = await fetch(
+        `/api/agreements/${id}/organisers?assignmentId=${assignmentId}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) throw new Error("Failed to remove organiser");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agreement-organisers", id] });
+    },
+  });
+
+  const addSuggestedLeadMutation = useMutation({
+    mutationFn: async (organiserId: number) => {
+      const res = await fetch(`/api/agreements/${id}/organisers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organiserId,
+          agreementRole: "lead",
+          isPrimary: false,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to add lead");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agreement-organisers", id] });
+      setSuggestLead(null);
+    },
   });
 
   if (isLoading) {
@@ -360,13 +557,238 @@ export default function AgreementDetailPage() {
         </Card>
       )}
 
-      <Tabs defaultValue="worksites">
+      <Tabs defaultValue="organisers">
         <TabsList>
+          <TabsTrigger value="organisers">
+            <Users className="h-3.5 w-3.5 mr-1.5" />
+            Organisers
+            {agreementOrganisers.length > 0 && (
+              <Badge variant="secondary" className="ml-1.5 text-xs">
+                {agreementOrganisers.length}
+              </Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="worksites">Worksites</TabsTrigger>
           <TabsTrigger value="workers">Workers</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="organisers">
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              {/* Auto-suggest lead banner */}
+              {suggestLead && (
+                <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950">
+                  <span className="text-amber-800 dark:text-amber-300">
+                    <strong>{suggestLead.name}</strong> is the primary organiser&apos;s lead — add them as Lead on this agreement?
+                  </span>
+                  <div className="flex gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setSuggestLead(null)}
+                    >
+                      Dismiss
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => addSuggestedLeadMutation.mutate(suggestLead.organiserId)}
+                      disabled={addSuggestedLeadMutation.isPending}
+                    >
+                      {addSuggestedLeadMutation.isPending && (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      )}
+                      Add as Lead
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  {agreementOrganisers.length === 0
+                    ? "No organisers assigned."
+                    : `${agreementOrganisers.length} organiser${agreementOrganisers.length !== 1 ? "s" : ""} assigned.`}
+                </p>
+                {canWrite && (
+                  <Button size="sm" onClick={() => setAddOrgOpen(true)}>
+                    <Plus className="h-4 w-4" />
+                    Add Organiser
+                  </Button>
+                )}
+              </div>
+
+              {orgLoading ? (
+                <div className="flex justify-center py-8">
+                  <EurekaLoadingSpinner size="sm" />
+                </div>
+              ) : agreementOrganisers.length > 0 ? (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Work Role</TableHead>
+                        <TableHead>Agreement Role</TableHead>
+                        <TableHead>Primary</TableHead>
+                        {canWrite && <TableHead />}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {agreementOrganisers.map((ao) => (
+                        <TableRow key={ao.id}>
+                          <TableCell className="font-medium">
+                            {ao.organiser?.organiser_name ?? "—"}
+                          </TableCell>
+                          <TableCell>
+                            {ao.user_profile?.work_role ? (
+                              <Badge variant="outline">
+                                {WORK_ROLE_LABELS[ao.user_profile.work_role]}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                ao.agreement_role === "lead"
+                                  ? "info"
+                                  : ao.agreement_role === "industrial_officer"
+                                    ? "secondary"
+                                    : "outline"
+                              }
+                            >
+                              {AGREEMENT_ROLE_LABELS[ao.agreement_role]}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {ao.is_primary ? (
+                              <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                            ) : canWrite ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                title="Set as primary"
+                                onClick={() => setPrimaryMutation.mutate(ao.id)}
+                                disabled={setPrimaryMutation.isPending}
+                              >
+                                <Star className="h-4 w-4 text-muted-foreground" />
+                              </Button>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
+                          </TableCell>
+                          {canWrite && (
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => removeOrgMutation.mutate(ao.id)}
+                                disabled={removeOrgMutation.isPending}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          {/* Add Organiser dialog */}
+          <Dialog open={addOrgOpen} onOpenChange={(o) => { setAddOrgOpen(o); if (!o) { setAddOrgId(""); setAddOrgRole("organiser"); setAddOrgPrimary(false); setAddOrgError(null); } }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add Organiser</DialogTitle>
+                <DialogDescription>
+                  Assign an organiser to this agreement and specify their role.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-1.5">
+                  <Label>Organiser</Label>
+                  <Select value={addOrgId} onValueChange={setAddOrgId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select organiser..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableOrganisers
+                        .filter(
+                          (o) =>
+                            !agreementOrganisers.some(
+                              (ao) => ao.organiser_id === o.organiser_id
+                            )
+                        )
+                        .map((o) => (
+                          <SelectItem
+                            key={o.organiser_id}
+                            value={String(o.organiser_id)}
+                          >
+                            {o.organiser_name}
+                            {o.user_profile?.work_role
+                              ? ` — ${WORK_ROLE_LABELS[o.user_profile.work_role]}`
+                              : ""}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Agreement Role</Label>
+                  <Select
+                    value={addOrgRole}
+                    onValueChange={(v) => setAddOrgRole(v as AgreementOrgRole)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="organiser">Organiser</SelectItem>
+                      <SelectItem value="lead">Lead</SelectItem>
+                      <SelectItem value="industrial_officer">Industrial Officer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="isPrimary"
+                    checked={addOrgPrimary}
+                    onChange={(e) => setAddOrgPrimary(e.target.checked)}
+                    className="h-4 w-4 rounded border"
+                  />
+                  <Label htmlFor="isPrimary" className="font-normal cursor-pointer">
+                    Set as primary organiser
+                  </Label>
+                </div>
+                {addOrgError && (
+                  <p className="text-sm text-destructive">{addOrgError}</p>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAddOrgOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => addOrgMutation.mutate()}
+                  disabled={!addOrgId || addOrgMutation.isPending}
+                >
+                  {addOrgMutation.isPending && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+                  Add Organiser
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </TabsContent>
 
         <TabsContent value="worksites">
           <Card>

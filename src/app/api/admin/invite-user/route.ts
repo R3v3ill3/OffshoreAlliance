@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { UserRole } from "@/types/database";
+import type { UserRole, WorkRole } from "@/types/database";
 
 interface InviteUserBody {
   email: string;
   displayName: string;
   role: UserRole;
+  workRole?: WorkRole | null;
 }
 
 export async function POST(request: NextRequest) {
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     // Parse and validate the request body
     const body: InviteUserBody = await request.json();
-    const { email, displayName, role } = body;
+    const { email, displayName, role, workRole } = body;
 
     if (!email || !displayName || !role) {
       return NextResponse.json(
@@ -93,26 +94,24 @@ export async function POST(request: NextRequest) {
       email_confirm: true,
     });
 
-    // The trigger creates user_profiles with role='viewer'. Update it to
-    // the intended role if it's different.
-    if (role !== "viewer") {
-      const { error: updateError } = await adminClient
-        .from("user_profiles")
-        .update({ role, display_name: displayName })
-        .eq("user_id", newUserId);
+    // The trigger creates user_profiles with role='viewer'. Update to the
+    // intended role, display_name, and optional work_role.
+    const profileUpdates: Record<string, unknown> = {
+      role,
+      display_name: displayName,
+    };
+    if (workRole) profileUpdates.work_role = workRole;
 
-      if (updateError) {
-        return NextResponse.json(
-          { error: `User created but role update failed: ${updateError.message}` },
-          { status: 500 }
-        );
-      }
-    } else {
-      // Still update display_name in case the trigger used email as fallback
-      await adminClient
-        .from("user_profiles")
-        .update({ display_name: displayName })
-        .eq("user_id", newUserId);
+    const { error: updateError } = await adminClient
+      .from("user_profiles")
+      .update(profileUpdates)
+      .eq("user_id", newUserId);
+
+    if (updateError) {
+      return NextResponse.json(
+        { error: `User created but profile update failed: ${updateError.message}` },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({

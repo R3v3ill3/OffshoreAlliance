@@ -77,7 +77,7 @@ export function WorksiteDistributionChart({
                 ))}
               </Pie>
               <Tooltip
-                formatter={(value: number) => [`${value} worksites`, "Count"]}
+                formatter={(value) => [`${value ?? ""} worksites`, "Count"]}
                 contentStyle={{
                   backgroundColor: "hsl(var(--card))",
                   borderColor: "hsl(var(--border))",

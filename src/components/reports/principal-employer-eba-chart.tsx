@@ -15,7 +15,7 @@ import type { PrincipalEmployerEbaSummary, EbaStatusCategory } from "@/types/dat
 
 // ---------------------------------------------------------------
 // Status category metadata: order, label, colour
-// Ordered from "most covered" (green) to "least covered" (grey)
+// Left-to-right: most urgent (red) → healthy (green) → none (grey)
 // ---------------------------------------------------------------
 export interface EbaStatusMeta {
   key: keyof PrincipalEmployerEbaSummary;
@@ -26,34 +26,6 @@ export interface EbaStatusMeta {
 }
 
 export const EBA_STATUS_META: EbaStatusMeta[] = [
-  {
-    key: "count_gt_24m",
-    pctKey: "pct_gt_24m",
-    label: "> 24 months",
-    color: "#16a34a",
-    category: "expiry_gt_24m",
-  },
-  {
-    key: "count_12_24m",
-    pctKey: "pct_12_24m",
-    label: "12–24 months",
-    color: "#4ade80",
-    category: "expiry_12_24m",
-  },
-  {
-    key: "count_6_12m",
-    pctKey: "pct_6_12m",
-    label: "6–12 months",
-    color: "#fbbf24",
-    category: "expiry_6_12m",
-  },
-  {
-    key: "count_lt_6m",
-    pctKey: "pct_lt_6m",
-    label: "< 6 months",
-    color: "#f97316",
-    category: "expiry_lt_6m",
-  },
   {
     key: "count_expired",
     pctKey: "pct_expired",
@@ -67,6 +39,34 @@ export const EBA_STATUS_META: EbaStatusMeta[] = [
     label: "First Bargaining",
     color: "#a78bfa",
     category: "first_bargaining",
+  },
+  {
+    key: "count_lt_6m",
+    pctKey: "pct_lt_6m",
+    label: "< 6 months",
+    color: "#f97316",
+    category: "expiry_lt_6m",
+  },
+  {
+    key: "count_6_12m",
+    pctKey: "pct_6_12m",
+    label: "6–12 months",
+    color: "#fbbf24",
+    category: "expiry_6_12m",
+  },
+  {
+    key: "count_12_24m",
+    pctKey: "pct_12_24m",
+    label: "12–24 months",
+    color: "#4ade80",
+    category: "expiry_12_24m",
+  },
+  {
+    key: "count_gt_24m",
+    pctKey: "pct_gt_24m",
+    label: "> 24 months",
+    color: "#16a34a",
+    category: "expiry_gt_24m",
   },
   {
     key: "count_no_eba",

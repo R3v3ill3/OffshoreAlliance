@@ -211,14 +211,16 @@ export function proposeCategories(employers: Employer[]): CategoryProposal[] {
 // Prelude FLNG is a Shell facility; Darwin LNG is associated with
 // the Ichthys project (Inpex). Patterns ordered so more-specific
 // multi-word patterns are checked before single-word fallbacks.
+// \bchevron\b / \bwoodside\b / \bsantos\b / \bshell\b act as
+// catch-alls for general-purpose worksites named after the PE.
 const PE_WORKSITE_SIGNALS: { pattern: RegExp; peName: string }[] = [
   {
-    pattern: /gorgon|wheatstone|barrow\s*island|jansz/i,
+    pattern: /gorgon|wheatstone|barrow\s*island|jansz|\bchevron\b/i,
     peName: "Chevron",
   },
   {
     pattern:
-      /pluto|north\s*west\s*shelf|nws|nganhurra|vincent|stybarrow|enfield|pyrenees|macedon|browse\s*fpso/i,
+      /pluto|north\s*west\s*shelf|\bnws\b|nganhurra|ngujima|ohka|vincent|stybarrow|enfield|pyrenees|macedon|browse\s*fpso|\bwoodside\b/i,
     peName: "Woodside",
   },
   {
@@ -226,8 +228,16 @@ const PE_WORKSITE_SIGNALS: { pattern: RegExp; peName: string }[] = [
     peName: "Inpex",
   },
   {
-    pattern: /prelude|\bshell\b/i,
+    pattern: /prelude|\bshell\b|\bcrux\b/i,
     peName: "Shell",
+  },
+  {
+    pattern: /ningaloo|varanus|\bsantos\b/i,
+    peName: "Santos",
+  },
+  {
+    pattern: /jadestone|stag\s*cpf|montara/i,
+    peName: "Jadestone",
   },
 ];
 

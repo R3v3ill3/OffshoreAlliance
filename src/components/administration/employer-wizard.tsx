@@ -1449,6 +1449,8 @@ function EmployerWizardInner() {
   function WorksitesStep() {
     if (!proposals) return null;
     const ws = proposals.worksitePeAssignments;
+    const acceptedCount = ws.filter((w) => w.accepted).length;
+    const allAccepted = ws.length > 0 && acceptedCount === ws.length;
 
     return (
       <div className="space-y-4">
@@ -1457,18 +1459,43 @@ function EmployerWizardInner() {
             <h2 className="text-xl font-semibold">
               Worksite &rarr; Principal Employer
             </h2>
-            <Badge variant="secondary" className="mt-1">
-              {ws.length} proposals
-            </Badge>
+            <div className="flex items-center gap-2 mt-1">
+              <Badge
+                variant={acceptedCount === 0 ? "destructive" : acceptedCount < ws.length ? "secondary" : "default"}
+              >
+                {acceptedCount}/{ws.length} accepted
+              </Badge>
+            </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => bulkAcceptHigh("worksites")}
-          >
-            <CheckCheck className="h-4 w-4 mr-1" />
-            Pre-select high confidence
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => bulkAcceptHigh("worksites")}
+            >
+              <CheckCheck className="h-4 w-4 mr-1" />
+              High confidence
+            </Button>
+            <Button
+              variant={allAccepted ? "outline" : "default"}
+              size="sm"
+              onClick={() =>
+                setProposals((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        worksitePeAssignments: prev.worksitePeAssignments.map(
+                          (w) => ({ ...w, accepted: true })
+                        ),
+                      }
+                    : prev
+                )
+              }
+            >
+              <CheckCheck className="h-4 w-4 mr-1" />
+              Accept All
+            </Button>
+          </div>
         </div>
 
         {ws.length === 0 ? (
@@ -1586,6 +1613,9 @@ function EmployerWizardInner() {
   function ConfirmStep() {
     if (!proposals) return null;
 
+    const skippedWorksites =
+      proposals.worksitePeAssignments.length - acceptedWorksites.length;
+
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -1603,6 +1633,17 @@ function EmployerWizardInner() {
             Export CSV
           </Button>
         </div>
+
+        {skippedWorksites > 0 && (
+          <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 text-sm text-amber-800 dark:text-amber-300">
+            <span className="mt-0.5 shrink-0">⚠</span>
+            <span>
+              <strong>{skippedWorksites} worksite proposal{skippedWorksites !== 1 ? "s" : ""} not accepted.</strong>{" "}
+              Go back to the Worksites step and accept them to assign Principal Employers —
+              the EBA coverage dashboard will remain incomplete without these assignments.
+            </span>
+          </div>
+        )}
 
         {totalAccepted === 0 ? (
           <Card>

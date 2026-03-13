@@ -51,6 +51,7 @@ import {
   Trash2,
   Pencil,
 } from "lucide-react";
+import { EmployerWizard } from "@/components/administration/employer-wizard";
 
 const WORK_ROLES: { value: WorkRole; label: string }[] = [
   { value: "coordinator", label: "Co-ordinator" },
@@ -1145,6 +1146,7 @@ export default function AdministrationPage() {
           <TabsTrigger value="sectors">Sectors</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
           <TabsTrigger value="imports">Import History</TabsTrigger>
+          <TabsTrigger value="employer_wizard">Employer Wizard</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users">
@@ -1161,6 +1163,9 @@ export default function AdministrationPage() {
         </TabsContent>
         <TabsContent value="imports">
           <ImportHistoryTab />
+        </TabsContent>
+        <TabsContent value="employer_wizard">
+          <EmployerWizard />
         </TabsContent>
       </Tabs>
     </div>

@@ -1794,3 +1794,53 @@
 {"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":true,"loading":false},"hypothesisId":"H4","timestamp":1773376448984}
 {"sessionId":"3b174c","location":"auth-context.tsx","message":"onAuthStateChange fired","data":{"event":"SIGNED_IN","userId":"1a28184e-d509-400d-af9b-c437330162a4","hasSession":true,"expiresAt":1773380044},"hypothesisId":"H1","timestamp":1773376904705}
 {"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":true,"loading":false},"hypothesisId":"H4","timestamp":1773376904709}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697359}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697361}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697362}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697363}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697363}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697364}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697364}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697364}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697364}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697365}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697365}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697365}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697365}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697366}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697366}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697366}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697366}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697367}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697367}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697367}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697367}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697367}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697368}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697368}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697368}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697368}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697369}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697369}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697369}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697370}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697370}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":false,"loading":true},"hypothesisId":"H4","timestamp":1773378697372}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"getUser() start","data":{},"hypothesisId":"H1","timestamp":1773378697378}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"getUser() result","data":{"userId":"1a28184e-d509-400d-af9b-c437330162a4","email":"troyburton@gmail.com","error":null},"hypothesisId":"H1","timestamp":1773378697751}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":true,"loading":true},"hypothesisId":"H4","timestamp":1773378697752}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":true,"loading":true},"hypothesisId":"H4","timestamp":1773378697753}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":true,"loading":true},"hypothesisId":"H4","timestamp":1773378697754}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"onAuthStateChange fired","data":{"event":"INITIAL_SESSION","userId":"1a28184e-d509-400d-af9b-c437330162a4","hasSession":true,"expiresAt":1773380044},"hypothesisId":"H1","timestamp":1773378697755}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":true,"loading":true},"hypothesisId":"H4","timestamp":1773378697755}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":true,"loading":true},"hypothesisId":"H4","timestamp":1773378697756}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":true,"loading":true},"hypothesisId":"H4","timestamp":1773378697757}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":true,"loading":true},"hypothesisId":"H4","timestamp":1773378697757}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":true,"loading":true},"hypothesisId":"H4","timestamp":1773378697758}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":true,"loading":true},"hypothesisId":"H4","timestamp":1773378697862}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"getUser profile fetch","data":{"hasProfile":true,"role":"admin","profileError":null},"hypothesisId":"H3","timestamp":1773378697922}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":true,"loading":false},"hypothesisId":"H4","timestamp":1773378697923}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"onAuthStateChange profile fetch","data":{"hasProfile":true,"role":"admin","profileError":null},"hypothesisId":"H3","timestamp":1773378697946}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":true,"loading":false},"hypothesisId":"H4","timestamp":1773378697946}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"onAuthStateChange fired","data":{"event":"TOKEN_REFRESHED","userId":"1a28184e-d509-400d-af9b-c437330162a4","hasSession":true,"expiresAt":1773383528},"hypothesisId":"H1","timestamp":1773379928067}
+{"sessionId":"3b174c","location":"auth-context.tsx","message":"AuthProvider render - supabase ref","data":{"hasUser":true,"loading":false},"hypothesisId":"H4","timestamp":1773379928068}

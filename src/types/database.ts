@@ -386,6 +386,63 @@ export interface ImportLog {
   imported_at: string;
 }
 
+// ---------- Employer Wizard types ----------
+
+export type WizardConfidence = "high" | "medium" | "low";
+
+export interface EmployerGroupProposal {
+  proposedParentName: string;
+  existingParentId: number | null;
+  isNewParent: boolean;
+  memberEmployerIds: number[];
+  confidence: WizardConfidence;
+  source: "fuzzy" | "ai" | "merged";
+  accepted: boolean;
+}
+
+export interface CategoryProposal {
+  employerId: number;
+  employerName: string;
+  currentCategory: string | null;
+  proposedCategory: string;
+  confidence: WizardConfidence;
+  reasoning: string;
+  source: "fuzzy" | "ai" | "merged";
+  accepted: boolean;
+  overridden: boolean;
+}
+
+export interface WorksitePeProposal {
+  worksiteId: number;
+  worksiteName: string;
+  worksiteType: string;
+  currentPrincipalEmployerId: number | null;
+  currentPrincipalEmployerName: string | null;
+  proposedPrincipalEmployerId: number;
+  proposedPrincipalEmployerName: string;
+  confidence: WizardConfidence;
+  reasoning: string;
+  source: "fuzzy" | "ai" | "merged";
+  accepted: boolean;
+  overridden: boolean;
+}
+
+export interface WizardProposals {
+  employerGroups: EmployerGroupProposal[];
+  categoryAssignments: CategoryProposal[];
+  worksitePeAssignments: WorksitePeProposal[];
+}
+
+export interface WizardApplyResult {
+  success: boolean;
+  parents_created?: number;
+  employers_updated?: number;
+  worksites_updated?: number;
+  error?: string;
+  conflicts?: { type: string; id: number; field: string; expected: string; actual: string }[];
+  message?: string;
+}
+
 // View: worksite_employer_eba_status
 // One row per current (employer, worksite) pair with computed EBA status category.
 export interface WorksiteEmployerEbaStatus {

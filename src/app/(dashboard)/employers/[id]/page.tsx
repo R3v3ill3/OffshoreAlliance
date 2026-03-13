@@ -37,11 +37,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Pencil, X, Save } from "lucide-react";
+import { ArrowLeft, Pencil, X, Save, Star, Building2 } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { format } from "date-fns";
 
 const EMPLOYER_CATEGORIES: EmployerCategory[] = [
+  "Principal_Employer",
   "Producer",
   "Major_Contractor",
   "Subcontractor",
@@ -65,6 +66,7 @@ type WorksiteRoleRow = EmployerWorksiteRole & {
   worksite?: Worksite;
 } & Record<string, unknown>;
 type WorkerRow = Worker & Record<string, unknown>;
+type ChildEmployerRow = Employer & Record<string, unknown>;
 
 export default function EmployerDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -94,6 +96,19 @@ export default function EmployerDetailPage() {
       return data as Employer;
     },
     enabled: !!id,
+  });
+
+  // All employers for parent company selector + child lookup
+  const { data: allEmployers = [] } = useQuery({
+    queryKey: ["employers-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employers")
+        .select("employer_id, employer_name, employer_category")
+        .order("employer_name");
+      if (error) throw error;
+      return data as Pick<Employer, "employer_id" | "employer_name" | "employer_category">[];
+    },
   });
 
   const { data: agreements = [] } = useQuery({
@@ -137,6 +152,44 @@ export default function EmployerDetailPage() {
     enabled: !!id,
   });
 
+  // Child companies (employers where parent_employer_id = this employer)
+  const { data: childCompanies = [] } = useQuery({
+    queryKey: ["employer-children", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employers")
+        .select("*")
+        .eq("parent_employer_id", id)
+        .order("employer_name");
+      if (error) throw error;
+      return data as Employer[];
+    },
+    enabled: !!id,
+  });
+
+  // Worksites where this employer is the principal employer
+  const { data: principalWorksites = [] } = useQuery({
+    queryKey: ["employer-principal-worksites", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worksites")
+        .select("*")
+        .eq("principal_employer_id", id)
+        .order("worksite_name");
+      if (error) throw error;
+      return data as Worksite[];
+    },
+    enabled: !!id,
+  });
+
+  const parentEmployer = useMemo(
+    () =>
+      employer?.parent_employer_id
+        ? allEmployers.find((e) => e.employer_id === employer.parent_employer_id)
+        : null,
+    [employer, allEmployers]
+  );
+
   const startEditing = () => {
     if (!employer) return;
     setEditForm({ ...employer });
@@ -150,8 +203,11 @@ export default function EmployerDetailPage() {
     setSaveError(null);
   };
 
-  const handleEditChange = (field: keyof Employer, value: string | null) => {
-    setEditForm((prev) => ({ ...prev, [field]: value || null }));
+  const handleEditChange = (
+    field: keyof Employer,
+    value: string | number | null
+  ) => {
+    setEditForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const saveEdits = async () => {
@@ -171,6 +227,7 @@ export default function EmployerDetailPage() {
     }
 
     await queryClient.invalidateQueries({ queryKey: ["employer", id] });
+    await queryClient.invalidateQueries({ queryKey: ["employer-children", id] });
     setEditing(false);
     setEditForm({});
     setSaving(false);
@@ -257,6 +314,35 @@ export default function EmployerDetailPage() {
     []
   );
 
+  const childColumns: Column<ChildEmployerRow>[] = useMemo(
+    () => [
+      { key: "employer_name", header: "Company Name" },
+      { key: "trading_name", header: "Trading Name" },
+      {
+        key: "employer_category",
+        header: "Category",
+        render: (item) =>
+          item.employer_category ? (
+            <Badge variant="secondary">
+              {item.employer_category.replace(/_/g, " ")}
+            </Badge>
+          ) : (
+            "—"
+          ),
+      },
+      {
+        key: "is_active",
+        header: "Active",
+        render: (item) => (
+          <Badge variant={item.is_active ? "success" : "destructive"}>
+            {item.is_active ? "Active" : "Inactive"}
+          </Badge>
+        ),
+      },
+    ],
+    []
+  );
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -277,25 +363,24 @@ export default function EmployerDetailPage() {
     );
   }
 
+  const isPrincipal = employer.employer_category === "Principal_Employer";
+
+  // Render a detail field (view or edit mode)
   const displayValue = (field: keyof Employer) => {
     if (editing) {
       const val = editForm[field];
-      if (
-        field === "employer_category" ||
-        field === "state"
-      ) {
-        const options =
-          field === "employer_category" ? EMPLOYER_CATEGORIES : AU_STATES;
+
+      if (field === "employer_category") {
         return (
           <Select
             value={(val as string) ?? ""}
             onValueChange={(v) => handleEditChange(field, v)}
           >
             <SelectTrigger className="h-8">
-              <SelectValue placeholder={`Select ${field.replace(/_/g, " ")}`} />
+              <SelectValue placeholder="Select category" />
             </SelectTrigger>
             <SelectContent>
-              {options.map((opt) => (
+              {EMPLOYER_CATEGORIES.map((opt) => (
                 <SelectItem key={opt} value={opt}>
                   {opt.replace(/_/g, " ")}
                 </SelectItem>
@@ -304,6 +389,53 @@ export default function EmployerDetailPage() {
           </Select>
         );
       }
+
+      if (field === "state") {
+        return (
+          <Select
+            value={(val as string) ?? ""}
+            onValueChange={(v) => handleEditChange(field, v)}
+          >
+            <SelectTrigger className="h-8">
+              <SelectValue placeholder="Select state" />
+            </SelectTrigger>
+            <SelectContent>
+              {AU_STATES.map((opt) => (
+                <SelectItem key={opt} value={opt}>
+                  {opt}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+      }
+
+      if (field === "parent_employer_id") {
+        return (
+          <Select
+            value={val != null ? String(val) : "none"}
+            onValueChange={(v) =>
+              handleEditChange(field, v === "none" ? null : Number(v))
+            }
+          >
+            <SelectTrigger className="h-8">
+              <SelectValue placeholder="Select parent company" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None (standalone)</SelectItem>
+              {allEmployers
+                .filter((e) => e.employer_id !== employer.employer_id)
+                .map((e) => (
+                  <SelectItem key={e.employer_id} value={String(e.employer_id)}>
+                    {e.employer_name}
+                    {e.employer_category === "Principal_Employer" ? " ★" : ""}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        );
+      }
+
       return (
         <Input
           className="h-8"
@@ -312,11 +444,32 @@ export default function EmployerDetailPage() {
         />
       );
     }
+
+    // View mode
+    if (field === "parent_employer_id") {
+      if (!employer.parent_employer_id) return "—";
+      return parentEmployer
+        ? parentEmployer.employer_name
+        : `ID: ${employer.parent_employer_id}`;
+    }
+
     const val = employer[field];
     if (val == null || val === "") return "—";
     if (typeof val === "string") return val.replace(/_/g, " ");
     return String(val);
   };
+
+  const tabs = [
+    { value: "agreements", label: `Agreements (${agreements.length})` },
+    { value: "worksites", label: `Worksites (${worksiteRoles.length})` },
+    { value: "workers", label: `Workers (${workers.length})` },
+    ...(childCompanies.length > 0
+      ? [{ value: "children", label: `Group Companies (${childCompanies.length})` }]
+      : []),
+    ...(isPrincipal && principalWorksites.length > 0
+      ? [{ value: "principal_worksites", label: `Principal Worksites (${principalWorksites.length})` }]
+      : []),
+  ];
 
   return (
     <div className="space-y-6">
@@ -330,15 +483,40 @@ export default function EmployerDetailPage() {
           Back
         </Button>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold tracking-tight">
-            {employer.employer_name}
-          </h1>
+          <div className="flex items-center gap-2">
+            {isPrincipal && (
+              <Star className="h-5 w-5 text-amber-500 fill-amber-500 shrink-0" />
+            )}
+            <h1 className="text-2xl font-bold tracking-tight">
+              {employer.employer_name}
+            </h1>
+          </div>
           {employer.trading_name && (
             <p className="text-muted-foreground">
               Trading as: {employer.trading_name}
             </p>
           )}
+          {parentEmployer && (
+            <p className="text-sm text-muted-foreground flex items-center gap-1">
+              <Building2 className="h-3 w-3" />
+              Part of:{" "}
+              <button
+                className="underline hover:text-foreground"
+                onClick={() =>
+                  router.push(`/employers/${parentEmployer.employer_id}`)
+                }
+              >
+                {parentEmployer.employer_name}
+              </button>
+            </p>
+          )}
         </div>
+        {isPrincipal && (
+          <Badge variant="warning">
+            <Star className="h-3 w-3 mr-1 fill-current" />
+            Principal Employer
+          </Badge>
+        )}
         <Badge variant={employer.is_active ? "success" : "destructive"}>
           {employer.is_active ? "Active" : "Inactive"}
         </Badge>
@@ -383,7 +561,7 @@ export default function EmployerDetailPage() {
                 ["trading_name", "Trading Name"],
                 ["abn", "ABN"],
                 ["employer_category", "Category"],
-                ["parent_company", "Parent Company"],
+                ["parent_employer_id", "Parent Company"],
                 ["website", "Website"],
                 ["phone", "Phone"],
                 ["email", "Email"],
@@ -403,15 +581,11 @@ export default function EmployerDetailPage() {
 
       <Tabs defaultValue="agreements">
         <TabsList>
-          <TabsTrigger value="agreements">
-            Agreements ({agreements.length})
-          </TabsTrigger>
-          <TabsTrigger value="worksites">
-            Worksites ({worksiteRoles.length})
-          </TabsTrigger>
-          <TabsTrigger value="workers">
-            Workers ({workers.length})
-          </TabsTrigger>
+          {tabs.map((t) => (
+            <TabsTrigger key={t.value} value={t.value}>
+              {t.label}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         <TabsContent value="agreements">
@@ -461,6 +635,55 @@ export default function EmployerDetailPage() {
             />
           )}
         </TabsContent>
+
+        {childCompanies.length > 0 && (
+          <TabsContent value="children">
+            <DataTable
+              data={childCompanies as ChildEmployerRow[]}
+              columns={childColumns}
+              searchPlaceholder="Search group companies..."
+              searchKeys={["employer_name", "trading_name"]}
+              onRowClick={(item) =>
+                router.push(`/employers/${item.employer_id}`)
+              }
+            />
+          </TabsContent>
+        )}
+
+        {isPrincipal && principalWorksites.length > 0 && (
+          <TabsContent value="principal_worksites">
+            <DataTable
+              data={principalWorksites as (Worksite & Record<string, unknown>)[]}
+              columns={[
+                { key: "worksite_name", header: "Worksite" },
+                {
+                  key: "worksite_type",
+                  header: "Type",
+                  render: (item) => (
+                    <Badge variant="secondary">
+                      {(item as Worksite).worksite_type.replace(/_/g, " ")}
+                    </Badge>
+                  ),
+                },
+                { key: "basin", header: "Basin" },
+                {
+                  key: "is_offshore",
+                  header: "Offshore",
+                  render: (item) => (
+                    <Badge variant={(item as Worksite).is_offshore ? "info" : "secondary"}>
+                      {(item as Worksite).is_offshore ? "Yes" : "No"}
+                    </Badge>
+                  ),
+                },
+              ]}
+              searchPlaceholder="Search worksites..."
+              searchKeys={["worksite_name", "basin"]}
+              onRowClick={(item) =>
+                router.push(`/worksites/${(item as Worksite).worksite_id}`)
+              }
+            />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

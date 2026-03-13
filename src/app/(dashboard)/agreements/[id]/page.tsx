@@ -121,24 +121,28 @@ interface AgreementOrganiserRow {
   organiser_id: number;
   is_primary: boolean;
   agreement_role: AgreementOrgRole;
-  organiser: { organiser_id: number; organiser_name: string; email: string | null } | null;
-  user_profile: {
-    user_id: string;
-    display_name: string;
-    work_role: WorkRole | null;
-    reports_to: string | null;
+  organiser: {
+    organiser_id: number;
+    organiser_name: string;
+    email: string | null;
+    user_profiles: Array<{
+      user_id: string;
+      display_name: string;
+      work_role: WorkRole | null;
+      reports_to: string | null;
+    }>;
   } | null;
 }
 
 interface OrganiserOption {
   organiser_id: number;
   organiser_name: string;
-  user_profile: {
+  user_profiles: Array<{
     user_id: string;
     display_name: string;
     work_role: WorkRole | null;
     reports_to: string | null;
-  } | null;
+  }>;
 }
 
 const STATUS_VARIANT: Record<AgreementStatus, "success" | "destructive" | "info" | "secondary"> = {
@@ -270,7 +274,7 @@ export default function AgreementDetailPage() {
         .from("organisers")
         .select(
           `organiser_id, organiser_name,
-           user_profile:user_profiles(user_id, display_name, work_role, reports_to)`
+           user_profiles(user_id, display_name, work_role, reports_to)`
         )
         .eq("is_active", true)
         .order("organiser_name");
@@ -303,20 +307,19 @@ export default function AgreementDetailPage() {
         const selected = availableOrganisers.find(
           (o) => o.organiser_id === parseInt(addOrgId, 10)
         );
-        const reportsTo = selected?.user_profile?.reports_to;
+        const reportsTo = selected?.user_profiles?.[0]?.reports_to;
         if (reportsTo) {
           const alreadyAdded = agreementOrganisers.some(
-            (ao) => ao.user_profile?.user_id === reportsTo
+            (ao) => ao.organiser?.user_profiles?.[0]?.user_id === reportsTo
           );
           if (!alreadyAdded) {
-            // Find the manager's organiser record
             const managerOrg = availableOrganisers.find(
-              (o) => o.user_profile?.user_id === reportsTo
+              (o) => o.user_profiles?.[0]?.user_id === reportsTo
             );
             if (
               managerOrg &&
-              (managerOrg.user_profile?.work_role === "lead_organiser" ||
-                managerOrg.user_profile?.work_role === "coordinator")
+              (managerOrg.user_profiles?.[0]?.work_role === "lead_organiser" ||
+                managerOrg.user_profiles?.[0]?.work_role === "coordinator")
             ) {
               setSuggestLead({
                 name: managerOrg.organiser_name,
@@ -642,9 +645,9 @@ export default function AgreementDetailPage() {
                             {ao.organiser?.organiser_name ?? "—"}
                           </TableCell>
                           <TableCell>
-                            {ao.user_profile?.work_role ? (
+                            {ao.organiser?.user_profiles?.[0]?.work_role ? (
                               <Badge variant="outline">
-                                {WORK_ROLE_LABELS[ao.user_profile.work_role]}
+                                {WORK_ROLE_LABELS[ao.organiser.user_profiles[0].work_role]}
                               </Badge>
                             ) : (
                               <span className="text-muted-foreground text-xs">—</span>
@@ -732,8 +735,8 @@ export default function AgreementDetailPage() {
                             value={String(o.organiser_id)}
                           >
                             {o.organiser_name}
-                            {o.user_profile?.work_role
-                              ? ` — ${WORK_ROLE_LABELS[o.user_profile.work_role]}`
+                            {o.user_profiles?.[0]?.work_role
+                              ? ` — ${WORK_ROLE_LABELS[o.user_profiles[0].work_role]}`
                               : ""}
                           </SelectItem>
                         ))}

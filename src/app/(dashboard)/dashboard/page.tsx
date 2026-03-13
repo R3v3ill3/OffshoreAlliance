@@ -4,33 +4,30 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
-// #region agent log - debug helper
-const _dbgDash = (msg: string, data: Record<string, unknown>) =>
-  fetch('http://127.0.0.1:7432/ingest/c8c97c5f-af35-4118-b37c-4421b9062a9c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3b174c'},body:JSON.stringify({sessionId:'3b174c',location:'dashboard/page.tsx',message:msg,data,hypothesisId:'H5',timestamp:Date.now()})}).catch(()=>{});
-// #endregion
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Users, Building2, FileText, Megaphone, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Users, Building2, FileText, Megaphone, AlertTriangle, Star, BarChart2 } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { differenceInDays, format } from "date-fns";
+import {
+  PrincipalEmployerEbaChart,
+  EbaSummaryLegend,
+} from "@/components/reports/principal-employer-eba-chart";
+import type { PrincipalEmployerEbaSummary } from "@/types/database";
+import { useRouter } from "next/navigation";
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const supabase = createClient();
-
-  // #region agent log - H1/H5: track user and query enabled state
-  _dbgDash('DashboardPage render', { userId: user?.id ?? null, userEnabled: !!user });
-  // #endregion
+  const router = useRouter();
 
   const { data: workerCount = 0, isLoading: loadingWorkers } = useQuery({
     queryKey: ["workers-count"],
     queryFn: async () => {
-      const { count, error } = await supabase
+      const { count } = await supabase
         .from("workers")
         .select("*", { count: "exact", head: true });
-      // #region agent log - H5: worker count query result
-      _dbgDash('workers-count queryFn', { count, error: (error as {message?: string} | null)?.message ?? null });
-      // #endregion
       return count ?? 0;
     },
     enabled: !!user,
@@ -92,6 +89,20 @@ export default function DashboardPage() {
     enabled: !!user,
   });
 
+  // Principal Employer EBA coverage summary
+  const { data: ebaSummary = [], isLoading: loadingEba } = useQuery({
+    queryKey: ["principal-employer-eba-summary"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("principal_employer_eba_summary")
+        .select("*")
+        .order("principal_employer_name");
+      if (error) throw error;
+      return data as PrincipalEmployerEbaSummary[];
+    },
+    enabled: !!user,
+  });
+
   const expiringCount = expiringAgreements.length;
 
   const stats = useMemo(
@@ -143,6 +154,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Dashboard</h1>
 
+      {/* Summary stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {stats.map((stat) => (
           <Card key={stat.label}>
@@ -165,6 +177,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      {/* Recent activity + expiring agreements */}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -224,6 +237,86 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* EBA Coverage by Principal Employer */}
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2">
+              <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+              EBA Coverage by Principal Employer
+            </CardTitle>
+            <CardDescription>
+              Distribution of employer-worksite pairs by EBA status across Shell,
+              Woodside, Inpex and Chevron assets. Includes group company (parent
+              company) relationships.
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push("/reports")}
+          >
+            <BarChart2 className="h-4 w-4" />
+            Full Report
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {loadingEba ? (
+            <div className="flex items-center justify-center py-8">
+              <EurekaLoadingSpinner size="md" />
+            </div>
+          ) : ebaSummary.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
+              <Star className="h-8 w-8 text-muted-foreground" />
+              <p className="text-muted-foreground text-sm max-w-md">
+                No EBA coverage data yet. Assign Principal Employers to worksites
+                and link employers to those worksites to populate this report.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push("/worksites")}
+              >
+                Go to Worksites
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Combined chart for all principal employers */}
+              <PrincipalEmployerEbaChart data={ebaSummary} />
+
+              {/* Per-employer detail cards */}
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {ebaSummary.map((pe) => (
+                  <Card key={pe.principal_employer_id} className="border-dashed">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-1.5">
+                        <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0" />
+                        {pe.principal_employer_name}
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        {pe.total_pairs} employer-worksite pair
+                        {pe.total_pairs !== 1 ? "s" : ""}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      {/* Mini bar for this PE */}
+                      <div className="mb-3">
+                        <PrincipalEmployerEbaChart
+                          data={[pe]}
+                          compact
+                        />
+                      </div>
+                      <EbaSummaryLegend summary={pe} />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

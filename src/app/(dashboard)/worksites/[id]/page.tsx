@@ -37,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Pencil, X, Save } from "lucide-react";
+import { ArrowLeft, Pencil, X, Save, Star } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { format } from "date-fns";
 
@@ -74,6 +74,11 @@ type EmployerRoleRow = EmployerWorksiteRole & {
 } & Record<string, unknown>;
 type WorkerRow = Worker & Record<string, unknown>;
 
+type WorksiteWithJoins = Worksite & {
+  operator?: { employer_id: number; employer_name: string };
+  principal_employer?: { employer_id: number; employer_name: string };
+};
+
 export default function WorksiteDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -95,13 +100,29 @@ export default function WorksiteDetailPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("worksites")
-        .select("*, operator:employers!operator_id(employer_id, employer_name)")
+        .select(
+          "*, operator:employers!operator_id(employer_id, employer_name), principal_employer:employers!principal_employer_id(employer_id, employer_name)"
+        )
         .eq("worksite_id", id)
         .single();
       if (error) throw error;
-      return data as Worksite & { operator?: { employer_id: number; employer_name: string } };
+      return data as WorksiteWithJoins;
     },
     enabled: !!id,
+  });
+
+  // All principal employers for the edit selector
+  const { data: principalEmployers = [] } = useQuery({
+    queryKey: ["principal-employers"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employers")
+        .select("employer_id, employer_name")
+        .eq("employer_category", "Principal_Employer")
+        .order("employer_name");
+      if (error) throw error;
+      return data as Pick<Employer, "employer_id" | "employer_name">[];
+    },
   });
 
   const { data: agreementWorksites = [] } = useQuery({
@@ -329,6 +350,40 @@ export default function WorksiteDetailPage() {
           </div>
         );
       }
+      if (field === "principal_employer_id") {
+        return (
+          <div>
+            <Label className="text-xs text-muted-foreground">{label}</Label>
+            <div className="mt-1">
+              <Select
+                value={
+                  editForm.principal_employer_id != null
+                    ? String(editForm.principal_employer_id)
+                    : "none"
+                }
+                onValueChange={(v) =>
+                  handleEditChange(
+                    "principal_employer_id",
+                    v === "none" ? null : Number(v)
+                  )
+                }
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue placeholder="Select principal employer" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {principalEmployers.map((pe) => (
+                    <SelectItem key={pe.employer_id} value={String(pe.employer_id)}>
+                      {pe.employer_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        );
+      }
       if (type === "checkbox") {
         return (
           <div>
@@ -365,6 +420,26 @@ export default function WorksiteDetailPage() {
                 )
               }
             />
+          </div>
+        </div>
+      );
+    }
+
+    // View mode — special handling for principal_employer_id
+    if (field === "principal_employer_id") {
+      const peName = worksite.principal_employer?.employer_name;
+      return (
+        <div>
+          <Label className="text-xs text-muted-foreground">{label}</Label>
+          <div className="mt-1 text-sm">
+            {peName ? (
+              <span className="flex items-center gap-1">
+                <Star className="h-3 w-3 text-amber-500 fill-amber-500" />
+                {peName}
+              </span>
+            ) : (
+              "—"
+            )}
           </div>
         </div>
       );
@@ -409,6 +484,9 @@ export default function WorksiteDetailPage() {
             {worksite.worksite_type.replace(/_/g, " ")}
             {worksite.operator
               ? ` · Operated by ${worksite.operator.employer_name}`
+              : ""}
+            {worksite.principal_employer
+              ? ` · ${worksite.principal_employer.employer_name} asset`
               : ""}
           </p>
         </div>
@@ -456,6 +534,7 @@ export default function WorksiteDetailPage() {
             <div className="grid grid-cols-2 gap-x-8 gap-y-4">
               {renderField("worksite_name", "Name")}
               {renderField("worksite_type", "Type", "select")}
+              {renderField("principal_employer_id", "Principal Employer")}
               <div>
                 <Label className="text-xs text-muted-foreground">Operator</Label>
                 <div className="mt-1 text-sm">

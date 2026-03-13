@@ -26,9 +26,10 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus } from "lucide-react";
+import { Plus, Star } from "lucide-react";
 
 const EMPLOYER_CATEGORIES: EmployerCategory[] = [
+  "Principal_Employer",
   "Producer",
   "Major_Contractor",
   "Subcontractor",
@@ -37,6 +38,8 @@ const EMPLOYER_CATEGORIES: EmployerCategory[] = [
 ];
 
 const AU_STATES = ["WA", "NT", "QLD", "SA", "NSW", "VIC", "TAS", "ACT"];
+
+type ParentMode = "none" | "existing" | "create_new";
 
 const INITIAL_FORM = {
   employer_name: "",
@@ -50,7 +53,13 @@ const INITIAL_FORM = {
   address: "",
   state: "" as string,
   postcode: "",
+  // parent company fields
+  parentMode: "none" as ParentMode,
+  parent_employer_id: "" as string,
+  new_parent_name: "",
 };
+
+type CategoryFilter = "all" | "Principal_Employer" | "other";
 
 export default function EmployersPage() {
   const router = useRouter();
@@ -62,6 +71,7 @@ export default function EmployersPage() {
   const [form, setForm] = useState(INITIAL_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
 
   const { data: employers = [], isLoading, isError } = useQuery({
     queryKey: ["employers"],
@@ -69,27 +79,71 @@ export default function EmployersPage() {
       const { data, error } = await supabase
         .from("employers")
         .select("*")
+        .order("employer_category", { ascending: false })
         .order("employer_name");
       if (error) throw error;
       return data as Employer[];
     },
   });
 
+  const filteredEmployers = useMemo(() => {
+    if (categoryFilter === "Principal_Employer") {
+      return employers.filter((e) => e.employer_category === "Principal_Employer");
+    }
+    if (categoryFilter === "other") {
+      return employers.filter((e) => e.employer_category !== "Principal_Employer");
+    }
+    return employers;
+  }, [employers, categoryFilter]);
+
+  const principalEmployers = useMemo(
+    () => employers.filter((e) => e.employer_category === "Principal_Employer"),
+    [employers]
+  );
+
   const columns: Column<Employer>[] = useMemo(
     () => [
-      { key: "employer_name", header: "Name" },
+      {
+        key: "employer_name",
+        header: "Name",
+        render: (item) => (
+          <span className="flex items-center gap-2">
+            {item.employer_category === "Principal_Employer" && (
+              <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0" />
+            )}
+            {item.employer_name}
+          </span>
+        ),
+      },
       { key: "trading_name", header: "Trading Name" },
       {
         key: "employer_category",
         header: "Category",
         render: (item) =>
           item.employer_category ? (
-            <Badge variant="secondary">
+            <Badge
+              variant={
+                item.employer_category === "Principal_Employer"
+                  ? "warning"
+                  : "secondary"
+              }
+            >
               {item.employer_category.replace(/_/g, " ")}
             </Badge>
           ) : (
             "—"
           ),
+      },
+      {
+        key: "parent_employer_id",
+        header: "Parent Company",
+        render: (item) => {
+          if (!item.parent_employer_id) return "—";
+          const parent = employers.find(
+            (e) => e.employer_id === item.parent_employer_id
+          );
+          return parent ? parent.employer_name : "—";
+        },
       },
       { key: "abn", header: "ABN" },
       {
@@ -102,7 +156,7 @@ export default function EmployersPage() {
         ),
       },
     ],
-    []
+    [employers]
   );
 
   const handleFieldChange = (field: string, value: string) => {
@@ -121,9 +175,32 @@ export default function EmployersPage() {
       setError("Employer name is required.");
       return;
     }
+    if (form.parentMode === "create_new" && !form.new_parent_name.trim()) {
+      setError("New parent company name is required.");
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
+
+    let resolvedParentId: number | null = null;
+
+    // Create new parent company if requested
+    if (form.parentMode === "create_new" && form.new_parent_name.trim()) {
+      const { data: newParent, error: parentError } = await supabase
+        .from("employers")
+        .insert({ employer_name: form.new_parent_name.trim(), is_active: true })
+        .select("employer_id")
+        .single();
+      if (parentError) {
+        setError(`Failed to create parent company: ${parentError.message}`);
+        setSubmitting(false);
+        return;
+      }
+      resolvedParentId = newParent.employer_id;
+    } else if (form.parentMode === "existing" && form.parent_employer_id) {
+      resolvedParentId = Number(form.parent_employer_id);
+    }
 
     const payload: Record<string, unknown> = {
       employer_name: form.employer_name.trim(),
@@ -132,6 +209,7 @@ export default function EmployersPage() {
     if (form.abn) payload.abn = form.abn.trim();
     if (form.employer_category) payload.employer_category = form.employer_category;
     if (form.parent_company) payload.parent_company = form.parent_company.trim();
+    if (resolvedParentId) payload.parent_employer_id = resolvedParentId;
     if (form.website) payload.website = form.website.trim();
     if (form.phone) payload.phone = form.phone.trim();
     if (form.email) payload.email = form.email.trim();
@@ -243,16 +321,61 @@ export default function EmployersPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="parent_company">Parent Company</Label>
-                    <Input
-                      id="parent_company"
-                      value={form.parent_company}
-                      onChange={(e) =>
-                        handleFieldChange("parent_company", e.target.value)
+
+                  {/* Parent Company selector */}
+                  <div className="col-span-2 space-y-2">
+                    <Label>Parent Company</Label>
+                    <Select
+                      value={form.parentMode}
+                      onValueChange={(v) =>
+                        handleFieldChange("parentMode", v)
                       }
-                    />
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Standalone — no parent company</SelectItem>
+                        <SelectItem value="existing">Select existing employer as parent</SelectItem>
+                        <SelectItem value="create_new">Create a new parent company</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {form.parentMode === "existing" && (
+                      <Select
+                        value={form.parent_employer_id}
+                        onValueChange={(v) =>
+                          handleFieldChange("parent_employer_id", v)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select parent employer" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {employers
+                            .filter((e) => e.employer_name !== form.employer_name)
+                            .map((emp) => (
+                              <SelectItem
+                                key={emp.employer_id}
+                                value={String(emp.employer_id)}
+                              >
+                                {emp.employer_name}
+                                {emp.employer_category === "Principal_Employer" && " ★"}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {form.parentMode === "create_new" && (
+                      <Input
+                        placeholder="New parent company name"
+                        value={form.new_parent_name}
+                        onChange={(e) =>
+                          handleFieldChange("new_parent_name", e.target.value)
+                        }
+                      />
+                    )}
                   </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="website">Website</Label>
                     <Input
@@ -284,16 +407,6 @@ export default function EmployersPage() {
                       }
                     />
                   </div>
-                  <div className="col-span-2 space-y-2">
-                    <Label htmlFor="address">Address</Label>
-                    <Input
-                      id="address"
-                      value={form.address}
-                      onChange={(e) =>
-                        handleFieldChange("address", e.target.value)
-                      }
-                    />
-                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="state">State</Label>
                     <Select
@@ -311,6 +424,16 @@ export default function EmployersPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="col-span-2 space-y-2">
+                    <Label htmlFor="address">Address</Label>
+                    <Input
+                      id="address"
+                      value={form.address}
+                      onChange={(e) =>
+                        handleFieldChange("address", e.target.value)
+                      }
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="postcode">Postcode</Label>
@@ -346,8 +469,37 @@ export default function EmployersPage() {
         )}
       </div>
 
+      {/* Category filter tabs */}
+      <div className="flex gap-2">
+        {(
+          [
+            { key: "all", label: `All (${employers.length})` },
+            {
+              key: "Principal_Employer",
+              label: `Principal Employers (${principalEmployers.length})`,
+            },
+            {
+              key: "other",
+              label: `Other (${employers.length - principalEmployers.length})`,
+            },
+          ] as { key: CategoryFilter; label: string }[]
+        ).map(({ key, label }) => (
+          <Button
+            key={key}
+            variant={categoryFilter === key ? "default" : "outline"}
+            size="sm"
+            onClick={() => setCategoryFilter(key)}
+          >
+            {key === "Principal_Employer" && (
+              <Star className="h-3 w-3 mr-1 fill-current" />
+            )}
+            {label}
+          </Button>
+        ))}
+      </div>
+
       <DataTable
-        data={employers as (Employer & Record<string, unknown>)[]}
+        data={filteredEmployers as (Employer & Record<string, unknown>)[]}
         columns={columns as Column<Employer & Record<string, unknown>>[]}
         searchPlaceholder="Search employers..."
         searchKeys={["employer_name", "trading_name", "abn"]}

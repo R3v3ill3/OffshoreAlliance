@@ -34,7 +34,17 @@ export type EmployerCategory =
   | "Major_Contractor"
   | "Subcontractor"
   | "Labour_Hire"
-  | "Specialist";
+  | "Specialist"
+  | "Principal_Employer";
+
+export type EbaStatusCategory =
+  | "expiry_lt_6m"
+  | "expiry_6_12m"
+  | "expiry_12_24m"
+  | "expiry_gt_24m"
+  | "first_bargaining"
+  | "expired_eba"
+  | "no_eba_no_bargaining";
 
 export type EmployerRoleType =
   | "Owner"
@@ -114,6 +124,7 @@ export interface Employer {
   abn: string | null;
   employer_category: EmployerCategory | null;
   parent_company: string | null;
+  parent_employer_id: number | null;
   website: string | null;
   phone: string | null;
   email: string | null;
@@ -130,6 +141,7 @@ export interface Worksite {
   worksite_name: string;
   worksite_type: WorksiteType;
   operator_id: number | null;
+  principal_employer_id: number | null;
   location_description: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -372,4 +384,43 @@ export interface ImportLog {
   errors: string | null;
   imported_by: string | null;
   imported_at: string;
+}
+
+// View: worksite_employer_eba_status
+// One row per current (employer, worksite) pair with computed EBA status category.
+export interface WorksiteEmployerEbaStatus {
+  employer_id: number;
+  worksite_id: number;
+  employer_name: string;
+  worksite_name: string;
+  principal_employer_id: number | null;
+  principal_employer_name: string | null;
+  parent_employer_id: number | null;
+  eba_status_category: EbaStatusCategory;
+  max_current_expiry: string | null;
+  has_current: boolean;
+  has_expired: boolean;
+  has_bargaining: boolean;
+}
+
+// View: principal_employer_eba_summary
+// Aggregated EBA coverage counts and percentages per Principal Employer.
+export interface PrincipalEmployerEbaSummary {
+  principal_employer_id: number;
+  principal_employer_name: string;
+  total_pairs: number;
+  count_no_eba: number;
+  count_first_bargaining: number;
+  count_expired: number;
+  count_lt_6m: number;
+  count_6_12m: number;
+  count_12_24m: number;
+  count_gt_24m: number;
+  pct_no_eba: number;
+  pct_first_bargaining: number;
+  pct_expired: number;
+  pct_lt_6m: number;
+  pct_6_12m: number;
+  pct_12_24m: number;
+  pct_gt_24m: number;
 }

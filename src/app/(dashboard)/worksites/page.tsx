@@ -53,6 +53,7 @@ type EmployerRole = {
 
 type WorksiteRow = Worksite & {
   operator?: { employer_name: string };
+  principal_employer?: { employer_name: string };
   agreement_worksites?: { agreement_id: number }[];
   employer_worksite_roles?: EmployerRole[];
 } & Record<string, unknown>;
@@ -61,6 +62,7 @@ const INITIAL_FORM = {
   worksite_name: "",
   worksite_type: "" as string,
   operator_id: "" as string,
+  principal_employer_id: "" as string,
   location_description: "",
   latitude: "",
   longitude: "",
@@ -88,6 +90,7 @@ export default function WorksitesPage() {
         .select(`
           *,
           operator:employers!operator_id(employer_name),
+          principal_employer:employers!principal_employer_id(employer_name),
           agreement_worksites(agreement_id),
           employer_worksite_roles(
             role_type,
@@ -105,12 +108,17 @@ export default function WorksitesPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("employers")
-        .select("employer_id, employer_name")
+        .select("employer_id, employer_name, employer_category")
         .order("employer_name");
       if (error) throw error;
-      return data as Pick<Employer, "employer_id" | "employer_name">[];
+      return data as Pick<Employer, "employer_id" | "employer_name" | "employer_category">[];
     },
   });
+
+  const principalEmployers = useMemo(
+    () => employers.filter((e) => e.employer_category === "Principal_Employer"),
+    [employers]
+  );
 
   const columns: Column<WorksiteRow>[] = useMemo(
     () => [
@@ -125,11 +133,24 @@ export default function WorksitesPage() {
         ),
       },
       {
+        key: "principal_employer",
+        header: "Principal Employer",
+        render: (item) => {
+          const pe = item as WorksiteRow & {
+            principal_employer?: { employer_name: string };
+          };
+          return pe.principal_employer?.employer_name ? (
+            <Badge variant="warning">{pe.principal_employer.employer_name}</Badge>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          );
+        },
+      },
+      {
         key: "employers",
         header: "Employers",
         render: (item) => {
           const roles = item.employer_worksite_roles ?? [];
-          // Collect unique employer names from roles; fall back to operator_id link
           const uniqueNames = [
             ...new Map(
               roles
@@ -216,6 +237,8 @@ export default function WorksitesPage() {
       is_active: form.is_active,
     };
     if (form.operator_id) payload.operator_id = Number(form.operator_id);
+    if (form.principal_employer_id)
+      payload.principal_employer_id = Number(form.principal_employer_id);
     if (form.location_description)
       payload.location_description = form.location_description.trim();
     if (form.latitude) payload.latitude = parseFloat(form.latitude);
@@ -308,6 +331,29 @@ export default function WorksitesPage() {
                         {WORKSITE_TYPES.map((t) => (
                           <SelectItem key={t} value={t}>
                             {t.replace(/_/g, " ")}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="principal_employer_id">Principal Employer</Label>
+                    <Select
+                      value={form.principal_employer_id}
+                      onValueChange={(v) =>
+                        handleFieldChange("principal_employer_id", v)
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select principal employer" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {principalEmployers.map((emp) => (
+                          <SelectItem
+                            key={emp.employer_id}
+                            value={String(emp.employer_id)}
+                          >
+                            {emp.employer_name}
                           </SelectItem>
                         ))}
                       </SelectContent>

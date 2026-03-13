@@ -38,8 +38,10 @@ export async function GET(
       .from("agreement_organisers")
       .select(
         `id, organiser_id, is_primary, agreement_role,
-         organiser:organisers(organiser_id, organiser_name, email),
-         user_profile:user_profiles!inner(user_id, display_name, work_role, reports_to)`
+         organiser:organisers(
+           organiser_id, organiser_name, email,
+           user_profiles(user_id, display_name, work_role, reports_to)
+         )`
       )
       .eq("agreement_id", id)
       .order("is_primary", { ascending: false });

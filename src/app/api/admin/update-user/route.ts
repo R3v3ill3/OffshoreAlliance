@@ -40,31 +40,32 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "userId is required" }, { status: 400 });
     }
 
+    // null is valid (clears the field); only reject genuinely invalid string values
     if (workRole !== undefined && workRole !== null && !VALID_WORK_ROLES.includes(workRole)) {
-      return NextResponse.json({ error: "Invalid work_role" }, { status: 400 });
+      return NextResponse.json({ error: `Invalid work_role: "${workRole}"` }, { status: 400 });
     }
-
-    const adminClient = createAdminClient();
 
     const updates: Record<string, unknown> = {};
     if (workRole !== undefined) updates.work_role = workRole;
-    // reportsTo can be null (clears the reporting line) or a valid UUID
     if (reportsTo !== undefined) updates.reports_to = reportsTo;
 
     if (Object.keys(updates).length === 0) {
-      return NextResponse.json(
-        { error: "No fields to update" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No fields to update" }, { status: 400 });
     }
 
+    // Use adminClient so we can update any user's profile regardless of RLS
+    const adminClient = createAdminClient();
     const { error: updateError } = await adminClient
       .from("user_profiles")
       .update(updates)
       .eq("user_id", userId);
 
     if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 400 });
+      console.error("update-user DB error:", updateError);
+      return NextResponse.json(
+        { error: updateError.message },
+        { status: 400 }
+      );
     }
 
     return NextResponse.json({ success: true });

@@ -291,7 +291,7 @@ export default function WorksitesPage() {
               <Plus className="h-4 w-4" />
               Add Worksite
             </Button>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-2xl w-full max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Add Worksite</DialogTitle>
                 <DialogDescription>
@@ -299,7 +299,7 @@ export default function WorksitesPage() {
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="worksite_name">
                       Worksite Name{" "}
@@ -392,7 +392,7 @@ export default function WorksitesPage() {
                       }
                     />
                   </div>
-                  <div className="col-span-2 space-y-2">
+                  <div className="col-span-1 sm:col-span-2 space-y-2">
                     <Label htmlFor="location_description">
                       Location Description
                     </Label>

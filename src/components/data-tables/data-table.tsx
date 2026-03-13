@@ -20,6 +20,8 @@ import {
 } from "@/components/ui/select";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, Search } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
+import { useDevice } from "@/contexts/device-context";
+import { Card, CardContent } from "@/components/ui/card";
 
 export interface Column<T> {
   key: string;
@@ -48,6 +50,7 @@ export function DataTable<T extends Record<string, unknown>>({
   pageSize: initialPageSize = 20,
   loading = false,
 }: DataTableProps<T>) {
+  const { isMobile } = useDevice();
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -91,8 +94,8 @@ export function DataTable<T extends Record<string, unknown>>({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="relative flex-1 w-full md:max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder={searchPlaceholder}
@@ -109,64 +112,113 @@ export function DataTable<T extends Record<string, unknown>>({
         </div>
       </div>
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {columns.map((col) => (
-                <TableHead key={col.key} className={col.className}>
-                  {col.sortable !== false ? (
-                    <button
-                      onClick={() => handleSort(col.key)}
-                      className="flex items-center gap-1 hover:text-foreground"
-                    >
-                      {col.header}
-                      <ArrowUpDown className="h-3 w-3" />
-                    </button>
-                  ) : (
-                    col.header
-                  )}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
+      {isMobile ? (
+        // Mobile Card View
+        <div className="space-y-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <EurekaLoadingSpinner size="md" />
+            </div>
+          ) : paged.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No results found.
+            </div>
+          ) : (
+            paged.map((item, i) => (
+              <Card
+                key={i}
+                onClick={() => onRowClick?.(item)}
+                className={onRowClick ? "cursor-pointer active:scale-[0.98] transition-transform" : ""}
+              >
+                <CardContent className="p-4 space-y-3">
+                  {/* First column is usually the "title" or main identifier */}
+                  <div className="font-medium text-base border-b pb-2">
+                    {columns[0].render
+                      ? columns[0].render(item)
+                      : (item[columns[0].key] as React.ReactNode) ?? "—"}
+                  </div>
+                  
+                  {/* Remaining columns as key-value pairs */}
+                  <div className="grid gap-2 text-sm">
+                    {columns.slice(1).map((col) => (
+                      <div key={col.key} className="flex flex-col gap-1">
+                        <span className="text-muted-foreground text-xs uppercase tracking-wider font-semibold">
+                          {col.header}
+                        </span>
+                        <div>
+                          {col.render
+                            ? col.render(item)
+                            : (item[col.key] as React.ReactNode) ?? "—"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      ) : (
+        // Desktop Table View
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
-                  <EurekaLoadingSpinner size="md" />
-                </TableCell>
+                {columns.map((col) => (
+                  <TableHead key={col.key} className={col.className}>
+                    {col.sortable !== false ? (
+                      <button
+                        onClick={() => handleSort(col.key)}
+                        className="flex items-center gap-1 hover:text-foreground"
+                      >
+                        {col.header}
+                        <ArrowUpDown className="h-3 w-3" />
+                      </button>
+                    ) : (
+                      col.header
+                    )}
+                  </TableHead>
+                ))}
               </TableRow>
-            ) : paged.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
-                  No results found.
-                </TableCell>
-              </TableRow>
-            ) : (
-              paged.map((item, i) => (
-                <TableRow
-                  key={i}
-                  onClick={() => onRowClick?.(item)}
-                  className={onRowClick ? "cursor-pointer" : ""}
-                >
-                  {columns.map((col) => (
-                    <TableCell key={col.key} className={col.className}>
-                      {col.render
-                        ? col.render(item)
-                        : (item[col.key] as React.ReactNode) ?? "—"}
-                    </TableCell>
-                  ))}
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={columns.length} className="h-24 text-center">
+                    <EurekaLoadingSpinner size="md" />
+                  </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+              ) : paged.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={columns.length} className="h-24 text-center">
+                    No results found.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                paged.map((item, i) => (
+                  <TableRow
+                    key={i}
+                    onClick={() => onRowClick?.(item)}
+                    className={onRowClick ? "cursor-pointer" : ""}
+                  >
+                    {columns.map((col) => (
+                      <TableCell key={col.key} className={col.className}>
+                        {col.render
+                          ? col.render(item)
+                          : (item[col.key] as React.ReactNode) ?? "—"}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between pt-2">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Rows per page</span>
+          <span className="text-sm text-muted-foreground hidden md:inline">Rows per page</span>
           <Select
             value={String(pageSize)}
             onValueChange={(v) => {

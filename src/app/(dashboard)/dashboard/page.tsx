@@ -155,7 +155,7 @@ export default function DashboardPage() {
       <h1 className="text-3xl font-bold">Dashboard</h1>
 
       {/* Summary stats */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
         {stats.map((stat) => (
           <Card key={stat.label}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -178,7 +178,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Recent activity + expiring agreements */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Recent Activity</CardTitle>
@@ -284,10 +284,12 @@ export default function DashboardPage() {
           ) : (
             <div className="space-y-6">
               {/* Combined chart for all principal employers */}
-              <PrincipalEmployerEbaChart data={ebaSummary} />
+              <div className="overflow-x-auto">
+                <PrincipalEmployerEbaChart data={ebaSummary} />
+              </div>
 
               {/* Per-employer detail cards */}
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                 {ebaSummary.map((pe) => (
                   <Card key={pe.principal_employer_id} className="border-dashed">
                     <CardHeader className="pb-2">

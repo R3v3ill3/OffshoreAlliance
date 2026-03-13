@@ -192,7 +192,7 @@ export default function CampaignsPage() {
                 Create Campaign
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-lg">
+            <DialogContent className="max-w-lg w-full max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Create Campaign</DialogTitle>
                 <DialogDescription>
@@ -217,7 +217,7 @@ export default function CampaignsPage() {
                     rows={3}
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Type *</Label>
                     <Select
@@ -253,7 +253,7 @@ export default function CampaignsPage() {
                     </Select>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="start_date">Start Date</Label>
                     <Input

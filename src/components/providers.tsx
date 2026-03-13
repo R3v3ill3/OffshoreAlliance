@@ -3,8 +3,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { AuthProvider } from "@/lib/supabase/auth-context";
+import { DeviceProvider } from "@/contexts/device-context";
 
-export function Providers({ children }: { children: ReactNode }) {
+export function Providers({ children, isMobile }: { children: ReactNode; isMobile: boolean }) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -18,8 +19,10 @@ export function Providers({ children }: { children: ReactNode }) {
   );
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>{children}</AuthProvider>
-    </QueryClientProvider>
+    <DeviceProvider isMobile={isMobile}>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>{children}</AuthProvider>
+      </QueryClientProvider>
+    </DeviceProvider>
   );
 }

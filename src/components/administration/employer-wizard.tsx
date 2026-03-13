@@ -1354,8 +1354,8 @@ function EmployerWizardInner() {
             </CardContent>
           </Card>
         ) : (
-          <div className="rounded-md border">
-            <table className="w-full text-sm">
+          <div className="rounded-md border overflow-x-auto">
+            <table className="w-full text-sm min-w-[600px]">
               <thead>
                 <tr className="border-b bg-muted/50">
                   <th className="text-left p-3 font-medium">Employer</th>
@@ -1478,8 +1478,8 @@ function EmployerWizardInner() {
             </CardContent>
           </Card>
         ) : (
-          <div className="rounded-md border">
-            <table className="w-full text-sm">
+          <div className="rounded-md border overflow-x-auto">
+            <table className="w-full text-sm min-w-[600px]">
               <thead>
                 <tr className="border-b bg-muted/50">
                   <th className="text-left p-3 font-medium">Worksite</th>
@@ -1668,8 +1668,8 @@ function EmployerWizardInner() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="rounded-md border">
-                    <table className="w-full text-sm">
+                  <div className="rounded-md border overflow-x-auto">
+                    <table className="w-full text-sm min-w-[600px]">
                       <thead>
                         <tr className="border-b bg-muted/50">
                           <th className="text-left p-2 font-medium">
@@ -1729,8 +1729,8 @@ function EmployerWizardInner() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="rounded-md border">
-                    <table className="w-full text-sm">
+                  <div className="rounded-md border overflow-x-auto">
+                    <table className="w-full text-sm min-w-[600px]">
                       <thead>
                         <tr className="border-b bg-muted/50">
                           <th className="text-left p-2 font-medium">

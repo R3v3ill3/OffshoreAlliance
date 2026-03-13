@@ -264,7 +264,7 @@ export default function AgreementsPage() {
                 Add Agreement
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-2xl w-full max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Add Agreement</DialogTitle>
                 <DialogDescription>
@@ -272,7 +272,7 @@ export default function AgreementsPage() {
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="decision_no">Decision No *</Label>
                     <Input
@@ -315,7 +315,7 @@ export default function AgreementsPage() {
                     onChange={(e) => setForm({ ...form, short_name: e.target.value })}
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="sector_id">Sector</Label>
                     <Select
@@ -361,7 +361,7 @@ export default function AgreementsPage() {
                     onChange={(e) => setForm({ ...form, industry_classification: e.target.value })}
                   />
                 </div>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="date_of_decision">Date of Decision</Label>
                     <Input

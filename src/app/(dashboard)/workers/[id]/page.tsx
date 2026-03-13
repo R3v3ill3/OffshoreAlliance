@@ -55,9 +55,9 @@ interface WorkerAgreement {
 
 function FieldRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-3 gap-4 py-2 border-b last:border-0">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-4 py-3 sm:py-2 border-b last:border-0">
       <dt className="text-sm font-medium text-muted-foreground">{label}</dt>
-      <dd className="col-span-2 text-sm">{value || "—"}</dd>
+      <dd className="col-span-1 sm:col-span-2 text-sm">{value || "—"}</dd>
     </div>
   );
 }

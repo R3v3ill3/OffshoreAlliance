@@ -22,7 +22,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
-const navItems = [
+export const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/workers", label: "Workers", icon: Users },
   { href: "/employers", label: "Employers", icon: Building2 },
@@ -32,7 +32,7 @@ const navItems = [
   { href: "/reports", label: "Reports", icon: BarChart3 },
 ];
 
-const adminItems = [
+export const adminItems = [
   { href: "/organiser-patches", label: "Organiser Patches", icon: Map },
   { href: "/administration", label: "Administration", icon: Settings },
 ];
@@ -45,7 +45,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "flex h-screen flex-col border-r bg-sidebar text-sidebar-foreground transition-all duration-300",
+        "hidden md:flex h-screen flex-col border-r bg-sidebar text-sidebar-foreground transition-all duration-300",
         collapsed ? "w-16" : "w-64"
       )}
     >

@@ -1140,7 +1140,7 @@ export default function AdministrationPage() {
       <h1 className="text-3xl font-bold">Administration</h1>
 
       <Tabs defaultValue="users">
-        <TabsList>
+        <TabsList className="w-full justify-start overflow-x-auto h-auto p-1 flex-nowrap">
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="roles">Member Roles</TabsTrigger>
           <TabsTrigger value="sectors">Sectors</TabsTrigger>

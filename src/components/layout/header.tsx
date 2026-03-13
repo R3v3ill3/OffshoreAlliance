@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
+import { MobileNav } from "./mobile-nav";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -22,10 +23,13 @@ export function Header() {
   const title = pageTitles[basePath] || "Offshore Alliance";
 
   return (
-    <header className="flex h-16 items-center justify-between border-b bg-background px-6">
-      <h1 className="text-xl font-semibold">{title}</h1>
+    <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:px-6">
       <div className="flex items-center gap-4">
-        <div className="relative w-64">
+        <MobileNav />
+        <h1 className="text-lg md:text-xl font-semibold">{title}</h1>
+      </div>
+      <div className="flex items-center gap-4">
+        <div className="relative w-64 hidden md:block">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             type="search"

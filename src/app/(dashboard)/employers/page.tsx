@@ -261,7 +261,7 @@ export default function EmployersPage() {
               <Plus className="h-4 w-4" />
               Add Employer
             </Button>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-2xl w-full max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Add Employer</DialogTitle>
                 <DialogDescription>
@@ -269,7 +269,7 @@ export default function EmployersPage() {
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="employer_name">
                       Employer Name <span className="text-destructive">*</span>
@@ -323,7 +323,7 @@ export default function EmployersPage() {
                   </div>
 
                   {/* Parent Company selector */}
-                  <div className="col-span-2 space-y-2">
+                  <div className="col-span-1 sm:col-span-2 space-y-2">
                     <Label>Parent Company</Label>
                     <Select
                       value={form.parentMode}
@@ -425,7 +425,7 @@ export default function EmployersPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="col-span-2 space-y-2">
+                  <div className="col-span-1 sm:col-span-2 space-y-2">
                     <Label htmlFor="address">Address</Label>
                     <Input
                       id="address"

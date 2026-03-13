@@ -23,9 +23,9 @@ DECLARE
   v_parents_created INT := 0;
   v_employers_updated INT := 0;
   v_worksites_updated INT := 0;
-  v_admin_user_id   TEXT;
+  v_admin_user_id   UUID;
 BEGIN
-  v_admin_user_id := payload->>'admin_user_id';
+  v_admin_user_id := (payload->>'admin_user_id')::UUID;
 
   -- ── Phase 1: Optimistic-lock validation ──────────────────
   -- Check every employer that will be category-updated

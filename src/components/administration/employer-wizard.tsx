@@ -52,6 +52,10 @@ import {
   RotateCcw,
   Download,
   CheckCheck,
+  Merge,
+  UserPlus,
+  Search,
+  ChevronDown,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────
@@ -544,6 +548,91 @@ function EmployerWizardInner() {
     []
   );
 
+  // Option A: absorb all members of sourceIdx into targetIdx, remove source group
+  const mergeGroups = useCallback(
+    (targetIdx: number, sourceIdx: number) => {
+      setProposals((prev) => {
+        if (!prev) return prev;
+        const groups = [...prev.employerGroups];
+        const source = groups[sourceIdx];
+        const target = groups[targetIdx];
+
+        // Collect all member IDs from source (including the source's own
+        // existingParentId if it pointed to an existing employer, so that
+        // employer doesn't become orphaned)
+        const allSourceIds = [...source.memberEmployerIds];
+        if (!source.isNewParent && source.existingParentId !== null) {
+          if (!allSourceIds.includes(source.existingParentId)) {
+            allSourceIds.push(source.existingParentId);
+          }
+        }
+
+        // Deduplicate against target's existing members and its own parent
+        const existingIds = new Set(target.memberEmployerIds);
+        if (!target.isNewParent && target.existingParentId !== null) {
+          existingIds.add(target.existingParentId);
+        }
+        const newMembers = allSourceIds.filter((id) => !existingIds.has(id));
+
+        groups[targetIdx] = {
+          ...target,
+          memberEmployerIds: [...target.memberEmployerIds, ...newMembers],
+          confidence: "medium", // merged manually — downgrade confidence
+          source: "merged",
+        };
+
+        // Remove the source group (higher index first to avoid shift issues)
+        const removeIdx = sourceIdx > targetIdx ? sourceIdx : sourceIdx;
+        groups.splice(removeIdx, 1);
+
+        return { ...prev, employerGroups: groups };
+      });
+    },
+    []
+  );
+
+  // Option B: add any employer (from any group or unassigned) to a target group.
+  // If they're already in another group, remove them from that group.
+  const addEmployerToGroup = useCallback(
+    (targetGroupIdx: number, employerId: number) => {
+      setProposals((prev) => {
+        if (!prev) return prev;
+        const groups = prev.employerGroups.map((g) => ({ ...g, memberEmployerIds: [...g.memberEmployerIds] }));
+
+        // Remove from any existing group (don't remove if they're the existing parent —
+        // only remove from the members list)
+        for (let i = 0; i < groups.length; i++) {
+          if (i === targetGroupIdx) continue;
+          const memberIdx = groups[i].memberEmployerIds.indexOf(employerId);
+          if (memberIdx !== -1) {
+            groups[i].memberEmployerIds.splice(memberIdx, 1);
+            // If this group now has no members left, mark for removal
+            if (groups[i].memberEmployerIds.length === 0 && groups[i].isNewParent) {
+              groups[i] = { ...groups[i], memberEmployerIds: [] }; // keep, cleaned below
+            }
+          }
+        }
+
+        // Add to target (deduplicate)
+        const target = groups[targetGroupIdx];
+        if (!target.memberEmployerIds.includes(employerId)) {
+          groups[targetGroupIdx] = {
+            ...target,
+            memberEmployerIds: [...target.memberEmployerIds, employerId],
+          };
+        }
+
+        // Remove any groups that now have no members (and no existing parent to anchor them)
+        const cleaned = groups.filter(
+          (g, i) => i === targetGroupIdx || g.memberEmployerIds.length > 0
+        );
+
+        return { ...prev, employerGroups: cleaned };
+      });
+    },
+    []
+  );
+
   const updateCategory = useCallback(
     (index: number, updates: Partial<CategoryProposal>) => {
       setProposals((prev) => {
@@ -847,6 +936,75 @@ function EmployerWizardInner() {
       0
     );
 
+    // Compute the set of employer IDs already in any group (members + existing parents)
+    const assignedIds = useMemo(() => {
+      const ids = new Set<number>();
+      for (const g of groups) {
+        g.memberEmployerIds.forEach((id) => ids.add(id));
+        if (!g.isNewParent && g.existingParentId !== null) {
+          ids.add(g.existingParentId);
+        }
+      }
+      return ids;
+    }, [groups]);
+
+    // Option C: employers not in any group and not a Principal Employer
+    const unassignedEmployers = useMemo(() =>
+      employers.filter(
+        (e) =>
+          e.employer_category !== "Principal_Employer" &&
+          !assignedIds.has(e.employer_id)
+      ),
+      [assignedIds]
+    );
+
+    // Local state for the Option B search box (one per group card, keyed by index)
+    const [memberSearch, setMemberSearch] = useState<Record<number, string>>({});
+    const [memberSearchOpen, setMemberSearchOpen] = useState<Record<number, boolean>>({});
+    // Option C: search within the unassigned panel
+    const [unassignedSearch, setUnassignedSearch] = useState("");
+    const [unassignedPanelOpen, setUnassignedPanelOpen] = useState(false);
+
+    // Option B: employers not already a member of the target group, excluding PEs
+    function searchableEmployersForGroup(gi: number): Employer[] {
+      const g = groups[gi];
+      const inThisGroup = new Set(g.memberEmployerIds);
+      if (!g.isNewParent && g.existingParentId !== null) inThisGroup.add(g.existingParentId);
+      return employers.filter(
+        (e) =>
+          e.employer_category !== "Principal_Employer" &&
+          !inThisGroup.has(e.employer_id)
+      );
+    }
+
+    function filteredSearchResults(gi: number): Employer[] {
+      const q = (memberSearch[gi] ?? "").toLowerCase().trim();
+      if (!q) return [];
+      return searchableEmployersForGroup(gi).filter((e) =>
+        e.employer_name.toLowerCase().includes(q) ||
+        (e.trading_name ?? "").toLowerCase().includes(q)
+      ).slice(0, 12);
+    }
+
+    const filteredUnassigned = useMemo(() => {
+      const q = unassignedSearch.toLowerCase().trim();
+      if (!q) return unassignedEmployers;
+      return unassignedEmployers.filter(
+        (e) =>
+          e.employer_name.toLowerCase().includes(q) ||
+          (e.trading_name ?? "").toLowerCase().includes(q)
+      );
+    }, [unassignedEmployers, unassignedSearch]);
+
+    // Which group (if any) currently contains a given employer, for display hints
+    function groupContaining(employerId: number): number | null {
+      for (let i = 0; i < groups.length; i++) {
+        if (groups[i].memberEmployerIds.includes(employerId)) return i;
+        if (!groups[i].isNewParent && groups[i].existingParentId === employerId) return i;
+      }
+      return null;
+    }
+
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -856,8 +1014,13 @@ function EmployerWizardInner() {
             </h2>
             <div className="flex items-center gap-2 mt-1">
               <Badge variant="secondary">
-                {groups.length} groups ({totalMembers} employers)
+                {groups.length} group{groups.length !== 1 ? "s" : ""} ({totalMembers} employer{totalMembers !== 1 ? "s" : ""})
               </Badge>
+              {unassignedEmployers.length > 0 && (
+                <Badge variant="outline">
+                  {unassignedEmployers.length} unassigned
+                </Badge>
+              )}
               {aiUsed && (
                 <Badge variant="info" className="gap-1">
                   <Sparkles className="h-3 w-3" /> AI-enhanced
@@ -882,77 +1045,278 @@ function EmployerWizardInner() {
             </CardContent>
           </Card>
         ) : (
-          groups.map((group, gi) => (
-            <Card
-              key={gi}
-              className={group.accepted ? "border-green-300 dark:border-green-800" : ""}
-            >
-              <CardContent className="py-4 space-y-3">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3 flex-1">
-                    <Input
-                      value={group.proposedParentName}
-                      onChange={(e) =>
-                        updateGroup(gi, {
-                          proposedParentName: e.target.value,
-                        })
-                      }
-                      className="max-w-xs font-medium"
-                    />
-                    {confidenceBadge(group.confidence)}
-                    {sourceBadge(group.source)}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Select
-                      value={group.isNewParent ? "new" : "existing"}
-                      onValueChange={(v) =>
-                        updateGroup(gi, { isNewParent: v === "new" })
-                      }
-                    >
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="existing">
-                          Use existing employer
-                        </SelectItem>
-                        <SelectItem value="new">
-                          Create new parent
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant={group.accepted ? "default" : "outline"}
-                      size="sm"
-                      onClick={() =>
-                        updateGroup(gi, { accepted: !group.accepted })
-                      }
-                    >
-                      {group.accepted ? "Accepted" : "Accept"}
-                    </Button>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {group.memberEmployerIds.map((id) => (
-                    <Badge
-                      key={id}
-                      variant="secondary"
-                      className="gap-1 pr-1"
-                    >
-                      {employerMap.get(id)?.employer_name ?? `#${id}`}
-                      <button
-                        type="button"
-                        onClick={() => removeGroupMember(gi, id)}
-                        className="ml-0.5 hover:text-destructive"
+          groups.map((group, gi) => {
+            const searchResults = filteredSearchResults(gi);
+            const isSearchOpen = memberSearchOpen[gi] ?? false;
+
+            return (
+              <Card
+                key={gi}
+                className={group.accepted ? "border-green-300 dark:border-green-800" : ""}
+              >
+                <CardContent className="py-4 space-y-3">
+                  {/* Header row: name + confidence + controls */}
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 flex-1">
+                      <Input
+                        value={group.proposedParentName}
+                        onChange={(e) =>
+                          updateGroup(gi, {
+                            proposedParentName: e.target.value,
+                          })
+                        }
+                        className="max-w-xs font-medium"
+                      />
+                      {confidenceBadge(group.confidence)}
+                      {sourceBadge(group.source)}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={group.isNewParent ? "new" : "existing"}
+                        onValueChange={(v) =>
+                          updateGroup(gi, { isNewParent: v === "new" })
+                        }
                       >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ))}
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="existing">
+                            Use existing employer
+                          </SelectItem>
+                          <SelectItem value="new">
+                            Create new parent
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant={group.accepted ? "default" : "outline"}
+                        size="sm"
+                        onClick={() =>
+                          updateGroup(gi, { accepted: !group.accepted })
+                        }
+                      >
+                        {group.accepted ? "Accepted" : "Accept"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Member badges */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {group.memberEmployerIds.map((id) => (
+                      <Badge
+                        key={id}
+                        variant="secondary"
+                        className="gap-1 pr-1"
+                      >
+                        {employerMap.get(id)?.employer_name ?? `#${id}`}
+                        <button
+                          type="button"
+                          onClick={() => removeGroupMember(gi, id)}
+                          className="ml-0.5 hover:text-destructive"
+                          title="Remove from group"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+
+                  <Separator className="my-1" />
+
+                  {/* Option A + B toolbar */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Option A: Merge another detected group into this one */}
+                    {groups.length > 1 && (
+                      <Select
+                        value=""
+                        onValueChange={(v) => {
+                          const sourceIdx = Number(v);
+                          mergeGroups(gi, sourceIdx);
+                        }}
+                      >
+                        <SelectTrigger className="w-auto h-8 text-xs gap-1 border-dashed">
+                          <Merge className="h-3 w-3 shrink-0" />
+                          <SelectValue placeholder="Merge group into this one..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {groups.map((g, i) => {
+                            if (i === gi) return null;
+                            return (
+                              <SelectItem key={i} value={String(i)}>
+                                {g.proposedParentName}
+                                {g.memberEmployerIds.length > 0 && (
+                                  <span className="text-muted-foreground ml-1">
+                                    ({g.memberEmployerIds.length} member{g.memberEmployerIds.length !== 1 ? "s" : ""})
+                                  </span>
+                                )}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    )}
+
+                    {/* Option B: Search and add any employer to this group */}
+                    <div className="relative">
+                      <div className="flex items-center h-8 rounded-md border border-dashed border-input px-2 gap-1.5 text-xs text-muted-foreground min-w-[220px]">
+                        <Search className="h-3 w-3 shrink-0" />
+                        <input
+                          type="text"
+                          placeholder="Add employer to this group..."
+                          value={memberSearch[gi] ?? ""}
+                          className="flex-1 bg-transparent outline-none text-foreground placeholder:text-muted-foreground"
+                          onChange={(e) => {
+                            setMemberSearch((prev) => ({ ...prev, [gi]: e.target.value }));
+                            setMemberSearchOpen((prev) => ({ ...prev, [gi]: true }));
+                          }}
+                          onFocus={() =>
+                            setMemberSearchOpen((prev) => ({ ...prev, [gi]: true }))
+                          }
+                          onBlur={() =>
+                            setTimeout(() =>
+                              setMemberSearchOpen((prev) => ({ ...prev, [gi]: false })), 150
+                            )
+                          }
+                        />
+                        {(memberSearch[gi] ?? "") && (
+                          <button
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setMemberSearch((prev) => ({ ...prev, [gi]: "" }));
+                            }}
+                          >
+                            <X className="h-3 w-3 hover:text-destructive" />
+                          </button>
+                        )}
+                      </div>
+                      {isSearchOpen && searchResults.length > 0 && (
+                        <div className="absolute top-full left-0 mt-1 z-50 w-72 rounded-md border bg-popover shadow-md">
+                          <ul className="py-1 max-h-48 overflow-y-auto">
+                            {searchResults.map((emp) => {
+                              const currentGroupIdx = groupContaining(emp.employer_id);
+                              return (
+                                <li key={emp.employer_id}>
+                                  <button
+                                    type="button"
+                                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent flex items-center justify-between gap-2"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      addEmployerToGroup(gi, emp.employer_id);
+                                      setMemberSearch((prev) => ({ ...prev, [gi]: "" }));
+                                      setMemberSearchOpen((prev) => ({ ...prev, [gi]: false }));
+                                    }}
+                                  >
+                                    <span>{emp.employer_name}</span>
+                                    {currentGroupIdx !== null && currentGroupIdx !== gi && (
+                                      <span className="text-xs text-muted-foreground shrink-0">
+                                        from: {groups[currentGroupIdx]?.proposedParentName}
+                                      </span>
+                                    )}
+                                    {currentGroupIdx === null && (
+                                      <span className="text-xs text-muted-foreground shrink-0">unassigned</span>
+                                    )}
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      )}
+                      {isSearchOpen && (memberSearch[gi] ?? "").trim().length > 0 && searchResults.length === 0 && (
+                        <div className="absolute top-full left-0 mt-1 z-50 w-72 rounded-md border bg-popover shadow-md px-3 py-2 text-sm text-muted-foreground">
+                          No matching employers found.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })
+        )}
+
+        {/* Option C: Unassigned employers panel */}
+        {unassignedEmployers.length > 0 && (
+          <Card className="border-dashed">
+            <CardContent className="py-3">
+              <button
+                type="button"
+                className="flex items-center gap-2 text-sm font-medium w-full text-left"
+                onClick={() => setUnassignedPanelOpen((v) => !v)}
+              >
+                <UserPlus className="h-4 w-4 text-muted-foreground" />
+                <span>
+                  {unassignedEmployers.length} employer{unassignedEmployers.length !== 1 ? "s" : ""} not in any group
+                </span>
+                <ChevronDown
+                  className={`h-4 w-4 text-muted-foreground ml-auto transition-transform ${unassignedPanelOpen ? "rotate-180" : ""}`}
+                />
+              </button>
+
+              {unassignedPanelOpen && (
+                <div className="mt-3 space-y-2">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Filter unassigned employers..."
+                      value={unassignedSearch}
+                      onChange={(e) => setUnassignedSearch(e.target.value)}
+                      className="w-full pl-7 pr-3 py-1.5 text-sm rounded-md border border-input bg-background outline-none focus:ring-1 focus:ring-ring"
+                    />
+                  </div>
+
+                  {groups.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-2">
+                      Create a group above first, then you can assign employers to it.
+                    </p>
+                  ) : (
+                    <div className="rounded-md border divide-y max-h-64 overflow-y-auto">
+                      {filteredUnassigned.map((emp) => (
+                        <div
+                          key={emp.employer_id}
+                          className="flex items-center justify-between px-3 py-2 text-sm"
+                        >
+                          <span>
+                            {emp.employer_name}
+                            {emp.trading_name && emp.trading_name !== emp.employer_name && (
+                              <span className="text-muted-foreground ml-1 text-xs">
+                                ({emp.trading_name})
+                              </span>
+                            )}
+                          </span>
+                          <Select
+                            value=""
+                            onValueChange={(v) => {
+                              addEmployerToGroup(Number(v), emp.employer_id);
+                            }}
+                          >
+                            <SelectTrigger className="w-[160px] h-7 text-xs">
+                              <SelectValue placeholder="Add to group..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {groups.map((g, gi) => (
+                                <SelectItem key={gi} value={String(gi)}>
+                                  {g.proposedParentName}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ))}
+                      {filteredUnassigned.length === 0 && (
+                        <div className="px-3 py-2 text-sm text-muted-foreground">
+                          No matching employers.
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
-          ))
+              )}
+            </CardContent>
+          </Card>
         )}
       </div>
     );

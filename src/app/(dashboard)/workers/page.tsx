@@ -1,13 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus } from "lucide-react";
+import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
+import { Plus, Upload } from "lucide-react";
 
 interface WorkerRow {
   worker_id: number;
@@ -69,6 +71,8 @@ export default function WorkersPage() {
   const router = useRouter();
   const { user, canWrite } = useAuth();
   const supabase = createClient();
+  const queryClient = useQueryClient();
+  const [importWizardOpen, setImportWizardOpen] = useState(false);
 
   const { data: workers = [], isLoading } = useQuery({
     queryKey: ["workers"],
@@ -94,10 +98,19 @@ export default function WorkersPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Workers</h1>
         {canWrite && (
-          <Button onClick={() => router.push("/workers/new")}>
-            <Plus className="h-4 w-4" />
-            Add Worker
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setImportWizardOpen(true)}
+            >
+              <Upload className="h-4 w-4" />
+              Import Workers
+            </Button>
+            <Button onClick={() => router.push("/workers/new")}>
+              <Plus className="h-4 w-4" />
+              Add Worker
+            </Button>
+          </div>
         )}
       </div>
 
@@ -108,6 +121,12 @@ export default function WorkersPage() {
         searchKeys={["first_name", "last_name", "email"]}
         onRowClick={(row) => router.push(`/workers/${row.worker_id}`)}
         loading={isLoading}
+      />
+
+      <WorkerImportWizard
+        open={importWizardOpen}
+        onOpenChange={setImportWizardOpen}
+        onComplete={() => queryClient.invalidateQueries({ queryKey: ["workers"] })}
       />
     </div>
   );

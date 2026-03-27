@@ -12,6 +12,8 @@ import type {
   Worker,
   EmployerWorksiteRole,
   WorksiteType,
+  WorkScope,
+  Project,
 } from "@/types/database";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -37,7 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Pencil, X, Save, Star } from "lucide-react";
+import { ArrowLeft, Pencil, X, Save, Star, Building2 } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { format } from "date-fns";
 
@@ -74,9 +76,30 @@ type EmployerRoleRow = EmployerWorksiteRole & {
 } & Record<string, unknown>;
 type WorkerRow = Worker & Record<string, unknown>;
 
+type WorksiteScopeRow = {
+  id: number;
+  scope_id: number;
+  worksite_id: number;
+  employer_id: number | null;
+  engagement_type: string | null;
+  is_current: boolean;
+  start_date: string | null;
+  end_date: string | null;
+  notes: string | null;
+  work_scope?: WorkScope;
+  employer?: { employer_id: number; employer_name: string };
+} & Record<string, unknown>;
+
+type ProjectRow = Project & {
+  worksite?: { worksite_id: number; worksite_name: string };
+} & Record<string, unknown>;
+
+type ChildWorksiteRow = Worksite & Record<string, unknown>;
+
 type WorksiteWithJoins = Worksite & {
   operator?: { employer_id: number; employer_name: string };
   principal_employer?: { employer_id: number; employer_name: string };
+  parent_worksite?: { worksite_id: number; worksite_name: string };
 };
 
 export default function WorksiteDetailPage() {
@@ -101,7 +124,7 @@ export default function WorksiteDetailPage() {
       const { data, error } = await supabase
         .from("worksites")
         .select(
-          "*, operator:employers!operator_id(employer_id, employer_name), principal_employer:employers!principal_employer_id(employer_id, employer_name)"
+          "*, operator:employers!operator_id(employer_id, employer_name), principal_employer:employers!principal_employer_id(employer_id, employer_name), parent_worksite:worksites!parent_worksite_id(worksite_id, worksite_name)"
         )
         .eq("worksite_id", id)
         .single();
@@ -171,6 +194,59 @@ export default function WorksiteDetailPage() {
       return data as (Worker & { employer?: { employer_name: string } })[];
     },
     enabled: !!id,
+  });
+
+  const { data: wsScopes = [] } = useQuery({
+    queryKey: ["worksite-scopes", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worksite_scopes")
+        .select("*, work_scope:work_scopes(*), employer:employers(employer_id, employer_name)")
+        .eq("worksite_id", id);
+      if (error) throw error;
+      return data as WorksiteScopeRow[];
+    },
+    enabled: !!id,
+  });
+
+  const { data: wsProjects = [] } = useQuery({
+    queryKey: ["worksite-projects", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("projects")
+        .select("*")
+        .eq("worksite_id", id)
+        .order("start_date", { ascending: false });
+      if (error) throw error;
+      return data as ProjectRow[];
+    },
+    enabled: !!id,
+  });
+
+  const { data: childWorksites = [] } = useQuery({
+    queryKey: ["worksite-children", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worksites")
+        .select("*")
+        .eq("parent_worksite_id", id)
+        .order("worksite_name");
+      if (error) throw error;
+      return data as Worksite[];
+    },
+    enabled: !!id,
+  });
+
+  const { data: allWorksites = [] } = useQuery({
+    queryKey: ["worksites-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worksites")
+        .select("worksite_id, worksite_name")
+        .order("worksite_name");
+      if (error) throw error;
+      return data as Pick<Worksite, "worksite_id" | "worksite_name">[];
+    },
   });
 
   const startEditing = () => {
@@ -296,6 +372,124 @@ export default function WorksiteDetailPage() {
     []
   );
 
+  const wsScopeColumns: Column<WorksiteScopeRow>[] = useMemo(
+    () => [
+      {
+        key: "scope_name",
+        header: "Work Scope",
+        render: (item) => item.work_scope?.scope_name ?? "—",
+      },
+      {
+        key: "employer_name",
+        header: "Employer",
+        render: (item) => item.employer?.employer_name ?? "—",
+      },
+      {
+        key: "engagement_type",
+        header: "Engagement",
+        render: (item) =>
+          item.engagement_type ? (
+            <Badge variant="secondary">{item.engagement_type.replace(/_/g, " ")}</Badge>
+          ) : (
+            "—"
+          ),
+      },
+      {
+        key: "is_current",
+        header: "Current",
+        render: (item) => (
+          <Badge variant={item.is_current ? "success" : "secondary"}>
+            {item.is_current ? "Yes" : "No"}
+          </Badge>
+        ),
+      },
+      {
+        key: "start_date",
+        header: "Start",
+        render: (item) => formatDate(item.start_date),
+      },
+      {
+        key: "end_date",
+        header: "End",
+        render: (item) => formatDate(item.end_date),
+      },
+    ],
+    []
+  );
+
+  const projectColumns: Column<ProjectRow>[] = useMemo(
+    () => [
+      { key: "project_name", header: "Project" },
+      {
+        key: "work_type",
+        header: "Type",
+        render: (item) => (
+          <Badge variant="secondary">{item.work_type.replace(/_/g, " ")}</Badge>
+        ),
+      },
+      {
+        key: "project_status",
+        header: "Status",
+        render: (item) => (
+          <Badge
+            variant={
+              item.project_status === "operational" || item.project_status === "active"
+                ? "success"
+                : item.project_status === "completed"
+                  ? "secondary"
+                  : "warning"
+            }
+          >
+            {item.project_status.replace(/_/g, " ")}
+          </Badge>
+        ),
+      },
+      {
+        key: "start_date",
+        header: "Start",
+        render: (item) => formatDate(item.start_date),
+      },
+      {
+        key: "expected_end_date",
+        header: "Expected End",
+        render: (item) => formatDate(item.expected_end_date),
+      },
+    ],
+    []
+  );
+
+  const childWorksiteColumns: Column<ChildWorksiteRow>[] = useMemo(
+    () => [
+      { key: "worksite_name", header: "Name" },
+      {
+        key: "worksite_type",
+        header: "Type",
+        render: (item) => (
+          <Badge variant="secondary">{item.worksite_type.replace(/_/g, " ")}</Badge>
+        ),
+      },
+      {
+        key: "is_offshore",
+        header: "Offshore",
+        render: (item) => (
+          <Badge variant={item.is_offshore ? "info" : "secondary"}>
+            {item.is_offshore ? "Yes" : "No"}
+          </Badge>
+        ),
+      },
+      {
+        key: "is_active",
+        header: "Active",
+        render: (item) => (
+          <Badge variant={item.is_active ? "success" : "destructive"}>
+            {item.is_active ? "Active" : "Inactive"}
+          </Badge>
+        ),
+      },
+    ],
+    []
+  );
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -384,6 +578,42 @@ export default function WorksiteDetailPage() {
           </div>
         );
       }
+      if (field === ("parent_worksite_id" as keyof Worksite)) {
+        return (
+          <div>
+            <Label className="text-xs text-muted-foreground">{label}</Label>
+            <div className="mt-1">
+              <Select
+                value={
+                  (editForm as Record<string, unknown>).parent_worksite_id != null
+                    ? String((editForm as Record<string, unknown>).parent_worksite_id)
+                    : "none"
+                }
+                onValueChange={(v) =>
+                  handleEditChange(
+                    "parent_worksite_id" as keyof Worksite,
+                    v === "none" ? null : Number(v)
+                  )
+                }
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue placeholder="Select parent worksite" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None (standalone)</SelectItem>
+                  {allWorksites
+                    .filter((w) => w.worksite_id !== worksite.worksite_id)
+                    .map((w) => (
+                      <SelectItem key={w.worksite_id} value={String(w.worksite_id)}>
+                        {w.worksite_name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        );
+      }
       if (type === "checkbox") {
         return (
           <div>
@@ -445,6 +675,28 @@ export default function WorksiteDetailPage() {
       );
     }
 
+    if (field === ("parent_worksite_id" as keyof Worksite)) {
+      const pw = worksite.parent_worksite;
+      return (
+        <div>
+          <Label className="text-xs text-muted-foreground">{label}</Label>
+          <div className="mt-1 text-sm">
+            {pw ? (
+              <button
+                className="underline hover:text-foreground flex items-center gap-1"
+                onClick={() => router.push(`/worksites/${pw.worksite_id}`)}
+              >
+                <Building2 className="h-3 w-3" />
+                {pw.worksite_name}
+              </button>
+            ) : (
+              "—"
+            )}
+          </div>
+        </div>
+      );
+    }
+
     const val = worksite[field];
     let display: string;
     if (val == null || val === "") {
@@ -489,6 +741,20 @@ export default function WorksiteDetailPage() {
               ? ` · ${worksite.principal_employer.employer_name} asset`
               : ""}
           </p>
+          {worksite.parent_worksite && (
+            <p className="text-sm text-muted-foreground flex items-center gap-1">
+              <Building2 className="h-3 w-3" />
+              Part of:{" "}
+              <button
+                className="underline hover:text-foreground"
+                onClick={() =>
+                  router.push(`/worksites/${worksite.parent_worksite!.worksite_id}`)
+                }
+              >
+                {worksite.parent_worksite.worksite_name}
+              </button>
+            </p>
+          )}
         </div>
         <Badge variant={worksite.is_offshore ? "info" : "secondary"}>
           {worksite.is_offshore ? "Offshore" : "Onshore"}
@@ -535,6 +801,7 @@ export default function WorksiteDetailPage() {
               {renderField("worksite_name", "Name")}
               {renderField("worksite_type", "Type", "select")}
               {renderField("principal_employer_id", "Principal Employer")}
+              {renderField("parent_worksite_id" as keyof Worksite, "Parent Worksite")}
               <div>
                 <Label className="text-xs text-muted-foreground">Operator</Label>
                 <div className="mt-1 text-sm">
@@ -576,9 +843,20 @@ export default function WorksiteDetailPage() {
           <TabsTrigger value="employers">
             Employers ({employerRoles.length})
           </TabsTrigger>
+          <TabsTrigger value="work_scopes">
+            Work Scopes ({wsScopes.length})
+          </TabsTrigger>
+          <TabsTrigger value="projects">
+            Projects ({wsProjects.length})
+          </TabsTrigger>
           <TabsTrigger value="workers">
             Workers ({workers.length})
           </TabsTrigger>
+          {childWorksites.length > 0 && (
+            <TabsTrigger value="children">
+              Sub-Worksites ({childWorksites.length})
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="agreements">
@@ -619,6 +897,41 @@ export default function WorksiteDetailPage() {
           )}
         </TabsContent>
 
+        <TabsContent value="work_scopes">
+          {wsScopes.length === 0 ? (
+            <div className="flex items-center justify-center h-32 text-muted-foreground">
+              No work scopes found for this worksite.
+            </div>
+          ) : (
+            <DataTable
+              data={wsScopes as WorksiteScopeRow[]}
+              columns={wsScopeColumns}
+              searchPlaceholder="Search scopes..."
+              searchKeys={["scope_name", "employer_name"]}
+              onRowClick={(item) =>
+                item.employer
+                  ? router.push(`/employers/${item.employer.employer_id}`)
+                  : undefined
+              }
+            />
+          )}
+        </TabsContent>
+
+        <TabsContent value="projects">
+          {wsProjects.length === 0 ? (
+            <div className="flex items-center justify-center h-32 text-muted-foreground">
+              No projects found at this worksite.
+            </div>
+          ) : (
+            <DataTable
+              data={wsProjects as ProjectRow[]}
+              columns={projectColumns}
+              searchPlaceholder="Search projects..."
+              searchKeys={["project_name"]}
+            />
+          )}
+        </TabsContent>
+
         <TabsContent value="workers">
           {workers.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-muted-foreground">
@@ -633,6 +946,20 @@ export default function WorksiteDetailPage() {
             />
           )}
         </TabsContent>
+
+        {childWorksites.length > 0 && (
+          <TabsContent value="children">
+            <DataTable
+              data={childWorksites as ChildWorksiteRow[]}
+              columns={childWorksiteColumns}
+              searchPlaceholder="Search sub-worksites..."
+              searchKeys={["worksite_name"]}
+              onRowClick={(item) =>
+                router.push(`/worksites/${item.worksite_id}`)
+              }
+            />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

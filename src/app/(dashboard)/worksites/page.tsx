@@ -54,6 +54,7 @@ type EmployerRole = {
 type WorksiteRow = Worksite & {
   operator?: { employer_name: string };
   principal_employer?: { employer_name: string };
+  parent_worksite?: { worksite_name: string };
   agreement_worksites?: { agreement_id: number }[];
   employer_worksite_roles?: EmployerRole[];
 } & Record<string, unknown>;
@@ -63,6 +64,7 @@ const INITIAL_FORM = {
   worksite_type: "" as string,
   operator_id: "" as string,
   principal_employer_id: "" as string,
+  parent_worksite_id: "" as string,
   location_description: "",
   latitude: "",
   longitude: "",
@@ -91,6 +93,7 @@ export default function WorksitesPage() {
           *,
           operator:employers!operator_id(employer_name),
           principal_employer:employers!principal_employer_id(employer_name),
+          parent_worksite:worksites!parent_worksite_id(worksite_name),
           agreement_worksites(agreement_id),
           employer_worksite_roles(
             role_type,
@@ -123,6 +126,16 @@ export default function WorksitesPage() {
   const columns: Column<WorksiteRow>[] = useMemo(
     () => [
       { key: "worksite_name", header: "Name" },
+      {
+        key: "parent_worksite",
+        header: "Parent",
+        render: (item) =>
+          item.parent_worksite?.worksite_name ? (
+            <span className="text-muted-foreground">{item.parent_worksite.worksite_name}</span>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
+      },
       {
         key: "worksite_type",
         header: "Type",
@@ -239,6 +252,8 @@ export default function WorksitesPage() {
     if (form.operator_id) payload.operator_id = Number(form.operator_id);
     if (form.principal_employer_id)
       payload.principal_employer_id = Number(form.principal_employer_id);
+    if (form.parent_worksite_id && form.parent_worksite_id !== "none")
+      payload.parent_worksite_id = Number(form.parent_worksite_id);
     if (form.location_description)
       payload.location_description = form.location_description.trim();
     if (form.latitude) payload.latitude = parseFloat(form.latitude);
@@ -377,6 +392,30 @@ export default function WorksitesPage() {
                             value={String(emp.employer_id)}
                           >
                             {emp.employer_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="parent_worksite_id">Parent Worksite</Label>
+                    <Select
+                      value={form.parent_worksite_id}
+                      onValueChange={(v) =>
+                        handleFieldChange("parent_worksite_id", v)
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="None (standalone)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None (standalone)</SelectItem>
+                        {worksites.map((ws) => (
+                          <SelectItem
+                            key={ws.worksite_id}
+                            value={String(ws.worksite_id)}
+                          >
+                            {ws.worksite_name}
                           </SelectItem>
                         ))}
                       </SelectContent>

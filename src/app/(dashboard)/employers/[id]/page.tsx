@@ -12,6 +12,8 @@ import type {
   EmployerWorksiteRole,
   Worksite,
   EmployerCategory,
+  WorkScope,
+  Project,
 } from "@/types/database";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +69,35 @@ type WorksiteRoleRow = EmployerWorksiteRole & {
 } & Record<string, unknown>;
 type WorkerRow = Worker & Record<string, unknown>;
 type ChildEmployerRow = Employer & Record<string, unknown>;
+
+type EmployerScopeRow = {
+  id: number;
+  scope_id: number;
+  is_current: boolean;
+  source: string;
+  work_scope?: WorkScope & { parent?: WorkScope & { parent?: WorkScope } };
+} & Record<string, unknown>;
+
+type WorksiteScopeRow = {
+  id: number;
+  scope_id: number;
+  worksite_id: number;
+  employer_id: number | null;
+  engagement_type: string | null;
+  is_current: boolean;
+  work_scope?: WorkScope;
+  worksite?: Worksite;
+} & Record<string, unknown>;
+
+type ProjectRow = {
+  project_id: number;
+  project_name: string;
+  work_type: string;
+  project_status: string;
+  start_date: string | null;
+  expected_end_date: string | null;
+  worksite?: { worksite_id: number; worksite_name: string };
+} & Record<string, unknown>;
 
 export default function EmployerDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -178,6 +209,45 @@ export default function EmployerDetailPage() {
         .order("worksite_name");
       if (error) throw error;
       return data as Worksite[];
+    },
+    enabled: !!id,
+  });
+
+  const { data: employerScopes = [] } = useQuery({
+    queryKey: ["employer-scopes", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employer_scopes")
+        .select("*, work_scope:work_scopes(*, parent:work_scopes!parent_scope_id(*, parent:work_scopes!parent_scope_id(*)))")
+        .eq("employer_id", id);
+      if (error) throw error;
+      return data as EmployerScopeRow[];
+    },
+    enabled: !!id,
+  });
+
+  const { data: worksiteScopes = [] } = useQuery({
+    queryKey: ["employer-worksite-scopes", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worksite_scopes")
+        .select("*, work_scope:work_scopes(*), worksite:worksites(worksite_id, worksite_name)")
+        .eq("employer_id", id);
+      if (error) throw error;
+      return data as WorksiteScopeRow[];
+    },
+    enabled: !!id,
+  });
+
+  const { data: projects = [] } = useQuery({
+    queryKey: ["employer-projects", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("project_employers")
+        .select("*, project:projects(*, worksite:worksites(worksite_id, worksite_name))")
+        .eq("employer_id", id);
+      if (error) throw error;
+      return (data ?? []).map((pe: Record<string, unknown>) => pe.project).filter(Boolean) as ProjectRow[];
     },
     enabled: !!id,
   });
@@ -309,6 +379,114 @@ export default function EmployerDetailPage() {
           };
           return w.worksite?.worksite_name ?? "—";
         },
+      },
+    ],
+    []
+  );
+
+  function scopePath(row: EmployerScopeRow): string {
+    const parts: string[] = [];
+    const ws = row.work_scope;
+    if (ws) {
+      if (ws.parent?.parent) parts.push(ws.parent.parent.scope_name);
+      if (ws.parent) parts.push(ws.parent.scope_name);
+      parts.push(ws.scope_name);
+    }
+    return parts.join(" › ") || "—";
+  }
+
+  const employerScopeColumns: Column<EmployerScopeRow>[] = useMemo(
+    () => [
+      {
+        key: "scope_name",
+        header: "Scope",
+        render: (item) => scopePath(item),
+      },
+      {
+        key: "source",
+        header: "Source",
+        render: (item) => (
+          <Badge variant={item.source === "auto" ? "info" : "secondary"}>
+            {item.source === "auto" ? "Auto" : "Manual"}
+          </Badge>
+        ),
+      },
+      {
+        key: "is_current",
+        header: "Current",
+        render: (item) => (
+          <Badge variant={item.is_current ? "success" : "secondary"}>
+            {item.is_current ? "Yes" : "No"}
+          </Badge>
+        ),
+      },
+    ],
+    []
+  );
+
+  const worksiteScopeColumns: Column<WorksiteScopeRow>[] = useMemo(
+    () => [
+      {
+        key: "worksite_name",
+        header: "Worksite",
+        render: (item) => item.worksite?.worksite_name ?? "—",
+      },
+      {
+        key: "scope_name",
+        header: "Work Scope",
+        render: (item) => item.work_scope?.scope_name ?? "—",
+      },
+      {
+        key: "engagement_type",
+        header: "Engagement",
+        render: (item) =>
+          item.engagement_type ? (
+            <Badge variant="secondary">{item.engagement_type.replace(/_/g, " ")}</Badge>
+          ) : (
+            "—"
+          ),
+      },
+      {
+        key: "is_current",
+        header: "Current",
+        render: (item) => (
+          <Badge variant={item.is_current ? "success" : "secondary"}>
+            {item.is_current ? "Yes" : "No"}
+          </Badge>
+        ),
+      },
+    ],
+    []
+  );
+
+  const projectColumns: Column<ProjectRow>[] = useMemo(
+    () => [
+      { key: "project_name", header: "Project" },
+      {
+        key: "worksite_name",
+        header: "Worksite",
+        render: (item) => item.worksite?.worksite_name ?? "—",
+      },
+      {
+        key: "work_type",
+        header: "Type",
+        render: (item) => (
+          <Badge variant="secondary">{item.work_type.replace(/_/g, " ")}</Badge>
+        ),
+      },
+      {
+        key: "project_status",
+        header: "Status",
+        render: (item) => (
+          <Badge variant={item.project_status === "operational" || item.project_status === "active" ? "success" : "secondary"}>
+            {item.project_status.replace(/_/g, " ")}
+          </Badge>
+        ),
+      },
+      {
+        key: "start_date",
+        header: "Start",
+        render: (item) => formatDate(item.start_date),
       },
     ],
     []
@@ -462,6 +640,8 @@ export default function EmployerDetailPage() {
   const tabs = [
     { value: "agreements", label: `Agreements (${agreements.length})` },
     { value: "worksites", label: `Worksites (${worksiteRoles.length})` },
+    { value: "work_scopes", label: `Work Scopes (${employerScopes.length})` },
+    { value: "projects", label: `Projects (${projects.length})` },
     { value: "workers", label: `Workers (${workers.length})` },
     ...(childCompanies.length > 0
       ? [{ value: "children", label: `Group Companies (${childCompanies.length})` }]
@@ -607,16 +787,69 @@ export default function EmployerDetailPage() {
         </TabsContent>
 
         <TabsContent value="worksites">
-          {worksiteRoles.length === 0 ? (
+          {worksiteRoles.length === 0 && worksiteScopes.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-muted-foreground">
               No worksite associations found for this employer.
             </div>
           ) : (
+            <div className="space-y-6">
+              {worksiteRoles.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Roles</h3>
+                  <DataTable
+                    data={worksiteRoles as WorksiteRoleRow[]}
+                    columns={worksiteRoleColumns}
+                    searchPlaceholder="Search worksites..."
+                    searchKeys={["worksite_name", "role_type"]}
+                  />
+                </div>
+              )}
+              {worksiteScopes.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Work Scopes at Worksites</h3>
+                  <DataTable
+                    data={worksiteScopes as WorksiteScopeRow[]}
+                    columns={worksiteScopeColumns}
+                    searchPlaceholder="Search scopes..."
+                    searchKeys={["scope_name", "worksite_name"]}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="work_scopes">
+          {employerScopes.length === 0 ? (
+            <div className="flex items-center justify-center h-32 text-muted-foreground">
+              No work scopes found for this employer.
+            </div>
+          ) : (
             <DataTable
-              data={worksiteRoles as WorksiteRoleRow[]}
-              columns={worksiteRoleColumns}
-              searchPlaceholder="Search worksites..."
-              searchKeys={["worksite_name", "role_type"]}
+              data={employerScopes as EmployerScopeRow[]}
+              columns={employerScopeColumns}
+              searchPlaceholder="Search scopes..."
+              searchKeys={["scope_name"]}
+            />
+          )}
+        </TabsContent>
+
+        <TabsContent value="projects">
+          {projects.length === 0 ? (
+            <div className="flex items-center justify-center h-32 text-muted-foreground">
+              No projects found for this employer.
+            </div>
+          ) : (
+            <DataTable
+              data={projects as ProjectRow[]}
+              columns={projectColumns}
+              searchPlaceholder="Search projects..."
+              searchKeys={["project_name"]}
+              onRowClick={(item) =>
+                item.worksite
+                  ? router.push(`/worksites/${item.worksite.worksite_id}`)
+                  : undefined
+              }
             />
           )}
         </TabsContent>

@@ -52,15 +52,15 @@ export type EmployerRoleType =
   | "Principal_Contractor"
   | "Subcontractor"
   | "Labour_Hire"
-  | "Catering"
-  | "Maintenance"
-  | "Drilling"
-  | "ROV"
-  | "Inspection"
-  | "Transport"
-  | "Decommissioning"
-  | "Aviation"
   | "Other";
+
+export type EngagementType =
+  | "direct_employment"
+  | "contractor"
+  | "subcontractor"
+  | "labour_hire";
+
+export type ScopeSource = "manual" | "auto";
 
 export type DuesIncreaseType = "Fixed" | "WPI" | "CPI" | "FWC" | "Other";
 
@@ -376,6 +376,7 @@ export interface AgreementWithRelations extends Agreement {
   worksites?: Worksite[];
   organisers?: (AgreementOrganiser & { organiser?: Organiser })[];
   dues_increases?: DuesIncrease[];
+  scopes?: (AgreementScopeRecord & { work_scope?: WorkScope })[];
 }
 
 export interface WorkerWithRelations extends Worker {
@@ -394,12 +395,14 @@ export interface WorksiteWithRelations extends Worksite {
   projects?: Project[];
   agreements?: Agreement[];
   employer_roles?: (EmployerWorksiteRole & { employer?: Employer })[];
+  scopes?: (WorksiteScope & { work_scope?: WorkScope; employer?: Employer })[];
 }
 
 export interface EmployerWithRelations extends Employer {
   sectors?: Sector[];
   agreements?: Agreement[];
   worksite_roles?: (EmployerWorksiteRole & { worksite?: Worksite })[];
+  scopes?: (EmployerScopeRecord & { work_scope?: WorkScope })[];
 }
 
 export interface EmployerWorksiteRole {
@@ -444,6 +447,48 @@ export interface ProjectAgreement {
   project_id: number;
   agreement_id: number;
   notes: string | null;
+}
+
+export interface WorkScope {
+  scope_id: number;
+  scope_name: string;
+  parent_scope_id: number | null;
+  description: string | null;
+  is_whole_of_project: boolean;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkScopeWithChildren extends WorkScope {
+  children?: WorkScopeWithChildren[];
+}
+
+export interface WorksiteScope {
+  id: number;
+  worksite_id: number;
+  scope_id: number;
+  employer_id: number | null;
+  engagement_type: EngagementType | null;
+  is_current: boolean;
+  start_date: string | null;
+  end_date: string | null;
+  notes: string | null;
+}
+
+export interface EmployerScopeRecord {
+  id: number;
+  employer_id: number;
+  scope_id: number;
+  is_current: boolean;
+  source: ScopeSource;
+}
+
+export interface AgreementScopeRecord {
+  id: number;
+  agreement_id: number;
+  scope_id: number;
 }
 
 export interface ProjectWithRelations extends Project {

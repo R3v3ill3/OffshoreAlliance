@@ -304,6 +304,9 @@ export default function CampaignDetailPage() {
     employer: "Employer",
     member_role: "Role",
     sector: "Sector",
+    project: "Project",
+    work_type: "Work type",
+    onshore_offshore: "Onshore / offshore",
   };
 
   return (

@@ -39,7 +39,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Pencil, X, Save, Star, Building2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { ArrowLeft, Pencil, X, Save, Star, Building2, Plus, Trash2 } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { format } from "date-fns";
 
@@ -110,6 +118,11 @@ export default function EmployerDetailPage() {
   const [editForm, setEditForm] = useState<Partial<Employer>>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const [addScopeOpen, setAddScopeOpen] = useState(false);
+  const [selectedScopeId, setSelectedScopeId] = useState<string>("");
+  const [addingScopeError, setAddingScopeError] = useState<string | null>(null);
+  const [addingScopeLoading, setAddingScopeLoading] = useState(false);
 
   const {
     data: employer,
@@ -252,6 +265,33 @@ export default function EmployerDetailPage() {
     enabled: !!id,
   });
 
+  const { data: allScopes = [] } = useQuery({
+    queryKey: ["work-scopes-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("work_scopes")
+        .select("*, parent:work_scopes!parent_scope_id(scope_name, parent:work_scopes!parent_scope_id(scope_name))")
+        .eq("is_active", true)
+        .order("sort_order");
+      if (error) throw error;
+      return data as (WorkScope & { parent?: { scope_name: string; parent?: { scope_name: string } } })[];
+    },
+  });
+
+  const scopeOptions = useMemo(() => {
+    const existingIds = new Set(employerScopes.map((es) => es.scope_id));
+    return allScopes
+      .filter((s) => !s.is_whole_of_project && !existingIds.has(s.scope_id))
+      .map((s) => {
+        const parts: string[] = [];
+        if (s.parent?.parent) parts.push(s.parent.parent.scope_name);
+        if (s.parent) parts.push(s.parent.scope_name);
+        parts.push(s.scope_name);
+        return { scope_id: s.scope_id, label: parts.join(" › ") };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [allScopes, employerScopes]);
+
   const parentEmployer = useMemo(
     () =>
       employer?.parent_employer_id
@@ -301,6 +341,58 @@ export default function EmployerDetailPage() {
     setEditing(false);
     setEditForm({});
     setSaving(false);
+  };
+
+  const handleAddScope = async () => {
+    if (!selectedScopeId || !employer) return;
+    setAddingScopeLoading(true);
+    setAddingScopeError(null);
+
+    const { error } = await supabase.from("employer_scopes").insert({
+      employer_id: employer.employer_id,
+      scope_id: Number(selectedScopeId),
+      is_current: true,
+      source: "manual",
+    });
+
+    if (error) {
+      setAddingScopeError(error.message);
+      setAddingScopeLoading(false);
+      return;
+    }
+
+    await queryClient.invalidateQueries({ queryKey: ["employer-scopes", id] });
+    setAddScopeOpen(false);
+    setSelectedScopeId("");
+    setAddingScopeLoading(false);
+  };
+
+  const handleRemoveScope = async (scopeRow: EmployerScopeRow) => {
+    if (!employer) return;
+    const { error } = await supabase
+      .from("employer_scopes")
+      .delete()
+      .eq("id", scopeRow.id);
+
+    if (error) {
+      setSaveError(error.message);
+      return;
+    }
+    await queryClient.invalidateQueries({ queryKey: ["employer-scopes", id] });
+  };
+
+  const handleToggleScopeCurrent = async (scopeRow: EmployerScopeRow) => {
+    if (!employer) return;
+    const { error } = await supabase
+      .from("employer_scopes")
+      .update({ is_current: !scopeRow.is_current })
+      .eq("id", scopeRow.id);
+
+    if (error) {
+      setSaveError(error.message);
+      return;
+    }
+    await queryClient.invalidateQueries({ queryKey: ["employer-scopes", id] });
   };
 
   const agreementColumns: Column<AgreementRow>[] = useMemo(
@@ -415,13 +507,33 @@ export default function EmployerDetailPage() {
         key: "is_current",
         header: "Current",
         render: (item) => (
-          <Badge variant={item.is_current ? "success" : "secondary"}>
-            {item.is_current ? "Yes" : "No"}
-          </Badge>
+          <button onClick={() => handleToggleScopeCurrent(item)}>
+            <Badge variant={item.is_current ? "success" : "secondary"} className="cursor-pointer">
+              {item.is_current ? "Yes" : "No"}
+            </Badge>
+          </button>
         ),
       },
+      ...(canWrite
+        ? [
+            {
+              key: "actions" as const,
+              header: "",
+              render: (item: EmployerScopeRow) => (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => handleRemoveScope(item)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              ),
+            },
+          ]
+        : []),
     ],
-    []
+    [canWrite]
   );
 
   const worksiteScopeColumns: Column<WorksiteScopeRow>[] = useMemo(
@@ -820,18 +932,87 @@ export default function EmployerDetailPage() {
         </TabsContent>
 
         <TabsContent value="work_scopes">
-          {employerScopes.length === 0 ? (
-            <div className="flex items-center justify-center h-32 text-muted-foreground">
-              No work scopes found for this employer.
-            </div>
-          ) : (
-            <DataTable
-              data={employerScopes as EmployerScopeRow[]}
-              columns={employerScopeColumns}
-              searchPlaceholder="Search scopes..."
-              searchKeys={["scope_name"]}
-            />
-          )}
+          <div className="space-y-4">
+            {canWrite && (
+              <div className="flex justify-end">
+                <Dialog
+                  open={addScopeOpen}
+                  onOpenChange={(open) => {
+                    setAddScopeOpen(open);
+                    if (!open) {
+                      setSelectedScopeId("");
+                      setAddingScopeError(null);
+                    }
+                  }}
+                >
+                  <Button size="sm" onClick={() => setAddScopeOpen(true)}>
+                    <Plus className="h-4 w-4" />
+                    Add Work Scope
+                  </Button>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add Work Scope</DialogTitle>
+                      <DialogDescription>
+                        Manually add a work scope capability to this employer.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                      <div className="space-y-2">
+                        <Label>Work Scope</Label>
+                        <Select
+                          value={selectedScopeId}
+                          onValueChange={setSelectedScopeId}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a work scope..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {scopeOptions.map((opt) => (
+                              <SelectItem
+                                key={opt.scope_id}
+                                value={String(opt.scope_id)}
+                              >
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {addingScopeError && (
+                        <p className="text-sm text-destructive">{addingScopeError}</p>
+                      )}
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => setAddScopeOpen(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleAddScope}
+                        disabled={!selectedScopeId || addingScopeLoading}
+                      >
+                        {addingScopeLoading ? "Adding..." : "Add Scope"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            )}
+            {employerScopes.length === 0 ? (
+              <div className="flex items-center justify-center h-32 text-muted-foreground">
+                No work scopes found for this employer.
+              </div>
+            ) : (
+              <DataTable
+                data={employerScopes as EmployerScopeRow[]}
+                columns={employerScopeColumns}
+                searchPlaceholder="Search scopes..."
+                searchKeys={["scope_name"]}
+              />
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="projects">

@@ -93,7 +93,38 @@ export type ActionResultType =
 export type CommunicationChannel = "sms" | "email" | "phone" | "in_person";
 export type CommunicationDirection = "inbound" | "outbound";
 
-export type UniverseRuleType = "agreement" | "worksite" | "employer" | "member_role" | "sector";
+export type WorkType =
+  | "production"
+  | "construction"
+  | "decommissioning"
+  | "brownfields"
+  | "service_provision"
+  | "maintenance";
+
+export type ProjectStatus =
+  | "planning"
+  | "active"
+  | "commissioning"
+  | "operational"
+  | "decommissioning"
+  | "completed"
+  | "absorbed";
+
+export type AgreementScope =
+  | "site_specific"
+  | "project_specific"
+  | "sector_wide"
+  | "company_wide";
+
+export type UniverseRuleType =
+  | "agreement"
+  | "worksite"
+  | "employer"
+  | "member_role"
+  | "sector"
+  | "project"
+  | "work_type"
+  | "onshore_offshore";
 
 export interface Sector {
   sector_id: number;
@@ -142,6 +173,7 @@ export interface Worksite {
   worksite_type: WorksiteType;
   operator_id: number | null;
   principal_employer_id: number | null;
+  parent_worksite_id: number | null;
   location_description: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -170,6 +202,7 @@ export interface Agreement {
   fwc_link: string | null;
   supersedes_id: number | null;
   variation_of_id: number | null;
+  agreement_scope: AgreementScope | null;
   notes: string | null;
   source_sheet: string | null;
   created_at: string;
@@ -212,6 +245,7 @@ export interface Worker {
   classification: string | null;
   employer_id: number | null;
   worksite_id: number | null;
+  project_id: number | null;
   member_role_type_id: number | null;
   union_id: number | null;
   member_number: string | null;
@@ -347,6 +381,7 @@ export interface AgreementWithRelations extends Agreement {
 export interface WorkerWithRelations extends Worker {
   employer?: Employer;
   worksite?: Worksite;
+  project?: Project;
   member_role_type?: MemberRoleType;
   union?: Union;
   agreements?: Agreement[];
@@ -354,6 +389,9 @@ export interface WorkerWithRelations extends Worker {
 
 export interface WorksiteWithRelations extends Worksite {
   operator?: Employer;
+  parent_worksite?: Worksite;
+  child_worksites?: Worksite[];
+  projects?: Project[];
   agreements?: Agreement[];
   employer_roles?: (EmployerWorksiteRole & { employer?: Employer })[];
 }
@@ -373,6 +411,46 @@ export interface EmployerWorksiteRole {
   start_date: string | null;
   end_date: string | null;
   notes: string | null;
+}
+
+export interface Project {
+  project_id: number;
+  project_name: string;
+  worksite_id: number;
+  work_type: WorkType;
+  project_status: ProjectStatus;
+  start_date: string | null;
+  expected_end_date: string | null;
+  actual_end_date: string | null;
+  absorbed_into_project_id: number | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectEmployer {
+  id: number;
+  project_id: number;
+  employer_id: number;
+  role_type: EmployerRoleType | null;
+  is_current: boolean;
+  start_date: string | null;
+  end_date: string | null;
+}
+
+export interface ProjectAgreement {
+  id: number;
+  project_id: number;
+  agreement_id: number;
+  notes: string | null;
+}
+
+export interface ProjectWithRelations extends Project {
+  worksite?: Worksite;
+  employers?: (ProjectEmployer & { employer?: Employer })[];
+  agreements?: (ProjectAgreement & { agreement?: Agreement })[];
+  absorbed_into?: Project;
 }
 
 export interface ImportLog {
@@ -480,4 +558,32 @@ export interface PrincipalEmployerEbaSummary {
   pct_6_12m: number;
   pct_12_24m: number;
   pct_gt_24m: number;
+}
+
+export interface OrganisingUniverseRow {
+  worksite_id: number;
+  worksite_name: string;
+  worksite_type: WorksiteType;
+  is_offshore: boolean;
+  parent_worksite_id: number | null;
+  parent_worksite_name: string | null;
+  principal_employer_id: number | null;
+  principal_employer_name: string | null;
+  project_id: number | null;
+  project_name: string | null;
+  work_type: WorkType | null;
+  project_status: ProjectStatus | null;
+  employer_id: number | null;
+  employer_name: string | null;
+  employer_category: EmployerCategory | null;
+  parent_employer_id: number | null;
+  agreement_id: number | null;
+  agreement_name: string | null;
+  agreement_short_name: string | null;
+  agreement_status: AgreementStatus | null;
+  agreement_scope: AgreementScope | null;
+  agreement_expiry: string | null;
+  sector_id: number | null;
+  sector_name: string | null;
+  worker_count: number;
 }

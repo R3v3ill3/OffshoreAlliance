@@ -18,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Layers,
+  LayoutGrid,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import { Separator } from "@/components/ui/separator";
 
 export const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/overview", label: "Overview", icon: LayoutGrid },
   { href: "/workers", label: "Workers", icon: Users },
   { href: "/employers", label: "Employers", icon: Building2 },
   { href: "/worksites", label: "Worksites", icon: MapPin },

@@ -7,6 +7,7 @@ import { MobileNav } from "./mobile-nav";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
+  "/overview": "Overview",
   "/workers": "Workers",
   "/employers": "Employers",
   "/worksites": "Worksites",

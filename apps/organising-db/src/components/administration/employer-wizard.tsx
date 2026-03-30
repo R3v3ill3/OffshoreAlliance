@@ -633,6 +633,28 @@ function EmployerWizardInner() {
     []
   );
 
+  /** When fuzzy/AI finds no groups, or users need a pair the detector missed. */
+  const addManualEmployerGroup = useCallback(() => {
+    setProposals((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        employerGroups: [
+          ...prev.employerGroups,
+          {
+            proposedParentName: "New parent company",
+            existingParentId: null,
+            isNewParent: true,
+            memberEmployerIds: [],
+            confidence: "low",
+            source: "merged",
+            accepted: false,
+          },
+        ],
+      };
+    });
+  }, []);
+
   const updateCategory = useCallback(
     (index: number, updates: Partial<CategoryProposal>) => {
       setProposals((prev) => {
@@ -693,6 +715,29 @@ function EmployerWizardInner() {
 
   const applyChanges = useCallback(async () => {
     if (!proposals || !snapshotRef.current) return;
+
+    const acceptedGroups = proposals.employerGroups.filter((g) => g.accepted);
+    for (const g of acceptedGroups) {
+      if (g.memberEmployerIds.length === 0) {
+        setError(
+          "Each accepted parent group must include at least one member employer. Remove the accept check or add members."
+        );
+        setStep("review_groups");
+        return;
+      }
+      if (!g.isNewParent && g.existingParentId === null) {
+        setError(
+          'For "Use existing employer", choose which employer is the parent (search under the group card).'
+        );
+        setStep("review_groups");
+        return;
+      }
+      if (g.isNewParent && !g.proposedParentName.trim()) {
+        setError("Enter a name for each new parent company before applying.");
+        setStep("review_groups");
+        return;
+      }
+    }
 
     setStep("applying");
     setError(null);
@@ -961,6 +1006,9 @@ function EmployerWizardInner() {
     // Local state for the Option B search box (one per group card, keyed by index)
     const [memberSearch, setMemberSearch] = useState<Record<number, string>>({});
     const [memberSearchOpen, setMemberSearchOpen] = useState<Record<number, boolean>>({});
+    // Parent employer picker when "Use existing employer" is selected
+    const [parentSearch, setParentSearch] = useState<Record<number, string>>({});
+    const [parentSearchOpen, setParentSearchOpen] = useState<Record<number, boolean>>({});
     // Option C: search within the unassigned panel
     const [unassignedSearch, setUnassignedSearch] = useState("");
     const [unassignedPanelOpen, setUnassignedPanelOpen] = useState(false);
@@ -984,6 +1032,23 @@ function EmployerWizardInner() {
         e.employer_name.toLowerCase().includes(q) ||
         (e.trading_name ?? "").toLowerCase().includes(q)
       ).slice(0, 12);
+    }
+
+    /** Any non–principal employer may be the legal parent (including entities you add as members). */
+    function parentPickerCandidates(): Employer[] {
+      return employers.filter(
+        (e) => e.employer_category !== "Principal_Employer"
+      );
+    }
+
+    function filteredParentResults(gi: number): Employer[] {
+      const q = (parentSearch[gi] ?? "").toLowerCase().trim();
+      const list = parentPickerCandidates();
+      const match = (e: Employer) =>
+        e.employer_name.toLowerCase().includes(q) ||
+        (e.trading_name ?? "").toLowerCase().includes(q);
+      if (!q) return list.slice(0, 20);
+      return list.filter(match).slice(0, 20);
     }
 
     const filteredUnassigned = useMemo(() => {
@@ -1028,20 +1093,43 @@ function EmployerWizardInner() {
               )}
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => bulkAcceptHigh("groups")}
-          >
-            <CheckCheck className="h-4 w-4 mr-1" />
-            Pre-select high confidence
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={addManualEmployerGroup}
+            >
+              <UserPlus className="h-4 w-4 mr-1" />
+              Add manual group
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => bulkAcceptHigh("groups")}
+            >
+              <CheckCheck className="h-4 w-4 mr-1" />
+              Pre-select high confidence
+            </Button>
+          </div>
         </div>
 
         {groups.length === 0 ? (
           <Card>
-            <CardContent className="py-6 text-center text-muted-foreground">
-              No corporate groups detected.
+            <CardContent className="py-6 space-y-4 text-center">
+              <p className="text-muted-foreground">
+                No corporate groups detected.
+              </p>
+              <p className="text-sm text-muted-foreground max-w-lg mx-auto">
+                If two employers belong together but were not grouped (different
+                names), add a manual group, then add both as members. Choose
+                &quot;Create new parent&quot; to insert a parent record, or
+                &quot;Use existing employer&quot; and search for an existing
+                entity (including a member) as the parent.
+              </p>
+              <Button onClick={addManualEmployerGroup}>
+                <UserPlus className="h-4 w-4 mr-2" />
+                Add manual group
+              </Button>
             </CardContent>
           </Card>
         ) : (
@@ -1057,25 +1145,48 @@ function EmployerWizardInner() {
                 <CardContent className="py-4 space-y-3">
                   {/* Header row: name + confidence + controls */}
                   <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3 flex-1">
-                      <Input
-                        value={group.proposedParentName}
-                        onChange={(e) =>
-                          updateGroup(gi, {
-                            proposedParentName: e.target.value,
-                          })
-                        }
-                        className="max-w-xs font-medium"
-                      />
-                      {confidenceBadge(group.confidence)}
-                      {sourceBadge(group.source)}
+                    <div className="flex flex-col gap-1 flex-1 min-w-0">
+                      <span className="text-xs text-muted-foreground">
+                        {group.isNewParent
+                          ? "New parent company name (creates or matches an employer row)"
+                          : "Label for this group (informational)"}
+                      </span>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <Input
+                          value={group.proposedParentName}
+                          onChange={(e) =>
+                            updateGroup(gi, {
+                              proposedParentName: e.target.value,
+                            })
+                          }
+                          className="max-w-xs font-medium"
+                          aria-label={
+                            group.isNewParent
+                              ? "New parent company name"
+                              : "Group label"
+                          }
+                        />
+                        {confidenceBadge(group.confidence)}
+                        {sourceBadge(group.source)}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                       <Select
                         value={group.isNewParent ? "new" : "existing"}
-                        onValueChange={(v) =>
-                          updateGroup(gi, { isNewParent: v === "new" })
-                        }
+                        onValueChange={(v) => {
+                          const isNew = v === "new";
+                          updateGroup(gi, {
+                            isNewParent: isNew,
+                            existingParentId: isNew ? null : group.existingParentId,
+                          });
+                          if (isNew) {
+                            setParentSearch((prev) => {
+                              const next = { ...prev };
+                              delete next[gi];
+                              return next;
+                            });
+                          }
+                        }}
                       >
                         <SelectTrigger className="w-[180px]">
                           <SelectValue />
@@ -1100,6 +1211,124 @@ function EmployerWizardInner() {
                       </Button>
                     </div>
                   </div>
+
+                  {!group.isNewParent && (
+                    <div className="rounded-md border border-dashed px-3 py-2 space-y-2 bg-muted/30">
+                      <div className="text-xs font-medium text-muted-foreground">
+                        Parent employer
+                      </div>
+                      {group.existingParentId !== null && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="default" className="font-normal">
+                            {employerMap.get(group.existingParentId)
+                              ?.employer_name ?? `#${group.existingParentId}`}
+                          </Badge>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() =>
+                              updateGroup(gi, { existingParentId: null })
+                            }
+                          >
+                            Clear
+                          </Button>
+                        </div>
+                      )}
+                      <div className="relative max-w-md">
+                        <div className="flex items-center h-8 rounded-md border border-input px-2 gap-1.5 text-xs bg-background">
+                          <Search className="h-3 w-3 shrink-0 text-muted-foreground" />
+                          <input
+                            type="text"
+                            placeholder="Search employers to set as parent…"
+                            value={parentSearch[gi] ?? ""}
+                            className="flex-1 bg-transparent outline-none text-foreground placeholder:text-muted-foreground"
+                            onChange={(e) => {
+                              setParentSearch((prev) => ({
+                                ...prev,
+                                [gi]: e.target.value,
+                              }));
+                              setParentSearchOpen((prev) => ({
+                                ...prev,
+                                [gi]: true,
+                              }));
+                            }}
+                            onFocus={() =>
+                              setParentSearchOpen((prev) => ({
+                                ...prev,
+                                [gi]: true,
+                              }))
+                            }
+                            onBlur={() =>
+                              setTimeout(
+                                () =>
+                                  setParentSearchOpen((prev) => ({
+                                    ...prev,
+                                    [gi]: false,
+                                  })),
+                                150
+                              )
+                            }
+                          />
+                        </div>
+                        {(parentSearchOpen[gi] ?? false) &&
+                          filteredParentResults(gi).length > 0 && (
+                            <div className="absolute top-full left-0 mt-1 z-50 w-full max-w-md rounded-md border bg-popover shadow-md">
+                              <ul className="py-1 max-h-48 overflow-y-auto">
+                                {filteredParentResults(gi).map((emp) => (
+                                  <li key={emp.employer_id}>
+                                    <button
+                                      type="button"
+                                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent"
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        updateGroup(gi, {
+                                          existingParentId: emp.employer_id,
+                                          proposedParentName: emp.employer_name,
+                                        });
+                                        setParentSearch((prev) => {
+                                          const next = { ...prev };
+                                          delete next[gi];
+                                          return next;
+                                        });
+                                        setParentSearchOpen((prev) => ({
+                                          ...prev,
+                                          [gi]: false,
+                                        }));
+                                      }}
+                                    >
+                                      {emp.employer_name}
+                                      {emp.trading_name &&
+                                        emp.trading_name !==
+                                          emp.employer_name && (
+                                          <span className="text-muted-foreground text-xs ml-1">
+                                            ({emp.trading_name})
+                                          </span>
+                                        )}
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        {(parentSearchOpen[gi] ?? false) &&
+                          (parentSearch[gi] ?? "").trim().length > 0 &&
+                          filteredParentResults(gi).length === 0 && (
+                            <div className="absolute top-full left-0 mt-1 z-50 w-full max-w-md rounded-md border bg-popover px-3 py-2 text-sm text-muted-foreground shadow-md">
+                              No matching employers.
+                            </div>
+                          )}
+                      </div>
+                      {group.existingParentId === null && (
+                        <p className="text-xs text-amber-700 dark:text-amber-400">
+                          Choose which existing employer is the legal parent. You
+                          can pick an employer that is also a member of this
+                          group; that row will not be pointed at itself.
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   {/* Member badges */}
                   <div className="flex flex-wrap gap-1.5">
@@ -1269,9 +1498,20 @@ function EmployerWizardInner() {
                   </div>
 
                   {groups.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-2">
-                      Create a group above first, then you can assign employers to it.
-                    </p>
+                    <div className="space-y-2 py-1">
+                      <p className="text-xs text-muted-foreground">
+                        Add a manual group first, then you can attach unassigned
+                        employers to it.
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={addManualEmployerGroup}
+                      >
+                        <UserPlus className="h-3.5 w-3.5 mr-1" />
+                        Add manual group
+                      </Button>
+                    </div>
                   ) : (
                     <div className="rounded-md border divide-y max-h-64 overflow-y-auto">
                       {filteredUnassigned.map((emp) => (

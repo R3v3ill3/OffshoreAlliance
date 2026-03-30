@@ -1,0 +1,1189 @@
+"use client";
+
+import { useState, useMemo } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/supabase/auth-context";
+import type {
+  Employer,
+  Agreement,
+  Worker,
+  EmployerWorksiteRole,
+  Worksite,
+  EmployerCategory,
+  WorkScope,
+  Project,
+} from "@/types/database";
+import { DataTable, type Column } from "@/components/data-tables/data-table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { ArrowLeft, Pencil, X, Save, Star, Building2, Plus, Trash2 } from "lucide-react";
+import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
+import { format } from "date-fns";
+
+const EMPLOYER_CATEGORIES: EmployerCategory[] = [
+  "Principal_Employer",
+  "Producer",
+  "Major_Contractor",
+  "Subcontractor",
+  "Labour_Hire",
+  "Specialist",
+];
+
+const AU_STATES = ["WA", "NT", "QLD", "SA", "NSW", "VIC", "TAS", "ACT"];
+
+function formatDate(dateStr: string | null) {
+  if (!dateStr) return "—";
+  try {
+    return format(new Date(dateStr), "dd MMM yyyy");
+  } catch {
+    return dateStr;
+  }
+}
+
+type AgreementRow = Agreement & Record<string, unknown>;
+type WorksiteRoleRow = EmployerWorksiteRole & {
+  worksite?: Worksite;
+} & Record<string, unknown>;
+type WorkerRow = Worker & Record<string, unknown>;
+type ChildEmployerRow = Employer & Record<string, unknown>;
+
+type EmployerScopeRow = {
+  id: number;
+  scope_id: number;
+  is_current: boolean;
+  source: string;
+  work_scope?: WorkScope & { parent?: WorkScope & { parent?: WorkScope } };
+} & Record<string, unknown>;
+
+type WorksiteScopeRow = {
+  id: number;
+  scope_id: number;
+  worksite_id: number;
+  employer_id: number | null;
+  engagement_type: string | null;
+  is_current: boolean;
+  work_scope?: WorkScope;
+  worksite?: Worksite;
+} & Record<string, unknown>;
+
+type ProjectRow = {
+  project_id: number;
+  project_name: string;
+  work_type: string;
+  project_status: string;
+  start_date: string | null;
+  expected_end_date: string | null;
+  worksite?: { worksite_id: number; worksite_name: string };
+} & Record<string, unknown>;
+
+export default function EmployerDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const supabase = createClient();
+  const queryClient = useQueryClient();
+  const { canWrite } = useAuth();
+
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState<Partial<Employer>>({});
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const [addScopeOpen, setAddScopeOpen] = useState(false);
+  const [selectedScopeId, setSelectedScopeId] = useState<string>("");
+  const [addingScopeError, setAddingScopeError] = useState<string | null>(null);
+  const [addingScopeLoading, setAddingScopeLoading] = useState(false);
+
+  const {
+    data: employer,
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ["employer", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employers")
+        .select("*")
+        .eq("employer_id", id)
+        .single();
+      if (error) throw error;
+      return data as Employer;
+    },
+    enabled: !!id,
+  });
+
+  // All employers for parent company selector + child lookup
+  const { data: allEmployers = [] } = useQuery({
+    queryKey: ["employers-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employers")
+        .select("employer_id, employer_name, employer_category")
+        .order("employer_name");
+      if (error) throw error;
+      return data as Pick<Employer, "employer_id" | "employer_name" | "employer_category">[];
+    },
+  });
+
+  const { data: agreements = [] } = useQuery({
+    queryKey: ["employer-agreements", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("agreements")
+        .select("*")
+        .eq("employer_id", id)
+        .order("expiry_date", { ascending: false });
+      if (error) throw error;
+      return data as Agreement[];
+    },
+    enabled: !!id,
+  });
+
+  const { data: worksiteRoles = [] } = useQuery({
+    queryKey: ["employer-worksite-roles", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employer_worksite_roles")
+        .select("*, worksite:worksites(*)")
+        .eq("employer_id", id);
+      if (error) throw error;
+      return data as (EmployerWorksiteRole & { worksite?: Worksite })[];
+    },
+    enabled: !!id,
+  });
+
+  const { data: workers = [] } = useQuery({
+    queryKey: ["employer-workers", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("workers")
+        .select("*, worksite:worksites(worksite_name)")
+        .eq("employer_id", id)
+        .order("last_name");
+      if (error) throw error;
+      return data as (Worker & { worksite?: { worksite_name: string } })[];
+    },
+    enabled: !!id,
+  });
+
+  // Child companies (employers where parent_employer_id = this employer)
+  const { data: childCompanies = [] } = useQuery({
+    queryKey: ["employer-children", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employers")
+        .select("*")
+        .eq("parent_employer_id", id)
+        .order("employer_name");
+      if (error) throw error;
+      return data as Employer[];
+    },
+    enabled: !!id,
+  });
+
+  const { data: childWorkerCounts = [] } = useQuery({
+    queryKey: ["employer-children-workers", id],
+    queryFn: async () => {
+      if (childCompanies.length === 0) return [];
+      const childIds = childCompanies.map((c) => c.employer_id);
+      const { data, error } = await supabase
+        .from("workers")
+        .select("employer_id")
+        .in("employer_id", childIds)
+        .eq("is_active", true);
+      if (error) throw error;
+      const counts = new Map<number, number>();
+      for (const w of data) {
+        counts.set(w.employer_id, (counts.get(w.employer_id) || 0) + 1);
+      }
+      return Array.from(counts.entries());
+    },
+    enabled: childCompanies.length > 0,
+  });
+
+  const groupTotals = useMemo(() => {
+    const totalWorkers =
+      childWorkerCounts.reduce((sum, [, count]) => sum + count, 0) +
+      workers.length;
+    return { totalWorkers, childCount: childCompanies.length };
+  }, [childWorkerCounts, workers, childCompanies]);
+
+  // Worksites where this employer is the principal employer
+  const { data: principalWorksites = [] } = useQuery({
+    queryKey: ["employer-principal-worksites", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worksites")
+        .select("*")
+        .eq("principal_employer_id", id)
+        .order("worksite_name");
+      if (error) throw error;
+      return data as Worksite[];
+    },
+    enabled: !!id,
+  });
+
+  const { data: employerScopes = [] } = useQuery({
+    queryKey: ["employer-scopes", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employer_scopes")
+        .select("*, work_scope:work_scopes(*, parent:work_scopes!parent_scope_id(*, parent:work_scopes!parent_scope_id(*)))")
+        .eq("employer_id", id);
+      if (error) throw error;
+      return data as EmployerScopeRow[];
+    },
+    enabled: !!id,
+  });
+
+  const { data: worksiteScopes = [] } = useQuery({
+    queryKey: ["employer-worksite-scopes", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worksite_scopes")
+        .select("*, work_scope:work_scopes(*), worksite:worksites(worksite_id, worksite_name)")
+        .eq("employer_id", id);
+      if (error) throw error;
+      return data as WorksiteScopeRow[];
+    },
+    enabled: !!id,
+  });
+
+  const { data: projects = [] } = useQuery({
+    queryKey: ["employer-projects", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("project_employers")
+        .select("*, project:projects(*, worksite:worksites(worksite_id, worksite_name))")
+        .eq("employer_id", id);
+      if (error) throw error;
+      return (data ?? []).map((pe: Record<string, unknown>) => pe.project).filter(Boolean) as ProjectRow[];
+    },
+    enabled: !!id,
+  });
+
+  const { data: allScopes = [] } = useQuery({
+    queryKey: ["work-scopes-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("work_scopes")
+        .select("*, parent:work_scopes!parent_scope_id(scope_name, parent:work_scopes!parent_scope_id(scope_name))")
+        .eq("is_active", true)
+        .order("sort_order");
+      if (error) throw error;
+      return data as (WorkScope & { parent?: { scope_name: string; parent?: { scope_name: string } } })[];
+    },
+  });
+
+  const scopeOptions = useMemo(() => {
+    const existingIds = new Set(employerScopes.map((es) => es.scope_id));
+    return allScopes
+      .filter((s) => !s.is_whole_of_project && !existingIds.has(s.scope_id))
+      .map((s) => {
+        const parts: string[] = [];
+        if (s.parent?.parent) parts.push(s.parent.parent.scope_name);
+        if (s.parent) parts.push(s.parent.scope_name);
+        parts.push(s.scope_name);
+        return { scope_id: s.scope_id, label: parts.join(" › ") };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [allScopes, employerScopes]);
+
+  const parentEmployer = useMemo(
+    () =>
+      employer?.parent_employer_id
+        ? allEmployers.find((e) => e.employer_id === employer.parent_employer_id)
+        : null,
+    [employer, allEmployers]
+  );
+
+  const startEditing = () => {
+    if (!employer) return;
+    setEditForm({ ...employer });
+    setEditing(true);
+    setSaveError(null);
+  };
+
+  const cancelEditing = () => {
+    setEditing(false);
+    setEditForm({});
+    setSaveError(null);
+  };
+
+  const handleEditChange = (
+    field: keyof Employer,
+    value: string | number | null
+  ) => {
+    setEditForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const saveEdits = async () => {
+    if (!employer) return;
+    setSaving(true);
+    setSaveError(null);
+
+    const { error } = await supabase
+      .from("employers")
+      .update(editForm)
+      .eq("employer_id", employer.employer_id);
+
+    if (error) {
+      setSaveError(error.message);
+      setSaving(false);
+      return;
+    }
+
+    await queryClient.invalidateQueries({ queryKey: ["employer", id] });
+    await queryClient.invalidateQueries({ queryKey: ["employer-children", id] });
+    setEditing(false);
+    setEditForm({});
+    setSaving(false);
+  };
+
+  const handleAddScope = async () => {
+    if (!selectedScopeId || !employer) return;
+    setAddingScopeLoading(true);
+    setAddingScopeError(null);
+
+    const { error } = await supabase.from("employer_scopes").insert({
+      employer_id: employer.employer_id,
+      scope_id: Number(selectedScopeId),
+      is_current: true,
+      source: "manual",
+    });
+
+    if (error) {
+      setAddingScopeError(error.message);
+      setAddingScopeLoading(false);
+      return;
+    }
+
+    await queryClient.invalidateQueries({ queryKey: ["employer-scopes", id] });
+    setAddScopeOpen(false);
+    setSelectedScopeId("");
+    setAddingScopeLoading(false);
+  };
+
+  const handleRemoveScope = async (scopeRow: EmployerScopeRow) => {
+    if (!employer) return;
+    const { error } = await supabase
+      .from("employer_scopes")
+      .delete()
+      .eq("id", scopeRow.id);
+
+    if (error) {
+      setSaveError(error.message);
+      return;
+    }
+    await queryClient.invalidateQueries({ queryKey: ["employer-scopes", id] });
+  };
+
+  const handleToggleScopeCurrent = async (scopeRow: EmployerScopeRow) => {
+    if (!employer) return;
+    const { error } = await supabase
+      .from("employer_scopes")
+      .update({ is_current: !scopeRow.is_current })
+      .eq("id", scopeRow.id);
+
+    if (error) {
+      setSaveError(error.message);
+      return;
+    }
+    await queryClient.invalidateQueries({ queryKey: ["employer-scopes", id] });
+  };
+
+  const agreementColumns: Column<AgreementRow>[] = useMemo(
+    () => [
+      { key: "decision_no", header: "Decision No" },
+      { key: "agreement_name", header: "Agreement Name" },
+      {
+        key: "status",
+        header: "Status",
+        render: (item) => {
+          const variant =
+            item.status === "Current"
+              ? "success"
+              : item.status === "Expired"
+                ? "destructive"
+                : item.status === "Under_Negotiation"
+                  ? "warning"
+                  : "secondary";
+          return (
+            <Badge variant={variant}>
+              {item.status.replace(/_/g, " ")}
+            </Badge>
+          );
+        },
+      },
+      {
+        key: "expiry_date",
+        header: "Expiry Date",
+        render: (item) => formatDate(item.expiry_date),
+      },
+    ],
+    []
+  );
+
+  const worksiteRoleColumns: Column<WorksiteRoleRow>[] = useMemo(
+    () => [
+      {
+        key: "worksite_name",
+        header: "Worksite",
+        render: (item) => item.worksite?.worksite_name ?? "—",
+      },
+      {
+        key: "role_type",
+        header: "Role",
+        render: (item) => (
+          <Badge variant="secondary">{item.role_type.replace(/_/g, " ")}</Badge>
+        ),
+      },
+      {
+        key: "is_current",
+        header: "Current",
+        render: (item) => (
+          <Badge variant={item.is_current ? "success" : "secondary"}>
+            {item.is_current ? "Yes" : "No"}
+          </Badge>
+        ),
+      },
+    ],
+    []
+  );
+
+  const workerColumns: Column<WorkerRow>[] = useMemo(
+    () => [
+      {
+        key: "last_name",
+        header: "Name",
+        render: (item) => `${item.first_name} ${item.last_name}`,
+      },
+      { key: "occupation", header: "Role" },
+      {
+        key: "worksite_name",
+        header: "Worksite",
+        render: (item) => {
+          const w = item as WorkerRow & {
+            worksite?: { worksite_name: string };
+          };
+          return w.worksite?.worksite_name ?? "—";
+        },
+      },
+    ],
+    []
+  );
+
+  function scopePath(row: EmployerScopeRow): string {
+    const parts: string[] = [];
+    const ws = row.work_scope;
+    if (ws) {
+      if (ws.parent?.parent) parts.push(ws.parent.parent.scope_name);
+      if (ws.parent) parts.push(ws.parent.scope_name);
+      parts.push(ws.scope_name);
+    }
+    return parts.join(" › ") || "—";
+  }
+
+  const employerScopeColumns: Column<EmployerScopeRow>[] = useMemo(
+    () => [
+      {
+        key: "scope_name",
+        header: "Scope",
+        render: (item) => scopePath(item),
+      },
+      {
+        key: "source",
+        header: "Source",
+        render: (item) => (
+          <Badge variant={item.source === "auto" ? "info" : "secondary"}>
+            {item.source === "auto" ? "Auto" : "Manual"}
+          </Badge>
+        ),
+      },
+      {
+        key: "is_current",
+        header: "Current",
+        render: (item) => (
+          <button onClick={() => handleToggleScopeCurrent(item)}>
+            <Badge variant={item.is_current ? "success" : "secondary"} className="cursor-pointer">
+              {item.is_current ? "Yes" : "No"}
+            </Badge>
+          </button>
+        ),
+      },
+      ...(canWrite
+        ? [
+            {
+              key: "actions" as const,
+              header: "",
+              render: (item: EmployerScopeRow) => (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => handleRemoveScope(item)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              ),
+            },
+          ]
+        : []),
+    ],
+    [canWrite]
+  );
+
+  const worksiteScopeColumns: Column<WorksiteScopeRow>[] = useMemo(
+    () => [
+      {
+        key: "worksite_name",
+        header: "Worksite",
+        render: (item) => item.worksite?.worksite_name ?? "—",
+      },
+      {
+        key: "scope_name",
+        header: "Work Scope",
+        render: (item) => item.work_scope?.scope_name ?? "—",
+      },
+      {
+        key: "engagement_type",
+        header: "Engagement",
+        render: (item) =>
+          item.engagement_type ? (
+            <Badge variant="secondary">{item.engagement_type.replace(/_/g, " ")}</Badge>
+          ) : (
+            "—"
+          ),
+      },
+      {
+        key: "is_current",
+        header: "Current",
+        render: (item) => (
+          <Badge variant={item.is_current ? "success" : "secondary"}>
+            {item.is_current ? "Yes" : "No"}
+          </Badge>
+        ),
+      },
+    ],
+    []
+  );
+
+  const projectColumns: Column<ProjectRow>[] = useMemo(
+    () => [
+      { key: "project_name", header: "Project" },
+      {
+        key: "worksite_name",
+        header: "Worksite",
+        render: (item) => item.worksite?.worksite_name ?? "—",
+      },
+      {
+        key: "work_type",
+        header: "Type",
+        render: (item) => (
+          <Badge variant="secondary">{item.work_type.replace(/_/g, " ")}</Badge>
+        ),
+      },
+      {
+        key: "project_status",
+        header: "Status",
+        render: (item) => (
+          <Badge variant={item.project_status === "operational" || item.project_status === "active" ? "success" : "secondary"}>
+            {item.project_status.replace(/_/g, " ")}
+          </Badge>
+        ),
+      },
+      {
+        key: "start_date",
+        header: "Start",
+        render: (item) => formatDate(item.start_date),
+      },
+    ],
+    []
+  );
+
+  const childColumns: Column<ChildEmployerRow>[] = useMemo(
+    () => [
+      { key: "employer_name", header: "Company Name" },
+      { key: "trading_name", header: "Trading Name" },
+      {
+        key: "employer_category",
+        header: "Category",
+        render: (item) =>
+          item.employer_category ? (
+            <Badge variant="secondary">
+              {item.employer_category.replace(/_/g, " ")}
+            </Badge>
+          ) : (
+            "—"
+          ),
+      },
+      {
+        key: "is_active",
+        header: "Active",
+        render: (item) => (
+          <Badge variant={item.is_active ? "success" : "destructive"}>
+            {item.is_active ? "Active" : "Inactive"}
+          </Badge>
+        ),
+      },
+      {
+        key: "worker_count",
+        header: "Workers",
+        render: (item: ChildEmployerRow) => {
+          const entry = childWorkerCounts.find(
+            ([empId]) => empId === item.employer_id
+          );
+          const count = entry ? entry[1] : 0;
+          return count > 0 ? (
+            <Badge variant="secondary">{count}</Badge>
+          ) : (
+            "—"
+          );
+        },
+      },
+    ],
+    [childWorkerCounts]
+  );
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <EurekaLoadingSpinner size="lg" />
+      </div>
+    );
+  }
+
+  if (isError || !employer) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <p className="text-destructive">Employer not found or failed to load.</p>
+        <Button variant="outline" onClick={() => router.push("/employers")}>
+          <ArrowLeft className="h-4 w-4" />
+          Back to Employers
+        </Button>
+      </div>
+    );
+  }
+
+  const isPrincipal = employer.employer_category === "Principal_Employer";
+
+  // Render a detail field (view or edit mode)
+  const displayValue = (field: keyof Employer) => {
+    if (editing) {
+      const val = editForm[field];
+
+      if (field === "employer_category") {
+        return (
+          <Select
+            value={(val as string) ?? ""}
+            onValueChange={(v) => handleEditChange(field, v)}
+          >
+            <SelectTrigger className="h-8">
+              <SelectValue placeholder="Select category" />
+            </SelectTrigger>
+            <SelectContent>
+              {EMPLOYER_CATEGORIES.map((opt) => (
+                <SelectItem key={opt} value={opt}>
+                  {opt.replace(/_/g, " ")}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+      }
+
+      if (field === "state") {
+        return (
+          <Select
+            value={(val as string) ?? ""}
+            onValueChange={(v) => handleEditChange(field, v)}
+          >
+            <SelectTrigger className="h-8">
+              <SelectValue placeholder="Select state" />
+            </SelectTrigger>
+            <SelectContent>
+              {AU_STATES.map((opt) => (
+                <SelectItem key={opt} value={opt}>
+                  {opt}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+      }
+
+      if (field === "parent_employer_id") {
+        return (
+          <Select
+            value={val != null ? String(val) : "none"}
+            onValueChange={(v) =>
+              handleEditChange(field, v === "none" ? null : Number(v))
+            }
+          >
+            <SelectTrigger className="h-8">
+              <SelectValue placeholder="Select parent company" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None (standalone)</SelectItem>
+              {allEmployers
+                .filter((e) => e.employer_id !== employer.employer_id)
+                .map((e) => (
+                  <SelectItem key={e.employer_id} value={String(e.employer_id)}>
+                    {e.employer_name}
+                    {e.employer_category === "Principal_Employer" ? " ★" : ""}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        );
+      }
+
+      return (
+        <Input
+          className="h-8"
+          value={(val as string) ?? ""}
+          onChange={(e) => handleEditChange(field, e.target.value)}
+        />
+      );
+    }
+
+    // View mode
+    if (field === "parent_employer_id") {
+      if (!employer.parent_employer_id) return "—";
+      return parentEmployer
+        ? parentEmployer.employer_name
+        : `ID: ${employer.parent_employer_id}`;
+    }
+
+    const val = employer[field];
+    if (val == null || val === "") return "—";
+    if (typeof val === "string") return val.replace(/_/g, " ");
+    return String(val);
+  };
+
+  const tabs = [
+    { value: "agreements", label: `Agreements (${agreements.length})` },
+    { value: "worksites", label: `Worksites (${worksiteRoles.length})` },
+    { value: "work_scopes", label: `Work Scopes (${employerScopes.length})` },
+    { value: "projects", label: `Projects (${projects.length})` },
+    { value: "workers", label: `Workers (${workers.length})` },
+    ...(childCompanies.length > 0
+      ? [{ value: "children", label: `Group Companies (${childCompanies.length})` }]
+      : []),
+    ...(isPrincipal && principalWorksites.length > 0
+      ? [{ value: "principal_worksites", label: `Principal Worksites (${principalWorksites.length})` }]
+      : []),
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.push("/employers")}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </Button>
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            {isPrincipal && (
+              <Star className="h-5 w-5 text-amber-500 fill-amber-500 shrink-0" />
+            )}
+            <h1 className="text-2xl font-bold tracking-tight">
+              {employer.employer_name}
+            </h1>
+          </div>
+          {employer.trading_name && (
+            <p className="text-muted-foreground">
+              Trading as: {employer.trading_name}
+            </p>
+          )}
+          {parentEmployer && (
+            <p className="text-sm text-muted-foreground flex items-center gap-1">
+              <Building2 className="h-3 w-3" />
+              Part of:{" "}
+              <button
+                className="underline hover:text-foreground"
+                onClick={() =>
+                  router.push(`/employers/${parentEmployer.employer_id}`)
+                }
+              >
+                {parentEmployer.employer_name}
+              </button>
+            </p>
+          )}
+        </div>
+        {isPrincipal && (
+          <Badge variant="warning">
+            <Star className="h-3 w-3 mr-1 fill-current" />
+            Principal Employer
+          </Badge>
+        )}
+        <Badge variant={employer.is_active ? "success" : "destructive"}>
+          {employer.is_active ? "Active" : "Inactive"}
+        </Badge>
+        {canWrite && !editing && (
+          <Button variant="outline" size="sm" onClick={startEditing}>
+            <Pencil className="h-4 w-4" />
+            Edit
+          </Button>
+        )}
+        {editing && (
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={cancelEditing}
+              disabled={saving}
+            >
+              <X className="h-4 w-4" />
+              Cancel
+            </Button>
+            <Button size="sm" onClick={saveEdits} disabled={saving}>
+              <Save className="h-4 w-4" />
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {saveError && (
+        <p className="text-sm text-destructive">{saveError}</p>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Employer Details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4">
+            {(
+              [
+                ["employer_name", "Employer Name"],
+                ["trading_name", "Trading Name"],
+                ["abn", "ABN"],
+                ["employer_category", "Category"],
+                ["parent_employer_id", "Parent Company"],
+                ["website", "Website"],
+                ["phone", "Phone"],
+                ["email", "Email"],
+                ["address", "Address"],
+                ["state", "State"],
+                ["postcode", "Postcode"],
+              ] as [keyof Employer, string][]
+            ).map(([field, label]) => (
+              <div key={field}>
+                <Label className="text-xs text-muted-foreground">{label}</Label>
+                <div className="mt-1 text-sm">{displayValue(field)}</div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Agreements</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{agreements.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Worksites</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{worksiteRoles.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Work Scopes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{employerScopes.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Workers</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{workers.length}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Tabs defaultValue="agreements">
+        <TabsList>
+          {tabs.map((t) => (
+            <TabsTrigger key={t.value} value={t.value}>
+              {t.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <TabsContent value="agreements">
+          {agreements.length === 0 ? (
+            <div className="flex items-center justify-center h-32 text-muted-foreground">
+              No agreements found for this employer.
+            </div>
+          ) : (
+            <DataTable
+              data={agreements as AgreementRow[]}
+              columns={agreementColumns}
+              searchPlaceholder="Search agreements..."
+              searchKeys={["decision_no", "agreement_name"]}
+              onRowClick={(item) =>
+                router.push(`/agreements/${item.agreement_id}`)
+              }
+            />
+          )}
+        </TabsContent>
+
+        <TabsContent value="worksites">
+          {worksiteRoles.length === 0 && worksiteScopes.length === 0 ? (
+            <div className="flex items-center justify-center h-32 text-muted-foreground">
+              No worksite associations found for this employer.
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {worksiteRoles.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Roles</h3>
+                  <DataTable
+                    data={worksiteRoles as WorksiteRoleRow[]}
+                    columns={worksiteRoleColumns}
+                    searchPlaceholder="Search worksites..."
+                    searchKeys={["worksite_name", "role_type"]}
+                  />
+                </div>
+              )}
+              {worksiteScopes.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Work Scopes at Worksites</h3>
+                  <DataTable
+                    data={worksiteScopes as WorksiteScopeRow[]}
+                    columns={worksiteScopeColumns}
+                    searchPlaceholder="Search scopes..."
+                    searchKeys={["scope_name", "worksite_name"]}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="work_scopes">
+          <div className="space-y-4">
+            {canWrite && (
+              <div className="flex justify-end">
+                <Dialog
+                  open={addScopeOpen}
+                  onOpenChange={(open) => {
+                    setAddScopeOpen(open);
+                    if (!open) {
+                      setSelectedScopeId("");
+                      setAddingScopeError(null);
+                    }
+                  }}
+                >
+                  <Button size="sm" onClick={() => setAddScopeOpen(true)}>
+                    <Plus className="h-4 w-4" />
+                    Add Work Scope
+                  </Button>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add Work Scope</DialogTitle>
+                      <DialogDescription>
+                        Manually add a work scope capability to this employer.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                      <div className="space-y-2">
+                        <Label>Work Scope</Label>
+                        <Select
+                          value={selectedScopeId}
+                          onValueChange={setSelectedScopeId}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a work scope..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {scopeOptions.map((opt) => (
+                              <SelectItem
+                                key={opt.scope_id}
+                                value={String(opt.scope_id)}
+                              >
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {addingScopeError && (
+                        <p className="text-sm text-destructive">{addingScopeError}</p>
+                      )}
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => setAddScopeOpen(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleAddScope}
+                        disabled={!selectedScopeId || addingScopeLoading}
+                      >
+                        {addingScopeLoading ? "Adding..." : "Add Scope"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            )}
+            {employerScopes.length === 0 ? (
+              <div className="flex items-center justify-center h-32 text-muted-foreground">
+                No work scopes found for this employer.
+              </div>
+            ) : (
+              <DataTable
+                data={employerScopes as EmployerScopeRow[]}
+                columns={employerScopeColumns}
+                searchPlaceholder="Search scopes..."
+                searchKeys={["scope_name"]}
+              />
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="projects">
+          {projects.length === 0 ? (
+            <div className="flex items-center justify-center h-32 text-muted-foreground">
+              No projects found for this employer.
+            </div>
+          ) : (
+            <DataTable
+              data={projects as ProjectRow[]}
+              columns={projectColumns}
+              searchPlaceholder="Search projects..."
+              searchKeys={["project_name"]}
+              onRowClick={(item) =>
+                item.worksite
+                  ? router.push(`/worksites/${item.worksite.worksite_id}`)
+                  : undefined
+              }
+            />
+          )}
+        </TabsContent>
+
+        <TabsContent value="workers">
+          {workers.length === 0 ? (
+            <div className="flex items-center justify-center h-32 text-muted-foreground">
+              No workers found for this employer.
+            </div>
+          ) : (
+            <DataTable
+              data={workers as WorkerRow[]}
+              columns={workerColumns}
+              searchPlaceholder="Search workers..."
+              searchKeys={["first_name", "last_name", "occupation"]}
+            />
+          )}
+        </TabsContent>
+
+        {childCompanies.length > 0 && (
+          <TabsContent value="children">
+            <div className="flex flex-wrap gap-4 mb-4">
+              <Badge variant="secondary" className="text-sm px-3 py-1">
+                {groupTotals.childCount} subsidiaries
+              </Badge>
+              <Badge variant="secondary" className="text-sm px-3 py-1">
+                {groupTotals.totalWorkers} total workers (group)
+              </Badge>
+            </div>
+            <DataTable
+              data={childCompanies as ChildEmployerRow[]}
+              columns={childColumns}
+              searchPlaceholder="Search group companies..."
+              searchKeys={["employer_name", "trading_name"]}
+              onRowClick={(item) =>
+                router.push(`/employers/${item.employer_id}`)
+              }
+            />
+          </TabsContent>
+        )}
+
+        {isPrincipal && principalWorksites.length > 0 && (
+          <TabsContent value="principal_worksites">
+            <DataTable
+              data={principalWorksites as (Worksite & Record<string, unknown>)[]}
+              columns={[
+                { key: "worksite_name", header: "Worksite" },
+                {
+                  key: "worksite_type",
+                  header: "Type",
+                  render: (item) => (
+                    <Badge variant="secondary">
+                      {(item as Worksite).worksite_type.replace(/_/g, " ")}
+                    </Badge>
+                  ),
+                },
+                { key: "basin", header: "Basin" },
+                {
+                  key: "is_offshore",
+                  header: "Offshore",
+                  render: (item) => (
+                    <Badge variant={(item as Worksite).is_offshore ? "info" : "secondary"}>
+                      {(item as Worksite).is_offshore ? "Yes" : "No"}
+                    </Badge>
+                  ),
+                },
+              ]}
+              searchPlaceholder="Search worksites..."
+              searchKeys={["worksite_name", "basin"]}
+              onRowClick={(item) =>
+                router.push(`/worksites/${(item as Worksite).worksite_id}`)
+              }
+            />
+          </TabsContent>
+        )}
+      </Tabs>
+    </div>
+  );
+}

@@ -25,7 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, ExternalLink } from "lucide-react";
 import type {
   CampaignScopeType,
   CampaignStatus,
@@ -238,7 +238,11 @@ export function CampaignWizard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });
       queryClient.invalidateQueries({ queryKey: ["campaign-members", campaignId] });
-      router.push(`/campaigns/${campaignId}`);
+      if (basics.campaign_type === "bargaining") {
+        setStep(4);
+      } else {
+        router.push(`/campaigns/${campaignId}`);
+      }
     },
   });
 
@@ -265,10 +269,13 @@ export function CampaignWizard() {
     else setList([...list, id]);
   };
 
+  const OA_PLANNER_URL = process.env.NEXT_PUBLIC_OA_PLANNER_URL ?? "https://oaplanner.uconstruct.app";
+
   const stepTitle = useMemo(() => {
     if (step === 1) return "Basics & scope";
     if (step === 2) return "Employers & worksites";
-    return "Allocate workers";
+    if (step === 3) return "Allocate workers";
+    return "Create campaign plan";
   }, [step]);
 
   if (!user) {
@@ -294,7 +301,9 @@ export function CampaignWizard() {
         <div>
           <h1 className="text-2xl font-bold">Campaign wizard</h1>
           <p className="text-sm text-muted-foreground">
-            Step {step} of 3 — {stepTitle}
+            {step < 4
+              ? `Step ${step} of ${basics.campaign_type === "bargaining" ? "4" : "3"} — ${stepTitle}`
+              : `Step 4 of 4 — ${stepTitle}`}
           </p>
         </div>
       </div>
@@ -598,7 +607,55 @@ export function CampaignWizard() {
         </Card>
       )}
 
-      {existingCampaign && step > 1 && (
+      {step === 4 && campaignId && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="rounded-full bg-green-100 p-2 dark:bg-green-900/30">
+                <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
+              </div>
+              <div>
+                <CardTitle>Campaign created</CardTitle>
+                <CardDescription>
+                  The campaign has been set up. Would you like to create a strategic
+                  campaign plan in OA Planner?
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              OA Planner uses a "Playing to Win" methodology with six campaign stages and
+              five gate assessments. It will be pre-linked to this bargaining campaign.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button asChild className="flex-1">
+                <a
+                  href={[
+                    `${OA_PLANNER_URL}/campaigns/new`,
+                    `?campaign_id=${campaignId}`,
+                    existingCampaign?.organiser_id
+                      ? `&organiser_id=${existingCampaign.organiser_id}`
+                      : "",
+                  ].join("")}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Create Campaign Plan in OA Planner
+                </a>
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => router.push(`/campaigns/${campaignId}`)}
+              >
+                Skip for now — go to campaign
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {existingCampaign && step > 1 && step < 4 && (
         <p className="text-xs text-muted-foreground">
           Editing campaign #{campaignId}: {existingCampaign.name as string}
         </p>

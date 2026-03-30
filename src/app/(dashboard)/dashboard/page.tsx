@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/supabase/auth-context";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Users, Building2, FileText, Megaphone, AlertTriangle, Star, BarChart2 } from "lucide-react";
+import { Users, Building2, FileText, Megaphone, AlertTriangle, Star, BarChart2, ExternalLink } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { differenceInDays, format } from "date-fns";
 import {
@@ -151,6 +151,40 @@ export default function DashboardPage() {
     enabled: !!user,
   });
 
+  const OA_PLANNER_URL = process.env.NEXT_PUBLIC_OA_PLANNER_URL ?? "https://oaplanner.uconstruct.app";
+
+  const { data: unplannedExpiringAgreements = [] } = useQuery({
+    queryKey: ["unplanned-expiring-agreements"],
+    queryFn: async () => {
+      const now = new Date();
+      const cutoff = new Date(now);
+      cutoff.setFullYear(cutoff.getFullYear() + 1);
+
+      const [agreementsRes, timelinesRes] = await Promise.all([
+        supabase
+          .from("agreements")
+          .select("agreement_id, agreement_name, short_name, expiry_date")
+          .in("status", ["Current", "Under_Negotiation"])
+          .gte("expiry_date", now.toISOString().split("T")[0])
+          .lte("expiry_date", cutoff.toISOString().split("T")[0])
+          .order("expiry_date", { ascending: true }),
+        supabase
+          .from("campaign_timelines")
+          .select("agreement_id")
+          .not("agreement_id", "is", null),
+      ]);
+
+      const plannedAgreementIds = new Set(
+        (timelinesRes.data ?? []).map((t) => t.agreement_id)
+      );
+
+      return (agreementsRes.data ?? []).filter(
+        (a) => !plannedAgreementIds.has(a.agreement_id)
+      );
+    },
+    enabled: !!user,
+  });
+
   const expiringCount = expiringAgreements.length;
 
   const stats = useMemo(
@@ -224,6 +258,53 @@ export default function DashboardPage() {
           </Card>
         ))}
       </div>
+
+      {/* Agreements expiring without an OAPlanner campaign plan */}
+      {unplannedExpiringAgreements.length > 0 && (
+        <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-amber-800 dark:text-amber-300">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              {unplannedExpiringAgreements.length} Agreement
+              {unplannedExpiringAgreements.length !== 1 ? "s" : ""} Expiring Without a Campaign Plan
+            </CardTitle>
+            <CardDescription className="text-amber-700 dark:text-amber-400">
+              The following agreements expire within 12 months and have no strategic campaign plan
+              in OA Planner. Consider creating a plan for each.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {unplannedExpiringAgreements.map((a) => {
+                const days = differenceInDays(new Date(a.expiry_date), new Date());
+                return (
+                  <div
+                    key={a.agreement_id}
+                    className="flex items-center justify-between gap-4 rounded-md border border-amber-200 bg-white px-3 py-2 dark:border-amber-800 dark:bg-amber-950/40"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {a.short_name ?? a.agreement_name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Expires {format(new Date(a.expiry_date), "d MMM yyyy")} ({days} days)
+                      </p>
+                    </div>
+                    <Button variant="outline" size="sm" className="shrink-0" asChild>
+                      <a
+                        href={`${OA_PLANNER_URL}/campaigns/new?agreement_id=${a.agreement_id}&expiry_date=${a.expiry_date}`}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                        Create Plan
+                      </a>
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* EBA Coverage by Principal Employer */}
       <Card className="col-span-full">

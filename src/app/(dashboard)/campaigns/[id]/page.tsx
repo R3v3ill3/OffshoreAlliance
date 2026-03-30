@@ -53,6 +53,7 @@ import { CampaignStructureSection } from "@/components/campaigns/campaign-struct
 import { CampaignReportingCharts } from "@/components/campaigns/campaign-reporting";
 import { CampaignWallChart } from "@/components/campaigns/campaign-wall-chart";
 import { CampaignTaskListsSection } from "@/components/campaigns/campaign-task-lists";
+import { CampaignPlanPanel } from "@/components/campaigns/campaign-plan-panel";
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
 
 interface CampaignDetail {
@@ -352,6 +353,7 @@ export default function CampaignDetailPage() {
       <Tabs defaultValue="overview">
         <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="campaign-plan">Campaign Plan</TabsTrigger>
           <TabsTrigger value="universe">Universe</TabsTrigger>
           <TabsTrigger value="assessments">Assessments</TabsTrigger>
           <TabsTrigger value="structure">Structure</TabsTrigger>
@@ -434,6 +436,10 @@ export default function CampaignDetailPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="campaign-plan">
+          <CampaignPlanPanel campaignId={Number(id)} organiserId={campaign?.organiser_id} />
         </TabsContent>
 
         <TabsContent value="assessments">

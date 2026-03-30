@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Plus, Wand2 } from "lucide-react";
+import { Plus, Wand2, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -34,6 +34,12 @@ import type { CampaignType, CampaignStatus } from "@/types/database";
 import { resolveCampaignOrganiserId } from "@/lib/campaign/resolve-campaign-organiser";
 import { CampaignOrganiserSelect } from "@/components/campaigns/campaign-organiser-select";
 
+interface StagePlanSummary {
+  stage_number: number;
+  stage_name: string;
+  status: string;
+}
+
 interface CampaignRow {
   campaign_id: number;
   name: string;
@@ -42,7 +48,29 @@ interface CampaignRow {
   start_date: string | null;
   end_date: string | null;
   organiser: { organiser_name: string } | null;
+  campaign_stage_plans: StagePlanSummary[];
   [key: string]: unknown;
+}
+
+const OA_PLANNER_URL = process.env.NEXT_PUBLIC_OA_PLANNER_URL ?? "https://oaplanner.uconstruct.app";
+
+function PlanStatusBadge({ stagePlans }: { stagePlans: StagePlanSummary[] }) {
+  if (!stagePlans || stagePlans.length === 0) {
+    return <span className="text-xs text-muted-foreground">No plan</span>;
+  }
+  const allComplete = stagePlans.every((s) => s.status === "completed");
+  if (allComplete) {
+    return <Badge variant="success">Plan complete</Badge>;
+  }
+  const active = stagePlans.find((s) => s.status === "active");
+  if (active) {
+    return (
+      <Badge variant="info" className="whitespace-nowrap">
+        Stage {active.stage_number}: {active.stage_name}
+      </Badge>
+    );
+  }
+  return <span className="text-xs text-muted-foreground">Draft plan</span>;
 }
 
 const STATUS_VARIANT: Record<CampaignStatus, "secondary" | "success" | "info" | "warning"> = {
@@ -103,6 +131,22 @@ const columns: Column<CampaignRow>[] = [
     header: "Organiser",
     render: (row) => row.organiser?.organiser_name ?? "—",
   },
+  {
+    key: "campaign_plan",
+    header: "Campaign Plan",
+    render: (row) => (
+      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        <PlanStatusBadge stagePlans={row.campaign_stage_plans ?? []} />
+        <a
+          href={`${OA_PLANNER_URL}/campaigns/${row.campaign_id}`}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+          title="Open in OA Planner"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+        </a>
+      </div>
+    ),
+  },
 ];
 
 const INITIAL_FORM = {
@@ -133,7 +177,8 @@ export default function CampaignsPage() {
         .from("campaigns")
         .select(
           `campaign_id, name, campaign_type, status, start_date, end_date,
-           organiser:organisers(organiser_name)`
+           organiser:organisers(organiser_name),
+           campaign_stage_plans(stage_number, stage_name, status)`
         )
         .order("created_at", { ascending: false });
 

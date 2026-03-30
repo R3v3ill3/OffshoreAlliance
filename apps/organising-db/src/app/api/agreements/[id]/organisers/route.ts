@@ -28,6 +28,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const agreementId = parseInt(id, 10);
     const serverClient = await createClient();
     const {
       data: { user },
@@ -43,7 +44,7 @@ export async function GET(
            user_profiles(user_id, display_name, work_role, reports_to)
          )`
       )
-      .eq("agreement_id", id)
+      .eq("agreement_id", agreementId)
       .order("is_primary", { ascending: false });
 
     if (error) throw error;
@@ -62,6 +63,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+    const agreementId = parseInt(id, 10);
     const serverClient = await createClient();
     const caller = await getCallerAndCheck(serverClient);
     if (!caller) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -80,14 +82,14 @@ export async function POST(
       await serverClient
         .from("agreement_organisers")
         .update({ is_primary: false })
-        .eq("agreement_id", id)
+        .eq("agreement_id", agreementId)
         .eq("is_primary", true);
     }
 
     const { data, error } = await serverClient
       .from("agreement_organisers")
       .insert({
-        agreement_id: parseInt(id, 10),
+        agreement_id: agreementId,
         organiser_id: organiserId,
         agreement_role: agreementRole ?? "organiser",
         is_primary: isPrimary ?? false,
@@ -111,6 +113,7 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
+    const agreementId = parseInt(id, 10);
     const serverClient = await createClient();
     const caller = await getCallerAndCheck(serverClient);
     if (!caller) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -129,7 +132,7 @@ export async function PATCH(
       await serverClient
         .from("agreement_organisers")
         .update({ is_primary: false })
-        .eq("agreement_id", id)
+        .eq("agreement_id", agreementId)
         .eq("is_primary", true);
     }
 
@@ -171,7 +174,7 @@ export async function DELETE(
     const { error } = await serverClient
       .from("agreement_organisers")
       .delete()
-      .eq("id", assignmentId);
+      .eq("id", parseInt(assignmentId, 10));
 
     if (error) throw error;
     return NextResponse.json({ success: true });

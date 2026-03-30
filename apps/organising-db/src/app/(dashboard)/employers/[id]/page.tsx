@@ -117,7 +117,10 @@ type ProjectRow = {
 } & Record<string, unknown>;
 
 export default function EmployerDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id: idParam } = useParams<{ id: string }>();
+  const employerId = Number(idParam);
+  const employerIdValid = Number.isFinite(employerId);
+  const id = idParam;
   const router = useRouter();
   const supabase = createClient();
   const queryClient = useQueryClient();
@@ -151,12 +154,12 @@ export default function EmployerDetailPage() {
       const { data, error } = await supabase
         .from("employers")
         .select("*")
-        .eq("employer_id", id)
+        .eq("employer_id", employerId)
         .single();
       if (error) throw error;
       return data as Employer;
     },
-    enabled: !!id,
+    enabled: employerIdValid,
   });
 
   // All employers for parent company selector + child lookup
@@ -178,12 +181,12 @@ export default function EmployerDetailPage() {
       const { data, error } = await supabase
         .from("agreements")
         .select("*")
-        .eq("employer_id", id)
+        .eq("employer_id", employerId)
         .order("expiry_date", { ascending: false });
       if (error) throw error;
       return data as Agreement[];
     },
-    enabled: !!id,
+    enabled: employerIdValid,
   });
 
   const { data: worksiteRoles = [] } = useQuery({
@@ -192,11 +195,11 @@ export default function EmployerDetailPage() {
       const { data, error } = await supabase
         .from("employer_worksite_roles")
         .select("*, worksite:worksites(*)")
-        .eq("employer_id", id);
+        .eq("employer_id", employerId);
       if (error) throw error;
       return data as (EmployerWorksiteRole & { worksite?: Worksite })[];
     },
-    enabled: !!id,
+    enabled: employerIdValid,
   });
 
   const { data: workers = [] } = useQuery({
@@ -205,12 +208,12 @@ export default function EmployerDetailPage() {
       const { data, error } = await supabase
         .from("workers")
         .select("*, worksite:worksites(worksite_name)")
-        .eq("employer_id", id)
+        .eq("employer_id", employerId)
         .order("last_name");
       if (error) throw error;
       return data as (Worker & { worksite?: { worksite_name: string } })[];
     },
-    enabled: !!id,
+    enabled: employerIdValid,
   });
 
   // Child companies (employers where parent_employer_id = this employer)
@@ -220,12 +223,12 @@ export default function EmployerDetailPage() {
       const { data, error } = await supabase
         .from("employers")
         .select("*")
-        .eq("parent_employer_id", id)
+        .eq("parent_employer_id", employerId)
         .order("employer_name");
       if (error) throw error;
       return data as Employer[];
     },
-    enabled: !!id,
+    enabled: employerIdValid,
   });
 
   const { data: childWorkerCounts = [] } = useQuery({
@@ -241,6 +244,7 @@ export default function EmployerDetailPage() {
       if (error) throw error;
       const counts = new Map<number, number>();
       for (const w of data) {
+        if (w.employer_id == null) continue;
         counts.set(w.employer_id, (counts.get(w.employer_id) || 0) + 1);
       }
       return Array.from(counts.entries());
@@ -262,12 +266,12 @@ export default function EmployerDetailPage() {
       const { data, error } = await supabase
         .from("worksites")
         .select("*")
-        .eq("principal_employer_id", id)
+        .eq("principal_employer_id", employerId)
         .order("worksite_name");
       if (error) throw error;
       return data as Worksite[];
     },
-    enabled: !!id,
+    enabled: employerIdValid,
   });
 
   const { data: employerScopes = [] } = useQuery({
@@ -276,11 +280,11 @@ export default function EmployerDetailPage() {
       const { data, error } = await supabase
         .from("employer_scopes")
         .select("*, work_scope:work_scopes(*, parent:work_scopes!parent_scope_id(*, parent:work_scopes!parent_scope_id(*)))")
-        .eq("employer_id", id);
+        .eq("employer_id", employerId);
       if (error) throw error;
       return data as EmployerScopeRow[];
     },
-    enabled: !!id,
+    enabled: employerIdValid,
   });
 
   const { data: worksiteScopes = [] } = useQuery({
@@ -289,11 +293,11 @@ export default function EmployerDetailPage() {
       const { data, error } = await supabase
         .from("worksite_scopes")
         .select("*, work_scope:work_scopes(*), worksite:worksites(worksite_id, worksite_name)")
-        .eq("employer_id", id);
+        .eq("employer_id", employerId);
       if (error) throw error;
-      return data as WorksiteScopeRow[];
+      return data as unknown as WorksiteScopeRow[];
     },
-    enabled: !!id,
+    enabled: employerIdValid,
   });
 
   const { data: projects = [] } = useQuery({
@@ -302,11 +306,11 @@ export default function EmployerDetailPage() {
       const { data, error } = await supabase
         .from("project_employers")
         .select("*, project:projects(*, worksite:worksites(worksite_id, worksite_name))")
-        .eq("employer_id", id);
+        .eq("employer_id", employerId);
       if (error) throw error;
       return (data ?? []).map((pe: Record<string, unknown>) => pe.project).filter(Boolean) as ProjectRow[];
     },
-    enabled: !!id,
+    enabled: employerIdValid,
   });
 
   const { data: allScopes = [] } = useQuery({

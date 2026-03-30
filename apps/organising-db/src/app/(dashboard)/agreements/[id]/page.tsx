@@ -173,6 +173,8 @@ export default function AgreementDetailPage() {
   const supabase = createClient();
   const queryClient = useQueryClient();
   const id = params.id as string;
+  const agreementId = Number(id);
+  const agreementIdValid = Number.isFinite(agreementId);
 
   // Organiser tab state
   const [addOrgOpen, setAddOrgOpen] = useState(false);
@@ -194,13 +196,13 @@ export default function AgreementDetailPage() {
            agreement_unions(union:unions(union_id, union_code, union_name)),
            dues_increases(*)`
         )
-        .eq("agreement_id", id)
+        .eq("agreement_id", agreementId)
         .single();
 
       if (error) throw error;
       return data as unknown as AgreementDetail;
     },
-    enabled: !!user,
+    enabled: !!user && agreementIdValid,
   });
 
   const { data: worksites = [] } = useQuery({
@@ -209,11 +211,11 @@ export default function AgreementDetailPage() {
       const { data, error } = await supabase
         .from("agreement_worksites")
         .select("worksite:worksites(worksite_id, worksite_name, worksite_type, is_offshore)")
-        .eq("agreement_id", id);
+        .eq("agreement_id", agreementId);
       if (error) throw error;
       return (data ?? []) as unknown as WorksiteLink[];
     },
-    enabled: !!user,
+    enabled: !!user && agreementIdValid,
   });
 
   const { data: workers = [] } = useQuery({
@@ -222,11 +224,11 @@ export default function AgreementDetailPage() {
       const { data, error } = await supabase
         .from("worker_agreements")
         .select("worker:workers(worker_id, first_name, last_name, email, occupation)")
-        .eq("agreement_id", id);
+        .eq("agreement_id", agreementId);
       if (error) throw error;
       return (data ?? []) as unknown as WorkerLink[];
     },
-    enabled: !!user,
+    enabled: !!user && agreementIdValid,
   });
 
   const { data: predecessorAgreement } = useQuery({
@@ -249,11 +251,11 @@ export default function AgreementDetailPage() {
       const { data, error } = await supabase
         .from("agreements")
         .select("agreement_id, decision_no, agreement_name, short_name, status")
-        .eq("supersedes_id", id);
+        .eq("supersedes_id", agreementId);
       if (error) throw error;
       return (data ?? []) as unknown as SuccessorAgreement[];
     },
-    enabled: !!user,
+    enabled: !!user && agreementIdValid,
   });
 
   // Agreement organisers

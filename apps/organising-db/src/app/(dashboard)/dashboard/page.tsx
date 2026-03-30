@@ -276,6 +276,7 @@ export default function DashboardPage() {
           <CardContent>
             <div className="space-y-2">
               {unplannedExpiringAgreements.map((a) => {
+                if (!a.expiry_date) return null;
                 const days = differenceInDays(new Date(a.expiry_date), new Date());
                 return (
                   <div

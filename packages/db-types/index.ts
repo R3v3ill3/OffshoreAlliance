@@ -1,7 +1,3 @@
-// AUTO-GENERATED — do not edit manually.
-// Regenerate with: pnpm run gen:types (from OffshoreAlliance repo root)
-// Source: supabase gen types typescript --project-id gteygwfgjvczanmrwgbr
-
 export type Json =
   | string
   | number
@@ -3895,7 +3891,6 @@ export type Database = {
     }
     Functions: {
       apply_employer_wizard_changes: { Args: { payload: Json }; Returns: Json }
-      merge_employers: { Args: { payload: Json }; Returns: Json }
       get_user_role: { Args: never; Returns: string }
       is_admin: { Args: never; Returns: boolean }
       is_assigned_to_campaign: {
@@ -3906,6 +3901,7 @@ export type Database = {
         Args: { p_campaign_id: number }
         Returns: boolean
       }
+      merge_employers: { Args: { payload: Json }; Returns: Json }
     }
     Enums: {
       [_ in never]: never

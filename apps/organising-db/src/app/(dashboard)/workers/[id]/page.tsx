@@ -69,6 +69,8 @@ function formatDate(dateStr: string | null) {
 
 export default function WorkerDetailPage() {
   const params = useParams<{ id: string }>();
+  const workerId = Number(params.id);
+  const workerIdValid = Number.isFinite(workerId);
   const router = useRouter();
   const { user, canWrite } = useAuth();
   const supabase = createClient();
@@ -86,13 +88,13 @@ export default function WorkerDetailPage() {
            member_role_type:member_role_types(display_name),
            union:unions(union_code, union_name)`
         )
-        .eq("worker_id", params.id)
+        .eq("worker_id", workerId)
         .single();
 
       if (error) throw error;
       return data as unknown as WorkerDetail;
     },
-    enabled: !!user && !!params.id,
+    enabled: !!user && workerIdValid,
   });
 
   const { data: workerAgreements = [], isLoading: loadingAgreements } = useQuery({
@@ -104,12 +106,12 @@ export default function WorkerDetailPage() {
           `agreement_id,
            agreement:agreements(agreement_id, decision_no, agreement_name, status, expiry_date)`
         )
-        .eq("worker_id", params.id);
+        .eq("worker_id", workerId);
 
       if (error) throw error;
       return (data ?? []) as unknown as WorkerAgreement[];
     },
-    enabled: !!user && !!params.id,
+    enabled: !!user && workerIdValid,
   });
 
   if (isLoading) {

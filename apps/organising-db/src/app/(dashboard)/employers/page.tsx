@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import type { Employer, EmployerCategory } from "@/types/database";
+import type { Database } from "@oa/db-types";
 import {
   DataTable,
   type Column,
@@ -379,7 +380,7 @@ export default function EmployersPage() {
       resolvedParentId = Number(form.parent_employer_id);
     }
 
-    const payload: Record<string, unknown> = {
+    const payload: Database["public"]["Tables"]["employers"]["Insert"] = {
       employer_name: form.employer_name.trim(),
     };
     if (form.trading_name) payload.trading_name = form.trading_name.trim();

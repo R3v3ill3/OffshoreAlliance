@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import type { Worksite, Employer, WorksiteType } from "@/types/database";
+import type { Database } from "@oa/db-types";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -296,7 +297,7 @@ export default function WorksitesPage() {
     setSubmitting(true);
     setError(null);
 
-    const payload: Record<string, unknown> = {
+    const payload: Database["public"]["Tables"]["worksites"]["Insert"] = {
       worksite_name: form.worksite_name.trim(),
       worksite_type: form.worksite_type,
       is_offshore: form.is_offshore,

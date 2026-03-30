@@ -19,6 +19,7 @@ import type {
   WorkScope,
   Project,
 } from "@/types/database";
+import type { Database } from "@oa/db-types";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -115,7 +116,10 @@ type WorksiteWithJoins = Worksite & {
 };
 
 export default function WorksiteDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id: idParam } = useParams<{ id: string }>();
+  const worksiteId = Number(idParam);
+  const worksiteIdValid = Number.isFinite(worksiteId);
+  const id = idParam;
   const router = useRouter();
   const supabase = createClient();
   const queryClient = useQueryClient();
@@ -158,12 +162,12 @@ export default function WorksiteDetailPage() {
         .select(
           "*, operator:employers!operator_id(employer_id, employer_name), principal_employer:employers!principal_employer_id(employer_id, employer_name), parent_worksite:worksites!parent_worksite_id(worksite_id, worksite_name)"
         )
-        .eq("worksite_id", id)
+        .eq("worksite_id", worksiteId)
         .single();
       if (error) throw error;
       return data as WorksiteWithJoins;
     },
-    enabled: !!id,
+    enabled: worksiteIdValid,
   });
 
   // All principal employers for the edit selector
@@ -186,11 +190,11 @@ export default function WorksiteDetailPage() {
       const { data, error } = await supabase
         .from("agreement_worksites")
         .select("*, agreement:agreements(*)")
-        .eq("worksite_id", id);
+        .eq("worksite_id", worksiteId);
       if (error) throw error;
       return data as { agreement?: Agreement }[];
     },
-    enabled: !!id,
+    enabled: worksiteIdValid,
   });
 
   const agreements = useMemo(
@@ -207,11 +211,11 @@ export default function WorksiteDetailPage() {
       const { data, error } = await supabase
         .from("employer_worksite_roles")
         .select("*, employer:employers(*)")
-        .eq("worksite_id", id);
+        .eq("worksite_id", worksiteId);
       if (error) throw error;
       return data as (EmployerWorksiteRole & { employer?: Employer })[];
     },
-    enabled: !!id,
+    enabled: worksiteIdValid,
   });
 
   const { data: workers = [] } = useQuery({
@@ -220,12 +224,12 @@ export default function WorksiteDetailPage() {
       const { data, error } = await supabase
         .from("workers")
         .select("*, employer:employers(employer_name)")
-        .eq("worksite_id", id)
+        .eq("worksite_id", worksiteId)
         .order("last_name");
       if (error) throw error;
       return data as (Worker & { employer?: { employer_name: string } })[];
     },
-    enabled: !!id,
+    enabled: worksiteIdValid,
   });
 
   const { data: wsScopes = [] } = useQuery({
@@ -234,11 +238,11 @@ export default function WorksiteDetailPage() {
       const { data, error } = await supabase
         .from("worksite_scopes")
         .select("*, work_scope:work_scopes(*), employer:employers(employer_id, employer_name)")
-        .eq("worksite_id", id);
+        .eq("worksite_id", worksiteId);
       if (error) throw error;
       return data as WorksiteScopeRow[];
     },
-    enabled: !!id,
+    enabled: worksiteIdValid,
   });
 
   const { data: wsProjects = [] } = useQuery({
@@ -247,12 +251,12 @@ export default function WorksiteDetailPage() {
       const { data, error } = await supabase
         .from("projects")
         .select("*")
-        .eq("worksite_id", id)
+        .eq("worksite_id", worksiteId)
         .order("start_date", { ascending: false });
       if (error) throw error;
       return data as ProjectRow[];
     },
-    enabled: !!id,
+    enabled: worksiteIdValid,
   });
 
   const filteredWorkers = useMemo(() => {
@@ -305,12 +309,12 @@ export default function WorksiteDetailPage() {
       const { data, error } = await supabase
         .from("worksites")
         .select("*")
-        .eq("parent_worksite_id", id)
+        .eq("parent_worksite_id", worksiteId)
         .order("worksite_name");
       if (error) throw error;
       return data as Worksite[];
     },
-    enabled: !!id,
+    enabled: worksiteIdValid,
   });
 
   const { data: allWorksites = [] } = useQuery({
@@ -442,7 +446,7 @@ export default function WorksiteDetailPage() {
     setDlgError(null);
     const { error } = await supabase.from("agreement_worksites").insert({
       agreement_id: Number(selAgreementId),
-      worksite_id: Number(id),
+      worksite_id: worksiteId,
     });
     if (error) { setDlgError(error.message); setDlgLoading(false); return; }
     await queryClient.invalidateQueries({ queryKey: ["worksite-agreements", id] });
@@ -455,7 +459,7 @@ export default function WorksiteDetailPage() {
       .from("agreement_worksites")
       .delete()
       .eq("agreement_id", agreementId)
-      .eq("worksite_id", Number(id));
+      .eq("worksite_id", worksiteId);
     if (error) { setSaveError(error.message); return; }
     await queryClient.invalidateQueries({ queryKey: ["worksite-agreements", id] });
   };
@@ -466,7 +470,7 @@ export default function WorksiteDetailPage() {
     setDlgError(null);
     const { error } = await supabase.from("employer_worksite_roles").insert({
       employer_id: Number(selEmployerId),
-      worksite_id: Number(id),
+      worksite_id: worksiteId,
       role_type: selRoleType,
       is_current: true,
     });
@@ -495,8 +499,8 @@ export default function WorksiteDetailPage() {
     if (!selScopeId) return;
     setDlgLoading(true);
     setDlgError(null);
-    const payload: Record<string, unknown> = {
-      worksite_id: Number(id),
+    const payload: Database["public"]["Tables"]["worksite_scopes"]["Insert"] = {
+      worksite_id: worksiteId,
       scope_id: Number(selScopeId),
       engagement_type: selEngagement,
       is_current: true,
@@ -528,13 +532,14 @@ export default function WorksiteDetailPage() {
     if (!newProjectName.trim()) return;
     setDlgLoading(true);
     setDlgError(null);
-    const { error } = await supabase.from("projects").insert({
+    const projectPayload: Database["public"]["Tables"]["projects"]["Insert"] = {
       project_name: newProjectName.trim(),
-      worksite_id: Number(id),
+      worksite_id: worksiteId,
       work_type: newProjectType,
       project_status: newProjectStatus,
       is_active: true,
-    });
+    };
+    const { error } = await supabase.from("projects").insert(projectPayload);
     if (error) { setDlgError(error.message); setDlgLoading(false); return; }
     await queryClient.invalidateQueries({ queryKey: ["worksite-projects", id] });
     setDlgProject(false);

@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { AgreementsCalendar } from "@/components/agreements/agreements-calendar";
 import type { AgreementStatus } from "@/types/database";
+import type { Database } from "@oa/db-types";
 
 interface AgreementRow {
   agreement_id: number;
@@ -198,7 +199,7 @@ export default function AgreementsPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const payload: Record<string, unknown> = {
+      const payload: Database["public"]["Tables"]["agreements"]["Insert"] = {
         decision_no: form.decision_no,
         agreement_name: form.agreement_name,
         status: form.status,

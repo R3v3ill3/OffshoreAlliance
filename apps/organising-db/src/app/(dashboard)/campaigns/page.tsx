@@ -31,6 +31,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import type { CampaignType, CampaignStatus } from "@/types/database";
+import type { Database } from "@oa/db-types";
 import { resolveCampaignOrganiserId } from "@/lib/campaign/resolve-campaign-organiser";
 import { CampaignOrganiserSelect } from "@/components/campaigns/campaign-organiser-select";
 
@@ -197,7 +198,7 @@ export default function CampaignsPage() {
         isAdmin,
       });
 
-      const payload: Record<string, unknown> = {
+      const payload: Database["public"]["Tables"]["campaigns"]["Insert"] = {
         name: form.name,
         campaign_type: form.campaign_type,
         status: form.status,

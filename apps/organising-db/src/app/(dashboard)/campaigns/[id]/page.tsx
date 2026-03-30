@@ -48,6 +48,7 @@ import type {
   CampaignScopeType,
   EnterpriseAgreementSubtype,
 } from "@/types/database";
+import type { Database } from "@oa/db-types";
 import { CampaignAssessmentsSection } from "@/components/campaigns/campaign-assessments";
 import { CampaignStructureSection } from "@/components/campaigns/campaign-structure";
 import { CampaignReportingCharts } from "@/components/campaigns/campaign-reporting";
@@ -169,6 +170,8 @@ export default function CampaignDetailPage() {
   const supabase = createClient();
   const queryClient = useQueryClient();
   const id = params.id as string;
+  const campaignId = Number(id);
+  const campaignIdValid = Number.isFinite(campaignId);
 
   const [universeDialogOpen, setUniverseDialogOpen] = useState(false);
   const [universeForm, setUniverseForm] = useState(INITIAL_UNIVERSE_FORM);
@@ -181,12 +184,12 @@ export default function CampaignDetailPage() {
       const { data, error } = await supabase
         .from("campaigns")
         .select(`*, organiser:organisers(organiser_name)`)
-        .eq("campaign_id", id)
+        .eq("campaign_id", campaignId)
         .single();
       if (error) throw error;
       return data as unknown as CampaignDetail;
     },
-    enabled: !!user,
+    enabled: !!user && campaignIdValid,
   });
 
   const { data: universes = [] } = useQuery({
@@ -195,12 +198,12 @@ export default function CampaignDetailPage() {
       const { data, error } = await supabase
         .from("campaign_universes")
         .select("*")
-        .eq("campaign_id", id)
+        .eq("campaign_id", campaignId)
         .order("name");
       if (error) throw error;
       return (data ?? []) as UniverseRow[];
     },
-    enabled: !!user,
+    enabled: !!user && campaignIdValid,
   });
 
   const { data: universeRules = [] } = useQuery({
@@ -224,12 +227,12 @@ export default function CampaignDetailPage() {
       const { data, error } = await supabase
         .from("campaign_actions")
         .select("*")
-        .eq("campaign_id", id)
+        .eq("campaign_id", campaignId)
         .order("due_date", { ascending: true });
       if (error) throw error;
       return (data ?? []) as ActionRow[];
     },
-    enabled: !!user,
+    enabled: !!user && campaignIdValid,
   });
 
   const { data: results = [] } = useQuery({
@@ -254,8 +257,8 @@ export default function CampaignDetailPage() {
 
   const createUniverseMutation = useMutation({
     mutationFn: async () => {
-      const payload: Record<string, unknown> = {
-        campaign_id: Number(id),
+      const payload: Database["public"]["Tables"]["campaign_universes"]["Insert"] = {
+        campaign_id: campaignId,
         name: universeForm.name,
       };
       if (universeForm.description) payload.description = universeForm.description;
@@ -271,8 +274,8 @@ export default function CampaignDetailPage() {
 
   const createActionMutation = useMutation({
     mutationFn: async () => {
-      const payload: Record<string, unknown> = {
-        campaign_id: Number(id),
+      const payload: Database["public"]["Tables"]["campaign_actions"]["Insert"] = {
+        campaign_id: campaignId,
         title: actionForm.title,
         action_type: actionForm.action_type,
         status: actionForm.status,

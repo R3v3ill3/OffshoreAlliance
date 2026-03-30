@@ -1,11 +1,14 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/supabase/auth-context";
 import type { WorkScope } from "@/types/database";
+import { WorkScopeDefinitionDialog } from "@/components/work-scopes/work-scope-definition-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -20,12 +23,7 @@ import {
 } from "@/components/ui/accordion";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
-
-type ScopeWithCounts = WorkScope & {
-  parent?: { scope_name: string; parent?: { scope_name: string } };
-  employer_count: number;
-  worksite_count: number;
-};
+import { Pencil, Plus } from "lucide-react";
 
 type ScopeTree = WorkScope & {
   employer_count: number;
@@ -51,6 +49,27 @@ type WorksiteScopeRow = {
 export default function WorkScopesPage() {
   const router = useRouter();
   const supabase = createClient();
+  const { canWrite } = useAuth();
+
+  const [definitionOpen, setDefinitionOpen] = useState(false);
+  const [definitionMode, setDefinitionMode] = useState<"create" | "edit">(
+    "create"
+  );
+  const [definitionScope, setDefinitionScope] = useState<WorkScope | null>(
+    null
+  );
+
+  const openCreateDefinition = () => {
+    setDefinitionMode("create");
+    setDefinitionScope(null);
+    setDefinitionOpen(true);
+  };
+
+  const openEditDefinition = (scope: WorkScope) => {
+    setDefinitionMode("edit");
+    setDefinitionScope(scope);
+    setDefinitionOpen(true);
+  };
 
   const { data: scopes = [], isLoading } = useQuery({
     queryKey: ["work-scopes-browse"],
@@ -186,17 +205,51 @@ export default function WorkScopesPage() {
     const emps = employersForScope(node.scope_id);
     const wss = worksitesForScope(node.scope_id);
     const hasData = emps.length > 0 || wss.length > 0 || node.children.length > 0;
+    const scopeForEdit: WorkScope = {
+      scope_id: node.scope_id,
+      scope_name: node.scope_name,
+      parent_scope_id: node.parent_scope_id,
+      description: node.description,
+      is_whole_of_project: node.is_whole_of_project,
+      sort_order: node.sort_order,
+      is_active: node.is_active,
+      created_at: node.created_at,
+      updated_at: node.updated_at,
+    };
 
     return (
       <AccordionItem key={node.scope_id} value={String(node.scope_id)}>
-        <AccordionTrigger className="hover:no-underline">
-          <div className="flex items-center gap-3 text-left">
-            <span className="font-medium">{node.scope_name}</span>
-            {node.employer_count > 0 && (
-              <Badge variant="secondary">{node.employer_count} employer{node.employer_count !== 1 ? "s" : ""}</Badge>
-            )}
-            {node.worksite_count > 0 && (
-              <Badge variant="info">{node.worksite_count} worksite{node.worksite_count !== 1 ? "s" : ""}</Badge>
+        <AccordionTrigger className="hover:no-underline [&>svg]:shrink-0">
+          <div className="flex w-full min-w-0 items-center gap-2 pr-2 text-left">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <span className="font-medium">{node.scope_name}</span>
+              {node.employer_count > 0 && (
+                <Badge variant="secondary">
+                  {node.employer_count} employer
+                  {node.employer_count !== 1 ? "s" : ""}
+                </Badge>
+              )}
+              {node.worksite_count > 0 && (
+                <Badge variant="info">
+                  {node.worksite_count} worksite
+                  {node.worksite_count !== 1 ? "s" : ""}
+                </Badge>
+              )}
+            </div>
+            {canWrite && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 shrink-0"
+                title="Edit scope"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openEditDefinition(scopeForEdit);
+                }}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
             )}
           </div>
         </AccordionTrigger>
@@ -255,12 +308,28 @@ export default function WorkScopesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Work Scopes</h1>
-        <p className="text-muted-foreground">
-          Browse the work scope hierarchy and see which employers and worksites are associated with each scope.
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Work Scopes</h1>
+          <p className="text-muted-foreground">
+            Browse the work scope hierarchy and see which employers and worksites
+            are associated with each scope.
+          </p>
+        </div>
+        {canWrite && (
+          <Button size="sm" onClick={openCreateDefinition}>
+            <Plus className="h-4 w-4" />
+            Add work scope
+          </Button>
+        )}
       </div>
+
+      <WorkScopeDefinitionDialog
+        open={definitionOpen}
+        onOpenChange={setDefinitionOpen}
+        mode={definitionMode}
+        scope={definitionMode === "edit" ? definitionScope : null}
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>

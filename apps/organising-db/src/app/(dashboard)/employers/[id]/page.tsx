@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
@@ -13,7 +13,6 @@ import type {
   Worksite,
   EmployerCategory,
   WorkScope,
-  Project,
 } from "@/types/database";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -47,7 +46,17 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Pencil, X, Save, Star, Building2, Plus, Trash2 } from "lucide-react";
+import { WorkScopeDefinitionDialog } from "@/components/work-scopes/work-scope-definition-dialog";
+import {
+  ArrowLeft,
+  Pencil,
+  X,
+  Save,
+  Star,
+  Building2,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { format } from "date-fns";
 
@@ -123,6 +132,14 @@ export default function EmployerDetailPage() {
   const [selectedScopeId, setSelectedScopeId] = useState<string>("");
   const [addingScopeError, setAddingScopeError] = useState<string | null>(null);
   const [addingScopeLoading, setAddingScopeLoading] = useState(false);
+  const [defineScopeOpen, setDefineScopeOpen] = useState(false);
+  const [changeScopeOpen, setChangeScopeOpen] = useState(false);
+  const [changeScopeRow, setChangeScopeRow] = useState<EmployerScopeRow | null>(
+    null
+  );
+  const [changeScopePick, setChangeScopePick] = useState<string>("");
+  const [changeScopeLoading, setChangeScopeLoading] = useState(false);
+  const [changeScopeError, setChangeScopeError] = useState<string | null>(null);
 
   const {
     data: employer,
@@ -370,7 +387,7 @@ export default function EmployerDetailPage() {
     setSaving(false);
   };
 
-  const handleAddScope = async () => {
+  const handleAddScope = useCallback(async () => {
     if (!selectedScopeId || !employer) return;
     setAddingScopeLoading(true);
     setAddingScopeError(null);
@@ -392,35 +409,92 @@ export default function EmployerDetailPage() {
     setAddScopeOpen(false);
     setSelectedScopeId("");
     setAddingScopeLoading(false);
-  };
+  }, [selectedScopeId, employer, supabase, queryClient, id]);
 
-  const handleRemoveScope = async (scopeRow: EmployerScopeRow) => {
-    if (!employer) return;
+  const handleRemoveScope = useCallback(
+    async (scopeRow: EmployerScopeRow) => {
+      if (!employer) return;
+      const { error } = await supabase
+        .from("employer_scopes")
+        .delete()
+        .eq("id", scopeRow.id);
+
+      if (error) {
+        setSaveError(error.message);
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: ["employer-scopes", id] });
+    },
+    [employer, supabase, queryClient, id]
+  );
+
+  const handleToggleScopeCurrent = useCallback(
+    async (scopeRow: EmployerScopeRow) => {
+      if (!employer) return;
+      const { error } = await supabase
+        .from("employer_scopes")
+        .update({ is_current: !scopeRow.is_current })
+        .eq("id", scopeRow.id);
+
+      if (error) {
+        setSaveError(error.message);
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: ["employer-scopes", id] });
+    },
+    [employer, supabase, queryClient, id]
+  );
+
+  const changeScopeOptions = useMemo(() => {
+    if (!changeScopeRow) return [];
+    const taken = new Set(
+      employerScopes
+        .map((es) => es.scope_id)
+        .filter((sid) => sid !== changeScopeRow.scope_id)
+    );
+    return allScopes
+      .filter((s) => !s.is_whole_of_project && !taken.has(s.scope_id))
+      .map((s) => {
+        const parts: string[] = [];
+        if (s.parent?.parent) parts.push(s.parent.parent.scope_name);
+        if (s.parent) parts.push(s.parent.scope_name);
+        parts.push(s.scope_name);
+        return { scope_id: s.scope_id, label: parts.join(" › ") };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [changeScopeRow, employerScopes, allScopes]);
+
+  const openChangeScopeDialog = useCallback((scopeRow: EmployerScopeRow) => {
+    setChangeScopeRow(scopeRow);
+    setChangeScopePick(String(scopeRow.scope_id));
+    setChangeScopeError(null);
+    setChangeScopeOpen(true);
+  }, []);
+
+  const handleSubmitChangeScope = useCallback(async () => {
+    if (!employer || !changeScopeRow || !changeScopePick) return;
+    const nextId = Number(changeScopePick);
+    if (nextId === changeScopeRow.scope_id) {
+      setChangeScopeOpen(false);
+      return;
+    }
+    setChangeScopeLoading(true);
+    setChangeScopeError(null);
     const { error } = await supabase
       .from("employer_scopes")
-      .delete()
-      .eq("id", scopeRow.id);
-
+      .update({ scope_id: nextId })
+      .eq("id", changeScopeRow.id);
     if (error) {
-      setSaveError(error.message);
+      setChangeScopeError(error.message);
+      setChangeScopeLoading(false);
       return;
     }
     await queryClient.invalidateQueries({ queryKey: ["employer-scopes", id] });
-  };
-
-  const handleToggleScopeCurrent = async (scopeRow: EmployerScopeRow) => {
-    if (!employer) return;
-    const { error } = await supabase
-      .from("employer_scopes")
-      .update({ is_current: !scopeRow.is_current })
-      .eq("id", scopeRow.id);
-
-    if (error) {
-      setSaveError(error.message);
-      return;
-    }
-    await queryClient.invalidateQueries({ queryKey: ["employer-scopes", id] });
-  };
+    setChangeScopeOpen(false);
+    setChangeScopeRow(null);
+    setChangeScopePick("");
+    setChangeScopeLoading(false);
+  }, [employer, changeScopeRow, changeScopePick, supabase, queryClient, id]);
 
   const agreementColumns: Column<AgreementRow>[] = useMemo(
     () => [
@@ -503,7 +577,7 @@ export default function EmployerDetailPage() {
     []
   );
 
-  function scopePath(row: EmployerScopeRow): string {
+  const scopePath = useCallback((row: EmployerScopeRow): string => {
     const parts: string[] = [];
     const ws = row.work_scope;
     if (ws) {
@@ -512,7 +586,7 @@ export default function EmployerDetailPage() {
       parts.push(ws.scope_name);
     }
     return parts.join(" › ") || "—";
-  }
+  }, []);
 
   const employerScopeColumns: Column<EmployerScopeRow>[] = useMemo(
     () => [
@@ -534,8 +608,11 @@ export default function EmployerDetailPage() {
         key: "is_current",
         header: "Current",
         render: (item) => (
-          <button onClick={() => handleToggleScopeCurrent(item)}>
-            <Badge variant={item.is_current ? "success" : "secondary"} className="cursor-pointer">
+          <button type="button" onClick={() => handleToggleScopeCurrent(item)}>
+            <Badge
+              variant={item.is_current ? "success" : "secondary"}
+              className="cursor-pointer"
+            >
               {item.is_current ? "Yes" : "No"}
             </Badge>
           </button>
@@ -544,6 +621,21 @@ export default function EmployerDetailPage() {
       ...(canWrite
         ? [
             {
+              key: "change_scope" as const,
+              header: "",
+              render: (item: EmployerScopeRow) => (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-muted-foreground"
+                  title="Change linked scope"
+                  onClick={() => openChangeScopeDialog(item)}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              ),
+            },
+            {
               key: "actions" as const,
               header: "",
               render: (item: EmployerScopeRow) => (
@@ -551,6 +643,7 @@ export default function EmployerDetailPage() {
                   variant="ghost"
                   size="sm"
                   className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                  title="Remove scope link"
                   onClick={() => handleRemoveScope(item)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -560,7 +653,13 @@ export default function EmployerDetailPage() {
           ]
         : []),
     ],
-    [canWrite]
+    [
+      canWrite,
+      scopePath,
+      handleRemoveScope,
+      handleToggleScopeCurrent,
+      openChangeScopeDialog,
+    ]
   );
 
   const worksiteScopeColumns: Column<WorksiteScopeRow>[] = useMemo(
@@ -1058,6 +1157,14 @@ export default function EmployerDetailPage() {
                       {addingScopeError && (
                         <p className="text-sm text-destructive">{addingScopeError}</p>
                       )}
+                      <Button
+                        type="button"
+                        variant="link"
+                        className="h-auto px-0 text-sm"
+                        onClick={() => setDefineScopeOpen(true)}
+                      >
+                        Create new work scope…
+                      </Button>
                     </div>
                     <DialogFooter>
                       <Button
@@ -1077,6 +1184,80 @@ export default function EmployerDetailPage() {
                 </Dialog>
               </div>
             )}
+
+            <WorkScopeDefinitionDialog
+              open={defineScopeOpen}
+              onOpenChange={setDefineScopeOpen}
+              mode="create"
+              onCreated={({ scope_id }) => {
+                setSelectedScopeId(String(scope_id));
+                setDefineScopeOpen(false);
+              }}
+            />
+
+            <Dialog
+              open={changeScopeOpen}
+              onOpenChange={(open) => {
+                setChangeScopeOpen(open);
+                if (!open) {
+                  setChangeScopeRow(null);
+                  setChangeScopePick("");
+                  setChangeScopeError(null);
+                }
+              }}
+            >
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Change linked scope</DialogTitle>
+                  <DialogDescription>
+                    Pick a different work scope for this employer. Manual vs
+                    auto source is unchanged.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
+                  <div className="space-y-2">
+                    <Label>Work scope</Label>
+                    <Select
+                      value={changeScopePick}
+                      onValueChange={setChangeScopePick}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a scope…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {changeScopeOptions.map((opt) => (
+                          <SelectItem
+                            key={opt.scope_id}
+                            value={String(opt.scope_id)}
+                          >
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {changeScopeError && (
+                    <p className="text-sm text-destructive">{changeScopeError}</p>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setChangeScopeOpen(false)}
+                    disabled={changeScopeLoading}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSubmitChangeScope}
+                    disabled={changeScopeLoading || !changeScopePick}
+                  >
+                    {changeScopeLoading ? "Saving…" : "Update scope"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
             {employerScopes.length === 0 ? (
               <div className="flex items-center justify-center h-32 text-muted-foreground">
                 No work scopes found for this employer.

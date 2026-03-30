@@ -31,6 +31,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import type { CampaignType, CampaignStatus } from "@/types/database";
+import { resolveCampaignOrganiserId } from "@/lib/campaign/resolve-campaign-organiser";
+import { CampaignOrganiserSelect } from "@/components/campaigns/campaign-organiser-select";
 
 interface CampaignRow {
   campaign_id: number;
@@ -103,11 +105,6 @@ const columns: Column<CampaignRow>[] = [
   },
 ];
 
-interface OrganiserOption {
-  organiser_id: number;
-  organiser_name: string;
-}
-
 const INITIAL_FORM = {
   name: "",
   description: "",
@@ -121,11 +118,12 @@ const INITIAL_FORM = {
 
 export default function CampaignsPage() {
   const router = useRouter();
-  const { user, canWrite } = useAuth();
+  const { user, canWrite, isAdmin } = useAuth();
   const supabase = createClient();
   const queryClient = useQueryClient();
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [organiserDialogKey, setOrganiserDialogKey] = useState(0);
   const [form, setForm] = useState(INITIAL_FORM);
 
   const { data: campaigns = [], isLoading } = useQuery({
@@ -145,21 +143,15 @@ export default function CampaignsPage() {
     enabled: !!user,
   });
 
-  const { data: organisers = [] } = useQuery({
-    queryKey: ["organisers"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("organisers")
-        .select("organiser_id, organiser_name")
-        .eq("is_active", true)
-        .order("organiser_name");
-      return (data ?? []) as OrganiserOption[];
-    },
-    enabled: !!user,
-  });
-
   const createMutation = useMutation({
     mutationFn: async () => {
+      if (!user) throw new Error("Not signed in");
+
+      const resolvedOrganiserId = await resolveCampaignOrganiserId(supabase, form.organiser_id, {
+        currentUserId: user.id,
+        isAdmin,
+      });
+
       const payload: Record<string, unknown> = {
         name: form.name,
         campaign_type: form.campaign_type,
@@ -168,7 +160,7 @@ export default function CampaignsPage() {
       if (form.description) payload.description = form.description;
       if (form.start_date) payload.start_date = form.start_date;
       if (form.end_date) payload.end_date = form.end_date;
-      if (form.organiser_id) payload.organiser_id = Number(form.organiser_id);
+      if (resolvedOrganiserId != null) payload.organiser_id = resolvedOrganiserId;
       if (form.notes) payload.notes = form.notes;
 
       const { error } = await supabase.from("campaigns").insert(payload);
@@ -176,6 +168,8 @@ export default function CampaignsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["organisers"] });
+      queryClient.invalidateQueries({ queryKey: ["user-profiles-staff-organiser-picker"] });
       setDialogOpen(false);
       setForm(INITIAL_FORM);
     },
@@ -193,7 +187,13 @@ export default function CampaignsPage() {
                 Campaign wizard
               </Link>
             </Button>
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <Dialog
+              open={dialogOpen}
+              onOpenChange={(open) => {
+                setDialogOpen(open);
+                if (open) setOrganiserDialogKey((k) => k + 1);
+              }}
+            >
             <DialogTrigger asChild>
               <Button>
                 <Plus className="h-4 w-4" />
@@ -281,24 +281,15 @@ export default function CampaignsPage() {
                     />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Organiser</Label>
-                  <Select
-                    value={form.organiser_id}
-                    onValueChange={(v) => setForm({ ...form, organiser_id: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select organiser" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {organisers.map((o) => (
-                        <SelectItem key={o.organiser_id} value={String(o.organiser_id)}>
-                          {o.organiser_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <CampaignOrganiserSelect
+                  key={organiserDialogKey}
+                  resetKey={organiserDialogKey}
+                  label="Organiser"
+                  value={form.organiser_id}
+                  onChange={(v) => setForm({ ...form, organiser_id: v === "__none__" ? "" : v })}
+                  allowNone
+                  autoDefaultToCurrentUser
+                />
                 <div className="space-y-2">
                   <Label htmlFor="notes">Notes</Label>
                   <Textarea

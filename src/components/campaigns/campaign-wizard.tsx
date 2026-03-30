@@ -33,6 +33,8 @@ import type {
   EnterpriseAgreementSubtype,
 } from "@/types/database";
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
+import { resolveCampaignOrganiserId } from "@/lib/campaign/resolve-campaign-organiser";
+import { CampaignOrganiserSelect } from "@/components/campaigns/campaign-organiser-select";
 import Link from "next/link";
 
 const SCOPES: CampaignScopeType[] = [
@@ -47,7 +49,7 @@ export function CampaignWizard() {
   const searchParams = useSearchParams();
   const supabase = createClient();
   const queryClient = useQueryClient();
-  const { user, canWrite } = useAuth();
+  const { user, canWrite, isAdmin } = useAuth();
 
   const initialCid = searchParams.get("cid");
   const [step, setStep] = useState(initialCid ? 2 : 1);
@@ -76,19 +78,6 @@ export function CampaignWizard() {
   const [selectedWorkers, setSelectedWorkers] = useState<number[]>([]);
   const [employerDialog, setEmployerDialog] = useState(false);
   const [newEmployerName, setNewEmployerName] = useState("");
-
-  const { data: organisers = [] } = useQuery({
-    queryKey: ["organisers"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("organisers")
-        .select("organiser_id, organiser_name")
-        .eq("is_active", true)
-        .order("organiser_name");
-      return data ?? [];
-    },
-    enabled: !!user,
-  });
 
   const { data: employers = [] } = useQuery({
     queryKey: ["employers-active"],
@@ -158,6 +147,13 @@ export function CampaignWizard() {
 
   const createCampaignMutation = useMutation({
     mutationFn: async () => {
+      if (!user) throw new Error("Not signed in");
+
+      const resolvedOrganiserId = await resolveCampaignOrganiserId(supabase, basics.organiser_id, {
+        currentUserId: user.id,
+        isAdmin,
+      });
+
       const payload: Record<string, unknown> = {
         name: basics.name,
         campaign_type: basics.campaign_type,
@@ -167,7 +163,7 @@ export function CampaignWizard() {
       if (basics.description) payload.description = basics.description;
       if (basics.start_date) payload.start_date = basics.start_date;
       if (basics.end_date) payload.end_date = basics.end_date;
-      if (basics.organiser_id) payload.organiser_id = Number(basics.organiser_id);
+      if (resolvedOrganiserId != null) payload.organiser_id = resolvedOrganiserId;
       if (basics.notes) payload.notes = basics.notes;
       if (basics.campaign_scope) payload.campaign_scope = basics.campaign_scope;
       if (basics.enterprise_agreement_subtype) {
@@ -185,6 +181,8 @@ export function CampaignWizard() {
     onSuccess: (id) => {
       setCampaignId(id);
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["organisers"] });
+      queryClient.invalidateQueries({ queryKey: ["user-profiles-staff-organiser-picker"] });
       router.replace(`/campaigns/new?cid=${id}`);
       setStep(2);
     },
@@ -382,25 +380,13 @@ export function CampaignWizard() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label>Organiser</Label>
-                <Select
-                  value={basics.organiser_id || "__none__"}
-                  onValueChange={(v) => setBasics({ ...basics, organiser_id: v === "__none__" ? "" : v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Optional" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">None</SelectItem>
-                    {organisers.map((o: { organiser_id: number; organiser_name: string }) => (
-                      <SelectItem key={o.organiser_id} value={String(o.organiser_id)}>
-                        {o.organiser_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <CampaignOrganiserSelect
+                label="Organiser"
+                value={basics.organiser_id}
+                onChange={(v) => setBasics({ ...basics, organiser_id: v === "__none__" ? "" : v })}
+                allowNone
+                autoDefaultToCurrentUser
+              />
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">

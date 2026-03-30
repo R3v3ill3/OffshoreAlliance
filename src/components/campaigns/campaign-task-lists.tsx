@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/supabase/auth-context";
+import { resolveCampaignOrganiserId } from "@/lib/campaign/resolve-campaign-organiser";
+import { CampaignOrganiserSelect } from "@/components/campaigns/campaign-organiser-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -51,12 +54,14 @@ export function CampaignTaskListsSection({
 }) {
   const supabase = createClient();
   const queryClient = useQueryClient();
+  const { user, isAdmin } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [organiserFieldKey, setOrganiserFieldKey] = useState(0);
   const [tokenDialog, setTokenDialog] = useState<{ url: string; raw: string } | null>(null);
   const [form, setForm] = useState({
     activity_id: "",
     leader_worker_id: "",
-    leader_organiser_id: "",
+    leader_organiser_pick: "",
     title: "",
     worker_ids: [] as number[],
   });
@@ -82,18 +87,6 @@ export function CampaignTaskListsSection({
         .select(`worker_id, worker:workers(worker_id, first_name, last_name)`)
         .eq("campaign_id", campaignId);
       if (error) throw error;
-      return data ?? [];
-    },
-  });
-
-  const { data: organisers = [] } = useQuery({
-    queryKey: ["organisers"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("organisers")
-        .select("organiser_id, organiser_name")
-        .eq("is_active", true)
-        .order("organiser_name");
       return data ?? [];
     },
   });
@@ -130,10 +123,18 @@ export function CampaignTaskListsSection({
 
   const createList = useMutation({
     mutationFn: async () => {
+      if (!user) throw new Error("Not signed in");
+
       const activity_id = Number(form.activity_id);
       const leader_worker_id = form.leader_worker_id ? Number(form.leader_worker_id) : null;
-      const leader_organiser_id = form.leader_organiser_id ? Number(form.leader_organiser_id) : null;
-      if (!leader_worker_id && !leader_organiser_id) {
+      let leader_organiser_id: number | null = null;
+      if (!leader_worker_id && form.leader_organiser_pick && form.leader_organiser_pick !== "__none__") {
+        leader_organiser_id = await resolveCampaignOrganiserId(supabase, form.leader_organiser_pick, {
+          currentUserId: user.id,
+          isAdmin,
+        });
+      }
+      if (!leader_worker_id && leader_organiser_id == null) {
         throw new Error("Choose a leader worker or organiser");
       }
       const { data: tl, error } = await supabase
@@ -164,14 +165,17 @@ export function CampaignTaskListsSection({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-task-lists", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["organisers"] });
+      queryClient.invalidateQueries({ queryKey: ["user-profiles-staff-organiser-picker"] });
       setDialogOpen(false);
       setForm({
         activity_id: "",
         leader_worker_id: "",
-        leader_organiser_id: "",
+        leader_organiser_pick: "",
         title: "",
         worker_ids: [],
       });
+      setOrganiserFieldKey((k) => k + 1);
     },
   });
 
@@ -328,7 +332,13 @@ export function CampaignTaskListsSection({
         </Card>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (open) setOrganiserFieldKey((k) => k + 1);
+        }}
+      >
         <DialogContent className="max-h-[90vh] overflow-y-auto max-w-lg">
           <DialogHeader>
             <DialogTitle>New task list</DialogTitle>
@@ -374,27 +384,18 @@ export function CampaignTaskListsSection({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>Leader organiser (optional if worker set)</Label>
-              <Select
-                value={form.leader_organiser_id || "__none__"}
-                onValueChange={(v) =>
-                  setForm({ ...form, leader_organiser_id: v === "__none__" ? "" : v })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Optional" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">None</SelectItem>
-                  {organisers.map((o: { organiser_id: number; organiser_name: string }) => (
-                    <SelectItem key={o.organiser_id} value={String(o.organiser_id)}>
-                      {o.organiser_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <CampaignOrganiserSelect
+              key={organiserFieldKey}
+              resetKey={organiserFieldKey}
+              label="Leader organiser (optional if worker set)"
+              value={form.leader_organiser_pick}
+              onChange={(v) =>
+                setForm({ ...form, leader_organiser_pick: v === "__none__" ? "" : v })
+              }
+              allowNone
+              autoDefaultToCurrentUser={false}
+              showStaffHint={false}
+            />
             <div className="space-y-2">
               <Label>List title</Label>
               <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
@@ -424,7 +425,8 @@ export function CampaignTaskListsSection({
               onClick={() => createList.mutate()}
               disabled={
                 !form.activity_id ||
-                (!form.leader_worker_id && !form.leader_organiser_id) ||
+                (!form.leader_worker_id &&
+                  (!form.leader_organiser_pick || form.leader_organiser_pick === "__none__")) ||
                 createList.isPending
               }
             >

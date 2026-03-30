@@ -1111,6 +1111,104 @@ export type Database = {
           },
         ]
       }
+      employer_merge_events: {
+        Row: {
+          created_at: string
+          id: number
+          payload: Json
+          performed_by: string | null
+          survivor_employer_id: number | null
+          victim_employer_ids: number[]
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          payload?: Json
+          performed_by?: string | null
+          survivor_employer_id?: number | null
+          victim_employer_ids: number[]
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          payload?: Json
+          performed_by?: string | null
+          survivor_employer_id?: number | null
+          victim_employer_ids?: number[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employer_merge_events_survivor_employer_id_fkey"
+            columns: ["survivor_employer_id"]
+            isOneToOne: false
+            referencedRelation: "employers"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "employer_merge_events_survivor_employer_id_fkey"
+            columns: ["survivor_employer_id"]
+            isOneToOne: false
+            referencedRelation: "employers_view"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "employer_merge_events_survivor_employer_id_fkey"
+            columns: ["survivor_employer_id"]
+            isOneToOne: false
+            referencedRelation: "principal_employer_eba_summary"
+            referencedColumns: ["principal_employer_id"]
+          },
+        ]
+      }
+      employer_name_aliases: {
+        Row: {
+          alias_name: string
+          created_at: string
+          created_by: string | null
+          employer_id: number
+          id: number
+          source: string
+        }
+        Insert: {
+          alias_name: string
+          created_at?: string
+          created_by?: string | null
+          employer_id: number
+          id?: number
+          source?: string
+        }
+        Update: {
+          alias_name?: string
+          created_at?: string
+          created_by?: string | null
+          employer_id?: number
+          id?: number
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employer_name_aliases_employer_id_fkey"
+            columns: ["employer_id"]
+            isOneToOne: false
+            referencedRelation: "employers"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "employer_name_aliases_employer_id_fkey"
+            columns: ["employer_id"]
+            isOneToOne: false
+            referencedRelation: "employers_view"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "employer_name_aliases_employer_id_fkey"
+            columns: ["employer_id"]
+            isOneToOne: false
+            referencedRelation: "principal_employer_eba_summary"
+            referencedColumns: ["principal_employer_id"]
+          },
+        ]
+      }
       employer_scopes: {
         Row: {
           employer_id: number
@@ -3797,6 +3895,7 @@ export type Database = {
     }
     Functions: {
       apply_employer_wizard_changes: { Args: { payload: Json }; Returns: Json }
+      merge_employers: { Args: { payload: Json }; Returns: Json }
       get_user_role: { Args: never; Returns: string }
       is_admin: { Args: never; Returns: boolean }
       is_assigned_to_campaign: {

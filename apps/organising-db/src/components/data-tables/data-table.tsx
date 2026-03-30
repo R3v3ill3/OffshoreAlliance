@@ -22,6 +22,7 @@ import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, Se
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { useDevice } from "@/contexts/device-context";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export interface Column<T> {
   key: string;
@@ -29,6 +30,13 @@ export interface Column<T> {
   render?: (item: T) => React.ReactNode;
   sortable?: boolean;
   className?: string;
+}
+
+export interface DataTableSelection<T> {
+  rowId: (item: T) => string;
+  selectedIds: ReadonlySet<string>;
+  onToggleRow: (id: string, selected: boolean) => void;
+  onToggleAllVisible: (visibleRowIds: string[], selected: boolean) => void;
 }
 
 interface DataTableProps<T> {
@@ -39,6 +47,7 @@ interface DataTableProps<T> {
   onRowClick?: (item: T) => void;
   pageSize?: number;
   loading?: boolean;
+  selection?: DataTableSelection<T>;
 }
 
 export function DataTable<T extends Record<string, unknown>>({
@@ -49,6 +58,7 @@ export function DataTable<T extends Record<string, unknown>>({
   onRowClick,
   pageSize: initialPageSize = 20,
   loading = false,
+  selection,
 }: DataTableProps<T>) {
   const { isMobile } = useDevice();
   const [search, setSearch] = useState("");
@@ -82,6 +92,18 @@ export function DataTable<T extends Record<string, unknown>>({
 
   const totalPages = Math.ceil(sorted.length / pageSize);
   const paged = sorted.slice(page * pageSize, (page + 1) * pageSize);
+
+  const visibleRowIds = useMemo(
+    () => (selection ? paged.map((item) => selection.rowId(item)) : []),
+    [paged, selection]
+  );
+  const allVisibleSelected =
+    selection &&
+    visibleRowIds.length > 0 &&
+    visibleRowIds.every((id) => selection.selectedIds.has(id));
+  const someVisibleSelected =
+    selection && visibleRowIds.some((id) => selection.selectedIds.has(id));
+  const colCount = columns.length + (selection ? 1 : 0);
 
   const handleSort = (key: string) => {
     if (sortKey === key) {
@@ -155,11 +177,26 @@ export function DataTable<T extends Record<string, unknown>>({
           ) : (
             paged.map((item, i) => (
               <Card
-                key={i}
+                key={selection ? selection.rowId(item) : i}
                 onClick={() => onRowClick?.(item)}
                 className={onRowClick ? "cursor-pointer active:scale-[0.98] transition-transform" : ""}
               >
                 <CardContent className="p-4 space-y-3">
+                  {selection && (
+                    <div
+                      className="flex items-center gap-2 pb-2 border-b"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Checkbox
+                        checked={selection.selectedIds.has(selection.rowId(item))}
+                        onCheckedChange={(c) =>
+                          selection.onToggleRow(selection.rowId(item), c === true)
+                        }
+                        aria-label="Select row"
+                      />
+                      <span className="text-xs text-muted-foreground">Select for merge</span>
+                    </div>
+                  )}
                   {/* First column is usually the "title" or main identifier */}
                   <div className="font-medium text-base border-b pb-2">
                     {columns[0].render
@@ -193,6 +230,23 @@ export function DataTable<T extends Record<string, unknown>>({
           <Table>
             <TableHeader>
               <TableRow>
+                {selection && (
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={
+                        allVisibleSelected
+                          ? true
+                          : someVisibleSelected
+                            ? "indeterminate"
+                            : false
+                      }
+                      onCheckedChange={(c) =>
+                        selection.onToggleAllVisible(visibleRowIds, c === true)
+                      }
+                      aria-label="Select all on this page"
+                    />
+                  </TableHead>
+                )}
                 {columns.map((col) => (
                   <TableHead key={col.key} className={col.className}>
                     {col.sortable !== false ? (
@@ -213,23 +267,37 @@ export function DataTable<T extends Record<string, unknown>>({
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={columns.length} className="h-24 text-center">
+                  <TableCell colSpan={colCount} className="h-24 text-center">
                     <EurekaLoadingSpinner size="md" />
                   </TableCell>
                 </TableRow>
               ) : paged.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={columns.length} className="h-24 text-center">
+                  <TableCell colSpan={colCount} className="h-24 text-center">
                     No results found.
                   </TableCell>
                 </TableRow>
               ) : (
                 paged.map((item, i) => (
                   <TableRow
-                    key={i}
+                    key={selection ? selection.rowId(item) : i}
                     onClick={() => onRowClick?.(item)}
                     className={onRowClick ? "cursor-pointer" : ""}
                   >
+                    {selection && (
+                      <TableCell
+                        className="w-10"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Checkbox
+                          checked={selection.selectedIds.has(selection.rowId(item))}
+                          onCheckedChange={(c) =>
+                            selection.onToggleRow(selection.rowId(item), c === true)
+                          }
+                          aria-label="Select row"
+                        />
+                      </TableCell>
+                    )}
                     {columns.map((col) => (
                       <TableCell key={col.key} className={col.className}>
                         {col.render

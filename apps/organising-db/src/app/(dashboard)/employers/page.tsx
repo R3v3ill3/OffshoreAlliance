@@ -1,12 +1,16 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import type { Employer, EmployerCategory } from "@/types/database";
-import { DataTable, type Column } from "@/components/data-tables/data-table";
+import {
+  DataTable,
+  type Column,
+  type DataTableSelection,
+} from "@/components/data-tables/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +30,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Star } from "lucide-react";
+import { Plus, Star, GitMerge } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 
 const EMPLOYER_CATEGORIES: EmployerCategory[] = [
   "Principal_Employer",
@@ -38,6 +43,22 @@ const EMPLOYER_CATEGORIES: EmployerCategory[] = [
 ];
 
 const AU_STATES = ["WA", "NT", "QLD", "SA", "NSW", "VIC", "TAS", "ACT"];
+
+function buildAliasLines(
+  selected: Employer[],
+  survivorId: number,
+  canonical: string
+): string {
+  const canon = canonical.trim().toLowerCase();
+  const lines = new Set<string>();
+  for (const e of selected) {
+    const name = e.employer_name?.trim();
+    if (name && name.toLowerCase() !== canon) lines.add(name);
+    const tr = e.trading_name?.trim();
+    if (tr && tr.toLowerCase() !== canon) lines.add(tr);
+  }
+  return [...lines].sort().join("\n");
+}
 
 type ParentMode = "none" | "existing" | "create_new";
 
@@ -65,7 +86,7 @@ export default function EmployersPage() {
   const router = useRouter();
   const supabase = createClient();
   const queryClient = useQueryClient();
-  const { canWrite } = useAuth();
+  const { canWrite, isAdmin } = useAuth();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState(INITIAL_FORM);
@@ -73,6 +94,15 @@ export default function EmployersPage() {
   const [error, setError] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [scopeFilter, setScopeFilter] = useState<string>("all");
+  const [mergeSelectedIds, setMergeSelectedIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [mergeSurvivorId, setMergeSurvivorId] = useState<number | null>(null);
+  const [mergeCanonicalName, setMergeCanonicalName] = useState("");
+  const [mergeAliasesText, setMergeAliasesText] = useState("");
+  const [mergeError, setMergeError] = useState<string | null>(null);
+  const [mergeSubmitting, setMergeSubmitting] = useState(false);
 
   const { data: employers = [], isLoading, isError } = useQuery({
     queryKey: ["employers"],
@@ -135,6 +165,118 @@ export default function EmployersPage() {
     () => employers.filter((e) => e.employer_category === "Principal_Employer"),
     [employers]
   );
+
+  const mergeSelectionEmployers = useMemo(() => {
+    const ids = new Set(
+      [...mergeSelectedIds]
+        .map((s) => Number(s))
+        .filter((n) => !Number.isNaN(n))
+    );
+    return employers.filter((e) => ids.has(e.employer_id));
+  }, [employers, mergeSelectedIds]);
+
+  const openMergeDialog = useCallback(() => {
+    const sel = mergeSelectionEmployers;
+    if (sel.length < 2) return;
+    const sorted = [...sel].sort((a, b) => a.employer_id - b.employer_id);
+    const surv = sorted[0];
+    setMergeSurvivorId(surv.employer_id);
+    setMergeCanonicalName(surv.employer_name);
+    setMergeAliasesText(buildAliasLines(sel, surv.employer_id, surv.employer_name));
+    setMergeError(null);
+    setMergeDialogOpen(true);
+  }, [mergeSelectionEmployers]);
+
+  const tableSelection = useMemo<
+    DataTableSelection<Employer & Record<string, unknown>> | undefined
+  >(() => {
+    if (!isAdmin) return undefined;
+    return {
+      rowId: (item) => String(item.employer_id),
+      selectedIds: mergeSelectedIds,
+      onToggleRow: (id, selected) => {
+        setMergeSelectedIds((prev) => {
+          const n = new Set(prev);
+          if (selected) n.add(id);
+          else n.delete(id);
+          return n;
+        });
+      },
+      onToggleAllVisible: (visibleRowIds, selected) => {
+        setMergeSelectedIds((prev) => {
+          const n = new Set(prev);
+          for (const id of visibleRowIds) {
+            if (selected) n.add(id);
+            else n.delete(id);
+          }
+          return n;
+        });
+      },
+    };
+  }, [isAdmin, mergeSelectedIds]);
+
+  const handleMergeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (mergeSurvivorId == null) return;
+    const victims = mergeSelectionEmployers
+      .filter((row) => row.employer_id !== mergeSurvivorId)
+      .map((row) => row.employer_id);
+    if (victims.length < 1) {
+      setMergeError("Choose at least two employers and a different canonical row.");
+      return;
+    }
+    const canonical = mergeCanonicalName.trim();
+    if (!canonical) {
+      setMergeError("Canonical employer name is required.");
+      return;
+    }
+    const alias_names = mergeAliasesText
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const surv = mergeSelectionEmployers.find(
+      (row) => row.employer_id === mergeSurvivorId
+    );
+    setMergeSubmitting(true);
+    setMergeError(null);
+    try {
+      const res = await fetch("/api/employers/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          survivor_employer_id: mergeSurvivorId,
+          victim_employer_ids: victims,
+          canonical_employer_name: canonical,
+          alias_names,
+          expected_survivor_updated_at: surv?.updated_at ?? null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMergeError(
+          typeof data.message === "string"
+            ? data.message
+            : data.error ?? "Merge failed."
+        );
+        return;
+      }
+      if (data && data.success === false) {
+        setMergeError(
+          typeof data.message === "string" ? data.message : "Merge failed."
+        );
+        return;
+      }
+      setMergeDialogOpen(false);
+      setMergeSelectedIds(new Set());
+      setMergeSurvivorId(null);
+      await queryClient.invalidateQueries({ queryKey: ["employers"] });
+      await queryClient.invalidateQueries({ queryKey: ["employer-scope-links"] });
+    } catch (err) {
+      setMergeError(err instanceof Error ? err.message : "Merge failed.");
+    } finally {
+      setMergeSubmitting(false);
+    }
+  };
 
   const columns: Column<Employer>[] = useMemo(
     () => [
@@ -284,6 +426,23 @@ export default function EmployersPage() {
             Manage employers, contractors, and labour hire companies.
           </p>
         </div>
+        <div className="flex items-center gap-2">
+        {isAdmin && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={mergeSelectedIds.size < 2}
+            onClick={openMergeDialog}
+          >
+            <GitMerge className="h-4 w-4" />
+            Merge employers
+            {mergeSelectedIds.size > 0 && (
+              <Badge variant="secondary" className="ml-1">
+                {mergeSelectedIds.size}
+              </Badge>
+            )}
+          </Button>
+        )}
         {canWrite && (
           <Dialog
             open={dialogOpen}
@@ -502,7 +661,120 @@ export default function EmployersPage() {
             </DialogContent>
           </Dialog>
         )}
+        </div>
       </div>
+
+      {isAdmin && (
+        <Dialog
+          open={mergeDialogOpen}
+          onOpenChange={(open) => {
+            setMergeDialogOpen(open);
+            if (!open) {
+              setMergeError(null);
+              setMergeSubmitting(false);
+            }
+          }}
+        >
+          <DialogContent className="max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Merge employers</DialogTitle>
+              <DialogDescription>
+                One record stays as the canonical employer. All worksites, workers,
+                enterprise agreements, and scopes from the other selected records
+                move to it. Subsidiary relationships should stay as separate rows
+                linked via parent company; do not merge a parent with its child
+                unless you intend to collapse them.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleMergeSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label>Canonical employer (surviving database row)</Label>
+                <div className="space-y-2 rounded-md border p-3">
+                  {mergeSelectionEmployers
+                    .slice()
+                    .sort((a, b) => a.employer_id - b.employer_id)
+                    .map((emp) => (
+                      <label
+                        key={emp.employer_id}
+                        className="flex cursor-pointer items-start gap-2 text-sm"
+                      >
+                        <input
+                          type="radio"
+                          name="merge-survivor"
+                          className="mt-1"
+                          checked={mergeSurvivorId === emp.employer_id}
+                          onChange={() => {
+                            setMergeSurvivorId(emp.employer_id);
+                            setMergeCanonicalName(emp.employer_name);
+                            setMergeAliasesText(
+                              buildAliasLines(
+                                mergeSelectionEmployers,
+                                emp.employer_id,
+                                emp.employer_name
+                              )
+                            );
+                          }}
+                        />
+                        <span>
+                          <span className="font-medium">{emp.employer_name}</span>
+                          {emp.trading_name ? (
+                            <span className="text-muted-foreground">
+                              {" "}
+                              ({emp.trading_name})
+                            </span>
+                          ) : null}
+                          <span className="text-muted-foreground">
+                            {" "}
+                            · id {emp.employer_id}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="merge-canonical-name">Canonical name</Label>
+                <Input
+                  id="merge-canonical-name"
+                  value={mergeCanonicalName}
+                  onChange={(e) => setMergeCanonicalName(e.target.value)}
+                  placeholder="Legal or preferred display name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="merge-aliases">Alias names</Label>
+                <Textarea
+                  id="merge-aliases"
+                  rows={6}
+                  value={mergeAliasesText}
+                  onChange={(e) => setMergeAliasesText(e.target.value)}
+                  placeholder="One alternate name per line (e.g. names from EBAs or trading names)"
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Aliases are stored for matching and display. The canonical name
+                  above is not repeated as an alias.
+                </p>
+              </div>
+              {mergeError && (
+                <p className="text-sm text-destructive">{mergeError}</p>
+              )}
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setMergeDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={mergeSubmitting}>
+                  {mergeSubmitting ? "Merging…" : "Merge permanently"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Category filter tabs + work scope */}
       <div className="flex flex-wrap items-center gap-3">
@@ -559,6 +831,7 @@ export default function EmployersPage() {
           router.push(`/employers/${item.employer_id}`)
         }
         loading={isLoading}
+        selection={tableSelection}
       />
     </div>
   );

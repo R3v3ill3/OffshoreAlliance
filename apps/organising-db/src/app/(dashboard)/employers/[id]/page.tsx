@@ -382,6 +382,10 @@ export default function EmployerDetailPage() {
 
     await queryClient.invalidateQueries({ queryKey: ["employer", id] });
     await queryClient.invalidateQueries({ queryKey: ["employer-children", id] });
+    await queryClient.invalidateQueries({ queryKey: ["employers"] });
+    await queryClient.invalidateQueries({ queryKey: ["employers-all"] });
+    await queryClient.invalidateQueries({ queryKey: ["overview-all-employers"] });
+    await queryClient.invalidateQueries({ queryKey: ["employer-scope-links"] });
     setEditing(false);
     setEditForm({});
     setSaving(false);

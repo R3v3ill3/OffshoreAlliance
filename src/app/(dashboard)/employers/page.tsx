@@ -72,6 +72,7 @@ export default function EmployersPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+  const [scopeFilter, setScopeFilter] = useState<string>("all");
 
   const { data: employers = [], isLoading, isError } = useQuery({
     queryKey: ["employers"],
@@ -86,15 +87,49 @@ export default function EmployersPage() {
     },
   });
 
+  const { data: allScopes = [] } = useQuery({
+    queryKey: ["work-scopes-filter"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("work_scopes")
+        .select("scope_id, scope_name, parent_scope_id, is_whole_of_project")
+        .eq("is_active", true)
+        .order("sort_order");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: employerScopeLinks = [] } = useQuery({
+    queryKey: ["employer-scope-links"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employer_scopes")
+        .select("employer_id, scope_id")
+        .eq("is_current", true);
+      if (error) throw error;
+      return data as { employer_id: number; scope_id: number }[];
+    },
+  });
+
   const filteredEmployers = useMemo(() => {
+    let list = employers;
     if (categoryFilter === "Principal_Employer") {
-      return employers.filter((e) => e.employer_category === "Principal_Employer");
+      list = list.filter((e) => e.employer_category === "Principal_Employer");
+    } else if (categoryFilter === "other") {
+      list = list.filter((e) => e.employer_category !== "Principal_Employer");
     }
-    if (categoryFilter === "other") {
-      return employers.filter((e) => e.employer_category !== "Principal_Employer");
+    if (scopeFilter !== "all") {
+      const scopeId = Number(scopeFilter);
+      const ids = new Set(
+        employerScopeLinks
+          .filter((l) => l.scope_id === scopeId)
+          .map((l) => l.employer_id)
+      );
+      list = list.filter((e) => ids.has(e.employer_id));
     }
-    return employers;
-  }, [employers, categoryFilter]);
+    return list;
+  }, [employers, categoryFilter, scopeFilter, employerScopeLinks]);
 
   const principalEmployers = useMemo(
     () => employers.filter((e) => e.employer_category === "Principal_Employer"),
@@ -469,33 +504,50 @@ export default function EmployersPage() {
         )}
       </div>
 
-      {/* Category filter tabs */}
-      <div className="flex gap-2">
-        {(
-          [
-            { key: "all", label: `All (${employers.length})` },
-            {
-              key: "Principal_Employer",
-              label: `Principal Employers (${principalEmployers.length})`,
-            },
-            {
-              key: "other",
-              label: `Other (${employers.length - principalEmployers.length})`,
-            },
-          ] as { key: CategoryFilter; label: string }[]
-        ).map(({ key, label }) => (
-          <Button
-            key={key}
-            variant={categoryFilter === key ? "default" : "outline"}
-            size="sm"
-            onClick={() => setCategoryFilter(key)}
-          >
-            {key === "Principal_Employer" && (
-              <Star className="h-3 w-3 mr-1 fill-current" />
-            )}
-            {label}
-          </Button>
-        ))}
+      {/* Category filter tabs + work scope */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              { key: "all", label: `All (${employers.length})` },
+              {
+                key: "Principal_Employer",
+                label: `Principal Employers (${principalEmployers.length})`,
+              },
+              {
+                key: "other",
+                label: `Other (${employers.length - principalEmployers.length})`,
+              },
+            ] as { key: CategoryFilter; label: string }[]
+          ).map(({ key, label }) => (
+            <Button
+              key={key}
+              variant={categoryFilter === key ? "default" : "outline"}
+              size="sm"
+              onClick={() => setCategoryFilter(key)}
+            >
+              {key === "Principal_Employer" && (
+                <Star className="h-3 w-3 mr-1 fill-current" />
+              )}
+              {label}
+            </Button>
+          ))}
+        </div>
+        <Select value={scopeFilter} onValueChange={setScopeFilter}>
+          <SelectTrigger className="w-48 h-9">
+            <SelectValue placeholder="All scopes" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Scopes</SelectItem>
+            {allScopes
+              .filter((s) => !s.is_whole_of_project)
+              .map((s) => (
+                <SelectItem key={s.scope_id} value={String(s.scope_id)}>
+                  {s.scope_name}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <DataTable

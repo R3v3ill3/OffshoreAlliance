@@ -11,7 +11,11 @@ import type {
   Agreement,
   Worker,
   EmployerWorksiteRole,
+  EmployerRoleType,
+  EngagementType,
   WorksiteType,
+  WorkType,
+  ProjectStatus,
   WorkScope,
   Project,
 } from "@/types/database";
@@ -39,7 +43,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Pencil, X, Save, Star, Building2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { ArrowLeft, Pencil, X, Save, Star, Building2, Plus, Trash2 } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { format } from "date-fns";
 
@@ -113,6 +125,26 @@ export default function WorksiteDetailPage() {
   const [editForm, setEditForm] = useState<Partial<Worksite>>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const [dlgAgreement, setDlgAgreement] = useState(false);
+  const [dlgEmployer, setDlgEmployer] = useState(false);
+  const [dlgScope, setDlgScope] = useState(false);
+  const [dlgProject, setDlgProject] = useState(false);
+  const [dlgLoading, setDlgLoading] = useState(false);
+  const [dlgError, setDlgError] = useState<string | null>(null);
+
+  const [selAgreementId, setSelAgreementId] = useState("");
+  const [selEmployerId, setSelEmployerId] = useState("");
+  const [selRoleType, setSelRoleType] = useState<EmployerRoleType>("Subcontractor");
+  const [selScopeId, setSelScopeId] = useState("");
+  const [selScopeEmployerId, setSelScopeEmployerId] = useState("");
+  const [selEngagement, setSelEngagement] = useState<EngagementType>("contractor");
+  const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectType, setNewProjectType] = useState<WorkType>("production");
+  const [newProjectStatus, setNewProjectStatus] = useState<ProjectStatus>("planning");
+
+  const [workerEmpFilter, setWorkerEmpFilter] = useState<string>("all");
+  const [workerProjectFilter, setWorkerProjectFilter] = useState<string>("all");
 
   const {
     data: worksite,
@@ -223,6 +255,50 @@ export default function WorksiteDetailPage() {
     enabled: !!id,
   });
 
+  const filteredWorkers = useMemo(() => {
+    let result = workers;
+    if (workerEmpFilter !== "all") {
+      result = result.filter((w) => String(w.employer_id) === workerEmpFilter);
+    }
+    if (workerProjectFilter !== "all") {
+      result = result.filter((w) => String(w.project_id) === workerProjectFilter);
+    }
+    return result;
+  }, [workers, workerEmpFilter, workerProjectFilter]);
+
+  const workerSummary = useMemo(() => {
+    const empMap = new Map<string, number>();
+    for (const w of workers) {
+      const name = (w as { employer?: { employer_name: string } }).employer?.employer_name ?? "Unassigned";
+      empMap.set(name, (empMap.get(name) || 0) + 1);
+    }
+    return { total: workers.length, byEmployer: Array.from(empMap.entries()).sort((a, b) => b[1] - a[1]) };
+  }, [workers]);
+
+  const workerEmployers = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const w of workers) {
+      if (w.employer_id && (w as { employer?: { employer_name: string } }).employer?.employer_name) {
+        map.set(w.employer_id, (w as { employer?: { employer_name: string } }).employer!.employer_name);
+      }
+    }
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [workers]);
+
+  const workerProjectOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    const nameById = new Map(wsProjects.map((p) => [p.project_id, p.project_name]));
+    for (const w of workers) {
+      if (w.project_id != null) {
+        map.set(
+          w.project_id,
+          nameById.get(w.project_id) ?? `Project #${w.project_id}`
+        );
+      }
+    }
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [workers, wsProjects]);
+
   const { data: childWorksites = [] } = useQuery({
     queryKey: ["worksite-children", id],
     queryFn: async () => {
@@ -248,6 +324,61 @@ export default function WorksiteDetailPage() {
       return data as Pick<Worksite, "worksite_id" | "worksite_name">[];
     },
   });
+
+  const { data: allAgreements = [] } = useQuery({
+    queryKey: ["agreements-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("agreements")
+        .select("agreement_id, agreement_name, short_name, decision_no, status")
+        .order("agreement_name");
+      if (error) throw error;
+      return data as Pick<Agreement, "agreement_id" | "agreement_name" | "short_name" | "decision_no" | "status">[];
+    },
+  });
+
+  const { data: allEmployers = [] } = useQuery({
+    queryKey: ["employers-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employers")
+        .select("employer_id, employer_name, employer_category")
+        .order("employer_name");
+      if (error) throw error;
+      return data as Pick<Employer, "employer_id" | "employer_name" | "employer_category">[];
+    },
+  });
+
+  const { data: allScopes = [] } = useQuery({
+    queryKey: ["work-scopes-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("work_scopes")
+        .select("*, parent:work_scopes!parent_scope_id(scope_name, parent:work_scopes!parent_scope_id(scope_name))")
+        .eq("is_active", true)
+        .order("sort_order");
+      if (error) throw error;
+      return data as (WorkScope & { parent?: { scope_name: string; parent?: { scope_name: string } } })[];
+    },
+  });
+
+  const scopeOptions = useMemo(() => {
+    return allScopes
+      .filter((s) => !s.is_whole_of_project)
+      .map((s) => {
+        const parts: string[] = [];
+        if (s.parent?.parent) parts.push(s.parent.parent.scope_name);
+        if (s.parent) parts.push(s.parent.scope_name);
+        parts.push(s.scope_name);
+        return { scope_id: s.scope_id, label: parts.join(" › ") };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [allScopes]);
+
+  const linkedAgreementIds = useMemo(
+    () => new Set(agreements.map((a) => a.agreement_id)),
+    [agreements]
+  );
 
   const startEditing = () => {
     if (!worksite) return;
@@ -291,6 +422,130 @@ export default function WorksiteDetailPage() {
     setSaving(false);
   };
 
+  const resetDlg = () => {
+    setDlgError(null);
+    setDlgLoading(false);
+    setSelAgreementId("");
+    setSelEmployerId("");
+    setSelRoleType("Subcontractor");
+    setSelScopeId("");
+    setSelScopeEmployerId("");
+    setSelEngagement("contractor");
+    setNewProjectName("");
+    setNewProjectType("production");
+    setNewProjectStatus("planning");
+  };
+
+  const handleLinkAgreement = async () => {
+    if (!selAgreementId) return;
+    setDlgLoading(true);
+    setDlgError(null);
+    const { error } = await supabase.from("agreement_worksites").insert({
+      agreement_id: Number(selAgreementId),
+      worksite_id: Number(id),
+    });
+    if (error) { setDlgError(error.message); setDlgLoading(false); return; }
+    await queryClient.invalidateQueries({ queryKey: ["worksite-agreements", id] });
+    setDlgAgreement(false);
+    resetDlg();
+  };
+
+  const handleUnlinkAgreement = async (agreementId: number) => {
+    const { error } = await supabase
+      .from("agreement_worksites")
+      .delete()
+      .eq("agreement_id", agreementId)
+      .eq("worksite_id", Number(id));
+    if (error) { setSaveError(error.message); return; }
+    await queryClient.invalidateQueries({ queryKey: ["worksite-agreements", id] });
+  };
+
+  const handleAddEmployer = async () => {
+    if (!selEmployerId) return;
+    setDlgLoading(true);
+    setDlgError(null);
+    const { error } = await supabase.from("employer_worksite_roles").insert({
+      employer_id: Number(selEmployerId),
+      worksite_id: Number(id),
+      role_type: selRoleType,
+      is_current: true,
+    });
+    if (error) { setDlgError(error.message); setDlgLoading(false); return; }
+    await queryClient.invalidateQueries({ queryKey: ["worksite-employer-roles", id] });
+    setDlgEmployer(false);
+    resetDlg();
+  };
+
+  const handleRemoveEmployerRole = async (roleId: number) => {
+    const { error } = await supabase.from("employer_worksite_roles").delete().eq("id", roleId);
+    if (error) { setSaveError(error.message); return; }
+    await queryClient.invalidateQueries({ queryKey: ["worksite-employer-roles", id] });
+  };
+
+  const handleToggleEmployerCurrent = async (role: EmployerWorksiteRole) => {
+    const { error } = await supabase
+      .from("employer_worksite_roles")
+      .update({ is_current: !role.is_current })
+      .eq("id", role.id);
+    if (error) { setSaveError(error.message); return; }
+    await queryClient.invalidateQueries({ queryKey: ["worksite-employer-roles", id] });
+  };
+
+  const handleAddScope = async () => {
+    if (!selScopeId) return;
+    setDlgLoading(true);
+    setDlgError(null);
+    const payload: Record<string, unknown> = {
+      worksite_id: Number(id),
+      scope_id: Number(selScopeId),
+      engagement_type: selEngagement,
+      is_current: true,
+    };
+    if (selScopeEmployerId) payload.employer_id = Number(selScopeEmployerId);
+    const { error } = await supabase.from("worksite_scopes").insert(payload);
+    if (error) { setDlgError(error.message); setDlgLoading(false); return; }
+    await queryClient.invalidateQueries({ queryKey: ["worksite-scopes", id] });
+    setDlgScope(false);
+    resetDlg();
+  };
+
+  const handleRemoveScope = async (scopeRowId: number) => {
+    const { error } = await supabase.from("worksite_scopes").delete().eq("id", scopeRowId);
+    if (error) { setSaveError(error.message); return; }
+    await queryClient.invalidateQueries({ queryKey: ["worksite-scopes", id] });
+  };
+
+  const handleToggleScopeCurrent = async (row: WorksiteScopeRow) => {
+    const { error } = await supabase
+      .from("worksite_scopes")
+      .update({ is_current: !row.is_current })
+      .eq("id", row.id);
+    if (error) { setSaveError(error.message); return; }
+    await queryClient.invalidateQueries({ queryKey: ["worksite-scopes", id] });
+  };
+
+  const handleAddProject = async () => {
+    if (!newProjectName.trim()) return;
+    setDlgLoading(true);
+    setDlgError(null);
+    const { error } = await supabase.from("projects").insert({
+      project_name: newProjectName.trim(),
+      worksite_id: Number(id),
+      work_type: newProjectType,
+      project_status: newProjectStatus,
+      is_active: true,
+    });
+    if (error) { setDlgError(error.message); setDlgLoading(false); return; }
+    await queryClient.invalidateQueries({ queryKey: ["worksite-projects", id] });
+    setDlgProject(false);
+    resetDlg();
+  };
+
+  const ROLE_TYPES: EmployerRoleType[] = ["Owner", "Operator", "Principal_Contractor", "Subcontractor", "Labour_Hire", "Other"];
+  const ENGAGEMENT_TYPES: EngagementType[] = ["direct_employment", "contractor", "subcontractor", "labour_hire"];
+  const WORK_TYPES: WorkType[] = ["production", "construction", "decommissioning", "brownfields", "service_provision", "maintenance"];
+  const PROJECT_STATUSES: ProjectStatus[] = ["planning", "active", "commissioning", "operational", "decommissioning", "completed", "absorbed"];
+
   const agreementColumns: Column<AgreementRow>[] = useMemo(
     () => [
       { key: "decision_no", header: "Decision No" },
@@ -319,8 +574,19 @@ export default function WorksiteDetailPage() {
         header: "Expiry Date",
         render: (item) => formatDate(item.expiry_date),
       },
+      ...(canWrite ? [{
+        key: "actions" as const,
+        header: "",
+        sortable: false,
+        render: (item: AgreementRow) => (
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+            onClick={(e) => { e.stopPropagation(); handleUnlinkAgreement(item.agreement_id); }}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        ),
+      }] : []),
     ],
-    []
+    [canWrite]
   );
 
   const employerRoleColumns: Column<EmployerRoleRow>[] = useMemo(
@@ -341,13 +607,26 @@ export default function WorksiteDetailPage() {
         key: "is_current",
         header: "Current",
         render: (item) => (
-          <Badge variant={item.is_current ? "success" : "secondary"}>
-            {item.is_current ? "Yes" : "No"}
-          </Badge>
+          <button onClick={(e) => { e.stopPropagation(); handleToggleEmployerCurrent(item); }}>
+            <Badge variant={item.is_current ? "success" : "secondary"} className="cursor-pointer">
+              {item.is_current ? "Yes" : "No"}
+            </Badge>
+          </button>
         ),
       },
+      ...(canWrite ? [{
+        key: "actions" as const,
+        header: "",
+        sortable: false,
+        render: (item: EmployerRoleRow) => (
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+            onClick={(e) => { e.stopPropagation(); handleRemoveEmployerRole(item.id); }}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        ),
+      }] : []),
     ],
-    []
+    [canWrite]
   );
 
   const workerColumns: Column<WorkerRow>[] = useMemo(
@@ -398,9 +677,11 @@ export default function WorksiteDetailPage() {
         key: "is_current",
         header: "Current",
         render: (item) => (
-          <Badge variant={item.is_current ? "success" : "secondary"}>
-            {item.is_current ? "Yes" : "No"}
-          </Badge>
+          <button onClick={(e) => { e.stopPropagation(); handleToggleScopeCurrent(item); }}>
+            <Badge variant={item.is_current ? "success" : "secondary"} className="cursor-pointer">
+              {item.is_current ? "Yes" : "No"}
+            </Badge>
+          </button>
         ),
       },
       {
@@ -408,13 +689,19 @@ export default function WorksiteDetailPage() {
         header: "Start",
         render: (item) => formatDate(item.start_date),
       },
-      {
-        key: "end_date",
-        header: "End",
-        render: (item) => formatDate(item.end_date),
-      },
+      ...(canWrite ? [{
+        key: "actions" as const,
+        header: "",
+        sortable: false,
+        render: (item: WorksiteScopeRow) => (
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+            onClick={(e) => { e.stopPropagation(); handleRemoveScope(item.id); }}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        ),
+      }] : []),
     ],
-    []
+    [canWrite]
   );
 
   const projectColumns: Column<ProjectRow>[] = useMemo(
@@ -835,6 +1122,41 @@ export default function WorksiteDetailPage() {
         </Card>
       </div>
 
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Workers</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{workers.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Employers</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{employerRoles.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Agreements</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{agreements.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Work Scopes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{wsScopes.length}</p>
+          </CardContent>
+        </Card>
+      </div>
+
       <Tabs defaultValue="agreements">
         <TabsList>
           <TabsTrigger value="agreements">
@@ -860,91 +1182,336 @@ export default function WorksiteDetailPage() {
         </TabsList>
 
         <TabsContent value="agreements">
-          {agreements.length === 0 ? (
-            <div className="flex items-center justify-center h-32 text-muted-foreground">
-              No agreements found for this worksite.
-            </div>
-          ) : (
-            <DataTable
-              data={agreements as AgreementRow[]}
-              columns={agreementColumns}
-              searchPlaceholder="Search agreements..."
-              searchKeys={["decision_no", "agreement_name"]}
-              onRowClick={(item) =>
-                router.push(`/agreements/${item.agreement_id}`)
-              }
-            />
-          )}
+          <div className="space-y-4">
+            {canWrite && (
+              <div className="flex justify-end">
+                <Dialog open={dlgAgreement} onOpenChange={(o) => { setDlgAgreement(o); if (!o) resetDlg(); }}>
+                  <Button size="sm" onClick={() => setDlgAgreement(true)}>
+                    <Plus className="h-4 w-4" /> Link Agreement
+                  </Button>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Link Agreement</DialogTitle>
+                      <DialogDescription>Associate an existing agreement with this worksite.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                      <Label>Agreement</Label>
+                      <Select value={selAgreementId} onValueChange={setSelAgreementId}>
+                        <SelectTrigger><SelectValue placeholder="Select agreement..." /></SelectTrigger>
+                        <SelectContent>
+                          {allAgreements
+                            .filter((a) => !linkedAgreementIds.has(a.agreement_id))
+                            .map((a) => (
+                              <SelectItem key={a.agreement_id} value={String(a.agreement_id)}>
+                                {a.short_name || a.agreement_name} ({a.decision_no})
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      {dlgError && <p className="text-sm text-destructive">{dlgError}</p>}
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setDlgAgreement(false)}>Cancel</Button>
+                      <Button onClick={handleLinkAgreement} disabled={!selAgreementId || dlgLoading}>
+                        {dlgLoading ? "Linking..." : "Link"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            )}
+            {agreements.length === 0 ? (
+              <div className="flex items-center justify-center h-32 text-muted-foreground">
+                No agreements found for this worksite.
+              </div>
+            ) : (
+              <DataTable
+                data={agreements as AgreementRow[]}
+                columns={agreementColumns}
+                searchPlaceholder="Search agreements..."
+                searchKeys={["decision_no", "agreement_name"]}
+                onRowClick={(item) =>
+                  router.push(`/agreements/${item.agreement_id}`)
+                }
+              />
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="employers">
-          {employerRoles.length === 0 ? (
-            <div className="flex items-center justify-center h-32 text-muted-foreground">
-              No employer associations found for this worksite.
-            </div>
-          ) : (
-            <DataTable
-              data={employerRoles as EmployerRoleRow[]}
-              columns={employerRoleColumns}
-              searchPlaceholder="Search employers..."
-              searchKeys={["employer_name", "role_type"]}
-              onRowClick={(item) =>
-                item.employer
-                  ? router.push(`/employers/${item.employer.employer_id}`)
-                  : undefined
-              }
-            />
-          )}
+          <div className="space-y-4">
+            {canWrite && (
+              <div className="flex justify-end">
+                <Dialog open={dlgEmployer} onOpenChange={(o) => { setDlgEmployer(o); if (!o) resetDlg(); }}>
+                  <Button size="sm" onClick={() => setDlgEmployer(true)}>
+                    <Plus className="h-4 w-4" /> Add Employer
+                  </Button>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add Employer</DialogTitle>
+                      <DialogDescription>Add an employer role at this worksite.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                      <div className="space-y-2">
+                        <Label>Employer</Label>
+                        <Select value={selEmployerId} onValueChange={setSelEmployerId}>
+                          <SelectTrigger><SelectValue placeholder="Select employer..." /></SelectTrigger>
+                          <SelectContent>
+                            {allEmployers.map((e) => (
+                              <SelectItem key={e.employer_id} value={String(e.employer_id)}>
+                                {e.employer_name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Role</Label>
+                        <Select value={selRoleType} onValueChange={(v) => setSelRoleType(v as EmployerRoleType)}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {ROLE_TYPES.map((r) => (
+                              <SelectItem key={r} value={r}>{r.replace(/_/g, " ")}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {dlgError && <p className="text-sm text-destructive">{dlgError}</p>}
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setDlgEmployer(false)}>Cancel</Button>
+                      <Button onClick={handleAddEmployer} disabled={!selEmployerId || dlgLoading}>
+                        {dlgLoading ? "Adding..." : "Add"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            )}
+            {employerRoles.length === 0 ? (
+              <div className="flex items-center justify-center h-32 text-muted-foreground">
+                No employer associations found for this worksite.
+              </div>
+            ) : (
+              <DataTable
+                data={employerRoles as EmployerRoleRow[]}
+                columns={employerRoleColumns}
+                searchPlaceholder="Search employers..."
+                searchKeys={["employer_name", "role_type"]}
+                onRowClick={(item) =>
+                  item.employer
+                    ? router.push(`/employers/${item.employer.employer_id}`)
+                    : undefined
+                }
+              />
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="work_scopes">
-          {wsScopes.length === 0 ? (
-            <div className="flex items-center justify-center h-32 text-muted-foreground">
-              No work scopes found for this worksite.
-            </div>
-          ) : (
-            <DataTable
-              data={wsScopes as WorksiteScopeRow[]}
-              columns={wsScopeColumns}
-              searchPlaceholder="Search scopes..."
-              searchKeys={["scope_name", "employer_name"]}
-              onRowClick={(item) =>
-                item.employer
-                  ? router.push(`/employers/${item.employer.employer_id}`)
-                  : undefined
-              }
-            />
-          )}
+          <div className="space-y-4">
+            {canWrite && (
+              <div className="flex justify-end">
+                <Dialog open={dlgScope} onOpenChange={(o) => { setDlgScope(o); if (!o) resetDlg(); }}>
+                  <Button size="sm" onClick={() => setDlgScope(true)}>
+                    <Plus className="h-4 w-4" /> Add Work Scope
+                  </Button>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add Work Scope</DialogTitle>
+                      <DialogDescription>Assign a work scope to this worksite, optionally with an employer.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                      <div className="space-y-2">
+                        <Label>Work Scope</Label>
+                        <Select value={selScopeId} onValueChange={setSelScopeId}>
+                          <SelectTrigger><SelectValue placeholder="Select scope..." /></SelectTrigger>
+                          <SelectContent>
+                            {scopeOptions.map((s) => (
+                              <SelectItem key={s.scope_id} value={String(s.scope_id)}>{s.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Employer (optional)</Label>
+                        <Select value={selScopeEmployerId || "none"} onValueChange={(v) => setSelScopeEmployerId(v === "none" ? "" : v)}>
+                          <SelectTrigger><SelectValue placeholder="Select employer..." /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {allEmployers.map((e) => (
+                              <SelectItem key={e.employer_id} value={String(e.employer_id)}>{e.employer_name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Engagement Type</Label>
+                        <Select value={selEngagement} onValueChange={(v) => setSelEngagement(v as EngagementType)}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {ENGAGEMENT_TYPES.map((t) => (
+                              <SelectItem key={t} value={t}>{t.replace(/_/g, " ")}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {dlgError && <p className="text-sm text-destructive">{dlgError}</p>}
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setDlgScope(false)}>Cancel</Button>
+                      <Button onClick={handleAddScope} disabled={!selScopeId || dlgLoading}>
+                        {dlgLoading ? "Adding..." : "Add"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            )}
+            {wsScopes.length === 0 ? (
+              <div className="flex items-center justify-center h-32 text-muted-foreground">
+                No work scopes found for this worksite.
+              </div>
+            ) : (
+              <DataTable
+                data={wsScopes as WorksiteScopeRow[]}
+                columns={wsScopeColumns}
+                searchPlaceholder="Search scopes..."
+                searchKeys={["scope_name", "employer_name"]}
+                onRowClick={(item) =>
+                  item.employer
+                    ? router.push(`/employers/${item.employer.employer_id}`)
+                    : undefined
+                }
+              />
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="projects">
-          {wsProjects.length === 0 ? (
-            <div className="flex items-center justify-center h-32 text-muted-foreground">
-              No projects found at this worksite.
-            </div>
-          ) : (
-            <DataTable
-              data={wsProjects as ProjectRow[]}
-              columns={projectColumns}
-              searchPlaceholder="Search projects..."
-              searchKeys={["project_name"]}
-            />
-          )}
+          <div className="space-y-4">
+            {canWrite && (
+              <div className="flex justify-end">
+                <Dialog open={dlgProject} onOpenChange={(o) => { setDlgProject(o); if (!o) resetDlg(); }}>
+                  <Button size="sm" onClick={() => setDlgProject(true)}>
+                    <Plus className="h-4 w-4" /> Add Project
+                  </Button>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add Project</DialogTitle>
+                      <DialogDescription>Create a new project at this worksite.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                      <div className="space-y-2">
+                        <Label>Project Name <span className="text-destructive">*</span></Label>
+                        <Input value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Work Type</Label>
+                        <Select value={newProjectType} onValueChange={(v) => setNewProjectType(v as WorkType)}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {WORK_TYPES.map((t) => (
+                              <SelectItem key={t} value={t}>{t.replace(/_/g, " ")}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Status</Label>
+                        <Select value={newProjectStatus} onValueChange={(v) => setNewProjectStatus(v as ProjectStatus)}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {PROJECT_STATUSES.map((s) => (
+                              <SelectItem key={s} value={s}>{s.replace(/_/g, " ")}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {dlgError && <p className="text-sm text-destructive">{dlgError}</p>}
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setDlgProject(false)}>Cancel</Button>
+                      <Button onClick={handleAddProject} disabled={!newProjectName.trim() || dlgLoading}>
+                        {dlgLoading ? "Creating..." : "Create"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            )}
+            {wsProjects.length === 0 ? (
+              <div className="flex items-center justify-center h-32 text-muted-foreground">
+                No projects found at this worksite.
+              </div>
+            ) : (
+              <DataTable
+                data={wsProjects as ProjectRow[]}
+                columns={projectColumns}
+                searchPlaceholder="Search projects..."
+                searchKeys={["project_name"]}
+              />
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="workers">
-          {workers.length === 0 ? (
-            <div className="flex items-center justify-center h-32 text-muted-foreground">
-              No workers found at this worksite.
-            </div>
-          ) : (
-            <DataTable
-              data={workers as WorkerRow[]}
-              columns={workerColumns}
-              searchPlaceholder="Search workers..."
-              searchKeys={["first_name", "last_name", "occupation"]}
-            />
-          )}
+          <div className="space-y-4">
+            {workers.length > 0 && (
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Employer:</span>
+                  <Select value={workerEmpFilter} onValueChange={setWorkerEmpFilter}>
+                    <SelectTrigger className="w-48 h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All ({workers.length})</SelectItem>
+                      {workerEmployers.map(([empId, name]) => (
+                        <SelectItem key={empId} value={String(empId)}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Project:</span>
+                  <Select value={workerProjectFilter} onValueChange={setWorkerProjectFilter}>
+                    <SelectTrigger className="w-48 h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All ({workers.length})</SelectItem>
+                      {workerProjectOptions.map(([projectId, name]) => (
+                        <SelectItem key={projectId} value={String(projectId)}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1" />
+                <div className="flex flex-wrap gap-2">
+                  {workerSummary.byEmployer.slice(0, 5).map(([name, count]) => (
+                    <Badge key={name} variant="secondary">{name}: {count}</Badge>
+                  ))}
+                  {workerSummary.byEmployer.length > 5 && (
+                    <Badge variant="secondary">+{workerSummary.byEmployer.length - 5} more</Badge>
+                  )}
+                </div>
+              </div>
+            )}
+            {filteredWorkers.length === 0 ? (
+              <div className="flex items-center justify-center h-32 text-muted-foreground">
+                No workers found at this worksite.
+              </div>
+            ) : (
+              <DataTable
+                data={filteredWorkers as WorkerRow[]}
+                columns={workerColumns}
+                searchPlaceholder="Search workers..."
+                searchKeys={["first_name", "last_name", "occupation"]}
+                onRowClick={(item) => router.push(`/workers/${item.worker_id}`)}
+              />
+            )}
+          </div>
         </TabsContent>
 
         {childWorksites.length > 0 && (

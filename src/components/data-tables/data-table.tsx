@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, Search, Download } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { useDevice } from "@/contexts/device-context";
 import { Card, CardContent } from "@/components/ui/card";
@@ -92,6 +92,27 @@ export function DataTable<T extends Record<string, unknown>>({
     }
   };
 
+  const exportCsv = () => {
+    const headers = columns.map((col) => col.header);
+    const rows = sorted.map((item) =>
+      columns.map((col) => {
+        const val = item[col.key];
+        if (val == null) return "";
+        return String(val).replace(/"/g, '""');
+      })
+    );
+    const csv = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${cell}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "export.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -107,8 +128,16 @@ export function DataTable<T extends Record<string, unknown>>({
             className="pl-8"
           />
         </div>
-        <div className="text-sm text-muted-foreground">
-          {sorted.length} record{sorted.length !== 1 ? "s" : ""}
+        <div className="flex items-center gap-3">
+          {sorted.length > 0 && (
+            <Button variant="outline" size="sm" onClick={exportCsv} className="h-8">
+              <Download className="h-3.5 w-3.5 mr-1" />
+              Export
+            </Button>
+          )}
+          <span className="text-sm text-muted-foreground">
+            {sorted.length} record{sorted.length !== 1 ? "s" : ""}
+          </span>
         </div>
       </div>
 

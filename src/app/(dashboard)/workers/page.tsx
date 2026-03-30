@@ -9,7 +9,7 @@ import { DataTable, type Column } from "@/components/data-tables/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
-import { Plus, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 
 interface WorkerRow {
   worker_id: number;
@@ -105,10 +105,6 @@ export default function WorkersPage() {
             >
               <Upload className="h-4 w-4" />
               Import Workers
-            </Button>
-            <Button onClick={() => router.push("/workers/new")}>
-              <Plus className="h-4 w-4" />
-              Add Worker
             </Button>
           </div>
         )}

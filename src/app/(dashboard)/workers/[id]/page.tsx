@@ -271,7 +271,18 @@ export default function WorkerDetailPage() {
                   {workerAgreements.map((wa) => (
                     <div
                       key={wa.agreement_id}
-                      className="flex items-center justify-between gap-2 rounded-md border p-3"
+                      role="button"
+                      tabIndex={0}
+                      className="flex cursor-pointer items-center justify-between gap-2 rounded-md border p-3 transition-colors hover:bg-muted/50"
+                      onClick={() =>
+                        router.push(`/agreements/${wa.agreement_id}`)
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          router.push(`/agreements/${wa.agreement_id}`);
+                        }
+                      }}
                     >
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium">

@@ -181,6 +181,7 @@ export default function AgreementDetailPage() {
   const [addOrgPrimary, setAddOrgPrimary] = useState(false);
   const [addOrgError, setAddOrgError] = useState<string | null>(null);
   const [suggestLead, setSuggestLead] = useState<{ name: string; organiserId: number } | null>(null);
+  const [editing, setEditing] = useState(false);
 
   const { data: agreement, isLoading } = useQuery({
     queryKey: ["agreement", id],
@@ -428,12 +429,21 @@ export default function AgreementDetailPage() {
           </p>
         </div>
         {canWrite && (
-          <Button variant="outline">
+          <Button
+            variant={editing ? "default" : "outline"}
+            onClick={() => setEditing((e) => !e)}
+          >
             <Pencil className="h-4 w-4" />
-            Edit
+            {editing ? "Done" : "Edit"}
           </Button>
         )}
       </div>
+
+      {editing && (
+        <div className="rounded-md border border-dashed bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
+          Edit mode coming soon. Agreement fields cannot be edited yet.
+        </div>
+      )}
 
       <Card>
         <CardHeader>
@@ -447,7 +457,19 @@ export default function AgreementDetailPage() {
             </div>
             <div>
               <span className="text-muted-foreground">Employer</span>
-              <p className="font-medium">{agreement.employer?.employer_name ?? "—"}</p>
+              {agreement.employer_id != null ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    router.push(`/employers/${agreement.employer_id}`)
+                  }
+                  className="block w-full text-left font-medium underline underline-offset-2 hover:text-primary"
+                >
+                  {agreement.employer?.employer_name ?? "View employer"}
+                </button>
+              ) : (
+                <p className="font-medium">—</p>
+              )}
             </div>
             <div>
               <span className="text-muted-foreground">Industry Classification</span>

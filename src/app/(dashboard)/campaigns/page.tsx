@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Plus } from "lucide-react";
+import { Plus, Wand2 } from "lucide-react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
@@ -185,7 +186,14 @@ export default function CampaignsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Campaigns</h1>
         {canWrite && (
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <div className="flex gap-2">
+            <Button variant="outline" asChild>
+              <Link href="/campaigns/new" className="flex items-center gap-2">
+                <Wand2 className="h-4 w-4" />
+                Campaign wizard
+              </Link>
+            </Button>
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="h-4 w-4" />
@@ -314,6 +322,7 @@ export default function CampaignsPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          </div>
         )}
       </div>
 

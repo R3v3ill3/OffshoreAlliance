@@ -45,7 +45,15 @@ import type {
   ActionType,
   ActionResultType,
   UniverseRuleType,
+  CampaignScopeType,
+  EnterpriseAgreementSubtype,
 } from "@/types/database";
+import { CampaignAssessmentsSection } from "@/components/campaigns/campaign-assessments";
+import { CampaignStructureSection } from "@/components/campaigns/campaign-structure";
+import { CampaignReportingCharts } from "@/components/campaigns/campaign-reporting";
+import { CampaignWallChart } from "@/components/campaigns/campaign-wall-chart";
+import { CampaignTaskListsSection } from "@/components/campaigns/campaign-task-lists";
+import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
 
 interface CampaignDetail {
   campaign_id: number;
@@ -57,6 +65,10 @@ interface CampaignDetail {
   end_date: string | null;
   organiser_id: number | null;
   notes: string | null;
+  enterprise_agreement_subtype: EnterpriseAgreementSubtype | null;
+  campaign_scope: CampaignScopeType | null;
+  total_worker_estimate: number | null;
+  sector_wide: boolean;
   organiser: { organiser_name: string } | null;
 }
 
@@ -338,9 +350,14 @@ export default function CampaignDetailPage() {
       </div>
 
       <Tabs defaultValue="overview">
-        <TabsList>
+        <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="universe">Universe</TabsTrigger>
+          <TabsTrigger value="assessments">Assessments</TabsTrigger>
+          <TabsTrigger value="structure">Structure</TabsTrigger>
+          <TabsTrigger value="reporting">Reporting</TabsTrigger>
+          <TabsTrigger value="wall">Wall chart</TabsTrigger>
+          <TabsTrigger value="tasklists">Task lists</TabsTrigger>
           <TabsTrigger value="actions">Actions</TabsTrigger>
           <TabsTrigger value="results">Results</TabsTrigger>
         </TabsList>
@@ -353,10 +370,39 @@ export default function CampaignDetailPage() {
                   <span className="text-muted-foreground">Type</span>
                   <p className="font-medium capitalize">{campaign.campaign_type}</p>
                 </div>
+                {campaign.enterprise_agreement_subtype && (
+                  <div>
+                    <span className="text-muted-foreground">EA subtype</span>
+                    <p className="font-medium">
+                      {EA_SUBTYPE_LABELS[campaign.enterprise_agreement_subtype] ??
+                        campaign.enterprise_agreement_subtype}
+                    </p>
+                  </div>
+                )}
+                {campaign.campaign_scope && (
+                  <div className="col-span-full sm:col-span-1">
+                    <span className="text-muted-foreground">Scope</span>
+                    <p className="font-medium text-sm">
+                      {CAMPAIGN_SCOPE_LABELS[campaign.campaign_scope] ?? campaign.campaign_scope}
+                    </p>
+                  </div>
+                )}
                 <div>
                   <span className="text-muted-foreground">Status</span>
                   <p className="font-medium capitalize">{campaign.status}</p>
                 </div>
+                {campaign.total_worker_estimate != null && (
+                  <div>
+                    <span className="text-muted-foreground">Worker estimate</span>
+                    <p className="font-medium">{campaign.total_worker_estimate}</p>
+                  </div>
+                )}
+                {campaign.sector_wide && (
+                  <div>
+                    <span className="text-muted-foreground">Sector-wide</span>
+                    <p className="font-medium">Yes</p>
+                  </div>
+                )}
                 <div>
                   <span className="text-muted-foreground">Organiser</span>
                   <p className="font-medium">
@@ -388,6 +434,26 @@ export default function CampaignDetailPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="assessments">
+          <CampaignAssessmentsSection campaignId={id} canWrite={!!canWrite} />
+        </TabsContent>
+
+        <TabsContent value="structure">
+          <CampaignStructureSection campaignId={id} canWrite={!!canWrite} />
+        </TabsContent>
+
+        <TabsContent value="reporting">
+          <CampaignReportingCharts campaignId={id} />
+        </TabsContent>
+
+        <TabsContent value="wall">
+          <CampaignWallChart campaignId={id} canWrite={!!canWrite} />
+        </TabsContent>
+
+        <TabsContent value="tasklists">
+          <CampaignTaskListsSection campaignId={id} canWrite={!!canWrite} />
         </TabsContent>
 
         <TabsContent value="universe">

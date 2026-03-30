@@ -211,6 +211,33 @@ export default function EmployerDetailPage() {
     enabled: !!id,
   });
 
+  const { data: childWorkerCounts = [] } = useQuery({
+    queryKey: ["employer-children-workers", id],
+    queryFn: async () => {
+      if (childCompanies.length === 0) return [];
+      const childIds = childCompanies.map((c) => c.employer_id);
+      const { data, error } = await supabase
+        .from("workers")
+        .select("employer_id")
+        .in("employer_id", childIds)
+        .eq("is_active", true);
+      if (error) throw error;
+      const counts = new Map<number, number>();
+      for (const w of data) {
+        counts.set(w.employer_id, (counts.get(w.employer_id) || 0) + 1);
+      }
+      return Array.from(counts.entries());
+    },
+    enabled: childCompanies.length > 0,
+  });
+
+  const groupTotals = useMemo(() => {
+    const totalWorkers =
+      childWorkerCounts.reduce((sum, [, count]) => sum + count, 0) +
+      workers.length;
+    return { totalWorkers, childCount: childCompanies.length };
+  }, [childWorkerCounts, workers, childCompanies]);
+
   // Worksites where this employer is the principal employer
   const { data: principalWorksites = [] } = useQuery({
     queryKey: ["employer-principal-worksites", id],
@@ -629,8 +656,23 @@ export default function EmployerDetailPage() {
           </Badge>
         ),
       },
+      {
+        key: "worker_count",
+        header: "Workers",
+        render: (item: ChildEmployerRow) => {
+          const entry = childWorkerCounts.find(
+            ([empId]) => empId === item.employer_id
+          );
+          const count = entry ? entry[1] : 0;
+          return count > 0 ? (
+            <Badge variant="secondary">{count}</Badge>
+          ) : (
+            "—"
+          );
+        },
+      },
     ],
-    []
+    [childWorkerCounts]
   );
 
   if (isLoading) {
@@ -871,6 +913,41 @@ export default function EmployerDetailPage() {
         </CardContent>
       </Card>
 
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Agreements</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{agreements.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Worksites</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{worksiteRoles.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Work Scopes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{employerScopes.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Workers</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{workers.length}</p>
+          </CardContent>
+        </Card>
+      </div>
+
       <Tabs defaultValue="agreements">
         <TabsList>
           {tabs.map((t) => (
@@ -1052,6 +1129,14 @@ export default function EmployerDetailPage() {
 
         {childCompanies.length > 0 && (
           <TabsContent value="children">
+            <div className="flex flex-wrap gap-4 mb-4">
+              <Badge variant="secondary" className="text-sm px-3 py-1">
+                {groupTotals.childCount} subsidiaries
+              </Badge>
+              <Badge variant="secondary" className="text-sm px-3 py-1">
+                {groupTotals.totalWorkers} total workers (group)
+              </Badge>
+            </div>
             <DataTable
               data={childCompanies as ChildEmployerRow[]}
               columns={childColumns}

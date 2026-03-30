@@ -59,6 +59,8 @@ type WorksiteRow = Worksite & {
   employer_worksite_roles?: EmployerRole[];
 } & Record<string, unknown>;
 
+type OffshoreFilter = "all" | "offshore" | "onshore";
+
 const INITIAL_FORM = {
   worksite_name: "",
   worksite_type: "" as string,
@@ -83,6 +85,8 @@ export default function WorksitesPage() {
   const [form, setForm] = useState(INITIAL_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scopeFilter, setScopeFilter] = useState<string>("all");
+  const [offshoreFilter, setOffshoreFilter] = useState<OffshoreFilter>("all");
 
   const { data: worksites = [], isLoading, isError } = useQuery({
     queryKey: ["worksites"],
@@ -106,6 +110,31 @@ export default function WorksitesPage() {
     },
   });
 
+  const { data: allScopes = [] } = useQuery({
+    queryKey: ["work-scopes-filter"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("work_scopes")
+        .select("scope_id, scope_name, parent_scope_id, is_whole_of_project")
+        .eq("is_active", true)
+        .order("sort_order");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: worksiteScopeLinks = [] } = useQuery({
+    queryKey: ["worksite-scope-links"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worksite_scopes")
+        .select("worksite_id, scope_id")
+        .eq("is_current", true);
+      if (error) throw error;
+      return data as { worksite_id: number; scope_id: number }[];
+    },
+  });
+
   const { data: employers = [] } = useQuery({
     queryKey: ["employers-select"],
     queryFn: async () => {
@@ -122,6 +151,30 @@ export default function WorksitesPage() {
     () => employers.filter((e) => e.employer_category === "Principal_Employer"),
     [employers]
   );
+
+  const offshoreCount = useMemo(
+    () => worksites.filter((w) => w.is_offshore).length,
+    [worksites]
+  );
+
+  const filteredWorksites = useMemo(() => {
+    let list = worksites;
+    if (offshoreFilter === "offshore") {
+      list = list.filter((w) => w.is_offshore);
+    } else if (offshoreFilter === "onshore") {
+      list = list.filter((w) => !w.is_offshore);
+    }
+    if (scopeFilter !== "all") {
+      const scopeId = Number(scopeFilter);
+      const ids = new Set(
+        worksiteScopeLinks
+          .filter((l) => l.scope_id === scopeId)
+          .map((l) => l.worksite_id)
+      );
+      list = list.filter((w) => ids.has(w.worksite_id));
+    }
+    return list;
+  }, [worksites, offshoreFilter, scopeFilter, worksiteScopeLinks]);
 
   const columns: Column<WorksiteRow>[] = useMemo(
     () => [
@@ -518,8 +571,47 @@ export default function WorksitesPage() {
         )}
       </div>
 
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              { key: "all" as const, label: `All (${worksites.length})` },
+              { key: "offshore" as const, label: `Offshore (${offshoreCount})` },
+              {
+                key: "onshore" as const,
+                label: `Onshore (${worksites.length - offshoreCount})`,
+              },
+            ] satisfies { key: OffshoreFilter; label: string }[]
+          ).map(({ key, label }) => (
+            <Button
+              key={key}
+              variant={offshoreFilter === key ? "default" : "outline"}
+              size="sm"
+              onClick={() => setOffshoreFilter(key)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+        <Select value={scopeFilter} onValueChange={setScopeFilter}>
+          <SelectTrigger className="w-48 h-9">
+            <SelectValue placeholder="All scopes" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Scopes</SelectItem>
+            {allScopes
+              .filter((s) => !s.is_whole_of_project)
+              .map((s) => (
+                <SelectItem key={s.scope_id} value={String(s.scope_id)}>
+                  {s.scope_name}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       <DataTable
-        data={worksites}
+        data={filteredWorksites}
         columns={columns}
         searchPlaceholder="Search worksites..."
         searchKeys={["worksite_name", "location_description"]}

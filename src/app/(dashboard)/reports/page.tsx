@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -38,6 +39,7 @@ import {
   ArrowLeft,
   Star,
   Network,
+  Globe2,
 } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import {
@@ -530,6 +532,23 @@ export default function ReportsPage() {
     return (
       <div className="space-y-6">
         <h1 className="text-3xl font-bold">Reports</h1>
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader className="flex flex-row items-start gap-4 space-y-0 pb-2">
+            <div className="rounded-lg bg-muted p-2">
+              <Globe2 className="h-8 w-8 text-primary" />
+            </div>
+            <div className="flex-1 space-y-1">
+              <CardTitle className="text-base">Organising Universe</CardTitle>
+              <CardDescription>
+                Filterable table of worksites, principal employers, employers,
+                agreements, and worker counts from the organising universe view.
+              </CardDescription>
+            </div>
+            <Button size="sm" className="shrink-0" asChild>
+              <Link href="/reports/universe">Open table</Link>
+            </Button>
+          </CardHeader>
+        </Card>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {reportOptions.map((report) => (
             <Card

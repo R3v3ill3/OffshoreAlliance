@@ -11,6 +11,7 @@ const pageTitles: Record<string, string> = {
   "/employers": "Employers",
   "/worksites": "Worksites",
   "/agreements": "Agreements (EBAs)",
+  "/work-scopes": "Work Scopes",
   "/campaigns": "Campaigns",
   "/reports": "Reports",
   "/administration": "Administration",

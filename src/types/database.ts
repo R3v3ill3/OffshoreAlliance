@@ -67,6 +67,38 @@ export type DuesIncreaseType = "Fixed" | "WPI" | "CPI" | "FWC" | "Other";
 export type CampaignType = "bargaining" | "organising" | "mobilisation" | "political";
 export type CampaignStatus = "planning" | "active" | "completed" | "suspended";
 
+export type EnterpriseAgreementSubtype = "new" | "replacement" | "boss_initiated";
+
+export type CampaignScopeType =
+  | "single_employer_single_site"
+  | "single_employer_multi_site"
+  | "multi_employer_single_site"
+  | "multi_employer_multi_site";
+
+export type OaLeaderRole = "delegate" | "activist" | "contact";
+
+export type CampaignActivityKind = "task" | "assessment";
+
+export type ActivityRatingSource = "staff" | "leader_form";
+
+export type CampaignOuType = "shift" | "department" | "network" | "job_type" | "worksite";
+
+export type CampaignTaskListStatus = "draft" | "active" | "completed";
+
+/** Predefined assessment / task templates (template_key on campaign_activities). */
+export type CampaignActivityTemplateKey =
+  | "respond_email"
+  | "respond_sms"
+  | "respond_phone"
+  | "complete_survey"
+  | "sign_petition"
+  | "vote"
+  | "attend_video_meeting"
+  | "attend_worksite_meeting"
+  | "attend_offsite_meeting"
+  | "industrial_activity"
+  | "visibility_action";
+
 export type ActionType =
   | "door_knock"
   | "phone_call"
@@ -270,6 +302,10 @@ export interface Campaign {
   end_date: string | null;
   organiser_id: number | null;
   notes: string | null;
+  enterprise_agreement_subtype: EnterpriseAgreementSubtype | null;
+  campaign_scope: CampaignScopeType | null;
+  total_worker_estimate: number | null;
+  sector_wide: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -310,6 +346,125 @@ export interface CampaignActionResult {
   result_type: ActionResultType;
   notes: string | null;
   action_date: string;
+}
+
+export interface CampaignEmployer {
+  id: number;
+  campaign_id: number;
+  employer_id: number;
+  created_at: string;
+}
+
+export interface CampaignWorksite {
+  id: number;
+  campaign_id: number;
+  worksite_id: number | null;
+  sector_wide: boolean;
+  created_at: string;
+}
+
+export interface CampaignWorkerMembership {
+  membership_id: number;
+  campaign_id: number;
+  worker_id: number;
+  oa_leader_role: OaLeaderRole | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CampaignActivity {
+  activity_id: number;
+  campaign_id: number;
+  title: string;
+  description: string | null;
+  template_key: string | null;
+  activity_kind: CampaignActivityKind;
+  is_binary: boolean;
+  supporter_outcome_value: string | null;
+  is_custom: boolean;
+  created_at: string;
+}
+
+export interface CampaignActivityRating {
+  rating_id: number;
+  activity_id: number;
+  worker_id: number;
+  rating: number;
+  binary_value: string | null;
+  notes: string | null;
+  rated_at: string;
+  source: ActivityRatingSource;
+  rated_by_user_id: string | null;
+}
+
+export interface CampaignOrganisingUnit {
+  ou_id: number;
+  campaign_id: number;
+  ou_type: CampaignOuType;
+  name: string;
+  total_workers_estimated: number | null;
+  source_metadata: Record<string, unknown> | null;
+  anchor_worker_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CampaignWorkerOu {
+  id: number;
+  ou_id: number;
+  worker_id: number;
+  is_primary: boolean;
+  created_at: string;
+}
+
+export interface CampaignTaskList {
+  task_list_id: number;
+  campaign_id: number;
+  activity_id: number;
+  leader_worker_id: number | null;
+  leader_organiser_id: number | null;
+  status: CampaignTaskListStatus;
+  title: string | null;
+  created_at: string;
+}
+
+export interface CampaignTaskListItem {
+  id: number;
+  task_list_id: number;
+  worker_id: number | null;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface CampaignLeaderToken {
+  token_id: number;
+  task_list_id: number;
+  token_hash: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+export interface CampaignProspectiveWorker {
+  prospective_id: number;
+  campaign_id: number;
+  task_list_id: number | null;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+  rating: number | null;
+  merged_worker_id: number | null;
+  created_at: string;
+}
+
+export interface CampaignWorkerRatingSummaryRow {
+  campaign_id: number;
+  worker_id: number;
+  cumulative_rating: number | null;
+  last_activity_rating: number | null;
 }
 
 export interface Document {

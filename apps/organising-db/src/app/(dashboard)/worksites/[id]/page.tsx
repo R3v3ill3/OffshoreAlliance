@@ -712,7 +712,7 @@ export default function WorksiteDetailPage() {
     // #endregion
     const { error, data: insertData } = await supabase.from("worksite_scopes").insert(payload).select();
     // #region agent log
-    fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'worksites/[id]/page.tsx:handleAddScope-result',message:'handleAddScope insert result',data:{success:!error,error:error?{message:error.message,code:(error as Record<string,unknown>).code,details:(error as Record<string,unknown>).details,hint:(error as Record<string,unknown>).hint,status:(error as Record<string,unknown>).status}:null,insertedRows:insertData?.length??null},timestamp:Date.now(),hypothesisId:'H-D,H-A'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'worksites/[id]/page.tsx:handleAddScope-result',message:'handleAddScope insert result',data:{success:!error,error:error?{message:error.message,code:(error as unknown as Record<string,unknown>).code,details:(error as unknown as Record<string,unknown>).details,hint:(error as unknown as Record<string,unknown>).hint,status:(error as unknown as Record<string,unknown>).status}:null,insertedRows:insertData?.length??null},timestamp:Date.now(),hypothesisId:'H-D,H-A'})}).catch(()=>{});
     // #endregion
     if (error) { setDlgError(error.message); setDlgLoading(false); return; }
     await queryClient.invalidateQueries({ queryKey: ["worksite-scopes", id] });

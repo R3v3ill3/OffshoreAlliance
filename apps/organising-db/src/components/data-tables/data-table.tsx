@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import {
   Table,
   TableBody,
@@ -50,22 +51,43 @@ interface DataTableProps<T> {
   selection?: DataTableSelection<T>;
 }
 
+const DEFAULT_PAGE_SIZE = 50;
+const PERSISTED_PAGE_SIZES = new Set([20, 50, 100]);
+
 export function DataTable<T extends Record<string, unknown>>({
   data,
   columns,
   searchPlaceholder = "Search...",
   searchKeys = [],
   onRowClick,
-  pageSize: initialPageSize = 20,
+  pageSize: initialPageSize = DEFAULT_PAGE_SIZE,
   loading = false,
   selection,
 }: DataTableProps<T>) {
   const { isMobile } = useDevice();
+  const pathname = usePathname();
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(initialPageSize);
+  const pageSizeStorageKey = `organising-db:rows-per-page:${pathname}`;
+
+  useEffect(() => {
+    const storedPageSize = window.localStorage.getItem(pageSizeStorageKey);
+    if (!storedPageSize) return;
+
+    const parsedPageSize = Number(storedPageSize);
+    if (!PERSISTED_PAGE_SIZES.has(parsedPageSize)) return;
+
+    setPageSize(parsedPageSize);
+    setPage(0);
+  }, [pageSizeStorageKey]);
+
+  useEffect(() => {
+    if (!PERSISTED_PAGE_SIZES.has(pageSize)) return;
+    window.localStorage.setItem(pageSizeStorageKey, String(pageSize));
+  }, [pageSize, pageSizeStorageKey]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return data;

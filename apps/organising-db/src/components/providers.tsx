@@ -1,7 +1,7 @@
 "use client";
 
 import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { AuthProvider } from "@/lib/supabase/auth-context";
 import { DeviceProvider } from "@/contexts/device-context";
 
@@ -33,6 +33,23 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
         },
       })
   );
+
+  // #region agent log
+  useEffect(() => {
+    const handler = (event: PromiseRejectionEvent) => {
+      fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'providers.tsx:unhandledRejection',message:'Unhandled promise rejection',data:{reason:event.reason instanceof Error?event.reason.message:String(event.reason)},timestamp:Date.now(),hypothesisId:'H-C'})}).catch(()=>{});
+    };
+    const visHandler = () => {
+      fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'providers.tsx:visibilityChange',message:'Tab visibility changed',data:{visibilityState:document.visibilityState},timestamp:Date.now(),hypothesisId:'H-C'})}).catch(()=>{});
+    };
+    window.addEventListener('unhandledrejection', handler);
+    document.addEventListener('visibilitychange', visHandler);
+    return () => {
+      window.removeEventListener('unhandledrejection', handler);
+      document.removeEventListener('visibilitychange', visHandler);
+    };
+  }, []);
+  // #endregion
 
   return (
     <DeviceProvider isMobile={isMobile}>

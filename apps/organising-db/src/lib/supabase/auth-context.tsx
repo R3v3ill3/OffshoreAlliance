@@ -77,11 +77,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setUser(session?.user ?? null);
         if (session?.user) {
+          // #region agent log
+          const _profileFetchStart = Date.now();
+          fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'auth-context.tsx:profileFetch-start',message:'Profile fetch START in onAuthStateChange',data:{event,userId:session.user.id,elapsedSinceEvent:0},timestamp:Date.now(),hypothesisId:'H-C'})}).catch(()=>{});
+          // #endregion
           const { data } = await supabase
             .from("user_profiles")
             .select("*")
             .eq("user_id", session.user.id)
             .single();
+          // #region agent log
+          fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'auth-context.tsx:profileFetch-done',message:'Profile fetch DONE in onAuthStateChange',data:{event,userId:session.user.id,durationMs:Date.now()-_profileFetchStart,hasData:!!data},timestamp:Date.now(),hypothesisId:'H-C'})}).catch(()=>{});
+          // #endregion
           setProfile(data);
         } else {
           setProfile(null);

@@ -1,0 +1,3 @@
+{"sessionId":"537981","location":"client.ts:createClient","message":"Creating Supabase browser singleton","data":{"hostname":"oa.uconstruct.app","cookieDomain":".uconstruct.app","domainMismatch":false,"existingCookieCount":1},"timestamp":1774933559860,"hypothesisId":"H-A"}
+{"sessionId":"537981","location":"auth-context.tsx:getUser-start","message":"getUser called","data":{"cookies":2593,"href":"https://oa.uconstruct.app/worksites/136"},"timestamp":1774933559869,"hypothesisId":"H-A,H-C"}
+{"sessionId":"537981","location":"auth-context.tsx:onAuthStateChange","message":"auth state change","data":{"event":"SIGNED_IN","sessionUserId":"1a28184e-d509-400d-af9b-c437330162a4","hasSession":true,"tokenExpiresAt":1774935012},"timestamp":1774933559870,"hypothesisId":"H-B"}

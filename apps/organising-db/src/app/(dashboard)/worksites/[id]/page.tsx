@@ -57,6 +57,9 @@ import {
 import { ArrowLeft, Pencil, X, Save, Star, Building2, Plus, Trash2 } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { format } from "date-fns";
+import { LinkAgreementDialog } from "@/components/worksites/link-agreement-dialog";
+import { AddEmployerDialog } from "@/components/worksites/add-employer-dialog";
+import { AddScopeDialog } from "@/components/worksites/add-scope-dialog";
 
 const WORKSITE_TYPES: WorksiteType[] = [
   "FPSO",
@@ -182,13 +185,6 @@ export default function WorksiteDetailPage() {
   const [dlgContract, setDlgContract] = useState(false);
   const [dlgLoading, setDlgLoading] = useState(false);
   const [dlgError, setDlgError] = useState<string | null>(null);
-
-  const [selAgreementId, setSelAgreementId] = useState("");
-  const [selEmployerId, setSelEmployerId] = useState("");
-  const [selRoleType, setSelRoleType] = useState<EmployerRoleType>("Subcontractor");
-  const [selScopeId, setSelScopeId] = useState("");
-  const [selScopeEmployerId, setSelScopeEmployerId] = useState("");
-  const [selEngagement, setSelEngagement] = useState<EngagementType>("contractor");
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectType, setNewProjectType] = useState<WorkType>("production");
   const [newProjectStatus, setNewProjectStatus] = useState<ProjectStatus>("planning");
@@ -510,19 +506,6 @@ export default function WorksiteDetailPage() {
     },
   });
 
-  const scopeOptions = useMemo(() => {
-    return allScopes
-      .filter((s) => !s.is_whole_of_project)
-      .map((s) => {
-        const parts: string[] = [];
-        if (s.parent?.parent) parts.push(s.parent.parent.scope_name);
-        if (s.parent) parts.push(s.parent.scope_name);
-        parts.push(s.scope_name);
-        return { scope_id: s.scope_id, label: parts.join(" › ") };
-      })
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [allScopes]);
-
   const contractScopeOptions = useMemo(() => {
     return allScopes
       .map((s) => {
@@ -543,6 +526,11 @@ export default function WorksiteDetailPage() {
   const linkedProgramIds = useMemo(
     () => new Set(wsProgramLinks.map((pw) => pw.program_id)),
     [wsProgramLinks]
+  );
+
+  const linkedScopeIds = useMemo(
+    () => new Set(wsScopes.map((s) => s.scope_id)),
+    [wsScopes]
   );
 
   const contractEmployerOptions = useMemo(() => {
@@ -615,12 +603,6 @@ export default function WorksiteDetailPage() {
   const resetDlg = () => {
     setDlgError(null);
     setDlgLoading(false);
-    setSelAgreementId("");
-    setSelEmployerId("");
-    setSelRoleType("Subcontractor");
-    setSelScopeId("");
-    setSelScopeEmployerId("");
-    setSelEngagement("contractor");
     setNewProjectName("");
     setNewProjectType("production");
     setNewProjectStatus("planning");
@@ -638,19 +620,14 @@ export default function WorksiteDetailPage() {
     setContractNotes("");
   };
 
-  const handleLinkAgreement = async () => {
-    if (!selAgreementId) return;
-    setDlgLoading(true);
-    setDlgError(null);
-    const { error } = await supabase.from("agreement_worksites").insert({
-      agreement_id: Number(selAgreementId),
-      worksite_id: worksiteId,
-    });
-    if (error) { setDlgError(error.message); setDlgLoading(false); return; }
-    await queryClient.invalidateQueries({ queryKey: ["worksite-agreements", id] });
-    setDlgAgreement(false);
-    resetDlg();
-  };
+  const handleLinkedEntitySuccess = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["worksite-agreements", id] }),
+      queryClient.invalidateQueries({ queryKey: ["worksite-employer-roles", id] }),
+      queryClient.invalidateQueries({ queryKey: ["worksite-scopes", id] }),
+    ]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   const handleUnlinkAgreement = useCallback(async (agreementId: number) => {
     const { error } = await supabase
@@ -662,22 +639,6 @@ export default function WorksiteDetailPage() {
     await queryClient.invalidateQueries({ queryKey: ["worksite-agreements", id] });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [worksiteId, id]);
-
-  const handleAddEmployer = async () => {
-    if (!selEmployerId) return;
-    setDlgLoading(true);
-    setDlgError(null);
-    const { error } = await supabase.from("employer_worksite_roles").insert({
-      employer_id: Number(selEmployerId),
-      worksite_id: worksiteId,
-      role_type: selRoleType,
-      is_current: true,
-    });
-    if (error) { setDlgError(error.message); setDlgLoading(false); return; }
-    await queryClient.invalidateQueries({ queryKey: ["worksite-employer-roles", id] });
-    setDlgEmployer(false);
-    resetDlg();
-  };
 
   const handleRemoveEmployerRole = useCallback(async (roleId: number) => {
     const { error } = await supabase.from("employer_worksite_roles").delete().eq("id", roleId);
@@ -695,30 +656,6 @@ export default function WorksiteDetailPage() {
     await queryClient.invalidateQueries({ queryKey: ["worksite-employer-roles", id] });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
-
-  const handleAddScope = async () => {
-    if (!selScopeId) return;
-    setDlgLoading(true);
-    setDlgError(null);
-    const payload: Database["public"]["Tables"]["worksite_scopes"]["Insert"] = {
-      worksite_id: worksiteId,
-      scope_id: Number(selScopeId),
-      engagement_type: selEngagement,
-      is_current: true,
-    };
-    if (selScopeEmployerId) payload.employer_id = Number(selScopeEmployerId);
-    // #region agent log
-    fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'worksites/[id]/page.tsx:handleAddScope-start',message:'handleAddScope insert start',data:{payload,worksiteId,selScopeId},timestamp:Date.now(),hypothesisId:'H-D'})}).catch(()=>{});
-    // #endregion
-    const { error, data: insertData } = await supabase.from("worksite_scopes").insert(payload).select();
-    // #region agent log
-    fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'worksites/[id]/page.tsx:handleAddScope-result',message:'handleAddScope insert result',data:{success:!error,error:error?{message:error.message,code:(error as unknown as Record<string,unknown>).code,details:(error as unknown as Record<string,unknown>).details,hint:(error as unknown as Record<string,unknown>).hint,status:(error as unknown as Record<string,unknown>).status}:null,insertedRows:insertData?.length??null},timestamp:Date.now(),hypothesisId:'H-D,H-A'})}).catch(()=>{});
-    // #endregion
-    if (error) { setDlgError(error.message); setDlgLoading(false); return; }
-    await queryClient.invalidateQueries({ queryKey: ["worksite-scopes", id] });
-    setDlgScope(false);
-    resetDlg();
-  };
 
   const handleRemoveScope = useCallback(async (scopeRowId: number) => {
     const { error } = await supabase.from("worksite_scopes").delete().eq("id", scopeRowId);
@@ -1698,41 +1635,20 @@ export default function WorksiteDetailPage() {
           <div className="space-y-4">
             {canWrite && (
               <div className="flex justify-end">
-                <Dialog open={dlgAgreement} onOpenChange={(o) => { setDlgAgreement(o); if (!o) resetDlg(); }}>
-                  <DialogTrigger asChild>
-                    <Button size="sm">
-                      <Plus className="h-4 w-4" /> Link Agreement
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Link Agreement</DialogTitle>
-                      <DialogDescription>Associate an existing agreement with this worksite.</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-2">
-                      <Label>Agreement</Label>
-                      <Select value={selAgreementId} onValueChange={setSelAgreementId}>
-                        <SelectTrigger><SelectValue placeholder="Select agreement..." /></SelectTrigger>
-                        <SelectContent>
-                          {allAgreements
-                            .filter((a) => !linkedAgreementIds.has(a.agreement_id))
-                            .map((a) => (
-                              <SelectItem key={a.agreement_id} value={String(a.agreement_id)}>
-                                {a.short_name || a.agreement_name} ({a.decision_no})
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                      {dlgError && <p className="text-sm text-destructive">{dlgError}</p>}
-                    </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => { setDlgAgreement(false); resetDlg(); }}>Cancel</Button>
-                      <Button onClick={handleLinkAgreement} disabled={!selAgreementId || dlgLoading}>
-                        {dlgLoading ? "Linking..." : "Link"}
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+                <Button size="sm" onClick={() => setDlgAgreement(true)}>
+                  <Plus className="h-4 w-4" /> Link Agreement
+                </Button>
+                <LinkAgreementDialog
+                  open={dlgAgreement}
+                  onOpenChange={setDlgAgreement}
+                  worksiteId={worksiteId}
+                  linkedAgreementIds={linkedAgreementIds}
+                  employerRoleEmployerIds={employerRoleEmployerIds}
+                  linkedScopeIds={linkedScopeIds}
+                  allAgreements={allAgreements}
+                  allScopes={allScopes}
+                  onSuccess={handleLinkedEntitySuccess}
+                />
               </div>
             )}
             {agreements.length === 0 ? (
@@ -1777,52 +1693,21 @@ export default function WorksiteDetailPage() {
           <div className="space-y-4">
             {canWrite && (
               <div className="flex justify-end">
-                <Dialog open={dlgEmployer} onOpenChange={(o) => { setDlgEmployer(o); if (!o) resetDlg(); }}>
-                  <DialogTrigger asChild>
-                    <Button size="sm">
-                      <Plus className="h-4 w-4" /> Add Employer
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Add Employer</DialogTitle>
-                      <DialogDescription>Add an employer role at this worksite.</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-2">
-                      <div className="space-y-2">
-                        <Label>Employer</Label>
-                        <Select value={selEmployerId} onValueChange={setSelEmployerId}>
-                          <SelectTrigger><SelectValue placeholder="Select employer..." /></SelectTrigger>
-                          <SelectContent>
-                            {allEmployers.map((e) => (
-                              <SelectItem key={e.employer_id} value={String(e.employer_id)}>
-                                {e.employer_name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Role</Label>
-                        <Select value={selRoleType} onValueChange={(v) => setSelRoleType(v as EmployerRoleType)}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            {ROLE_TYPES.map((r) => (
-                              <SelectItem key={r} value={r}>{r.replace(/_/g, " ")}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {dlgError && <p className="text-sm text-destructive">{dlgError}</p>}
-                    </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => { setDlgEmployer(false); resetDlg(); }}>Cancel</Button>
-                      <Button onClick={handleAddEmployer} disabled={!selEmployerId || dlgLoading}>
-                        {dlgLoading ? "Adding..." : "Add"}
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+                <Button size="sm" onClick={() => setDlgEmployer(true)}>
+                  <Plus className="h-4 w-4" /> Add Employer
+                </Button>
+                <AddEmployerDialog
+                  open={dlgEmployer}
+                  onOpenChange={setDlgEmployer}
+                  worksiteId={worksiteId}
+                  employerRoleEmployerIds={employerRoleEmployerIds}
+                  linkedAgreementIds={linkedAgreementIds}
+                  linkedScopeIds={linkedScopeIds}
+                  allEmployers={allEmployers}
+                  allAgreements={allAgreements}
+                  allScopes={allScopes}
+                  onSuccess={handleLinkedEntitySuccess}
+                />
               </div>
             )}
 
@@ -1895,62 +1780,21 @@ export default function WorksiteDetailPage() {
           <div className="space-y-4">
             {canWrite && (
               <div className="flex justify-end">
-                <Dialog open={dlgScope} onOpenChange={(o) => { setDlgScope(o); if (!o) resetDlg(); }}>
-                  <DialogTrigger asChild>
-                    <Button size="sm">
-                      <Plus className="h-4 w-4" /> Add Work Scope
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Add Work Scope</DialogTitle>
-                      <DialogDescription>Assign a work scope to this worksite, optionally with an employer.</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-2">
-                      <div className="space-y-2">
-                        <Label>Work Scope</Label>
-                        <Select value={selScopeId} onValueChange={setSelScopeId}>
-                          <SelectTrigger><SelectValue placeholder="Select scope..." /></SelectTrigger>
-                          <SelectContent>
-                            {scopeOptions.map((s) => (
-                              <SelectItem key={s.scope_id} value={String(s.scope_id)}>{s.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Employer (optional)</Label>
-                        <Select value={selScopeEmployerId || "none"} onValueChange={(v) => setSelScopeEmployerId(v === "none" ? "" : v)}>
-                          <SelectTrigger><SelectValue placeholder="Select employer..." /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">None</SelectItem>
-                            {allEmployers.map((e) => (
-                              <SelectItem key={e.employer_id} value={String(e.employer_id)}>{e.employer_name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Engagement Type</Label>
-                        <Select value={selEngagement} onValueChange={(v) => setSelEngagement(v as EngagementType)}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            {ENGAGEMENT_TYPES.map((t) => (
-                              <SelectItem key={t} value={t}>{t.replace(/_/g, " ")}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {dlgError && <p className="text-sm text-destructive">{dlgError}</p>}
-                    </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => { setDlgScope(false); resetDlg(); }}>Cancel</Button>
-                      <Button onClick={handleAddScope} disabled={!selScopeId || dlgLoading}>
-                        {dlgLoading ? "Adding..." : "Add"}
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+                <Button size="sm" onClick={() => setDlgScope(true)}>
+                  <Plus className="h-4 w-4" /> Add Work Scope
+                </Button>
+                <AddScopeDialog
+                  open={dlgScope}
+                  onOpenChange={setDlgScope}
+                  worksiteId={worksiteId}
+                  employerRoleEmployerIds={employerRoleEmployerIds}
+                  linkedAgreementIds={linkedAgreementIds}
+                  linkedScopeIds={linkedScopeIds}
+                  allEmployers={allEmployers}
+                  allAgreements={allAgreements}
+                  allScopes={allScopes}
+                  onSuccess={handleLinkedEntitySuccess}
+                />
               </div>
             )}
             {wsScopes.length === 0 ? (

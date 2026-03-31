@@ -172,27 +172,13 @@ WHERE worksite_name = 'Ichthys'
 
 
 -- ============================================================
--- 6. REMOVE 'Hub' FROM worksite_type CHECK CONSTRAINT
+-- 6. NOTE: worksite_type CHECK constraint
 -- ============================================================
--- Guard: abort if any active worksite still carries type 'Hub'.
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM worksites WHERE worksite_type = 'Hub' AND is_active = true
-  ) THEN
-    RAISE EXCEPTION
-      'Cannot remove Hub from CHECK constraint: active Hub worksites still exist. '
-      'Deactivate them first.';
-  END IF;
-END $$;
-
-ALTER TABLE worksites
-  DROP CONSTRAINT IF EXISTS worksites_worksite_type_check;
-
-ALTER TABLE worksites
-  ADD CONSTRAINT worksites_worksite_type_check
-  CHECK (worksite_type IN (
-    'FPSO', 'FLNG', 'Platform', 'Onshore_LNG', 'Gas_Plant',
-    'Drill_Centre', 'Region', 'Heliport', 'Pipeline', 'Airfield',
-    'Onshore_Facilities', 'CPF', 'Gas_Field', 'Other'
-  ));
+-- Removing 'Hub' from the CHECK constraint is deferred to a
+-- follow-up migration. A third Hub worksite — "Varanus Island Hub"
+-- (Santos, worksite_id 14) — exists with no child worksites and
+-- one agreement link. It needs to be reviewed and either retyped
+-- or converted to a Santos program before the constraint can be
+-- tightened. Postgres validates all existing rows when adding a
+-- CHECK constraint, so all Hub rows (including inactive ones)
+-- must be retyped first.

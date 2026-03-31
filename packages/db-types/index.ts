@@ -2283,6 +2283,135 @@ export type Database = {
           },
         ]
       }
+      programs: {
+        Row: {
+          actual_end_date: string | null
+          created_at: string
+          description: string | null
+          expected_end_date: string | null
+          is_active: boolean
+          notes: string | null
+          principal_employer_id: number | null
+          program_id: number
+          program_name: string
+          program_status: string
+          start_date: string | null
+          updated_at: string
+        }
+        Insert: {
+          actual_end_date?: string | null
+          created_at?: string
+          description?: string | null
+          expected_end_date?: string | null
+          is_active?: boolean
+          notes?: string | null
+          principal_employer_id?: number | null
+          program_id?: number
+          program_name: string
+          program_status?: string
+          start_date?: string | null
+          updated_at?: string
+        }
+        Update: {
+          actual_end_date?: string | null
+          created_at?: string
+          description?: string | null
+          expected_end_date?: string | null
+          is_active?: boolean
+          notes?: string | null
+          principal_employer_id?: number | null
+          program_id?: number
+          program_name?: string
+          program_status?: string
+          start_date?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "programs_principal_employer_id_fkey"
+            columns: ["principal_employer_id"]
+            isOneToOne: false
+            referencedRelation: "employers"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "programs_principal_employer_id_fkey"
+            columns: ["principal_employer_id"]
+            isOneToOne: false
+            referencedRelation: "employers_view"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "programs_principal_employer_id_fkey"
+            columns: ["principal_employer_id"]
+            isOneToOne: false
+            referencedRelation: "principal_employer_eba_summary"
+            referencedColumns: ["principal_employer_id"]
+          },
+        ]
+      }
+      program_worksites: {
+        Row: {
+          end_date: string | null
+          id: number
+          is_current: boolean
+          is_primary: boolean
+          notes: string | null
+          program_id: number
+          start_date: string | null
+          worksite_id: number
+        }
+        Insert: {
+          end_date?: string | null
+          id?: number
+          is_current?: boolean
+          is_primary?: boolean
+          notes?: string | null
+          program_id: number
+          start_date?: string | null
+          worksite_id: number
+        }
+        Update: {
+          end_date?: string | null
+          id?: number
+          is_current?: boolean
+          is_primary?: boolean
+          notes?: string | null
+          program_id?: number
+          start_date?: string | null
+          worksite_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "program_worksites_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["program_id"]
+          },
+          {
+            foreignKeyName: "program_worksites_worksite_id_fkey"
+            columns: ["worksite_id"]
+            isOneToOne: false
+            referencedRelation: "organising_universe_view"
+            referencedColumns: ["worksite_id"]
+          },
+          {
+            foreignKeyName: "program_worksites_worksite_id_fkey"
+            columns: ["worksite_id"]
+            isOneToOne: false
+            referencedRelation: "worksites"
+            referencedColumns: ["worksite_id"]
+          },
+          {
+            foreignKeyName: "program_worksites_worksite_id_fkey"
+            columns: ["worksite_id"]
+            isOneToOne: false
+            referencedRelation: "worksites_view"
+            referencedColumns: ["worksite_id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           absorbed_into_project_id: number | null
@@ -2668,6 +2797,64 @@ export type Database = {
           },
         ]
       }
+      worker_assignments: {
+        Row: {
+          assignment_id: number
+          contract_id: number
+          created_at: string
+          end_date: string | null
+          is_current: boolean
+          notes: string | null
+          start_date: string | null
+          updated_at: string
+          worker_id: number
+        }
+        Insert: {
+          assignment_id?: number
+          contract_id: number
+          created_at?: string
+          end_date?: string | null
+          is_current?: boolean
+          notes?: string | null
+          start_date?: string | null
+          updated_at?: string
+          worker_id: number
+        }
+        Update: {
+          assignment_id?: number
+          contract_id?: number
+          created_at?: string
+          end_date?: string | null
+          is_current?: boolean
+          notes?: string | null
+          start_date?: string | null
+          updated_at?: string
+          worker_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "worker_assignments_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "worksite_contracts"
+            referencedColumns: ["contract_id"]
+          },
+          {
+            foreignKeyName: "worker_assignments_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "worker_assignments_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers_view"
+            referencedColumns: ["worker_id"]
+          },
+        ]
+      }
       worker_history: {
         Row: {
           change_type: string
@@ -2910,6 +3097,149 @@ export type Database = {
           },
           {
             foreignKeyName: "workers_worksite_id_fkey"
+            columns: ["worksite_id"]
+            isOneToOne: false
+            referencedRelation: "worksites_view"
+            referencedColumns: ["worksite_id"]
+          },
+        ]
+      }
+      worksite_contracts: {
+        Row: {
+          agreement_id: number | null
+          contract_id: number
+          contractor_employer_id: number
+          created_at: string
+          engagement_type: string | null
+          end_date: string | null
+          is_current: boolean
+          notes: string | null
+          program_id: number | null
+          project_id: number | null
+          scope_id: number
+          start_date: string | null
+          updated_at: string
+          worksite_id: number
+        }
+        Insert: {
+          agreement_id?: number | null
+          contract_id?: number
+          contractor_employer_id: number
+          created_at?: string
+          engagement_type?: string | null
+          end_date?: string | null
+          is_current?: boolean
+          notes?: string | null
+          program_id?: number | null
+          project_id?: number | null
+          scope_id: number
+          start_date?: string | null
+          updated_at?: string
+          worksite_id: number
+        }
+        Update: {
+          agreement_id?: number | null
+          contract_id?: number
+          contractor_employer_id?: number
+          created_at?: string
+          engagement_type?: string | null
+          end_date?: string | null
+          is_current?: boolean
+          notes?: string | null
+          program_id?: number | null
+          project_id?: number | null
+          scope_id?: number
+          start_date?: string | null
+          updated_at?: string
+          worksite_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "worksite_contracts_agreement_id_fkey"
+            columns: ["agreement_id"]
+            isOneToOne: false
+            referencedRelation: "agreements"
+            referencedColumns: ["agreement_id"]
+          },
+          {
+            foreignKeyName: "worksite_contracts_agreement_id_fkey"
+            columns: ["agreement_id"]
+            isOneToOne: false
+            referencedRelation: "agreements_view"
+            referencedColumns: ["agreement_id"]
+          },
+          {
+            foreignKeyName: "worksite_contracts_agreement_id_fkey"
+            columns: ["agreement_id"]
+            isOneToOne: false
+            referencedRelation: "organising_universe_view"
+            referencedColumns: ["agreement_id"]
+          },
+          {
+            foreignKeyName: "worksite_contracts_contractor_employer_id_fkey"
+            columns: ["contractor_employer_id"]
+            isOneToOne: false
+            referencedRelation: "employers"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "worksite_contracts_contractor_employer_id_fkey"
+            columns: ["contractor_employer_id"]
+            isOneToOne: false
+            referencedRelation: "employers_view"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "worksite_contracts_contractor_employer_id_fkey"
+            columns: ["contractor_employer_id"]
+            isOneToOne: false
+            referencedRelation: "principal_employer_eba_summary"
+            referencedColumns: ["principal_employer_id"]
+          },
+          {
+            foreignKeyName: "worksite_contracts_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["program_id"]
+          },
+          {
+            foreignKeyName: "worksite_contracts_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "organising_universe_view"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "worksite_contracts_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "worksite_contracts_scope_id_fkey"
+            columns: ["scope_id"]
+            isOneToOne: false
+            referencedRelation: "work_scopes"
+            referencedColumns: ["scope_id"]
+          },
+          {
+            foreignKeyName: "worksite_contracts_worksite_id_fkey"
+            columns: ["worksite_id"]
+            isOneToOne: false
+            referencedRelation: "organising_universe_view"
+            referencedColumns: ["worksite_id"]
+          },
+          {
+            foreignKeyName: "worksite_contracts_worksite_id_fkey"
+            columns: ["worksite_id"]
+            isOneToOne: false
+            referencedRelation: "worksites"
+            referencedColumns: ["worksite_id"]
+          },
+          {
+            foreignKeyName: "worksite_contracts_worksite_id_fkey"
             columns: ["worksite_id"]
             isOneToOne: false
             referencedRelation: "worksites_view"

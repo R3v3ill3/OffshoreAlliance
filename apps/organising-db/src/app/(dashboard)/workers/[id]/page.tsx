@@ -1,17 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { ArrowLeft, Pencil } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, Trash2 } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { format } from "date-fns";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface WorkerDetail {
   worker_id: number;
@@ -36,6 +52,9 @@ interface WorkerDetail {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  employer_id: number | null;
+  worksite_id: number | null;
+  project_id: number | null;
   employer: { employer_name: string } | null;
   worksite: { worksite_name: string } | null;
   member_role_type: { display_name: string } | null;
@@ -51,6 +70,36 @@ interface WorkerAgreement {
     status: string;
     expiry_date: string | null;
   };
+}
+
+interface WorkerAssignmentRow {
+  assignment_id: number;
+  is_current: boolean;
+  start_date: string | null;
+  end_date: string | null;
+  notes: string | null;
+  contract: {
+    contract_id: number;
+    engagement_type: string | null;
+    worksite: { worksite_id: number; worksite_name: string } | null;
+    work_scope: { scope_id: number; scope_name: string } | null;
+    contractor: { employer_id: number; employer_name: string } | null;
+    agreement: {
+      agreement_id: number;
+      decision_no: string;
+      agreement_name: string;
+      short_name: string | null;
+      status: string;
+      expiry_date: string | null;
+    } | null;
+    program: { program_id: number; program_name: string } | null;
+    project: { project_id: number; project_name: string } | null;
+  } | null;
+}
+
+interface ContractOption {
+  contract_id: number;
+  label: string;
 }
 
 function FieldRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -74,7 +123,13 @@ export default function WorkerDetailPage() {
   const router = useRouter();
   const { user, canWrite } = useAuth();
   const supabase = createClient();
+  const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+
+  const [dlgAssign, setDlgAssign] = useState(false);
+  const [selContractId, setSelContractId] = useState("");
+  const [dlgLoading, setDlgLoading] = useState(false);
+  const [dlgError, setDlgError] = useState<string | null>(null);
 
   const { data: worker, isLoading } = useQuery({
     queryKey: ["worker", params.id],
@@ -113,6 +168,125 @@ export default function WorkerDetailPage() {
     },
     enabled: !!user && workerIdValid,
   });
+
+  const { data: workerAssignments = [], isLoading: loadingAssignments } = useQuery({
+    queryKey: ["worker-assignments", params.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worker_assignments")
+        .select(
+          `assignment_id, is_current, start_date, end_date, notes,
+           contract:worksite_contracts(
+             contract_id, engagement_type,
+             worksite:worksites(worksite_id, worksite_name),
+             work_scope:work_scopes(scope_id, scope_name),
+             contractor:employers(employer_id, employer_name),
+             agreement:agreements(agreement_id, decision_no, agreement_name, short_name, status, expiry_date),
+             program:programs(program_id, program_name),
+             project:projects(project_id, project_name)
+           )`
+        )
+        .eq("worker_id", workerId)
+        .order("is_current", { ascending: false })
+        .order("start_date", { ascending: false });
+
+      if (error) throw error;
+      return (data ?? []) as unknown as WorkerAssignmentRow[];
+    },
+    enabled: !!user && workerIdValid,
+  });
+
+  const { data: availableContracts = [], isLoading: loadingContracts } = useQuery({
+    queryKey: ["worksite-contracts-for-worker", params.id, worker?.worksite_id],
+    queryFn: async () => {
+      if (!worker?.worksite_id) return [];
+      const { data, error } = await supabase
+        .from("worksite_contracts")
+        .select(
+          `contract_id,
+           engagement_type,
+           work_scope:work_scopes(scope_name),
+           contractor:employers(employer_name),
+           program:programs(program_name),
+           project:projects(project_name),
+           agreement:agreements(decision_no, short_name, agreement_name)`
+        )
+        .eq("worksite_id", worker.worksite_id)
+        .order("start_date", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as unknown as {
+        contract_id: number;
+        engagement_type: string | null;
+        work_scope?: { scope_name: string } | null;
+        contractor?: { employer_name: string } | null;
+        program?: { program_name: string } | null;
+        project?: { project_name: string } | null;
+        agreement?: { decision_no: string; short_name: string | null; agreement_name: string } | null;
+      }[];
+    },
+    enabled: !!user && workerIdValid && worker?.worksite_id != null,
+  });
+
+  const contractOptions = useMemo<ContractOption[]>(() => {
+    return availableContracts
+      .map((c) => {
+        const scope = c.work_scope?.scope_name ?? "Scope";
+        const contractor = c.contractor?.employer_name ?? "Employer";
+
+        const ctx: string[] = [];
+        if (c.program?.program_name) ctx.push(`Program: ${c.program.program_name}`);
+        if (c.project?.project_name) ctx.push(`Project: ${c.project.project_name}`);
+        if (c.agreement?.decision_no) ctx.push(`EBA: ${c.agreement.decision_no}`);
+
+        const base = `${scope} — ${contractor}`;
+        const label = ctx.length ? `${base} (${ctx.join(", ")})` : base;
+        return { contract_id: c.contract_id, label };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [availableContracts]);
+
+  const resetAssignDlg = () => {
+    setDlgError(null);
+    setDlgLoading(false);
+    setSelContractId("");
+  };
+
+  const handleLinkAssignment = async () => {
+    if (!selContractId) return;
+    setDlgLoading(true);
+    setDlgError(null);
+    const { error } = await supabase.from("worker_assignments").insert({
+      worker_id: workerId,
+      contract_id: Number(selContractId),
+      is_current: true,
+    });
+    if (error) {
+      setDlgError(error.message);
+      setDlgLoading(false);
+      return;
+    }
+    await queryClient.invalidateQueries({ queryKey: ["worker-assignments", params.id] });
+    setDlgAssign(false);
+    resetAssignDlg();
+  };
+
+  const handleRemoveAssignment = async (assignmentId: number) => {
+    const { error } = await supabase
+      .from("worker_assignments")
+      .delete()
+      .eq("assignment_id", assignmentId);
+    if (error) return;
+    await queryClient.invalidateQueries({ queryKey: ["worker-assignments", params.id] });
+  };
+
+  const handleToggleAssignmentCurrent = async (row: WorkerAssignmentRow) => {
+    const { error } = await supabase
+      .from("worker_assignments")
+      .update({ is_current: !row.is_current })
+      .eq("assignment_id", row.assignment_id);
+    if (error) return;
+    await queryClient.invalidateQueries({ queryKey: ["worker-assignments", params.id] });
+  };
 
   if (isLoading) {
     return (
@@ -170,6 +344,7 @@ export default function WorkerDetailPage() {
         <TabsList>
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="agreements">Agreements</TabsTrigger>
+          <TabsTrigger value="assignments">Assignments</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="communications">Communications</TabsTrigger>
         </TabsList>
@@ -314,6 +489,159 @@ export default function WorkerDetailPage() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="assignments" className="mt-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Contract Assignments</CardTitle>
+              {canWrite && (
+                <Dialog
+                  open={dlgAssign}
+                  onOpenChange={(o) => {
+                    setDlgAssign(o);
+                    if (!o) resetAssignDlg();
+                  }}
+                >
+                  <Button size="sm" onClick={() => setDlgAssign(true)}>
+                    <Plus className="h-4 w-4" />
+                    Link Contract
+                  </Button>
+                  <DialogContent className="max-w-xl">
+                    <DialogHeader>
+                      <DialogTitle>Link Contract</DialogTitle>
+                      <DialogDescription>
+                        Attach this worker to a contract at their current worksite.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                      <div className="space-y-2">
+                        <Label>Contract</Label>
+                        <Select
+                          value={selContractId}
+                          onValueChange={setSelContractId}
+                          disabled={loadingContracts || contractOptions.length === 0}
+                        >
+                          <SelectTrigger>
+                            <SelectValue
+                              placeholder={
+                                loadingContracts
+                                  ? "Loading contracts..."
+                                  : contractOptions.length === 0
+                                    ? "No contracts available"
+                                    : "Select contract..."
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {contractOptions.map((o) => (
+                              <SelectItem
+                                key={o.contract_id}
+                                value={String(o.contract_id)}
+                              >
+                                {o.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {worker.worksite_id == null && (
+                          <p className="text-xs text-muted-foreground">
+                            This worker has no worksite set; assign a worksite first to link contracts.
+                          </p>
+                        )}
+                      </div>
+                      {dlgError && <p className="text-sm text-destructive">{dlgError}</p>}
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setDlgAssign(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleLinkAssignment}
+                        disabled={!selContractId || dlgLoading || worker.worksite_id == null}
+                      >
+                        {dlgLoading ? "Linking..." : "Link"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              )}
+            </CardHeader>
+            <CardContent>
+              {loadingAssignments ? (
+                <div className="flex justify-center py-4">
+                  <EurekaLoadingSpinner size="sm" />
+                </div>
+              ) : workerAssignments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No contract assignments linked to this worker.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {workerAssignments.map((wa) => {
+                    const c = wa.contract;
+                    const scope = c?.work_scope?.scope_name ?? "—";
+                    const contractor = c?.contractor?.employer_name ?? "—";
+                    const worksiteName = c?.worksite?.worksite_name ?? "—";
+                    const agreement = c?.agreement;
+                    return (
+                      <div
+                        key={wa.assignment_id}
+                        className="flex items-start justify-between gap-3 rounded-md border p-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">
+                            {scope} — {contractor}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            Worksite: {worksiteName}
+                            {c?.program?.program_name ? ` • Program: ${c.program.program_name}` : ""}
+                            {c?.project?.project_name ? ` • Project: ${c.project.project_name}` : ""}
+                          </p>
+                          {agreement && (
+                            <p className="text-xs text-muted-foreground truncate">
+                              Agreement: {agreement.short_name || agreement.agreement_name} ({agreement.decision_no})
+                            </p>
+                          )}
+                          {wa.notes && (
+                            <p className="mt-2 text-xs text-muted-foreground whitespace-pre-wrap">
+                              {wa.notes}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              if (!canWrite) return;
+                              handleToggleAssignmentCurrent(wa);
+                            }}
+                            disabled={!canWrite}
+                          >
+                            <Badge
+                              variant={wa.is_current ? "success" : "secondary"}
+                              className={canWrite ? "cursor-pointer" : ""}
+                            >
+                              {wa.is_current ? "Current" : "Not current"}
+                            </Badge>
+                          </button>
+                          {canWrite && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                              onClick={() => handleRemoveAssignment(wa.assignment_id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>

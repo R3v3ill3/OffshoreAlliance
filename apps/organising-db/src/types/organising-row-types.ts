@@ -142,6 +142,13 @@ export type ProjectStatus =
   | "completed"
   | "absorbed";
 
+export type ProgramStatus =
+  | "planning"
+  | "active"
+  | "completed"
+  | "on_hold"
+  | "cancelled";
+
 export type AgreementScope =
   | "site_specific"
   | "project_specific"
@@ -547,6 +554,7 @@ export interface WorksiteWithRelations extends Worksite {
   operator?: Employer;
   parent_worksite?: Worksite;
   child_worksites?: Worksite[];
+  programs?: Program[];
   projects?: Project[];
   agreements?: Agreement[];
   employer_roles?: (EmployerWorksiteRole & { employer?: Employer })[];
@@ -566,6 +574,32 @@ export interface EmployerWorksiteRole {
   worksite_id: number;
   role_type: EmployerRoleType;
   is_current: boolean;
+  start_date: string | null;
+  end_date: string | null;
+  notes: string | null;
+}
+
+export interface Program {
+  program_id: number;
+  program_name: string;
+  description: string | null;
+  principal_employer_id: number | null;
+  program_status: ProgramStatus;
+  start_date: string | null;
+  expected_end_date: string | null;
+  actual_end_date: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProgramWorksite {
+  id: number;
+  program_id: number;
+  worksite_id: number;
+  is_current: boolean;
+  is_primary: boolean;
   start_date: string | null;
   end_date: string | null;
   notes: string | null;
@@ -632,6 +666,35 @@ export interface WorksiteScope {
   notes: string | null;
 }
 
+export interface WorksiteContract {
+  contract_id: number;
+  worksite_id: number;
+  program_id: number | null;
+  project_id: number | null;
+  scope_id: number;
+  contractor_employer_id: number;
+  agreement_id: number | null;
+  engagement_type: EngagementType | null;
+  is_current: boolean;
+  start_date: string | null;
+  end_date: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkerAssignment {
+  assignment_id: number;
+  worker_id: number;
+  contract_id: number;
+  is_current: boolean;
+  start_date: string | null;
+  end_date: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface EmployerScopeRecord {
   id: number;
   employer_id: number;
@@ -651,6 +714,20 @@ export interface ProjectWithRelations extends Project {
   employers?: (ProjectEmployer & { employer?: Employer })[];
   agreements?: (ProjectAgreement & { agreement?: Agreement })[];
   absorbed_into?: Project;
+}
+
+export interface WorksiteContractWithRelations extends WorksiteContract {
+  worksite?: Worksite;
+  program?: Program;
+  project?: Project;
+  work_scope?: WorkScope;
+  contractor_employer?: Employer;
+  agreement?: Agreement;
+}
+
+export interface WorkerAssignmentWithRelations extends WorkerAssignment {
+  worker?: Worker;
+  contract?: WorksiteContract;
 }
 
 export interface ImportLog {

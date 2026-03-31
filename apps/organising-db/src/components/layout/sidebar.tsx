@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Layers,
   LayoutGrid,
+  Folder,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ export const navItems = [
   { href: "/workers", label: "Workers", icon: Users },
   { href: "/employers", label: "Employers", icon: Building2 },
   { href: "/worksites", label: "Worksites", icon: MapPin },
+  { href: "/programs", label: "Programs", icon: Folder },
   { href: "/agreements", label: "Agreements", icon: FileText },
   { href: "/work-scopes", label: "Work Scopes", icon: Layers },
   { href: "/campaigns", label: "Campaigns", icon: Megaphone },

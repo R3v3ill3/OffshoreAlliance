@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
   CardContent,
@@ -83,7 +84,9 @@ function formatDate(dateStr: string | null) {
   }
 }
 
-type AgreementRow = Agreement & Record<string, unknown>;
+type AgreementRow = Agreement & {
+  employer?: { employer_id: number; employer_name: string } | null;
+} & Record<string, unknown>;
 type EmployerRoleRow = EmployerWorksiteRole & {
   employer?: Employer;
 } & Record<string, unknown>;
@@ -101,6 +104,46 @@ type WorksiteScopeRow = {
   notes: string | null;
   work_scope?: WorkScope;
   employer?: { employer_id: number; employer_name: string };
+} & Record<string, unknown>;
+
+type ProgramWorksiteRow = {
+  id: number;
+  program_id: number;
+  worksite_id: number;
+  is_current: boolean;
+  is_primary: boolean;
+  start_date: string | null;
+  end_date: string | null;
+  notes: string | null;
+  program?: {
+    program_id: number;
+    program_name: string;
+    program_status: string;
+    is_active: boolean;
+    principal_employer?: { employer_id: number; employer_name: string } | null;
+  } | null;
+} & Record<string, unknown>;
+
+type WorksiteContractRow = {
+  contract_id: number;
+  worksite_id: number;
+  program_id: number | null;
+  project_id: number | null;
+  scope_id: number;
+  contractor_employer_id: number;
+  agreement_id: number | null;
+  engagement_type: string | null;
+  is_current: boolean;
+  start_date: string | null;
+  end_date: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  work_scope?: WorkScope;
+  contractor?: { employer_id: number; employer_name: string } | null;
+  agreement?: Pick<Agreement, "agreement_id" | "agreement_name" | "short_name" | "decision_no" | "status" | "expiry_date"> | null;
+  program?: { program_id: number; program_name: string } | null;
+  project?: { project_id: number; project_name: string } | null;
 } & Record<string, unknown>;
 
 type ProjectRow = Project & {
@@ -134,6 +177,8 @@ export default function WorksiteDetailPage() {
   const [dlgEmployer, setDlgEmployer] = useState(false);
   const [dlgScope, setDlgScope] = useState(false);
   const [dlgProject, setDlgProject] = useState(false);
+  const [dlgProgram, setDlgProgram] = useState(false);
+  const [dlgContract, setDlgContract] = useState(false);
   const [dlgLoading, setDlgLoading] = useState(false);
   const [dlgError, setDlgError] = useState<string | null>(null);
 
@@ -146,6 +191,24 @@ export default function WorksiteDetailPage() {
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectType, setNewProjectType] = useState<WorkType>("production");
   const [newProjectStatus, setNewProjectStatus] = useState<ProjectStatus>("planning");
+
+  const [selProgramId, setSelProgramId] = useState("");
+  const [selProgramPrimary, setSelProgramPrimary] = useState(false);
+
+  const [contractScopeId, setContractScopeId] = useState("");
+  const [contractEmployerId, setContractEmployerId] = useState("");
+  const [contractEngagement, setContractEngagement] =
+    useState<EngagementType>("contractor");
+  const [contractAgreementId, setContractAgreementId] = useState("none");
+  const [contractProgramId, setContractProgramId] = useState("none");
+  const [contractProjectId, setContractProjectId] = useState("none");
+  const [contractIsCurrent, setContractIsCurrent] = useState(true);
+  const [contractStartDate, setContractStartDate] = useState("");
+  const [contractEndDate, setContractEndDate] = useState("");
+  const [contractNotes, setContractNotes] = useState("");
+
+  const [agreementEmployerFilter, setAgreementEmployerFilter] =
+    useState<string>("all");
 
   const [workerEmpFilter, setWorkerEmpFilter] = useState<string>("all");
   const [workerProjectFilter, setWorkerProjectFilter] = useState<string>("all");
@@ -189,10 +252,10 @@ export default function WorksiteDetailPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("agreement_worksites")
-        .select("*, agreement:agreements(*)")
+        .select("*, agreement:agreements(*, employer:employers(employer_id, employer_name))")
         .eq("worksite_id", worksiteId);
       if (error) throw error;
-      return data as { agreement?: Agreement }[];
+      return data as { agreement?: AgreementRow }[];
     },
     enabled: worksiteIdValid,
   });
@@ -201,9 +264,35 @@ export default function WorksiteDetailPage() {
     () =>
       agreementWorksites
         .map((aw) => aw.agreement)
-        .filter((a): a is Agreement => !!a),
+        .filter((a): a is AgreementRow => !!a),
     [agreementWorksites]
   );
+
+  const agreementEmployerOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const a of agreements) {
+      if (a.employer_id != null) {
+        map.set(a.employer_id, a.employer?.employer_name ?? `Employer #${a.employer_id}`);
+      }
+    }
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [agreements]);
+
+  const filteredAgreements = useMemo(() => {
+    if (agreementEmployerFilter === "all") return agreements;
+    const id = Number(agreementEmployerFilter);
+    return agreements.filter((a) => a.employer_id === id);
+  }, [agreements, agreementEmployerFilter]);
+
+  const agreementCountByEmployerId = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const a of agreements) {
+      if (a.employer_id != null) {
+        map.set(a.employer_id, (map.get(a.employer_id) || 0) + 1);
+      }
+    }
+    return map;
+  }, [agreements]);
 
   const { data: employerRoles = [] } = useQuery({
     queryKey: ["worksite-employer-roles", id],
@@ -217,6 +306,11 @@ export default function WorksiteDetailPage() {
     },
     enabled: worksiteIdValid,
   });
+
+  const employerRoleEmployerIds = useMemo(
+    () => new Set(employerRoles.map((r) => r.employer_id)),
+    [employerRoles]
+  );
 
   const { data: workers = [] } = useQuery({
     queryKey: ["worksite-workers", id],
@@ -255,6 +349,38 @@ export default function WorksiteDetailPage() {
         .order("start_date", { ascending: false });
       if (error) throw error;
       return data as ProjectRow[];
+    },
+    enabled: worksiteIdValid,
+  });
+
+  const { data: wsProgramLinks = [] } = useQuery({
+    queryKey: ["worksite-programs", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("program_worksites")
+        .select(
+          "*, program:programs(program_id, program_name, program_status, is_active, principal_employer:employers(employer_id, employer_name))"
+        )
+        .eq("worksite_id", worksiteId)
+        .order("is_primary", { ascending: false });
+      if (error) throw error;
+      return data as ProgramWorksiteRow[];
+    },
+    enabled: worksiteIdValid,
+  });
+
+  const { data: wsContracts = [] } = useQuery({
+    queryKey: ["worksite-contracts", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worksite_contracts")
+        .select(
+          "*, work_scope:work_scopes(*), contractor:employers(employer_id, employer_name), agreement:agreements(agreement_id, agreement_name, short_name, decision_no, status, expiry_date), program:programs(program_id, program_name), project:projects(project_id, project_name)"
+        )
+        .eq("worksite_id", worksiteId)
+        .order("start_date", { ascending: false });
+      if (error) throw error;
+      return data as WorksiteContractRow[];
     },
     enabled: worksiteIdValid,
   });
@@ -341,6 +467,23 @@ export default function WorksiteDetailPage() {
     },
   });
 
+  const { data: allPrograms = [] } = useQuery({
+    queryKey: ["programs-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("programs")
+        .select("program_id, program_name, program_status, is_active")
+        .order("program_name");
+      if (error) throw error;
+      return (data ?? []) as {
+        program_id: number;
+        program_name: string;
+        program_status: string;
+        is_active: boolean;
+      }[];
+    },
+  });
+
   const { data: allEmployers = [] } = useQuery({
     queryKey: ["employers-all"],
     queryFn: async () => {
@@ -379,10 +522,48 @@ export default function WorksiteDetailPage() {
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [allScopes]);
 
+  const contractScopeOptions = useMemo(() => {
+    return allScopes
+      .map((s) => {
+        const parts: string[] = [];
+        if (s.parent?.parent) parts.push(s.parent.parent.scope_name);
+        if (s.parent) parts.push(s.parent.scope_name);
+        parts.push(s.scope_name);
+        return { scope_id: s.scope_id, label: parts.join(" › ") };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [allScopes]);
+
   const linkedAgreementIds = useMemo(
     () => new Set(agreements.map((a) => a.agreement_id)),
     [agreements]
   );
+
+  const linkedProgramIds = useMemo(
+    () => new Set(wsProgramLinks.map((pw) => pw.program_id)),
+    [wsProgramLinks]
+  );
+
+  const contractEmployerOptions = useMemo(() => {
+    return allEmployers
+      .map((e) => ({
+        employer_id: e.employer_id,
+        employer_name: e.employer_name,
+        in_worksite: employerRoleEmployerIds.has(e.employer_id),
+      }))
+      .sort((a, b) => {
+        if (a.in_worksite !== b.in_worksite) return a.in_worksite ? -1 : 1;
+        return a.employer_name.localeCompare(b.employer_name);
+      });
+  }, [allEmployers, employerRoleEmployerIds]);
+
+  const contractProgramOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const pw of wsProgramLinks) {
+      if (pw.program) map.set(pw.program.program_id, pw.program.program_name);
+    }
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [wsProgramLinks]);
 
   const startEditing = () => {
     if (!worksite) return;
@@ -438,6 +619,18 @@ export default function WorksiteDetailPage() {
     setNewProjectName("");
     setNewProjectType("production");
     setNewProjectStatus("planning");
+    setSelProgramId("");
+    setSelProgramPrimary(false);
+    setContractScopeId("");
+    setContractEmployerId("");
+    setContractEngagement("contractor");
+    setContractAgreementId("none");
+    setContractProgramId("none");
+    setContractProjectId("none");
+    setContractIsCurrent(true);
+    setContractStartDate("");
+    setContractEndDate("");
+    setContractNotes("");
   };
 
   const handleLinkAgreement = async () => {
@@ -546,6 +739,78 @@ export default function WorksiteDetailPage() {
     resetDlg();
   };
 
+  const handleLinkProgram = async () => {
+    if (!selProgramId) return;
+    setDlgLoading(true);
+    setDlgError(null);
+    const { error } = await supabase.from("program_worksites").insert({
+      program_id: Number(selProgramId),
+      worksite_id: worksiteId,
+      is_current: true,
+      is_primary: selProgramPrimary,
+    } satisfies Database["public"]["Tables"]["program_worksites"]["Insert"]);
+    if (error) { setDlgError(error.message); setDlgLoading(false); return; }
+    await queryClient.invalidateQueries({ queryKey: ["worksite-programs", id] });
+    setDlgProgram(false);
+    resetDlg();
+  };
+
+  const handleUnlinkProgram = async (rowId: number) => {
+    const { error } = await supabase.from("program_worksites").delete().eq("id", rowId);
+    if (error) { setSaveError(error.message); return; }
+    await queryClient.invalidateQueries({ queryKey: ["worksite-programs", id] });
+  };
+
+  const handleToggleProgramPrimary = async (row: ProgramWorksiteRow) => {
+    const { error } = await supabase
+      .from("program_worksites")
+      .update({ is_primary: !row.is_primary })
+      .eq("id", row.id);
+    if (error) { setSaveError(error.message); return; }
+    await queryClient.invalidateQueries({ queryKey: ["worksite-programs", id] });
+  };
+
+  const handleAddContract = async () => {
+    if (!contractScopeId || !contractEmployerId) return;
+    setDlgLoading(true);
+    setDlgError(null);
+
+    const payload: Database["public"]["Tables"]["worksite_contracts"]["Insert"] = {
+      worksite_id: worksiteId,
+      scope_id: Number(contractScopeId),
+      contractor_employer_id: Number(contractEmployerId),
+      engagement_type: contractEngagement,
+      is_current: contractIsCurrent,
+    };
+    if (contractAgreementId !== "none") payload.agreement_id = Number(contractAgreementId);
+    if (contractProgramId !== "none") payload.program_id = Number(contractProgramId);
+    if (contractProjectId !== "none") payload.project_id = Number(contractProjectId);
+    if (contractStartDate) payload.start_date = contractStartDate;
+    if (contractEndDate) payload.end_date = contractEndDate;
+    if (contractNotes.trim()) payload.notes = contractNotes.trim();
+
+    const { error } = await supabase.from("worksite_contracts").insert(payload);
+    if (error) { setDlgError(error.message); setDlgLoading(false); return; }
+    await queryClient.invalidateQueries({ queryKey: ["worksite-contracts", id] });
+    setDlgContract(false);
+    resetDlg();
+  };
+
+  const handleRemoveContract = async (contractId: number) => {
+    const { error } = await supabase.from("worksite_contracts").delete().eq("contract_id", contractId);
+    if (error) { setSaveError(error.message); return; }
+    await queryClient.invalidateQueries({ queryKey: ["worksite-contracts", id] });
+  };
+
+  const handleToggleContractCurrent = async (row: WorksiteContractRow) => {
+    const { error } = await supabase
+      .from("worksite_contracts")
+      .update({ is_current: !row.is_current })
+      .eq("contract_id", row.contract_id);
+    if (error) { setSaveError(error.message); return; }
+    await queryClient.invalidateQueries({ queryKey: ["worksite-contracts", id] });
+  };
+
   const ROLE_TYPES: EmployerRoleType[] = ["Owner", "Operator", "Principal_Contractor", "Subcontractor", "Labour_Hire", "Other"];
   const ENGAGEMENT_TYPES: EngagementType[] = ["direct_employment", "contractor", "subcontractor", "labour_hire"];
   const WORK_TYPES: WorkType[] = ["production", "construction", "decommissioning", "brownfields", "service_provision", "maintenance"];
@@ -555,6 +820,13 @@ export default function WorksiteDetailPage() {
     () => [
       { key: "decision_no", header: "Decision No" },
       { key: "agreement_name", header: "Agreement Name" },
+      {
+        key: "employer_name",
+        header: "Employer",
+        render: (item) =>
+          item.employer?.employer_name ??
+          (item.employer_id != null ? `Employer #${item.employer_id}` : "—"),
+      },
       {
         key: "status",
         header: "Status",
@@ -591,7 +863,7 @@ export default function WorksiteDetailPage() {
         ),
       }] : []),
     ],
-    [canWrite]
+    [canWrite, handleUnlinkAgreement]
   );
 
   const employerRoleColumns: Column<EmployerRoleRow>[] = useMemo(
@@ -607,6 +879,19 @@ export default function WorksiteDetailPage() {
         render: (item) => (
           <Badge variant="secondary">{item.role_type.replace(/_/g, " ")}</Badge>
         ),
+      },
+      {
+        key: "agreements",
+        header: "Agreements",
+        sortable: false,
+        render: (item) => {
+          const count = agreementCountByEmployerId.get(item.employer_id) ?? 0;
+          return count ? (
+            <Badge variant="secondary">{count}</Badge>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          );
+        },
       },
       {
         key: "is_current",
@@ -631,7 +916,12 @@ export default function WorksiteDetailPage() {
         ),
       }] : []),
     ],
-    [canWrite]
+    [
+      canWrite,
+      agreementCountByEmployerId,
+      handleToggleEmployerCurrent,
+      handleRemoveEmployerRole,
+    ]
   );
 
   const workerColumns: Column<WorkerRow>[] = useMemo(
@@ -706,7 +996,7 @@ export default function WorksiteDetailPage() {
         ),
       }] : []),
     ],
-    [canWrite]
+    [canWrite, handleToggleScopeCurrent, handleRemoveScope]
   );
 
   const projectColumns: Column<ProjectRow>[] = useMemo(
@@ -748,6 +1038,198 @@ export default function WorksiteDetailPage() {
       },
     ],
     []
+  );
+
+  const programColumns: Column<ProgramWorksiteRow>[] = useMemo(
+    () => [
+      {
+        key: "program_name",
+        header: "Program",
+        render: (row) => row.program?.program_name ?? `#${row.program_id}`,
+      },
+      {
+        key: "program_status",
+        header: "Status",
+        render: (row) =>
+          row.program?.program_status ? (
+            <Badge variant="secondary">
+              {row.program.program_status.replace(/_/g, " ")}
+            </Badge>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
+      },
+      {
+        key: "principal_employer",
+        header: "Principal Employer",
+        render: (row) =>
+          row.program?.principal_employer?.employer_name ? (
+            <Badge variant="warning">
+              {row.program.principal_employer.employer_name}
+            </Badge>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
+      },
+      {
+        key: "is_primary",
+        header: "Primary",
+        render: (row) => (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (canWrite) handleToggleProgramPrimary(row);
+            }}
+            disabled={!canWrite}
+          >
+            <Badge
+              variant={row.is_primary ? "warning" : "secondary"}
+              className={canWrite ? "cursor-pointer" : ""}
+            >
+              {row.is_primary ? "Yes" : "No"}
+            </Badge>
+          </button>
+        ),
+      },
+      {
+        key: "is_current",
+        header: "Current",
+        render: (row) => (
+          <Badge variant={row.is_current ? "success" : "secondary"}>
+            {row.is_current ? "Yes" : "No"}
+          </Badge>
+        ),
+      },
+      ...(canWrite
+        ? [
+            {
+              key: "actions" as const,
+              header: "",
+              sortable: false,
+              render: (row: ProgramWorksiteRow) => (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleUnlinkProgram(row.id);
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              ),
+            },
+          ]
+        : []),
+    ],
+    [canWrite, handleToggleProgramPrimary, handleUnlinkProgram]
+  );
+
+  const contractColumns: Column<WorksiteContractRow>[] = useMemo(
+    () => [
+      {
+        key: "scope_name",
+        header: "Work Scope",
+        render: (row) => row.work_scope?.scope_name ?? "—",
+      },
+      {
+        key: "contractor_name",
+        header: "Contractor",
+        render: (row) => row.contractor?.employer_name ?? `#${row.contractor_employer_id}`,
+      },
+      {
+        key: "engagement_type",
+        header: "Engagement",
+        render: (row) =>
+          row.engagement_type ? (
+            <Badge variant="secondary">{row.engagement_type.replace(/_/g, " ")}</Badge>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
+      },
+      {
+        key: "agreement",
+        header: "Agreement",
+        render: (row) => {
+          const a = row.agreement;
+          if (!a) return <span className="text-muted-foreground">—</span>;
+          return (
+            <span className="text-sm">
+              {a.short_name || a.agreement_name}
+            </span>
+          );
+        },
+      },
+      {
+        key: "program",
+        header: "Program",
+        render: (row) =>
+          row.program?.program_name ? (
+            <Badge variant="secondary">{row.program.program_name}</Badge>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
+      },
+      {
+        key: "project",
+        header: "Site Project",
+        render: (row) =>
+          row.project?.project_name ? (
+            <Badge variant="secondary">{row.project.project_name}</Badge>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
+      },
+      {
+        key: "is_current",
+        header: "Current",
+        render: (row) => (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (canWrite) handleToggleContractCurrent(row);
+            }}
+            disabled={!canWrite}
+          >
+            <Badge
+              variant={row.is_current ? "success" : "secondary"}
+              className={canWrite ? "cursor-pointer" : ""}
+            >
+              {row.is_current ? "Yes" : "No"}
+            </Badge>
+          </button>
+        ),
+      },
+      {
+        key: "start_date",
+        header: "Start",
+        render: (row) => formatDate(row.start_date),
+      },
+      ...(canWrite
+        ? [
+            {
+              key: "actions" as const,
+              header: "",
+              sortable: false,
+              render: (row: WorksiteContractRow) => (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRemoveContract(row.contract_id);
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              ),
+            },
+          ]
+        : []),
+    ],
+    [canWrite, handleToggleContractCurrent, handleRemoveContract]
   );
 
   const childWorksiteColumns: Column<ChildWorksiteRow>[] = useMemo(
@@ -1173,8 +1655,14 @@ export default function WorksiteDetailPage() {
           <TabsTrigger value="work_scopes">
             Work Scopes ({wsScopes.length})
           </TabsTrigger>
+          <TabsTrigger value="contracts">
+            Contracts ({wsContracts.length})
+          </TabsTrigger>
           <TabsTrigger value="projects">
-            Projects ({wsProjects.length})
+            Site Projects ({wsProjects.length})
+          </TabsTrigger>
+          <TabsTrigger value="programs">
+            Programs ({wsProgramLinks.length})
           </TabsTrigger>
           <TabsTrigger value="workers">
             Workers ({workers.length})
@@ -1230,15 +1718,35 @@ export default function WorksiteDetailPage() {
                 No agreements found for this worksite.
               </div>
             ) : (
-              <DataTable
-                data={agreements as AgreementRow[]}
-                columns={agreementColumns}
-                searchPlaceholder="Search agreements..."
-                searchKeys={["decision_no", "agreement_name"]}
-                onRowClick={(item) =>
-                  router.push(`/agreements/${item.agreement_id}`)
-                }
-              />
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Employer:</span>
+                    <Select value={agreementEmployerFilter} onValueChange={setAgreementEmployerFilter}>
+                      <SelectTrigger className="w-64 h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All ({agreements.length})</SelectItem>
+                        {agreementEmployerOptions.map(([empId, name]) => (
+                          <SelectItem key={empId} value={String(empId)}>
+                            {name} ({agreementCountByEmployerId.get(empId) ?? 0})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <DataTable
+                  data={filteredAgreements as AgreementRow[]}
+                  columns={agreementColumns}
+                  searchPlaceholder="Search agreements..."
+                  searchKeys={["decision_no", "agreement_name", "employer_name"]}
+                  onRowClick={(item) =>
+                    router.push(`/agreements/${item.agreement_id}`)
+                  }
+                />
+              </div>
             )}
           </div>
         </TabsContent>
@@ -1293,6 +1801,52 @@ export default function WorksiteDetailPage() {
                 </Dialog>
               </div>
             )}
+
+            <div className="rounded-lg border bg-muted/20 p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Asset owner (principal employer)</Label>
+                  <div className="mt-1 text-sm">
+                    {worksite.principal_employer ? (
+                      <button
+                        className="underline hover:text-foreground"
+                        onClick={() =>
+                          router.push(`/employers/${worksite.principal_employer!.employer_id}`)
+                        }
+                      >
+                        {worksite.principal_employer.employer_name}
+                      </button>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Operator</Label>
+                  <div className="mt-1 text-sm">
+                    {worksite.operator ? (
+                      <button
+                        className="underline hover:text-foreground"
+                        onClick={() =>
+                          router.push(`/employers/${worksite.operator!.employer_id}`)
+                        }
+                      >
+                        {worksite.operator.employer_name}
+                      </button>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {worksite.principal_employer_id != null &&
+                !employerRoleEmployerIds.has(worksite.principal_employer_id) && (
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Note: the asset owner is stored on the worksite record and may not appear below unless
+                    added as an employer role.
+                  </p>
+                )}
+            </div>
             {employerRoles.length === 0 ? (
               <div className="flex items-center justify-center h-32 text-muted-foreground">
                 No employer associations found for this worksite.
@@ -1393,6 +1947,174 @@ export default function WorksiteDetailPage() {
           </div>
         </TabsContent>
 
+        <TabsContent value="contracts">
+          <div className="space-y-4">
+            {canWrite && (
+              <div className="flex justify-end">
+                <Dialog open={dlgContract} onOpenChange={(o) => { setDlgContract(o); if (!o) resetDlg(); }}>
+                  <Button size="sm" onClick={() => setDlgContract(true)}>
+                    <Plus className="h-4 w-4" /> Add Contract
+                  </Button>
+                  <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle>Add Contract</DialogTitle>
+                      <DialogDescription>
+                        Link a contractor employer to a work scope at this worksite, optionally tied to a program, site project, and/or specific agreement.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Work Scope <span className="text-destructive">*</span></Label>
+                          <Select value={contractScopeId} onValueChange={setContractScopeId}>
+                            <SelectTrigger><SelectValue placeholder="Select scope..." /></SelectTrigger>
+                            <SelectContent>
+                              {contractScopeOptions.map((s) => (
+                                <SelectItem key={s.scope_id} value={String(s.scope_id)}>
+                                  {s.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Contractor employer <span className="text-destructive">*</span></Label>
+                          <Select value={contractEmployerId} onValueChange={setContractEmployerId}>
+                            <SelectTrigger><SelectValue placeholder="Select employer..." /></SelectTrigger>
+                            <SelectContent>
+                              {contractEmployerOptions.map((e) => (
+                                <SelectItem key={e.employer_id} value={String(e.employer_id)}>
+                                  {e.employer_name}{e.in_worksite ? "" : " (not linked)"}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                        <div className="space-y-2">
+                          <Label>Engagement Type</Label>
+                          <Select value={contractEngagement} onValueChange={(v) => setContractEngagement(v as EngagementType)}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {ENGAGEMENT_TYPES.map((t) => (
+                                <SelectItem key={t} value={t}>{t.replace(/_/g, " ")}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Program (optional)</Label>
+                          <Select value={contractProgramId} onValueChange={setContractProgramId}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">None</SelectItem>
+                              {contractProgramOptions.map(([pid, name]) => (
+                                <SelectItem key={pid} value={String(pid)}>{name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Site Project (optional)</Label>
+                          <Select value={contractProjectId} onValueChange={setContractProjectId}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">None</SelectItem>
+                              {wsProjects.map((p) => (
+                                <SelectItem key={p.project_id} value={String(p.project_id)}>
+                                  {p.project_name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Agreement (optional)</Label>
+                          <Select value={contractAgreementId} onValueChange={setContractAgreementId}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">None</SelectItem>
+                              {agreements.map((a) => (
+                                <SelectItem key={a.agreement_id} value={String(a.agreement_id)}>
+                                  {a.short_name || a.agreement_name} ({a.decision_no})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Start date</Label>
+                          <Input type="date" value={contractStartDate} onChange={(e) => setContractStartDate(e.target.value)} />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>End date</Label>
+                          <Input type="date" value={contractEndDate} onChange={(e) => setContractEndDate(e.target.value)} />
+                        </div>
+                        <div className="flex items-center gap-2 pt-6">
+                          <input
+                            id="contract-is-current"
+                            type="checkbox"
+                            checked={contractIsCurrent}
+                            onChange={(e) => setContractIsCurrent(e.target.checked)}
+                            className="h-4 w-4 rounded border-input"
+                          />
+                          <Label htmlFor="contract-is-current">Current</Label>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Notes</Label>
+                        <Textarea value={contractNotes} onChange={(e) => setContractNotes(e.target.value)} />
+                      </div>
+
+                      {dlgError && <p className="text-sm text-destructive">{dlgError}</p>}
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setDlgContract(false)}>Cancel</Button>
+                      <Button onClick={handleAddContract} disabled={!contractScopeId || !contractEmployerId || dlgLoading}>
+                        {dlgLoading ? "Adding..." : "Add"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            )}
+
+            {wsContracts.length === 0 ? (
+              <div className="flex items-center justify-center h-32 text-muted-foreground">
+                No contracts found for this worksite.
+              </div>
+            ) : (
+              <DataTable
+                data={wsContracts as WorksiteContractRow[]}
+                columns={contractColumns}
+                searchPlaceholder="Search contracts..."
+                searchKeys={["scope_name", "contractor_name"]}
+                onRowClick={(row) => {
+                  if (row.agreement?.agreement_id) {
+                    router.push(`/agreements/${row.agreement.agreement_id}`);
+                    return;
+                  }
+                  if (row.contractor?.employer_id) {
+                    router.push(`/employers/${row.contractor.employer_id}`);
+                  }
+                }}
+              />
+            )}
+          </div>
+        </TabsContent>
+
         <TabsContent value="projects">
           <div className="space-y-4">
             {canWrite && (
@@ -1404,7 +2126,7 @@ export default function WorksiteDetailPage() {
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle>Add Project</DialogTitle>
-                      <DialogDescription>Create a new project at this worksite.</DialogDescription>
+                      <DialogDescription>Create a new site-level project at this worksite.</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-2">
                       <div className="space-y-2">
@@ -1455,6 +2177,78 @@ export default function WorksiteDetailPage() {
                 columns={projectColumns}
                 searchPlaceholder="Search projects..."
                 searchKeys={["project_name"]}
+              />
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="programs">
+          <div className="space-y-4">
+            {canWrite && (
+              <div className="flex justify-end">
+                <Dialog open={dlgProgram} onOpenChange={(o) => { setDlgProgram(o); if (!o) resetDlg(); }}>
+                  <Button size="sm" onClick={() => setDlgProgram(true)}>
+                    <Plus className="h-4 w-4" /> Link Program
+                  </Button>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Link Program</DialogTitle>
+                      <DialogDescription>Associate this worksite with an existing program.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                      <div className="space-y-2">
+                        <Label>Program</Label>
+                        <Select value={selProgramId} onValueChange={setSelProgramId}>
+                          <SelectTrigger><SelectValue placeholder="Select program..." /></SelectTrigger>
+                          <SelectContent>
+                            {allPrograms
+                              .filter((p) => !linkedProgramIds.has(p.program_id))
+                              .map((p) => (
+                                <SelectItem key={p.program_id} value={String(p.program_id)}>
+                                  {p.program_name}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          id="program-link-primary-worksite"
+                          type="checkbox"
+                          checked={selProgramPrimary}
+                          onChange={(e) => setSelProgramPrimary(e.target.checked)}
+                          className="h-4 w-4 rounded border-input"
+                        />
+                        <Label htmlFor="program-link-primary-worksite">Mark as primary</Label>
+                      </div>
+                      {dlgError && <p className="text-sm text-destructive">{dlgError}</p>}
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setDlgProgram(false)}>Cancel</Button>
+                      <Button onClick={handleLinkProgram} disabled={!selProgramId || dlgLoading}>
+                        {dlgLoading ? "Linking..." : "Link"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            )}
+
+            {wsProgramLinks.length === 0 ? (
+              <div className="flex items-center justify-center h-32 text-muted-foreground">
+                No programs linked to this worksite.
+              </div>
+            ) : (
+              <DataTable
+                data={wsProgramLinks as ProgramWorksiteRow[]}
+                columns={programColumns}
+                searchPlaceholder="Search programs..."
+                searchKeys={["program_name"]}
+                onRowClick={(row) =>
+                  row.program?.program_id
+                    ? router.push(`/programs/${row.program.program_id}`)
+                    : undefined
+                }
               />
             )}
           </div>

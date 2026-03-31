@@ -33,7 +33,6 @@ const WORKSITE_TYPE_COLORS: Record<string, string> = {
   Platform: "#EF4444",
   Onshore_LNG: "#F59E0B",
   Gas_Plant: "#10B981",
-  Hub: "#6366F1",
   Drill_Centre: "#EC4899",
   Heliport: "#14B8A6",
   Pipeline: "#78716C",

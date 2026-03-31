@@ -18,7 +18,6 @@ export type WorksiteType =
   | "Platform"
   | "Onshore_LNG"
   | "Gas_Plant"
-  | "Hub"
   | "Drill_Centre"
   | "Region"
   | "Heliport"

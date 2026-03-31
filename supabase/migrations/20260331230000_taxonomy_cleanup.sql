@@ -167,19 +167,3 @@ CROSS JOIN worksites ws
 WHERE p.program_name = 'Scarborough Development'
   AND ws.worksite_name = 'Pluto LNG'
 ON CONFLICT (program_id, worksite_id) DO NOTHING;
-
-
--- ============================================================
--- 5. PRODUCTION PROJECT FOR WHEATSTONE LNG (DOWNSTREAM)
--- ============================================================
--- Wheatstone LNG (Downstream) is a distinct onshore facility
--- producing domestic gas (separate from the Wheatstone LNG
--- export trains). Confirmed as a genuine Chevron production site.
-
-INSERT INTO projects (project_name, worksite_id, work_type, project_status, is_active)
-SELECT 'Wheatstone Domestic Gas Production', ws.worksite_id, 'production', 'operational', true
-FROM worksites ws
-WHERE ws.worksite_name = 'Wheatstone LNG (Downstream)'
-  AND NOT EXISTS (
-    SELECT 1 FROM projects WHERE worksite_id = ws.worksite_id AND work_type = 'production'
-  );

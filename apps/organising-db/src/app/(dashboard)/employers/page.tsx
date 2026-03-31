@@ -179,8 +179,17 @@ export default function EmployersPage() {
   const openMergeDialog = useCallback(() => {
     const sel = mergeSelectionEmployers;
     if (sel.length < 2) return;
-    const sorted = [...sel].sort((a, b) => a.employer_id - b.employer_id);
-    const surv = sorted[0];
+
+    // Prefer a "root" employer — one whose parent is not in the selected set.
+    // This avoids the parent_child_conflict guard in merge_employers, which
+    // fires when the default survivor (lowest ID) is a child of another selected row.
+    const selectedIds = new Set(sel.map((e) => e.employer_id));
+    const roots = sel.filter(
+      (e) => e.parent_employer_id == null || !selectedIds.has(e.parent_employer_id)
+    );
+    const candidates = roots.length > 0 ? roots : sel;
+    const surv = [...candidates].sort((a, b) => a.employer_id - b.employer_id)[0];
+
     setMergeSurvivorId(surv.employer_id);
     setMergeCanonicalName(surv.employer_name);
     setMergeAliasesText(buildAliasLines(sel, surv.employer_id, surv.employer_name));

@@ -29,6 +29,7 @@ interface WorksiteMapProps {
 
 const WORKSITE_TYPE_COLORS: Record<string, string> = {
   FPSO: "#3B82F6",
+  FPU: "#0EA5E9",
   FLNG: "#8B5CF6",
   Platform: "#EF4444",
   Onshore_LNG: "#F59E0B",

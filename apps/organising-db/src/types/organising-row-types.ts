@@ -14,6 +14,7 @@ export type AgreementStatus = "Current" | "Expired" | "Under_Negotiation" | "Ter
 
 export type WorksiteType =
   | "FPSO"
+  | "FPU"
   | "FLNG"
   | "Platform"
   | "Onshore_LNG"

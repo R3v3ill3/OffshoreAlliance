@@ -64,6 +64,7 @@ import { EditEmployerRoleDialog } from "@/components/worksites/edit-employer-rol
 
 const WORKSITE_TYPES: WorksiteType[] = [
   "FPSO",
+  "FPU",
   "FLNG",
   "Platform",
   "Onshore_LNG",
@@ -170,7 +171,7 @@ export default function WorksiteDetailPage() {
   const router = useRouter();
   const supabase = createClient();
   const queryClient = useQueryClient();
-  const { canWrite } = useAuth();
+  const { canWrite, isAdmin } = useAuth();
 
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Worksite>>({});
@@ -186,6 +187,12 @@ export default function WorksiteDetailPage() {
   const [dlgLoading, setDlgLoading] = useState(false);
   const [dlgError, setDlgError] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<EmployerRoleRow | null>(null);
+
+  const [dlgDelete, setDlgDelete] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteBlockers, setDeleteBlockers] = useState<{ workers: number; projects: number } | null>(null);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectType, setNewProjectType] = useState<WorkType>("production");
   const [newProjectStatus, setNewProjectStatus] = useState<ProjectStatus>("planning");
@@ -725,6 +732,45 @@ export default function WorksiteDetailPage() {
     await queryClient.invalidateQueries({ queryKey: ["worksite-programs", id] });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  const openDeleteDialog = async () => {
+    setDeleteError(null);
+    setDeleteConfirmText("");
+    setDeleteBlockers(null);
+
+    const [{ count: workerCount }, { count: projectCount }] = await Promise.all([
+      supabase
+        .from("workers")
+        .select("*", { count: "exact", head: true })
+        .eq("worksite_id", worksiteId),
+      supabase
+        .from("projects")
+        .select("*", { count: "exact", head: true })
+        .eq("worksite_id", worksiteId),
+    ]);
+
+    setDeleteBlockers({
+      workers: workerCount ?? 0,
+      projects: projectCount ?? 0,
+    });
+    setDlgDelete(true);
+  };
+
+  const handleDeleteWorksite = async () => {
+    if (!worksite || deleteConfirmText !== worksite.worksite_name) return;
+    setDeleting(true);
+    setDeleteError(null);
+    const { error } = await supabase
+      .from("worksites")
+      .delete()
+      .eq("worksite_id", worksiteId);
+    if (error) {
+      setDeleteError(error.message);
+      setDeleting(false);
+      return;
+    }
+    router.push("/worksites");
+  };
 
   const handleAddContract = async () => {
     if (!contractScopeId || !contractEmployerId) return;
@@ -1506,6 +1552,16 @@ export default function WorksiteDetailPage() {
             Edit
           </Button>
         )}
+        {isAdmin && !editing && (
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={openDeleteDialog}
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete
+          </Button>
+        )}
         {editing && (
           <div className="flex gap-2">
             <Button
@@ -2219,6 +2275,67 @@ export default function WorksiteDetailPage() {
           </TabsContent>
         )}
       </Tabs>
+
+      {/* Delete worksite dialog */}
+      <Dialog open={dlgDelete} onOpenChange={(o) => { setDlgDelete(o); if (!o) { setDeleteConfirmText(""); setDeleteError(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Worksite</DialogTitle>
+            <DialogDescription>
+              This action is permanent and cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          {deleteBlockers && (deleteBlockers.workers > 0 || deleteBlockers.projects > 0) ? (
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-destructive">
+                This worksite cannot be deleted while it has linked records:
+              </p>
+              <ul className="text-sm space-y-1 list-disc list-inside text-muted-foreground">
+                {deleteBlockers.workers > 0 && (
+                  <li>{deleteBlockers.workers} worker{deleteBlockers.workers !== 1 ? "s" : ""} assigned to this worksite</li>
+                )}
+                {deleteBlockers.projects > 0 && (
+                  <li>{deleteBlockers.projects} site project{deleteBlockers.projects !== 1 ? "s" : ""} linked to this worksite</li>
+                )}
+              </ul>
+              <p className="text-sm text-muted-foreground">
+                Reassign or remove these records before deleting the worksite.
+              </p>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDlgDelete(false)}>Close</Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Type <span className="font-mono font-semibold text-foreground">{worksite?.worksite_name}</span> to confirm deletion.
+              </p>
+              <Input
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="Type worksite name to confirm"
+                disabled={deleting}
+              />
+              {deleteError && (
+                <p className="text-sm text-destructive">{deleteError}</p>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDlgDelete(false)} disabled={deleting}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleDeleteWorksite}
+                  disabled={deleting || deleteConfirmText !== worksite?.worksite_name}
+                >
+                  {deleting ? "Deleting..." : "Delete Worksite"}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

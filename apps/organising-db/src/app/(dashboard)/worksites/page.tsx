@@ -31,6 +31,7 @@ import { Plus } from "lucide-react";
 
 const WORKSITE_TYPES: WorksiteType[] = [
   "FPSO",
+  "FPU",
   "FLNG",
   "Platform",
   "Onshore_LNG",

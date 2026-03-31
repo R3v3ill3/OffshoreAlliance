@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, Star, GitMerge } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { buildAliasLines } from "@/lib/utils/employer-merge-helpers";
 
 const EMPLOYER_CATEGORIES: EmployerCategory[] = [
   "Principal_Employer",
@@ -44,22 +45,6 @@ const EMPLOYER_CATEGORIES: EmployerCategory[] = [
 ];
 
 const AU_STATES = ["WA", "NT", "QLD", "SA", "NSW", "VIC", "TAS", "ACT"];
-
-function buildAliasLines(
-  selected: Employer[],
-  survivorId: number,
-  canonical: string
-): string {
-  const canon = canonical.trim().toLowerCase();
-  const lines = new Set<string>();
-  for (const e of selected) {
-    const name = e.employer_name?.trim();
-    if (name && name.toLowerCase() !== canon) lines.add(name);
-    const tr = e.trading_name?.trim();
-    if (tr && tr.toLowerCase() !== canon) lines.add(tr);
-  }
-  return [...lines].sort().join("\n");
-}
 
 type ParentMode = "none" | "existing" | "create_new";
 
@@ -280,6 +265,9 @@ export default function EmployersPage() {
       setMergeSelectedIds(new Set());
       setMergeSurvivorId(null);
       await queryClient.invalidateQueries({ queryKey: ["employers"] });
+      await queryClient.invalidateQueries({ queryKey: ["employers-all"] });
+      await queryClient.invalidateQueries({ queryKey: ["wizard-employers"] });
+      await queryClient.invalidateQueries({ queryKey: ["overview-all-employers"] });
       await queryClient.invalidateQueries({ queryKey: ["employer-scope-links"] });
     } catch (err) {
       setMergeError(err instanceof Error ? err.message : "Merge failed.");

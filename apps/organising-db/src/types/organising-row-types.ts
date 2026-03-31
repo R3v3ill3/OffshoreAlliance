@@ -674,7 +674,7 @@ export interface EmployerGroupProposal {
   isNewParent: boolean;
   memberEmployerIds: number[];
   confidence: WizardConfidence;
-  source: "fuzzy" | "ai" | "merged";
+  source: "fuzzy" | "ai" | "combined";
   accepted: boolean;
 }
 
@@ -685,7 +685,7 @@ export interface CategoryProposal {
   proposedCategory: string;
   confidence: WizardConfidence;
   reasoning: string;
-  source: "fuzzy" | "ai" | "merged";
+  source: "fuzzy" | "ai" | "combined";
   accepted: boolean;
   overridden: boolean;
 }
@@ -700,13 +700,24 @@ export interface WorksitePeProposal {
   proposedPrincipalEmployerName: string;
   confidence: WizardConfidence;
   reasoning: string;
-  source: "fuzzy" | "ai" | "merged";
+  source: "fuzzy" | "ai" | "combined";
   accepted: boolean;
   overridden: boolean;
 }
 
+export interface DuplicateMergeProposal {
+  survivorEmployerId: number;
+  memberEmployerIds: number[];
+  canonicalName: string;
+  aliasNames: string[];
+  confidence: WizardConfidence;
+  source: "fuzzy" | "ai";
+  accepted: boolean;
+}
+
 export interface WizardProposals {
   employerGroups: EmployerGroupProposal[];
+  duplicateMerges: DuplicateMergeProposal[];
   categoryAssignments: CategoryProposal[];
   worksitePeAssignments: WorksitePeProposal[];
 }

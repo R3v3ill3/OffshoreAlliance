@@ -4,7 +4,12 @@ import type {
   EmployerGroupProposal,
   CategoryProposal,
   WorksitePeProposal,
+  DuplicateMergeProposal,
 } from "@/types/database";
+import {
+  normaliseForMerge,
+  similarityRatio,
+} from "@/lib/utils/employer-merge-helpers";
 
 function normaliseName(name: string): string {
   return name
@@ -295,6 +300,77 @@ export function proposeWorksitePeAssignments(
       source: "fuzzy",
       accepted: false,
       overridden: false,
+    });
+  }
+
+  return proposals;
+}
+
+/**
+ * Detect employers that are likely duplicates of each other (same legal
+ * entity with slightly different spelling, e.g. from different EBAs).
+ * Uses normalised name similarity -- groups with ratio >= 0.85 after
+ * stripping Pty Ltd / Australia / etc. are flagged as merge candidates.
+ */
+export function detectDuplicateMerges(
+  employers: Employer[]
+): DuplicateMergeProposal[] {
+  const candidates = employers.filter(
+    (e) => e.employer_category !== "Principal_Employer"
+  );
+
+  const normalised = new Map<number, string>();
+  for (const emp of candidates) {
+    normalised.set(emp.employer_id, normaliseForMerge(emp.employer_name));
+  }
+
+  const used = new Set<number>();
+  const proposals: DuplicateMergeProposal[] = [];
+
+  for (let i = 0; i < candidates.length; i++) {
+    const a = candidates[i];
+    if (used.has(a.employer_id)) continue;
+    const normA = normalised.get(a.employer_id)!;
+    if (normA.length < 3) continue;
+
+    const cluster: Employer[] = [a];
+
+    for (let j = i + 1; j < candidates.length; j++) {
+      const b = candidates[j];
+      if (used.has(b.employer_id)) continue;
+      const normB = normalised.get(b.employer_id)!;
+
+      const ratio = similarityRatio(normA, normB);
+      if (ratio >= 0.85) {
+        cluster.push(b);
+      }
+    }
+
+    if (cluster.length < 2) continue;
+
+    for (const emp of cluster) used.add(emp.employer_id);
+
+    const survivor = cluster.reduce((best, e) =>
+      e.employer_id < best.employer_id ? e : best
+    );
+
+    const aliasSet = new Set<string>();
+    const canon = survivor.employer_name.trim().toLowerCase();
+    for (const e of cluster) {
+      const name = e.employer_name?.trim();
+      if (name && name.toLowerCase() !== canon) aliasSet.add(name);
+      const tr = e.trading_name?.trim();
+      if (tr && tr.toLowerCase() !== canon) aliasSet.add(tr);
+    }
+
+    proposals.push({
+      survivorEmployerId: survivor.employer_id,
+      memberEmployerIds: cluster.map((e) => e.employer_id),
+      canonicalName: survivor.employer_name,
+      aliasNames: [...aliasSet].sort(),
+      confidence: cluster.length >= 3 ? "high" : "medium",
+      source: "fuzzy",
+      accepted: false,
     });
   }
 

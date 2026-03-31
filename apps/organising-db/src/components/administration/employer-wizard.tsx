@@ -31,15 +31,18 @@ import type {
   EmployerGroupProposal,
   CategoryProposal,
   WorksitePeProposal,
+  DuplicateMergeProposal,
   WizardConfidence,
   WizardApplyResult,
   EmployerCategory,
 } from "@/types/database";
 import {
   detectEmployerGroups,
+  detectDuplicateMerges,
   proposeCategories,
   proposeWorksitePeAssignments,
 } from "@/lib/utils/employer-fuzzy";
+import { buildAliasLines } from "@/lib/utils/employer-merge-helpers";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -64,6 +67,7 @@ type WizardStep =
   | "idle"
   | "loading"
   | "review_groups"
+  | "review_merges"
   | "review_categories"
   | "review_worksites"
   | "confirm"
@@ -73,6 +77,7 @@ type WizardStep =
 const REVIEW_STEPS: WizardStep[] = [
   "idle",
   "review_groups",
+  "review_merges",
   "review_categories",
   "review_worksites",
   "confirm",
@@ -81,6 +86,7 @@ const REVIEW_STEPS: WizardStep[] = [
 const STEP_LABELS: Record<string, string> = {
   idle: "Analyse",
   review_groups: "Parent Groups",
+  review_merges: "Merge Duplicates",
   review_categories: "Categories",
   review_worksites: "Worksites",
   confirm: "Confirm & Apply",
@@ -145,14 +151,14 @@ function confidenceBadge(c: WizardConfidence) {
   return map[c];
 }
 
-function sourceBadge(source: "fuzzy" | "ai" | "merged") {
+function sourceBadge(source: "fuzzy" | "ai" | "combined") {
   if (source === "ai")
     return (
       <Badge variant="info" className="gap-1">
         <Sparkles className="h-3 w-3" /> AI
       </Badge>
     );
-  if (source === "merged") return <Badge variant="secondary">Merged</Badge>;
+  if (source === "combined") return <Badge variant="secondary">Combined</Badge>;
   return <Badge variant="outline">Fuzzy</Badge>;
 }
 
@@ -183,7 +189,7 @@ interface AiProposals {
   }[];
 }
 
-function mergeProposals(
+function reconcileProposals(
   fuzzy: WizardProposals,
   ai: AiProposals | null,
   principalEmployers: Pick<Employer, "employer_id" | "employer_name">[]
@@ -254,6 +260,7 @@ function mergeProposals(
 
   return {
     employerGroups: [...aiGroups, ...fuzzyGroupsNotInAi],
+    duplicateMerges: fuzzy.duplicateMerges,
     categoryAssignments: Array.from(categoryMap.values()),
     worksitePeAssignments: Array.from(wsMap.values()),
   };
@@ -276,6 +283,15 @@ function downloadManifestCsv(
       .join("; ");
     lines.push(
       `Parent Group,"${g.proposedParentName}","Members: ${members}","Link to parent",${g.confidence},${g.source}`
+    );
+  }
+  for (const m of proposals.duplicateMerges.filter((m) => m.accepted)) {
+    const victims = m.memberEmployerIds
+      .filter((id) => id !== m.survivorEmployerId)
+      .map((id) => empMap.get(id) ?? String(id))
+      .join("; ");
+    lines.push(
+      `Merge Duplicates,"${m.canonicalName}","Victims: ${victims}","Merge into #${m.survivorEmployerId}",${m.confidence},${m.source}`
     );
   }
   for (const c of proposals.categoryAssignments.filter((c) => c.accepted)) {
@@ -396,8 +412,11 @@ function EmployerWizardInner() {
       operatorMap
     );
 
-    let merged: WizardProposals = {
+    const fuzzyDuplicates = detectDuplicateMerges(employers);
+
+    let reconciled: WizardProposals = {
       employerGroups: fuzzyGroups,
+      duplicateMerges: fuzzyDuplicates,
       categoryAssignments: fuzzyCategories,
       worksitePeAssignments: fuzzyWorksites,
     };
@@ -443,7 +462,7 @@ function EmployerWizardInner() {
         if (res.ok) {
           const data = await res.json();
           if (data.proposals) {
-            merged = mergeProposals(merged, data.proposals, principalEmployers);
+            reconciled = reconcileProposals(reconciled, data.proposals, principalEmployers);
             setAiUsed(true);
           }
         }
@@ -456,9 +475,10 @@ function EmployerWizardInner() {
     setElapsedMs(0);
 
     if (
-      merged.employerGroups.length === 0 &&
-      merged.categoryAssignments.length === 0 &&
-      merged.worksitePeAssignments.length === 0
+      reconciled.employerGroups.length === 0 &&
+      reconciled.duplicateMerges.length === 0 &&
+      reconciled.categoryAssignments.length === 0 &&
+      reconciled.worksitePeAssignments.length === 0
     ) {
       setError(
         "No proposals found — your data appears to be already well-structured."
@@ -467,7 +487,7 @@ function EmployerWizardInner() {
       return;
     }
 
-    setProposals(merged);
+    setProposals(reconciled);
     setStep("review_groups");
   }, [employers, worksites, principalEmployers, useAi]);
 
@@ -549,7 +569,7 @@ function EmployerWizardInner() {
   );
 
   // Option A: absorb all members of sourceIdx into targetIdx, remove source group
-  const mergeGroups = useCallback(
+  const combineGroups = useCallback(
     (targetIdx: number, sourceIdx: number) => {
       setProposals((prev) => {
         if (!prev) return prev;
@@ -577,8 +597,8 @@ function EmployerWizardInner() {
         groups[targetIdx] = {
           ...target,
           memberEmployerIds: [...target.memberEmployerIds, ...newMembers],
-          confidence: "medium", // merged manually — downgrade confidence
-          source: "merged",
+          confidence: "medium",
+          source: "combined",
         };
 
         // Remove the source group (higher index first to avoid shift issues)
@@ -647,7 +667,7 @@ function EmployerWizardInner() {
             isNewParent: true,
             memberEmployerIds: [],
             confidence: "low",
-            source: "merged",
+            source: "combined",
             accepted: false,
           },
         ],
@@ -679,8 +699,48 @@ function EmployerWizardInner() {
     []
   );
 
+  const updateDuplicateMerge = useCallback(
+    (index: number, updates: Partial<DuplicateMergeProposal>) => {
+      setProposals((prev) => {
+        if (!prev) return prev;
+        const merges = [...prev.duplicateMerges];
+        merges[index] = { ...merges[index], ...updates };
+        return { ...prev, duplicateMerges: merges };
+      });
+    },
+    []
+  );
+
+  const removeMergeMember = useCallback(
+    (mergeIndex: number, employerId: number) => {
+      setProposals((prev) => {
+        if (!prev) return prev;
+        const merges = [...prev.duplicateMerges];
+        const m = merges[mergeIndex];
+        const updated = m.memberEmployerIds.filter((id) => id !== employerId);
+        if (updated.length < 2) {
+          merges.splice(mergeIndex, 1);
+        } else {
+          const newSurvivor =
+            m.survivorEmployerId === employerId
+              ? updated[0]
+              : m.survivorEmployerId;
+          const survivorEmp = employers.find((e) => e.employer_id === newSurvivor);
+          merges[mergeIndex] = {
+            ...m,
+            memberEmployerIds: updated,
+            survivorEmployerId: newSurvivor,
+            canonicalName: survivorEmp?.employer_name ?? m.canonicalName,
+          };
+        }
+        return { ...prev, duplicateMerges: merges };
+      });
+    },
+    [employers]
+  );
+
   const bulkAcceptHigh = useCallback(
-    (type: "groups" | "categories" | "worksites") => {
+    (type: "groups" | "merges" | "categories" | "worksites") => {
       setProposals((prev) => {
         if (!prev) return prev;
         switch (type) {
@@ -689,6 +749,13 @@ function EmployerWizardInner() {
               ...prev,
               employerGroups: prev.employerGroups.map((g) =>
                 g.confidence === "high" ? { ...g, accepted: true } : g
+              ),
+            };
+          case "merges":
+            return {
+              ...prev,
+              duplicateMerges: prev.duplicateMerges.map((m) =>
+                m.confidence === "high" ? { ...m, accepted: true } : m
               ),
             };
           case "categories":
@@ -716,8 +783,8 @@ function EmployerWizardInner() {
   const applyChanges = useCallback(async () => {
     if (!proposals || !snapshotRef.current) return;
 
-    const acceptedGroups = proposals.employerGroups.filter((g) => g.accepted);
-    for (const g of acceptedGroups) {
+    const acceptedGroupsList = proposals.employerGroups.filter((g) => g.accepted);
+    for (const g of acceptedGroupsList) {
       if (g.memberEmployerIds.length === 0) {
         setError(
           "Each accepted parent group must include at least one member employer. Remove the accept check or add members."
@@ -739,8 +806,66 @@ function EmployerWizardInner() {
       }
     }
 
+    const acceptedMerges = proposals.duplicateMerges.filter((m) => m.accepted);
+    for (const m of acceptedMerges) {
+      if (m.memberEmployerIds.length < 2) {
+        setError("Each accepted merge must include at least two employers.");
+        setStep("review_merges");
+        return;
+      }
+      if (!m.canonicalName.trim()) {
+        setError("Enter a canonical name for each accepted merge.");
+        setStep("review_merges");
+        return;
+      }
+    }
+
     setStep("applying");
     setError(null);
+
+    // Phase 1: Execute accepted duplicate merges first
+    const victimToSurvivor = new Map<number, number>();
+    let mergesApplied = 0;
+
+    for (const m of acceptedMerges) {
+      const victimIds = m.memberEmployerIds.filter(
+        (id) => id !== m.survivorEmployerId
+      );
+      if (victimIds.length === 0) continue;
+
+      try {
+        const res = await fetch("/api/employers/merge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            survivor_employer_id: m.survivorEmployerId,
+            victim_employer_ids: victimIds,
+            canonical_employer_name: m.canonicalName.trim(),
+            alias_names: m.aliasNames.filter(Boolean),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || data?.success === false) {
+          const msg = data?.message ?? data?.error ?? "Merge failed";
+          setError(`Merge failed for "${m.canonicalName}": ${msg}`);
+          setStep("confirm");
+          return;
+        }
+        for (const vid of victimIds) {
+          victimToSurvivor.set(vid, m.survivorEmployerId);
+        }
+        mergesApplied++;
+      } catch (err) {
+        setError(
+          `Merge failed for "${m.canonicalName}": ${err instanceof Error ? err.message : "Unknown error"}`
+        );
+        setStep("confirm");
+        return;
+      }
+    }
+
+    // Phase 2: Remap victim IDs in parent-group proposals to survivors
+    const remapId = (id: number): number => victimToSurvivor.get(id) ?? id;
 
     const snapshot = snapshotRef.current;
     const empSnapshot = new Map(
@@ -754,15 +879,24 @@ function EmployerWizardInner() {
       .filter((g) => g.accepted)
       .map((g) => ({
         proposed_parent_name: g.proposedParentName,
-        existing_parent_id: g.existingParentId,
+        existing_parent_id:
+          g.existingParentId != null ? remapId(g.existingParentId) : null,
         is_new_parent: g.isNewParent,
-        member_employer_ids: g.memberEmployerIds,
-      }));
+        member_employer_ids: [
+          ...new Set(g.memberEmployerIds.map(remapId)),
+        ].filter(
+          (id) =>
+            !victimToSurvivor.has(id) ||
+            victimToSurvivor.get(id) === id
+        ),
+      }))
+      .filter((g) => g.member_employer_ids.length > 0);
 
     const category_updates = proposals.categoryAssignments
       .filter((c) => c.accepted)
+      .filter((c) => !victimToSurvivor.has(c.employerId))
       .map((c) => ({
-        employer_id: c.employerId,
+        employer_id: remapId(c.employerId),
         proposed_category: c.proposedCategory,
         expected_updated_at:
           empSnapshot.get(c.employerId)?.updated_at ?? null,
@@ -772,33 +906,64 @@ function EmployerWizardInner() {
       .filter((w) => w.accepted)
       .map((w) => ({
         worksite_id: w.worksiteId,
-        principal_employer_id: w.proposedPrincipalEmployerId,
+        principal_employer_id: remapId(w.proposedPrincipalEmployerId),
         expected_updated_at:
           wsSnapshot.get(w.worksiteId)?.updated_at ?? null,
       }));
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const hasWizardWork =
+        parent_groups.length > 0 ||
+        category_updates.length > 0 ||
+        worksite_updates.length > 0;
 
-      const res = await fetch("/api/employer-wizard/apply", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
-          parent_groups,
-          category_updates,
-          worksite_updates,
-        }),
-      });
+      let result: WizardApplyResult;
+      if (hasWizardWork) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-      clearTimeout(timeoutId);
-      const result: WizardApplyResult = await res.json();
+        const res = await fetch("/api/employer-wizard/apply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            parent_groups,
+            category_updates,
+            worksite_updates,
+          }),
+        });
+
+        clearTimeout(timeoutId);
+        result = await res.json();
+      } else {
+        result = {
+          success: true,
+          parents_created: 0,
+          employers_updated: 0,
+          worksites_updated: 0,
+        };
+      }
+
+      if (mergesApplied > 0) {
+        result = {
+          ...result,
+          message: [
+            result.message,
+            `${mergesApplied} duplicate merge(s) applied.`,
+          ]
+            .filter(Boolean)
+            .join(" "),
+        };
+      }
+
       setApplyResult(result);
       setStep("done");
 
       if (result.success) {
         queryClient.invalidateQueries({ queryKey: ["employers"] });
+        queryClient.invalidateQueries({ queryKey: ["employers-all"] });
+        queryClient.invalidateQueries({ queryKey: ["wizard-employers"] });
+        queryClient.invalidateQueries({ queryKey: ["overview-all-employers"] });
         queryClient.invalidateQueries({ queryKey: ["worksites"] });
         queryClient.invalidateQueries({
           queryKey: ["principal-employer-eba-summary"],
@@ -815,10 +980,12 @@ function EmployerWizardInner() {
   // ── Accepted counts for confirmation ─────────────────────
 
   const acceptedGroups = proposals?.employerGroups.filter((g) => g.accepted) ?? [];
+  const acceptedMergeGroups = proposals?.duplicateMerges.filter((m) => m.accepted) ?? [];
   const acceptedCategories = proposals?.categoryAssignments.filter((c) => c.accepted) ?? [];
   const acceptedWorksites = proposals?.worksitePeAssignments.filter((w) => w.accepted) ?? [];
   const totalAccepted =
     acceptedGroups.length +
+    acceptedMergeGroups.length +
     acceptedCategories.length +
     acceptedWorksites.length;
 
@@ -1355,18 +1522,18 @@ function EmployerWizardInner() {
 
                   {/* Option A + B toolbar */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    {/* Option A: Merge another detected group into this one */}
+                    {/* Option A: Combine another detected group into this one */}
                     {groups.length > 1 && (
                       <Select
                         value=""
                         onValueChange={(v) => {
                           const sourceIdx = Number(v);
-                          mergeGroups(gi, sourceIdx);
+                          combineGroups(gi, sourceIdx);
                         }}
                       >
                         <SelectTrigger className="w-auto h-8 text-xs gap-1 border-dashed">
                           <Merge className="h-3 w-3 shrink-0" />
-                          <SelectValue placeholder="Merge group into this one..." />
+                          <SelectValue placeholder="Combine group into this one..." />
                         </SelectTrigger>
                         <SelectContent>
                           {groups.map((g, i) => {
@@ -1562,7 +1729,223 @@ function EmployerWizardInner() {
     );
   }
 
-  // ── Step 3: Review Categories ────────────────────────────
+  // ── Step 3: Review Merge Duplicates ──────────────────────
+
+  function MergesStep() {
+    if (!proposals) return null;
+    const merges = proposals.duplicateMerges;
+    const hasHighConfidence = merges.some((m) => m.confidence === "high" && !m.accepted);
+
+    if (merges.length === 0) {
+      return (
+        <Card>
+          <CardContent className="py-10 text-center">
+            <CheckCircle2 className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
+            <p className="text-sm text-muted-foreground">
+              No duplicate employers detected. All names appear distinct.
+            </p>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold">Merge Duplicates</h3>
+            <p className="text-sm text-muted-foreground">
+              These employers appear to be the same legal entity with different
+              spelling (e.g. from different enterprise agreements). Merging is
+              permanent: victim rows are deleted and all workers, agreements,
+              and worksites are moved to the survivor.
+            </p>
+          </div>
+          {hasHighConfidence && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => bulkAcceptHigh("merges")}
+            >
+              <CheckCheck className="h-3.5 w-3.5" />
+              Accept all high-confidence
+            </Button>
+          )}
+        </div>
+
+        {merges.map((merge, mi) => {
+          const members = merge.memberEmployerIds
+            .map((id) => employerMap.get(id))
+            .filter(Boolean) as Employer[];
+
+          return (
+            <Card
+              key={mi}
+              className={merge.accepted ? "border-primary/40 bg-primary/5" : ""}
+            >
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <CardTitle className="text-base truncate">
+                      {merge.canonicalName}
+                    </CardTitle>
+                    {confidenceBadge(merge.confidence)}
+                    {sourceBadge(merge.source)}
+                    <Badge variant="secondary">
+                      {merge.memberEmployerIds.length} employers
+                    </Badge>
+                  </div>
+                  <Button
+                    variant={merge.accepted ? "default" : "outline"}
+                    size="sm"
+                    onClick={() =>
+                      updateDuplicateMerge(mi, { accepted: !merge.accepted })
+                    }
+                  >
+                    {merge.accepted ? (
+                      <>
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Accepted
+                      </>
+                    ) : (
+                      "Accept"
+                    )}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* Survivor selection */}
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">
+                    Surviving record (others will be deleted)
+                  </Label>
+                  <div className="space-y-1.5 rounded-md border p-2">
+                    {members.map((emp) => (
+                      <div
+                        key={emp.employer_id}
+                        className="flex items-center gap-2 text-sm"
+                      >
+                        <label className="flex items-start gap-2 flex-1 cursor-pointer">
+                          <input
+                            type="radio"
+                            name={`merge-survivor-${mi}`}
+                            className="mt-1"
+                            checked={
+                              merge.survivorEmployerId === emp.employer_id
+                            }
+                            onChange={() => {
+                              const sel = members;
+                              const canon = emp.employer_name;
+                              const aliases = buildAliasLines(
+                                sel,
+                                emp.employer_id,
+                                canon
+                              )
+                                .split("\n")
+                                .filter(Boolean);
+                              updateDuplicateMerge(mi, {
+                                survivorEmployerId: emp.employer_id,
+                                canonicalName: canon,
+                                aliasNames: aliases,
+                              });
+                            }}
+                          />
+                          <span>
+                            <span className="font-medium">
+                              {emp.employer_name}
+                            </span>
+                            {emp.trading_name && (
+                              <span className="text-muted-foreground">
+                                {" "}
+                                ({emp.trading_name})
+                              </span>
+                            )}
+                            <span className="text-muted-foreground">
+                              {" "}
+                              · id {emp.employer_id}
+                            </span>
+                          </span>
+                        </label>
+                        {members.length > 2 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                            title="Remove from merge group"
+                            onClick={() =>
+                              removeMergeMember(mi, emp.employer_id)
+                            }
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Canonical name */}
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">
+                    Canonical name
+                  </Label>
+                  <Input
+                    value={merge.canonicalName}
+                    onChange={(e) =>
+                      updateDuplicateMerge(mi, {
+                        canonicalName: e.target.value,
+                      })
+                    }
+                    className="h-8"
+                    placeholder="Legal or preferred display name"
+                  />
+                </div>
+
+                {/* Alias names */}
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">
+                    Alias names (auto-generated, editable)
+                  </Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {merge.aliasNames.length === 0 ? (
+                      <span className="text-xs text-muted-foreground italic">
+                        No aliases — all names match the canonical name.
+                      </span>
+                    ) : (
+                      merge.aliasNames.map((alias, ai) => (
+                        <Badge
+                          key={ai}
+                          variant="outline"
+                          className="gap-1 text-xs"
+                        >
+                          {alias}
+                          <button
+                            type="button"
+                            className="hover:text-destructive"
+                            onClick={() => {
+                              const updated = merge.aliasNames.filter(
+                                (_, idx) => idx !== ai
+                              );
+                              updateDuplicateMerge(mi, {
+                                aliasNames: updated,
+                              });
+                            }}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // ── Step 4: Review Categories ────────────────────────────
 
   function CategoriesStep() {
     if (!proposals) return null;
@@ -1940,6 +2323,61 @@ function EmployerWizardInner() {
               </Card>
             )}
 
+            {/* Duplicate merges manifest */}
+            {acceptedMergeGroups.length > 0 && (
+              <Card className="border-destructive/40">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">
+                    Duplicate Merges ({acceptedMergeGroups.length})
+                  </CardTitle>
+                  <CardDescription>
+                    These employers will be permanently merged — victim rows
+                    will be deleted and all linked data moved to the survivor.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {acceptedMergeGroups.map((m, i) => {
+                      const victims = m.memberEmployerIds.filter(
+                        (id) => id !== m.survivorEmployerId
+                      );
+                      return (
+                        <div
+                          key={i}
+                          className="text-sm border-b last:border-0 pb-2 last:pb-0"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">
+                              {m.canonicalName}
+                            </span>
+                            <Badge variant="destructive" className="text-[10px]">
+                              permanent
+                            </Badge>
+                            {confidenceBadge(m.confidence)}
+                          </div>
+                          <div className="text-muted-foreground mt-0.5">
+                            Survivor: id {m.survivorEmployerId} · Deletes:{" "}
+                            {victims
+                              .map(
+                                (id) =>
+                                  employerMap.get(id)?.employer_name ??
+                                  `#${id}`
+                              )
+                              .join(", ")}
+                          </div>
+                          {m.aliasNames.length > 0 && (
+                            <div className="text-muted-foreground mt-0.5">
+                              Aliases: {m.aliasNames.join(", ")}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Category manifest */}
             {acceptedCategories.length > 0 && (
               <Card>
@@ -2073,7 +2511,14 @@ function EmployerWizardInner() {
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
                 {totalAccepted} change{totalAccepted !== 1 ? "s" : ""} will be
-                applied in a single atomic transaction.
+                applied.
+                {acceptedMergeGroups.length > 0 && (
+                  <span className="text-destructive font-medium">
+                    {" "}
+                    Includes {acceptedMergeGroups.length} permanent
+                    duplicate merge{acceptedMergeGroups.length !== 1 ? "s" : ""}.
+                  </span>
+                )}
               </p>
               <Button onClick={applyChanges}>
                 Apply All Accepted Changes
@@ -2145,7 +2590,7 @@ function EmployerWizardInner() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex items-center gap-4 text-sm">
+          <div className="flex items-center gap-4 text-sm flex-wrap">
             {(applyResult.parents_created ?? 0) > 0 && (
               <Badge variant="success">
                 {applyResult.parents_created} parent
@@ -2165,9 +2610,11 @@ function EmployerWizardInner() {
               </Badge>
             )}
           </div>
-          <p className="text-xs text-muted-foreground">
-            A record of this operation has been logged to Import History.
-          </p>
+          {applyResult.message && (
+            <p className="text-sm text-muted-foreground">
+              {applyResult.message}
+            </p>
+          )}
           <Button onClick={resetWizard} variant="outline">
             <RotateCcw className="h-4 w-4 mr-1" />
             Run Wizard Again
@@ -2192,6 +2639,7 @@ function EmployerWizardInner() {
       {step === "idle" && <IdleStep />}
       {step === "loading" && <LoadingStep />}
       {step === "review_groups" && <GroupsStep />}
+      {step === "review_merges" && <MergesStep />}
       {step === "review_categories" && <CategoriesStep />}
       {step === "review_worksites" && <WorksitesStep />}
       {step === "confirm" && <ConfirmStep />}

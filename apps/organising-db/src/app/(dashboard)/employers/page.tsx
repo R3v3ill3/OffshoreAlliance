@@ -161,6 +161,18 @@ export default function EmployersPage() {
     return employers.filter((e) => ids.has(e.employer_id));
   }, [employers, mergeSelectedIds]);
 
+  // Detect employers in the selection that have parent_employer_id pointing at another
+  // selected employer — these will trigger the ancestor guard if chosen as the survivor.
+  const mergeParentConflictNames = useMemo(() => {
+    const selectedIds = new Set(mergeSelectionEmployers.map((e) => e.employer_id));
+    return mergeSelectionEmployers
+      .filter(
+        (e) =>
+          e.parent_employer_id != null && selectedIds.has(e.parent_employer_id)
+      )
+      .map((e) => e.employer_name);
+  }, [mergeSelectionEmployers]);
+
   const openMergeDialog = useCallback(() => {
     const sel = mergeSelectionEmployers;
     if (sel.length < 2) return;
@@ -248,17 +260,31 @@ export default function EmployersPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setMergeError(
-          typeof data.message === "string"
-            ? data.message
-            : data.error ?? "Merge failed."
-        );
+        if (data?.error === "parent_child_conflict") {
+          setMergeError(
+            "Cannot merge: the chosen survivor has a parent company that is one of the employers being merged. " +
+            "Open the survivor's detail card and clear its Parent Company field first, then retry."
+          );
+        } else {
+          setMergeError(
+            typeof data.message === "string"
+              ? data.message
+              : data.error ?? "Merge failed."
+          );
+        }
         return;
       }
       if (data && data.success === false) {
-        setMergeError(
-          typeof data.message === "string" ? data.message : "Merge failed."
-        );
+        if (data.error === "parent_child_conflict") {
+          setMergeError(
+            "Cannot merge: the chosen survivor has a parent company that is one of the employers being merged. " +
+            "Open the survivor's detail card and clear its Parent Company field first, then retry."
+          );
+        } else {
+          setMergeError(
+            typeof data.message === "string" ? data.message : "Merge failed."
+          );
+        }
         return;
       }
       setMergeDialogOpen(false);
@@ -754,6 +780,21 @@ export default function EmployersPage() {
                   above is not repeated as an alias.
                 </p>
               </div>
+              {mergeParentConflictNames.length > 0 && (
+                <div className="rounded-md border border-amber-400 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-600 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+                  <p className="font-medium">Parent company relationship detected</p>
+                  <p className="mt-1">
+                    {mergeParentConflictNames.join(", ")}{" "}
+                    {mergeParentConflictNames.length === 1 ? "is" : "are"} linked
+                    as a child of another employer in this selection. The merge will
+                    succeed as long as the <strong>surviving employer</strong> is not
+                    itself a child of one of the others — the dialog pre-selects the
+                    safest candidate. If the merge fails, open the survivor&apos;s
+                    detail card and clear its <em>Parent Company</em> field, then
+                    retry.
+                  </p>
+                </div>
+              )}
               {mergeError && (
                 <p className="text-sm text-destructive">{mergeError}</p>
               )}

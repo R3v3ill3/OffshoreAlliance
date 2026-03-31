@@ -38,13 +38,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    const getUser = async () => {
+    // Use getSession() (reads local cookie state, no network request) instead of
+    // getUser() (verifies JWT with auth server, can hang and block all Supabase ops).
+    // Server-side JWT verification is handled by middleware — client doesn't need it.
+    const initSession = async () => {
       // #region agent log
-      fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'auth-context.tsx:getUser-start',message:'getUser called',data:{cookies:document.cookie.length,href:window.location.href},timestamp:Date.now(),hypothesisId:'H-A,H-C'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'auth-context.tsx:getSession-start',message:'getSession called (replaces getUser)',data:{href:window.location.href},timestamp:Date.now(),hypothesisId:'H-C-fix'})}).catch(()=>{});
       // #endregion
-      const { data: { user }, error } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user ?? null;
       // #region agent log
-      fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'auth-context.tsx:getUser-result',message:'getUser result',data:{userId:user?.id??null,error:error?.message??null,cookieCount:document.cookie.split(';').filter(Boolean).length},timestamp:Date.now(),hypothesisId:'H-A,H-C'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'auth-context.tsx:getSession-result',message:'getSession result',data:{userId:user?.id??null,hasSession:!!session,tokenExpiresAt:session?.expires_at??null},timestamp:Date.now(),hypothesisId:'H-C-fix'})}).catch(()=>{});
       // #endregion
       setUser(user);
 
@@ -59,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     };
 
-    getUser();
+    initSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {

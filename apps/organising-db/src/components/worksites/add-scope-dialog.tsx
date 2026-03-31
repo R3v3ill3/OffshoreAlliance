@@ -138,7 +138,7 @@ export function AddScopeDialog({
     return parts.join(" › ");
   }
 
-  // Scope options: filter out whole-of-project and already on site
+  // Scope options: filter out whole-of-project; multiple employers may share the same scope
   const scopeOptions = [...allScopes]
     .filter((s) => !s.is_whole_of_project)
     .map((s) => ({
@@ -232,7 +232,7 @@ export function AddScopeDialog({
       }
     }
 
-    // 3. Link agreement if selected and not already linked
+    // 3. Link agreement if selected and not already linked to this worksite
     if (selectedAgreementId !== "none") {
       const agId = Number(selectedAgreementId);
       if (!linkedAgreementIds.has(agId)) {
@@ -292,10 +292,9 @@ export function AddScopeDialog({
                   <SelectItem
                     key={s.scope_id}
                     value={String(s.scope_id)}
-                    disabled={s.alreadyOnSite}
                   >
                     {s.label}
-                    {s.alreadyOnSite ? " (already on site)" : ""}
+                    {s.alreadyOnSite ? " ★" : ""}
                   </SelectItem>
                 ))}
               </SelectContent>

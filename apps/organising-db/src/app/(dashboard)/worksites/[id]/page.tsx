@@ -60,6 +60,7 @@ import { format } from "date-fns";
 import { LinkAgreementDialog } from "@/components/worksites/link-agreement-dialog";
 import { AddEmployerDialog } from "@/components/worksites/add-employer-dialog";
 import { AddScopeDialog } from "@/components/worksites/add-scope-dialog";
+import { EditEmployerRoleDialog } from "@/components/worksites/edit-employer-role-dialog";
 
 const WORKSITE_TYPES: WorksiteType[] = [
   "FPSO",
@@ -185,6 +186,7 @@ export default function WorksiteDetailPage() {
   const [dlgContract, setDlgContract] = useState(false);
   const [dlgLoading, setDlgLoading] = useState(false);
   const [dlgError, setDlgError] = useState<string | null>(null);
+  const [editingRole, setEditingRole] = useState<EmployerRoleRow | null>(null);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectType, setNewProjectType] = useState<WorkType>("production");
   const [newProjectStatus, setNewProjectStatus] = useState<ProjectStatus>("planning");
@@ -866,10 +868,16 @@ export default function WorksiteDetailPage() {
         header: "",
         sortable: false,
         render: (item: EmployerRoleRow) => (
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-            onClick={(e) => { e.stopPropagation(); handleRemoveEmployerRole(item.id); }}>
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground"
+              onClick={(e) => { e.stopPropagation(); setEditingRole(item); }}>
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+              onClick={(e) => { e.stopPropagation(); handleRemoveEmployerRole(item.id); }}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         ),
       }] : []),
     ],
@@ -1773,6 +1781,15 @@ export default function WorksiteDetailPage() {
                 }
               />
             )}
+            <EditEmployerRoleDialog
+              open={!!editingRole}
+              onOpenChange={(o) => { if (!o) setEditingRole(null); }}
+              worksiteId={worksiteId}
+              role={editingRole}
+              linkedAgreementIds={linkedAgreementIds}
+              allAgreements={allAgreements}
+              onSuccess={handleLinkedEntitySuccess}
+            />
           </div>
         </TabsContent>
 

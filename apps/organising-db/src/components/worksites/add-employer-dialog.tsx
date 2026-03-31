@@ -246,17 +246,15 @@ export function AddEmployerDialog({
       }
     }
 
-    // 3. Add selected scopes
+    // 3. Add selected scopes — multiple employers may share the same scope on a site
     for (const scopeId of selectedScopeIds) {
-      if (!linkedScopeIds.has(scopeId)) {
-        await supabase.from("worksite_scopes").insert({
-          worksite_id: worksiteId,
-          scope_id: scopeId,
-          employer_id: empId,
-          engagement_type: engagementType,
-          is_current: true,
-        });
-      }
+      await supabase.from("worksite_scopes").insert({
+        worksite_id: worksiteId,
+        scope_id: scopeId,
+        employer_id: empId,
+        engagement_type: engagementType,
+        is_current: true,
+      });
     }
 
     setSaving(false);
@@ -429,21 +427,20 @@ export function AddEmployerDialog({
                         id={`emp-scope-${s.scope_id}`}
                         checked={selectedScopeIds.has(s.scope_id)}
                         onCheckedChange={() => toggleScope(s.scope_id)}
-                        disabled={s.alreadyOnSite}
                       />
                       <Label
                         htmlFor={`emp-scope-${s.scope_id}`}
-                        className={`text-sm font-normal cursor-pointer flex-1 ${s.alreadyOnSite ? "text-muted-foreground line-through" : ""}`}
+                        className="text-sm font-normal cursor-pointer flex-1"
                       >
                         {scopeLabel(s)}
                       </Label>
-                      {s.linkedToEmployer && !s.alreadyOnSite && (
+                      {s.linkedToEmployer && (
                         <Badge variant="secondary" className="text-xs">
                           employer scope
                         </Badge>
                       )}
                       {s.alreadyOnSite && (
-                        <Badge variant="success" className="text-xs">
+                        <Badge variant="outline" className="text-xs">
                           on site
                         </Badge>
                       )}

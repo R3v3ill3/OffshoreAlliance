@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
@@ -52,6 +52,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { ArrowLeft, Pencil, X, Save, Star, Building2, Plus, Trash2 } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
@@ -590,9 +591,13 @@ export default function WorksiteDetailPage() {
     setSaving(true);
     setSaveError(null);
 
+    // Strip join fields that aren't actual DB columns (operator, principal_employer, parent_worksite)
+    const { operator: _op, principal_employer: _pe, parent_worksite: _pw, ...updateData } =
+      editForm as WorksiteWithJoins & Partial<Worksite>;
+
     const { error } = await supabase
       .from("worksites")
-      .update(editForm)
+      .update(updateData)
       .eq("worksite_id", worksite.worksite_id);
 
     if (error) {
@@ -647,7 +652,7 @@ export default function WorksiteDetailPage() {
     resetDlg();
   };
 
-  const handleUnlinkAgreement = async (agreementId: number) => {
+  const handleUnlinkAgreement = useCallback(async (agreementId: number) => {
     const { error } = await supabase
       .from("agreement_worksites")
       .delete()
@@ -655,7 +660,8 @@ export default function WorksiteDetailPage() {
       .eq("worksite_id", worksiteId);
     if (error) { setSaveError(error.message); return; }
     await queryClient.invalidateQueries({ queryKey: ["worksite-agreements", id] });
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [worksiteId, id]);
 
   const handleAddEmployer = async () => {
     if (!selEmployerId) return;
@@ -673,20 +679,22 @@ export default function WorksiteDetailPage() {
     resetDlg();
   };
 
-  const handleRemoveEmployerRole = async (roleId: number) => {
+  const handleRemoveEmployerRole = useCallback(async (roleId: number) => {
     const { error } = await supabase.from("employer_worksite_roles").delete().eq("id", roleId);
     if (error) { setSaveError(error.message); return; }
     await queryClient.invalidateQueries({ queryKey: ["worksite-employer-roles", id] });
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
-  const handleToggleEmployerCurrent = async (role: EmployerWorksiteRole) => {
+  const handleToggleEmployerCurrent = useCallback(async (role: EmployerWorksiteRole) => {
     const { error } = await supabase
       .from("employer_worksite_roles")
       .update({ is_current: !role.is_current })
       .eq("id", role.id);
     if (error) { setSaveError(error.message); return; }
     await queryClient.invalidateQueries({ queryKey: ["worksite-employer-roles", id] });
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   const handleAddScope = async () => {
     if (!selScopeId) return;
@@ -706,20 +714,22 @@ export default function WorksiteDetailPage() {
     resetDlg();
   };
 
-  const handleRemoveScope = async (scopeRowId: number) => {
+  const handleRemoveScope = useCallback(async (scopeRowId: number) => {
     const { error } = await supabase.from("worksite_scopes").delete().eq("id", scopeRowId);
     if (error) { setSaveError(error.message); return; }
     await queryClient.invalidateQueries({ queryKey: ["worksite-scopes", id] });
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
-  const handleToggleScopeCurrent = async (row: WorksiteScopeRow) => {
+  const handleToggleScopeCurrent = useCallback(async (row: WorksiteScopeRow) => {
     const { error } = await supabase
       .from("worksite_scopes")
       .update({ is_current: !row.is_current })
       .eq("id", row.id);
     if (error) { setSaveError(error.message); return; }
     await queryClient.invalidateQueries({ queryKey: ["worksite-scopes", id] });
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   const handleAddProject = async () => {
     if (!newProjectName.trim()) return;
@@ -755,20 +765,22 @@ export default function WorksiteDetailPage() {
     resetDlg();
   };
 
-  const handleUnlinkProgram = async (rowId: number) => {
+  const handleUnlinkProgram = useCallback(async (rowId: number) => {
     const { error } = await supabase.from("program_worksites").delete().eq("id", rowId);
     if (error) { setSaveError(error.message); return; }
     await queryClient.invalidateQueries({ queryKey: ["worksite-programs", id] });
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
-  const handleToggleProgramPrimary = async (row: ProgramWorksiteRow) => {
+  const handleToggleProgramPrimary = useCallback(async (row: ProgramWorksiteRow) => {
     const { error } = await supabase
       .from("program_worksites")
       .update({ is_primary: !row.is_primary })
       .eq("id", row.id);
     if (error) { setSaveError(error.message); return; }
     await queryClient.invalidateQueries({ queryKey: ["worksite-programs", id] });
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   const handleAddContract = async () => {
     if (!contractScopeId || !contractEmployerId) return;
@@ -796,20 +808,22 @@ export default function WorksiteDetailPage() {
     resetDlg();
   };
 
-  const handleRemoveContract = async (contractId: number) => {
+  const handleRemoveContract = useCallback(async (contractId: number) => {
     const { error } = await supabase.from("worksite_contracts").delete().eq("contract_id", contractId);
     if (error) { setSaveError(error.message); return; }
     await queryClient.invalidateQueries({ queryKey: ["worksite-contracts", id] });
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
-  const handleToggleContractCurrent = async (row: WorksiteContractRow) => {
+  const handleToggleContractCurrent = useCallback(async (row: WorksiteContractRow) => {
     const { error } = await supabase
       .from("worksite_contracts")
       .update({ is_current: !row.is_current })
       .eq("contract_id", row.contract_id);
     if (error) { setSaveError(error.message); return; }
     await queryClient.invalidateQueries({ queryKey: ["worksite-contracts", id] });
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   const ROLE_TYPES: EmployerRoleType[] = ["Owner", "Operator", "Principal_Contractor", "Subcontractor", "Labour_Hire", "Other"];
   const ENGAGEMENT_TYPES: EngagementType[] = ["direct_employment", "contractor", "subcontractor", "labour_hire"];
@@ -1679,9 +1693,11 @@ export default function WorksiteDetailPage() {
             {canWrite && (
               <div className="flex justify-end">
                 <Dialog open={dlgAgreement} onOpenChange={(o) => { setDlgAgreement(o); if (!o) resetDlg(); }}>
-                  <Button size="sm" onClick={() => setDlgAgreement(true)}>
-                    <Plus className="h-4 w-4" /> Link Agreement
-                  </Button>
+                  <DialogTrigger asChild>
+                    <Button size="sm">
+                      <Plus className="h-4 w-4" /> Link Agreement
+                    </Button>
+                  </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle>Link Agreement</DialogTitle>
@@ -1704,7 +1720,7 @@ export default function WorksiteDetailPage() {
                       {dlgError && <p className="text-sm text-destructive">{dlgError}</p>}
                     </div>
                     <DialogFooter>
-                      <Button variant="outline" onClick={() => setDlgAgreement(false)}>Cancel</Button>
+                      <Button variant="outline" onClick={() => { setDlgAgreement(false); resetDlg(); }}>Cancel</Button>
                       <Button onClick={handleLinkAgreement} disabled={!selAgreementId || dlgLoading}>
                         {dlgLoading ? "Linking..." : "Link"}
                       </Button>
@@ -1756,9 +1772,11 @@ export default function WorksiteDetailPage() {
             {canWrite && (
               <div className="flex justify-end">
                 <Dialog open={dlgEmployer} onOpenChange={(o) => { setDlgEmployer(o); if (!o) resetDlg(); }}>
-                  <Button size="sm" onClick={() => setDlgEmployer(true)}>
-                    <Plus className="h-4 w-4" /> Add Employer
-                  </Button>
+                  <DialogTrigger asChild>
+                    <Button size="sm">
+                      <Plus className="h-4 w-4" /> Add Employer
+                    </Button>
+                  </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle>Add Employer</DialogTitle>
@@ -1792,7 +1810,7 @@ export default function WorksiteDetailPage() {
                       {dlgError && <p className="text-sm text-destructive">{dlgError}</p>}
                     </div>
                     <DialogFooter>
-                      <Button variant="outline" onClick={() => setDlgEmployer(false)}>Cancel</Button>
+                      <Button variant="outline" onClick={() => { setDlgEmployer(false); resetDlg(); }}>Cancel</Button>
                       <Button onClick={handleAddEmployer} disabled={!selEmployerId || dlgLoading}>
                         {dlgLoading ? "Adding..." : "Add"}
                       </Button>
@@ -1872,9 +1890,11 @@ export default function WorksiteDetailPage() {
             {canWrite && (
               <div className="flex justify-end">
                 <Dialog open={dlgScope} onOpenChange={(o) => { setDlgScope(o); if (!o) resetDlg(); }}>
-                  <Button size="sm" onClick={() => setDlgScope(true)}>
-                    <Plus className="h-4 w-4" /> Add Work Scope
-                  </Button>
+                  <DialogTrigger asChild>
+                    <Button size="sm">
+                      <Plus className="h-4 w-4" /> Add Work Scope
+                    </Button>
+                  </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle>Add Work Scope</DialogTitle>
@@ -1918,7 +1938,7 @@ export default function WorksiteDetailPage() {
                       {dlgError && <p className="text-sm text-destructive">{dlgError}</p>}
                     </div>
                     <DialogFooter>
-                      <Button variant="outline" onClick={() => setDlgScope(false)}>Cancel</Button>
+                      <Button variant="outline" onClick={() => { setDlgScope(false); resetDlg(); }}>Cancel</Button>
                       <Button onClick={handleAddScope} disabled={!selScopeId || dlgLoading}>
                         {dlgLoading ? "Adding..." : "Add"}
                       </Button>
@@ -1952,9 +1972,11 @@ export default function WorksiteDetailPage() {
             {canWrite && (
               <div className="flex justify-end">
                 <Dialog open={dlgContract} onOpenChange={(o) => { setDlgContract(o); if (!o) resetDlg(); }}>
-                  <Button size="sm" onClick={() => setDlgContract(true)}>
-                    <Plus className="h-4 w-4" /> Add Contract
-                  </Button>
+                  <DialogTrigger asChild>
+                    <Button size="sm">
+                      <Plus className="h-4 w-4" /> Add Contract
+                    </Button>
+                  </DialogTrigger>
                   <DialogContent className="max-w-2xl">
                     <DialogHeader>
                       <DialogTitle>Add Contract</DialogTitle>
@@ -2081,7 +2103,7 @@ export default function WorksiteDetailPage() {
                       {dlgError && <p className="text-sm text-destructive">{dlgError}</p>}
                     </div>
                     <DialogFooter>
-                      <Button variant="outline" onClick={() => setDlgContract(false)}>Cancel</Button>
+                      <Button variant="outline" onClick={() => { setDlgContract(false); resetDlg(); }}>Cancel</Button>
                       <Button onClick={handleAddContract} disabled={!contractScopeId || !contractEmployerId || dlgLoading}>
                         {dlgLoading ? "Adding..." : "Add"}
                       </Button>
@@ -2120,9 +2142,11 @@ export default function WorksiteDetailPage() {
             {canWrite && (
               <div className="flex justify-end">
                 <Dialog open={dlgProject} onOpenChange={(o) => { setDlgProject(o); if (!o) resetDlg(); }}>
-                  <Button size="sm" onClick={() => setDlgProject(true)}>
-                    <Plus className="h-4 w-4" /> Add Project
-                  </Button>
+                  <DialogTrigger asChild>
+                    <Button size="sm">
+                      <Plus className="h-4 w-4" /> Add Project
+                    </Button>
+                  </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle>Add Project</DialogTitle>
@@ -2158,7 +2182,7 @@ export default function WorksiteDetailPage() {
                       {dlgError && <p className="text-sm text-destructive">{dlgError}</p>}
                     </div>
                     <DialogFooter>
-                      <Button variant="outline" onClick={() => setDlgProject(false)}>Cancel</Button>
+                      <Button variant="outline" onClick={() => { setDlgProject(false); resetDlg(); }}>Cancel</Button>
                       <Button onClick={handleAddProject} disabled={!newProjectName.trim() || dlgLoading}>
                         {dlgLoading ? "Creating..." : "Create"}
                       </Button>
@@ -2187,9 +2211,11 @@ export default function WorksiteDetailPage() {
             {canWrite && (
               <div className="flex justify-end">
                 <Dialog open={dlgProgram} onOpenChange={(o) => { setDlgProgram(o); if (!o) resetDlg(); }}>
-                  <Button size="sm" onClick={() => setDlgProgram(true)}>
-                    <Plus className="h-4 w-4" /> Link Program
-                  </Button>
+                  <DialogTrigger asChild>
+                    <Button size="sm">
+                      <Plus className="h-4 w-4" /> Link Program
+                    </Button>
+                  </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle>Link Program</DialogTitle>
@@ -2224,7 +2250,7 @@ export default function WorksiteDetailPage() {
                       {dlgError && <p className="text-sm text-destructive">{dlgError}</p>}
                     </div>
                     <DialogFooter>
-                      <Button variant="outline" onClick={() => setDlgProgram(false)}>Cancel</Button>
+                      <Button variant="outline" onClick={() => { setDlgProgram(false); resetDlg(); }}>Cancel</Button>
                       <Button onClick={handleLinkProgram} disabled={!selProgramId || dlgLoading}>
                         {dlgLoading ? "Linking..." : "Link"}
                       </Button>

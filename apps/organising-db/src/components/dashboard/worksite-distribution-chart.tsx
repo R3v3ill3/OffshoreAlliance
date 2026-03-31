@@ -48,7 +48,8 @@ export function WorksiteDistributionChart({
           Worksite Distribution
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex-1 min-h-[300px]">
+      <CardContent className="flex-1">
+        <div className="h-[300px] w-full">
         {isLoading ? (
           <div className="flex h-full items-center justify-center">
             <EurekaLoadingSpinner size="md" />
@@ -89,6 +90,7 @@ export function WorksiteDistributionChart({
             </PieChart>
           </ResponsiveContainer>
         )}
+        </div>
       </CardContent>
     </Card>
   );

@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ArrowLeft, ExternalLink, Pencil, Plus, Trash2, Star, Loader2, Users } from "lucide-react";
+import { ArrowLeft, ExternalLink, Pencil, Plus, Trash2, Star, Loader2, Users, Save, X } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -14,6 +14,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -145,6 +147,33 @@ interface OrganiserOption {
   }>;
 }
 
+interface SectorOption {
+  sector_id: number;
+  sector_name: string;
+}
+
+interface EmployerOption {
+  employer_id: number;
+  employer_name: string;
+}
+
+interface EditForm {
+  decision_no: string;
+  agreement_name: string;
+  short_name: string;
+  sector_id: string;
+  employer_id: string;
+  industry_classification: string;
+  date_of_decision: string;
+  commencement_date: string;
+  expiry_date: string;
+  status: AgreementStatus;
+  is_greenfield: boolean;
+  is_variation: boolean;
+  fwc_link: string;
+  notes: string;
+}
+
 const STATUS_VARIANT: Record<AgreementStatus, "success" | "destructive" | "info" | "secondary"> = {
   Current: "success",
   Expired: "destructive",
@@ -161,9 +190,37 @@ function formatDate(d: string | null) {
   }
 }
 
+function toDateInputValue(d: string | null): string {
+  if (!d) return "";
+  try {
+    return format(new Date(d), "yyyy-MM-dd");
+  } catch {
+    return "";
+  }
+}
+
 function pct(v: number | null) {
   if (v == null) return "—";
   return `${v}%`;
+}
+
+function agreementToEditForm(a: AgreementDetail): EditForm {
+  return {
+    decision_no: a.decision_no,
+    agreement_name: a.agreement_name,
+    short_name: a.short_name ?? "",
+    sector_id: a.sector_id != null ? String(a.sector_id) : "",
+    employer_id: a.employer_id != null ? String(a.employer_id) : "",
+    industry_classification: a.industry_classification ?? "",
+    date_of_decision: toDateInputValue(a.date_of_decision),
+    commencement_date: toDateInputValue(a.commencement_date),
+    expiry_date: toDateInputValue(a.expiry_date),
+    status: a.status,
+    is_greenfield: a.is_greenfield,
+    is_variation: a.is_variation,
+    fwc_link: a.fwc_link ?? "",
+    notes: a.notes ?? "",
+  };
 }
 
 export default function AgreementDetailPage() {
@@ -183,7 +240,11 @@ export default function AgreementDetailPage() {
   const [addOrgPrimary, setAddOrgPrimary] = useState(false);
   const [addOrgError, setAddOrgError] = useState<string | null>(null);
   const [suggestLead, setSuggestLead] = useState<{ name: string; organiserId: number } | null>(null);
+
+  // Edit mode state
   const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState<EditForm | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const { data: agreement, isLoading } = useQuery({
     queryKey: ["agreement", id],
@@ -203,6 +264,30 @@ export default function AgreementDetailPage() {
       return data as unknown as AgreementDetail;
     },
     enabled: !!user && agreementIdValid,
+  });
+
+  const { data: sectors = [] } = useQuery({
+    queryKey: ["sectors"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("sectors")
+        .select("sector_id, sector_name")
+        .order("sector_name");
+      return (data ?? []) as SectorOption[];
+    },
+    enabled: !!user,
+  });
+
+  const { data: employers = [] } = useQuery({
+    queryKey: ["employers"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("employers")
+        .select("employer_id, employer_name")
+        .order("employer_name");
+      return (data ?? []) as EmployerOption[];
+    },
+    enabled: !!user,
   });
 
   const { data: worksites = [] } = useQuery({
@@ -285,6 +370,35 @@ export default function AgreementDetailPage() {
       return (data ?? []) as unknown as OrganiserOption[];
     },
     enabled: !!user,
+  });
+
+  // Seed editForm when agreement data loads (if already in edit mode)
+  useEffect(() => {
+    if (agreement && editing && !editForm) {
+      setEditForm(agreementToEditForm(agreement));
+    }
+  }, [agreement, editing, editForm]);
+
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      setSaveError(null);
+      const res = await fetch(`/api/agreements/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editForm),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to save agreement");
+      return json;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agreement", id] });
+      setEditing(false);
+      setEditForm(null);
+    },
+    onError: (err: Error) => {
+      setSaveError(err.message);
+    },
   });
 
   const addOrgMutation = useMutation({
@@ -388,6 +502,20 @@ export default function AgreementDetailPage() {
     },
   });
 
+  function handleStartEdit() {
+    if (agreement) {
+      setEditForm(agreementToEditForm(agreement));
+      setSaveError(null);
+      setEditing(true);
+    }
+  }
+
+  function handleCancelEdit() {
+    setEditing(false);
+    setEditForm(null);
+    setSaveError(null);
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -407,6 +535,8 @@ export default function AgreementDetailPage() {
   const sortedDues = [...(agreement.dues_increases ?? [])].sort(
     (a, b) => a.increase_number - b.increase_number
   );
+
+  const ef = editForm;
 
   return (
     <div className="space-y-6">
@@ -430,20 +560,40 @@ export default function AgreementDetailPage() {
             )}
           </p>
         </div>
-        {canWrite && (
-          <Button
-            variant={editing ? "default" : "outline"}
-            onClick={() => setEditing((e) => !e)}
-          >
+        {canWrite && !editing && (
+          <Button variant="outline" onClick={handleStartEdit}>
             <Pencil className="h-4 w-4" />
-            {editing ? "Done" : "Edit"}
+            Edit
           </Button>
+        )}
+        {canWrite && editing && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={handleCancelEdit}
+              disabled={updateMutation.isPending}
+            >
+              <X className="h-4 w-4" />
+              Cancel
+            </Button>
+            <Button
+              onClick={() => updateMutation.mutate()}
+              disabled={updateMutation.isPending || !ef?.decision_no || !ef?.agreement_name}
+            >
+              {updateMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              Save
+            </Button>
+          </div>
         )}
       </div>
 
-      {editing && (
-        <div className="rounded-md border border-dashed bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
-          Edit mode coming soon. Agreement fields cannot be edited yet.
+      {saveError && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {saveError}
         </div>
       )}
 
@@ -452,89 +602,265 @@ export default function AgreementDetailPage() {
           <CardTitle className="text-lg">Agreement Details</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-4 text-sm">
-            <div>
-              <span className="text-muted-foreground">Sector</span>
-              <p className="font-medium">{agreement.sector?.sector_name ?? "—"}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Employer</span>
-              {agreement.employer_id != null ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    router.push(`/employers/${agreement.employer_id}`)
-                  }
-                  className="block w-full text-left font-medium underline underline-offset-2 hover:text-primary"
+          {editing && ef ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-5 text-sm">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-decision-no">Decision No *</Label>
+                <Input
+                  id="edit-decision-no"
+                  value={ef.decision_no}
+                  onChange={(e) => setEditForm({ ...ef, decision_no: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-status">Status *</Label>
+                <Select
+                  value={ef.status}
+                  onValueChange={(v) => setEditForm({ ...ef, status: v as AgreementStatus })}
                 >
-                  {agreement.employer?.employer_name ?? "View employer"}
-                </button>
-              ) : (
-                <p className="font-medium">—</p>
-              )}
-            </div>
-            <div>
-              <span className="text-muted-foreground">Industry Classification</span>
-              <p className="font-medium">{agreement.industry_classification ?? "—"}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Date of Decision</span>
-              <p className="font-medium">{formatDate(agreement.date_of_decision)}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Commencement</span>
-              <p className="font-medium">{formatDate(agreement.commencement_date)}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Expiry</span>
-              <p className="font-medium">{formatDate(agreement.expiry_date)}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">FWC Link</span>
-              {agreement.fwc_link ? (
-                <a
-                  href={agreement.fwc_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-primary hover:underline flex items-center gap-1"
+                  <SelectTrigger id="edit-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Current">Current</SelectItem>
+                    <SelectItem value="Expired">Expired</SelectItem>
+                    <SelectItem value="Under_Negotiation">Under Negotiation</SelectItem>
+                    <SelectItem value="Terminated">Terminated</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5 sm:col-span-2 md:col-span-1">
+                <Label htmlFor="edit-short-name">Short Name</Label>
+                <Input
+                  id="edit-short-name"
+                  value={ef.short_name}
+                  onChange={(e) => setEditForm({ ...ef, short_name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5 col-span-full">
+                <Label htmlFor="edit-agreement-name">Agreement Name *</Label>
+                <Input
+                  id="edit-agreement-name"
+                  value={ef.agreement_name}
+                  onChange={(e) => setEditForm({ ...ef, agreement_name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-sector">Sector</Label>
+                <Select
+                  value={ef.sector_id}
+                  onValueChange={(v) => setEditForm({ ...ef, sector_id: v })}
                 >
-                  View on FWC <ExternalLink className="h-3 w-3" />
-                </a>
-              ) : (
-                <p className="font-medium">—</p>
-              )}
+                  <SelectTrigger id="edit-sector">
+                    <SelectValue placeholder="Select sector" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sectors.map((s) => (
+                      <SelectItem key={s.sector_id} value={String(s.sector_id)}>
+                        {s.sector_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-employer">Employer</Label>
+                <Select
+                  value={ef.employer_id}
+                  onValueChange={(v) => setEditForm({ ...ef, employer_id: v })}
+                >
+                  <SelectTrigger id="edit-employer">
+                    <SelectValue placeholder="Select employer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {employers.map((e) => (
+                      <SelectItem key={e.employer_id} value={String(e.employer_id)}>
+                        {e.employer_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-industry">Industry Classification</Label>
+                <Input
+                  id="edit-industry"
+                  value={ef.industry_classification}
+                  onChange={(e) => setEditForm({ ...ef, industry_classification: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-date-decision">Date of Decision</Label>
+                <Input
+                  id="edit-date-decision"
+                  type="date"
+                  value={ef.date_of_decision}
+                  onChange={(e) => setEditForm({ ...ef, date_of_decision: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-commencement">Commencement</Label>
+                <Input
+                  id="edit-commencement"
+                  type="date"
+                  value={ef.commencement_date}
+                  onChange={(e) => setEditForm({ ...ef, commencement_date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-expiry">Expiry</Label>
+                <Input
+                  id="edit-expiry"
+                  type="date"
+                  value={ef.expiry_date}
+                  onChange={(e) => setEditForm({ ...ef, expiry_date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5 col-span-full">
+                <Label htmlFor="edit-fwc-link">FWC Link</Label>
+                <Input
+                  id="edit-fwc-link"
+                  type="url"
+                  value={ef.fwc_link}
+                  placeholder="https://www.fwc.gov.au/..."
+                  onChange={(e) => setEditForm({ ...ef, fwc_link: e.target.value })}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="edit-greenfield"
+                  checked={ef.is_greenfield}
+                  onChange={(e) => setEditForm({ ...ef, is_greenfield: e.target.checked })}
+                  className="h-4 w-4 rounded border"
+                />
+                <Label htmlFor="edit-greenfield" className="font-normal cursor-pointer">
+                  Greenfield
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="edit-variation"
+                  checked={ef.is_variation}
+                  onChange={(e) => setEditForm({ ...ef, is_variation: e.target.checked })}
+                  className="h-4 w-4 rounded border"
+                />
+                <Label htmlFor="edit-variation" className="font-normal cursor-pointer">
+                  Variation
+                </Label>
+              </div>
+              <div className="col-span-full">
+                <span className="text-muted-foreground text-sm">Union Coverage</span>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {agreement.agreement_unions?.length ? (
+                    agreement.agreement_unions.map((au) =>
+                      au.union ? (
+                        <Badge key={au.union.union_id} variant="outline">
+                          {au.union.union_code} — {au.union.union_name}
+                        </Badge>
+                      ) : null
+                    )
+                  ) : (
+                    <p className="font-medium text-sm">—</p>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-1.5 col-span-full">
+                <Label htmlFor="edit-notes">Notes</Label>
+                <Textarea
+                  id="edit-notes"
+                  value={ef.notes}
+                  rows={4}
+                  onChange={(e) => setEditForm({ ...ef, notes: e.target.value })}
+                />
+              </div>
             </div>
-            <div>
-              <span className="text-muted-foreground">Greenfield</span>
-              <p className="font-medium">{agreement.is_greenfield ? "Yes" : "No"}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Variation</span>
-              <p className="font-medium">{agreement.is_variation ? "Yes" : "No"}</p>
-            </div>
-            <div className="col-span-full">
-              <span className="text-muted-foreground">Union Coverage</span>
-              <div className="flex flex-wrap gap-1.5 mt-1">
-                {agreement.agreement_unions?.length ? (
-                  agreement.agreement_unions.map((au) =>
-                    au.union ? (
-                      <Badge key={au.union.union_id} variant="outline">
-                        {au.union.union_code} — {au.union.union_name}
-                      </Badge>
-                    ) : null
-                  )
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-4 text-sm">
+              <div>
+                <span className="text-muted-foreground">Sector</span>
+                <p className="font-medium">{agreement.sector?.sector_name ?? "—"}</p>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Employer</span>
+                {agreement.employer_id != null ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      router.push(`/employers/${agreement.employer_id}`)
+                    }
+                    className="block w-full text-left font-medium underline underline-offset-2 hover:text-primary"
+                  >
+                    {agreement.employer?.employer_name ?? "View employer"}
+                  </button>
                 ) : (
                   <p className="font-medium">—</p>
                 )}
               </div>
-            </div>
-            {agreement.notes && (
-              <div className="col-span-full">
-                <span className="text-muted-foreground">Notes</span>
-                <p className="font-medium whitespace-pre-wrap">{agreement.notes}</p>
+              <div>
+                <span className="text-muted-foreground">Industry Classification</span>
+                <p className="font-medium">{agreement.industry_classification ?? "—"}</p>
               </div>
-            )}
-          </div>
+              <div>
+                <span className="text-muted-foreground">Date of Decision</span>
+                <p className="font-medium">{formatDate(agreement.date_of_decision)}</p>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Commencement</span>
+                <p className="font-medium">{formatDate(agreement.commencement_date)}</p>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Expiry</span>
+                <p className="font-medium">{formatDate(agreement.expiry_date)}</p>
+              </div>
+              <div>
+                <span className="text-muted-foreground">FWC Link</span>
+                {agreement.fwc_link ? (
+                  <a
+                    href={agreement.fwc_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-primary hover:underline flex items-center gap-1"
+                  >
+                    View on FWC <ExternalLink className="h-3 w-3" />
+                  </a>
+                ) : (
+                  <p className="font-medium">—</p>
+                )}
+              </div>
+              <div>
+                <span className="text-muted-foreground">Greenfield</span>
+                <p className="font-medium">{agreement.is_greenfield ? "Yes" : "No"}</p>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Variation</span>
+                <p className="font-medium">{agreement.is_variation ? "Yes" : "No"}</p>
+              </div>
+              <div className="col-span-full">
+                <span className="text-muted-foreground">Union Coverage</span>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {agreement.agreement_unions?.length ? (
+                    agreement.agreement_unions.map((au) =>
+                      au.union ? (
+                        <Badge key={au.union.union_id} variant="outline">
+                          {au.union.union_code} — {au.union.union_name}
+                        </Badge>
+                      ) : null
+                    )
+                  ) : (
+                    <p className="font-medium">—</p>
+                  )}
+                </div>
+              </div>
+              {agreement.notes && (
+                <div className="col-span-full">
+                  <span className="text-muted-foreground">Notes</span>
+                  <p className="font-medium whitespace-pre-wrap">{agreement.notes}</p>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

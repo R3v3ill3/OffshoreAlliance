@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-query";
 import { useState, useEffect, type ReactNode } from "react";
 import { AuthProvider } from "@/lib/supabase/auth-context";
+import { agentDebugLog } from "@/lib/agent-debug-log";
 import { DeviceProvider } from "@/contexts/device-context";
 
 export function Providers({ children, isMobile }: { children: ReactNode; isMobile: boolean }) {
@@ -13,7 +14,21 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
           onError: (error, query) => {
             console.error("[QueryCache] Error in query", query.queryKey, error);
             // #region agent log
-            fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'providers.tsx:QueryCache.onError',message:'Query error',data:{queryKey:query.queryKey,errorMessage:error instanceof Error?error.message:String(error),errorCode:(error as unknown as Record<string,unknown>)?.code??null,errorDetails:(error as unknown as Record<string,unknown>)?.details??null,errorHint:(error as unknown as Record<string,unknown>)?.hint??null,errorStatus:(error as unknown as Record<string,unknown>)?.status??null},timestamp:Date.now(),hypothesisId:'H-A,H-C,H-D'})}).catch(()=>{});
+            const errRec = error as unknown as Record<string, unknown>;
+            agentDebugLog({
+              location: "providers.tsx:QueryCache.onError",
+              message: "Query error",
+              data: {
+                queryKey: query.queryKey,
+                errorMessage:
+                  error instanceof Error ? error.message : String(error),
+                errorCode: errRec?.code ?? null,
+                errorDetails: errRec?.details ?? null,
+                errorHint: errRec?.hint ?? null,
+                errorStatus: errRec?.status ?? null,
+              },
+              hypothesisId: "H2",
+            });
             // #endregion
             const msg = error instanceof Error ? error.message : String(error);
             if (
@@ -21,6 +36,14 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
               msg.includes("not authenticated") ||
               msg.includes("401")
             ) {
+              // #region agent log
+              agentDebugLog({
+                location: "providers.tsx:QueryCache.jwt-redirect",
+                message: "Redirecting to login from query error",
+                data: { queryKey: query.queryKey, msgSnippet: msg.slice(0, 120) },
+                hypothesisId: "H2",
+              });
+              // #endregion
               window.location.href = "/login";
             }
           },
@@ -37,10 +60,25 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
   // #region agent log
   useEffect(() => {
     const handler = (event: PromiseRejectionEvent) => {
-      fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'providers.tsx:unhandledRejection',message:'Unhandled promise rejection',data:{reason:event.reason instanceof Error?event.reason.message:String(event.reason)},timestamp:Date.now(),hypothesisId:'H-C'})}).catch(()=>{});
+      agentDebugLog({
+        location: "providers.tsx:unhandledRejection",
+        message: "Unhandled promise rejection",
+        data: {
+          reason:
+            event.reason instanceof Error
+              ? event.reason.message
+              : String(event.reason),
+        },
+        hypothesisId: "H5",
+      });
     };
     const visHandler = () => {
-      fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'providers.tsx:visibilityChange',message:'Tab visibility changed',data:{visibilityState:document.visibilityState},timestamp:Date.now(),hypothesisId:'H-C'})}).catch(()=>{});
+      agentDebugLog({
+        location: "providers.tsx:visibilityChange",
+        message: "Tab visibility changed",
+        data: { visibilityState: document.visibilityState },
+        hypothesisId: "H1",
+      });
     };
     window.addEventListener('unhandledrejection', handler);
     document.addEventListener('visibilitychange', visHandler);

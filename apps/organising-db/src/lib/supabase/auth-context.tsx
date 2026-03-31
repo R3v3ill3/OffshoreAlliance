@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { agentDebugLog } from "@/lib/agent-debug-log";
 import type { User } from "@supabase/supabase-js";
 import type { UserRole, UserProfile } from "@/types/database";
 
@@ -43,12 +44,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Server-side JWT verification is handled by middleware — client doesn't need it.
     const initSession = async () => {
       // #region agent log
-      fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'auth-context.tsx:getSession-start',message:'getSession called (replaces getUser)',data:{href:window.location.href},timestamp:Date.now(),hypothesisId:'H-C-fix'})}).catch(()=>{});
+      agentDebugLog({
+        location: "auth-context.tsx:getSession-start",
+        message: "getSession called (replaces getUser)",
+        data: { href: window.location.href },
+        hypothesisId: "H5",
+      });
       // #endregion
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user ?? null;
       // #region agent log
-      fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'auth-context.tsx:getSession-result',message:'getSession result',data:{userId:user?.id??null,hasSession:!!session,tokenExpiresAt:session?.expires_at??null},timestamp:Date.now(),hypothesisId:'H-C-fix'})}).catch(()=>{});
+      agentDebugLog({
+        location: "auth-context.tsx:getSession-result",
+        message: "getSession result",
+        data: {
+          userId: user?.id ?? null,
+          hasSession: !!session,
+          tokenExpiresAt: session?.expires_at ?? null,
+        },
+        hypothesisId: "H5",
+      });
       // #endregion
       setUser(user);
 
@@ -68,11 +83,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         // #region agent log
-        fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'auth-context.tsx:onAuthStateChange',message:'auth state change',data:{event,sessionUserId:session?.user?.id??null,hasSession:!!session,tokenExpiresAt:session?.expires_at??null},timestamp:Date.now(),hypothesisId:'H-B'})}).catch(()=>{});
+        const redirectLogin =
+          event === "SIGNED_OUT" ||
+          (!session && event === "TOKEN_REFRESHED");
+        agentDebugLog({
+          location: "auth-context.tsx:onAuthStateChange",
+          message: "auth state change",
+          data: {
+            event,
+            sessionUserId: session?.user?.id ?? null,
+            hasSession: !!session,
+            tokenExpiresAt: session?.expires_at ?? null,
+            redirectLogin,
+          },
+          hypothesisId: "H1",
+        });
         // #endregion
-        if (event === "SIGNED_OUT" || (!session && event === "TOKEN_REFRESHED")) {
+        if (redirectLogin) {
           // #region agent log
-          fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'auth-context.tsx:redirecting-to-login',message:'REDIRECTING TO LOGIN from auth state change',data:{event,hasSession:!!session},timestamp:Date.now(),hypothesisId:'H-B'})}).catch(()=>{});
+          agentDebugLog({
+            location: "auth-context.tsx:redirecting-to-login",
+            message: "REDIRECTING TO LOGIN from auth state change",
+            data: { event, hasSession: !!session },
+            hypothesisId: "H1",
+          });
           // #endregion
           queryClient.clear();
           window.location.href = "/login";
@@ -83,7 +117,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           // #region agent log
           const _profileFetchStart = Date.now();
-          fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'auth-context.tsx:profileFetch-start',message:'Profile fetch START in onAuthStateChange',data:{event,userId:session.user.id,elapsedSinceEvent:0},timestamp:Date.now(),hypothesisId:'H-C'})}).catch(()=>{});
+          agentDebugLog({
+            location: "auth-context.tsx:profileFetch-start",
+            message: "Profile fetch START in onAuthStateChange",
+            data: { event, userId: session.user.id },
+            hypothesisId: "H1",
+          });
           // #endregion
           const { data } = await supabase
             .from("user_profiles")
@@ -91,7 +130,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .eq("user_id", session.user.id)
             .single();
           // #region agent log
-          fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'537981'},body:JSON.stringify({sessionId:'537981',location:'auth-context.tsx:profileFetch-done',message:'Profile fetch DONE in onAuthStateChange',data:{event,userId:session.user.id,durationMs:Date.now()-_profileFetchStart,hasData:!!data},timestamp:Date.now(),hypothesisId:'H-C'})}).catch(()=>{});
+          agentDebugLog({
+            location: "auth-context.tsx:profileFetch-done",
+            message: "Profile fetch DONE in onAuthStateChange",
+            data: {
+              event,
+              userId: session.user.id,
+              durationMs: Date.now() - _profileFetchStart,
+              hasData: !!data,
+            },
+            hypothesisId: "H1",
+          });
           // #endregion
           setProfile(data);
         } else {

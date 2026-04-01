@@ -28,6 +28,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Plus } from "lucide-react";
+import { TermHint } from "@/components/ui/term-hint";
 
 const WORKSITE_TYPES: WorksiteType[] = [
   "FPSO",
@@ -346,6 +347,12 @@ export default function WorksitesPage() {
           <h1 className="text-2xl font-bold tracking-tight">Worksites</h1>
           <p className="text-muted-foreground">
             Manage offshore and onshore worksites.
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            <TermHint
+              term="Principal Employer"
+              hint="The asset-owning company linked directly on the worksite record."
+            />
           </p>
         </div>
         {canWrite && (

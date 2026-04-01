@@ -5,6 +5,7 @@ import { FolderOpen, Tag, Building2 } from "lucide-react";
 import { ProjectsTab } from "@/components/overview/projects-tab";
 import { SectorsTab } from "@/components/overview/sectors-tab";
 import { EmployerGroupsTab } from "@/components/overview/employer-groups-tab";
+import { TermHint } from "@/components/ui/term-hint";
 
 export default function OverviewPage() {
   return (
@@ -21,7 +22,10 @@ export default function OverviewPage() {
         <TabsList className="h-10">
           <TabsTrigger value="projects" className="gap-2">
             <FolderOpen className="h-4 w-4" />
-            Projects
+            <TermHint
+              term="Projects"
+              hint="Project-level work packages at a single worksite."
+            />
           </TabsTrigger>
           <TabsTrigger value="sectors" className="gap-2">
             <Tag className="h-4 w-4" />
@@ -29,7 +33,10 @@ export default function OverviewPage() {
           </TabsTrigger>
           <TabsTrigger value="employer-groups" className="gap-2">
             <Building2 className="h-4 w-4" />
-            Employer Groups
+            <TermHint
+              term="Employer Groups"
+              hint="Parent employer plus child companies using parent_employer_id relationships."
+            />
           </TabsTrigger>
         </TabsList>
 

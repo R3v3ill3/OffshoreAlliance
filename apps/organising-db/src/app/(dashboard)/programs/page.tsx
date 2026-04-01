@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { TermHint } from "@/components/ui/term-hint";
 import type { Employer, Program, ProgramStatus } from "@/types/database";
 import type { Database } from "@oa/db-types";
 
@@ -182,7 +183,12 @@ export default function ProgramsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Programs</h1>
+        <h1 className="text-3xl font-bold">
+          <TermHint
+            term="Programs"
+            hint="Multi-worksite coordination groups, usually owned by a principal employer."
+          />
+        </h1>
         {canWrite && (
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="h-4 w-4" />

@@ -49,6 +49,8 @@ import {
   ebaStatusVariant,
 } from "@/components/reports/principal-employer-eba-chart";
 import { WorksiteRelationshipExplorer } from "@/components/reports/worksite-relationship-explorer";
+import { WorksiteHierarchyExplorer } from "@/components/reports/worksite-hierarchy-explorer";
+import { TermHint } from "@/components/ui/term-hint";
 
 // ---------------------------------------------------------------
 // Report type registry
@@ -57,6 +59,7 @@ type ReportType =
   | "agreement_expiry"
   | "principal_employer_coverage"
   | "worksite_relationship_explorer"
+  | "worksite_hierarchy_explorer"
   | "membership_density"
   | "organiser_patches"
   | "campaign_activity"
@@ -92,6 +95,14 @@ const reportOptions: ReportOption[] = [
     description:
       "Hybrid map + network drilldown for employer, parent company and principal employer connections with EBA overlays.",
     icon: <Network className="h-8 w-8 text-blue-500" />,
+    isNew: true,
+  },
+  {
+    type: "worksite_hierarchy_explorer",
+    title: "Worksite Hierarchy Explorer",
+    description:
+      "Toggle between Geo > Service > Company > Worksite and Producer > Geo > Worksite hierarchy paths with provider-scope reporting.",
+    icon: <Network className="h-8 w-8 text-emerald-500" />,
     isNew: true,
   },
   {
@@ -682,7 +693,10 @@ export default function ReportsPage() {
           </Button>
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <Star className="h-7 w-7 text-amber-500 fill-amber-500" />
-            Principal Employer EBA Coverage
+            <TermHint
+              term="Principal Employer EBA Coverage"
+              hint="EBA status coverage for employer-worksite pairs under worksites tagged to a principal employer."
+            />
           </h1>
         </div>
 
@@ -842,7 +856,10 @@ export default function ReportsPage() {
           </Button>
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <Network className="h-7 w-7 text-blue-500" />
-            Worksite Relationship Explorer
+            <TermHint
+              term="Worksite Relationship Explorer"
+              hint="Graph view of worksite links to principal employers, on-site employers, and parent companies."
+            />
           </h1>
         </div>
 
@@ -853,6 +870,33 @@ export default function ReportsPage() {
           employers={explorerEmployers}
           isLoading={explorerLoading}
         />
+      </div>
+    );
+  }
+
+  // ---- Worksite Hierarchy Explorer ----
+  if (selectedReport === "worksite_hierarchy_explorer") {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedReport(null)}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Network className="h-7 w-7 text-emerald-500" />
+            <TermHint
+              term="Worksite Hierarchy Explorer"
+              hint="Switchable hierarchy report with provider and scope mapping per worksite path."
+            />
+          </h1>
+        </div>
+
+        <WorksiteHierarchyExplorer />
       </div>
     );
   }

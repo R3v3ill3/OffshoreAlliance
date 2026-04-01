@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
+import { TermHint } from "@/components/ui/term-hint";
 
 type ProgramWithJoin = Program & {
   principal_employer?: { employer_id: number; employer_name: string } | null;
@@ -273,6 +274,12 @@ export default function ProgramDetailPage() {
               ? `Principal employer: ${program.principal_employer.employer_name}`
               : "No principal employer set"}
           </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            <TermHint
+              term="Primary Worksite"
+              hint="The main worksite in a program, flagged by program_worksites.is_primary."
+            />
+          </p>
         </div>
         <Badge variant={program.is_active ? "success" : "destructive"}>
           {program.is_active ? "Active" : "Inactive"}
@@ -281,7 +288,12 @@ export default function ProgramDetailPage() {
       </div>
 
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Worksites</h2>
+        <h2 className="text-lg font-semibold">
+          <TermHint
+            term="Worksites"
+            hint="All worksites linked to this program through program_worksites."
+          />
+        </h2>
         {canWrite && (
           <Button size="sm" onClick={() => setDlgLink(true)}>
             <Plus className="h-4 w-4" />

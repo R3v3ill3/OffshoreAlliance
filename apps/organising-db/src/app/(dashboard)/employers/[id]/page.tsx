@@ -59,6 +59,7 @@ import {
 } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { format } from "date-fns";
+import { TermHint } from "@/components/ui/term-hint";
 
 const EMPLOYER_CATEGORIES: EmployerCategory[] = [
   "Principal_Employer",
@@ -951,6 +952,17 @@ export default function EmployerDetailPage() {
               </button>
             </p>
           )}
+          <p className="text-xs text-muted-foreground mt-1">
+            <TermHint
+              term="Principal Worksites"
+              hint="Worksites where this employer is set as worksites.principal_employer_id."
+            />
+            {" · "}
+            <TermHint
+              term="Projects"
+              hint="Project links for this employer from project_employers."
+            />
+          </p>
         </div>
         {isPrincipal && (
           <Badge variant="warning">
@@ -1059,7 +1071,15 @@ export default function EmployerDetailPage() {
         <TabsList>
           {tabs.map((t) => (
             <TabsTrigger key={t.value} value={t.value}>
-              {t.label}
+              {t.value === "projects" ? (
+                <TermHint term={t.label} hint="Project links sourced from project_employers." />
+              ) : t.value === "principal_worksites" ? (
+                <TermHint term={t.label} hint="Worksites where this employer is the principal employer." />
+              ) : t.value === "children" ? (
+                <TermHint term={t.label} hint="Child companies linked by parent_employer_id." />
+              ) : (
+                t.label
+              )}
             </TabsTrigger>
           ))}
         </TabsList>

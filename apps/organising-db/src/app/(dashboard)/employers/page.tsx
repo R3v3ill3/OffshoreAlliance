@@ -34,6 +34,7 @@ import {
 import { Plus, Star, GitMerge } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { buildAliasLines } from "@/lib/utils/employer-merge-helpers";
+import { TermHint } from "@/components/ui/term-hint";
 
 const EMPLOYER_CATEGORIES: EmployerCategory[] = [
   "Principal_Employer",
@@ -448,6 +449,12 @@ export default function EmployersPage() {
           <h1 className="text-2xl font-bold tracking-tight">Employers</h1>
           <p className="text-muted-foreground">
             Manage employers, contractors, and labour hire companies.
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            <TermHint
+              term="Parent Company"
+              hint="Corporate hierarchy link from child employer to parent employer."
+            />
           </p>
         </div>
         <div className="flex items-center gap-2">

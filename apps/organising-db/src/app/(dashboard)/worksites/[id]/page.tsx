@@ -62,6 +62,7 @@ import { LinkAgreementDialog } from "@/components/worksites/link-agreement-dialo
 import { AddEmployerDialog } from "@/components/worksites/add-employer-dialog";
 import { AddScopeDialog } from "@/components/worksites/add-scope-dialog";
 import { EditEmployerRoleDialog } from "@/components/worksites/edit-employer-role-dialog";
+import { TermHint } from "@/components/ui/term-hint";
 
 const WORKSITE_TYPES: WorksiteType[] = [
   "FPSO",
@@ -1559,6 +1560,17 @@ export default function WorksiteDetailPage() {
               ? ` · ${worksite.principal_employer.employer_name} asset`
               : ""}
           </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            <TermHint
+              term="Program"
+              hint="Multi-worksite coordination group linked through program_worksites."
+            />
+            {" · "}
+            <TermHint
+              term="Site Project"
+              hint="Single-worksite work package linked through projects.worksite_id."
+            />
+          </p>
           {worksite.parent_worksite && (
             <p className="text-sm text-muted-foreground flex items-center gap-1">
               <Building2 className="h-3 w-3" />
@@ -1710,13 +1722,22 @@ export default function WorksiteDetailPage() {
             Work Scopes ({wsScopes.length})
           </TabsTrigger>
           <TabsTrigger value="contracts">
-            Contracts ({wsContracts.length})
+            <TermHint
+              term={`Contracts (${wsContracts.length})`}
+              hint="Provider-to-scope mappings at this worksite; may optionally reference a program or site project."
+            />
           </TabsTrigger>
           <TabsTrigger value="projects">
-            Site Projects ({wsProjects.length})
+            <TermHint
+              term={`Site Projects (${wsProjects.length})`}
+              hint="Project rows tied directly to this worksite."
+            />
           </TabsTrigger>
           <TabsTrigger value="programs">
-            Programs ({wsProgramLinks.length})
+            <TermHint
+              term={`Programs (${wsProgramLinks.length})`}
+              hint="Program links where this worksite participates across broader multi-site initiatives."
+            />
           </TabsTrigger>
           <TabsTrigger value="workers">
             Workers ({workers.length})

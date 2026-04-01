@@ -96,7 +96,8 @@ export function ProjectsTab() {
           project_status,
           is_active,
           start_date,
-          end_date,
+          expected_end_date,
+          actual_end_date,
           notes,
           worksites (
             worksite_id,
@@ -214,7 +215,7 @@ export function ProjectsTab() {
         project_status: p.project_status,
         is_active: p.is_active,
         start_date: p.start_date,
-        end_date: p.end_date,
+        end_date: p.actual_end_date ?? p.expected_end_date ?? null,
         notes: p.notes,
         worksite: ws,
         employers,

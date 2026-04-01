@@ -1,6 +1,5 @@
 'use client'
 
-import { use } from 'react'
 import { useGateAssessment } from '@/lib/hooks/useGateAssessment'
 import { GateAssessmentComponent } from '@/components/gates/GateAssessment'
 import { Button } from '@/components/ui/button'
@@ -8,11 +7,11 @@ import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
 
 interface PageProps {
-  params: Promise<{ id: string; gateNumber: string }>
+  params: { id: string; gateNumber: string }
 }
 
 export default function GatePage({ params }: PageProps) {
-  const { id, gateNumber: gateNumStr } = use(params)
+  const { id, gateNumber: gateNumStr } = params
   const campaignId = parseInt(id)
   const gateNumber = parseInt(gateNumStr)
 

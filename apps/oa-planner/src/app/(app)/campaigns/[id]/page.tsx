@@ -1,6 +1,5 @@
 'use client'
 
-import { use } from 'react'
 import Link from 'next/link'
 import { useCampaign } from '@/lib/hooks/useCampaigns'
 import { useAllGates } from '@/lib/hooks/useGateAssessment'
@@ -13,11 +12,11 @@ import { cn } from '@/lib/utils'
 import { ChevronRight, Shield, CheckCircle } from 'lucide-react'
 
 interface PageProps {
-  params: Promise<{ id: string }>
+  params: { id: string }
 }
 
 export default function CampaignDetailPage({ params }: PageProps) {
-  const { id } = use(params)
+  const { id } = params
   const campaignId = parseInt(id)
 
   const { data: campaign, isLoading } = useCampaign(campaignId)

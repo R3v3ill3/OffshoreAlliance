@@ -1,6 +1,5 @@
 'use client'
 
-import { use } from 'react'
 import { useCampaign } from '@/lib/hooks/useCampaigns'
 import { useStagePlan } from '@/lib/hooks/useStagePlan'
 import { AmbitionPanel } from '@/components/planning/AmbitionPanel'
@@ -18,7 +17,7 @@ import { cn } from '@/lib/utils'
 import type { TheoryOfWinningRequest } from '@/types'
 
 interface PageProps {
-  params: Promise<{ id: string; stageNumber: string }>
+  params: { id: string; stageNumber: string }
 }
 
 const P2W_TABS = [
@@ -30,7 +29,7 @@ const P2W_TABS = [
 ]
 
 export default function StageplanPage({ params }: PageProps) {
-  const { id, stageNumber: stageNumStr } = use(params)
+  const { id, stageNumber: stageNumStr } = params
   const campaignId = parseInt(id)
   const stageNumber = parseInt(stageNumStr)
 

@@ -31,7 +31,6 @@ import {
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Upload,
   Loader2,
   CheckCircle2,
   AlertCircle,
@@ -39,25 +38,29 @@ import {
   ArrowRight,
   ArrowLeft,
   Search,
-  AlertTriangle,
   Database,
-  Split,
   Link2,
+  Layers,
+  Pencil,
+  Check,
 } from "lucide-react";
 
+import type { Cluster } from "@/lib/utils/cluster-utils";
 import type {
   EmployerProposal,
   WorksiteProposal,
   OccupationProposal,
-  EmployerWorksiteConnection,
 } from "@/app/api/reference-import/analyse/route";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 type WizardStep =
   | "upload"
+  | "cluster_employers"
   | "employers"
+  | "cluster_worksites"
   | "worksites"
+  | "cluster_occupations"
   | "occupations"
   | "connections"
   | "review"
@@ -65,40 +68,37 @@ type WizardStep =
 
 type Confidence = "high" | "medium" | "low";
 
-interface EmployerResolution extends EmployerProposal {
+interface EmployerResolution {
+  canonicalName: string;
+  variants: string[];
   action: "match" | "create" | "skip";
+  matchedEmployerId: number | null;
+  matchedEmployerName: string | null;
   overrideEmployerId?: number;
   newCategory?: string;
+  confidence: Confidence;
+  score: number;
 }
 
-interface WorksitePartResolution {
-  part: string;
+interface WorksiteResolution {
+  canonicalName: string;
+  variants: string[];
   action: "match" | "create" | "skip";
   matchedWorksiteId: number | null;
   matchedWorksiteName: string | null;
   newWorksiteType: string;
   isPrincipalEmployerName: boolean;
-}
-
-interface WorksiteResolution {
-  rawName: string;
-  isMultiValue: boolean;
-  parts: WorksitePartResolution[];
-}
-
-interface OccupationPartResolution {
-  part: string;
-  action: "match" | "create" | "skip";
-  matchedOccupationId: number | null;
-  matchedOccupationName: string | null;
-  canonicalName: string;
-  category: string;
+  confidence: Confidence;
 }
 
 interface OccupationResolution {
-  rawName: string;
-  isMultiValue: boolean;
-  parts: OccupationPartResolution[];
+  canonicalName: string;
+  variants: string[];
+  action: "match" | "create" | "skip";
+  matchedOccupationId: number | null;
+  matchedOccupationName: string | null;
+  category: string;
+  confidence: Confidence;
 }
 
 interface ConnectionResolution {
@@ -127,8 +127,11 @@ interface ApplyStats {
 
 const STEPS: { id: WizardStep; label: string }[] = [
   { id: "upload", label: "Upload" },
+  { id: "cluster_employers", label: "Dedup Employers" },
   { id: "employers", label: "Employers" },
+  { id: "cluster_worksites", label: "Dedup Worksites" },
   { id: "worksites", label: "Worksites" },
+  { id: "cluster_occupations", label: "Dedup Occupations" },
   { id: "occupations", label: "Occupations" },
   { id: "connections", label: "Connections" },
   { id: "review", label: "Review" },
@@ -140,61 +143,25 @@ const STEP_INDEX: Record<WizardStep, number> = Object.fromEntries(
 ) as Record<WizardStep, number>;
 
 const EMPLOYER_CATEGORIES = [
-  "Producer",
-  "Major_Contractor",
-  "Subcontractor",
-  "Labour_Hire",
-  "Specialist",
+  "Producer", "Major_Contractor", "Subcontractor", "Labour_Hire", "Specialist",
 ];
 
 const WORKSITE_TYPES = [
-  "FPSO",
-  "FPU",
-  "FLNG",
-  "Platform",
-  "Onshore_LNG",
-  "Gas_Plant",
-  "Drill_Centre",
-  "Region",
-  "Heliport",
-  "Pipeline",
-  "Airfield",
-  "Onshore_Facilities",
-  "CPF",
-  "Gas_Field",
-  "Other",
+  "FPSO", "FPU", "FLNG", "Platform", "Onshore_LNG", "Gas_Plant",
+  "Drill_Centre", "Region", "Heliport", "Pipeline", "Airfield",
+  "Onshore_Facilities", "CPF", "Gas_Field", "Other",
 ];
 
 const OCCUPATION_CATEGORIES = [
-  "Trades",
-  "Inspection",
-  "Operations",
-  "Marine",
-  "Catering",
-  "Management",
-  "Lifting",
-  "Aviation",
-  "Rope_Access",
-  "Engineering",
-  "Administration",
-  "Other",
+  "Trades", "Inspection", "Operations", "Marine", "Catering",
+  "Management", "Lifting", "Aviation", "Rope_Access", "Engineering",
+  "Administration", "Other",
 ];
 
 const EWR_ROLE_TYPES = [
-  "Owner",
-  "Operator",
-  "Principal_Contractor",
-  "Subcontractor",
-  "Labour_Hire",
-  "Catering",
-  "Maintenance",
-  "Drilling",
-  "ROV",
-  "Inspection",
-  "Transport",
-  "Decommissioning",
-  "Aviation",
-  "Other",
+  "Owner", "Operator", "Principal_Contractor", "Subcontractor",
+  "Labour_Hire", "Catering", "Maintenance", "Drilling", "ROV",
+  "Inspection", "Transport", "Decommissioning", "Aviation", "Other",
 ];
 
 function confidenceBadge(c: Confidence) {
@@ -219,49 +186,38 @@ export function ReferenceDataWizard({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
 
-  // ── State ─────────────────────────────────────────────────────────────
-
   const [step, setStep] = useState<WizardStep>("upload");
   const [isLoading, setIsLoading] = useState(false);
   const [fileName, setFileName] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
-
   const [totalRows, setTotalRows] = useState(0);
   const [parsedRows, setParsedRows] = useState<
     { employer: string; worksite: string; occupation: string }[]
   >([]);
 
-  const [employerResolutions, setEmployerResolutions] = useState<
-    EmployerResolution[]
-  >([]);
-  const [worksiteResolutions, setWorksiteResolutions] = useState<
-    WorksiteResolution[]
-  >([]);
-  const [occupationResolutions, setOccupationResolutions] = useState<
-    OccupationResolution[]
-  >([]);
-  const [connectionResolutions, setConnectionResolutions] = useState<
-    ConnectionResolution[]
-  >([]);
+  // Cluster state (pre-dedup phase)
+  const [empClusters, setEmpClusters] = useState<Cluster[]>([]);
+  const [wsClusters, setWsClusters] = useState<Cluster[]>([]);
+  const [occClusters, setOccClusters] = useState<Cluster[]>([]);
 
+  // Reconciliation state (post-dedup phase)
+  const [employerResolutions, setEmployerResolutions] = useState<EmployerResolution[]>([]);
+  const [worksiteResolutions, setWorksiteResolutions] = useState<WorksiteResolution[]>([]);
+  const [occupationResolutions, setOccupationResolutions] = useState<OccupationResolution[]>([]);
+  const [connectionResolutions, setConnectionResolutions] = useState<ConnectionResolution[]>([]);
   const [applyResult, setApplyResult] = useState<ApplyStats | null>(null);
 
-  // Filter/search state
-  const [empFilter, setEmpFilter] = useState("");
-  const [wsFilter, setWsFilter] = useState("");
-  const [occFilter, setOccFilter] = useState("");
-  const [empShowOnly, setEmpShowOnly] = useState<"all" | "new" | "matched">(
-    "all"
-  );
-  const [wsShowOnly, setWsShowOnly] = useState<"all" | "new" | "matched">(
-    "all"
-  );
-  const [occShowOnly, setOccShowOnly] = useState<"all" | "new" | "matched">(
-    "all"
-  );
+  // Filter state
+  const [clusterFilter, setClusterFilter] = useState("");
+  const [reconFilter, setReconFilter] = useState("");
+  const [reconShowOnly, setReconShowOnly] = useState<"all" | "new" | "matched">("all");
 
-  // Load existing DB data for search/override
+  // Cluster editing state
+  const [editingClusterId, setEditingClusterId] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState("");
+
+  // DB data for reconciliation
   const { data: dbEmployers = [] } = useQuery({
     queryKey: ["ref-wizard-employers"],
     queryFn: async () => {
@@ -307,17 +263,18 @@ export function ReferenceDataWizard({
     setParseError(null);
     setTotalRows(0);
     setParsedRows([]);
+    setEmpClusters([]);
+    setWsClusters([]);
+    setOccClusters([]);
     setEmployerResolutions([]);
     setWorksiteResolutions([]);
     setOccupationResolutions([]);
     setConnectionResolutions([]);
     setApplyResult(null);
-    setEmpFilter("");
-    setWsFilter("");
-    setOccFilter("");
-    setEmpShowOnly("all");
-    setWsShowOnly("all");
-    setOccShowOnly("all");
+    setClusterFilter("");
+    setReconFilter("");
+    setReconShowOnly("all");
+    setEditingClusterId(null);
   }
 
   const handleFile = useCallback(async (file: File) => {
@@ -329,7 +286,6 @@ export function ReferenceDataWizard({
     setIsLoading(true);
 
     try {
-      // Step 1: Parse
       const formData = new FormData();
       formData.append("file", file);
       const parseRes = await fetch("/api/reference-import/parse", {
@@ -346,76 +302,22 @@ export function ReferenceDataWizard({
       setTotalRows(parseJson.totalRows);
       setParsedRows(parseJson.rows);
 
-      // Step 2: Analyse
-      const analyseRes = await fetch("/api/reference-import/analyse", {
+      // Cluster the data
+      const clusterRes = await fetch("/api/reference-import/cluster", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uniqueEmployers: parseJson.uniqueEmployers,
-          uniqueWorksites: parseJson.uniqueWorksites,
-          uniqueOccupations: parseJson.uniqueOccupations,
-          rows: parseJson.rows,
-        }),
+        body: JSON.stringify({ rows: parseJson.rows }),
       });
-      const analyseJson = await analyseRes.json();
-      if (!analyseJson.success) {
-        setParseError(analyseJson.error ?? "Analysis failed");
+      const clusterJson = await clusterRes.json();
+      if (!clusterJson.success) {
+        setParseError(clusterJson.error ?? "Clustering failed");
         return;
       }
 
-      // Build initial resolutions
-      setEmployerResolutions(
-        (analyseJson.employers as EmployerProposal[]).map((p) => ({
-          ...p,
-          action: p.confidence === "high" ? "match" : p.isNew ? "create" : "match",
-          overrideEmployerId: p.matchedEmployerId ?? undefined,
-          newCategory: undefined,
-        }))
-      );
-
-      setWorksiteResolutions(
-        (analyseJson.worksites as WorksiteProposal[]).map((wp) => ({
-          rawName: wp.rawName,
-          isMultiValue: wp.isMultiValue,
-          parts: wp.proposals.map((p) => ({
-            part: p.part,
-            action:
-              p.confidence === "high"
-                ? "match"
-                : p.isPrincipalEmployerName
-                  ? "skip"
-                  : p.isNew
-                    ? "create"
-                    : "match",
-            matchedWorksiteId: p.matchedWorksiteId,
-            matchedWorksiteName: p.matchedWorksiteName,
-            newWorksiteType: "Other",
-            isPrincipalEmployerName: p.isPrincipalEmployerName,
-          })),
-        }))
-      );
-
-      setOccupationResolutions(
-        (analyseJson.occupations as OccupationProposal[]).map((op) => ({
-          rawName: op.rawName,
-          isMultiValue: op.isMultiValue,
-          parts: op.proposals.map((p) => ({
-            part: p.part,
-            action:
-              p.confidence === "high"
-                ? "match"
-                : p.isNew
-                  ? "create"
-                  : "match",
-            matchedOccupationId: p.matchedOccupationId,
-            matchedOccupationName: p.matchedOccupationName,
-            canonicalName: p.matchedOccupationName ?? p.part,
-            category: p.suggestedCategory ?? "Other",
-          })),
-        }))
-      );
-
-      setStep("employers");
+      setEmpClusters(clusterJson.employerClusters);
+      setWsClusters(clusterJson.worksiteClusters);
+      setOccClusters(clusterJson.occupationClusters);
+      setStep("cluster_employers");
     } catch (e) {
       setParseError(e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -433,25 +335,149 @@ export function ReferenceDataWizard({
     [handleFile]
   );
 
+  async function runAnalyseForEmployers() {
+    setIsLoading(true);
+    try {
+      const confirmedClusters = empClusters.map((c) => ({
+        canonicalName: c.canonicalName,
+        variants: c.variants,
+      }));
+
+      const res = await fetch("/api/reference-import/analyse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employerClusters: confirmedClusters,
+          worksiteClusters: [],
+          occupationClusters: [],
+          rows: parsedRows,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+
+      setEmployerResolutions(
+        (json.employers as EmployerProposal[]).map((p) => ({
+          canonicalName: p.canonicalName,
+          variants: p.variants,
+          action: p.confidence === "high" ? "match" : p.isNew ? "create" : "match",
+          matchedEmployerId: p.matchedEmployerId,
+          matchedEmployerName: p.matchedEmployerName,
+          confidence: p.confidence,
+          score: p.score,
+        }))
+      );
+      setReconFilter("");
+      setReconShowOnly("all");
+      setStep("employers");
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : "Analysis failed");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function runAnalyseForWorksites() {
+    setIsLoading(true);
+    try {
+      const confirmedClusters = wsClusters.map((c) => ({
+        canonicalName: c.canonicalName,
+        variants: c.variants,
+      }));
+
+      const res = await fetch("/api/reference-import/analyse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employerClusters: [],
+          worksiteClusters: confirmedClusters,
+          occupationClusters: [],
+          rows: parsedRows,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+
+      setWorksiteResolutions(
+        (json.worksites as WorksiteProposal[]).map((p) => ({
+          canonicalName: p.canonicalName,
+          variants: p.variants,
+          action: p.confidence === "high" ? "match" : p.isPrincipalEmployerName ? "skip" : p.isNew ? "create" : "match",
+          matchedWorksiteId: p.matchedWorksiteId,
+          matchedWorksiteName: p.matchedWorksiteName,
+          newWorksiteType: "Other",
+          isPrincipalEmployerName: p.isPrincipalEmployerName,
+          confidence: p.confidence,
+        }))
+      );
+      setReconFilter("");
+      setReconShowOnly("all");
+      setStep("worksites");
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : "Analysis failed");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function runAnalyseForOccupations() {
+    setIsLoading(true);
+    try {
+      const confirmedClusters = occClusters.map((c) => ({
+        canonicalName: c.canonicalName,
+        variants: c.variants,
+        suggestedCategory: c.suggestedCategory,
+      }));
+
+      const res = await fetch("/api/reference-import/analyse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employerClusters: [],
+          worksiteClusters: [],
+          occupationClusters: confirmedClusters,
+          rows: parsedRows,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+
+      setOccupationResolutions(
+        (json.occupations as OccupationProposal[]).map((p) => ({
+          canonicalName: p.canonicalName,
+          variants: p.variants,
+          action: p.confidence === "high" ? "match" : p.isNew ? "create" : "match",
+          matchedOccupationId: p.matchedOccupationId,
+          matchedOccupationName: p.matchedOccupationName,
+          category: p.suggestedCategory ?? "Other",
+          confidence: p.confidence,
+        }))
+      );
+      setReconFilter("");
+      setReconShowOnly("all");
+      setStep("occupations");
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : "Analysis failed");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   function buildConnectionResolutions() {
-    // Build employer/worksite lookup from confirmed resolutions
     const empLookup = new Map<string, number>();
     for (const er of employerResolutions) {
-      if (er.action !== "skip" && (er.overrideEmployerId || er.matchedEmployerId)) {
-        empLookup.set(
-          er.rawName.toLowerCase(),
-          er.overrideEmployerId ?? er.matchedEmployerId!
-        );
-      }
+      if (er.action === "skip") continue;
+      const id = er.overrideEmployerId ?? er.matchedEmployerId;
+      if (!id) continue;
+      empLookup.set(er.canonicalName.toLowerCase(), id);
+      for (const v of er.variants) empLookup.set(v.toLowerCase(), id);
     }
 
     const wsLookup = new Map<string, number>();
     for (const wr of worksiteResolutions) {
-      for (const part of wr.parts) {
-        if (part.action !== "skip" && part.matchedWorksiteId) {
-          wsLookup.set(part.part.toLowerCase(), part.matchedWorksiteId);
-        }
-      }
+      if (wr.action === "skip" || !wr.matchedWorksiteId) continue;
+      wsLookup.set(wr.canonicalName.toLowerCase(), wr.matchedWorksiteId);
+      for (const v of wr.variants) wsLookup.set(v.toLowerCase(), wr.matchedWorksiteId);
     }
 
     const ewrSet = new Set(
@@ -461,7 +487,6 @@ export function ReferenceDataWizard({
       )
     );
 
-    // Count co-occurrences from parsed data
     const connCounts = new Map<string, number>();
     for (const row of parsedRows) {
       if (!row.employer || !row.worksite) continue;
@@ -480,16 +505,11 @@ export function ReferenceDataWizard({
       const exists = ewrSet.has(key);
       const empName =
         dbEmployers.find((e) => e.employer_id === empId)?.employer_name ??
-        employerResolutions.find(
-          (er) =>
-            (er.overrideEmployerId ?? er.matchedEmployerId) === empId
-        )?.rawName ??
+        employerResolutions.find((er) => (er.overrideEmployerId ?? er.matchedEmployerId) === empId)?.canonicalName ??
         `Employer #${empId}`;
       const wsName =
         dbWorksites.find((w) => w.worksite_id === wsId)?.worksite_name ??
-        worksiteResolutions
-          .flatMap((wr) => wr.parts)
-          .find((p) => p.matchedWorksiteId === wsId)?.part ??
+        worksiteResolutions.find((wr) => wr.matchedWorksiteId === wsId)?.canonicalName ??
         `Worksite #${wsId}`;
 
       conns.push({
@@ -518,29 +538,25 @@ export function ReferenceDataWizard({
       const payload = {
         fileName,
         employers: employerResolutions.map((er) => ({
-          rawName: er.rawName,
+          canonicalName: er.canonicalName,
+          variants: er.variants,
           action: er.action,
           matchedEmployerId: er.overrideEmployerId ?? er.matchedEmployerId,
           newCategory: er.newCategory,
         })),
         worksites: worksiteResolutions.map((wr) => ({
-          rawName: wr.rawName,
-          parts: wr.parts.map((p) => ({
-            part: p.part,
-            action: p.action,
-            matchedWorksiteId: p.matchedWorksiteId,
-            newWorksiteType: p.newWorksiteType,
-          })),
+          canonicalName: wr.canonicalName,
+          variants: wr.variants,
+          action: wr.action,
+          matchedWorksiteId: wr.matchedWorksiteId,
+          newWorksiteType: wr.newWorksiteType,
         })),
         occupations: occupationResolutions.map((or) => ({
-          rawName: or.rawName,
-          parts: or.parts.map((p) => ({
-            part: p.part,
-            action: p.action,
-            matchedOccupationId: p.matchedOccupationId,
-            canonicalName: p.canonicalName,
-            category: p.category,
-          })),
+          canonicalName: or.canonicalName,
+          variants: or.variants,
+          action: or.action,
+          matchedOccupationId: or.matchedOccupationId,
+          category: or.category,
         })),
         connections: connectionResolutions
           .filter((c) => c.add && c.employerId && c.worksiteId)
@@ -560,32 +576,19 @@ export function ReferenceDataWizard({
         body: JSON.stringify(payload),
       });
       const json = await res.json();
-
-      if (json.success) {
-        setApplyResult(json.stats);
-      } else {
-        setApplyResult({
-          employersCreated: 0,
-          employerAliasesCreated: 0,
-          worksitesCreated: 0,
-          worksiteAliasesCreated: 0,
-          occupationsCreated: 0,
-          occupationAliasesCreated: 0,
-          connectionsCreated: 0,
-          errors: [json.error ?? "Unknown error"],
-        });
-      }
+      setApplyResult(json.success ? json.stats : {
+        employersCreated: 0, employerAliasesCreated: 0,
+        worksitesCreated: 0, worksiteAliasesCreated: 0,
+        occupationsCreated: 0, occupationAliasesCreated: 0,
+        connectionsCreated: 0, errors: [json.error ?? "Unknown error"],
+      });
       setStep("done");
     } catch (e) {
       setApplyResult({
-        employersCreated: 0,
-        employerAliasesCreated: 0,
-        worksitesCreated: 0,
-        worksiteAliasesCreated: 0,
-        occupationsCreated: 0,
-        occupationAliasesCreated: 0,
-        connectionsCreated: 0,
-        errors: [e instanceof Error ? e.message : "Unknown error"],
+        employersCreated: 0, employerAliasesCreated: 0,
+        worksitesCreated: 0, worksiteAliasesCreated: 0,
+        occupationsCreated: 0, occupationAliasesCreated: 0,
+        connectionsCreated: 0, errors: [e instanceof Error ? e.message : "Unknown error"],
       });
       setStep("done");
     } finally {
@@ -599,11 +602,11 @@ export function ReferenceDataWizard({
 
   function StepIndicator() {
     return (
-      <div className="flex items-center gap-1 mb-6">
+      <div className="flex items-center gap-0.5 mb-6 flex-wrap">
         {STEPS.map((s, i) => (
           <div key={s.id} className="flex items-center">
             <div
-              className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-medium border transition-colors ${
+              className={`flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-medium border transition-colors ${
                 i < currentStepIndex
                   ? "bg-primary text-primary-foreground border-primary"
                   : i === currentStepIndex
@@ -611,66 +614,274 @@ export function ReferenceDataWizard({
                     : "bg-muted text-muted-foreground border-muted-foreground/30"
               }`}
             >
-              {i < currentStepIndex ? (
-                <CheckCircle2 className="w-4 h-4" />
-              ) : (
-                i + 1
-              )}
+              {i < currentStepIndex ? <CheckCircle2 className="w-3 h-3" /> : i + 1}
             </div>
             {i < STEPS.length - 1 && (
-              <div
-                className={`h-px w-6 mx-0.5 ${
-                  i < currentStepIndex ? "bg-primary" : "bg-border"
-                }`}
-              />
+              <div className={`h-px w-3 mx-0.5 ${i < currentStepIndex ? "bg-primary" : "bg-border"}`} />
             )}
           </div>
         ))}
-        <span className="ml-3 text-sm text-muted-foreground font-medium">
+        <span className="ml-2 text-sm text-muted-foreground font-medium">
           {STEPS[currentStepIndex].label}
         </span>
       </div>
     );
   }
 
-  function FilterBar({
-    filter,
-    setFilter,
-    showOnly,
-    setShowOnly,
-    counts,
-  }: {
-    filter: string;
-    setFilter: (v: string) => void;
-    showOnly: "all" | "new" | "matched";
-    setShowOnly: (v: "all" | "new" | "matched") => void;
-    counts: { total: number; matched: number; new_: number };
-  }) {
+  // ── Cluster review renderer (shared across entity types) ──────────
+
+  function renderClusterReview(
+    title: string,
+    clusters: Cluster[],
+    setClusters: (fn: (prev: Cluster[]) => Cluster[]) => void,
+    onConfirmAll: () => void,
+    onBack: () => void,
+    onNext: () => void,
+    categoryOptions?: string[],
+    isLoadingNext?: boolean
+  ) {
+    const confirmedCount = clusters.filter((c) => c.confirmed).length;
+    const multiVariantCount = clusters.filter((c) => c.variants.length > 1).length;
+    const f = clusterFilter.toLowerCase();
+    const filtered = f
+      ? clusters.filter(
+          (c) =>
+            c.canonicalName.toLowerCase().includes(f) ||
+            c.variants.some((v) => v.toLowerCase().includes(f))
+        )
+      : clusters;
+
+    function confirmCluster(id: number) {
+      setClusters((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, confirmed: true } : c))
+      );
+    }
+
+    function confirmAllRemaining() {
+      setClusters((prev) => prev.map((c) => ({ ...c, confirmed: true })));
+    }
+
+    function updateCanonicalName(id: number, name: string) {
+      setClusters((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, canonicalName: name } : c))
+      );
+    }
+
+    function updateCategory(id: number, cat: string) {
+      setClusters((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, suggestedCategory: cat } : c))
+      );
+    }
+
+    function splitVariant(clusterId: number, variant: string) {
+      setClusters((prev) => {
+        const source = prev.find((c) => c.id === clusterId);
+        if (!source || source.variants.length <= 1) return prev;
+        const remaining = source.variants.filter((v) => v !== variant);
+        const newId = Math.max(...prev.map((c) => c.id)) + 1;
+        return [
+          ...prev.map((c) =>
+            c.id === clusterId
+              ? { ...c, variants: remaining, canonicalName: remaining.includes(c.canonicalName) ? c.canonicalName : remaining[0] }
+              : c
+          ),
+          {
+            id: newId,
+            canonicalName: variant,
+            variants: [variant],
+            occurrenceCount: 0,
+            suggestedCategory: source.suggestedCategory,
+            confirmed: false,
+          },
+        ];
+      });
+    }
+
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            {clusters.length} {title.toLowerCase()} clusters ({multiVariantCount} with multiple variants).
+            {confirmedCount > 0 && <span className="text-primary ml-1">{confirmedCount} confirmed.</span>}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs"
+            onClick={confirmAllRemaining}
+            disabled={confirmedCount === clusters.length}
+          >
+            <Check className="h-3 w-3 mr-1" />
+            Confirm All ({clusters.length - confirmedCount} remaining)
+          </Button>
+        </div>
+
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Filter clusters..."
+            value={clusterFilter}
+            onChange={(e) => setClusterFilter(e.target.value)}
+            className="pl-8 h-8 text-sm"
+          />
+        </div>
+
+        <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+          {filtered.map((cluster) => (
+            <div
+              key={cluster.id}
+              className={`border rounded-lg p-3 space-y-2 transition-colors ${
+                cluster.confirmed ? "border-primary/30 bg-primary/5" : ""
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {editingClusterId === cluster.id ? (
+                  <div className="flex items-center gap-1 flex-1">
+                    <Input
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      className="h-7 text-xs flex-1"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          updateCanonicalName(cluster.id, editingName);
+                          setEditingClusterId(null);
+                        } else if (e.key === "Escape") {
+                          setEditingClusterId(null);
+                        }
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0"
+                      onClick={() => {
+                        updateCanonicalName(cluster.id, editingName);
+                        setEditingClusterId(null);
+                      }}
+                    >
+                      <Check className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <p
+                    className="text-sm font-medium flex-1 cursor-pointer hover:text-primary"
+                    onClick={() => {
+                      setEditingClusterId(cluster.id);
+                      setEditingName(cluster.canonicalName);
+                    }}
+                    title="Click to edit canonical name"
+                  >
+                    {cluster.canonicalName}
+                    <Pencil className="inline h-2.5 w-2.5 ml-1 text-muted-foreground" />
+                  </p>
+                )}
+
+                {categoryOptions && (
+                  <Select
+                    value={cluster.suggestedCategory ?? "Other"}
+                    onValueChange={(v) => updateCategory(cluster.id, v)}
+                  >
+                    <SelectTrigger className="h-7 text-xs w-[120px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categoryOptions.map((c) => (
+                        <SelectItem key={c} value={c}>{c.replace(/_/g, " ")}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {cluster.variants.length > 1 && (
+                  <Badge variant="secondary" className="text-[10px] gap-1">
+                    <Layers className="h-2.5 w-2.5" />
+                    {cluster.variants.length}
+                  </Badge>
+                )}
+
+                <Badge variant="outline" className="text-[10px]">
+                  {cluster.occurrenceCount} rows
+                </Badge>
+
+                {!cluster.confirmed ? (
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => confirmCluster(cluster.id)}>
+                    <Check className="h-3 w-3 mr-1" /> Confirm
+                  </Button>
+                ) : (
+                  <Badge variant="default" className="text-[10px]">
+                    <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" /> OK
+                  </Badge>
+                )}
+              </div>
+
+              {cluster.variants.length > 1 && (
+                <div className="flex flex-wrap gap-1 ml-1">
+                  {cluster.variants.map((v) => (
+                    <span
+                      key={v}
+                      className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+                    >
+                      {v}
+                      {cluster.variants.length > 1 && v !== cluster.canonicalName && (
+                        <button
+                          className="ml-0.5 text-muted-foreground/60 hover:text-destructive"
+                          title="Split out as separate entry"
+                          onClick={() => splitVariant(cluster.id, v)}
+                        >
+                          &times;
+                        </button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { setClusterFilter(""); onBack(); }}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back
+          </Button>
+          <Button onClick={() => { setClusterFilter(""); onNext(); }} disabled={isLoadingNext}>
+            {isLoadingNext ? (
+              <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Analysing...</>
+            ) : (
+              <>Reconcile <ArrowRight className="h-4 w-4 ml-1" /></>
+            )}
+          </Button>
+        </DialogFooter>
+      </div>
+    );
+  }
+
+  // ── Reconciliation renderer (shared) ─────────────────────────────────
+
+  function ReconFilterBar({ total, matched, new_ }: { total: number; matched: number; new_: number }) {
     return (
       <div className="flex items-center gap-3 mb-3">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             placeholder="Filter..."
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
+            value={reconFilter}
+            onChange={(e) => setReconFilter(e.target.value)}
             className="pl-8 h-8 text-sm"
           />
         </div>
         <div className="flex gap-1">
-          {(
-            [
-              ["all", `All (${counts.total})`],
-              ["matched", `Matched (${counts.matched})`],
-              ["new", `New (${counts.new_})`],
-            ] as const
-          ).map(([value, label]) => (
+          {([
+            ["all", `All (${total})`],
+            ["matched", `Matched (${matched})`],
+            ["new", `New (${new_})`],
+          ] as const).map(([value, label]) => (
             <Button
               key={value}
-              variant={showOnly === value ? "default" : "outline"}
+              variant={reconShowOnly === value ? "default" : "outline"}
               size="sm"
               className="text-xs h-7"
-              onClick={() => setShowOnly(value)}
+              onClick={() => setReconShowOnly(value)}
             >
               {label}
             </Button>
@@ -687,639 +898,252 @@ export function ReferenceDataWizard({
       <div className="space-y-4">
         <div
           className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors cursor-pointer ${
-            dragOver
-              ? "border-primary bg-primary/5"
-              : "border-muted-foreground/30 hover:border-primary/50"
+            dragOver ? "border-primary bg-primary/5" : "border-muted-foreground/30 hover:border-primary/50"
           }`}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
         >
           <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-          <p className="text-sm font-medium">
-            Drop your employer/worksite/occupation .xlsx file here
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            or click to browse — expects columns: Employer, Worksite, Occupation
-          </p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleFile(f);
-            }}
-          />
+          <p className="text-sm font-medium">Drop your employer/worksite/occupation .xlsx file here</p>
+          <p className="text-xs text-muted-foreground mt-1">or click to browse — expects columns: Employer, Worksite, Occupation</p>
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
         </div>
         {parseError && (
           <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-            {parseError}
+            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" /> {parseError}
           </div>
         )}
         <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground space-y-1">
-          <p className="font-medium text-foreground">What this wizard does:</p>
-          <p>
-            1. Parses an Excel file with Employer, Worksite, and Occupation
-            columns
-          </p>
-          <p>
-            2. Fuzzy-matches each value against existing database records
-          </p>
-          <p>
-            3. Lets you confirm matches, create new entries, or split
-            multi-value cells
-          </p>
-          <p>
-            4. Builds a canonical list with aliases for future smart matching
-          </p>
-          <p>
-            5. Identifies employer-worksite connections from the data
-          </p>
+          <p className="font-medium text-foreground">How it works:</p>
+          <p>1. Upload your Excel file with Employer, Worksite, Occupation columns</p>
+          <p>2. Near-duplicates are automatically clustered (e.g. &quot;Barrow Island&quot; / &quot;barrow island&quot; / &quot;Barrow Isalnd&quot;)</p>
+          <p>3. Confirm clusters, then reconcile against existing database records</p>
+          <p>4. All spelling variants are saved as aliases for future smart matching</p>
         </div>
       </div>
     );
   }
 
   function renderEmployers() {
-    const matchedCount = employerResolutions.filter(
-      (e) => e.action === "match"
-    ).length;
-    const newCount = employerResolutions.filter(
-      (e) => e.action === "create"
-    ).length;
-
+    const matchedCount = employerResolutions.filter((e) => e.action === "match").length;
+    const newCount = employerResolutions.filter((e) => e.action === "create").length;
+    const f = reconFilter.toLowerCase();
     let filtered = employerResolutions;
-    if (empFilter) {
-      const f = empFilter.toLowerCase();
-      filtered = filtered.filter((e) => e.rawName.toLowerCase().includes(f));
-    }
-    if (empShowOnly === "matched") {
-      filtered = filtered.filter((e) => e.action === "match");
-    } else if (empShowOnly === "new") {
-      filtered = filtered.filter((e) => e.action === "create");
-    }
+    if (f) filtered = filtered.filter((e) => e.canonicalName.toLowerCase().includes(f));
+    if (reconShowOnly === "matched") filtered = filtered.filter((e) => e.action === "match");
+    else if (reconShowOnly === "new") filtered = filtered.filter((e) => e.action === "create");
 
     return (
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          {employerResolutions.length} unique employers found. Review and
-          confirm how each maps to the database.
+          {employerResolutions.length} employer clusters to reconcile against the database.
         </p>
-
-        <FilterBar
-          filter={empFilter}
-          setFilter={setEmpFilter}
-          showOnly={empShowOnly}
-          setShowOnly={setEmpShowOnly}
-          counts={{
-            total: employerResolutions.length,
-            matched: matchedCount,
-            new_: newCount,
-          }}
-        />
-
+        <ReconFilterBar total={employerResolutions.length} matched={matchedCount} new_={newCount} />
         <div className="border rounded-lg overflow-auto max-h-[400px]">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-xs w-[250px]">Import Name</TableHead>
-                <TableHead className="text-xs">Action</TableHead>
+                <TableHead className="text-xs w-[220px]">Canonical Name</TableHead>
+                <TableHead className="text-xs w-16">Aliases</TableHead>
+                <TableHead className="text-xs w-[100px]">Action</TableHead>
                 <TableHead className="text-xs">Match / Category</TableHead>
-                <TableHead className="text-xs w-16">Conf.</TableHead>
+                <TableHead className="text-xs w-14">Conf.</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((emp, idx) => (
-                <TableRow
-                  key={emp.rawName}
-                  className={
-                    emp.action === "create"
-                      ? "bg-blue-50/50"
-                      : emp.action === "skip"
-                        ? "opacity-50"
-                        : ""
-                  }
-                >
-                  <TableCell className="p-2 text-xs font-medium">
-                    {emp.rawName}
-                  </TableCell>
+              {filtered.map((emp) => (
+                <TableRow key={emp.canonicalName} className={emp.action === "create" ? "bg-blue-50/50" : emp.action === "skip" ? "opacity-50" : ""}>
+                  <TableCell className="p-2 text-xs font-medium">{emp.canonicalName}</TableCell>
+                  <TableCell className="p-2 text-xs text-muted-foreground">{emp.variants.length}</TableCell>
                   <TableCell className="p-2">
-                    <Select
-                      value={emp.action}
-                      onValueChange={(v) => {
-                        const action = v as "match" | "create" | "skip";
-                        setEmployerResolutions((prev) =>
-                          prev.map((e) =>
-                            e.rawName === emp.rawName ? { ...e, action } : e
-                          )
-                        );
-                      }}
-                    >
-                      <SelectTrigger className="h-7 text-xs w-[120px]">
-                        <SelectValue />
-                      </SelectTrigger>
+                    <Select value={emp.action} onValueChange={(v) => setEmployerResolutions((prev) => prev.map((e) => e.canonicalName === emp.canonicalName ? { ...e, action: v as any } : e))}>
+                      <SelectTrigger className="h-7 text-xs w-full"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="match">Match existing</SelectItem>
-                        <SelectItem value="create">Create new</SelectItem>
+                        <SelectItem value="match">Match</SelectItem>
+                        <SelectItem value="create">Create</SelectItem>
                         <SelectItem value="skip">Skip</SelectItem>
                       </SelectContent>
                     </Select>
                   </TableCell>
                   <TableCell className="p-2">
                     {emp.action === "match" ? (
-                      <Select
-                        value={String(
-                          emp.overrideEmployerId ?? emp.matchedEmployerId ?? ""
-                        )}
-                        onValueChange={(v) => {
-                          const id = Number(v);
-                          setEmployerResolutions((prev) =>
-                            prev.map((e) =>
-                              e.rawName === emp.rawName
-                                ? { ...e, overrideEmployerId: id }
-                                : e
-                            )
-                          );
-                        }}
-                      >
-                        <SelectTrigger className="h-7 text-xs">
-                          <SelectValue placeholder="Select employer..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {dbEmployers.map((de) => (
-                            <SelectItem
-                              key={de.employer_id}
-                              value={String(de.employer_id)}
-                            >
-                              {de.employer_name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
+                      <Select value={String(emp.overrideEmployerId ?? emp.matchedEmployerId ?? "")}
+                        onValueChange={(v) => setEmployerResolutions((prev) => prev.map((e) => e.canonicalName === emp.canonicalName ? { ...e, overrideEmployerId: Number(v) } : e))}>
+                        <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Select..." /></SelectTrigger>
+                        <SelectContent>{dbEmployers.map((de) => (<SelectItem key={de.employer_id} value={String(de.employer_id)}>{de.employer_name}</SelectItem>))}</SelectContent>
                       </Select>
                     ) : emp.action === "create" ? (
-                      <Select
-                        value={emp.newCategory ?? ""}
-                        onValueChange={(v) => {
-                          setEmployerResolutions((prev) =>
-                            prev.map((e) =>
-                              e.rawName === emp.rawName
-                                ? { ...e, newCategory: v }
-                                : e
-                            )
-                          );
-                        }}
-                      >
-                        <SelectTrigger className="h-7 text-xs">
-                          <SelectValue placeholder="Category..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {EMPLOYER_CATEGORIES.map((c) => (
-                            <SelectItem key={c} value={c}>
-                              {c.replace(/_/g, " ")}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
+                      <Select value={emp.newCategory ?? ""} onValueChange={(v) => setEmployerResolutions((prev) => prev.map((e) => e.canonicalName === emp.canonicalName ? { ...e, newCategory: v } : e))}>
+                        <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Category..." /></SelectTrigger>
+                        <SelectContent>{EMPLOYER_CATEGORIES.map((c) => (<SelectItem key={c} value={c}>{c.replace(/_/g, " ")}</SelectItem>))}</SelectContent>
                       </Select>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
+                    ) : <span className="text-xs text-muted-foreground">—</span>}
                   </TableCell>
-                  <TableCell className="p-2">
-                    <Badge
-                      variant={confidenceBadge(emp.confidence)}
-                      className="text-[10px] px-1.5 py-0"
-                    >
-                      {emp.confidence}
-                    </Badge>
-                  </TableCell>
+                  <TableCell className="p-2"><Badge variant={confidenceBadge(emp.confidence)} className="text-[10px] px-1.5 py-0">{emp.confidence}</Badge></TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </div>
-
         <DialogFooter>
-          <Button variant="outline" onClick={() => setStep("upload")}>
-            <ArrowLeft className="h-4 w-4 mr-1" /> Back
-          </Button>
-          <Button onClick={() => setStep("worksites")}>
-            Worksites <ArrowRight className="h-4 w-4 ml-1" />
-          </Button>
+          <Button variant="outline" onClick={() => { setReconFilter(""); setStep("cluster_employers"); }}><ArrowLeft className="h-4 w-4 mr-1" /> Back</Button>
+          <Button onClick={() => { setReconFilter(""); setStep("cluster_worksites"); }}>Worksites <ArrowRight className="h-4 w-4 ml-1" /></Button>
         </DialogFooter>
       </div>
     );
   }
 
   function renderWorksites() {
-    const matchedCount = worksiteResolutions.filter((w) =>
-      w.parts.some((p) => p.action === "match")
-    ).length;
-    const newCount = worksiteResolutions.filter((w) =>
-      w.parts.some((p) => p.action === "create")
-    ).length;
-
+    const matchedCount = worksiteResolutions.filter((w) => w.action === "match").length;
+    const newCount = worksiteResolutions.filter((w) => w.action === "create").length;
+    const f = reconFilter.toLowerCase();
     let filtered = worksiteResolutions;
-    if (wsFilter) {
-      const f = wsFilter.toLowerCase();
-      filtered = filtered.filter((w) => w.rawName.toLowerCase().includes(f));
-    }
-    if (wsShowOnly === "matched") {
-      filtered = filtered.filter((w) =>
-        w.parts.some((p) => p.action === "match")
-      );
-    } else if (wsShowOnly === "new") {
-      filtered = filtered.filter((w) =>
-        w.parts.some((p) => p.action === "create")
-      );
-    }
+    if (f) filtered = filtered.filter((w) => w.canonicalName.toLowerCase().includes(f));
+    if (reconShowOnly === "matched") filtered = filtered.filter((w) => w.action === "match");
+    else if (reconShowOnly === "new") filtered = filtered.filter((w) => w.action === "create");
 
     return (
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          {worksiteResolutions.length} unique worksite values found.
-          Multi-value cells are shown with a <Split className="inline h-3 w-3" />{" "}
-          icon.
+          {worksiteResolutions.length} worksite clusters to reconcile.
         </p>
-
-        <FilterBar
-          filter={wsFilter}
-          setFilter={setWsFilter}
-          showOnly={wsShowOnly}
-          setShowOnly={setWsShowOnly}
-          counts={{
-            total: worksiteResolutions.length,
-            matched: matchedCount,
-            new_: newCount,
-          }}
-        />
-
-        <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
-          {filtered.map((ws) => (
-            <div key={ws.rawName} className="border rounded-lg p-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <p className="text-xs font-medium flex-1">{ws.rawName}</p>
-                {ws.isMultiValue && (
-                  <Badge variant="secondary" className="text-[10px] gap-1">
-                    <Split className="h-2.5 w-2.5" />
-                    Split into {ws.parts.length}
-                  </Badge>
-                )}
-              </div>
-
-              {ws.parts.map((part, pi) => (
-                <div
-                  key={pi}
-                  className="flex items-center gap-2 ml-3 pl-3 border-l"
-                >
-                  <span className="text-xs text-muted-foreground w-[180px] truncate">
-                    {part.part}
-                  </span>
-
-                  {part.isPrincipalEmployerName && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] text-amber-600"
-                    >
-                      PE Name
-                    </Badge>
-                  )}
-
-                  <Select
-                    value={part.action}
-                    onValueChange={(v) => {
-                      const action = v as "match" | "create" | "skip";
-                      setWorksiteResolutions((prev) =>
-                        prev.map((w) =>
-                          w.rawName === ws.rawName
-                            ? {
-                                ...w,
-                                parts: w.parts.map((p, i) =>
-                                  i === pi ? { ...p, action } : p
-                                ),
-                              }
-                            : w
-                        )
-                      );
-                    }}
-                  >
-                    <SelectTrigger className="h-7 text-xs w-[110px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="match">Match</SelectItem>
-                      <SelectItem value="create">Create</SelectItem>
-                      <SelectItem value="skip">Skip</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  {part.action === "match" ? (
-                    <Select
-                      value={String(part.matchedWorksiteId ?? "")}
-                      onValueChange={(v) => {
-                        const id = Number(v);
-                        const ws_ = dbWorksites.find(
-                          (w) => w.worksite_id === id
-                        );
-                        setWorksiteResolutions((prev) =>
-                          prev.map((w) =>
-                            w.rawName === ws.rawName
-                              ? {
-                                  ...w,
-                                  parts: w.parts.map((p, i) =>
-                                    i === pi
-                                      ? {
-                                          ...p,
-                                          matchedWorksiteId: id,
-                                          matchedWorksiteName:
-                                            ws_?.worksite_name ?? null,
-                                        }
-                                      : p
-                                  ),
-                                }
-                              : w
-                          )
-                        );
-                      }}
-                    >
-                      <SelectTrigger className="h-7 text-xs flex-1">
-                        <SelectValue placeholder="Select worksite..." />
-                      </SelectTrigger>
+        <ReconFilterBar total={worksiteResolutions.length} matched={matchedCount} new_={newCount} />
+        <div className="border rounded-lg overflow-auto max-h-[400px]">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-xs w-[220px]">Canonical Name</TableHead>
+                <TableHead className="text-xs w-16">Aliases</TableHead>
+                <TableHead className="text-xs w-[100px]">Action</TableHead>
+                <TableHead className="text-xs">Match / Type</TableHead>
+                <TableHead className="text-xs w-14">Conf.</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((ws) => (
+                <TableRow key={ws.canonicalName} className={ws.action === "create" ? "bg-blue-50/50" : ws.action === "skip" ? "opacity-50" : ""}>
+                  <TableCell className="p-2 text-xs font-medium">
+                    {ws.canonicalName}
+                    {ws.isPrincipalEmployerName && <Badge variant="outline" className="text-[9px] ml-1 text-amber-600">PE</Badge>}
+                  </TableCell>
+                  <TableCell className="p-2 text-xs text-muted-foreground">{ws.variants.length}</TableCell>
+                  <TableCell className="p-2">
+                    <Select value={ws.action} onValueChange={(v) => setWorksiteResolutions((prev) => prev.map((w) => w.canonicalName === ws.canonicalName ? { ...w, action: v as any } : w))}>
+                      <SelectTrigger className="h-7 text-xs w-full"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {dbWorksites.map((dw) => (
-                          <SelectItem
-                            key={dw.worksite_id}
-                            value={String(dw.worksite_id)}
-                          >
-                            {dw.worksite_name}
-                          </SelectItem>
-                        ))}
+                        <SelectItem value="match">Match</SelectItem>
+                        <SelectItem value="create">Create</SelectItem>
+                        <SelectItem value="skip">Skip</SelectItem>
                       </SelectContent>
                     </Select>
-                  ) : part.action === "create" ? (
-                    <Select
-                      value={part.newWorksiteType}
-                      onValueChange={(v) => {
-                        setWorksiteResolutions((prev) =>
-                          prev.map((w) =>
-                            w.rawName === ws.rawName
-                              ? {
-                                  ...w,
-                                  parts: w.parts.map((p, i) =>
-                                    i === pi
-                                      ? { ...p, newWorksiteType: v }
-                                      : p
-                                  ),
-                                }
-                              : w
-                          )
-                        );
-                      }}
-                    >
-                      <SelectTrigger className="h-7 text-xs flex-1">
-                        <SelectValue placeholder="Type..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {WORKSITE_TYPES.map((t) => (
-                          <SelectItem key={t} value={t}>
-                            {t.replace(/_/g, " ")}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : null}
-                </div>
+                  </TableCell>
+                  <TableCell className="p-2">
+                    {ws.action === "match" ? (
+                      <Select value={String(ws.matchedWorksiteId ?? "")}
+                        onValueChange={(v) => { const id = Number(v); const found = dbWorksites.find((w) => w.worksite_id === id); setWorksiteResolutions((prev) => prev.map((w) => w.canonicalName === ws.canonicalName ? { ...w, matchedWorksiteId: id, matchedWorksiteName: found?.worksite_name ?? null } : w)); }}>
+                        <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Select..." /></SelectTrigger>
+                        <SelectContent>{dbWorksites.map((dw) => (<SelectItem key={dw.worksite_id} value={String(dw.worksite_id)}>{dw.worksite_name}</SelectItem>))}</SelectContent>
+                      </Select>
+                    ) : ws.action === "create" ? (
+                      <Select value={ws.newWorksiteType} onValueChange={(v) => setWorksiteResolutions((prev) => prev.map((w) => w.canonicalName === ws.canonicalName ? { ...w, newWorksiteType: v } : w))}>
+                        <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>{WORKSITE_TYPES.map((t) => (<SelectItem key={t} value={t}>{t.replace(/_/g, " ")}</SelectItem>))}</SelectContent>
+                      </Select>
+                    ) : <span className="text-xs text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell className="p-2"><Badge variant={confidenceBadge(ws.confidence)} className="text-[10px] px-1.5 py-0">{ws.confidence}</Badge></TableCell>
+                </TableRow>
               ))}
-            </div>
-          ))}
+            </TableBody>
+          </Table>
         </div>
-
         <DialogFooter>
-          <Button variant="outline" onClick={() => setStep("employers")}>
-            <ArrowLeft className="h-4 w-4 mr-1" /> Back
-          </Button>
-          <Button onClick={() => setStep("occupations")}>
-            Occupations <ArrowRight className="h-4 w-4 ml-1" />
-          </Button>
+          <Button variant="outline" onClick={() => { setReconFilter(""); setStep("cluster_worksites"); }}><ArrowLeft className="h-4 w-4 mr-1" /> Back</Button>
+          <Button onClick={() => { setReconFilter(""); setStep("cluster_occupations"); }}>Occupations <ArrowRight className="h-4 w-4 ml-1" /></Button>
         </DialogFooter>
       </div>
     );
   }
 
   function renderOccupations() {
-    const matchedCount = occupationResolutions.filter((o) =>
-      o.parts.some((p) => p.action === "match")
-    ).length;
-    const newCount = occupationResolutions.filter((o) =>
-      o.parts.some((p) => p.action === "create")
-    ).length;
-
+    const matchedCount = occupationResolutions.filter((o) => o.action === "match").length;
+    const newCount = occupationResolutions.filter((o) => o.action === "create").length;
+    const f = reconFilter.toLowerCase();
     let filtered = occupationResolutions;
-    if (occFilter) {
-      const f = occFilter.toLowerCase();
-      filtered = filtered.filter((o) => o.rawName.toLowerCase().includes(f));
-    }
-    if (occShowOnly === "matched") {
-      filtered = filtered.filter((o) =>
-        o.parts.some((p) => p.action === "match")
-      );
-    } else if (occShowOnly === "new") {
-      filtered = filtered.filter((o) =>
-        o.parts.some((p) => p.action === "create")
-      );
-    }
+    if (f) filtered = filtered.filter((o) => o.canonicalName.toLowerCase().includes(f));
+    if (reconShowOnly === "matched") filtered = filtered.filter((o) => o.action === "match");
+    else if (reconShowOnly === "new") filtered = filtered.filter((o) => o.action === "create");
 
     return (
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          {occupationResolutions.length} unique occupation values found. Set
-          canonical name and category for new entries.
+          {occupationResolutions.length} occupation clusters to reconcile.
         </p>
-
-        <FilterBar
-          filter={occFilter}
-          setFilter={setOccFilter}
-          showOnly={occShowOnly}
-          setShowOnly={setOccShowOnly}
-          counts={{
-            total: occupationResolutions.length,
-            matched: matchedCount,
-            new_: newCount,
-          }}
-        />
-
+        <ReconFilterBar total={occupationResolutions.length} matched={matchedCount} new_={newCount} />
         <div className="border rounded-lg overflow-auto max-h-[400px]">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-xs">Import Value</TableHead>
-                <TableHead className="text-xs w-[100px]">Action</TableHead>
                 <TableHead className="text-xs">Canonical Name</TableHead>
-                <TableHead className="text-xs w-[130px]">Category</TableHead>
+                <TableHead className="text-xs w-16">Aliases</TableHead>
+                <TableHead className="text-xs w-[90px]">Action</TableHead>
+                <TableHead className="text-xs w-[120px]">Category</TableHead>
+                <TableHead className="text-xs w-14">Conf.</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((occ) =>
-                occ.parts.map((part, pi) => (
-                  <TableRow
-                    key={`${occ.rawName}-${pi}`}
-                    className={
-                      part.action === "create" ? "bg-blue-50/50" : ""
-                    }
-                  >
-                    <TableCell className="p-2 text-xs">
-                      <div className="flex items-center gap-1">
-                        {occ.isMultiValue && pi === 0 && (
-                          <Badge
-                            variant="secondary"
-                            className="text-[9px] px-1 py-0"
-                          >
-                            <Split className="h-2 w-2" />
-                          </Badge>
-                        )}
-                        {part.part}
-                      </div>
-                    </TableCell>
-                    <TableCell className="p-2">
-                      <Select
-                        value={part.action}
-                        onValueChange={(v) => {
-                          const action = v as "match" | "create" | "skip";
-                          setOccupationResolutions((prev) =>
-                            prev.map((o) =>
-                              o.rawName === occ.rawName
-                                ? {
-                                    ...o,
-                                    parts: o.parts.map((p, i) =>
-                                      i === pi ? { ...p, action } : p
-                                    ),
-                                  }
-                                : o
-                            )
-                          );
-                        }}
-                      >
-                        <SelectTrigger className="h-7 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="match">Match</SelectItem>
-                          <SelectItem value="create">Create</SelectItem>
-                          <SelectItem value="skip">Skip</SelectItem>
-                        </SelectContent>
+              {filtered.map((occ) => (
+                <TableRow key={occ.canonicalName} className={occ.action === "create" ? "bg-blue-50/50" : occ.action === "skip" ? "opacity-50" : ""}>
+                  <TableCell className="p-2 text-xs font-medium">
+                    {occ.action === "match" ? (
+                      <span>{occ.canonicalName} <span className="text-muted-foreground">-&gt; {occ.matchedOccupationName}</span></span>
+                    ) : occ.canonicalName}
+                  </TableCell>
+                  <TableCell className="p-2 text-xs text-muted-foreground">{occ.variants.length}</TableCell>
+                  <TableCell className="p-2">
+                    <Select value={occ.action} onValueChange={(v) => setOccupationResolutions((prev) => prev.map((o) => o.canonicalName === occ.canonicalName ? { ...o, action: v as any } : o))}>
+                      <SelectTrigger className="h-7 text-xs w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="match">Match</SelectItem>
+                        <SelectItem value="create">Create</SelectItem>
+                        <SelectItem value="skip">Skip</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell className="p-2">
+                    {occ.action !== "skip" && (
+                      <Select value={occ.category} onValueChange={(v) => setOccupationResolutions((prev) => prev.map((o) => o.canonicalName === occ.canonicalName ? { ...o, category: v } : o))}>
+                        <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>{OCCUPATION_CATEGORIES.map((c) => (<SelectItem key={c} value={c}>{c.replace(/_/g, " ")}</SelectItem>))}</SelectContent>
                       </Select>
-                    </TableCell>
-                    <TableCell className="p-2">
-                      {part.action === "create" ? (
-                        <Input
-                          value={part.canonicalName}
-                          onChange={(e) => {
-                            setOccupationResolutions((prev) =>
-                              prev.map((o) =>
-                                o.rawName === occ.rawName
-                                  ? {
-                                      ...o,
-                                      parts: o.parts.map((p, i) =>
-                                        i === pi
-                                          ? {
-                                              ...p,
-                                              canonicalName: e.target.value,
-                                            }
-                                          : p
-                                      ),
-                                    }
-                                  : o
-                              )
-                            );
-                          }}
-                          className="h-7 text-xs"
-                        />
-                      ) : part.action === "match" ? (
-                        <span className="text-xs text-muted-foreground">
-                          {part.matchedOccupationName ?? "—"}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="p-2">
-                      {part.action !== "skip" && (
-                        <Select
-                          value={part.category}
-                          onValueChange={(v) => {
-                            setOccupationResolutions((prev) =>
-                              prev.map((o) =>
-                                o.rawName === occ.rawName
-                                  ? {
-                                      ...o,
-                                      parts: o.parts.map((p, i) =>
-                                        i === pi
-                                          ? { ...p, category: v }
-                                          : p
-                                      ),
-                                    }
-                                  : o
-                              )
-                            );
-                          }}
-                        >
-                          <SelectTrigger className="h-7 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {OCCUPATION_CATEGORIES.map((c) => (
-                              <SelectItem key={c} value={c}>
-                                {c.replace(/_/g, " ")}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
+                    )}
+                  </TableCell>
+                  <TableCell className="p-2"><Badge variant={confidenceBadge(occ.confidence)} className="text-[10px] px-1.5 py-0">{occ.confidence}</Badge></TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </div>
-
         <DialogFooter>
-          <Button variant="outline" onClick={() => setStep("worksites")}>
-            <ArrowLeft className="h-4 w-4 mr-1" /> Back
-          </Button>
-          <Button
-            onClick={() => {
-              buildConnectionResolutions();
-              setStep("connections");
-            }}
-          >
-            Connections <ArrowRight className="h-4 w-4 ml-1" />
-          </Button>
+          <Button variant="outline" onClick={() => { setReconFilter(""); setStep("cluster_occupations"); }}><ArrowLeft className="h-4 w-4 mr-1" /> Back</Button>
+          <Button onClick={() => { buildConnectionResolutions(); setReconFilter(""); setStep("connections"); }}>Connections <ArrowRight className="h-4 w-4 ml-1" /></Button>
         </DialogFooter>
       </div>
     );
   }
 
   function renderConnections() {
-    const newConns = connectionResolutions.filter(
-      (c) => !c.existsInDb && c.add
-    );
+    const newConns = connectionResolutions.filter((c) => !c.existsInDb && c.add);
     const existingConns = connectionResolutions.filter((c) => c.existsInDb);
 
     return (
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          {connectionResolutions.length} employer-worksite pairs found in the
-          data. {newConns.length} new connections to add,{" "}
-          {existingConns.length} already in the database.
+          {connectionResolutions.length} employer-worksite pairs. {newConns.length} new, {existingConns.length} existing.
         </p>
-
         <div className="border rounded-lg overflow-auto max-h-[400px]">
           <Table>
             <TableHeader>
@@ -1328,228 +1152,90 @@ export function ReferenceDataWizard({
                 <TableHead className="text-xs">Employer</TableHead>
                 <TableHead className="text-xs">Worksite</TableHead>
                 <TableHead className="text-xs w-[120px]">Role</TableHead>
-                <TableHead className="text-xs w-16">Count</TableHead>
+                <TableHead className="text-xs w-14">Count</TableHead>
                 <TableHead className="text-xs w-16">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {connectionResolutions.map((conn, idx) => (
-                <TableRow
-                  key={idx}
-                  className={conn.existsInDb ? "opacity-60" : ""}
-                >
+                <TableRow key={idx} className={conn.existsInDb ? "opacity-60" : ""}>
                   <TableCell className="p-2">
-                    <Checkbox
-                      checked={conn.add}
-                      disabled={conn.existsInDb}
-                      onCheckedChange={(checked) => {
-                        setConnectionResolutions((prev) =>
-                          prev.map((c, i) =>
-                            i === idx
-                              ? { ...c, add: checked === true }
-                              : c
-                          )
-                        );
-                      }}
-                    />
+                    <Checkbox checked={conn.add} disabled={conn.existsInDb}
+                      onCheckedChange={(checked) => setConnectionResolutions((prev) => prev.map((c, i) => i === idx ? { ...c, add: checked === true } : c))} />
                   </TableCell>
-                  <TableCell className="p-2 text-xs">
-                    {conn.employerName}
-                  </TableCell>
-                  <TableCell className="p-2 text-xs">
-                    {conn.worksiteName}
-                  </TableCell>
+                  <TableCell className="p-2 text-xs">{conn.employerName}</TableCell>
+                  <TableCell className="p-2 text-xs">{conn.worksiteName}</TableCell>
                   <TableCell className="p-2">
                     {!conn.existsInDb && (
-                      <Select
-                        value={conn.roleType}
-                        onValueChange={(v) => {
-                          setConnectionResolutions((prev) =>
-                            prev.map((c, i) =>
-                              i === idx ? { ...c, roleType: v } : c
-                            )
-                          );
-                        }}
-                      >
-                        <SelectTrigger className="h-7 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {EWR_ROLE_TYPES.map((r) => (
-                            <SelectItem key={r} value={r}>
-                              {r.replace(/_/g, " ")}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
+                      <Select value={conn.roleType} onValueChange={(v) => setConnectionResolutions((prev) => prev.map((c, i) => i === idx ? { ...c, roleType: v } : c))}>
+                        <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>{EWR_ROLE_TYPES.map((r) => (<SelectItem key={r} value={r}>{r.replace(/_/g, " ")}</SelectItem>))}</SelectContent>
                       </Select>
                     )}
                   </TableCell>
-                  <TableCell className="p-2 text-xs text-center">
-                    {conn.occurrences}
-                  </TableCell>
+                  <TableCell className="p-2 text-xs text-center">{conn.occurrences}</TableCell>
                   <TableCell className="p-2">
-                    {conn.existsInDb ? (
-                      <Badge
-                        variant="default"
-                        className="text-[10px] px-1.5 py-0"
-                      >
-                        Exists
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="secondary"
-                        className="text-[10px] px-1.5 py-0"
-                      >
-                        New
-                      </Badge>
-                    )}
+                    <Badge variant={conn.existsInDb ? "default" : "secondary"} className="text-[10px] px-1.5 py-0">{conn.existsInDb ? "Exists" : "New"}</Badge>
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </div>
-
         <DialogFooter>
-          <Button variant="outline" onClick={() => setStep("occupations")}>
-            <ArrowLeft className="h-4 w-4 mr-1" /> Back
-          </Button>
-          <Button onClick={() => setStep("review")}>
-            Review <ArrowRight className="h-4 w-4 ml-1" />
-          </Button>
+          <Button variant="outline" onClick={() => setStep("occupations")}><ArrowLeft className="h-4 w-4 mr-1" /> Back</Button>
+          <Button onClick={() => setStep("review")}>Review <ArrowRight className="h-4 w-4 ml-1" /></Button>
         </DialogFooter>
       </div>
     );
   }
 
   function renderReview() {
-    const empMatch = employerResolutions.filter(
-      (e) => e.action === "match"
-    ).length;
-    const empCreate = employerResolutions.filter(
-      (e) => e.action === "create"
-    ).length;
-    const empSkip = employerResolutions.filter(
-      (e) => e.action === "skip"
-    ).length;
+    const empMatch = employerResolutions.filter((e) => e.action === "match").length;
+    const empCreate = employerResolutions.filter((e) => e.action === "create").length;
+    const empSkip = employerResolutions.filter((e) => e.action === "skip").length;
+    const empAliasTotal = employerResolutions.reduce((s, e) => s + (e.action !== "skip" ? e.variants.length : 0), 0);
 
-    const wsParts = worksiteResolutions.flatMap((w) => w.parts);
-    const wsMatch = wsParts.filter((p) => p.action === "match").length;
-    const wsCreate = wsParts.filter((p) => p.action === "create").length;
-    const wsSkip = wsParts.filter((p) => p.action === "skip").length;
+    const wsMatch = worksiteResolutions.filter((w) => w.action === "match").length;
+    const wsCreate = worksiteResolutions.filter((w) => w.action === "create").length;
+    const wsSkip = worksiteResolutions.filter((w) => w.action === "skip").length;
+    const wsAliasTotal = worksiteResolutions.reduce((s, w) => s + (w.action !== "skip" ? w.variants.length : 0), 0);
 
-    const occParts = occupationResolutions.flatMap((o) => o.parts);
-    const occMatch = occParts.filter((p) => p.action === "match").length;
-    const occCreate = occParts.filter((p) => p.action === "create").length;
-    const occSkip = occParts.filter((p) => p.action === "skip").length;
+    const occMatch = occupationResolutions.filter((o) => o.action === "match").length;
+    const occCreate = occupationResolutions.filter((o) => o.action === "create").length;
+    const occSkip = occupationResolutions.filter((o) => o.action === "skip").length;
+    const occAliasTotal = occupationResolutions.reduce((s, o) => s + (o.action !== "skip" ? o.variants.length : 0), 0);
 
-    const newConns = connectionResolutions.filter(
-      (c) => c.add && !c.existsInDb
-    ).length;
+    const newConns = connectionResolutions.filter((c) => c.add && !c.existsInDb).length;
 
     return (
       <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Review the summary below, then apply to create records and aliases.
-        </p>
-
+        <p className="text-sm text-muted-foreground">Review the summary below, then apply.</p>
         <div className="grid grid-cols-3 gap-3">
-          <div className="border rounded-lg p-3 space-y-2">
-            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-              <Database className="h-3 w-3" /> Employers
-            </p>
-            <div className="grid grid-cols-3 gap-1 text-center">
-              <div>
-                <p className="text-lg font-bold text-blue-600">{empMatch}</p>
-                <p className="text-[10px] text-muted-foreground">Matched</p>
+          {[
+            { label: "Employers", m: empMatch, c: empCreate, s: empSkip, a: empAliasTotal },
+            { label: "Worksites", m: wsMatch, c: wsCreate, s: wsSkip, a: wsAliasTotal },
+            { label: "Occupations", m: occMatch, c: occCreate, s: occSkip, a: occAliasTotal },
+          ].map(({ label, m, c, s, a }) => (
+            <div key={label} className="border rounded-lg p-3 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground flex items-center gap-1"><Database className="h-3 w-3" /> {label}</p>
+              <div className="grid grid-cols-3 gap-1 text-center">
+                <div><p className="text-lg font-bold text-blue-600">{m}</p><p className="text-[10px] text-muted-foreground">Matched</p></div>
+                <div><p className="text-lg font-bold text-green-600">{c}</p><p className="text-[10px] text-muted-foreground">New</p></div>
+                <div><p className="text-lg font-bold text-muted-foreground">{s}</p><p className="text-[10px] text-muted-foreground">Skip</p></div>
               </div>
-              <div>
-                <p className="text-lg font-bold text-green-600">{empCreate}</p>
-                <p className="text-[10px] text-muted-foreground">New</p>
-              </div>
-              <div>
-                <p className="text-lg font-bold text-muted-foreground">
-                  {empSkip}
-                </p>
-                <p className="text-[10px] text-muted-foreground">Skip</p>
-              </div>
+              <p className="text-[10px] text-muted-foreground text-center">{a} aliases to register</p>
             </div>
-          </div>
-          <div className="border rounded-lg p-3 space-y-2">
-            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-              <Database className="h-3 w-3" /> Worksites
-            </p>
-            <div className="grid grid-cols-3 gap-1 text-center">
-              <div>
-                <p className="text-lg font-bold text-blue-600">{wsMatch}</p>
-                <p className="text-[10px] text-muted-foreground">Matched</p>
-              </div>
-              <div>
-                <p className="text-lg font-bold text-green-600">{wsCreate}</p>
-                <p className="text-[10px] text-muted-foreground">New</p>
-              </div>
-              <div>
-                <p className="text-lg font-bold text-muted-foreground">
-                  {wsSkip}
-                </p>
-                <p className="text-[10px] text-muted-foreground">Skip</p>
-              </div>
-            </div>
-          </div>
-          <div className="border rounded-lg p-3 space-y-2">
-            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-              <Database className="h-3 w-3" /> Occupations
-            </p>
-            <div className="grid grid-cols-3 gap-1 text-center">
-              <div>
-                <p className="text-lg font-bold text-blue-600">{occMatch}</p>
-                <p className="text-[10px] text-muted-foreground">Matched</p>
-              </div>
-              <div>
-                <p className="text-lg font-bold text-green-600">{occCreate}</p>
-                <p className="text-[10px] text-muted-foreground">New</p>
-              </div>
-              <div>
-                <p className="text-lg font-bold text-muted-foreground">
-                  {occSkip}
-                </p>
-                <p className="text-[10px] text-muted-foreground">Skip</p>
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
-
-        <div className="border rounded-lg p-3 space-y-1">
-          <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-            <Link2 className="h-3 w-3" /> Employer-Worksite Connections
-          </p>
-          <p className="text-sm font-bold text-green-600">
-            {newConns} new connections to create
-          </p>
+        <div className="border rounded-lg p-3">
+          <p className="text-xs font-medium text-muted-foreground flex items-center gap-1"><Link2 className="h-3 w-3" /> Connections</p>
+          <p className="text-sm font-bold text-green-600">{newConns} new connections</p>
         </div>
-
-        <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
-          <p>
-            Matched entities will have the import name saved as an alias.
-            New entities will be created with the import name as the canonical
-            name.
-          </p>
-        </div>
-
         <DialogFooter>
-          <Button variant="outline" onClick={() => setStep("connections")}>
-            <ArrowLeft className="h-4 w-4 mr-1" /> Back
-          </Button>
+          <Button variant="outline" onClick={() => setStep("connections")}><ArrowLeft className="h-4 w-4 mr-1" /> Back</Button>
           <Button onClick={applyImport} disabled={isLoading}>
-            {isLoading ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" /> Applying...
-              </>
-            ) : (
-              <>
-                Apply Import <ArrowRight className="h-4 w-4 ml-1" />
-              </>
-            )}
+            {isLoading ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Applying...</> : <>Apply Import <ArrowRight className="h-4 w-4 ml-1" /></>}
           </Button>
         </DialogFooter>
       </div>
@@ -1559,95 +1245,41 @@ export function ReferenceDataWizard({
   function renderDone() {
     if (!applyResult) return null;
     const hasErrors = applyResult.errors.length > 0;
-    const totalCreated =
-      applyResult.employersCreated +
-      applyResult.worksitesCreated +
-      applyResult.occupationsCreated;
-    const totalAliases =
-      applyResult.employerAliasesCreated +
-      applyResult.worksiteAliasesCreated +
-      applyResult.occupationAliasesCreated;
+    const totalCreated = applyResult.employersCreated + applyResult.worksitesCreated + applyResult.occupationsCreated;
+    const totalAliases = applyResult.employerAliasesCreated + applyResult.worksiteAliasesCreated + applyResult.occupationAliasesCreated;
 
     return (
       <div className="space-y-4">
-        <div
-          className={`flex items-center gap-3 p-4 rounded-lg ${
-            hasErrors ? "bg-amber-50" : "bg-green-50"
-          }`}
-        >
-          {hasErrors ? (
-            <AlertCircle className="h-6 w-6 text-amber-600 flex-shrink-0" />
-          ) : (
-            <CheckCircle2 className="h-6 w-6 text-green-600 flex-shrink-0" />
-          )}
+        <div className={`flex items-center gap-3 p-4 rounded-lg ${hasErrors ? "bg-amber-50" : "bg-green-50"}`}>
+          {hasErrors ? <AlertCircle className="h-6 w-6 text-amber-600 flex-shrink-0" /> : <CheckCircle2 className="h-6 w-6 text-green-600 flex-shrink-0" />}
           <div>
-            <p className="font-medium text-sm">
-              {hasErrors
-                ? "Import completed with errors"
-                : "Import successful"}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {totalCreated} records created, {totalAliases} aliases saved,{" "}
-              {applyResult.connectionsCreated} connections added
-            </p>
+            <p className="font-medium text-sm">{hasErrors ? "Import completed with errors" : "Import successful"}</p>
+            <p className="text-xs text-muted-foreground">{totalCreated} records created, {totalAliases} aliases saved, {applyResult.connectionsCreated} connections added</p>
           </div>
         </div>
-
         <div className="grid grid-cols-2 gap-3">
           <div className="border rounded-lg p-3 space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">
-              Records Created
-            </p>
-            <p className="text-xs">
-              Employers: {applyResult.employersCreated}
-            </p>
-            <p className="text-xs">
-              Worksites: {applyResult.worksitesCreated}
-            </p>
-            <p className="text-xs">
-              Occupations: {applyResult.occupationsCreated}
-            </p>
+            <p className="text-xs font-medium text-muted-foreground">Records Created</p>
+            <p className="text-xs">Employers: {applyResult.employersCreated}</p>
+            <p className="text-xs">Worksites: {applyResult.worksitesCreated}</p>
+            <p className="text-xs">Occupations: {applyResult.occupationsCreated}</p>
           </div>
           <div className="border rounded-lg p-3 space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">
-              Aliases Created
-            </p>
-            <p className="text-xs">
-              Employer: {applyResult.employerAliasesCreated}
-            </p>
-            <p className="text-xs">
-              Worksite: {applyResult.worksiteAliasesCreated}
-            </p>
-            <p className="text-xs">
-              Occupation: {applyResult.occupationAliasesCreated}
-            </p>
+            <p className="text-xs font-medium text-muted-foreground">Aliases Created</p>
+            <p className="text-xs">Employer: {applyResult.employerAliasesCreated}</p>
+            <p className="text-xs">Worksite: {applyResult.worksiteAliasesCreated}</p>
+            <p className="text-xs">Occupation: {applyResult.occupationAliasesCreated}</p>
           </div>
         </div>
-
         {hasErrors && (
           <div className="border rounded-lg p-3 space-y-1 max-h-48 overflow-y-auto">
             <p className="text-xs font-medium text-destructive">Errors:</p>
-            {applyResult.errors.map((err, i) => (
-              <p key={i} className="text-xs text-muted-foreground">
-                {err}
-              </p>
-            ))}
+            {applyResult.errors.map((err, i) => <p key={i} className="text-xs text-muted-foreground">{err}</p>)}
           </div>
         )}
-
         <DialogFooter>
-          <Button variant="outline" onClick={() => reset()}>
-            Import Another File
-          </Button>
-          <Button
-            onClick={() => {
-              onComplete?.();
-              onOpenChange(false);
-              reset();
-            }}
-          >
-            Done
-          </Button>
+          <Button variant="outline" onClick={() => reset()}>Import Another File</Button>
+          <Button onClick={() => { onComplete?.(); onOpenChange(false); reset(); }}>Done</Button>
         </DialogFooter>
       </div>
     );
@@ -1656,22 +1288,12 @@ export function ReferenceDataWizard({
   // ── Main render ───────────────────────────────────────────────────────
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        if (!v) reset();
-        onOpenChange(v);
-      }}
-    >
+    <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v); }}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Database className="h-5 w-5" />
-            Reference Data Import Wizard
-          </DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Database className="h-5 w-5" /> Reference Data Import Wizard</DialogTitle>
           <DialogDescription>
-            Import and reconcile employer, worksite, and occupation reference
-            data with fuzzy matching and alias management.
+            Import and reconcile employer, worksite, and occupation reference data with fuzzy deduplication and alias management.
           </DialogDescription>
         </DialogHeader>
 
@@ -1680,15 +1302,28 @@ export function ReferenceDataWizard({
         {isLoading && step === "upload" ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">
-              Parsing and analysing spreadsheet...
-            </p>
+            <p className="text-sm text-muted-foreground">Parsing and clustering spreadsheet...</p>
           </div>
         ) : (
           <>
             {step === "upload" && renderUpload()}
+            {step === "cluster_employers" && renderClusterReview(
+              "Employer", empClusters, setEmpClusters as any,
+              () => {}, () => setStep("upload"), () => runAnalyseForEmployers(),
+              undefined, isLoading
+            )}
             {step === "employers" && renderEmployers()}
+            {step === "cluster_worksites" && renderClusterReview(
+              "Worksite", wsClusters, setWsClusters as any,
+              () => {}, () => { setReconFilter(""); setStep("employers"); }, () => runAnalyseForWorksites(),
+              undefined, isLoading
+            )}
             {step === "worksites" && renderWorksites()}
+            {step === "cluster_occupations" && renderClusterReview(
+              "Occupation", occClusters, setOccClusters as any,
+              () => {}, () => { setReconFilter(""); setStep("worksites"); }, () => runAnalyseForOccupations(),
+              OCCUPATION_CATEGORIES, isLoading
+            )}
             {step === "occupations" && renderOccupations()}
             {step === "connections" && renderConnections()}
             {step === "review" && renderReview()}

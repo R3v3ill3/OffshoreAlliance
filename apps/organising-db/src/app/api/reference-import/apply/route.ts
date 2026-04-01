@@ -4,31 +4,27 @@ import { createClient } from "@/lib/supabase/server";
 // ─── Payload types ──────────────────────────────────────────────────────────
 
 interface EmployerMapping {
-  rawName: string;
+  canonicalName: string;
+  variants: string[];
   action: "match" | "create" | "skip";
   matchedEmployerId?: number;
   newCategory?: string;
 }
 
 interface WorksiteMapping {
-  rawName: string;
-  parts: {
-    part: string;
-    action: "match" | "create" | "skip";
-    matchedWorksiteId?: number;
-    newWorksiteType?: string;
-  }[];
+  canonicalName: string;
+  variants: string[];
+  action: "match" | "create" | "skip";
+  matchedWorksiteId?: number;
+  newWorksiteType?: string;
 }
 
 interface OccupationMapping {
-  rawName: string;
-  parts: {
-    part: string;
-    action: "match" | "create" | "skip";
-    matchedOccupationId?: number;
-    canonicalName?: string;
-    category?: string;
-  }[];
+  canonicalName: string;
+  variants: string[];
+  action: "match" | "create" | "skip";
+  matchedOccupationId?: number;
+  category?: string;
 }
 
 interface ConnectionMapping {
@@ -46,6 +42,36 @@ interface ApplyPayload {
   occupations: OccupationMapping[];
   connections: ConnectionMapping[];
   fileName: string;
+}
+
+async function insertAliases(
+  supabase: ReturnType<typeof import("@supabase/supabase-js").createClient>,
+  table: string,
+  fkColumn: string,
+  fkId: number,
+  canonicalName: string,
+  variants: string[],
+  userId: string
+): Promise<number> {
+  let count = 0;
+  const canonLower = canonicalName.toLowerCase().trim();
+
+  for (const variant of variants) {
+    const varLower = variant.toLowerCase().trim();
+    if (!varLower || varLower === canonLower) continue;
+    try {
+      const { error } = await (supabase as any).from(table).insert({
+        [fkColumn]: fkId,
+        alias_name: variant.trim(),
+        source: "import",
+        created_by: userId,
+      });
+      if (!error) count++;
+    } catch {
+      // unique constraint violations are expected -- skip
+    }
+  }
+  return count;
 }
 
 // ─── Route handler ──────────────────────────────────────────────────────────
@@ -88,50 +114,37 @@ export async function POST(req: NextRequest) {
       try {
         if (emp.action === "skip") continue;
 
+        let employerId: number | undefined = emp.matchedEmployerId;
+
         if (emp.action === "create") {
           const { data, error } = await supabase
             .from("employers")
             .insert({
-              employer_name: emp.rawName,
+              employer_name: emp.canonicalName,
               employer_category: emp.newCategory || null,
             })
             .select("employer_id")
             .single();
           if (error) throw error;
           stats.employersCreated++;
-          // The raw name IS the canonical name, no alias needed
-          emp.matchedEmployerId = data.employer_id;
+          employerId = data.employer_id;
         }
 
-        if (emp.action === "match" && emp.matchedEmployerId) {
-          const { data: existing } = await supabase
-            .from("employers")
-            .select("employer_name")
-            .eq("employer_id", emp.matchedEmployerId)
-            .single();
-
-          if (
-            existing &&
-            existing.employer_name.toLowerCase().trim() !==
-              emp.rawName.toLowerCase().trim()
-          ) {
-            const { error } = await supabase
-              .from("employer_name_aliases")
-              .upsert(
-                {
-                  employer_id: emp.matchedEmployerId,
-                  alias_name: emp.rawName,
-                  source: "import" as const,
-                  created_by: user.id,
-                },
-                { onConflict: "employer_id,alias_name", ignoreDuplicates: true }
-              );
-            if (!error) stats.employerAliasesCreated++;
-          }
+        if (employerId) {
+          const aliasCount = await insertAliases(
+            supabase as any,
+            "employer_name_aliases",
+            "employer_id",
+            employerId,
+            emp.canonicalName,
+            emp.variants,
+            user.id
+          );
+          stats.employerAliasesCreated += aliasCount;
         }
       } catch (err) {
         stats.errors.push(
-          `Employer "${emp.rawName}": ${err instanceof Error ? err.message : "unknown error"}`
+          `Employer "${emp.canonicalName}": ${err instanceof Error ? err.message : "unknown error"}`
         );
       }
     }
@@ -139,129 +152,82 @@ export async function POST(req: NextRequest) {
     // ── 2. Worksites ──────────────────────────────────────────────────────
 
     for (const ws of payload.worksites) {
-      for (const part of ws.parts) {
-        try {
-          if (part.action === "skip") continue;
+      try {
+        if (ws.action === "skip") continue;
 
-          if (part.action === "create") {
-            const { data, error } = await supabase
-              .from("worksites")
-              .insert({
-                worksite_name: part.part,
-                worksite_type: part.newWorksiteType || "Other",
-              })
-              .select("worksite_id")
-              .single();
-            if (error) throw error;
-            stats.worksitesCreated++;
-            part.matchedWorksiteId = data.worksite_id;
-          }
+        let worksiteId: number | undefined = ws.matchedWorksiteId;
 
-          if (part.action === "match" && part.matchedWorksiteId) {
-            const { data: existing } = await supabase
-              .from("worksites")
-              .select("worksite_name")
-              .eq("worksite_id", part.matchedWorksiteId)
-              .single();
-
-            if (
-              existing &&
-              existing.worksite_name.toLowerCase().trim() !==
-                part.part.toLowerCase().trim()
-            ) {
-              const { error } = await supabase
-                .from("worksite_name_aliases")
-                .insert({
-                  worksite_id: part.matchedWorksiteId,
-                  alias_name: part.part,
-                  source: "import" as const,
-                  created_by: user.id,
-                });
-              if (!error) stats.worksiteAliasesCreated++;
-            }
-
-            // Also add the original compound name as an alias if this was a split
-            if (ws.parts.length > 1 && ws.rawName !== part.part) {
-              await supabase.from("worksite_name_aliases").insert({
-                worksite_id: part.matchedWorksiteId,
-                alias_name: ws.rawName,
-                source: "import" as const,
-                created_by: user.id,
-              });
-            }
-          }
-        } catch (err) {
-          stats.errors.push(
-            `Worksite "${part.part}": ${err instanceof Error ? err.message : "unknown error"}`
-          );
+        if (ws.action === "create") {
+          const { data, error } = await supabase
+            .from("worksites")
+            .insert({
+              worksite_name: ws.canonicalName,
+              worksite_type: ws.newWorksiteType || "Other",
+            })
+            .select("worksite_id")
+            .single();
+          if (error) throw error;
+          stats.worksitesCreated++;
+          worksiteId = data.worksite_id;
         }
+
+        if (worksiteId) {
+          const aliasCount = await insertAliases(
+            supabase as any,
+            "worksite_name_aliases",
+            "worksite_id",
+            worksiteId,
+            ws.canonicalName,
+            ws.variants,
+            user.id
+          );
+          stats.worksiteAliasesCreated += aliasCount;
+        }
+      } catch (err) {
+        stats.errors.push(
+          `Worksite "${ws.canonicalName}": ${err instanceof Error ? err.message : "unknown error"}`
+        );
       }
     }
 
     // ── 3. Occupations ────────────────────────────────────────────────────
 
     for (const occ of payload.occupations) {
-      for (const part of occ.parts) {
-        try {
-          if (part.action === "skip") continue;
+      try {
+        if (occ.action === "skip") continue;
 
-          if (part.action === "create") {
-            const canonicalName = part.canonicalName || part.part;
-            const { data, error } = await supabase
-              .from("occupations")
-              .insert({
-                canonical_name: canonicalName,
-                category: part.category || null,
-              })
-              .select("occupation_id")
-              .single();
-            if (error) throw error;
-            stats.occupationsCreated++;
-            part.matchedOccupationId = data.occupation_id;
+        let occupationId: number | undefined = occ.matchedOccupationId;
 
-            // If the raw part differs from canonical, add as alias
-            if (
-              part.part.toLowerCase().trim() !==
-              canonicalName.toLowerCase().trim()
-            ) {
-              await supabase.from("occupation_aliases").insert({
-                occupation_id: data.occupation_id,
-                alias_name: part.part,
-                source: "import" as const,
-                created_by: user.id,
-              });
-              stats.occupationAliasesCreated++;
-            }
-          }
-
-          if (part.action === "match" && part.matchedOccupationId) {
-            const { data: existing } = await supabase
-              .from("occupations")
-              .select("canonical_name")
-              .eq("occupation_id", part.matchedOccupationId)
-              .single();
-
-            if (
-              existing &&
-              existing.canonical_name.toLowerCase().trim() !==
-                part.part.toLowerCase().trim()
-            ) {
-              const { error } = await supabase
-                .from("occupation_aliases")
-                .insert({
-                  occupation_id: part.matchedOccupationId,
-                  alias_name: part.part,
-                  source: "import" as const,
-                  created_by: user.id,
-                });
-              if (!error) stats.occupationAliasesCreated++;
-            }
-          }
-        } catch (err) {
-          stats.errors.push(
-            `Occupation "${part.part}": ${err instanceof Error ? err.message : "unknown error"}`
-          );
+        if (occ.action === "create") {
+          const { data, error } = await supabase
+            .from("occupations")
+            .insert({
+              canonical_name: occ.canonicalName,
+              category: occ.category || null,
+            })
+            .select("occupation_id")
+            .single();
+          if (error) throw error;
+          stats.occupationsCreated++;
+          occupationId = data.occupation_id;
         }
+
+        if (occupationId) {
+          const aliasCount = await insertAliases(
+            supabase as any,
+            "occupation_aliases",
+            "occupation_id",
+            occupationId,
+            occ.canonicalName,
+            occ.variants,
+            user.id
+          );
+          stats.occupationAliasesCreated += aliasCount;
+        }
+      } catch (err) {
+        stats.errors.push(
+          `Occupation "${occ.canonicalName}": ${err instanceof Error ? err.message : "unknown error"}`
+        );
       }
     }
 

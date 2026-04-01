@@ -10,18 +10,23 @@ import {
 } from "@/lib/utils/worksite-fuzzy";
 import {
   matchOccupationCandidates,
-  detectOccupationCategory,
   type Occupation,
   type OccupationAlias,
 } from "@/lib/utils/occupation-fuzzy";
-import { detectMultiValue } from "@/lib/utils/multi-value-splitter";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type Confidence = "high" | "medium" | "low";
 
+export interface ClusterInput {
+  canonicalName: string;
+  variants: string[];
+  suggestedCategory?: string | null;
+}
+
 export interface EmployerProposal {
-  rawName: string;
+  canonicalName: string;
+  variants: string[];
   matchedEmployerId: number | null;
   matchedEmployerName: string | null;
   confidence: Confidence;
@@ -30,33 +35,25 @@ export interface EmployerProposal {
 }
 
 export interface WorksiteProposal {
-  rawName: string;
-  isMultiValue: boolean;
-  splitParts: string[];
-  proposals: {
-    part: string;
-    matchedWorksiteId: number | null;
-    matchedWorksiteName: string | null;
-    confidence: Confidence;
-    isNew: boolean;
-    isPrincipalEmployerName: boolean;
-    score: number;
-  }[];
+  canonicalName: string;
+  variants: string[];
+  matchedWorksiteId: number | null;
+  matchedWorksiteName: string | null;
+  confidence: Confidence;
+  isNew: boolean;
+  isPrincipalEmployerName: boolean;
+  score: number;
 }
 
 export interface OccupationProposal {
-  rawName: string;
-  isMultiValue: boolean;
-  splitParts: string[];
-  proposals: {
-    part: string;
-    matchedOccupationId: number | null;
-    matchedOccupationName: string | null;
-    suggestedCategory: string | null;
-    confidence: Confidence;
-    isNew: boolean;
-    score: number;
-  }[];
+  canonicalName: string;
+  variants: string[];
+  suggestedCategory: string | null;
+  matchedOccupationId: number | null;
+  matchedOccupationName: string | null;
+  confidence: Confidence;
+  isNew: boolean;
+  score: number;
 }
 
 export interface EmployerWorksiteConnection {
@@ -87,27 +84,30 @@ interface DbEmployerAlias {
 }
 
 function matchEmployer(
-  rawName: string,
+  cluster: ClusterInput,
   dbEmployers: DbEmployer[],
   aliases: DbEmployerAlias[]
 ): EmployerProposal {
-  const normRaw = normaliseForMerge(rawName);
+  const namesToTry = [cluster.canonicalName, ...cluster.variants];
   let bestScore = 0;
   let bestMatch: DbEmployer | null = null;
 
-  for (const emp of dbEmployers) {
-    const score = similarityRatio(normRaw, normaliseForMerge(emp.employer_name));
-    if (score > bestScore) {
-      bestScore = score;
-      bestMatch = emp;
+  for (const name of namesToTry) {
+    const normRaw = normaliseForMerge(name);
+    for (const emp of dbEmployers) {
+      const score = similarityRatio(normRaw, normaliseForMerge(emp.employer_name));
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = emp;
+      }
     }
-  }
-
-  for (const alias of aliases) {
-    const score = similarityRatio(normRaw, normaliseForMerge(alias.alias_name));
-    if (score > bestScore) {
-      bestScore = score;
-      bestMatch = dbEmployers.find((e) => e.employer_id === alias.employer_id) ?? null;
+    for (const alias of aliases) {
+      const score = similarityRatio(normRaw, normaliseForMerge(alias.alias_name));
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch =
+          dbEmployers.find((e) => e.employer_id === alias.employer_id) ?? null;
+      }
     }
   }
 
@@ -116,7 +116,8 @@ function matchEmployer(
 
   if (bestScore >= 0.6 && bestMatch) {
     return {
-      rawName,
+      canonicalName: cluster.canonicalName,
+      variants: cluster.variants,
       matchedEmployerId: bestMatch.employer_id,
       matchedEmployerName: bestMatch.employer_name,
       confidence,
@@ -126,7 +127,8 @@ function matchEmployer(
   }
 
   return {
-    rawName,
+    canonicalName: cluster.canonicalName,
+    variants: cluster.variants,
     matchedEmployerId: null,
     matchedEmployerName: null,
     confidence: "low",
@@ -149,14 +151,14 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const {
-      uniqueEmployers,
-      uniqueWorksites,
-      uniqueOccupations,
+      employerClusters,
+      worksiteClusters,
+      occupationClusters,
       rows,
     } = body as {
-      uniqueEmployers: string[];
-      uniqueWorksites: string[];
-      uniqueOccupations: string[];
+      employerClusters: ClusterInput[];
+      worksiteClusters: ClusterInput[];
+      occupationClusters: ClusterInput[];
       rows: { employer: string; worksite: string; occupation: string }[];
     };
 
@@ -200,90 +202,65 @@ export async function POST(req: NextRequest) {
         .map((e) => e.employer_name.toLowerCase())
     );
 
-    // 1. Employer proposals
-    const employerProposals = uniqueEmployers.map((name) =>
-      matchEmployer(name, employers, empAliases)
+    // 1. Employer proposals (one per cluster)
+    const employerProposals = employerClusters.map((c) =>
+      matchEmployer(c, employers, empAliases)
     );
 
-    // 2. Worksite proposals (with multi-value detection)
-    const worksiteProposals: WorksiteProposal[] = uniqueWorksites.map(
-      (rawName) => {
-        const split = detectMultiValue(rawName, "worksite");
-        const parts = split.isMultiValue ? split.parts : [rawName];
+    // 2. Worksite proposals (one per cluster)
+    const worksiteProposals: WorksiteProposal[] = worksiteClusters.map((c) => {
+      const isPe = principalEmployerNames.has(c.canonicalName.toLowerCase());
+      const candidates = matchWorksiteCandidates(
+        c.canonicalName,
+        worksites,
+        3,
+        wsAliases
+      );
+      const top = candidates[0];
+      const matched = top && top.confidence !== "low";
 
-        const proposals = parts.map((part) => {
-          const isPe = principalEmployerNames.has(part.toLowerCase());
-          const candidates = matchWorksiteCandidates(
-            part,
-            worksites,
-            3,
-            wsAliases
-          );
-          const top = candidates[0];
-          const matched = top && top.confidence !== "low";
+      return {
+        canonicalName: c.canonicalName,
+        variants: c.variants,
+        matchedWorksiteId: matched ? top.worksite.worksite_id : null,
+        matchedWorksiteName: matched ? top.worksite.worksite_name : null,
+        confidence: matched ? top.confidence : ("low" as Confidence),
+        isNew: !matched,
+        isPrincipalEmployerName: isPe,
+        score: top?.score ?? 0,
+      };
+    });
 
-          return {
-            part,
-            matchedWorksiteId: matched ? top.worksite.worksite_id : null,
-            matchedWorksiteName: matched ? top.worksite.worksite_name : null,
-            confidence: matched ? top.confidence : ("low" as Confidence),
-            isNew: !matched,
-            isPrincipalEmployerName: isPe,
-            score: top?.score ?? 0,
-          };
-        });
+    // 3. Occupation proposals (one per cluster)
+    const occupationProposals: OccupationProposal[] = occupationClusters.map(
+      (c) => {
+        const candidates = matchOccupationCandidates(
+          c.canonicalName,
+          occupations,
+          occAliases,
+          3
+        );
+        const top = candidates[0];
+        const matched = top && top.confidence !== "low";
 
         return {
-          rawName,
-          isMultiValue: split.isMultiValue,
-          splitParts: parts,
-          proposals,
+          canonicalName: c.canonicalName,
+          variants: c.variants,
+          suggestedCategory: matched
+            ? top.occupation.category
+            : (c.suggestedCategory ?? null),
+          matchedOccupationId: matched ? top.occupation.occupation_id : null,
+          matchedOccupationName: matched
+            ? top.occupation.canonical_name
+            : null,
+          confidence: matched ? top.confidence : ("low" as Confidence),
+          isNew: !matched,
+          score: top?.score ?? 0,
         };
       }
     );
 
-    // 3. Occupation proposals (with multi-value detection)
-    const occupationProposals: OccupationProposal[] = uniqueOccupations.map(
-      (rawName) => {
-        const split = detectMultiValue(rawName, "occupation");
-        const parts = split.isMultiValue ? split.parts : [rawName];
-
-        const proposals = parts.map((part) => {
-          const candidates = matchOccupationCandidates(
-            part,
-            occupations,
-            occAliases,
-            3
-          );
-          const top = candidates[0];
-          const matched = top && top.confidence !== "low";
-          const category = detectOccupationCategory(part);
-
-          return {
-            part,
-            matchedOccupationId: matched ? top.occupation.occupation_id : null,
-            matchedOccupationName: matched
-              ? top.occupation.canonical_name
-              : null,
-            suggestedCategory: matched
-              ? top.occupation.category
-              : category,
-            confidence: matched ? top.confidence : ("low" as Confidence),
-            isNew: !matched,
-            score: top?.score ?? 0,
-          };
-        });
-
-        return {
-          rawName,
-          isMultiValue: split.isMultiValue,
-          splitParts: parts,
-          proposals,
-        };
-      }
-    );
-
-    // 4. Employer-worksite connections (count co-occurrences)
+    // 4. Employer-worksite connections
     const connectionCounts = new Map<string, number>();
     for (const row of rows) {
       if (row.employer && row.worksite) {

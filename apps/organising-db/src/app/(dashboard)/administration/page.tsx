@@ -50,8 +50,10 @@ import {
   Mail,
   Trash2,
   Pencil,
+  Upload,
 } from "lucide-react";
 import { EmployerWizard } from "@/components/administration/employer-wizard";
+import { ReferenceDataWizard } from "@/components/import/reference-data-wizard";
 
 const WORK_ROLES: { value: WorkRole; label: string }[] = [
   { value: "coordinator", label: "Co-ordinator" },
@@ -1107,6 +1109,43 @@ function ImportHistoryTab() {
   );
 }
 
+// ---------- Reference Data Import Tab ----------
+
+function ReferenceDataTab() {
+  const [wizardOpen, setWizardOpen] = useState(false);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Reference Data Import</h2>
+      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            Employer / Worksite / Occupation Import Wizard
+          </CardTitle>
+          <CardDescription>
+            Upload an Excel file containing employer, worksite, and occupation
+            data. The wizard uses fuzzy matching to reconcile entries against
+            existing records, builds canonical lists, and creates alias tables
+            for smart matching on future imports.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button onClick={() => setWizardOpen(true)}>
+            <Upload className="h-4 w-4" />
+            Launch Import Wizard
+          </Button>
+        </CardContent>
+      </Card>
+      <ReferenceDataWizard
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
+      />
+    </div>
+  );
+}
+
 // ---------- Main Page ----------
 
 export default function AdministrationPage() {
@@ -1147,6 +1186,7 @@ export default function AdministrationPage() {
           <TabsTrigger value="settings">Settings</TabsTrigger>
           <TabsTrigger value="imports">Import History</TabsTrigger>
           <TabsTrigger value="employer_wizard">Employer Wizard</TabsTrigger>
+          <TabsTrigger value="ref_data">Reference Data Import</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users">
@@ -1166,6 +1206,9 @@ export default function AdministrationPage() {
         </TabsContent>
         <TabsContent value="employer_wizard">
           <EmployerWizard />
+        </TabsContent>
+        <TabsContent value="ref_data">
+          <ReferenceDataTab />
         </TabsContent>
       </Tabs>
     </div>

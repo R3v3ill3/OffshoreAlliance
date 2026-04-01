@@ -74,28 +74,61 @@ function scoreToConfidence(score: number): WizardConfidence {
   return "low";
 }
 
+export interface WorksiteAlias {
+  worksite_id: number;
+  alias_name: string;
+}
+
+function scoreCandidate(
+  queryTokens: Set<string>,
+  candidateName: string
+): number {
+  const normCandidate = normalise(candidateName);
+  const candidateTokens = tokenSet(normCandidate);
+  const base = jaccardScore(queryTokens, candidateTokens);
+  const bonus = partialContainmentBonus(queryTokens, candidateTokens);
+  return Math.min(1, base + bonus);
+}
+
 /**
  * Fuzzy-matches a group name from an import spreadsheet against the list
- * of worksites in the database. Returns up to `topN` candidates ordered
- * by descending score.
+ * of worksites in the database. When `aliases` are provided, each
+ * worksite's alias names are also scored and the best match wins.
+ * Returns up to `topN` candidates ordered by descending score.
  */
 export function matchWorksiteCandidates(
   groupName: string,
   worksites: Worksite[],
-  topN = 3
+  topN = 3,
+  aliases: WorksiteAlias[] = []
 ): WorksiteCandidate[] {
   const normQuery = normalise(groupName);
   const queryTokens = tokenSet(normQuery);
 
+  const aliasesByWsId = new Map<number, string[]>();
+  for (const a of aliases) {
+    if (!aliasesByWsId.has(a.worksite_id)) {
+      aliasesByWsId.set(a.worksite_id, []);
+    }
+    aliasesByWsId.get(a.worksite_id)!.push(a.alias_name);
+  }
+
   const scored = worksites.map((ws) => {
-    const normCandidate = normalise(ws.worksite_name);
-    const candidateTokens = tokenSet(normCandidate);
+    let bestScore = scoreCandidate(queryTokens, ws.worksite_name);
 
-    const base = jaccardScore(queryTokens, candidateTokens);
-    const bonus = partialContainmentBonus(queryTokens, candidateTokens);
-    const score = Math.min(1, base + bonus);
+    const wsAliases = aliasesByWsId.get(ws.worksite_id) ?? [];
+    for (const alias of wsAliases) {
+      const aliasScore = scoreCandidate(queryTokens, alias);
+      if (aliasScore > bestScore) {
+        bestScore = aliasScore;
+      }
+    }
 
-    return { worksite: ws, score, confidence: scoreToConfidence(score) };
+    return {
+      worksite: ws,
+      score: bestScore,
+      confidence: scoreToConfidence(bestScore),
+    };
   });
 
   return scored

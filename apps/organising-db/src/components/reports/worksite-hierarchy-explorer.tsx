@@ -144,7 +144,7 @@ export function WorksiteHierarchyExplorer() {
     URL.revokeObjectURL(url);
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <Card>
         <CardContent className="py-10 flex items-center justify-center">

@@ -56,12 +56,8 @@ CREATE INDEX idx_rlc_user_id ON rate_limit_config(user_id);
 CREATE INDEX idx_rlu_user_id ON rate_limit_usage(user_id);
 CREATE INDEX idx_rlu_requested_at ON rate_limit_usage(requested_at DESC);
 CREATE INDEX idx_rlu_endpoint ON rate_limit_usage(endpoint);
-CREATE INDEX idx_rlu_user_minute ON rate_limit_usage(user_id, requested_at)
-  WHERE requested_at > NOW() - INTERVAL '1 minute';
-CREATE INDEX idx_rlu_user_hour ON rate_limit_usage(user_id, requested_at)
-  WHERE requested_at > NOW() - INTERVAL '1 hour';
-CREATE INDEX idx_rlu_user_day ON rate_limit_usage(user_id, requested_at)
-  WHERE requested_at > NOW() - INTERVAL '1 day';
+-- Composite index for time-windowed lookups (partial index predicates must be immutable; NOW() is not).
+CREATE INDEX idx_rlu_user_requested_at ON rate_limit_usage(user_id, requested_at DESC);
 
 -- ============================================================
 -- RATE LIMITING FUNCTIONS

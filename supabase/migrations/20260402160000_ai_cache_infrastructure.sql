@@ -6,6 +6,8 @@
 -- Status: DISABLED - Ready for future use when AI features are added
 -- ============================================================
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- Create AI cache table
 CREATE TABLE IF NOT EXISTS ai_response_cache (
   cache_id BIGSERIAL PRIMARY KEY,

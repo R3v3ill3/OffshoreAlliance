@@ -270,12 +270,24 @@ interface RateLimitEditFormProps {
   saving: boolean;
 }
 
+function rateLimitFieldToInput(value: number | null | undefined): string {
+  return value != null ? String(value) : "";
+}
+
 function RateLimitEditForm({ user, onSave, onCancel, saving }: RateLimitEditFormProps) {
-  const [minute, setMinute] = useState(user.config?.requests_per_minute ?? "");
-  const [hour, setHour] = useState(user.config?.requests_per_hour ?? "");
-  const [day, setDay] = useState(user.config?.requests_per_day ?? "");
+  const [minute, setMinute] = useState(() =>
+    rateLimitFieldToInput(user.config?.requests_per_minute)
+  );
+  const [hour, setHour] = useState(() =>
+    rateLimitFieldToInput(user.config?.requests_per_hour)
+  );
+  const [day, setDay] = useState(() =>
+    rateLimitFieldToInput(user.config?.requests_per_day)
+  );
   const [exempt, setExempt] = useState(user.config?.is_exempt ?? false);
-  const [cost, setCost] = useState(user.config?.cost_per_request ?? "");
+  const [cost, setCost] = useState(() =>
+    user.config != null ? String(user.config.cost_per_request) : ""
+  );
   const [notes, setNotes] = useState(user.config?.notes ?? "");
 
   function handleSubmit(e: React.FormEvent) {
@@ -286,7 +298,7 @@ function RateLimitEditForm({ user, onSave, onCancel, saving }: RateLimitEditForm
       requests_per_day: day ? parseInt(day) : null,
       is_exempt: exempt,
       cost_per_request: cost ? parseFloat(cost) : 0,
-      notes: notes || null,
+      notes: notes || undefined,
     });
   }
 

@@ -168,9 +168,14 @@ export async function withRateLimit(req: NextRequest, endpoint?: string) {
           headers: {
             "Content-Type": "application/json",
             ...rateLimitResult.headers,
-            "Retry-After": rateLimitResult.resetAt
-              ? Math.ceil((rateLimitResult.resetAt - Date.now() / 1000))
-              : 60,
+            "Retry-After": String(
+              rateLimitResult.resetAt != null
+                ? Math.max(
+                    0,
+                    Math.ceil(rateLimitResult.resetAt - Date.now() / 1000)
+                  )
+                : 60
+            ),
           },
         }
       ),

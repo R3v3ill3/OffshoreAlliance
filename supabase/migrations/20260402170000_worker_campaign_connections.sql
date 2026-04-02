@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS worker_campaign_connections (
   membership_number TEXT,
 
   -- Activity tracking
-  activitiesattended_count INTEGER DEFAULT 0,
+  activities_attended_count INTEGER DEFAULT 0,
   last_activity_attended_at TIMESTAMPTZ,
   volunteer_hours DECIMAL(5,2) DEFAULT 0,
 
@@ -88,8 +88,8 @@ CREATE TABLE IF NOT EXISTS worker_activity_log (
   description TEXT,
   outcome TEXT,
 
-  -- Event-specific fields
-  event_id INTEGER REFERENCES campaign_events(id), -- Assuming campaign_events table exists
+  -- Event-specific fields (link to campaign activity / event definition)
+  event_id INTEGER REFERENCES campaign_activities(activity_id) ON DELETE SET NULL,
   duration_minutes INTEGER,
 
   -- Contact-specific fields

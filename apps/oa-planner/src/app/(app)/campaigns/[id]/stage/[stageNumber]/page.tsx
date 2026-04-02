@@ -179,6 +179,7 @@ export default function StageplanPage({ params }: PageProps) {
                   planId={plan.plan_id}
                   stageNumber={stageNumber}
                   campaignId={campaignId}
+                  plannedEndDate={plan.planned_end_date}
                   ambitions={(stagePlanData?.ambitions || []) as any}
                 />
               </TabsContent>

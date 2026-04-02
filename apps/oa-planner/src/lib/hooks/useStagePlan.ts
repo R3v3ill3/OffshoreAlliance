@@ -71,8 +71,13 @@ export function useAddAmbition() {
       ambition_option_id?: number
       custom_text?: string
       target_value?: string
+      target_value_max?: string
       target_unit?: string
       target_date?: string
+      metric_type?: string
+      is_system_default?: boolean
+      is_hard_gate?: boolean
+      target_date_user_overridden?: boolean
       sort_order?: number
       campaign_id: number
       stage_number: number
@@ -108,6 +113,12 @@ export function useAddAmbition() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['stage-plan', variables.campaign_id, variables.stage_number] })
+      queryClient.invalidateQueries({
+        queryKey: ['gate-ambitions', variables.campaign_id, variables.stage_number],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['campaign-ambitions-by-stage', variables.campaign_id],
+      })
     },
   })
 }
@@ -120,10 +131,16 @@ export function useUpdateAmbition() {
     mutationFn: async (params: {
       ambition_id: number
       target_value?: string
+      target_value_max?: string | null
       target_unit?: string
       target_date?: string | null
+      target_date_user_overridden?: boolean
       is_achieved?: boolean
       achieved_date?: string | null
+      is_hard_gate?: boolean
+      metric_type?: string | null
+      current_value?: string | null
+      evidence_notes?: string | null
       campaign_id: number
       stage_number: number
     }) => {
@@ -137,6 +154,12 @@ export function useUpdateAmbition() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['stage-plan', variables.campaign_id, variables.stage_number] })
+      queryClient.invalidateQueries({
+        queryKey: ['gate-ambitions', variables.campaign_id, variables.stage_number],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['campaign-ambitions-by-stage', variables.campaign_id],
+      })
     },
   })
 }
@@ -156,6 +179,12 @@ export function useDeleteAmbition() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['stage-plan', variables.campaign_id, variables.stage_number] })
+      queryClient.invalidateQueries({
+        queryKey: ['gate-ambitions', variables.campaign_id, variables.stage_number],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['campaign-ambitions-by-stage', variables.campaign_id],
+      })
     },
   })
 }

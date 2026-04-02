@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { syncAmbitionTargetDatesForCampaign } from '@/lib/supabase/syncAmbitionTargetDates'
 
 export function useCampaigns() {
   const supabase = createClient()
@@ -32,7 +33,7 @@ export function useCampaigns() {
   })
 }
 
-export function useCampaign(id: number) {
+export function useCampaign(id: number, options?: { enabled?: boolean }) {
   const supabase = createClient()
 
   return useQuery({
@@ -64,7 +65,71 @@ export function useCampaign(id: number) {
       if (error) throw error
       return data
     },
-    enabled: !!id,
+    enabled: options?.enabled !== undefined ? options.enabled && id > 0 : !!id && id > 0,
+  })
+}
+
+export function useUpdateCampaignStagePlans() {
+  const supabase = createClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (payload: {
+      campaign_id: number
+      updates: Array<{
+        plan_id: number
+        planned_start_date: string | null
+        planned_end_date: string | null
+      }>
+    }) => {
+      const now = new Date().toISOString()
+      for (const u of payload.updates) {
+        const { error } = await supabase
+          .from('campaign_stage_plans')
+          .update({
+            planned_start_date: u.planned_start_date,
+            planned_end_date: u.planned_end_date,
+            updated_at: now,
+          })
+          .eq('plan_id', u.plan_id)
+
+        if (error) throw error
+      }
+
+      await syncAmbitionTargetDatesForCampaign(supabase, payload.campaign_id)
+    },
+    onSuccess: (_, variables) => {
+      const id = variables.campaign_id
+      queryClient.invalidateQueries({ queryKey: ['campaign', id] })
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] })
+      queryClient.invalidateQueries({ queryKey: ['stage-plan', id] })
+      queryClient.invalidateQueries({ queryKey: ['campaign-ambitions-by-stage', id] })
+      queryClient.invalidateQueries({ queryKey: ['gates', id] })
+      for (let g = 1; g <= 5; g++) {
+        queryClient.invalidateQueries({ queryKey: ['gate-ambitions', id, g] })
+      }
+    },
+  })
+}
+
+/** Re-apply stage planned end → ambition target_date for non-overridden rows only */
+export function useSyncAmbitionTargetDatesForCampaign() {
+  const supabase = createClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (campaign_id: number) => {
+      await syncAmbitionTargetDatesForCampaign(supabase, campaign_id)
+    },
+    onSuccess: (_, campaign_id) => {
+      queryClient.invalidateQueries({ queryKey: ['campaign', campaign_id] })
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] })
+      queryClient.invalidateQueries({ queryKey: ['stage-plan', campaign_id] })
+      queryClient.invalidateQueries({ queryKey: ['campaign-ambitions-by-stage', campaign_id] })
+      for (let g = 1; g <= 5; g++) {
+        queryClient.invalidateQueries({ queryKey: ['gate-ambitions', campaign_id, g] })
+      }
+    },
   })
 }
 
@@ -125,6 +190,43 @@ export function useCreateCampaign() {
       const { error: plansError } = await supabase.from('campaign_stage_plans').insert(stagePlans)
       if (plansError) throw plansError
 
+      const { data: insertedPlans, error: plansSelectError } = await supabase
+        .from('campaign_stage_plans')
+        .select('plan_id, stage_number, planned_end_date')
+        .eq('campaign_id', campaign.campaign_id)
+        .order('stage_number')
+
+      if (plansSelectError) throw plansSelectError
+
+      const membershipRows =
+        insertedPlans?.flatMap((p) => [
+          {
+            plan_id: p.plan_id,
+            custom_text: 'Expected new members',
+            is_system_default: true,
+            metric_type: 'count',
+            sort_order: 0,
+            target_date: p.planned_end_date,
+            target_date_user_overridden: false,
+            is_hard_gate: false,
+          },
+          {
+            plan_id: p.plan_id,
+            custom_text: 'Membership density',
+            is_system_default: true,
+            metric_type: 'percentage',
+            sort_order: 1,
+            target_date: p.planned_end_date,
+            target_date_user_overridden: false,
+            is_hard_gate: false,
+          },
+        ]) ?? []
+
+      if (membershipRows.length > 0) {
+        const { error: ambError } = await supabase.from('plan_ambitions').insert(membershipRows)
+        if (ambError) throw ambError
+      }
+
       // Create gate definitions
       const GATE_DEFAULTS = [
         { gate_number: 1, gate_name: 'Member Engagement Threshold', enforcement_type: 'soft' },
@@ -138,64 +240,14 @@ export function useCreateCampaign() {
         campaign_id: campaign.campaign_id,
         gate_number: g.gate_number,
         gate_name: g.gate_name,
-        enforcement_type: payload.gate_overrides?.[g.gate_number]?.enforcement_type || g.enforcement_type,
+        enforcement_type: 'soft',
       }))
 
-      const { data: createdGates, error: gatesError } = await supabase
-        .from('gate_definitions')
-        .insert(gates)
-        .select()
+      const { error: gatesError } = await supabase.from('gate_definitions').insert(gates)
 
       if (gatesError) throw gatesError
 
-      // Create gate criteria from defaults
-      const DEFAULT_CRITERIA: Record<number, Array<{ criterion_name: string; metric_type: string; target_value: string; description: string; is_hard_gate: boolean }>> = {
-        1: [
-          { criterion_name: 'Contact Rate', metric_type: 'percentage', target_value: '60', description: 'Percentage of identified contacts successfully reached', is_hard_gate: false },
-          { criterion_name: 'Response Rate', metric_type: 'percentage', target_value: '40', description: 'Percentage of contacted workers who responded/engaged', is_hard_gate: false },
-          { criterion_name: 'Mapping Completion', metric_type: 'percentage', target_value: '80', description: 'Percentage of worksite/crew mapping completed', is_hard_gate: false },
-          { criterion_name: 'Contact Details Verified', metric_type: 'percentage', target_value: '50', description: 'Percentage of contacts with verified name, phone, email', is_hard_gate: false },
-        ],
-        2: [
-          { criterion_name: 'Education Participation', metric_type: 'percentage', target_value: '50', description: 'Percentage of contacts who attended an education/info session', is_hard_gate: false },
-          { criterion_name: 'Shared Responsibility Commitment', metric_type: 'percentage', target_value: '40', description: 'Percentage engaged who confirmed shared responsibility', is_hard_gate: false },
-          { criterion_name: 'WOC Established', metric_type: 'boolean', target_value: 'true', description: 'At least one WOC established on a key worksite', is_hard_gate: false },
-          { criterion_name: 'Engagement Quality Score', metric_type: 'percentage', target_value: '60', description: 'Percentage of contacts rated as actively engaged', is_hard_gate: false },
-        ],
-        3: [
-          { criterion_name: 'Log of Claims Survey Completion', metric_type: 'percentage', target_value: '60', description: 'Percentage of members who completed the Log of Claims survey', is_hard_gate: false },
-          { criterion_name: 'Membership Density', metric_type: 'percentage', target_value: '50', description: 'Union membership as percentage of workers on agreement scope', is_hard_gate: false },
-          { criterion_name: 'Active WOCs', metric_type: 'count', target_value: '2', description: 'Number of active WOCs across worksites', is_hard_gate: false },
-          { criterion_name: 'Delegate Coverage', metric_type: 'percentage', target_value: '50', description: 'Percentage of mapped areas with an active member contact', is_hard_gate: false },
-        ],
-        4: [
-          { criterion_name: 'Claims Endorsement', metric_type: 'percentage', target_value: '70', description: 'Percentage of members who endorsed the final Log of Claims', is_hard_gate: false },
-          { criterion_name: 'Bargaining Reps Nominated', metric_type: 'boolean', target_value: 'true', description: 'Bargaining representatives formally nominated', is_hard_gate: false },
-          { criterion_name: 'MSD Achieved (if required)', metric_type: 'percentage', target_value: '50', description: 'Majority Support Determination — 50%+ is NON-NEGOTIABLE if MSD required', is_hard_gate: payload.msd_required ?? false },
-          { criterion_name: 'Strike Readiness Indicator', metric_type: 'percentage', target_value: '60', description: 'Percentage indicating willingness to take protected action', is_hard_gate: false },
-        ],
-        5: [
-          { criterion_name: 'Strike Readiness Assessment', metric_type: 'percentage', target_value: '70', description: 'Formal strike readiness assessment score', is_hard_gate: false },
-          { criterion_name: 'Communication Network Tested', metric_type: 'boolean', target_value: 'true', description: '2-way communication network tested and functional', is_hard_gate: false },
-          { criterion_name: 'WOC Coverage', metric_type: 'percentage', target_value: '80', description: 'Percentage of key worksites with active WOC', is_hard_gate: false },
-          { criterion_name: 'PABO Preparation Complete', metric_type: 'boolean', target_value: 'true', description: 'PABO application materials prepared and ready to file', is_hard_gate: false },
-        ],
-      }
-
-      const allCriteria = createdGates!.flatMap((gate) =>
-        (DEFAULT_CRITERIA[gate.gate_number] || []).map((c, i) => ({
-          gate_id: gate.gate_id,
-          criterion_name: c.criterion_name,
-          metric_type: c.metric_type,
-          target_value: c.target_value,
-          description: c.description,
-          is_hard_gate: c.is_hard_gate,
-          sort_order: i,
-        }))
-      )
-
-      const { error: criteriaError } = await supabase.from('gate_criteria').insert(allCriteria)
-      if (criteriaError) throw criteriaError
+      // Gate criteria are driven by stage plan_ambitions (new campaigns). Legacy campaigns may still have seeded criteria.
 
       // Create timeline
       if (payload.agreement_id || payload.expiry_date) {

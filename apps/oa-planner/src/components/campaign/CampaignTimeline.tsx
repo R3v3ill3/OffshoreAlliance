@@ -16,12 +16,21 @@ interface StageData {
   actual_end_date?: string | null
 }
 
+interface GateAmbitionEvaluation {
+  allMet: boolean
+  hardGatesMet: boolean
+  metCount: number
+  totalCount: number
+}
+
 interface GateData {
   gate_number: number
   gate_name: string
   enforcement_type: string
   gate_criteria?: { is_met: boolean; is_hard_gate: boolean }[]
   gate_assessments?: { outcome: string }[]
+  /** When set (ambition-driven gates), status prefers this over legacy criteria */
+  ambitionEvaluation?: GateAmbitionEvaluation
 }
 
 interface CampaignTimelineProps {
@@ -36,6 +45,12 @@ function getGateStatus(gate: GateData): 'passed' | 'blocked' | 'pending' | 'futu
   const latestAssessment = gate.gate_assessments?.[0]
   if (latestAssessment?.outcome === 'passed' || latestAssessment?.outcome === 'override_approved') {
     return 'passed'
+  }
+  if (gate.ambitionEvaluation && gate.ambitionEvaluation.totalCount > 0) {
+    const ev = gate.ambitionEvaluation
+    if (!ev.hardGatesMet) return 'blocked'
+    if (!ev.allMet) return 'pending'
+    return 'future'
   }
   const criteria = gate.gate_criteria || []
   if (criteria.some((c) => !c.is_met && c.is_hard_gate)) return 'blocked'

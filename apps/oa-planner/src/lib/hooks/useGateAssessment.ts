@@ -52,6 +52,75 @@ export function useAllGates(campaignId: number) {
   })
 }
 
+export function usePlanAmbitionsForGate(campaignId: number, stageNumber: number) {
+  const supabase = createClient()
+
+  return useQuery({
+    queryKey: ['gate-ambitions', campaignId, stageNumber],
+    queryFn: async () => {
+      const { data: plan, error: planError } = await supabase
+        .from('campaign_stage_plans')
+        .select('plan_id')
+        .eq('campaign_id', campaignId)
+        .eq('stage_number', stageNumber)
+        .maybeSingle()
+
+      if (planError) throw planError
+      if (!plan) return []
+
+      const { data, error } = await supabase
+        .from('plan_ambitions')
+        .select(
+          '*, ambition_options(option_text, category, has_variable, variable_label, variable_type)'
+        )
+        .eq('plan_id', plan.plan_id)
+        .order('sort_order')
+
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!campaignId && !!stageNumber,
+  })
+}
+
+export function useUpdatePlanAmbitionProgress() {
+  const supabase = createClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (params: {
+      ambition_id: number
+      current_value?: string
+      evidence_notes?: string
+      campaign_id: number
+      gate_number: number
+    }) => {
+      const { ambition_id, current_value, evidence_notes, campaign_id: _c, gate_number: _g } = params
+
+      const { error } = await supabase
+        .from('plan_ambitions')
+        .update({
+          current_value: current_value ?? null,
+          evidence_notes: evidence_notes ?? null,
+        })
+        .eq('ambition_id', ambition_id)
+
+      if (error) throw error
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['gate-ambitions', variables.campaign_id, variables.gate_number],
+      })
+      queryClient.invalidateQueries({ queryKey: ['stage-plan', variables.campaign_id, variables.gate_number] })
+      queryClient.invalidateQueries({ queryKey: ['gates', variables.campaign_id] })
+      queryClient.invalidateQueries({ queryKey: ['campaign', variables.campaign_id] })
+      queryClient.invalidateQueries({
+        queryKey: ['campaign-ambitions-by-stage', variables.campaign_id],
+      })
+    },
+  })
+}
+
 export function useUpdateGateCriterion() {
   const supabase = createClient()
   const queryClient = useQueryClient()
@@ -131,6 +200,50 @@ export function useSubmitGateAssessment() {
       queryClient.invalidateQueries({ queryKey: ['gate', variables.campaign_id, variables.gate_number] })
       queryClient.invalidateQueries({ queryKey: ['gates', variables.campaign_id] })
       queryClient.invalidateQueries({ queryKey: ['campaign', variables.campaign_id] })
+      queryClient.invalidateQueries({
+        queryKey: ['gate-ambitions', variables.campaign_id, variables.gate_number],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['campaign-ambitions-by-stage', variables.campaign_id],
+      })
     },
+  })
+}
+
+export function useCampaignAmbitionsByStage(campaignId: number) {
+  const supabase = createClient()
+
+  return useQuery({
+    queryKey: ['campaign-ambitions-by-stage', campaignId],
+    queryFn: async () => {
+      const { data: plans, error: e1 } = await supabase
+        .from('campaign_stage_plans')
+        .select('plan_id, stage_number')
+        .eq('campaign_id', campaignId)
+
+      if (e1) throw e1
+      if (!plans?.length) return {} as Record<number, unknown[]>
+
+      const planIds = plans.map((p) => p.plan_id)
+      const { data: ambitions, error: e2 } = await supabase
+        .from('plan_ambitions')
+        .select(
+          '*, ambition_options(option_text, category, has_variable, variable_label, variable_type)'
+        )
+        .in('plan_id', planIds)
+
+      if (e2) throw e2
+
+      const planToStage = Object.fromEntries(plans.map((p) => [p.plan_id, p.stage_number]))
+      const byStage: Record<number, typeof ambitions> = {}
+      for (const row of ambitions || []) {
+        const sn = planToStage[row.plan_id]
+        if (sn == null) continue
+        if (!byStage[sn]) byStage[sn] = []
+        byStage[sn].push(row)
+      }
+      return byStage
+    },
+    enabled: !!campaignId,
   })
 }

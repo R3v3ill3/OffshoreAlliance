@@ -7,7 +7,7 @@ import { format, addDays, subDays } from 'date-fns'
 import { useAgreements, useOrganisers } from '@/lib/hooks/useOptions'
 import { useCreateCampaign } from '@/lib/hooks/useCampaigns'
 import { calculateBackwardsTimeline, calculateForwardsTimeline } from '@/lib/utils/timeline'
-import { STAGE_NAMES, GATE_NAMES } from '@/types'
+import { STAGE_NAMES } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -22,21 +22,35 @@ import {
   Building2,
   Calendar,
   Users,
-  Shield,
   ChevronRight,
   ChevronLeft,
   CheckCircle,
   Clock,
   AlertTriangle,
-  Lock,
 } from 'lucide-react'
 
 const STEPS = [
   { id: 1, title: 'Select Agreement', icon: Building2 },
   { id: 2, title: 'Set Parameters', icon: Users },
   { id: 3, title: 'Configure Timeline', icon: Calendar },
-  { id: 4, title: 'Configure Gates', icon: Shield },
 ]
+
+function rebuildTimelineFromCampaignStart(
+  startYmd: string,
+  prev: Array<{ stage_number: number; stage_name: string; planned_start: string; planned_end: string; duration_weeks: number }>
+) {
+  if (!startYmd || prev.length === 0) return prev
+  const custom: Partial<Record<number, number>> = {}
+  for (const s of prev) custom[s.stage_number] = s.duration_weeks
+  const ranges = calculateForwardsTimeline(new Date(`${startYmd}T12:00:00`), custom)
+  return ranges.map((t) => ({
+    stage_number: t.stage_number,
+    stage_name: STAGE_NAMES[t.stage_number as keyof typeof STAGE_NAMES],
+    planned_start: format(t.planned_start, 'yyyy-MM-dd'),
+    planned_end: format(t.planned_end, 'yyyy-MM-dd'),
+    duration_weeks: t.duration_weeks,
+  }))
+}
 
 interface WizardState {
   // Step 1
@@ -61,10 +75,6 @@ interface WizardState {
     planned_end: string
     duration_weeks: number
   }>
-
-  // Step 4
-  gate_enforcement: Record<number, 'soft' | 'hard'>
-  gate_criteria_overrides: Record<number, Record<string, string>>
 }
 
 export function CampaignCreationWizard() {
@@ -75,8 +85,6 @@ export function CampaignCreationWizard() {
     description: '',
     msd_required: false,
     stage_dates: [],
-    gate_enforcement: { 1: 'soft', 2: 'soft', 3: 'soft', 4: 'soft', 5: 'soft' },
-    gate_criteria_overrides: {},
   })
 
   const { data: agreements, isLoading: agreementsLoading } = useAgreements()
@@ -185,9 +193,6 @@ export function CampaignCreationWizard() {
         expiry_date: state.expiry_date,
         msd_required: state.msd_required,
         stage_dates: state.stage_dates,
-        gate_overrides: Object.fromEntries(
-          Object.entries(state.gate_enforcement).map(([k, v]) => [k, { enforcement_type: v }])
-        ),
       })
 
       toast.success('Campaign created successfully')
@@ -400,7 +405,7 @@ export function CampaignCreationWizard() {
               <div>
                 <p className="font-medium text-sm">MSD (Majority Support Determination) Required</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  If yes, the 50%+ MSD criterion in Gate 4 becomes a hard gate — non-negotiable.
+                  If yes, organisers should treat MSD outcomes as non-negotiable (mark as hard gate on Stage 4 ambitions).
                 </p>
               </div>
               <Switch
@@ -412,7 +417,7 @@ export function CampaignCreationWizard() {
             {state.msd_required && (
               <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
                 <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                <p>MSD is enabled. The Gate 4 criterion requiring 50%+ member support will be a <strong>hard gate</strong> — stage progression will be blocked until this is met.</p>
+                <p>MSD is enabled. On Stage 4, mark the relevant membership / MSD ambitions as <strong>hard gates</strong> when planning — progression will be blocked until those are met.</p>
               </div>
             )}
           </CardContent>
@@ -431,6 +436,26 @@ export function CampaignCreationWizard() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="campaign-start">Campaign start date</Label>
+              <p className="text-xs text-muted-foreground">
+                Stage 1 begins on this date (defaults from the timeline below). Adjust for back-fill or campaigns already under way.
+              </p>
+              <Input
+                id="campaign-start"
+                type="date"
+                value={state.stage_dates[0]?.planned_start ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value
+                  if (!v) return
+                  setState((p) => ({
+                    ...p,
+                    stage_dates: rebuildTimelineFromCampaignStart(v, p.stage_dates),
+                  }))
+                }}
+              />
+            </div>
+
             {state.expiry_date && daysToPane !== null && (
               <div className={cn(
                 'flex items-center gap-2 p-3 rounded-lg text-sm',
@@ -474,69 +499,6 @@ export function CampaignCreationWizard() {
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Step 4: Gates */}
-      {step === 4 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Configure Gates</CardTitle>
-            <CardDescription>
-              Review and adjust gate enforcement types. Hard gates block progression; soft gates warn but allow override with justification.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {([1, 2, 3, 4, 5] as const).map((gateNum) => {
-              const isMsdGate = gateNum === 4 && state.msd_required
-              return (
-                <div key={gateNum} className="p-4 rounded-lg border">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold">Gate {gateNum}:</span>
-                        <span className="text-sm">{GATE_NAMES[gateNum]}</span>
-                        {isMsdGate && (
-                          <Badge className="bg-red-100 text-red-700 text-xs">
-                            <Lock className="h-3 w-3 mr-1" />
-                            MSD Hard Gate
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Between Stage {gateNum} and Stage {gateNum + 1}
-                      </p>
-                    </div>
-
-                    <Select
-                      value={state.gate_enforcement[gateNum]}
-                      onValueChange={(v) =>
-                        setState((p) => ({
-                          ...p,
-                          gate_enforcement: { ...p.gate_enforcement, [gateNum]: v as 'soft' | 'hard' },
-                        }))
-                      }
-                      disabled={isMsdGate}
-                    >
-                      <SelectTrigger className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="soft">Soft gate</SelectItem>
-                        <SelectItem value="hard">Hard gate</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {state.gate_enforcement[gateNum] === 'hard' && !isMsdGate && (
-                    <p className="text-xs text-amber-700 mt-2">
-                      ⚠ Hard gate: progression to Stage {gateNum + 1} will be blocked until all criteria are met.
-                    </p>
-                  )}
-                </div>
-              )
-            })}
           </CardContent>
         </Card>
       )}

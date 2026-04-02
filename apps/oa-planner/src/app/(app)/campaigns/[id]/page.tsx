@@ -2,7 +2,9 @@
 
 import Link from 'next/link'
 import { useCampaign } from '@/lib/hooks/useCampaigns'
-import { useAllGates } from '@/lib/hooks/useGateAssessment'
+import { CampaignStageDatesEditor } from '@/components/campaign/CampaignStageDatesEditor'
+import { useAllGates, useCampaignAmbitionsByStage } from '@/lib/hooks/useGateAssessment'
+import { evaluateAmbitions } from '@/lib/utils/ambition-gate-logic'
 import { CampaignTimeline } from '@/components/campaign/CampaignTimeline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -21,6 +23,17 @@ export default function CampaignDetailPage({ params }: PageProps) {
 
   const { data: campaign, isLoading } = useCampaign(campaignId)
   const { data: gates } = useAllGates(campaignId)
+  const { data: ambitionsByStage } = useCampaignAmbitionsByStage(campaignId)
+
+  const gatesForTimeline = (gates || []).map((g: Record<string, unknown>) => {
+    const gn = g.gate_number as number
+    const rows = ambitionsByStage?.[gn]
+    return {
+      ...g,
+      ambitionEvaluation:
+        rows && rows.length > 0 ? evaluateAmbitions(rows as Parameters<typeof evaluateAmbitions>[0]) : undefined,
+    }
+  })
 
   if (isLoading) {
     return (
@@ -125,10 +138,31 @@ export default function CampaignDetailPage({ params }: PageProps) {
         <CardContent>
           <CampaignTimeline
             stages={sortedStages}
-            gates={(gates || []) as any}
+            gates={gatesForTimeline as any}
             campaignId={campaignId}
             paboDate={timeline?.pabo_available_date}
             expiryDate={timeline?.agreement_expiry_date}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Stage planned dates</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Changing dates updates ambition target dates automatically when those
+            targets have not been overridden on the stage plan.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <CampaignStageDatesEditor
+            campaignId={campaignId}
+            stages={sortedStages as Array<{
+              plan_id: number
+              stage_number: number
+              planned_start_date: string | null
+              planned_end_date: string | null
+            }>}
           />
         </CardContent>
       </Card>

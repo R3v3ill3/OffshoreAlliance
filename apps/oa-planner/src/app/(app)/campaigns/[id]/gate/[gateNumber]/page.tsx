@@ -1,7 +1,8 @@
 'use client'
 
-import { useGateAssessment } from '@/lib/hooks/useGateAssessment'
+import { useGateAssessment, usePlanAmbitionsForGate } from '@/lib/hooks/useGateAssessment'
 import { GateAssessmentComponent } from '@/components/gates/GateAssessment'
+import { GateAmbitionAssessment } from '@/components/gates/GateAmbitionAssessment'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
@@ -16,8 +17,9 @@ export default function GatePage({ params }: PageProps) {
   const gateNumber = parseInt(gateNumStr)
 
   const { data: gate, isLoading } = useGateAssessment(campaignId, gateNumber)
+  const { data: ambitions, isLoading: ambitionsLoading } = usePlanAmbitionsForGate(campaignId, gateNumber)
 
-  if (isLoading) {
+  if (isLoading || ambitionsLoading) {
     return (
       <div className="p-6">
         <div className="animate-pulse space-y-4 max-w-2xl mx-auto">
@@ -41,6 +43,9 @@ export default function GatePage({ params }: PageProps) {
     )
   }
 
+  const criteria = (gate as { gate_criteria?: unknown[] }).gate_criteria || []
+  const useAmbitionMode = (ambitions?.length ?? 0) > 0
+
   return (
     <div className="p-6 max-w-2xl mx-auto">
       {/* Breadcrumb */}
@@ -52,11 +57,27 @@ export default function GatePage({ params }: PageProps) {
         <span>Gate {gateNumber}</span>
       </div>
 
-      <GateAssessmentComponent
-        gate={gate as any}
-        campaignId={campaignId}
-        canAssess={true}
-      />
+      {useAmbitionMode ? (
+        <GateAmbitionAssessment
+          gate={gate as any}
+          ambitions={ambitions as any}
+          campaignId={campaignId}
+          canAssess={true}
+        />
+      ) : criteria.length > 0 ? (
+        <GateAssessmentComponent gate={gate as any} campaignId={campaignId} canAssess={true} />
+      ) : (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-medium">No ambitions or legacy criteria for this gate</p>
+          <p className="mt-1 text-amber-800">
+            Add ambitions on{' '}
+            <Link href={`/campaigns/${campaignId}/stage/${gateNumber}`} className="underline font-medium">
+              Stage {gateNumber}
+            </Link>{' '}
+            to assess this gate.
+          </p>
+        </div>
+      )}
 
       <div className="mt-6 flex gap-3">
         <Button asChild variant="outline">

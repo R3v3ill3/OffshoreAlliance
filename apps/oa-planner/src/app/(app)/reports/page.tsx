@@ -1,31 +1,58 @@
 'use client'
 
 import { useState } from 'react'
-import { useCampaigns } from '@/lib/hooks/useCampaigns'
-import { useAllGates } from '@/lib/hooks/useGateAssessment'
+import { useCampaign, useCampaigns } from '@/lib/hooks/useCampaigns'
+import { useAllGates, useCampaignAmbitionsByStage } from '@/lib/hooks/useGateAssessment'
+import {
+  ambitionDisplayName,
+  evaluateAmbitions,
+  evaluatePlanAmbition,
+  type PlanAmbitionWithOption,
+} from '@/lib/utils/ambition-gate-logic'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { differenceInDays, format } from 'date-fns'
-import { Download, Camera, BarChart3, TrendingUp, Shield, Clock } from 'lucide-react'
+import { Download, Camera, BarChart3, TrendingUp, Shield, Clock, Target } from 'lucide-react'
 import { STAGE_NAMES } from '@/types'
 import { toast } from 'sonner'
+
+function timelineFromCampaign(
+  c: Record<string, unknown> | null | undefined
+): Record<string, unknown> | null {
+  if (!c) return null
+  const tl = c.campaign_timelines as unknown
+  if (Array.isArray(tl)) return (tl[0] as Record<string, unknown>) ?? null
+  return (tl as Record<string, unknown>) ?? null
+}
 
 export default function ReportsPage() {
   const { data: campaigns, isLoading } = useCampaigns()
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | undefined>(undefined)
   const [takingSnapshot, setTakingSnapshot] = useState(false)
 
-  const { data: gates } = useAllGates(selectedCampaignId || 0)
+  const detailEnabled = !!selectedCampaignId && selectedCampaignId > 0
+  const { data: campaignDetail, isLoading: detailLoading } = useCampaign(
+    selectedCampaignId ?? 0,
+    { enabled: detailEnabled }
+  )
+  const { data: gates } = useAllGates(selectedCampaignId ?? 0)
+  const { data: ambitionsByStage } = useCampaignAmbitionsByStage(selectedCampaignId ?? 0)
 
   const selectedCampaign = campaigns?.find((c) => c.campaign_id === selectedCampaignId)
 
-  const stagePlans = ((selectedCampaign as Record<string, unknown>)?.campaign_stage_plans as Record<string, unknown>[] || [])
-    .sort((a, b) => (a.stage_number as number) - (b.stage_number as number))
+  const detailRecord = campaignDetail as Record<string, unknown> | undefined
+  const stagePlans = detailRecord?.campaign_stage_plans
+    ? [...(detailRecord.campaign_stage_plans as Record<string, unknown>[])]
+        .sort((a, b) => (a.stage_number as number) - (b.stage_number as number))
+    : []
 
-  const timeline = (selectedCampaign as Record<string, unknown>)?.campaign_timelines as Record<string, string | null | undefined> | null
+  const timeline = timelineFromCampaign(detailRecord) as Record<
+    string,
+    string | null | undefined
+  > | null
 
   async function handleTakeSnapshot() {
     if (!selectedCampaignId) return
@@ -48,21 +75,45 @@ export default function ReportsPage() {
   }
 
   function handleExportCSV() {
-    if (!selectedCampaign) return
+    if (!selectedCampaign || !campaignDetail) return
+
+    const ambitionCsvRows: string[][] = []
+    for (const s of stagePlans) {
+      const sn = s.stage_number as number
+      const rows = ambitionsByStage?.[sn] as PlanAmbitionWithOption[] | undefined
+      if (!rows?.length) continue
+      for (const a of rows) {
+        const met = evaluatePlanAmbition(a)
+        ambitionCsvRows.push([
+          `Stage ${sn}`,
+          ambitionDisplayName(a).replace(/,/g, ';'),
+          met ? 'met' : 'not_met',
+          (a.target_date as string) || '',
+        ])
+      }
+    }
 
     const rows = [
-      ['Campaign Report', '', '', ''],
-      ['Campaign', selectedCampaign.name as string, '', ''],
-      ['Status', selectedCampaign.status as string, '', ''],
-      ['', '', '', ''],
-      ['Stage', 'Stage Name', 'Status', 'Start Date'],
+      ['Campaign Report', '', '', '', ''],
+      ['Campaign', selectedCampaign.name as string, '', '', ''],
+      ['Status', selectedCampaign.status as string, '', '', ''],
+      ['', '', '', '', ''],
+      ['Stage', 'Stage Name', 'Status', 'Planned start', 'Planned end'],
       ...stagePlans.map((s) => [
         `Stage ${s.stage_number as number}`,
         STAGE_NAMES[s.stage_number as keyof typeof STAGE_NAMES] || '',
         s.status as string,
-        s.planned_start_date as string || '',
+        (s.planned_start_date as string) || '',
+        (s.planned_end_date as string) || '',
       ]),
     ]
+
+    if (ambitionCsvRows.length > 0) {
+      rows.push(['', '', '', '', ''])
+      rows.push(['Ambitions', '', '', '', ''])
+      rows.push(['Stage', 'Ambition', 'Status', 'Target date', ''])
+      rows.push(...ambitionCsvRows.map((r) => [...r, '']))
+    }
 
     const csvContent = rows.map((row) => row.join(',')).join('\n')
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
@@ -91,7 +142,12 @@ export default function ReportsPage() {
             <Download className="h-4 w-4 mr-1" />
             Print / PDF
           </Button>
-          <Button variant="outline" onClick={handleExportCSV} size="sm" disabled={!selectedCampaignId}>
+          <Button
+            variant="outline"
+            onClick={handleExportCSV}
+            size="sm"
+            disabled={!selectedCampaignId || !campaignDetail}
+          >
             <Download className="h-4 w-4 mr-1" />
             Export CSV
           </Button>
@@ -130,7 +186,15 @@ export default function ReportsPage() {
         </CardContent>
       </Card>
 
-      {selectedCampaign && (
+      {selectedCampaignId && detailLoading && (
+        <Card>
+          <CardContent className="py-10 text-center text-muted-foreground text-sm">
+            Loading campaign details…
+          </CardContent>
+        </Card>
+      )}
+
+      {selectedCampaign && campaignDetail && (
         <>
           {/* Campaign overview */}
           <Card>
@@ -250,6 +314,58 @@ export default function ReportsPage() {
             </CardContent>
           </Card>
 
+          {/* Ambitions summary (when any stage has ambitions) */}
+          {Object.keys(ambitionsByStage || {}).length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Target className="h-4 w-4" />
+                  Ambitions by stage
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {stagePlans.map((stage) => {
+                    const sn = stage.stage_number as number
+                    const rows = ambitionsByStage?.[sn] as PlanAmbitionWithOption[] | undefined
+                    if (!rows?.length) return null
+                    const ev = evaluateAmbitions(rows)
+                    return (
+                      <div
+                        key={sn}
+                        className="flex items-center gap-4 py-2 border-b last:border-0"
+                      >
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 bg-slate-100 text-slate-600">
+                          {sn}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">
+                            {STAGE_NAMES[sn as keyof typeof STAGE_NAMES]}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {ev.metCount}/{ev.totalCount} ambitions met
+                            {!ev.hardGatesMet ? ' · hard gate open' : ''}
+                          </p>
+                        </div>
+                        <Badge
+                          variant="secondary"
+                          className={cn(
+                            'text-xs shrink-0',
+                            ev.allMet
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-slate-100 text-slate-600'
+                          )}
+                        >
+                          {ev.allMet ? 'All met' : 'In progress'}
+                        </Badge>
+                      </div>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Gate status table */}
           {gates && gates.length > 0 && (
             <Card>
@@ -262,9 +378,36 @@ export default function ReportsPage() {
               <CardContent>
                 <div className="space-y-2">
                   {gates.map((gate) => {
+                    const stageRows = ambitionsByStage?.[
+                      gate.gate_number as number
+                    ] as PlanAmbitionWithOption[] | undefined
+                    const ambitionEval =
+                      stageRows && stageRows.length > 0
+                        ? evaluateAmbitions(stageRows)
+                        : null
+
                     const criteria = gate.gate_criteria || []
-                    const metCount = criteria.filter((c: Record<string, unknown>) => c.is_met).length
-                    const latestAssessment = (gate.gate_assessments || [])[0] as Record<string, unknown>
+                    const metCount = criteria.filter(
+                      (c: Record<string, unknown>) => c.is_met
+                    ).length
+                    const latestAssessment = (gate.gate_assessments ||
+                      [])[0] as Record<string, unknown>
+
+                    const progressLine =
+                      ambitionEval != null
+                        ? `${ambitionEval.metCount}/${ambitionEval.totalCount} ambitions met${
+                            !ambitionEval.hardGatesMet ? ' (hard gate open)' : ''
+                          }`
+                        : criteria.length > 0
+                          ? `${metCount}/${criteria.length} criteria met`
+                          : 'No ambitions or criteria on record'
+
+                    const pendingBadge =
+                      ambitionEval != null
+                        ? `${ambitionEval.metCount}/${ambitionEval.totalCount} ambitions`
+                        : criteria.length > 0
+                          ? `${metCount}/${criteria.length} criteria`
+                          : '—'
 
                     return (
                       <div key={gate.gate_id} className="flex items-center gap-4 py-2 border-b last:border-0">
@@ -279,7 +422,7 @@ export default function ReportsPage() {
                         <div className="flex-1">
                           <p className="text-sm font-medium">{gate.gate_name}</p>
                           <p className="text-xs text-muted-foreground">
-                            {metCount}/{criteria.length} criteria met
+                            {progressLine}
                           </p>
                         </div>
                         <Badge
@@ -295,7 +438,7 @@ export default function ReportsPage() {
                         >
                           {latestAssessment?.outcome
                             ? (latestAssessment.outcome as string).replace(/_/g, ' ')
-                            : `${metCount}/${criteria.length} criteria`}
+                            : pendingBadge}
                         </Badge>
                       </div>
                     )

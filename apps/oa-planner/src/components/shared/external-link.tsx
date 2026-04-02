@@ -10,7 +10,7 @@ interface ExternalLinkProps {
   children: React.ReactNode;
   className?: string;
   showIcon?: boolean;
-  variant?: 'default' | 'button' | 'text';
+  variant?: 'default' | 'button' | 'text' | 'outline';
   target?: '_blank' | '_self';
   includeReturnUrl?: boolean;
 }
@@ -24,7 +24,7 @@ interface ExternalLinkProps {
  * @param children - Link content
  * @param className - Additional CSS classes
  * @param showIcon - Show external link icon (default: true)
- * @param variant - Visual style: 'default' | 'button' | 'text'
+ * @param variant - Visual style: 'default' | 'button' | 'text' | 'outline'
  * @param target - Link target: '_blank' (new tab) or '_self' (same tab)
  * @param includeReturnUrl - Automatically add return_to parameter (default: true)
  */
@@ -59,6 +59,8 @@ export function ExternalLink({
   const variantStyles = {
     default: 'text-primary hover:underline underline-offset-2',
     button: 'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2',
+    outline:
+      'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2',
     text: 'text-sm text-muted-foreground hover:text-foreground',
   };
 

@@ -1,11 +1,9 @@
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient } from "@/lib/supabase/server";
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
 
     // Get the current user
     const {
@@ -57,6 +55,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const rows = workloadData ?? [];
+
     // Get aggregated metrics
     const campaignsByStage: Record<string, number> = {};
     let totalProgress = 0;
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
     let overdueCount = 0;
     let dueSoonCount = 0;
 
-    workloadData.forEach((campaign: any) => {
+    rows.forEach((campaign: any) => {
       // Count campaigns by stage
       const stageName = campaign.current_stage_name || "Not Started";
       campaignsByStage[stageName] = (campaignsByStage[stageName] || 0) + 1;
@@ -97,10 +97,10 @@ export async function GET(request: NextRequest) {
     );
 
     return NextResponse.json({
-      campaigns: workloadData,
+      campaigns: rows,
       metrics: {
         campaignsByStage: campaignsByStageChart,
-        totalCampaigns: workloadData.length,
+        totalCampaigns: rows.length,
         averageProgress,
         totalActivitiesUnderway,
         overdueCount,

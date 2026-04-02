@@ -593,7 +593,7 @@ export default function AgreementDetailPage() {
               href={`${process.env.NEXT_PUBLIC_OA_PLANNER_URL || 'https://oaplanner.uconstruct.app'}/campaigns/new?agreement_id=${agreement.agreement_id}&employer_id=${agreement.employer_id || ''}`}
               variant="outline"
               target="_blank"
-              className="gap-2 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors"
+              className="gap-2"
             >
               <Plus className="h-4 w-4" />
               Create Campaign Plan

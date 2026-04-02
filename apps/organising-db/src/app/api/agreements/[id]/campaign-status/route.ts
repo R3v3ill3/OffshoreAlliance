@@ -28,7 +28,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const supabase = createClient();
+    const supabase = await createClient();
     const agreementId = parseInt(id, 10);
 
     if (isNaN(agreementId)) {

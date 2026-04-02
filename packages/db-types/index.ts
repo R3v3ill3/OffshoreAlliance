@@ -755,6 +755,62 @@ export type Database = {
           },
         ]
       }
+      campaign_organisers: {
+        Row: {
+          added_at: string | null
+          campaign_id: number
+          campaign_role: string
+          id: number
+          organiser_id: number
+          reports_to_organiser_id: number | null
+        }
+        Insert: {
+          added_at?: string | null
+          campaign_id: number
+          campaign_role?: string
+          id?: number
+          organiser_id: number
+          reports_to_organiser_id?: number | null
+        }
+        Update: {
+          added_at?: string | null
+          campaign_id?: number
+          campaign_role?: string
+          id?: number
+          organiser_id?: number
+          reports_to_organiser_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_organisers_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organisers_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organisers_organiser_id_fkey"
+            columns: ["organiser_id"]
+            isOneToOne: false
+            referencedRelation: "organisers"
+            referencedColumns: ["organiser_id"]
+          },
+          {
+            foreignKeyName: "campaign_organisers_reports_to_organiser_id_fkey"
+            columns: ["reports_to_organiser_id"]
+            isOneToOne: false
+            referencedRelation: "organisers"
+            referencedColumns: ["organiser_id"]
+          },
+        ]
+      }
       campaign_universe_rules: {
         Row: {
           include: boolean

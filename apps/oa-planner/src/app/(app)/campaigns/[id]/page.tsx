@@ -270,7 +270,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
             <ExternalLink
               href={`${organisingDbUrl}/agreements/${(campaign as any).agreement_id}`}
               variant="outline"
-              className="h-9 px-4 py-2 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground"
+              className="gap-2"
               target="_blank"
             >
               View Agreement Details
@@ -280,7 +280,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
             <ExternalLink
               href={`${organisingDbUrl}/employers/${(campaign as any).employer_id}`}
               variant="outline"
-              className="h-9 px-4 py-2 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground"
+              className="gap-2"
               target="_blank"
             >
               View Employer Details

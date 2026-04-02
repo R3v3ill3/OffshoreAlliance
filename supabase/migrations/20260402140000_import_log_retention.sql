@@ -64,26 +64,9 @@ DECLARE
   v_archived_count INTEGER;
   v_threshold_days INTEGER := 90;
 BEGIN
-  -- Archive logs older than threshold that aren't already archived
-  WITH logs_to_archive AS (
-    SELECT import_id
-    FROM import_logs
-    WHERE imported_at < NOW() - (v_threshold_days || ' days')::INTERVAL
-    AND is_archived = FALSE
-    AND archived_at IS NULL
-    AND deleted_at IS NULL
-  )
-  SELECT COUNT(*) INTO v_archived_count FROM logs_to_archive;
-
-  IF v_archived_count > 0 THEN
-    -- Insert into archive table
-    INSERT INTO import_logs_archive (
-      import_id, file_name, import_type, records_created,
-      records_updated, errors, imported_by, imported_at,
-      data
-    )
-    SELECT
-      il.import_id,
+  -- Archive logs older than threshold (single statement: insert + mark archived)
+  WITH logs_to_move AS (
+    SELECT il.import_id,
       il.file_name,
       il.import_type,
       il.records_created,
@@ -91,16 +74,32 @@ BEGIN
       il.errors,
       il.imported_by,
       il.imported_at,
-      to_jsonb(il)
+      to_jsonb(il) AS data
     FROM import_logs il
-    WHERE il.import_id IN (SELECT import_id FROM logs_to_archive);
+    WHERE il.imported_at < NOW() - (v_threshold_days || ' days')::INTERVAL
+      AND il.is_archived = FALSE
+      AND il.archived_at IS NULL
+      AND il.deleted_at IS NULL
+  ),
+  ins AS (
+    INSERT INTO import_logs_archive (
+      import_id, file_name, import_type, records_created,
+      records_updated, errors, imported_by, imported_at,
+      data
+    )
+    SELECT import_id, file_name, import_type, records_created,
+      records_updated, errors, imported_by, imported_at,
+      data
+    FROM logs_to_move
+    RETURNING import_id
+  )
+  UPDATE import_logs il
+  SET archived_at = NOW(),
+      is_archived = TRUE
+  FROM ins
+  WHERE il.import_id = ins.import_id;
 
-    -- Mark as archived
-    UPDATE import_logs
-    SET archived_at = NOW(),
-        is_archived = TRUE
-    WHERE import_id IN (SELECT import_id FROM logs_to_archive);
-  END IF;
+  GET DIAGNOSTICS v_archived_count = ROW_COUNT;
 
   RETURN jsonb_build_object(
     'success', true,
@@ -115,7 +114,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE FUNCTION delete_old_import_logs()
 RETURNS JSON AS $$
 DECLARE
-  v_deleted_count INTEGER;
+  v_deleted_count INTEGER := 0;
+  v_n INTEGER;
   v_retention_days INTEGER := 365; -- 1 year
 BEGIN
   -- Delete archived logs older than retention period
@@ -123,7 +123,8 @@ BEGIN
   WHERE archived_at < NOW() - (v_retention_days || ' days')::INTERVAL
   AND archived_at IS NOT NULL;
 
-  GET DIAGNOSTICS v_row_count INTO v_deleted_count;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  v_deleted_count := v_deleted_count + v_n;
 
   -- Also permanently delete from main table (if they're marked archived and old enough)
   DELETE FROM import_logs
@@ -131,7 +132,8 @@ BEGIN
   AND archived_at < NOW() - (v_retention_days || ' days')::INTERVAL
   AND is_archived = TRUE;
 
-  GET DIAGNOSTICS v_row_count INTO v_deleted_count;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  v_deleted_count := v_deleted_count + v_n;
 
   RETURN jsonb_build_object(
     'success', true,
@@ -174,26 +176,8 @@ RETURNS JSON AS $$
 DECLARE
   v_archived_count INTEGER;
 BEGIN
-  -- Archive logs older than specified days
-  WITH logs_to_archive AS (
-    SELECT import_id
-    FROM import_logs
-    WHERE imported_at < NOW() - (p_days_ago || ' days')::INTERVAL
-    AND is_archived = FALSE
-    AND archived_at IS NULL
-    AND deleted_at IS NULL
-  )
-  SELECT COUNT(*) INTO v_archived_count FROM logs_to_archive;
-
-  IF v_archived_count > 0 THEN
-    -- Insert into archive table
-    INSERT INTO import_logs_archive (
-      import_id, file_name, import_type, records_created,
-      records_updated, errors, imported_by, imported_at,
-      data
-    )
-    SELECT
-      il.import_id,
+  WITH logs_to_move AS (
+    SELECT il.import_id,
       il.file_name,
       il.import_type,
       il.records_created,
@@ -201,16 +185,32 @@ BEGIN
       il.errors,
       il.imported_by,
       il.imported_at,
-      to_jsonb(il)
+      to_jsonb(il) AS data
     FROM import_logs il
-    WHERE il.import_id IN (SELECT import_id FROM logs_to_archive);
+    WHERE il.imported_at < NOW() - (p_days_ago || ' days')::INTERVAL
+      AND il.is_archived = FALSE
+      AND il.archived_at IS NULL
+      AND il.deleted_at IS NULL
+  ),
+  ins AS (
+    INSERT INTO import_logs_archive (
+      import_id, file_name, import_type, records_created,
+      records_updated, errors, imported_by, imported_at,
+      data
+    )
+    SELECT import_id, file_name, import_type, records_created,
+      records_updated, errors, imported_by, imported_at,
+      data
+    FROM logs_to_move
+    RETURNING import_id
+  )
+  UPDATE import_logs il
+  SET archived_at = NOW(),
+      is_archived = TRUE
+  FROM ins
+  WHERE il.import_id = ins.import_id;
 
-    -- Mark as archived
-    UPDATE import_logs
-    SET archived_at = NOW(),
-        is_archived = TRUE
-    WHERE import_id IN (SELECT import_id FROM logs_to_archive);
-  END IF;
+  GET DIAGNOSTICS v_archived_count = ROW_COUNT;
 
   RETURN jsonb_build_object(
     'success', true,
@@ -293,7 +293,4 @@ GRANT EXECUTE ON FUNCTION archive_old_import_logs TO authenticated;
 GRANT EXECUTE ON FUNCTION delete_old_import_logs TO authenticated;
 GRANT EXECUTE ON FUNCTION run_import_log_retention TO authenticated;
 GRANT EXECUTE ON FUNCTION manually_archive_import_logs TO authenticated;
-GRANT EXECUTE ON FUNCTION get_import_log_retention_status TO authenticated;
-
--- Grant select on retention status function
 GRANT EXECUTE ON FUNCTION get_import_log_retention_status TO authenticated;

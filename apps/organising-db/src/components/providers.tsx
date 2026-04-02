@@ -6,7 +6,7 @@ import { AuthProvider } from "@/lib/supabase/auth-context";
 import { agentDebugLog } from "@/lib/agent-debug-log";
 import { DeviceProvider } from "@/contexts/device-context";
 // Import Sentry client configuration for error tracking
-import "@/../../sentry.client.config";
+import "../../../../sentry.client.config";
 
 export function Providers({ children, isMobile }: { children: ReactNode; isMobile: boolean }) {
   const [queryClient] = useState(

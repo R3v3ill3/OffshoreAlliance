@@ -1353,7 +1353,7 @@ function MonitoringTab() {
             <Badge variant={status?.supabase_connected ? getStatusColor(status?.supabase_connected) : "secondary"}>
               {status?.supabase_connected ? "Connected" : "Disconnected"}
             </Badge>
-            {status?.supabase_latency_ms !== null && (
+            {status != null && status.supabase_latency_ms != null && (
               <p className="text-xs text-muted-foreground mt-2">
                 {status.supabase_latency_ms}ms latency
               </p>
@@ -1385,7 +1385,7 @@ function MonitoringTab() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{status?.slow_queries_24h}</div>
-            <p className="text-xs text-muted-foreground mt-1">Queries >1s in last 24h</p>
+            <p className="text-xs text-muted-foreground mt-1">{"Queries >1s in last 24h"}</p>
           </CardContent>
         </Card>
 
@@ -1419,12 +1419,12 @@ function MonitoringTab() {
                 <div key={name} className="flex items-center justify-between py-2 border-b last:border-0">
                   <span className="text-sm font-medium capitalize">{name.replace(/_/g, " ")}</span>
                   <div className="text-right">
-                    <span className="text-2xl font-bold mr-4">{data.value}</span>
-                    {data.details && (
+                    <span className="text-2xl font-bold mr-4">{String(data.value)}</span>
+                    {data.details != null ? (
                       <span className="text-xs text-muted-foreground">
                         {JSON.stringify(data.details).replace(/["{}]/g, "")}
                       </span>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               ))}

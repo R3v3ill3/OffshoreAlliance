@@ -1,9 +1,9 @@
-import { createServerClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
 export async function GET() {
   try {
-    const supabase = await createServerClient();
+    const supabase = await createClient();
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -20,14 +20,22 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    type RetentionRow = {
+      metric_name: string;
+      metric_value: number;
+      metric_details: unknown;
+    };
+
     // Format as a key-value object for easier consumption
-    const status = metrics?.reduce((acc, metric) => {
+    const status = (metrics as RetentionRow[] | null | undefined)?.reduce<
+      Record<string, { value: number; details: unknown }>
+    >((acc, metric) => {
       acc[metric.metric_name] = {
         value: metric.metric_value,
         details: metric.metric_details,
       };
       return acc;
-    }, {} as Record<string, { value: number; details: unknown }>);
+    }, {});
 
     return NextResponse.json({
       status,

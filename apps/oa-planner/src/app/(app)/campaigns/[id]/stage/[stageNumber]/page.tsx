@@ -1,7 +1,17 @@
 'use client'
 
+import { useMemo, useState } from 'react'
 import { useCampaign } from '@/lib/hooks/useCampaigns'
 import { useStagePlan } from '@/lib/hooks/useStagePlan'
+import { useP2wStepOverrides } from '@/lib/hooks/useP2wStepOverrides'
+import {
+  effectiveStepComplete,
+  P2W_TAB_ORDER,
+  type P2wStepCompletionInput,
+  type P2wStepOverride,
+  type P2wTabId,
+} from '@/lib/planning/p2w-step-completion'
+import type { AmbitionMetricRow } from '@/lib/planning/ambition-metric-status'
 import { AmbitionPanel } from '@/components/planning/AmbitionPanel'
 import { WhereToPlayPanel } from '@/components/planning/WhereToPlayPanel'
 import { TheoryOfWinningPanel } from '@/components/planning/TheoryOfWinningPanel'
@@ -10,8 +20,25 @@ import { ManagementSystemsPanel } from '@/components/planning/ManagementSystemsP
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, Target, MapPin, Sparkles, CheckCircle, CalendarDays } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Target,
+  MapPin,
+  Sparkles,
+  CheckCircle,
+  CalendarDays,
+  Check,
+} from 'lucide-react'
 import { STAGE_NAMES } from '@/types'
 import { cn } from '@/lib/utils'
 import type { TheoryOfWinningRequest } from '@/types'
@@ -35,6 +62,20 @@ export default function StageplanPage({ params }: PageProps) {
 
   const { data: campaign } = useCampaign(campaignId)
   const { data: stagePlanData, isLoading } = useStagePlan(campaignId, stageNumber)
+
+  const completionInput = useMemo((): P2wStepCompletionInput | null => {
+    if (!stagePlanData) return null
+    return {
+      ambitions: stagePlanData.ambitions as AmbitionMetricRow[],
+      whereToPlayLength: stagePlanData.whereToPlay?.length ?? 0,
+      currentTheory: stagePlanData.currentTheory ?? null,
+      capacitiesLength: stagePlanData.capacities?.length ?? 0,
+      managementSystemsLength: stagePlanData.managementSystems?.length ?? 0,
+    }
+  }, [stagePlanData])
+
+  const { overrides, setOverride } = useP2wStepOverrides(campaignId, stageNumber)
+  const [activeTab, setActiveTab] = useState<string>('ambitions')
 
   const stageName = STAGE_NAMES[stageNumber as keyof typeof STAGE_NAMES] || `Stage ${stageNumber}`
   const plan = stagePlanData?.plan
@@ -88,6 +129,22 @@ export default function StageplanPage({ params }: PageProps) {
   }
 
   const agreementId = timeline?.agreement_id
+
+  const stepIndex = P2W_TAB_ORDER.indexOf(activeTab as P2wTabId)
+  const safeStepIndex = stepIndex >= 0 ? stepIndex : 0
+  const prevStepTab = safeStepIndex > 0 ? P2W_TAB_ORDER[safeStepIndex - 1] : null
+  const nextStepTab =
+    safeStepIndex >= 0 && safeStepIndex < P2W_TAB_ORDER.length - 1
+      ? P2W_TAB_ORDER[safeStepIndex + 1]
+      : null
+
+  const activeOverride: P2wStepOverride =
+    overrides[activeTab as P2wTabId] ?? 'auto'
+
+  function stepDone(tabId: P2wTabId): boolean {
+    if (!completionInput) return false
+    return effectiveStepComplete(tabId, completionInput, overrides[tabId])
+  }
 
   return (
     <div className="h-full flex flex-col">
@@ -153,22 +210,80 @@ export default function StageplanPage({ params }: PageProps) {
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs + stepper */}
       <div className="flex-1 overflow-hidden">
-        <Tabs defaultValue="ambitions" className="h-full flex flex-col">
-          <div className="border-b bg-white px-6 flex-shrink-0">
-            <TabsList className="h-auto bg-transparent p-0 gap-0">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+          <div className="border-b bg-white px-6 flex-shrink-0 space-y-3 pt-3 pb-0">
+            <p className="text-xs text-muted-foreground max-w-3xl mx-auto text-center sm:text-left">
+              Work through the five steps in order for the clearest plan. You can still switch tabs freely — nothing is
+              blocked.
+            </p>
+            <div className="flex items-center justify-center gap-1 sm:gap-2 max-w-4xl mx-auto pb-2">
+              {P2W_TABS.map((tab, i) => {
+                const tabId = tab.id as P2wTabId
+                const done = stepDone(tabId)
+                const isActive = activeTab === tab.id
+                return (
+                  <div key={tab.id} className="flex items-center flex-1 min-w-0 max-w-[120px]">
+                    {i > 0 && (
+                      <div
+                        className={cn(
+                          'hidden sm:block h-px flex-1 min-w-[4px] mx-0.5',
+                          stepDone(P2W_TAB_ORDER[i - 1]) && done ? 'bg-green-300' : 'bg-slate-200'
+                        )}
+                      />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab(tab.id)}
+                      className={cn(
+                        'flex flex-col sm:flex-row items-center gap-1 w-full justify-center rounded-lg px-1 py-1.5 text-center transition-colors',
+                        isActive ? 'bg-blue-50 text-blue-800' : 'hover:bg-slate-50 text-slate-600'
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0',
+                          done
+                            ? 'bg-green-100 text-green-800'
+                            : isActive
+                              ? 'bg-blue-200 text-blue-800'
+                              : 'bg-slate-100 text-slate-600'
+                        )}
+                      >
+                        {done ? <Check className="h-4 w-4" strokeWidth={2.5} /> : i + 1}
+                      </span>
+                      <span className="text-[10px] sm:text-xs font-medium leading-tight line-clamp-2">{tab.label}</span>
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+
+            <TabsList className="h-auto bg-transparent p-0 gap-0 w-full justify-start flex-wrap">
               {P2W_TABS.map((tab, i) => {
                 const Icon = tab.icon
                 const stepNum = i + 1
+                const tabId = tab.id as P2wTabId
+                const done = stepDone(tabId)
                 return (
                   <TabsTrigger
                     key={tab.id}
                     value={tab.id}
-                    className="flex items-center gap-2 px-4 py-3 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-600 text-sm"
+                    className={cn(
+                      'flex items-center gap-2 px-4 py-3 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-600 text-sm',
+                      done && 'text-green-700 data-[state=active]:text-blue-600'
+                    )}
                   >
-                    <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 data-[state=active]:bg-blue-100 data-[state=active]:text-blue-600 flex items-center justify-center text-xs font-semibold hidden sm:flex">
-                      {stepNum}
+                    <span
+                      className={cn(
+                        'w-5 h-5 rounded-full flex items-center justify-center text-xs font-semibold hidden sm:flex',
+                        done
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-slate-100 text-slate-500 data-[state=active]:bg-blue-100 data-[state=active]:text-blue-600'
+                      )}
+                    >
+                      {done ? <Check className="h-3 w-3" strokeWidth={2.5} /> : stepNum}
                     </span>
                     <Icon className="h-4 w-4 sm:hidden" />
                     <span className="hidden sm:inline">{tab.label}</span>
@@ -179,7 +294,7 @@ export default function StageplanPage({ params }: PageProps) {
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            <div className="max-w-3xl mx-auto px-6 py-6">
+            <div className="max-w-3xl mx-auto px-6 py-6 pb-10">
               <TabsContent value="ambitions" className="mt-0">
                 <AmbitionPanel
                   planId={plan.plan_id}
@@ -233,6 +348,68 @@ export default function StageplanPage({ params }: PageProps) {
                   managementSystems={(stagePlanData?.managementSystems || []) as any}
                 />
               </TabsContent>
+
+              <footer className="mt-10 pt-6 border-t border-slate-200 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!prevStepTab}
+                      onClick={() => prevStepTab && setActiveTab(prevStepTab)}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Previous step
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!nextStepTab}
+                      onClick={() => nextStepTab && setActiveTab(nextStepTab)}
+                    >
+                      Next step
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Label htmlFor="p2w-step-status" className="text-xs text-muted-foreground whitespace-nowrap">
+                      Step status (this browser)
+                    </Label>
+                    <Select
+                      value={activeOverride}
+                      onValueChange={(v) => setOverride(activeTab as P2wTabId, v as P2wStepOverride)}
+                    >
+                      <SelectTrigger id="p2w-step-status" className="h-9 w-[200px] text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="auto">Automatic (from data)</SelectItem>
+                        <SelectItem value="force-complete">Mark complete</SelectItem>
+                        <SelectItem value="force-incomplete">Still in progress</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {activeTab === 'management' && (
+                  <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                    {nextStage ? (
+                      <Button asChild className="w-full sm:w-auto">
+                        <Link href={`/campaigns/${campaignId}/stage/${nextStage}`}>
+                          Continue to Stage {nextStage}
+                          <ChevronRight className="h-4 w-4 ml-1" />
+                        </Link>
+                      </Button>
+                    ) : (
+                      <Button asChild variant="secondary" className="w-full sm:w-auto">
+                        <Link href={`/campaigns/${campaignId}`}>Back to campaign overview</Link>
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </footer>
             </div>
           </div>
         </Tabs>

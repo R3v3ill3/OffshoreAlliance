@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils'
 import { format, parseISO, isValid } from 'date-fns'
 import { Target, Trash2, Plus, CheckCircle, Calendar } from 'lucide-react'
 import { formatCategoryLabel } from '@/lib/utils/option-sorting'
+import { isAmbitionMetricIncomplete } from '@/lib/planning/ambition-metric-status'
 import type { PlanAmbition } from '@/types'
 import { toast } from 'sonner'
 
@@ -93,6 +94,25 @@ export function AmbitionPanel({
     use_count: o.use_count,
     is_system_default: o.is_system_default,
   }))
+
+  const extraSelectedItems = ambitions
+    .filter((a) => a.ambition_option_id == null)
+    .map((a) => ({
+      key: `custom-${a.ambition_id}`,
+      text: a.custom_text?.trim() || 'Custom ambition',
+      description: a.is_system_default ? 'Custom (required)' : 'Custom',
+      onRemove: () => {
+        if (a.is_system_default) {
+          toast.error('This ambition cannot be removed')
+          return
+        }
+        void deleteAmbition.mutateAsync({
+          ambition_id: a.ambition_id,
+          campaign_id: campaignId,
+          stage_number: stageNumber,
+        })
+      },
+    }))
 
   async function handleSelect(option: SelectableOption) {
     const fullOption = options?.find((o) => o.option_id === option.id)
@@ -284,6 +304,10 @@ export function AmbitionPanel({
               selectedIds={selectedOptionIds}
               onSelect={handleSelect}
               onDeselect={handleDeselect}
+              extraSelectedItems={extraSelectedItems}
+              selectedHeading="Your selections"
+              libraryHeading="Suggested ambitions"
+              muteLibraryRows
               allowCustom={false}
               showCategories
               placeholder="Search ambitions..."
@@ -327,12 +351,27 @@ export function AmbitionPanel({
               rowMetric === 'range' ||
               rowMetric === 'text'
 
+            const metricIncomplete =
+              !ambition.is_achieved && isAmbitionMetricIncomplete(ambition)
+            const fromCatalog = ambition.ambition_option_id != null
+
             return (
               <div
                 key={ambition.ambition_id}
                 className={cn(
                   'p-4 rounded-lg border',
-                  ambition.is_achieved ? 'bg-green-50 border-green-200' : 'bg-white border-slate-200'
+                  ambition.is_achieved && 'bg-green-50 border-green-200',
+                  !ambition.is_achieved &&
+                    metricIncomplete &&
+                    'border-amber-400 bg-amber-50/60 border-l-4 border-l-amber-500',
+                  !ambition.is_achieved &&
+                    !metricIncomplete &&
+                    fromCatalog &&
+                    'bg-blue-50/50 border-slate-200 border-l-4 border-l-blue-200',
+                  !ambition.is_achieved &&
+                    !metricIncomplete &&
+                    !fromCatalog &&
+                    'bg-white border-slate-200 border-l-4 border-l-slate-300'
                 )}
               >
                 <div className="flex items-start gap-3">
@@ -362,9 +401,19 @@ export function AmbitionPanel({
                           {formatCategoryLabel(option.category)}
                         </Badge>
                       )}
+                      {!option?.category && ambition.custom_text && (
+                        <Badge variant="secondary" className="text-xs">
+                          Custom
+                        </Badge>
+                      )}
                       {ambition.is_system_default && (
                         <Badge variant="outline" className="text-xs">
                           Membership
+                        </Badge>
+                      )}
+                      {metricIncomplete && (
+                        <Badge className="text-xs bg-amber-100 text-amber-900 hover:bg-amber-100 border-amber-200">
+                          Target not set
                         </Badge>
                       )}
                     </div>

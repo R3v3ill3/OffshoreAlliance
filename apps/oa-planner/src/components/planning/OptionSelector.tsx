@@ -17,12 +17,28 @@ export interface SelectableOption {
   is_system_default?: boolean | null
 }
 
+/** Non-catalog selections shown with the same styling as selected catalog rows (e.g. custom ambitions). */
+export interface ExtraSelectedItem {
+  key: string
+  text: string
+  description?: string
+  onRemove: () => void
+}
+
 interface OptionSelectorProps {
   options: SelectableOption[]
   selectedIds: number[]
   onSelect: (option: SelectableOption) => void
   onDeselect: (optionId: number) => void
   onAddCustom?: (text: string, category?: string) => void
+  /** Renders above catalog-selected rows; same blue “selected” styling; click removes via onRemove */
+  extraSelectedItems?: ExtraSelectedItem[]
+  /** When set, shown above the combined selected block (catalog + extra) */
+  selectedHeading?: string
+  /** When set, shown above the scrollable library list */
+  libraryHeading?: string
+  /** Softer background on unselected (library) rows */
+  muteLibraryRows?: boolean
   sortBy?: 'use_count' | 'alphabetical' | 'category'
   allowCustom?: boolean
   showCategories?: boolean
@@ -39,6 +55,10 @@ export function OptionSelector({
   onSelect,
   onDeselect,
   onAddCustom,
+  extraSelectedItems = [],
+  selectedHeading,
+  libraryHeading,
+  muteLibraryRows = false,
   sortBy = 'use_count',
   allowCustom = true,
   showCategories = false,
@@ -124,6 +144,10 @@ export function OptionSelector({
     }
   }
 
+  const hasSelectedBlock =
+    selectedOptions.length > 0 || extraSelectedItems.length > 0
+  const hasLibraryBlock = unselectedOptions.length > 0
+
   return (
     <div className={cn('flex flex-col gap-2', className)}>
       {/* Search */}
@@ -145,9 +169,17 @@ export function OptionSelector({
         )}
       </div>
 
-      {/* Selected options — pinned to top */}
-      {selectedOptions.length > 0 && (
+      {/* Selected options — catalog + extra (e.g. custom), pinned to top */}
+      {hasSelectedBlock && (
         <div className="space-y-1">
+          {selectedHeading && (
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide px-1">
+              {selectedHeading}
+            </p>
+          )}
+          {extraSelectedItems.map((item) => (
+            <ExtraSelectedRow key={item.key} item={item} />
+          ))}
           {selectedOptions.map((option) => (
             <OptionRow
               key={option.id}
@@ -160,15 +192,18 @@ export function OptionSelector({
       )}
 
       {/* Divider if both selected and unselected exist */}
-      {selectedOptions.length > 0 && unselectedOptions.length > 0 && (
-        <div className="border-t my-1" />
-      )}
+      {hasSelectedBlock && hasLibraryBlock && <div className="border-t my-1" />}
 
-      {/* Unselected options */}
+      {/* Unselected options (library) */}
       <div
         className="overflow-y-auto space-y-1 pr-1"
         style={{ maxHeight }}
       >
+        {libraryHeading && hasLibraryBlock && (
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide px-1 pt-0.5">
+            {libraryHeading}
+          </p>
+        )}
         {showCategories && grouped ? (
           Object.entries(grouped).map(([category, items]) => (
             <div key={category}>
@@ -191,6 +226,7 @@ export function OptionSelector({
                       key={option.id}
                       option={option}
                       selected={false}
+                      mutedUnselected={muteLibraryRows}
                       onToggle={() => handleToggle(option)}
                     />
                   ))}
@@ -204,6 +240,7 @@ export function OptionSelector({
               key={option.id}
               option={option}
               selected={false}
+              mutedUnselected={muteLibraryRows}
               onToggle={() => handleToggle(option)}
             />
           ))
@@ -255,13 +292,35 @@ export function OptionSelector({
   )
 }
 
+function ExtraSelectedRow({ item }: { item: ExtraSelectedItem }) {
+  return (
+    <button
+      type="button"
+      onClick={item.onRemove}
+      className="flex items-start gap-3 w-full text-left px-3 py-2.5 rounded-lg border transition-colors text-sm bg-blue-50 border-blue-200 hover:bg-blue-100"
+    >
+      <div className="flex-shrink-0 w-4 h-4 rounded border mt-0.5 flex items-center justify-center bg-blue-600 border-blue-600">
+        <Check className="h-3 w-3 text-white" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <span className="font-medium text-blue-900">{item.text}</span>
+        {item.description && (
+          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{item.description}</p>
+        )}
+      </div>
+    </button>
+  )
+}
+
 function OptionRow({
   option,
   selected,
+  mutedUnselected = false,
   onToggle,
 }: {
   option: SelectableOption
   selected: boolean
+  mutedUnselected?: boolean
   onToggle: () => void
 }) {
   return (
@@ -271,7 +330,9 @@ function OptionRow({
         'flex items-start gap-3 w-full text-left px-3 py-2.5 rounded-lg border transition-colors text-sm',
         selected
           ? 'bg-blue-50 border-blue-200 hover:bg-blue-100'
-          : 'bg-white border-transparent hover:bg-accent hover:border-border'
+          : mutedUnselected
+            ? 'bg-slate-50/80 border-slate-100 hover:bg-slate-100/80 hover:border-slate-200'
+            : 'bg-white border-transparent hover:bg-accent hover:border-border'
       )}
     >
       <div

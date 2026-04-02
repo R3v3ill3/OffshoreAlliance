@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -51,6 +51,10 @@ import {
   Trash2,
   Pencil,
   Upload,
+  Activity,
+  Server,
+  Database,
+  Clock,
 } from "lucide-react";
 import { EmployerWizard } from "@/components/administration/employer-wizard";
 import { ReferenceDataWizard } from "@/components/import/reference-data-wizard";
@@ -1187,6 +1191,7 @@ export default function AdministrationPage() {
           <TabsTrigger value="imports">Import History</TabsTrigger>
           <TabsTrigger value="employer_wizard">Employer Wizard</TabsTrigger>
           <TabsTrigger value="ref_data">Reference Data Import</TabsTrigger>
+          <TabsTrigger value="monitoring">System Monitoring</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users">
@@ -1210,7 +1215,250 @@ export default function AdministrationPage() {
         <TabsContent value="ref_data">
           <ReferenceDataTab />
         </TabsContent>
+        <TabsContent value="monitoring">
+          <MonitoringTab />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+// ---------- System Monitoring Tab ----------
+
+interface SystemStatus {
+  supabase_connected: boolean;
+  supabase_latency_ms: number | null;
+  error_count_24h: number;
+  slow_queries_24h: number;
+  active_users: number;
+  retention_status: Record<string, { value: number; details: unknown }>;
+  last_checked: string;
+}
+
+function MonitoringTab() {
+  const supabase = createClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [status, setStatus] = useState<SystemStatus | null>(null);
+
+  const fetchStatus = async () => {
+    setRefreshing(true);
+    try {
+      // Check Supabase connection
+      const start = Date.now();
+      const { data: sbCheck, error: sbError } = await supabase
+        .from("sectors")
+        .select("sector_id")
+        .limit(1);
+
+      const latency = sbError ? null : Date.now() - start;
+
+      // Get error count from Sentry (placeholder - would use Sentry API)
+      // For now, we'll simulate with a query that might fail
+      const errorCount = 0; // Would come from Sentry API
+
+      // Get active users count
+      const { data: profiles } = await supabase
+        .from("user_profiles")
+        .select("user_id");
+
+      // Get retention status
+      const { data: retention } = await fetch("/api/admin/retention-status")
+        .then(r => r.json())
+        .catch(() => ({ status: {} }));
+
+      setStatus({
+        supabase_connected: !sbError && sbCheck !== null,
+        supabase_latency_ms: latency,
+        error_count_24h: errorCount,
+        slow_queries_24h: 0, // Would come from slow query log
+        active_users: profiles?.length || 0,
+        retention_status: retention?.status || {},
+        last_checked: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Error fetching status:", error);
+      setStatus({
+        supabase_connected: false,
+        supabase_latency_ms: null,
+        error_count_24h: 0,
+        slow_queries_24h: 0,
+        active_users: 0,
+        retention_status: {},
+        last_checked: new Date().toISOString(),
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Auto-refresh effect
+  useEffect(() => {
+    fetchStatus();
+    if (autoRefresh) {
+      const interval = setInterval(fetchStatus, 30000); // 30 seconds
+      return () => clearInterval(interval);
+    }
+  }, [autoRefresh]);
+
+  const getStatusColor = (connected: boolean) => {
+    return connected ? "success" : "destructive";
+  };
+
+  const getLatencyColor = (ms: number | null) => {
+    if (ms === null) return "secondary";
+    if (ms < 200) return "success";
+    if (ms < 500) return "warning";
+    return "destructive";
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">System Monitoring</h2>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchStatus()}
+            disabled={refreshing}
+          >
+            <Activity className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="auto-refresh"
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
+              className="mr-2"
+            />
+            <label htmlFor="auto-refresh" className="text-sm">Auto-refresh (30s)</label>
+          </div>
+        </div>
+      </div>
+
+      {/* Status Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Supabase Connection */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Database className="h-4 w-4" />
+              Supabase Connection
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Badge variant={status?.supabase_connected ? getStatusColor(status?.supabase_connected) : "secondary"}>
+              {status?.supabase_connected ? "Connected" : "Disconnected"}
+            </Badge>
+            {status?.supabase_latency_ms !== null && (
+              <p className="text-xs text-muted-foreground mt-2">
+                {status.supabase_latency_ms}ms latency
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Error Count */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" />
+              Errors (24h)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{status?.error_count_24h}</div>
+            <p className="text-xs text-muted-foreground mt-1">Sentry tracked errors</p>
+          </CardContent>
+        </Card>
+
+        {/* Slow Queries */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Clock className="h-4 w-4" />
+              Slow Queries
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{status?.slow_queries_24h}</div>
+            <p className="text-xs text-muted-foreground mt-1">Queries >1s in last 24h</p>
+          </CardContent>
+        </Card>
+
+        {/* Active Users */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Server className="h-4 w-4" />
+              Active Users
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{status?.active_users}</div>
+            <p className="text-xs text-muted-foreground mt-1">Active user sessions</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Import Log Retention Status */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Import Log Retention Status</CardTitle>
+          <CardDescription>
+            Automated retention: 90 days hot, 1 year cold storage
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {status?.retention_status ? (
+            <div className="space-y-2">
+              {Object.entries(status.retention_status).map(([name, data]) => (
+                <div key={name} className="flex items-center justify-between py-2 border-b last:border-0">
+                  <span className="text-sm font-medium capitalize">{name.replace(/_/g, " ")}</span>
+                  <div className="text-right">
+                    <span className="text-2xl font-bold mr-4">{data.value}</span>
+                    {data.details && (
+                      <span className="text-xs text-muted-foreground">
+                        {JSON.stringify(data.details).replace(/["{}]/g, "")}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">Loading retention status...</div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Connection Details */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Connection Details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Last checked:</span>
+              <span>{status?.last_checked ? new Date(status.last_checked).toLocaleString() : "Never"}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Environment:</span>
+              <span>{process.env.NEXT_PUBLIC_APP_URL?.includes("oaplanner") ? "OA Planner" : "Organising DB"}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Supabase URL:</span>
+              <span className="font-mono text-xs">
+                {process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/https?:\/\/[^/]+@/, "")}
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

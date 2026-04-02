@@ -11,6 +11,7 @@ export interface WorkerImportRow {
   unionId: number | null;
   resignationDate: string | null;
   worksiteId: number | null;
+  employerId: number | null;
   rawMembershipStatus: string;
   notes: string | null;
   // Dedup decision
@@ -72,6 +73,7 @@ export async function POST(request: NextRequest) {
       union_id: row.unionId,
       resignation_date: row.resignationDate,
       worksite_id: row.worksiteId,
+      employer_id: row.employerId ?? null,
       notes: row.notes || null,
       // Mark as active unless resigned/archived
       is_active: row.memberRoleTypeId !== 6,

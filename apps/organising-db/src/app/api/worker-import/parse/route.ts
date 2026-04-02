@@ -21,12 +21,22 @@ export interface ParsedWorkerGroup {
   rows: ParsedWorkerRow[];
 }
 
-export interface ParseWorkerImportResponse {
-  success: true;
-  fileName: string;
-  groups: ParsedWorkerGroup[];
-  totalRows: number;
-}
+export type ParseWorkerImportResponse =
+  | {
+      success: true;
+      fileName: string;
+      format: "group";
+      groups: ParsedWorkerGroup[];
+      totalRows: number;
+    }
+  | {
+      success: true;
+      fileName: string;
+      format: "header";
+      headers: string[];
+      rows: Record<string, string>[];
+      totalRows: number;
+    };
 
 // Membership status → member_role_type_id mapping
 // member=1, member_other_union=2, contact=3, bargaining_rep=4,
@@ -61,6 +71,38 @@ const UNION_CODE_TO_ID: Record<string, number> = {
   CFMEU: 5,
   AMWU: 6,
 };
+
+// Header patterns used to detect header-based format
+const KNOWN_HEADER_PATTERNS = [
+  /^(first[\s_-]?name|firstname|given[\s_-]?name|first)$/i,
+  /^(last[\s_-]?name|lastname|surname|family[\s_-]?name|last)$/i,
+  /^(email|email[\s_-]?address)$/i,
+  /^(mobile|phone|mobile[\s_-]?number|phone[\s_-]?number|contact|mob)$/i,
+  /^(worksite|site|location|work[\s_-]?site|work[\s_-]?location)$/i,
+  /^(name|full[\s_-]?name)$/i,
+];
+
+function detectHeaderRow(row: (string | number | null | undefined)[]): boolean {
+  const nonEmpty = row.filter(
+    (c) => c !== null && c !== undefined && String(c).trim() !== ""
+  );
+  if (nonEmpty.length < 2) return false;
+
+  // All non-empty cells must be text (not pure numbers)
+  const allText = nonEmpty.every((c) => {
+    if (typeof c === "number") return false;
+    const s = String(c).trim();
+    return s !== "" && isNaN(Number(s));
+  });
+  if (!allText) return false;
+
+  // At least 2 cells must match a known header pattern
+  const matchCount = nonEmpty.filter((c) =>
+    KNOWN_HEADER_PATTERNS.some((p) => p.test(String(c).trim()))
+  ).length;
+
+  return matchCount >= 2;
+}
 
 function parseMembershipStatus(raw: string): {
   roleTypeId: number | null;
@@ -175,7 +217,6 @@ function isGroupHeader(row: (string | number | null | undefined)[]): boolean {
   if (!name) return false;
 
   // Must be short (≤ 5 tokens) and not look like a person name with comma
-  // (person names with comma have ≥ 2 parts separated by comma)
   const tokens = name.split(/\s+/).filter(Boolean);
   if (tokens.length > 5) return false;
 
@@ -218,6 +259,47 @@ export async function POST(request: NextRequest) {
       defval: null,
     });
 
+    // Find the first non-empty row and check if it is a header row
+    const firstNonEmpty = rawRows.find(
+      (r) => r && r.some((c) => c !== null && c !== undefined && String(c).trim() !== "")
+    ) as (string | number | null)[] | undefined;
+
+    if (firstNonEmpty && detectHeaderRow(firstNonEmpty)) {
+      // ── Header-based format ────────────────────────────────────────────────
+      const headers = firstNonEmpty.map((c) => String(c ?? "").trim()).filter(Boolean);
+      const dataRows: Record<string, string>[] = [];
+
+      let foundHeader = false;
+      for (const rawRow of rawRows) {
+        const row = rawRow as (string | number | null)[];
+        if (!row || row.every((c) => c === null || c === undefined || String(c).trim() === "")) {
+          continue;
+        }
+        if (!foundHeader) {
+          foundHeader = true;
+          continue; // skip the header row itself
+        }
+        const obj: Record<string, string> = {};
+        headers.forEach((h, i) => {
+          obj[h] = String(row[i] ?? "").trim();
+        });
+        // Only include rows that have at least one non-empty value
+        if (Object.values(obj).some((v) => v !== "")) {
+          dataRows.push(obj);
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        fileName: file.name,
+        format: "header",
+        headers,
+        rows: dataRows,
+        totalRows: dataRows.length,
+      } satisfies ParseWorkerImportResponse);
+    }
+
+    // ── Group-header (legacy ESS/Woodside) format ────────────────────────────
     const groups: ParsedWorkerGroup[] = [];
     let currentGroupName = "Unassigned";
     let currentRows: ParsedWorkerRow[] = [];
@@ -234,9 +316,6 @@ export async function POST(request: NextRequest) {
         if (currentRows.length > 0) {
           groups.push({ groupName: currentGroupName, rows: currentRows });
           currentRows = [];
-        } else if (groups.length > 0 && currentRows.length === 0) {
-          // Empty group — just update the name (sub-header within group)
-          // For groups that have already been pushed with rows, start a new group
         }
         currentGroupName = String(row[0]).trim();
         rowIndex++;
@@ -286,6 +365,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       fileName: file.name,
+      format: "group",
       groups,
       totalRows,
     } satisfies ParseWorkerImportResponse);

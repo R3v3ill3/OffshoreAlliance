@@ -35,7 +35,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Upload,
   Loader2,
   CheckCircle2,
   AlertCircle,
@@ -46,17 +45,35 @@ import {
   X,
   AlertTriangle,
   Users,
+  Building2,
 } from "lucide-react";
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 type WizardStep =
   | "upload"
+  | "column_mapping"
+  | "employer_selection"
   | "worksite_matching"
   | "row_review"
   | "dedup_check"
   | "confirm"
   | "done";
+
+type FileFormat = "group" | "header";
+
+type MappableField =
+  | "first_name"
+  | "last_name"
+  | "email"
+  | "phone"
+  | "worksite"
+  | "ignore";
+
+interface ColumnMapping {
+  header: string;
+  field: MappableField;
+}
 
 interface WorksiteResolution {
   groupName: string;
@@ -70,7 +87,6 @@ interface ReviewRow extends ParsedWorkerRow {
   groupName: string;
   resolvedWorksiteId: number | null;
   resolvedWorksiteName: string | null;
-  // Overrides
   overrideFirstName?: string;
   overrideLastName?: string;
   overridePhone?: string;
@@ -96,25 +112,57 @@ interface MemberRoleType {
   display_name: string;
 }
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+interface Employer {
+  employer_id: number;
+  employer_name: string;
+  trading_name: string | null;
+}
 
-const STEPS: { id: WizardStep; label: string }[] = [
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const ALL_STEPS: { id: WizardStep; label: string }[] = [
   { id: "upload", label: "Upload" },
-  { id: "worksite_matching", label: "Worksite Matching" },
-  { id: "row_review", label: "Row Review" },
-  { id: "dedup_check", label: "Dedup Check" },
+  { id: "column_mapping", label: "Map Columns" },
+  { id: "employer_selection", label: "Employer" },
+  { id: "worksite_matching", label: "Worksites" },
+  { id: "row_review", label: "Review Rows" },
+  { id: "dedup_check", label: "Dedup" },
   { id: "confirm", label: "Confirm" },
   { id: "done", label: "Done" },
 ];
 
-const STEP_INDEX: Record<WizardStep, number> = {
-  upload: 0,
-  worksite_matching: 1,
-  row_review: 2,
-  dedup_check: 3,
-  confirm: 4,
-  done: 5,
-};
+const MAPPABLE_FIELDS: { value: MappableField; label: string }[] = [
+  { value: "first_name", label: "First Name" },
+  { value: "last_name", label: "Last Name" },
+  { value: "email", label: "Email" },
+  { value: "phone", label: "Phone / Mobile" },
+  { value: "worksite", label: "Worksite" },
+  { value: "ignore", label: "(Ignore)" },
+];
+
+function autoMapHeader(header: string): MappableField {
+  const h = header.toLowerCase().replace(/[\s_-]/g, "");
+  if (["firstname", "givenname", "first"].includes(h)) return "first_name";
+  if (["lastname", "surname", "familyname", "last"].includes(h)) return "last_name";
+  if (["email", "emailaddress"].includes(h)) return "email";
+  if (["mobile", "phone", "mobilenumber", "phonenumber", "contact", "mob"].includes(h))
+    return "phone";
+  if (["worksite", "site", "location", "worklocation", "worksite"].includes(h))
+    return "worksite";
+  return "ignore";
+}
+
+// Client-side phone normalisation (mirrors server logic)
+function normalisePhoneClient(raw: string | null | undefined): string | null {
+  if (!raw || !raw.trim()) return null;
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return null;
+  if (digits.length === 9) return `0${digits}`;
+  if (digits.length === 10 && digits.startsWith("0")) return digits;
+  if (digits.length === 11 && digits.startsWith("61")) return `0${digits.slice(2)}`;
+  if (digits.length === 12 && digits.startsWith("610")) return `0${digits.slice(3)}`;
+  return raw.trim();
+}
 
 function confidenceBadgeVariant(
   confidence: "high" | "medium" | "low"
@@ -124,7 +172,7 @@ function confidenceBadgeVariant(
   return "outline";
 }
 
-// ─── Main Component ──────────────────────────────────────────────────────────
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 interface WorkerImportWizardProps {
   open: boolean;
@@ -139,11 +187,28 @@ export function WorkerImportWizard({
 }: WorkerImportWizardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ── Step / format state ───────────────────────────────────────────────────
   const [step, setStep] = useState<WizardStep>("upload");
+  const [fileFormat, setFileFormat] = useState<FileFormat>("group");
   const [isLoading, setIsLoading] = useState(false);
   const [fileName, setFileName] = useState("");
+  const [dragOver, setDragOver] = useState(false);
+  const [parseError, setParseError] = useState<string | null>(null);
+
+  // ── Group-format state ────────────────────────────────────────────────────
   const [groups, setGroups] = useState<ParsedWorkerGroup[]>([]);
+
+  // ── Header-format state ───────────────────────────────────────────────────
+  const [detectedHeaders, setDetectedHeaders] = useState<string[]>([]);
+  const [headerRows, setHeaderRows] = useState<Record<string, string>[]>([]);
+  const [columnMappings, setColumnMappings] = useState<ColumnMapping[]>([]);
+
+  // ── Shared state ──────────────────────────────────────────────────────────
   const [worksiteResolutions, setWorksiteResolutions] = useState<WorksiteResolution[]>([]);
+  const [worksiteSearch, setWorksiteSearch] = useState<Record<string, string>>({});
+  const [selectedEmployerId, setSelectedEmployerId] = useState<number | null>(null);
+  const [selectedEmployerName, setSelectedEmployerName] = useState<string | null>(null);
+  const [employerSearch, setEmployerSearch] = useState("");
   const [reviewRows, setReviewRows] = useState<ReviewRow[]>([]);
   const [dedupMatches, setDedupMatches] = useState<DedupMatch[]>([]);
   const [result, setResult] = useState<{
@@ -152,11 +217,8 @@ export function WorkerImportWizard({
     skipped: number;
     errors: string[];
   } | null>(null);
-  const [dragOver, setDragOver] = useState(false);
-  const [parseError, setParseError] = useState<string | null>(null);
-  const [worksiteSearch, setWorksiteSearch] = useState<Record<string, string>>({});
 
-  // Load worksites and member role types from Supabase
+  // ── Data queries ──────────────────────────────────────────────────────────
   const supabase = createClient();
 
   const { data: worksites = [] } = useQuery<Worksite[]>({
@@ -185,20 +247,88 @@ export function WorkerImportWizard({
     enabled: open,
   });
 
-  // ─── Handlers ─────────────────────────────────────────────────────────────
+  const { data: employers = [] } = useQuery<Employer[]>({
+    queryKey: ["employers-active"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employers")
+        .select("employer_id, employer_name, trading_name")
+        .eq("is_active", true)
+        .order("employer_name");
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: open,
+  });
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+
+  function getVisibleSteps() {
+    return fileFormat === "group"
+      ? ALL_STEPS.filter((s) => s.id !== "column_mapping")
+      : ALL_STEPS;
+  }
+
+  function buildGroupWorksiteResolutions(parsedGroups: ParsedWorkerGroup[]): WorksiteResolution[] {
+    return parsedGroups.map((g) => {
+      const candidates = matchWorksiteCandidates(g.groupName, worksites);
+      const top = candidates[0];
+      const autoAccept = top?.confidence === "high";
+      return {
+        groupName: g.groupName,
+        worksiteId: autoAccept ? top.worksite.worksite_id : null,
+        worksiteName: autoAccept ? top.worksite.worksite_name : null,
+        candidates,
+        confirmed: autoAccept,
+      };
+    });
+  }
+
+  function buildHeaderWorksiteResolutions(
+    rawRows: Record<string, string>[],
+    worksiteHeader: string
+  ): WorksiteResolution[] {
+    const unique = [
+      ...new Set(rawRows.map((r) => String(r[worksiteHeader] ?? "").trim()).filter(Boolean)),
+    ];
+    return unique.map((val) => {
+      const candidates = matchWorksiteCandidates(val, worksites);
+      const top = candidates[0];
+      const autoAccept = top?.confidence === "high";
+      return {
+        groupName: val,
+        worksiteId: autoAccept ? top.worksite.worksite_id : null,
+        worksiteName: autoAccept ? top.worksite.worksite_name : null,
+        candidates,
+        confirmed: autoAccept,
+      };
+    });
+  }
+
+  // ─── State reset ──────────────────────────────────────────────────────────
 
   function reset() {
     setStep("upload");
+    setFileFormat("group");
     setIsLoading(false);
     setFileName("");
+    setDragOver(false);
+    setParseError(null);
     setGroups([]);
+    setDetectedHeaders([]);
+    setHeaderRows([]);
+    setColumnMappings([]);
     setWorksiteResolutions([]);
+    setWorksiteSearch({});
+    setSelectedEmployerId(null);
+    setSelectedEmployerName(null);
+    setEmployerSearch("");
     setReviewRows([]);
     setDedupMatches([]);
     setResult(null);
-    setParseError(null);
-    setWorksiteSearch({});
   }
+
+  // ─── File handling ────────────────────────────────────────────────────────
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -223,31 +353,30 @@ export function WorkerImportWizard({
         }
 
         setFileName(json.fileName);
-        setGroups(json.groups);
 
-        // Build worksite resolutions with fuzzy matching
-        const resolutions: WorksiteResolution[] = json.groups.map(
-          (g: ParsedWorkerGroup) => {
-            const candidates = matchWorksiteCandidates(g.groupName, worksites);
-            const topCandidate = candidates[0];
-            const autoAccept = topCandidate?.confidence === "high";
-            return {
-              groupName: g.groupName,
-              worksiteId: autoAccept ? topCandidate.worksite.worksite_id : null,
-              worksiteName: autoAccept ? topCandidate.worksite.worksite_name : null,
-              candidates,
-              confirmed: autoAccept,
-            };
-          }
-        );
-        setWorksiteResolutions(resolutions);
-        setStep("worksite_matching");
+        if (json.format === "header") {
+          setFileFormat("header");
+          setDetectedHeaders(json.headers);
+          setHeaderRows(json.rows);
+          const mappings: ColumnMapping[] = json.headers.map((h: string) => ({
+            header: h,
+            field: autoMapHeader(h),
+          }));
+          setColumnMappings(mappings);
+          setStep("column_mapping");
+        } else {
+          setFileFormat("group");
+          setGroups(json.groups);
+          setWorksiteResolutions(buildGroupWorksiteResolutions(json.groups));
+          setStep("employer_selection");
+        }
       } catch (e) {
         setParseError(e instanceof Error ? e.message : "Unknown error");
       } finally {
         setIsLoading(false);
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [worksites]
   );
 
@@ -260,6 +389,26 @@ export function WorkerImportWizard({
     },
     [handleFile]
   );
+
+  // ─── Navigation handlers ──────────────────────────────────────────────────
+
+  function proceedFromColumnMapping() {
+    const worksiteCol = columnMappings.find((m) => m.field === "worksite")?.header;
+    if (worksiteCol) {
+      setWorksiteResolutions(buildHeaderWorksiteResolutions(headerRows, worksiteCol));
+    } else {
+      setWorksiteResolutions([]);
+    }
+    setStep("employer_selection");
+  }
+
+  function proceedFromEmployerSelection() {
+    if (worksiteResolutions.length > 0) {
+      setStep("worksite_matching");
+    } else {
+      proceedToRowReview();
+    }
+  }
 
   function resolveWorksite(groupName: string, worksite: Worksite | null) {
     setWorksiteResolutions((prev) =>
@@ -277,21 +426,59 @@ export function WorkerImportWizard({
   }
 
   function proceedToRowReview() {
-    // Flatten all groups into review rows with worksite resolution applied
-    const resolutionMap = new Map(
-      worksiteResolutions.map((r) => [r.groupName, r])
-    );
+    const resolutionMap = new Map(worksiteResolutions.map((r) => [r.groupName, r]));
 
-    const rows: ReviewRow[] = groups.flatMap((g) => {
-      const resolution = resolutionMap.get(g.groupName);
-      return g.rows.map((row) => ({
-        ...row,
-        groupName: g.groupName,
-        resolvedWorksiteId: resolution?.worksiteId ?? null,
-        resolvedWorksiteName: resolution?.worksiteName ?? null,
-      }));
-    });
-    setReviewRows(rows);
+    if (fileFormat === "header") {
+      const firstNameCol = columnMappings.find((m) => m.field === "first_name")?.header ?? "";
+      const lastNameCol = columnMappings.find((m) => m.field === "last_name")?.header ?? "";
+      const emailCol = columnMappings.find((m) => m.field === "email")?.header ?? "";
+      const phoneCol = columnMappings.find((m) => m.field === "phone")?.header ?? "";
+      const worksiteCol = columnMappings.find((m) => m.field === "worksite")?.header ?? "";
+
+      const rows: ReviewRow[] = headerRows
+        .map((row, i) => {
+          const rawWorksiteVal = worksiteCol
+            ? String(row[worksiteCol] ?? "").trim()
+            : "";
+          const resolution = resolutionMap.get(rawWorksiteVal);
+          const rawFirst = String(row[firstNameCol] ?? "").trim();
+          const rawLast = String(row[lastNameCol] ?? "").trim();
+          const rawPhone = phoneCol ? String(row[phoneCol] ?? "").trim() : "";
+
+          return {
+            rowIndex: i,
+            rawName: `${rawFirst} ${rawLast}`.trim(),
+            firstName: rawFirst,
+            lastName: rawLast,
+            rawMembershipStatus: "",
+            memberRoleTypeId: null,
+            unionId: null,
+            resignationDate: null,
+            rawPhone,
+            phone: normalisePhoneClient(rawPhone),
+            email: emailCol ? String(row[emailCol] ?? "").trim() || null : null,
+            parseWarnings: rawFirst && rawLast ? [] : ["Missing first or last name"],
+            groupName: rawWorksiteVal,
+            resolvedWorksiteId: resolution?.worksiteId ?? null,
+            resolvedWorksiteName: resolution?.worksiteName ?? null,
+          } satisfies ReviewRow;
+        })
+        .filter((r) => r.firstName || r.lastName);
+
+      setReviewRows(rows);
+    } else {
+      const rows: ReviewRow[] = groups.flatMap((g) => {
+        const resolution = resolutionMap.get(g.groupName);
+        return g.rows.map((row) => ({
+          ...row,
+          groupName: g.groupName,
+          resolvedWorksiteId: resolution?.worksiteId ?? null,
+          resolvedWorksiteName: resolution?.worksiteName ?? null,
+        }));
+      });
+      setReviewRows(rows);
+    }
+
     setStep("row_review");
   }
 
@@ -299,7 +486,6 @@ export function WorkerImportWizard({
     setIsLoading(true);
     setStep("dedup_check");
 
-    // Collect unique emails and phones from review rows
     const emails = reviewRows
       .map((r) => r.overrideEmail ?? r.email)
       .filter((e): e is string => !!e);
@@ -406,12 +592,14 @@ export function WorkerImportWizard({
         lastName: row.overrideLastName ?? row.lastName,
         email: row.overrideEmail ?? row.email,
         phone: row.overridePhone ?? row.phone,
-        memberRoleTypeId: row.overrideMemberRoleTypeId !== undefined
-          ? row.overrideMemberRoleTypeId
-          : row.memberRoleTypeId,
+        memberRoleTypeId:
+          row.overrideMemberRoleTypeId !== undefined
+            ? row.overrideMemberRoleTypeId
+            : row.memberRoleTypeId,
         unionId: row.unionId,
         resignationDate: row.resignationDate,
         worksiteId: row.resolvedWorksiteId,
+        employerId: selectedEmployerId,
         rawMembershipStatus: row.rawMembershipStatus,
         notes: null,
         action,
@@ -454,12 +642,12 @@ export function WorkerImportWizard({
 
   // ─── Render helpers ────────────────────────────────────────────────────────
 
-  const currentStepIndex = STEP_INDEX[step];
-
   function StepIndicator() {
+    const visibleSteps = getVisibleSteps();
+    const currentStepIndex = visibleSteps.findIndex((s) => s.id === step);
     return (
-      <div className="flex items-center gap-1 mb-6">
-        {STEPS.map((s, i) => (
+      <div className="flex items-center gap-1 mb-6 flex-wrap">
+        {visibleSteps.map((s, i) => (
           <div key={s.id} className="flex items-center">
             <div
               className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-medium border transition-colors ${
@@ -472,17 +660,17 @@ export function WorkerImportWizard({
             >
               {i < currentStepIndex ? <CheckCircle2 className="w-4 h-4" /> : i + 1}
             </div>
-            {i < STEPS.length - 1 && (
+            {i < visibleSteps.length - 1 && (
               <div
-                className={`h-px w-8 mx-1 ${
+                className={`h-px w-6 mx-1 ${
                   i < currentStepIndex ? "bg-primary" : "bg-border"
                 }`}
               />
             )}
           </div>
         ))}
-        <span className="ml-3 text-sm text-muted-foreground font-medium">
-          {STEPS[currentStepIndex].label}
+        <span className="ml-2 text-sm text-muted-foreground font-medium">
+          {visibleSteps[currentStepIndex]?.label ?? ""}
         </span>
       </div>
     );
@@ -507,7 +695,7 @@ export function WorkerImportWizard({
           <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
           <p className="text-sm font-medium">Drop your .xlsx file here</p>
           <p className="text-xs text-muted-foreground mt-1">
-            or click to browse — supports ESS/Woodside crew list format
+            or click to browse — supports header-row and ESS/Woodside crew list formats
           </p>
           <input
             ref={fileInputRef}
@@ -527,26 +715,241 @@ export function WorkerImportWizard({
           </div>
         )}
         <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground space-y-1">
-          <p className="font-medium text-foreground">Expected format:</p>
-          <p>• Worksite group names appear as rows with only the first column filled</p>
-          <p>• Columns: Name | Membership Status | Phone | Email</p>
-          <p>• Name can be &quot;LASTNAME, Firstname&quot; or &quot;Firstname Lastname&quot;</p>
+          <p className="font-medium text-foreground">Supported formats:</p>
+          <p>
+            <span className="font-medium text-foreground">Header row</span> — first row
+            contains column names (e.g. first name, last name, email, mobile, worksite).
+            You will be prompted to map columns to database fields.
+          </p>
+          <p>
+            <span className="font-medium text-foreground">ESS/Woodside crew list</span> —
+            worksite group names appear as rows with only the first column filled; columns:
+            Name | Membership Status | Phone | Email.
+          </p>
         </div>
+      </div>
+    );
+  }
+
+  function renderColumnMapping() {
+    const mappedFields = new Set(
+      columnMappings.filter((m) => m.field !== "ignore").map((m) => m.field)
+    );
+    const canProceed = mappedFields.has("first_name") && mappedFields.has("last_name");
+
+    const updateMapping = (header: string, field: MappableField) => {
+      setColumnMappings((prev) =>
+        prev.map((m) => (m.header === header ? { ...m, field } : m))
+      );
+    };
+
+    const previewRows = headerRows.slice(0, 3);
+
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Match each column from your file to the appropriate field.{" "}
+          <span className="font-medium text-foreground">First Name</span> and{" "}
+          <span className="font-medium text-foreground">Last Name</span> are required.
+        </p>
+
+        <div className="border rounded-lg overflow-auto max-h-[380px]">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-xs w-1/3">File Column</TableHead>
+                <TableHead className="text-xs w-1/3">Map To</TableHead>
+                <TableHead className="text-xs">Sample Values</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {columnMappings.map(({ header, field }) => (
+                <TableRow key={header}>
+                  <TableCell className="p-2 font-medium text-sm">{header}</TableCell>
+                  <TableCell className="p-2">
+                    <Select
+                      value={field}
+                      onValueChange={(v) => updateMapping(header, v as MappableField)}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MAPPABLE_FIELDS.map((f) => (
+                          <SelectItem key={f.value} value={f.value} className="text-xs">
+                            {f.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell className="p-2 text-xs text-muted-foreground">
+                    {previewRows
+                      .map((r) => String(r[header] ?? ""))
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .join(", ") || "—"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        {!canProceed && (
+          <div className="flex items-center gap-2 text-sm text-amber-600">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            Map at least First Name and Last Name to continue.
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setStep("upload")}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back
+          </Button>
+          <Button onClick={proceedFromColumnMapping} disabled={!canProceed}>
+            Select Employer <ArrowRight className="h-4 w-4 ml-1" />
+          </Button>
+        </DialogFooter>
+      </div>
+    );
+  }
+
+  function renderEmployerSelection() {
+    const filtered = employerSearch
+      ? employers.filter(
+          (e) =>
+            e.employer_name.toLowerCase().includes(employerSearch.toLowerCase()) ||
+            (e.trading_name ?? "").toLowerCase().includes(employerSearch.toLowerCase())
+        )
+      : employers;
+
+    const hasWorksites =
+      fileFormat === "group"
+        ? worksiteResolutions.length > 0
+        : columnMappings.some((m) => m.field === "worksite");
+
+    const backStep: WizardStep =
+      fileFormat === "header" ? "column_mapping" : "upload";
+
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Select the employer to assign to all imported workers. You can skip to leave
+          employer unassigned.
+        </p>
+
+        {selectedEmployerId && (
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
+            <Building2 className="h-4 w-4 text-primary flex-shrink-0" />
+            <span className="text-sm font-medium">{selectedEmployerName}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto h-6 px-2 text-xs"
+              onClick={() => {
+                setSelectedEmployerId(null);
+                setSelectedEmployerName(null);
+              }}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
+
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Search employers..."
+            value={employerSearch}
+            onChange={(e) => setEmployerSearch(e.target.value)}
+            className="pl-8 h-9 text-sm"
+          />
+        </div>
+
+        <div className="border rounded-lg overflow-auto max-h-[260px]">
+          {filtered.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No employers found.
+            </p>
+          ) : (
+            <div className="divide-y">
+              {filtered.map((emp) => (
+                <button
+                  key={emp.employer_id}
+                  className={`w-full text-left px-4 py-3 text-sm hover:bg-accent transition-colors flex items-center justify-between ${
+                    selectedEmployerId === emp.employer_id ? "bg-accent" : ""
+                  }`}
+                  onClick={() => {
+                    setSelectedEmployerId(emp.employer_id);
+                    setSelectedEmployerName(emp.employer_name);
+                  }}
+                >
+                  <div>
+                    <span className="font-medium">{emp.employer_name}</span>
+                    {emp.trading_name && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        ({emp.trading_name})
+                      </span>
+                    )}
+                  </div>
+                  {selectedEmployerId === emp.employer_id && (
+                    <CheckCircle2 className="h-4 w-4 text-primary flex-shrink-0" />
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setStep(backStep)}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setSelectedEmployerId(null);
+              setSelectedEmployerName(null);
+              proceedFromEmployerSelection();
+            }}
+          >
+            Skip (No Employer)
+          </Button>
+          <Button onClick={proceedFromEmployerSelection}>
+            {hasWorksites ? (
+              <>Match Worksites <ArrowRight className="h-4 w-4 ml-1" /></>
+            ) : (
+              <>Review Rows <ArrowRight className="h-4 w-4 ml-1" /></>
+            )}
+          </Button>
+        </DialogFooter>
       </div>
     );
   }
 
   function renderWorksiteMatching() {
     const allConfirmed = worksiteResolutions.every((r) => r.confirmed);
+
     return (
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          {worksiteResolutions.length} worksite group{worksiteResolutions.length !== 1 ? "s" : ""} detected.
-          Confirm or override the worksite mapping for each group.
+          {worksiteResolutions.length} unique worksite
+          {worksiteResolutions.length !== 1 ? "s" : ""} detected. Confirm or override
+          the mapping for each.
         </p>
-        <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+
+        <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
           {worksiteResolutions.map((resolution) => {
-            const group = groups.find((g) => g.groupName === resolution.groupName);
+            const workerCount =
+              fileFormat === "group"
+                ? (groups.find((g) => g.groupName === resolution.groupName)?.rows.length ?? 0)
+                : headerRows.filter((r) => {
+                    const wCol =
+                      columnMappings.find((m) => m.field === "worksite")?.header ?? "";
+                    return String(r[wCol] ?? "").trim() === resolution.groupName;
+                  }).length;
+
             const searchTerm = worksiteSearch[resolution.groupName] ?? "";
             const filteredWorksites = searchTerm
               ? worksites.filter((ws) =>
@@ -563,7 +966,7 @@ export function WorkerImportWizard({
                   <div>
                     <p className="font-medium text-sm">{resolution.groupName}</p>
                     <p className="text-xs text-muted-foreground">
-                      {group?.rows.length ?? 0} worker{(group?.rows.length ?? 0) !== 1 ? "s" : ""}
+                      {workerCount} worker{workerCount !== 1 ? "s" : ""}
                     </p>
                   </div>
                   {resolution.confirmed ? (
@@ -576,15 +979,18 @@ export function WorkerImportWizard({
                   )}
                 </div>
 
-                {/* Fuzzy match candidates */}
                 {resolution.candidates.length > 0 && (
                   <div className="space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground">Suggested matches:</p>
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Suggested matches:
+                    </p>
                     <div className="flex flex-wrap gap-2">
                       {resolution.candidates.map((c) => (
                         <button
                           key={c.worksite.worksite_id}
-                          onClick={() => resolveWorksite(resolution.groupName, c.worksite)}
+                          onClick={() =>
+                            resolveWorksite(resolution.groupName, c.worksite)
+                          }
                           className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border hover:bg-accent transition-colors"
                         >
                           <Badge
@@ -600,7 +1006,6 @@ export function WorkerImportWizard({
                   </div>
                 )}
 
-                {/* Manual search */}
                 <div className="relative">
                   <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                   <Input
@@ -647,7 +1052,12 @@ export function WorkerImportWizard({
                         setWorksiteResolutions((prev) =>
                           prev.map((r) =>
                             r.groupName === resolution.groupName
-                              ? { ...r, worksiteId: null, worksiteName: null, confirmed: true }
+                              ? {
+                                  ...r,
+                                  worksiteId: null,
+                                  worksiteName: null,
+                                  confirmed: true,
+                                }
                               : r
                           )
                         )
@@ -683,7 +1093,7 @@ export function WorkerImportWizard({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setStep("upload")}>
+          <Button variant="outline" onClick={() => setStep("employer_selection")}>
             <ArrowLeft className="h-4 w-4 mr-1" /> Back
           </Button>
           <Button onClick={proceedToRowReview} disabled={!allConfirmed}>
@@ -696,6 +1106,9 @@ export function WorkerImportWizard({
 
   function renderRowReview() {
     const warningCount = reviewRows.filter((r) => r.parseWarnings.length > 0).length;
+    const backStep: WizardStep =
+      worksiteResolutions.length > 0 ? "worksite_matching" : "employer_selection";
+
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -776,13 +1189,11 @@ export function WorkerImportWizard({
                   </TableCell>
                   <TableCell className="p-1">
                     <Select
-                      value={
-                        String(
-                          row.overrideMemberRoleTypeId !== undefined
-                            ? row.overrideMemberRoleTypeId
-                            : row.memberRoleTypeId ?? ""
-                        )
-                      }
+                      value={String(
+                        row.overrideMemberRoleTypeId !== undefined
+                          ? row.overrideMemberRoleTypeId
+                          : (row.memberRoleTypeId ?? "")
+                      )}
                       onValueChange={(v) =>
                         updateReviewRow(row.rowIndex, {
                           overrideMemberRoleTypeId: v ? Number(v) : null,
@@ -795,7 +1206,10 @@ export function WorkerImportWizard({
                       <SelectContent>
                         <SelectItem value="">—</SelectItem>
                         {memberRoleTypes.map((rt) => (
-                          <SelectItem key={rt.role_type_id} value={String(rt.role_type_id)}>
+                          <SelectItem
+                            key={rt.role_type_id}
+                            value={String(rt.role_type_id)}
+                          >
                             {rt.display_name}
                           </SelectItem>
                         ))}
@@ -819,7 +1233,7 @@ export function WorkerImportWizard({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setStep("worksite_matching")}>
+          <Button variant="outline" onClick={() => setStep(backStep)}>
             <ArrowLeft className="h-4 w-4 mr-1" /> Back
           </Button>
           <Button onClick={proceedToDedupCheck}>
@@ -869,8 +1283,8 @@ export function WorkerImportWizard({
     return (
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          {dedupMatches.length} potential duplicate{dedupMatches.length !== 1 ? "s" : ""} found.
-          Choose how to handle each match.
+          {dedupMatches.length} potential duplicate
+          {dedupMatches.length !== 1 ? "s" : ""} found. Choose how to handle each match.
         </p>
 
         <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
@@ -883,7 +1297,10 @@ export function WorkerImportWizard({
                 <div className="flex items-start gap-3 mb-3">
                   <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
                   <div className="text-xs text-muted-foreground">
-                    Matched on <span className="font-medium text-foreground">{match.matchedOn}</span>
+                    Matched on{" "}
+                    <span className="font-medium text-foreground">
+                      {match.matchedOn}
+                    </span>
                   </div>
                 </div>
 
@@ -896,8 +1313,12 @@ export function WorkerImportWizard({
                       {importRow.overrideFirstName ?? importRow.firstName}{" "}
                       {importRow.overrideLastName ?? importRow.lastName}
                     </p>
-                    <p className="text-muted-foreground">{importRow.overrideEmail ?? importRow.email ?? "—"}</p>
-                    <p className="text-muted-foreground">{importRow.overridePhone ?? importRow.phone ?? "—"}</p>
+                    <p className="text-muted-foreground">
+                      {importRow.overrideEmail ?? importRow.email ?? "—"}
+                    </p>
+                    <p className="text-muted-foreground">
+                      {importRow.overridePhone ?? importRow.phone ?? "—"}
+                    </p>
                   </div>
                   <div className="space-y-1">
                     <p className="font-medium text-muted-foreground uppercase tracking-wide text-[10px]">
@@ -906,30 +1327,38 @@ export function WorkerImportWizard({
                     <p className="font-medium">
                       {match.existingFirstName} {match.existingLastName}
                     </p>
-                    <p className="text-muted-foreground">{match.existingEmail ?? "—"}</p>
-                    <p className="text-muted-foreground">{match.existingPhone ?? "—"}</p>
+                    <p className="text-muted-foreground">
+                      {match.existingEmail ?? "—"}
+                    </p>
+                    <p className="text-muted-foreground">
+                      {match.existingPhone ?? "—"}
+                    </p>
                     {match.existingWorksiteName && (
-                      <p className="text-muted-foreground">{match.existingWorksiteName}</p>
+                      <p className="text-muted-foreground">
+                        {match.existingWorksiteName}
+                      </p>
                     )}
                   </div>
                 </div>
 
                 <div className="flex gap-2">
-                  {(["update", "skip", "create"] as DedupMatch["action"][]).map((action) => (
-                    <Button
-                      key={action}
-                      variant={match.action === action ? "default" : "outline"}
-                      size="sm"
-                      className="text-xs h-7 capitalize"
-                      onClick={() => updateDedupAction(match.rowIndex, action)}
-                    >
-                      {action === "update"
-                        ? "Update Existing"
-                        : action === "skip"
-                          ? "Skip"
-                          : "Import as New"}
-                    </Button>
-                  ))}
+                  {(["update", "skip", "create"] as DedupMatch["action"][]).map(
+                    (action) => (
+                      <Button
+                        key={action}
+                        variant={match.action === action ? "default" : "outline"}
+                        size="sm"
+                        className="text-xs h-7 capitalize"
+                        onClick={() => updateDedupAction(match.rowIndex, action)}
+                      >
+                        {action === "update"
+                          ? "Update Existing"
+                          : action === "skip"
+                            ? "Skip"
+                            : "Import as New"}
+                      </Button>
+                    )
+                  )}
                 </div>
               </div>
             );
@@ -979,11 +1408,32 @@ export function WorkerImportWizard({
           ))}
         </div>
 
+        {selectedEmployerName && (
+          <div className="rounded-lg border p-3 flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">
+                Employer Assignment
+              </p>
+              <p className="text-sm font-medium">{selectedEmployerName}</p>
+            </div>
+          </div>
+        )}
+
         {worksiteSummary.length > 0 && (
           <div className="rounded-lg border p-3 space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">Worksite Assignments</p>
+            <p className="text-xs font-medium text-muted-foreground">
+              Worksite Assignments
+            </p>
             {worksiteSummary.map((r) => {
-              const count = groups.find((g) => g.groupName === r.groupName)?.rows.length ?? 0;
+              const count =
+                fileFormat === "group"
+                  ? (groups.find((g) => g.groupName === r.groupName)?.rows.length ?? 0)
+                  : headerRows.filter((row) => {
+                      const wCol =
+                        columnMappings.find((m) => m.field === "worksite")?.header ?? "";
+                      return String(row[wCol] ?? "").trim() === r.groupName;
+                    }).length;
               return (
                 <div key={r.groupName} className="flex justify-between text-xs">
                   <span className="font-medium">{r.groupName}</span>
@@ -1006,7 +1456,9 @@ export function WorkerImportWizard({
           </Button>
           <Button onClick={applyImport} disabled={isLoading}>
             {isLoading ? (
-              <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Applying…</>
+              <>
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" /> Applying…
+              </>
             ) : (
               <>Apply Import <ArrowRight className="h-4 w-4 ml-1" /></>
             )}
@@ -1021,7 +1473,11 @@ export function WorkerImportWizard({
     const hasErrors = result.errors.length > 0;
     return (
       <div className="space-y-4">
-        <div className={`flex items-center gap-3 p-4 rounded-lg ${hasErrors ? "bg-amber-50" : "bg-green-50"}`}>
+        <div
+          className={`flex items-center gap-3 p-4 rounded-lg ${
+            hasErrors ? "bg-amber-50" : "bg-green-50"
+          }`}
+        >
           {hasErrors ? (
             <AlertCircle className="h-6 w-6 text-amber-600 flex-shrink-0" />
           ) : (
@@ -1032,7 +1488,8 @@ export function WorkerImportWizard({
               {hasErrors ? "Import completed with errors" : "Import successful"}
             </p>
             <p className="text-xs text-muted-foreground">
-              {result.created} created · {result.updated} updated · {result.skipped} skipped
+              {result.created} created · {result.updated} updated · {result.skipped}{" "}
+              skipped
             </p>
           </div>
         </div>
@@ -1049,12 +1506,7 @@ export function WorkerImportWizard({
         )}
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => {
-              reset();
-            }}
-          >
+          <Button variant="outline" onClick={reset}>
             Import Another File
           </Button>
           <Button
@@ -1071,7 +1523,7 @@ export function WorkerImportWizard({
     );
   }
 
-  // ─── Main render ───────────────────────────────────────────────────────────
+  // ─── Main render ──────────────────────────────────────────────────────────
 
   return (
     <Dialog
@@ -1088,7 +1540,8 @@ export function WorkerImportWizard({
             Worker Import Wizard
           </DialogTitle>
           <DialogDescription>
-            Import workers from an xlsx spreadsheet with automatic worksite matching and deduplication.
+            Import workers from an xlsx spreadsheet with column mapping, employer
+            assignment, worksite matching, and deduplication.
           </DialogDescription>
         </DialogHeader>
 
@@ -1102,6 +1555,8 @@ export function WorkerImportWizard({
         ) : (
           <>
             {step === "upload" && renderUpload()}
+            {step === "column_mapping" && renderColumnMapping()}
+            {step === "employer_selection" && renderEmployerSelection()}
             {step === "worksite_matching" && renderWorksiteMatching()}
             {step === "row_review" && renderRowReview()}
             {step === "dedup_check" && renderDedupCheck()}

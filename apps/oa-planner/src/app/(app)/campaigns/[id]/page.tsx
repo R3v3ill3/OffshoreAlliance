@@ -3,8 +3,15 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { useCampaign, useUpdateCampaignOrganiser } from '@/lib/hooks/useCampaigns'
-import { useLeadOrganisers } from '@/lib/hooks/useOptions'
+import {
+  useCampaign,
+  useUpdateCampaignOrganiser,
+  useCampaignOrganisers,
+  useAddCampaignOrganiser,
+  useUpdateCampaignTeamMember,
+  useRemoveCampaignOrganiser,
+} from '@/lib/hooks/useCampaigns'
+import { useLeadOrganisers, useAllOrganisers } from '@/lib/hooks/useOptions'
 import { CampaignStageDatesEditor } from '@/components/campaign/CampaignStageDatesEditor'
 import { useAllGates, useCampaignAmbitionsByStage } from '@/lib/hooks/useGateAssessment'
 import { evaluateAmbitions } from '@/lib/utils/ambition-gate-logic'
@@ -13,10 +20,28 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import { STAGE_NAMES } from '@/types'
 import { cn } from '@/lib/utils'
-import { ChevronRight, Shield, CheckCircle, Pencil, X, Check } from 'lucide-react'
+import { ChevronRight, Shield, CheckCircle, Pencil, X, Check, UserPlus, Trash2, Users } from 'lucide-react'
 import { ExternalLink } from '@/components/shared/external-link'
+
+const CAMPAIGN_ROLE_LABELS: Record<string, string> = {
+  lead: 'Lead',
+  organiser: 'Organiser',
+  coordinator: 'Coordinator',
+  industrial_officer: 'Industrial Officer',
+  specialist: 'Specialist',
+}
+
+const CAMPAIGN_ROLES = Object.entries(CAMPAIGN_ROLE_LABELS)
 
 interface PageProps {
   params: { id: string }
@@ -30,14 +55,88 @@ export default function CampaignDetailPage({ params }: PageProps) {
   const { data: gates } = useAllGates(campaignId)
   const { data: ambitionsByStage } = useCampaignAmbitionsByStage(campaignId)
   const { data: leadOrganisers } = useLeadOrganisers()
+  const { data: allOrganisers } = useAllOrganisers()
+  const { data: teamMembers } = useCampaignOrganisers(campaignId)
   const updateOrganiser = useUpdateCampaignOrganiser()
+  const addTeamMember = useAddCampaignOrganiser()
+  const updateTeamMember = useUpdateCampaignTeamMember()
+  const removeTeamMember = useRemoveCampaignOrganiser()
 
   // Get URLs for cross-app navigation
   const organisingDbUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://oa.uconstruct.app'
-  const oaPlannerUrl = process.env.NEXT_PUBLIC_OA_PLANNER_URL || 'https://oaplanner.uconstruct.app'
 
+  // Primary lead editor state
   const [editingOrganiser, setEditingOrganiser] = useState(false)
   const [pendingOrganiserId, setPendingOrganiserId] = useState<number | undefined>()
+
+  // Add team member dialog state
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [addOrganiserId, setAddOrganiserId] = useState('')
+  const [addRole, setAddRole] = useState('organiser')
+  const [addReportsTo, setAddReportsTo] = useState('')
+
+  // Edit team member dialog state
+  const [editMemberId, setEditMemberId] = useState<number | null>(null)
+  const [editRole, setEditRole] = useState('organiser')
+  const [editReportsTo, setEditReportsTo] = useState('')
+
+  function openEditMember(member: { id: number; campaign_role: string; reports_to_organiser: { organiser_id: number } | null }) {
+    setEditMemberId(member.id)
+    setEditRole(member.campaign_role)
+    setEditReportsTo(member.reports_to_organiser?.organiser_id.toString() ?? '')
+  }
+
+  function resetAddDialog() {
+    setAddOrganiserId('')
+    setAddRole('organiser')
+    setAddReportsTo('')
+  }
+
+  async function handleAddMember() {
+    if (!addOrganiserId) return
+    try {
+      await addTeamMember.mutateAsync({
+        campaign_id: campaignId,
+        organiser_id: parseInt(addOrganiserId, 10),
+        campaign_role: addRole,
+        reports_to_organiser_id: addReportsTo ? parseInt(addReportsTo, 10) : null,
+      })
+      toast.success('Team member added')
+      setAddDialogOpen(false)
+      resetAddDialog()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to add team member')
+    }
+  }
+
+  async function handleUpdateMember() {
+    if (!editMemberId) return
+    try {
+      await updateTeamMember.mutateAsync({
+        campaign_id: campaignId,
+        id: editMemberId,
+        campaign_role: editRole,
+        reports_to_organiser_id: editReportsTo ? parseInt(editReportsTo, 10) : null,
+      })
+      toast.success('Team member updated')
+      setEditMemberId(null)
+    } catch {
+      toast.error('Failed to update team member')
+    }
+  }
+
+  async function handleRemoveMember(rowId: number, name: string) {
+    if (!confirm(`Remove ${name} from this campaign team?`)) return
+    try {
+      await removeTeamMember.mutateAsync({ campaign_id: campaignId, row_id: rowId })
+      toast.success('Team member removed')
+    } catch {
+      toast.error('Failed to remove team member')
+    }
+  }
+
+  // Organisers already on the team (to exclude from add picker)
+  const teamOrganiserIds = new Set(teamMembers?.map((m) => m.organiser?.organiser_id) ?? [])
 
   const gatesForTimeline = (gates || []).map((g: Record<string, unknown>) => {
     const gn = g.gate_number as number
@@ -258,6 +357,200 @@ export default function CampaignDetailPage({ params }: PageProps) {
           />
         </CardContent>
       </Card>
+
+      {/* Campaign Team */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-slate-500" />
+            <CardTitle className="text-base">Campaign Team</CardTitle>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1.5"
+            onClick={() => { resetAddDialog(); setAddDialogOpen(true) }}
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            Add member
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {!teamMembers || teamMembers.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-2">
+              No team members yet. Add organisers using the button above.
+            </p>
+          ) : (
+            <div className="divide-y">
+              {teamMembers.map((member) => {
+                const name = member.organiser?.organiser_name ?? 'Unknown'
+                const workRole = member.organiser?.user_profiles?.[0]?.work_role
+                const reportsToName = member.reports_to_organiser?.organiser_name
+                return (
+                  <div key={member.id} className="flex items-center justify-between py-2.5 gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium">{name}</span>
+                        <Badge variant="secondary" className="text-xs capitalize">
+                          {CAMPAIGN_ROLE_LABELS[member.campaign_role] ?? member.campaign_role}
+                        </Badge>
+                        {workRole && (
+                          <span className="text-xs text-muted-foreground">
+                            ({workRole.replace(/_/g, ' ')})
+                          </span>
+                        )}
+                      </div>
+                      {reportsToName && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Reports to: <span className="font-medium">{reportsToName}</span>
+                          <span className="italic"> (campaign)</span>
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-slate-400 hover:text-slate-700"
+                        onClick={() => openEditMember(member)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-slate-400 hover:text-red-600"
+                        onClick={() => handleRemoveMember(member.id, name)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Add Team Member Dialog */}
+      <Dialog open={addDialogOpen} onOpenChange={(o) => { setAddDialogOpen(o); if (!o) resetAddDialog() }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Team Member</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Organiser</Label>
+              <Select value={addOrganiserId} onValueChange={setAddOrganiserId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select organiser..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {allOrganisers
+                    ?.filter((o) => !teamOrganiserIds.has(o.organiser_id))
+                    .map((o) => {
+                      const profile = (o.user_profiles as Array<{ work_role: string | null }> | null)?.[0]
+                      return (
+                        <SelectItem key={o.organiser_id} value={o.organiser_id.toString()}>
+                          {o.organiser_name}
+                          {profile?.work_role && ` (${profile.work_role.replace(/_/g, ' ')})`}
+                        </SelectItem>
+                      )
+                    })}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Campaign Role</Label>
+              <Select value={addRole} onValueChange={setAddRole}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CAMPAIGN_ROLES.map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Reports to (campaign-specific, optional)</Label>
+              <Select value={addReportsTo} onValueChange={setAddReportsTo}>
+                <SelectTrigger>
+                  <SelectValue placeholder="— Use global default —" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">— Use global default —</SelectItem>
+                  {allOrganisers?.map((o) => (
+                    <SelectItem key={o.organiser_id} value={o.organiser_id.toString()}>
+                      {o.organiser_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Overrides the org-chart reporting line for this campaign only.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleAddMember}
+              disabled={!addOrganiserId || addTeamMember.isPending}
+            >
+              {addTeamMember.isPending ? 'Adding...' : 'Add to Team'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Team Member Dialog */}
+      <Dialog open={editMemberId !== null} onOpenChange={(o) => { if (!o) setEditMemberId(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Team Member</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Campaign Role</Label>
+              <Select value={editRole} onValueChange={setEditRole}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CAMPAIGN_ROLES.map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Reports to (campaign-specific, optional)</Label>
+              <Select value={editReportsTo} onValueChange={setEditReportsTo}>
+                <SelectTrigger>
+                  <SelectValue placeholder="— Use global default —" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">— Use global default —</SelectItem>
+                  {allOrganisers?.map((o) => (
+                    <SelectItem key={o.organiser_id} value={o.organiser_id.toString()}>
+                      {o.organiser_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditMemberId(null)}>Cancel</Button>
+            <Button onClick={handleUpdateMember} disabled={updateTeamMember.isPending}>
+              {updateTeamMember.isPending ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Stage cards */}
       <div>

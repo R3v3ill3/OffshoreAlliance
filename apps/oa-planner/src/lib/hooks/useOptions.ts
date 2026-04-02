@@ -262,6 +262,25 @@ export function useAddCustomAmbitionOption() {
   })
 }
 
+// Returns all active organisers regardless of work_role — used for campaign team picker
+export function useAllOrganisers() {
+  const supabase = createClient()
+
+  return useQuery({
+    queryKey: ['all-organisers'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('organisers')
+        .select('organiser_id, organiser_name, email, user_profiles(user_id, work_role, display_name)')
+        .eq('is_active', true)
+        .order('organiser_name')
+
+      if (error) throw error
+      return data
+    },
+  })
+}
+
 export function useAddCustomWtpOption() {
   const supabase = createClient()
   const queryClient = useQueryClient()

@@ -153,6 +153,119 @@ export function useUpdateCampaignOrganiser() {
   })
 }
 
+// ── Campaign Organiser Team ──────────────────────────────────────────────────
+
+export interface CampaignOrganiserMember {
+  id: number
+  campaign_id: number
+  campaign_role: string
+  added_at: string
+  organiser: {
+    organiser_id: number
+    organiser_name: string
+    email: string | null
+    user_profiles: Array<{ user_id: string; work_role: string | null; display_name: string }> | null
+  } | null
+  reports_to_organiser: {
+    organiser_id: number
+    organiser_name: string
+    email: string | null
+  } | null
+}
+
+export function useCampaignOrganisers(campaignId: number) {
+  return useQuery({
+    queryKey: ['campaign-organisers', campaignId],
+    queryFn: async (): Promise<CampaignOrganiserMember[]> => {
+      const res = await fetch(`/api/campaigns/${campaignId}/organisers`)
+      if (!res.ok) throw new Error('Failed to load campaign team')
+      return res.json()
+    },
+    enabled: campaignId > 0,
+  })
+}
+
+export function useAddCampaignOrganiser() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (payload: {
+      campaign_id: number
+      organiser_id: number
+      campaign_role: string
+      reports_to_organiser_id?: number | null
+    }) => {
+      const res = await fetch(`/api/campaigns/${payload.campaign_id}/organisers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organiser_id: payload.organiser_id,
+          campaign_role: payload.campaign_role,
+          reports_to_organiser_id: payload.reports_to_organiser_id ?? null,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error ?? 'Failed to add team member')
+      }
+      return res.json()
+    },
+    onSuccess: (_, { campaign_id }) => {
+      queryClient.invalidateQueries({ queryKey: ['campaign-organisers', campaign_id] })
+    },
+  })
+}
+
+export function useUpdateCampaignTeamMember() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (payload: {
+      campaign_id: number
+      id: number
+      campaign_role?: string
+      reports_to_organiser_id?: number | null
+    }) => {
+      const res = await fetch(`/api/campaigns/${payload.campaign_id}/organisers`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: payload.id,
+          campaign_role: payload.campaign_role,
+          reports_to_organiser_id: payload.reports_to_organiser_id,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error ?? 'Failed to update team member')
+      }
+      return res.json()
+    },
+    onSuccess: (_, { campaign_id }) => {
+      queryClient.invalidateQueries({ queryKey: ['campaign-organisers', campaign_id] })
+    },
+  })
+}
+
+export function useRemoveCampaignOrganiser() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ campaign_id, row_id }: { campaign_id: number; row_id: number }) => {
+      const res = await fetch(`/api/campaigns/${campaign_id}/organisers?rowId=${row_id}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error ?? 'Failed to remove team member')
+      }
+    },
+    onSuccess: (_, { campaign_id }) => {
+      queryClient.invalidateQueries({ queryKey: ['campaign-organisers', campaign_id] })
+    },
+  })
+}
+
 export function useCreateCampaign() {
   const supabase = createClient()
   const queryClient = useQueryClient()

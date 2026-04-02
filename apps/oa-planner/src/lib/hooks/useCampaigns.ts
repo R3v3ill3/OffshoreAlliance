@@ -133,6 +133,26 @@ export function useSyncAmbitionTargetDatesForCampaign() {
   })
 }
 
+export function useUpdateCampaignOrganiser() {
+  const supabase = createClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ campaign_id, organiser_id }: { campaign_id: number; organiser_id: number }) => {
+      const { error } = await supabase
+        .from('campaigns')
+        .update({ organiser_id })
+        .eq('campaign_id', campaign_id)
+
+      if (error) throw error
+    },
+    onSuccess: (_, { campaign_id }) => {
+      queryClient.invalidateQueries({ queryKey: ['campaign', campaign_id] })
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] })
+    },
+  })
+}
+
 export function useCreateCampaign() {
   const supabase = createClient()
   const queryClient = useQueryClient()

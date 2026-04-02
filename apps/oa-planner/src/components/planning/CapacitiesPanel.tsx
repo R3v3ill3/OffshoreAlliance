@@ -5,7 +5,7 @@ import { useCapacityOptions, useOrganisers } from '@/lib/hooks/useOptions'
 import { useAddCapacity, useUpdateCapacity } from '@/lib/hooks/useStagePlan'
 import { OptionSelector, type SelectableOption } from './OptionSelector'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { DateInput } from '@/components/ui/date-input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
@@ -313,10 +313,9 @@ export function CapacitiesPanel({
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
                         <Label className="text-xs">Target Resolution Date</Label>
-                        <Input
-                          type="date"
-                          defaultValue={capacity.resolution_date || ''}
-                          onBlur={(e) => handleUpdateGap(capacity.capacity_id, 'resolution_date', e.target.value)}
+                        <DateInput
+                          value={capacity.resolution_date || ''}
+                          onChange={(iso) => handleUpdateGap(capacity.capacity_id, 'resolution_date', iso)}
                           className="h-8 text-xs"
                         />
                       </div>

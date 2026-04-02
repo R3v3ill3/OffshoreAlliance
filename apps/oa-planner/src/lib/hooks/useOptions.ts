@@ -139,6 +139,58 @@ export function useOrganisers() {
   })
 }
 
+export function useLeadOrganisers() {
+  const supabase = createClient()
+
+  return useQuery({
+    queryKey: ['lead-organisers'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('user_id, organiser_id, reports_to, organisers(organiser_id, organiser_name, email)')
+        .eq('work_role', 'lead_organiser')
+        .not('organiser_id', 'is', null)
+
+      if (error) throw error
+
+      return data
+        .filter((up) => (up.organisers as { organiser_id: number } | null)?.organiser_id)
+        .map((up) => {
+          const org = up.organisers as { organiser_id: number; organiser_name: string; email: string | null }
+          return {
+            organiser_id: up.organiser_id as number,
+            organiser_name: org.organiser_name,
+            email: org.email,
+            user_profile_id: up.user_id,
+          }
+        })
+        .sort((a, b) => a.organiser_name.localeCompare(b.organiser_name))
+    },
+  })
+}
+
+export function useCurrentUserProfile() {
+  const supabase = createClient()
+
+  return useQuery({
+    queryKey: ['current-user-profile'],
+    queryFn: async () => {
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      if (authError) throw authError
+      if (!user) throw new Error('not authenticated')
+
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('user_id, work_role, organiser_id, reports_to')
+        .eq('user_id', user.id)
+        .single()
+
+      if (error) throw error
+      return data
+    },
+  })
+}
+
 export function useWorksites(agreementId?: number) {
   const supabase = createClient()
 

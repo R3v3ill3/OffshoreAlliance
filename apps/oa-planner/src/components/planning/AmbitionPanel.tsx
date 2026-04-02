@@ -5,6 +5,7 @@ import { useAmbitionOptions } from '@/lib/hooks/useOptions'
 import { useAddAmbition, useUpdateAmbition, useDeleteAmbition } from '@/lib/hooks/useStagePlan'
 import { OptionSelector, type SelectableOption } from './OptionSelector'
 import { Button } from '@/components/ui/button'
+import { DateInput } from '@/components/ui/date-input'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
@@ -20,6 +21,7 @@ import {
 } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { format, parseISO, isValid } from 'date-fns'
 import { Target, Trash2, Plus, CheckCircle, Calendar } from 'lucide-react'
 import { formatCategoryLabel } from '@/lib/utils/option-sorting'
 import type { PlanAmbition } from '@/types'
@@ -41,6 +43,8 @@ interface AmbitionPanelProps {
   campaignId: number
   /** Stage planned end — default target date for new ambitions */
   plannedEndDate?: string | null
+  /** Next stage's planned start — used to block hard gate if ambition target_date exceeds it */
+  nextStagePlannedStartDate?: string | null
   ambitions: AmbitionRow[]
 }
 
@@ -59,6 +63,7 @@ export function AmbitionPanel({
   stageNumber,
   campaignId,
   plannedEndDate,
+  nextStagePlannedStartDate,
   ambitions,
 }: AmbitionPanelProps) {
   const [showSelector, setShowSelector] = useState(ambitions.length === 0)
@@ -257,7 +262,7 @@ export function AmbitionPanel({
             ) : null}
             <div className="space-y-1">
               <Label className="text-xs">Target date</Label>
-              <Input type="date" value={customTargetDate} onChange={(e) => setCustomTargetDate(e.target.value)} />
+              <DateInput value={customTargetDate} onChange={setCustomTargetDate} />
             </div>
           </div>
           <DialogFooter>
@@ -368,9 +373,22 @@ export function AmbitionPanel({
                       <Label className="text-xs text-muted-foreground whitespace-nowrap">Gate:</Label>
                       <Select
                         value={ambition.is_hard_gate ? 'hard' : 'soft'}
-                        onValueChange={(v) =>
+                        onValueChange={(v) => {
+                          if (v === 'hard' && nextStagePlannedStartDate && ambition.target_date) {
+                            const targetD = parseISO(ambition.target_date)
+                            const nextStart = parseISO(nextStagePlannedStartDate)
+                            if (isValid(targetD) && isValid(nextStart) && targetD > nextStart) {
+                              toast.error(
+                                `Cannot set as hard gate — ambition target date ` +
+                                `(${format(targetD, 'dd/MM/yyyy')}) is after Stage ${stageNumber + 1}'s ` +
+                                `planned start (${format(nextStart, 'dd/MM/yyyy')}). ` +
+                                `Only ambitions completing within this stage can be hard gates.`
+                              )
+                              return
+                            }
+                          }
                           void patchAmbition(ambition.ambition_id, { is_hard_gate: v === 'hard' })
-                        }
+                        }}
                       >
                         <SelectTrigger className="h-8 w-[140px] text-xs">
                           <SelectValue />
@@ -438,12 +456,11 @@ export function AmbitionPanel({
                     <div className="flex items-center gap-2">
                       <Calendar className="h-3 w-3 text-muted-foreground" />
                       <Label className="text-xs text-muted-foreground">Target date:</Label>
-                      <Input
-                        type="date"
+                      <DateInput
                         value={ambition.target_date || ''}
-                        onChange={(e) =>
+                        onChange={(iso) =>
                           void patchAmbition(ambition.ambition_id, {
-                            target_date: e.target.value || null,
+                            target_date: iso || null,
                             target_date_user_overridden: true,
                           })
                         }

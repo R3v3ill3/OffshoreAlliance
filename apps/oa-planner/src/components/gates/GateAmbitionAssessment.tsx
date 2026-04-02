@@ -11,6 +11,7 @@ import {
   type PlanAmbitionWithOption,
 } from '@/lib/utils/ambition-gate-logic'
 import { Button } from '@/components/ui/button'
+import { DateInput } from '@/components/ui/date-input'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -286,11 +287,10 @@ export function GateAmbitionAssessment({
                               <option value="false">No</option>
                             </select>
                           ) : metric === 'date' ? (
-                            <Input
-                              type="date"
+                            <DateInput
                               value={currentVal}
-                              onChange={(e) =>
-                                setValues((p) => ({ ...p, [ambition.ambition_id]: e.target.value }))
+                              onChange={(iso) =>
+                                setValues((p) => ({ ...p, [ambition.ambition_id]: iso }))
                               }
                               className="h-8 text-xs w-36"
                             />

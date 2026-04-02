@@ -39,6 +39,12 @@ export default function StageplanPage({ params }: PageProps) {
   const stageName = STAGE_NAMES[stageNumber as keyof typeof STAGE_NAMES] || `Stage ${stageNumber}`
   const plan = stagePlanData?.plan
 
+  const allStagePlans = (campaign as any)?.campaign_stage_plans || []
+  const nextStagePlan = allStagePlans.find(
+    (s: { stage_number: number; planned_start_date?: string | null }) => s.stage_number === stageNumber + 1
+  )
+  const nextStagePlannedStartDate: string | null = nextStagePlan?.planned_start_date ?? null
+
   const prevStage = stageNumber > 1 ? stageNumber - 1 : null
   const nextStage = stageNumber < 6 ? stageNumber + 1 : null
 
@@ -180,6 +186,7 @@ export default function StageplanPage({ params }: PageProps) {
                   stageNumber={stageNumber}
                   campaignId={campaignId}
                   plannedEndDate={plan.planned_end_date}
+                  nextStagePlannedStartDate={nextStagePlannedStartDate}
                   ambitions={(stagePlanData?.ambitions || []) as any}
                 />
               </TabsContent>

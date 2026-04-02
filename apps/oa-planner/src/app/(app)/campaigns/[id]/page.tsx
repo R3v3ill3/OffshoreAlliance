@@ -1,7 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { useCampaign } from '@/lib/hooks/useCampaigns'
+import { useState } from 'react'
+import { toast } from 'sonner'
+import { useCampaign, useUpdateCampaignOrganiser } from '@/lib/hooks/useCampaigns'
+import { useLeadOrganisers } from '@/lib/hooks/useOptions'
 import { CampaignStageDatesEditor } from '@/components/campaign/CampaignStageDatesEditor'
 import { useAllGates, useCampaignAmbitionsByStage } from '@/lib/hooks/useGateAssessment'
 import { evaluateAmbitions } from '@/lib/utils/ambition-gate-logic'
@@ -9,9 +12,10 @@ import { CampaignTimeline } from '@/components/campaign/CampaignTimeline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { STAGE_NAMES } from '@/types'
 import { cn } from '@/lib/utils'
-import { ChevronRight, Shield, CheckCircle } from 'lucide-react'
+import { ChevronRight, Shield, CheckCircle, Pencil, X, Check } from 'lucide-react'
 
 interface PageProps {
   params: { id: string }
@@ -24,6 +28,11 @@ export default function CampaignDetailPage({ params }: PageProps) {
   const { data: campaign, isLoading } = useCampaign(campaignId)
   const { data: gates } = useAllGates(campaignId)
   const { data: ambitionsByStage } = useCampaignAmbitionsByStage(campaignId)
+  const { data: leadOrganisers } = useLeadOrganisers()
+  const updateOrganiser = useUpdateCampaignOrganiser()
+
+  const [editingOrganiser, setEditingOrganiser] = useState(false)
+  const [pendingOrganiserId, setPendingOrganiserId] = useState<number | undefined>()
 
   const gatesForTimeline = (gates || []).map((g: Record<string, unknown>) => {
     const gn = g.gate_number as number
@@ -76,7 +85,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
           {campaign.description && (
             <p className="text-muted-foreground mt-1">{campaign.description}</p>
           )}
-          <div className="flex items-center gap-2 mt-2">
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
             <Badge
               className={cn(
                 campaign.status === 'active' ? 'bg-blue-100 text-blue-700' :
@@ -87,10 +96,67 @@ export default function CampaignDetailPage({ params }: PageProps) {
             >
               {campaign.status}
             </Badge>
-            {(campaign as any).organisers?.organiser_name && (
-              <span className="text-sm text-muted-foreground">
-                Lead: {(campaign as any).organisers.organiser_name}
-              </span>
+
+            {/* Inline organiser editor */}
+            {editingOrganiser ? (
+              <div className="flex items-center gap-2">
+                <Select
+                  value={pendingOrganiserId?.toString() ?? (campaign as any).organiser_id?.toString() ?? ''}
+                  onValueChange={(v) => setPendingOrganiserId(parseInt(v))}
+                >
+                  <SelectTrigger className="h-7 text-sm w-48">
+                    <SelectValue placeholder="Select organiser..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {leadOrganisers?.map((o) => (
+                      <SelectItem key={o.organiser_id} value={o.organiser_id.toString()}>
+                        {o.organiser_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50"
+                  disabled={updateOrganiser.isPending}
+                  onClick={async () => {
+                    const id = pendingOrganiserId ?? (campaign as any).organiser_id
+                    if (!id) return
+                    try {
+                      await updateOrganiser.mutateAsync({ campaign_id: campaignId, organiser_id: id })
+                      toast.success('Organiser updated')
+                      setEditingOrganiser(false)
+                      setPendingOrganiserId(undefined)
+                    } catch {
+                      toast.error('Failed to update organiser')
+                    }
+                  }}
+                >
+                  <Check className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 text-slate-500 hover:text-slate-700"
+                  onClick={() => { setEditingOrganiser(false); setPendingOrganiserId(undefined) }}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setEditingOrganiser(true)}
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground group"
+              >
+                <span>
+                  Lead:{' '}
+                  <span className="font-medium">
+                    {(campaign as any).organisers?.organiser_name ?? 'Unassigned'}
+                  </span>
+                </span>
+                <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+              </button>
             )}
           </div>
         </div>

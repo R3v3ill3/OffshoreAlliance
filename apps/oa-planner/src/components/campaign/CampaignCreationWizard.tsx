@@ -1,14 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { format, addDays, subDays } from 'date-fns'
-import { useAgreements, useOrganisers } from '@/lib/hooks/useOptions'
+import { useAgreements, useLeadOrganisers, useCurrentUserProfile } from '@/lib/hooks/useOptions'
 import { useCreateCampaign } from '@/lib/hooks/useCampaigns'
 import { calculateBackwardsTimeline, calculateForwardsTimeline } from '@/lib/utils/timeline'
 import { STAGE_NAMES } from '@/types'
 import { Button } from '@/components/ui/button'
+import { DateInput } from '@/components/ui/date-input'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -88,8 +89,26 @@ export function CampaignCreationWizard() {
   })
 
   const { data: agreements, isLoading: agreementsLoading } = useAgreements()
-  const { data: organisers, isLoading: organisersLoading } = useOrganisers()
+  const { data: leadOrganisers, isLoading: organisersLoading } = useLeadOrganisers()
+  const { data: myProfile } = useCurrentUserProfile()
   const createCampaign = useCreateCampaign()
+
+  // Auto-default the organiser based on the signed-in user's profile
+  useEffect(() => {
+    if (!myProfile || !leadOrganisers || state.organiser_id) return
+
+    if (myProfile.work_role === 'lead_organiser' && myProfile.organiser_id) {
+      setState((p) => ({ ...p, organiser_id: myProfile.organiser_id as number }))
+      return
+    }
+
+    if (myProfile.reports_to) {
+      const manager = leadOrganisers.find((lo) => lo.user_profile_id === myProfile.reports_to)
+      if (manager) {
+        setState((p) => ({ ...p, organiser_id: manager.organiser_id }))
+      }
+    }
+  }, [myProfile, leadOrganisers])
 
   const progress = ((step - 1) / (STEPS.length - 1)) * 100
 
@@ -146,26 +165,37 @@ export function CampaignCreationWizard() {
   }
 
   function updateStageDuration(stageNumber: number, weeks: number) {
-    if (!weeks || weeks < 1) return
+    if (!weeks || weeks < 0.1) return
+    const days = Math.round(weeks * 7)
+    updateStageDurationDays(stageNumber, days)
+  }
+
+  function updateStageDurationDays(stageNumber: number, days: number) {
+    if (!days || days < 1) return
 
     setState((prev) => {
       const newDates = [...prev.stage_dates]
       const idx = newDates.findIndex((s) => s.stage_number === stageNumber)
       if (idx === -1) return prev
 
-      // Recalculate from this stage onwards
-      newDates[idx].duration_weeks = weeks
-      newDates[idx].planned_end = format(
-        addDays(new Date(newDates[idx].planned_start), weeks * 7),
-        'yyyy-MM-dd'
-      )
+      newDates[idx] = {
+        ...newDates[idx],
+        duration_weeks: Math.round((days / 7) * 10) / 10,
+        planned_end: format(
+          addDays(new Date(newDates[idx].planned_start), days),
+          'yyyy-MM-dd'
+        ),
+      }
 
       for (let i = idx + 1; i < newDates.length; i++) {
-        newDates[i].planned_start = newDates[i - 1].planned_end
-        newDates[i].planned_end = format(
-          addDays(new Date(newDates[i].planned_start), newDates[i].duration_weeks * 7),
-          'yyyy-MM-dd'
-        )
+        newDates[i] = {
+          ...newDates[i],
+          planned_start: newDates[i - 1].planned_end,
+          planned_end: format(
+            addDays(new Date(newDates[i - 1].planned_end), Math.round(newDates[i].duration_weeks * 7)),
+            'yyyy-MM-dd'
+          ),
+        }
       }
 
       return { ...prev, stage_dates: newDates }
@@ -391,7 +421,7 @@ export function CampaignCreationWizard() {
                     <SelectValue placeholder="Select lead organiser..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {organisers?.map((o) => (
+                    {leadOrganisers?.map((o) => (
                       <SelectItem key={o.organiser_id} value={o.organiser_id.toString()}>
                         {o.organiser_name}
                       </SelectItem>
@@ -441,19 +471,19 @@ export function CampaignCreationWizard() {
               <p className="text-xs text-muted-foreground">
                 Stage 1 begins on this date (defaults from the timeline below). Adjust for back-fill or campaigns already under way.
               </p>
-              <Input
-                id="campaign-start"
-                type="date"
-                value={state.stage_dates[0]?.planned_start ?? ''}
-                onChange={(e) => {
-                  const v = e.target.value
-                  if (!v) return
-                  setState((p) => ({
-                    ...p,
-                    stage_dates: rebuildTimelineFromCampaignStart(v, p.stage_dates),
-                  }))
-                }}
-              />
+              <div className="max-w-[180px]">
+                <DateInput
+                  id="campaign-start"
+                  value={state.stage_dates[0]?.planned_start ?? ''}
+                  onChange={(v) => {
+                    if (!v) return
+                    setState((p) => ({
+                      ...p,
+                      stage_dates: rebuildTimelineFromCampaignStart(v, p.stage_dates),
+                    }))
+                  }}
+                />
+              </div>
             </div>
 
             {state.expiry_date && daysToPane !== null && (
@@ -474,27 +504,42 @@ export function CampaignCreationWizard() {
 
             <div className="space-y-3">
               {state.stage_dates.map((stage) => (
-                <div key={stage.stage_number} className="flex items-center gap-3 p-3 rounded-lg border bg-slate-50">
-                  <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold text-sm flex-shrink-0">
-                    {stage.stage_number}
+                <div key={stage.stage_number} className="rounded-lg border bg-slate-50 p-3 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold text-sm flex-shrink-0">
+                      {stage.stage_number}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{stage.stage_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {format(new Date(stage.planned_start), 'dd/MM/yyyy')} →{' '}
+                        {format(new Date(stage.planned_end), 'dd/MM/yyyy')}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">{stage.stage_name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {format(new Date(stage.planned_start), 'dd MMM yyyy')} →{' '}
-                      {format(new Date(stage.planned_end), 'dd MMM yyyy')}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Input
-                      type="number"
-                      min="1"
-                      max="52"
-                      value={stage.duration_weeks}
-                      onChange={(e) => updateStageDuration(stage.stage_number, parseInt(e.target.value))}
-                      className="w-16 text-center text-sm"
-                    />
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">weeks</span>
+                  <div className="flex items-center gap-3 pl-11">
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        type="number"
+                        min="1"
+                        value={Math.round(stage.duration_weeks * 7)}
+                        onChange={(e) => updateStageDurationDays(stage.stage_number, parseInt(e.target.value))}
+                        className="w-16 text-center text-sm"
+                      />
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">days</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">/</span>
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        type="number"
+                        min="0.1"
+                        step="0.5"
+                        value={stage.duration_weeks}
+                        onChange={(e) => updateStageDuration(stage.stage_number, parseFloat(e.target.value))}
+                        className="w-16 text-center text-sm"
+                      />
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">weeks</span>
+                    </div>
                   </div>
                 </div>
               ))}

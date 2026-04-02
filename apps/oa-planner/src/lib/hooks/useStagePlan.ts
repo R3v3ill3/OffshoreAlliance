@@ -47,14 +47,17 @@ export function useStagePlan(campaignId: number, stageNumber: number) {
           .order('sort_order'),
       ])
 
+      const firstError = ambitions.error || whereToPlay.error || theories.error || capacities.error || mgmtSystems.error
+      if (firstError) throw firstError
+
       return {
         plan,
-        ambitions: ambitions.data || [],
-        whereToPlay: whereToPlay.data || [],
-        theories: theories.data || [],
-        capacities: capacities.data || [],
-        managementSystems: mgmtSystems.data || [],
-        currentTheory: theories.data?.find((t) => t.is_current) || null,
+        ambitions: ambitions.data ?? [],
+        whereToPlay: whereToPlay.data ?? [],
+        theories: theories.data ?? [],
+        capacities: capacities.data ?? [],
+        managementSystems: mgmtSystems.data ?? [],
+        currentTheory: theories.data?.find((t) => t.is_current) ?? null,
       }
     },
     enabled: !!campaignId && !!stageNumber,

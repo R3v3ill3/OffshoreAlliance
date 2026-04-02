@@ -5,6 +5,8 @@ import { useState } from 'react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from 'sonner'
 import { SupabaseAuthProvider } from '@/components/providers/SupabaseAuthProvider'
+// Import Sentry client configuration for error tracking
+import '@/../../sentry.client.config'
 
 function isAuthError(error: unknown): boolean {
   if (!error) return false

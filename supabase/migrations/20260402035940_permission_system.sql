@@ -334,7 +334,7 @@ DECLARE
 BEGIN
   -- Check if user can approve/deny
   SELECT is_admin() OR is_lead_organiser_for_campaign(
-    SELECT campaign_id FROM campaign_permission_requests WHERE request_id = p_request_id
+    (SELECT campaign_id FROM campaign_permission_requests WHERE request_id = p_request_id)
   )
   INTO v_can_approve;
 

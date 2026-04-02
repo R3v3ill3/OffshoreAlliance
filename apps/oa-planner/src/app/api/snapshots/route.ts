@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,6 +12,8 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}))
     const { campaign_id, snapshot_type = 'manual' } = body
+
+    console.log('[Manual Snapshot] Creating snapshot for campaign:', campaign_id, 'by user:', user.id)
 
     // Get all active campaigns or specific campaign
     let campaignQuery = supabase
@@ -32,7 +34,10 @@ export async function POST(req: NextRequest) {
 
     const { data: campaigns, error } = await campaignQuery
 
-    if (error) throw error
+    if (error) {
+      console.error('[Manual Snapshot] Error fetching campaigns:', error)
+      throw error
+    }
 
     const snapshots = campaigns?.map((campaign) => ({
       campaign_id: campaign.campaign_id,
@@ -48,20 +53,27 @@ export async function POST(req: NextRequest) {
       created_by: user.id,
     }))
 
+    let insertedCount = 0
     if (snapshots && snapshots.length > 0) {
       const { error: insertError } = await supabase
         .from('reporting_snapshots')
         .insert(snapshots)
 
-      if (insertError) throw insertError
+      if (insertError) {
+        console.error('[Manual Snapshot] Error inserting snapshots:', insertError)
+        throw insertError
+      }
+      insertedCount = snapshots.length
     }
+
+    console.log(`[Manual Snapshot] Successfully created ${insertedCount} snapshots`)
 
     return NextResponse.json({
       success: true,
-      snapshots_created: snapshots?.length || 0,
+      snapshots_created: insertedCount,
     })
   } catch (error) {
-    console.error('Snapshot error:', error)
+    console.error('[Manual Snapshot] Fatal error:', error)
     return NextResponse.json({ error: 'Failed to create snapshots' }, { status: 500 })
   }
 }
@@ -76,8 +88,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Use service role for cron job
-    const supabase = await createClient()
+    // Use service role for cron job to bypass RLS
+    const supabase = await createServiceClient()
 
     const { data: campaigns, error } = await supabase
       .from('campaigns')
@@ -90,7 +102,10 @@ export async function GET(req: NextRequest) {
       `)
       .eq('status', 'active')
 
-    if (error) throw error
+    if (error) {
+      console.error('[Cron Snapshot] Error fetching campaigns:', error)
+      throw error
+    }
 
     const snapshots = campaigns?.map((campaign) => ({
       campaign_id: campaign.campaign_id,
@@ -105,12 +120,24 @@ export async function GET(req: NextRequest) {
       },
     }))
 
+    let insertedCount = 0
     if (snapshots && snapshots.length > 0) {
-      await supabase.from('reporting_snapshots').insert(snapshots)
+      const { error: insertError } = await supabase
+        .from('reporting_snapshots')
+        .insert(snapshots)
+
+      if (insertError) {
+        console.error('[Cron Snapshot] Error inserting snapshots:', insertError)
+        throw insertError
+      }
+      insertedCount = snapshots.length
     }
 
-    return NextResponse.json({ success: true, count: snapshots?.length || 0 })
-  } catch (_error) {
+    console.log(`[Cron Snapshot] Successfully created ${insertedCount} snapshots`)
+
+    return NextResponse.json({ success: true, count: insertedCount })
+  } catch (error) {
+    console.error('[Cron Snapshot] Fatal error:', error)
     return NextResponse.json({ error: 'Snapshot failed' }, { status: 500 })
   }
 }

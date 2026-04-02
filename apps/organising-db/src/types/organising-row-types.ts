@@ -313,6 +313,7 @@ export interface Campaign {
   campaign_scope: CampaignScopeType | null;
   total_worker_estimate: number | null;
   sector_wide: boolean;
+  created_by?: string;
   created_at: string;
   updated_at: string;
 }
@@ -874,4 +875,74 @@ export interface OrganisingUniverseRow {
   sector_id: number | null;
   sector_name: string | null;
   worker_count: number;
+}
+
+// ---------- Campaign Permission System types ----------
+
+export type PermissionStatus = "active" | "revoked" | "expired";
+export type PermissionRequestStatus = "pending" | "approved" | "denied";
+
+export interface CampaignEditPermission {
+  permission_id: number;
+  campaign_id: number;
+  campaign_name?: string;
+  granted_by: string;
+  granted_by_organiser_id?: number;
+  granted_by_name?: string;
+  granted_to: string;
+  granted_to_organiser_id?: number;
+  granted_to_name?: string;
+  granted_at: string;
+  is_persistent: boolean;
+  reason: string | null;
+  status: PermissionStatus;
+  revoked_at: string | null;
+  revoked_by: string | null;
+}
+
+export interface CampaignPermissionRequest {
+  request_id: number;
+  campaign_id: number;
+  campaign_name?: string;
+  requested_by: string;
+  requested_by_organiser_id?: number;
+  requested_by_name?: string;
+  requested_by_email?: string;
+  reason: string | null;
+  status: PermissionRequestStatus;
+  requested_at: string;
+  reviewed_by?: string;
+  reviewed_at?: string | null;
+  response_reason?: string | null;
+  approved_permission_id?: number;
+}
+
+export interface MyCampaignPermission {
+  campaign_id: number;
+  campaign_name: string;
+  access_type: "permission" | "creator" | "assigned";
+  granted_by_name: string;
+  granted_at: string;
+}
+
+// RLS helper function results (from RPC calls)
+export interface PermissionRequestResult {
+  success: boolean;
+  message?: string;
+  request_id?: number;
+  campaign_name?: string;
+  owner_id?: string;
+  leads_to_notify?: string[];
+}
+
+export interface PermissionGrantResult {
+  success: boolean;
+  message?: string;
+  permission_id?: number;
+  campaign_id?: number;
+}
+
+export interface PermissionRevokeResult {
+  success: boolean;
+  message?: string;
 }

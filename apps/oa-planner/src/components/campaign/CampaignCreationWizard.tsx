@@ -95,6 +95,9 @@ export function CampaignCreationWizard() {
 
   // Auto-default the organiser based on the signed-in user's profile
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6d7bb4'},body:JSON.stringify({sessionId:'6d7bb4',runId:'run1',hypothesisId:'D',location:'CampaignCreationWizard.tsx:useEffect',message:'default organiser effect fired',data:{myProfileLoaded:!!myProfile,leadOrganisersCount:leadOrganisers?.length??'null',currentOrganiserId:state.organiser_id??null,work_role:myProfile?.work_role??null,profile_organiser_id:myProfile?.organiser_id??null,reports_to:myProfile?.reports_to??null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     if (!myProfile || !leadOrganisers || state.organiser_id) return
 
     if (myProfile.work_role === 'lead_organiser' && myProfile.organiser_id) {

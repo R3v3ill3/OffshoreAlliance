@@ -62,6 +62,9 @@ export default function CampaignDetailPage({ params }: PageProps) {
     return <div className="p-6 text-center text-slate-500">Campaign not found</div>
   }
 
+  // #region agent log
+  fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6d7bb4'},body:JSON.stringify({sessionId:'6d7bb4',runId:'run1',hypothesisId:'E',location:'campaigns/[id]/page.tsx',message:'campaign data shape',data:{campaign_id:(campaign as any).campaign_id,organiser_id:(campaign as any).organiser_id??null,organisers_field:(campaign as any).organisers??null,leadOrganisersCount:leadOrganisers?.length??'null'},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   const timeline = (campaign as any).campaign_timelines
   const stagePlans = (campaign as any).campaign_stage_plans || []
   const sortedStages = [...stagePlans].sort((a: { stage_number: number }, b: { stage_number: number }) => a.stage_number - b.stage_number)

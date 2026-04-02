@@ -70,7 +70,7 @@ CREATE OR REPLACE VIEW workload_campaign_progress AS
 WITH campaign_criteria AS (
     SELECT
         gd.campaign_id,
-        gc.gate_id,
+        gd.gate_id,
         gd.gate_number,
         gd.gate_name,
         COUNT(*) as total_criteria,
@@ -100,8 +100,8 @@ WITH campaign_criteria AS (
         ON gd.gate_id = gc.gate_id
     WHERE gd.is_active = true
     GROUP BY
+        gd.gate_id,
         gd.campaign_id,
-        gc.gate_id,
         gd.gate_number,
         gd.gate_name
 )
@@ -181,13 +181,20 @@ SELECT
         WHERE ct.campaign_id = c.campaign_id
           AND w.is_active = true
     ) as worker_count,
-    -- Count OA leaders associated with this campaign
+    -- Distinct OA leaders from campaign_task_lists (worker vs organiser IDs namespaced)
     (
-        SELECT COUNT(DISTINCT col.leader_id)
-        FROM campaign_ou_leaders col
-        JOIN campaign_ous cou
-            ON col.campaign_ou_id = cou.campaign_ou_id
-        WHERE cou.campaign_id = c.campaign_id
+        SELECT COUNT(DISTINCT lid)::bigint
+        FROM (
+            SELECT 'w:' || ctl.leader_worker_id::text AS lid
+            FROM campaign_task_lists ctl
+            WHERE ctl.campaign_id = c.campaign_id
+              AND ctl.leader_worker_id IS NOT NULL
+            UNION
+            SELECT 'o:' || ctl.leader_organiser_id::text
+            FROM campaign_task_lists ctl
+            WHERE ctl.campaign_id = c.campaign_id
+              AND ctl.leader_organiser_id IS NOT NULL
+        ) leader_ids
     ) as leader_count
 FROM campaigns c
 WHERE c.status IN ('active', 'planning');
@@ -253,13 +260,13 @@ SELECT
     (
         SELECT json_agg(json_build_object(
             'action_id', ca.action_id,
-            'action_name', ca.action_name,
+            'action_name', COALESCE(ca.title, ca.action_type),
             'status', ca.status,
             'due_date', ca.due_date,
-            'assigned_to', ca.assigned_to
+            'assigned_to', ca.assigned_organiser_id
         ) ORDER BY ca.due_date NULLS LAST)
         FROM (
-            SELECT ca.action_id, ca.action_name, ca.status, ca.due_date, ca.assigned_to
+            SELECT ca.action_id, ca.title, ca.action_type, ca.status, ca.due_date, ca.assigned_organiser_id
             FROM campaign_actions ca
             WHERE ca.campaign_id = c.campaign_id
               AND ca.status = 'in_progress'
@@ -371,7 +378,7 @@ BEGIN
         wds.worksite_count,
         wds.employer_count,
         wds.worker_count,
-        wds.leader_count,
+        wds.leader_count::integer,
         wds.total_activities_underway,
         wds.in_progress_actions,
         wds.pending_gate_assessments,
@@ -394,20 +401,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Grant execute on function
 GRANT EXECUTE ON FUNCTION get_workload_dashboard_data TO authenticated;
 
--- ============================================================
--- INDEXES for performance
--- ============================================================
-CREATE INDEX IF NOT EXISTS idx_workload_campaigns_by_stage_status
-    ON workload_campaigns_by_stage(campaign_status, stage_display_status);
-
-CREATE INDEX IF NOT EXISTS idx_workload_campaigns_by_stage_created_by
-    ON workload_campaigns_by_stage(created_by);
-
-CREATE INDEX IF NOT EXISTS idx_workload_dashboard_summary_created_by
-    ON workload_dashboard_summary(created_by);
-
-CREATE INDEX IF NOT EXISTS idx_workload_dashboard_summary_status
-    ON workload_dashboard_summary(campaign_status);
+-- NOTE: Indexes cannot be created on plain views in PostgreSQL. Add indexes on
+-- underlying tables (e.g. campaigns, campaign_stage_plans) if query plans need them.
 
 -- ============================================================
 -- COMMENT documentation

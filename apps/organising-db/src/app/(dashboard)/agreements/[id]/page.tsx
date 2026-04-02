@@ -628,6 +628,7 @@ export default function AgreementDetailPage() {
             </Button>
           </div>
         )}
+        </div>
       </div>
 
       {saveError && (

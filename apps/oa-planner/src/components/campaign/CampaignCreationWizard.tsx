@@ -108,7 +108,7 @@ export function CampaignCreationWizard() {
         setState((p) => ({ ...p, organiser_id: manager.organiser_id }))
       }
     }
-  }, [myProfile, leadOrganisers])
+  }, [myProfile, leadOrganisers, state.organiser_id])
 
   const progress = ((step - 1) / (STEPS.length - 1)) * 100
 

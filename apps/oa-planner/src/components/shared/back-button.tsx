@@ -48,7 +48,7 @@ export function BackButton({ href, label = 'Back', fallbackHref }: BackButtonPro
   };
 
   return (
-    <Button variant="ghost" size="icon" onClick={handleClick}>
+    <Button variant="ghost" size="icon" onClick={handleClick} aria-label={label}>
       <ArrowLeft className="h-4 w-4" />
     </Button>
   );

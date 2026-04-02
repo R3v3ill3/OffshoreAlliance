@@ -20,6 +20,7 @@ import {
   Layers,
   LayoutGrid,
   Folder,
+  Activity,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ import { Separator } from "@/components/ui/separator";
 
 export const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/workload", label: "Workload", icon: Activity },
   { href: "/overview", label: "Overview", icon: LayoutGrid },
   { href: "/workers", label: "Workers", icon: Users },
   { href: "/employers", label: "Employers", icon: Building2 },

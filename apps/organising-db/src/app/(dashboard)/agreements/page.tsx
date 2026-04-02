@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Plus, LayoutList, CalendarDays } from "lucide-react";
+import { Plus, LayoutList, CalendarDays, ExternalLink } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ExternalLink as ExternalLinkComponent } from "@/components/shared/external-link";
 import {
   Select,
   SelectContent,
@@ -30,6 +31,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { AgreementsCalendar } from "@/components/agreements/agreements-calendar";
+import { CampaignStatusBadge } from "@/components/campaigns/campaign-status-badge";
 import type { AgreementStatus } from "@/types/database";
 import type { Database } from "@oa/db-types";
 
@@ -44,6 +46,7 @@ interface AgreementRow {
   sector: { sector_name: string } | null;
   employer: { employer_name: string } | null;
   agreement_unions: { union: { union_code: string } | null }[];
+  campaigns?: Array<{ campaign_id: number; name: string; status: string }>;
   [key: string]: unknown;
 }
 
@@ -114,6 +117,12 @@ const columns: Column<AgreementRow>[] = [
       return codes?.length ? codes.join(", ") : "—";
     },
   },
+  {
+    key: "campaign_status",
+    header: "Campaign Status",
+    sortable: false,
+    render: (row) => <CampaignStatusBadge agreementId={row.agreement_id} size="sm" />,
+  },
 ];
 
 interface SectorOption {
@@ -163,7 +172,8 @@ export default function AgreementsPage() {
            commencement_date, expiry_date, status,
            sector:sectors(sector_name),
            employer:employers(employer_name),
-           agreement_unions(union:unions(union_code))`
+           agreement_unions(union:unions(union_code)),
+           campaigns(campaign_id, name, status)`
         )
         .order("decision_no", { ascending: false });
 

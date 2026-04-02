@@ -16,6 +16,8 @@ import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { ExternalLink as ExternalLinkComponent } from "@/components/shared/external-link";
+import { CampaignStatusBadge } from "@/components/campaigns/campaign-status-badge";
 import {
   Dialog,
   DialogContent,
@@ -354,6 +356,20 @@ export default function AgreementDetailPage() {
     enabled: !!user,
   });
 
+  // Fetch campaigns linked to this agreement from OA Planner
+  const { data: linkedCampaigns = [] } = useQuery({
+    queryKey: ["agreement-campaigns", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campaigns")
+        .select("campaign_id, name, status")
+        .eq("agreement_id", agreementId);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!user && agreementIdValid,
+  });
+
   // All organisers linked to user accounts, for the add dialog
   const { data: availableOrganisers = [] } = useQuery({
     queryKey: ["organisers-with-users"],
@@ -545,13 +561,14 @@ export default function AgreementDetailPage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-bold">
               {agreement.short_name || agreement.agreement_name}
             </h1>
             <Badge variant={STATUS_VARIANT[agreement.status]}>
               {agreement.status.replace(/_/g, " ")}
             </Badge>
+            <CampaignStatusBadge agreementId={agreement.agreement_id} size="lg" />
           </div>
           <p className="text-sm text-muted-foreground mt-1">
             Decision No: {agreement.decision_no}
@@ -560,12 +577,34 @@ export default function AgreementDetailPage() {
             )}
           </p>
         </div>
-        {canWrite && !editing && (
-          <Button variant="outline" onClick={handleStartEdit}>
-            <Pencil className="h-4 w-4" />
-            Edit
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {/* Cross-app link to OA Planner */}
+          {linkedCampaigns.length > 0 ? (
+            <ExternalLinkComponent
+              href={`${process.env.NEXT_PUBLIC_OA_PLANNER_URL || 'https://oaplanner.uconstruct.app'}/campaigns/${linkedCampaigns[0].campaign_id}`}
+              variant="button"
+              target="_blank"
+              className="gap-2"
+            >
+              View Campaign Plan
+            </ExternalLinkComponent>
+          ) : canWrite ? (
+            <ExternalLinkComponent
+              href={`${process.env.NEXT_PUBLIC_OA_PLANNER_URL || 'https://oaplanner.uconstruct.app'}/campaigns/new?agreement_id=${agreement.agreement_id}&employer_id=${agreement.employer_id || ''}`}
+              variant="outline"
+              target="_blank"
+              className="gap-2 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              Create Campaign Plan
+            </ExternalLinkComponent>
+          ) : null}
+          {canWrite && !editing && (
+            <Button variant="outline" onClick={handleStartEdit}>
+              <Pencil className="h-4 w-4" />
+              Edit
+            </Button>
+          )}
         {canWrite && editing && (
           <div className="flex items-center gap-2">
             <Button

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -16,13 +16,35 @@ import {
 } from "@/components/reports/principal-employer-eba-chart";
 import { AgreementsCalendar } from "@/components/agreements/agreements-calendar";
 import { WorksiteDistributionChart } from "@/components/dashboard/worksite-distribution-chart";
+import { WorkloadFilters } from "@/components/dashboard/workload-filters";
+import { WorkloadSummaryStats } from "@/components/dashboard/workload-summary-stats";
+import { CampaignsByStageChart } from "@/components/dashboard/campaigns-by-stage-chart";
+import { CampaignProgressCard } from "@/components/dashboard/campaign-progress-card";
+import { CampaignEntitiesCard } from "@/components/dashboard/campaign-entities-card";
+import { CampaignActivitiesCard } from "@/components/dashboard/campaign-activities-card";
 import type { PrincipalEmployerEbaSummary } from "@/types/database";
 import { useRouter } from "next/navigation";
+
+interface WorkloadData {
+  campaigns: any[];
+  metrics: {
+    campaignsByStage: { name: string; value: number }[];
+    totalCampaigns: number;
+    averageProgress: number;
+    totalActivitiesUnderway: number;
+    overdueCount: number;
+    dueSoonCount: number;
+  };
+}
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const supabase = createClient();
   const router = useRouter();
+
+  const [filterOrganiser, setFilterOrganiser] = useState("team");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterTimePeriod, setFilterTimePeriod] = useState("all");
 
   const { data: workerCount = 0, isLoading: loadingWorkers } = useQuery({
     queryKey: ["workers-count"],
@@ -151,6 +173,40 @@ export default function DashboardPage() {
     enabled: !!user,
   });
 
+  // Fetch workload dashboard data
+  const { data: workloadData, isLoading: loadingWorkload } = useQuery({
+    queryKey: [
+      "workload-dashboard",
+      filterOrganiser,
+      filterStatus,
+      filterTimePeriod,
+    ],
+    queryFn: async (): Promise<WorkloadData> => {
+      const params = new URLSearchParams();
+      if (filterOrganiser !== "all") {
+        params.set("filterOrganiser", filterOrganiser);
+      }
+      if (filterStatus !== "all") {
+        params.set("filterStatus", filterStatus);
+      }
+      if (filterTimePeriod !== "all") {
+        params.set("filterTimePeriod", filterTimePeriod);
+      }
+
+      const response = await fetch(
+        `/api/workload?${params.toString()}`
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch workload data");
+      }
+
+      return response.json();
+    },
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
   const OA_PLANNER_URL = process.env.NEXT_PUBLIC_OA_PLANNER_URL ?? "https://oaplanner.uconstruct.app";
 
   const { data: unplannedExpiringAgreements = [] } = useQuery({
@@ -259,6 +315,10 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      {/* ============================================================ */}
+      {/* WORKLOAD DASHBOARD - CENTRAL ELEMENT */}
+      {/* ============================================================ */}
+
       {/* Agreements expiring without an OAPlanner campaign plan */}
       {unplannedExpiringAgreements.length > 0 && (
         <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20">
@@ -306,6 +366,81 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* WORKLOAD DASHBOARD SECTION */}
+      <Card className="border-blue-200 dark:border-blue-900">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Megaphone className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            Organiser Workload Dashboard
+          </CardTitle>
+          <CardDescription>
+            Track campaign progress, activities, and resource allocation across all organising efforts
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Workload Filters */}
+          <WorkloadFilters
+            filterOrganiser={filterOrganiser}
+            filterStatus={filterStatus}
+            filterTimePeriod={filterTimePeriod}
+            onFilterOrganiserChange={setFilterOrganiser}
+            onFilterStatusChange={setFilterStatus}
+            onFilterTimePeriodChange={setFilterTimePeriod}
+          />
+
+          {loadingWorkload || !workloadData ? (
+            <div className="flex items-center justify-center py-12">
+              <EurekaLoadingSpinner size="md" />
+            </div>
+          ) : (
+            <>
+              {/* Workload Summary Stats */}
+              <WorkloadSummaryStats
+                totalCampaigns={workloadData.metrics.totalCampaigns}
+                averageProgress={workloadData.metrics.averageProgress}
+                totalActivitiesUnderway={workloadData.metrics.totalActivitiesUnderway}
+                overdueCount={workloadData.metrics.overdueCount}
+                dueSoonCount={workloadData.metrics.dueSoonCount}
+              />
+
+              {/* Workload Metrics Grid */}
+              <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+                {/* Campaigns by Stage */}
+                <CampaignsByStageChart
+                  data={workloadData.metrics.campaignsByStage}
+                />
+
+                {/* Campaign Progress */}
+                <CampaignProgressCard
+                  campaigns={workloadData.campaigns.slice(0, 5)}
+                />
+
+                {/* Campaign Entities */}
+                <CampaignEntitiesCard
+                  campaigns={workloadData.campaigns.slice(0, 5)}
+                />
+
+                {/* Campaign Activities */}
+                <CampaignActivitiesCard
+                  campaigns={workloadData.campaigns.slice(0, 5)}
+                />
+              </div>
+
+              {/* View Full Dashboard Link */}
+              <div className="flex justify-center pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => router.push("/workload")}
+                >
+                  <BarChart2 className="h-4 w-4 mr-2" />
+                  View Full Workload Dashboard
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* EBA Coverage by Principal Employer */}
       <Card className="col-span-full">

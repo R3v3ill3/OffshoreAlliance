@@ -151,19 +151,9 @@ export function useLeadOrganisers() {
         .eq('work_role', 'lead_organiser')
         .not('organiser_id', 'is', null)
 
-      // #region agent log
-      fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6d7bb4'},body:JSON.stringify({sessionId:'6d7bb4',runId:'run1',hypothesisId:'A-B-C',location:'useOptions.ts:useLeadOrganisers',message:'raw supabase result',data:{rowCount:data?.length??'null',errorMsg:error?.message??null,errorCode:error?.code??null,firstRow:data?.[0]??null},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-
       if (error) throw error
 
-      const filtered = data.filter((up) => (up.organisers as { organiser_id: number } | null)?.organiser_id)
-
-      // #region agent log
-      fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6d7bb4'},body:JSON.stringify({sessionId:'6d7bb4',runId:'run1',hypothesisId:'B-C',location:'useOptions.ts:useLeadOrganisers-postfilter',message:'after organiser_id filter',data:{beforeFilter:data.length,afterFilter:filtered.length,sampleOrganiserField:data?.[0]?.organisers??'no rows'},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-
-      return filtered
+      return data.filter((up) => (up.organisers as { organiser_id: number } | null)?.organiser_id)
         .map((up) => {
           const org = up.organisers as { organiser_id: number; organiser_name: string; email: string | null }
           return {
@@ -193,10 +183,6 @@ export function useCurrentUserProfile() {
         .select('user_id, work_role, organiser_id, reports_to')
         .eq('user_id', user.id)
         .single()
-
-      // #region agent log
-      fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6d7bb4'},body:JSON.stringify({sessionId:'6d7bb4',runId:'run1',hypothesisId:'D',location:'useOptions.ts:useCurrentUserProfile',message:'current user profile result',data:{work_role:data?.work_role??null,organiser_id:data?.organiser_id??null,reports_to:data?.reports_to??null,errorMsg:error?.message??null},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
 
       if (error) throw error
       return data

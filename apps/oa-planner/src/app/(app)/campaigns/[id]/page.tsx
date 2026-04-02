@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { STAGE_NAMES } from '@/types'
 import { cn } from '@/lib/utils'
 import { ChevronRight, Shield, CheckCircle, Pencil, X, Check } from 'lucide-react'
+import { ExternalLink } from '@/components/shared/external-link'
 
 interface PageProps {
   params: { id: string }
@@ -30,6 +31,10 @@ export default function CampaignDetailPage({ params }: PageProps) {
   const { data: ambitionsByStage } = useCampaignAmbitionsByStage(campaignId)
   const { data: leadOrganisers } = useLeadOrganisers()
   const updateOrganiser = useUpdateCampaignOrganiser()
+
+  // Get URLs for cross-app navigation
+  const organisingDbUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://oa.uconstruct.app'
+  const oaPlannerUrl = process.env.NEXT_PUBLIC_OA_PLANNER_URL || 'https://oaplanner.uconstruct.app'
 
   const [editingOrganiser, setEditingOrganiser] = useState(false)
   const [pendingOrganiserId, setPendingOrganiserId] = useState<number | undefined>()
@@ -62,9 +67,6 @@ export default function CampaignDetailPage({ params }: PageProps) {
     return <div className="p-6 text-center text-slate-500">Campaign not found</div>
   }
 
-  // #region agent log
-  fetch('http://127.0.0.1:7908/ingest/fec0c949-4fbc-4a53-b3b1-04160f544a06',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6d7bb4'},body:JSON.stringify({sessionId:'6d7bb4',runId:'run1',hypothesisId:'E',location:'campaigns/[id]/page.tsx',message:'campaign data shape',data:{campaign_id:(campaign as any).campaign_id,organiser_id:(campaign as any).organiser_id??null,organisers_field:(campaign as any).organisers??null,leadOrganisersCount:leadOrganisers?.length??'null'},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   const timeline = (campaign as any).campaign_timelines
   const stagePlans = (campaign as any).campaign_stage_plans || []
   const sortedStages = [...stagePlans].sort((a: { stage_number: number }, b: { stage_number: number }) => a.stage_number - b.stage_number)
@@ -164,6 +166,27 @@ export default function CampaignDetailPage({ params }: PageProps) {
           </div>
         </div>
         <div className="flex gap-2">
+          {/* Cross-app links to Organising DB */}
+          {(campaign as any).agreement_id && (
+            <ExternalLink
+              href={`${organisingDbUrl}/agreements/${(campaign as any).agreement_id}`}
+              variant="outline"
+              className="h-9 px-4 py-2 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground"
+              target="_blank"
+            >
+              View Agreement Details
+            </ExternalLink>
+          )}
+          {(campaign as any).employer_id && (
+            <ExternalLink
+              href={`${organisingDbUrl}/employers/${(campaign as any).employer_id}`}
+              variant="outline"
+              className="h-9 px-4 py-2 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground"
+              target="_blank"
+            >
+              View Employer Details
+            </ExternalLink>
+          )}
           <Button asChild variant="outline">
             <Link href={`/campaigns/${campaignId}/stage/${activeStage?.stage_number || 1}`}>
               Continue Planning

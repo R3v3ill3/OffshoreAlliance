@@ -1858,39 +1858,60 @@ export type Database = {
           ambition_id: number
           ambition_option_id: number | null
           created_at: string | null
+          current_value: string | null
           custom_text: string | null
+          evidence_notes: string | null
           is_achieved: boolean | null
+          is_hard_gate: boolean
+          is_system_default: boolean
+          metric_type: string | null
           plan_id: number
           sort_order: number | null
           target_date: string | null
+          target_date_user_overridden: boolean
           target_unit: string | null
           target_value: string | null
+          target_value_max: string | null
         }
         Insert: {
           achieved_date?: string | null
           ambition_id?: number
           ambition_option_id?: number | null
           created_at?: string | null
+          current_value?: string | null
           custom_text?: string | null
+          evidence_notes?: string | null
           is_achieved?: boolean | null
+          is_hard_gate?: boolean
+          is_system_default?: boolean
+          metric_type?: string | null
           plan_id: number
           sort_order?: number | null
           target_date?: string | null
+          target_date_user_overridden?: boolean
           target_unit?: string | null
           target_value?: string | null
+          target_value_max?: string | null
         }
         Update: {
           achieved_date?: string | null
           ambition_id?: number
           ambition_option_id?: number | null
           created_at?: string | null
+          current_value?: string | null
           custom_text?: string | null
+          evidence_notes?: string | null
           is_achieved?: boolean | null
+          is_hard_gate?: boolean
+          is_system_default?: boolean
+          metric_type?: string | null
           plan_id?: number
           sort_order?: number | null
           target_date?: string | null
+          target_date_user_overridden?: boolean
           target_unit?: string | null
           target_value?: string | null
+          target_value_max?: string | null
         }
         Relationships: [
           {

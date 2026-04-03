@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { CampaignCreationWizard } from '@/components/campaign/CampaignCreationWizard'
 
 export default function NewCampaignPage() {
@@ -10,7 +11,9 @@ export default function NewCampaignPage() {
             Set up a new enterprise bargaining campaign with the Playing to Win strategic planning framework.
           </p>
         </div>
-        <CampaignCreationWizard />
+        <Suspense fallback={<div className="text-sm text-muted-foreground p-6">Loading...</div>}>
+          <CampaignCreationWizard />
+        </Suspense>
       </div>
     </div>
   )

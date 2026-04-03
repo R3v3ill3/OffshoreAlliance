@@ -8,6 +8,9 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: {
+        domain: process.env.NEXT_PUBLIC_COOKIE_DOMAIN ?? '.uconstruct.app',
+      },
       cookies: {
         getAll() {
           return request.cookies.getAll()

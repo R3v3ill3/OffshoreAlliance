@@ -18,6 +18,8 @@ import {
   Menu,
   X,
   ChevronRight,
+  Map,
+  Database,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -35,6 +37,9 @@ interface AppShellProps {
   user: User
   profile: (UserProfile & { organisers?: { organiser_name: string; email: string } | null }) | null
 }
+
+const ORGANISING_DB_URL =
+  process.env.NEXT_PUBLIC_ORGANISING_DB_URL ?? 'https://oa.uconstruct.app'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -101,6 +106,24 @@ export function AppShell({ children, user, profile }: AppShellProps) {
           >
             <X className="h-4 w-4" />
           </button>
+        </div>
+
+        {/* App switcher */}
+        <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-700 text-xs flex-wrap">
+          <span className="text-slate-500 mr-0.5">Apps:</span>
+          <div className="flex items-center gap-1 rounded px-2 py-1 bg-slate-800 text-white border border-slate-600">
+            <Map className="h-3 w-3 shrink-0" />
+            <span>OA Planner</span>
+          </div>
+          <span className="text-slate-600 select-none">·</span>
+          <a
+            href={ORGANISING_DB_URL}
+            className="flex items-center gap-1 rounded px-2 py-1 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+            title="Go to Organising DB"
+          >
+            <Database className="h-3 w-3 shrink-0" />
+            <span>Organising DB</span>
+          </a>
         </div>
 
         {/* Navigation */}

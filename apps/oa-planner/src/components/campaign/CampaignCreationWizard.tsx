@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useRef } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { format, addDays, subDays } from 'date-fns'
 import { useAgreements, useLeadOrganisers, useCurrentUserProfile } from '@/lib/hooks/useOptions'
@@ -80,6 +80,7 @@ interface WizardState {
 
 export function CampaignCreationWizard() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [step, setStep] = useState(1)
   const [state, setState] = useState<WizardState>({
     campaign_name: '',
@@ -92,6 +93,21 @@ export function CampaignCreationWizard() {
   const { data: leadOrganisers, isLoading: organisersLoading } = useLeadOrganisers()
   const { data: myProfile } = useCurrentUserProfile()
   const createCampaign = useCreateCampaign()
+
+  // Pre-select agreement from URL param (e.g. launched from dashboard "Create Plan" button)
+  const autoAgreementId = Number(searchParams.get('agreement_id')) || null
+  const hasAutoSelected = useRef(false)
+
+  useEffect(() => {
+    if (hasAutoSelected.current) return
+    if (!autoAgreementId || !agreements || agreements.length === 0) return
+    const found = agreements.find((a) => a.agreement_id === autoAgreementId)
+    if (!found) return
+    hasAutoSelected.current = true
+    handleAgreementSelect(autoAgreementId)
+    setStep(2)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agreements, autoAgreementId])
 
   // Auto-default the organiser based on the signed-in user's profile
   useEffect(() => {

@@ -310,6 +310,7 @@ export interface Campaign {
   organiser_id: number | null;
   notes: string | null;
   enterprise_agreement_subtype: EnterpriseAgreementSubtype | null;
+  replaced_agreement_id: number | null;
   campaign_scope: CampaignScopeType | null;
   total_worker_estimate: number | null;
   sector_wide: boolean;

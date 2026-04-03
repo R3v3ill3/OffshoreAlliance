@@ -24,8 +24,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
-import { ArrowLeft, ArrowRight, CheckCircle2, ExternalLink } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, ExternalLink, Search, X } from "lucide-react";
 import type {
   CampaignScopeType,
   CampaignStatus,
@@ -35,6 +36,8 @@ import type {
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
 import { resolveCampaignOrganiserId } from "@/lib/campaign/resolve-campaign-organiser";
 import { CampaignOrganiserSelect } from "@/components/campaigns/campaign-organiser-select";
+import { StepEmployersWorksites } from "@/components/campaigns/step-employers-worksites";
+import { StepAllocateWorkers } from "@/components/campaigns/step-allocate-workers";
 import Link from "next/link";
 
 const SCOPES: CampaignScopeType[] = [
@@ -43,6 +46,197 @@ const SCOPES: CampaignScopeType[] = [
   "multi_employer_single_site",
   "multi_employer_multi_site",
 ];
+
+// ─── Replacement Agreement Picker ────────────────────────────────────────────
+
+interface AgreementOption {
+  agreement_id: number;
+  agreement_name: string;
+  short_name: string | null;
+  status: string | null;
+  employer_name: string | null;
+}
+
+interface ReplacedAgreementPickerProps {
+  value: number | null;
+  onChange: (id: number | null) => void;
+}
+
+function ReplacedAgreementPicker({ value, onChange }: ReplacedAgreementPickerProps) {
+  const supabase = createClient();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  const [search, setSearch] = useState("");
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [newAgreementName, setNewAgreementName] = useState("");
+
+  const { data: agreements = [] } = useQuery<AgreementOption[]>({
+    queryKey: ["agreements-for-picker"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("agreements")
+        .select(
+          `agreement_id, agreement_name, short_name, status,
+           employer:employers(employer_name)`
+        )
+        .order("agreement_name");
+      if (error) throw error;
+      return (data ?? []).map((a: Record<string, unknown>) => {
+        const emp = a.employer as { employer_name: string } | null;
+        return {
+          agreement_id: a.agreement_id as number,
+          agreement_name: a.agreement_name as string,
+          short_name: (a.short_name as string | null) ?? null,
+          status: (a.status as string | null) ?? null,
+          employer_name: emp?.employer_name ?? null,
+        };
+      });
+    },
+    enabled: !!user,
+  });
+
+  const createAgreementMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const { data, error } = await supabase
+        .from("agreements")
+        .insert({ agreement_name: name, status: "Expired" })
+        .select("agreement_id")
+        .single();
+      if (error) throw error;
+      return data.agreement_id as number;
+    },
+    onSuccess: (id) => {
+      queryClient.invalidateQueries({ queryKey: ["agreements-for-picker"] });
+      onChange(id);
+      setAddDialogOpen(false);
+      setNewAgreementName("");
+    },
+  });
+
+  const selected = agreements.find((a) => a.agreement_id === value);
+
+  const filtered = agreements.filter((a) => {
+    if (!search) return true;
+    const term = search.toLowerCase();
+    return (
+      a.agreement_name.toLowerCase().includes(term) ||
+      (a.short_name ?? "").toLowerCase().includes(term) ||
+      (a.employer_name ?? "").toLowerCase().includes(term)
+    );
+  });
+
+  return (
+    <div className="space-y-2">
+      <Label>Which agreement is being replaced? *</Label>
+
+      {selected ? (
+        <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">{selected.agreement_name}</p>
+            {selected.employer_name && (
+              <p className="text-xs text-muted-foreground truncate">{selected.employer_name}</p>
+            )}
+          </div>
+          <Badge variant="outline" className="text-xs shrink-0">
+            {selected.status ?? "—"}
+          </Badge>
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            className="text-muted-foreground hover:text-foreground shrink-0"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              className="pl-8 text-sm"
+              placeholder="Search agreements by name or employer…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="max-h-48 overflow-y-auto rounded-md border p-1 space-y-0.5">
+            {filtered.length === 0 && (
+              <p className="text-sm text-muted-foreground px-2 py-3 text-center">
+                No agreements found.
+              </p>
+            )}
+            {filtered.map((a) => (
+              <button
+                key={a.agreement_id}
+                type="button"
+                className="w-full text-left rounded px-2 py-1.5 hover:bg-muted transition-colors"
+                onClick={() => {
+                  onChange(a.agreement_id);
+                  setSearch("");
+                }}
+              >
+                <p className="text-sm font-medium">{a.agreement_name}</p>
+                <div className="flex items-center gap-2">
+                  {a.employer_name && (
+                    <p className="text-xs text-muted-foreground">{a.employer_name}</p>
+                  )}
+                  {a.status && (
+                    <Badge variant="outline" className="text-xs h-4 px-1">
+                      {a.status}
+                    </Badge>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full text-xs"
+            onClick={() => setAddDialogOpen(true)}
+          >
+            + Add agreement not in list
+          </Button>
+        </div>
+      )}
+
+      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add enterprise agreement</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Agreement name</Label>
+            <Input
+              placeholder="e.g. Acme Offshore Operations Enterprise Agreement 2022"
+              value={newAgreementName}
+              onChange={(e) => setNewAgreementName(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              A basic record will be created with status "Expired". You can update further details
+              from the Agreements page.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!newAgreementName.trim() || createAgreementMutation.isPending}
+              onClick={() => createAgreementMutation.mutate(newAgreementName.trim())}
+            >
+              {createAgreementMutation.isPending ? "Creating…" : "Create & select"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ─── Main wizard ──────────────────────────────────────────────────────────────
 
 export function CampaignWizard() {
   const router = useRouter();
@@ -62,6 +256,7 @@ export function CampaignWizard() {
     description: "",
     campaign_type: "organising" as CampaignType,
     enterprise_agreement_subtype: "" as "" | EnterpriseAgreementSubtype,
+    replaced_agreement_id: null as number | null,
     status: "planning" as CampaignStatus,
     start_date: "",
     end_date: "",
@@ -76,59 +271,8 @@ export function CampaignWizard() {
   const [selectedWorksites, setSelectedWorksites] = useState<number[]>([]);
   const [worksiteSectorWide, setWorksiteSectorWide] = useState(false);
   const [selectedWorkers, setSelectedWorkers] = useState<number[]>([]);
-  const [employerDialog, setEmployerDialog] = useState(false);
-  const [newEmployerName, setNewEmployerName] = useState("");
 
-  const { data: employers = [] } = useQuery({
-    queryKey: ["employers-active"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("employers")
-        .select("employer_id, employer_name")
-        .eq("is_active", true)
-        .order("employer_name");
-      return data ?? [];
-    },
-    enabled: !!user,
-  });
-
-  const { data: worksites = [] } = useQuery({
-    queryKey: ["worksites-active"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("worksites")
-        .select("worksite_id, worksite_name")
-        .eq("is_active", true)
-        .order("worksite_name");
-      return data ?? [];
-    },
-    enabled: !!user,
-  });
-
-  const { data: candidateWorkers = [] } = useQuery({
-    queryKey: ["wizard-workers", selectedEmployers, selectedWorksites, worksiteSectorWide],
-    queryFn: async () => {
-      let q = supabase
-        .from("workers")
-        .select("worker_id, first_name, last_name, employer_id, worksite_id")
-        .eq("is_active", true);
-
-      if (selectedEmployers.length > 0) {
-        q = q.in("employer_id", selectedEmployers);
-      }
-      if (selectedWorksites.length > 0 && !worksiteSectorWide) {
-        q = q.in("worksite_id", selectedWorksites);
-      }
-
-      const { data, error } = await q.order("last_name").limit(5000);
-      if (error) throw error;
-      return data ?? [];
-    },
-    enabled:
-      !!user &&
-      step === 3 &&
-      (selectedEmployers.length > 0 || selectedWorksites.length > 0 || worksiteSectorWide),
-  });
+  // ── Queries ───────────────────────────────────────────────────────────────
 
   const { data: existingCampaign } = useQuery({
     queryKey: ["campaign-wizard", campaignId],
@@ -144,6 +288,21 @@ export function CampaignWizard() {
     },
     enabled: !!user && !!campaignId,
   });
+
+  // EA employers for the replaced agreement — used when auto-linking on save
+  const { data: eaEmployerIds = [] } = useQuery<number[]>({
+    queryKey: ["ea-employers", basics.replaced_agreement_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("agreement_employers")
+        .select("employer_id")
+        .eq("agreement_id", basics.replaced_agreement_id!);
+      return (data ?? []).map((r) => r.employer_id);
+    },
+    enabled: !!user && !!basics.replaced_agreement_id,
+  });
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
 
   const createCampaignMutation = useMutation({
     mutationFn: async () => {
@@ -169,12 +328,22 @@ export function CampaignWizard() {
       if (basics.enterprise_agreement_subtype) {
         payload.enterprise_agreement_subtype = basics.enterprise_agreement_subtype;
       }
+      if (
+        basics.enterprise_agreement_subtype === "replacement" &&
+        basics.replaced_agreement_id
+      ) {
+        payload.replaced_agreement_id = basics.replaced_agreement_id;
+      }
       if (basics.total_worker_estimate) {
         const n = Number(basics.total_worker_estimate);
         if (!Number.isNaN(n)) payload.total_worker_estimate = n;
       }
 
-      const { data, error } = await supabase.from("campaigns").insert(payload).select("campaign_id").single();
+      const { data, error } = await supabase
+        .from("campaigns")
+        .insert(payload)
+        .select("campaign_id")
+        .single();
       if (error) throw error;
       return data.campaign_id as number;
     },
@@ -199,6 +368,22 @@ export function CampaignWizard() {
           selectedEmployers.map((employer_id) => ({ campaign_id: campaignId, employer_id }))
         );
         if (error) throw error;
+
+        // Auto-link employers not yet in the replaced EA
+        if (basics.replaced_agreement_id && eaEmployerIds.length >= 0) {
+          const eaSet = new Set(eaEmployerIds);
+          const toLink = selectedEmployers.filter((id) => !eaSet.has(id));
+          if (toLink.length > 0) {
+            await supabase.from("agreement_employers").upsert(
+              toLink.map((employer_id) => ({
+                agreement_id: basics.replaced_agreement_id!,
+                employer_id,
+                is_primary: false,
+              })),
+              { onConflict: "agreement_id,employer_id", ignoreDuplicates: true }
+            );
+          }
+        }
       }
 
       if (worksiteSectorWide) {
@@ -246,28 +431,7 @@ export function CampaignWizard() {
     },
   });
 
-  const addEmployerMutation = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase
-        .from("employers")
-        .insert({ employer_name: newEmployerName.trim() })
-        .select("employer_id")
-        .single();
-      if (error) throw error;
-      return data.employer_id as number;
-    },
-    onSuccess: (id) => {
-      queryClient.invalidateQueries({ queryKey: ["employers-active"] });
-      setSelectedEmployers((s) => [...s, id]);
-      setEmployerDialog(false);
-      setNewEmployerName("");
-    },
-  });
-
-  const toggle = (id: number, list: number[], setList: (v: number[]) => void) => {
-    if (list.includes(id)) setList(list.filter((x) => x !== id));
-    else setList([...list, id]);
-  };
+  // ── Derived state ─────────────────────────────────────────────────────────
 
   const OA_PLANNER_URL = process.env.NEXT_PUBLIC_OA_PLANNER_URL ?? "https://oaplanner.uconstruct.app";
 
@@ -277,6 +441,12 @@ export function CampaignWizard() {
     if (step === 3) return "Allocate workers";
     return "Create campaign plan";
   }, [step]);
+
+  const step1Valid =
+    !!basics.name &&
+    (basics.enterprise_agreement_subtype !== "replacement" || !!basics.replaced_agreement_id);
+
+  // ── Guards ────────────────────────────────────────────────────────────────
 
   if (!user) {
     return (
@@ -290,8 +460,11 @@ export function CampaignWizard() {
     return <p className="text-muted-foreground">You do not have permission to create campaigns.</p>;
   }
 
+  // ── Render ────────────────────────────────────────────────────────────────
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
+      {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
           <Link href="/campaigns">
@@ -308,6 +481,7 @@ export function CampaignWizard() {
         </div>
       </div>
 
+      {/* ── Step 1: Basics & scope ──────────────────────────────────────── */}
       {step === 1 && (
         <Card>
           <CardHeader>
@@ -317,7 +491,10 @@ export function CampaignWizard() {
           <CardContent className="grid gap-4">
             <div className="space-y-2">
               <Label>Name *</Label>
-              <Input value={basics.name} onChange={(e) => setBasics({ ...basics, name: e.target.value })} />
+              <Input
+                value={basics.name}
+                onChange={(e) => setBasics({ ...basics, name: e.target.value })}
+              />
             </div>
             <div className="space-y-2">
               <Label>Description</Label>
@@ -332,7 +509,9 @@ export function CampaignWizard() {
                 <Label>Campaign type</Label>
                 <Select
                   value={basics.campaign_type}
-                  onValueChange={(v) => setBasics({ ...basics, campaign_type: v as CampaignType })}
+                  onValueChange={(v) =>
+                    setBasics({ ...basics, campaign_type: v as CampaignType })
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -354,6 +533,9 @@ export function CampaignWizard() {
                       ...basics,
                       enterprise_agreement_subtype:
                         v === "__none__" ? "" : (v as EnterpriseAgreementSubtype),
+                      // Clear replaced agreement when subtype is removed
+                      replaced_agreement_id:
+                        v === "replacement" ? basics.replaced_agreement_id : null,
                     })
                   }
                 >
@@ -371,12 +553,23 @@ export function CampaignWizard() {
                 </Select>
               </div>
             </div>
+
+            {/* Replacement EA picker — shown only when subtype is 'replacement' */}
+            {basics.enterprise_agreement_subtype === "replacement" && (
+              <ReplacedAgreementPicker
+                value={basics.replaced_agreement_id}
+                onChange={(id) => setBasics({ ...basics, replaced_agreement_id: id })}
+              />
+            )}
+
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Status</Label>
                 <Select
                   value={basics.status}
-                  onValueChange={(v) => setBasics({ ...basics, status: v as CampaignStatus })}
+                  onValueChange={(v) =>
+                    setBasics({ ...basics, status: v as CampaignStatus })
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -392,7 +585,9 @@ export function CampaignWizard() {
               <CampaignOrganiserSelect
                 label="Organiser"
                 value={basics.organiser_id}
-                onChange={(v) => setBasics({ ...basics, organiser_id: v === "__none__" ? "" : v })}
+                onChange={(v) =>
+                  setBasics({ ...basics, organiser_id: v === "__none__" ? "" : v })
+                }
                 allowNone
                 autoDefaultToCurrentUser
               />
@@ -445,7 +640,9 @@ export function CampaignWizard() {
                 type="number"
                 min={0}
                 value={basics.total_worker_estimate}
-                onChange={(e) => setBasics({ ...basics, total_worker_estimate: e.target.value })}
+                onChange={(e) =>
+                  setBasics({ ...basics, total_worker_estimate: e.target.value })
+                }
                 placeholder="Optional headcount"
               />
             </div>
@@ -468,7 +665,7 @@ export function CampaignWizard() {
             </div>
             <Button
               className="w-full sm:w-auto"
-              disabled={!basics.name || createCampaignMutation.isPending}
+              disabled={!step1Valid || createCampaignMutation.isPending}
               onClick={() => createCampaignMutation.mutate()}
             >
               {createCampaignMutation.isPending ? "Saving…" : "Continue"}
@@ -478,135 +675,39 @@ export function CampaignWizard() {
         </Card>
       )}
 
+      {/* ── Step 2: Employers & worksites ───────────────────────────────── */}
       {step === 2 && campaignId && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Employers & worksites</CardTitle>
-            <CardDescription>Select targets for this campaign. Add a new employer if needed.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <Label>Employers</Label>
-                <Button type="button" variant="outline" size="sm" onClick={() => setEmployerDialog(true)}>
-                  Add employer
-                </Button>
-              </div>
-              <div className="max-h-48 overflow-y-auto rounded-md border p-2 space-y-1">
-                {employers.map((e: { employer_id: number; employer_name: string }) => (
-                  <label key={e.employer_id} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={selectedEmployers.includes(e.employer_id)}
-                      onChange={() => toggle(e.employer_id, selectedEmployers, setSelectedEmployers)}
-                    />
-                    {e.employer_name}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <label className="flex items-center gap-2">
-              <input
-                id="ws_sw"
-                type="checkbox"
-                checked={worksiteSectorWide}
-                onChange={(e) => {
-                  const c = e.target.checked;
-                  setWorksiteSectorWide(c);
-                  if (c) setSelectedWorksites([]);
-                }}
-              />
-              <span className="text-sm font-normal">Sector-wide worksites (no specific site)</span>
-            </label>
-            {!worksiteSectorWide && (
-              <div>
-                <Label className="mb-2 block">Worksites</Label>
-                <div className="max-h-48 overflow-y-auto rounded-md border p-2 space-y-1">
-                  {worksites.map((w: { worksite_id: number; worksite_name: string }) => (
-                    <label key={w.worksite_id} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={selectedWorksites.includes(w.worksite_id)}
-                        onChange={() =>
-                          toggle(w.worksite_id, selectedWorksites, setSelectedWorksites)
-                        }
-                      />
-                      {w.worksite_name}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(1)}>
-                Back
-              </Button>
-              <Button
-                onClick={() => saveScopeMutation.mutate()}
-                disabled={
-                  saveScopeMutation.isPending ||
-                  (selectedEmployers.length === 0 && !worksiteSectorWide && selectedWorksites.length === 0)
-                }
-              >
-                {saveScopeMutation.isPending ? "Saving…" : "Continue to workers"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <StepEmployersWorksites
+          campaignScope={basics.campaign_scope}
+          replacedAgreementId={basics.replaced_agreement_id}
+          selectedEmployers={selectedEmployers}
+          setSelectedEmployers={setSelectedEmployers}
+          selectedWorksites={selectedWorksites}
+          setSelectedWorksites={setSelectedWorksites}
+          worksiteSectorWide={worksiteSectorWide}
+          setWorksiteSectorWide={setWorksiteSectorWide}
+          isPending={saveScopeMutation.isPending}
+          onBack={() => setStep(1)}
+          onContinue={() => saveScopeMutation.mutate()}
+        />
       )}
 
+      {/* ── Step 3: Allocate workers ────────────────────────────────────── */}
       {step === 3 && campaignId && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Allocate workers</CardTitle>
-            <CardDescription>
-              Workers are filtered by your employer and worksite selections. Use the{" "}
-              <Link href="/workers" className="underline">
-                Workers
-              </Link>{" "}
-              import tools to add new people, then return here and refresh selections if needed.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {candidateWorkers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No workers match the filters. Adjust employers or worksites (step 2) or add workers
-                first.
-              </p>
-            ) : (
-              <div className="max-h-72 overflow-y-auto rounded-md border p-2 space-y-1">
-                {candidateWorkers.map(
-                  (w: {
-                    worker_id: number;
-                    first_name: string;
-                    last_name: string;
-                  }) => (
-                    <label key={w.worker_id} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={selectedWorkers.includes(w.worker_id)}
-                        onChange={() =>
-                          toggle(w.worker_id, selectedWorkers, setSelectedWorkers)
-                        }
-                      />
-                      {w.first_name} {w.last_name}
-                    </label>
-                  )
-                )}
-              </div>
-            )}
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(2)}>
-                Back
-              </Button>
-              <Button onClick={() => saveWorkersMutation.mutate()} disabled={saveWorkersMutation.isPending}>
-                {saveWorkersMutation.isPending ? "Saving…" : "Finish"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <StepAllocateWorkers
+          campaignId={campaignId}
+          selectedEmployers={selectedEmployers}
+          selectedWorksites={selectedWorksites}
+          worksiteSectorWide={worksiteSectorWide}
+          selectedWorkers={selectedWorkers}
+          setSelectedWorkers={setSelectedWorkers}
+          isPending={saveWorkersMutation.isPending}
+          onBack={() => setStep(2)}
+          onContinue={() => saveWorkersMutation.mutate()}
+        />
       )}
 
+      {/* ── Step 4: Create campaign plan (bargaining only) ──────────────── */}
       {step === 4 && campaignId && (
         <Card>
           <CardHeader>
@@ -660,30 +761,6 @@ export function CampaignWizard() {
           Editing campaign #{campaignId}: {existingCampaign.name as string}
         </p>
       )}
-
-      <Dialog open={employerDialog} onOpenChange={setEmployerDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>New employer</DialogTitle>
-          </DialogHeader>
-          <Input
-            placeholder="Employer name"
-            value={newEmployerName}
-            onChange={(e) => setNewEmployerName(e.target.value)}
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEmployerDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={!newEmployerName.trim() || addEmployerMutation.isPending}
-              onClick={() => addEmployerMutation.mutate()}
-            >
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

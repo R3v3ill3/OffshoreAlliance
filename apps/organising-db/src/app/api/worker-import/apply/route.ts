@@ -5,6 +5,7 @@ export interface WorkerImportRow {
   rowIndex: number;
   firstName: string;
   lastName: string;
+  preferredName: string | null;
   email: string | null;
   phone: string | null;
   memberRoleTypeId: number | null;
@@ -67,6 +68,7 @@ export async function POST(request: NextRequest) {
     const workerData = {
       first_name: row.firstName.trim(),
       last_name: row.lastName.trim(),
+      preferred_name: row.preferredName || null,
       email: row.email || null,
       phone: row.phone || null,
       member_role_type_id: row.memberRoleTypeId,

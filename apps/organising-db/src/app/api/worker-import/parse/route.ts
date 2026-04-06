@@ -6,6 +6,7 @@ export interface ParsedWorkerRow {
   rawName: string;
   firstName: string;
   lastName: string;
+  preferredName: string | null;
   rawMembershipStatus: string;
   memberRoleTypeId: number | null;
   unionId: number | null;
@@ -72,36 +73,53 @@ const UNION_CODE_TO_ID: Record<string, number> = {
   AMWU: 6,
 };
 
-// Header patterns used to detect header-based format
+// Header patterns used to detect header-based format.
+// Deliberately broad — detection no longer requires ALL cells to be text,
+// so false positives from data rows are very unlikely.
 const KNOWN_HEADER_PATTERNS = [
-  /^(first[\s_-]?name|firstname|given[\s_-]?name|first)$/i,
-  /^(last[\s_-]?name|lastname|surname|family[\s_-]?name|last)$/i,
-  /^(email|email[\s_-]?address)$/i,
-  /^(mobile|phone|mobile[\s_-]?number|phone[\s_-]?number|contact|mob)$/i,
+  /^(first[\s_-]?name|firstname|given[\s_-]?name|givenname|forename|first)$/i,
+  /^(last[\s_-]?name|lastname|surname|family[\s_-]?name|familyname|last)$/i,
+  /^(email|email[\s_-]?address|emailaddress)$/i,
+  /^(mobile|phone|mobile[\s_-]?no|mobile[\s_-]?number|phone[\s_-]?number|phone[\s_-]?no|contact[\s_-]?number|contact[\s_-]?no|mob|contact)$/i,
   /^(worksite|site|location|work[\s_-]?site|work[\s_-]?location)$/i,
-  /^(name|full[\s_-]?name)$/i,
+  /^(name|full[\s_-]?name|fullname|worker[\s_-]?name|employee[\s_-]?name)$/i,
+  /^(preferred[\s_-]?name|preferredname|nickname|nick[\s_-]?name|known[\s_-]?as|alias|preferred[\s_-]?first[\s_-]?name)$/i,
+  /^(membership|membership[\s_-]?status|status|role|role[\s_-]?type)$/i,
 ];
 
-function detectHeaderRow(row: (string | number | null | undefined)[]): boolean {
+function detectHeaderRow(
+  row: (string | number | null | undefined)[],
+  forceHeader = false
+): boolean {
+  if (forceHeader) return true;
+
   const nonEmpty = row.filter(
     (c) => c !== null && c !== undefined && String(c).trim() !== ""
   );
   if (nonEmpty.length < 2) return false;
 
-  // All non-empty cells must be text (not pure numbers)
-  const allText = nonEmpty.every((c) => {
+  // Count cells that match a known header pattern (only check string cells).
+  // We intentionally do NOT require all cells to be text — numeric columns
+  // like "Employee ID" or date columns must not disqualify the row.
+  const matchCount = nonEmpty.filter((c) => {
     if (typeof c === "number") return false;
-    const s = String(c).trim();
-    return s !== "" && isNaN(Number(s));
-  });
-  if (!allText) return false;
+    return KNOWN_HEADER_PATTERNS.some((p) => p.test(String(c).trim()));
+  }).length;
 
-  // At least 2 cells must match a known header pattern
-  const matchCount = nonEmpty.filter((c) =>
-    KNOWN_HEADER_PATTERNS.some((p) => p.test(String(c).trim()))
-  ).length;
+  // 2+ recognisable header names → it's a header row.
+  if (matchCount >= 2) return true;
 
-  return matchCount >= 2;
+  // Single match but all other cells are text → likely a header row too.
+  if (matchCount === 1) {
+    const nonNumeric = nonEmpty.filter((c) => {
+      if (typeof c === "number") return false;
+      const s = String(c).trim();
+      return s !== "" && isNaN(Number(s));
+    });
+    return nonNumeric.length === nonEmpty.length;
+  }
+
+  return false;
 }
 
 function parseMembershipStatus(raw: string): {
@@ -145,13 +163,18 @@ function parseMembershipStatus(raw: string): {
 function parseName(raw: string): {
   firstName: string;
   lastName: string;
+  preferredName: string | null;
   warnings: string[];
 } {
   const trimmed = raw.trim();
   const warnings: string[] = [];
 
-  // Strip parenthetical nicknames/preferred names before parsing,
-  // e.g. "Alfred (Alfie) Smith" → "Alfred Smith", "Ben (Benny)" → "Ben"
+  // Capture parenthetical nickname/preferred name before stripping it,
+  // e.g. "Alfred (Alfie) Smith" → preferredName = "Alfie"
+  const nicknameMatch = trimmed.match(/\(([^)]+)\)/);
+  const preferredName = nicknameMatch ? nicknameMatch[1].trim() : null;
+
+  // Strip the parenthetical so it doesn't become the last name token
   const cleaned = trimmed.replace(/\s*\([^)]*\)\s*/g, " ").trim();
 
   // "LASTNAME, Firstname [Middlename]" format
@@ -161,18 +184,18 @@ function parseName(raw: string): {
     const lastName = lastPart.trim();
     if (!firstName) warnings.push("Could not parse first name");
     if (!lastName) warnings.push("Could not parse last name");
-    return { firstName, lastName, warnings };
+    return { firstName, lastName, preferredName, warnings };
   }
 
   // "Firstname Lastname" format — split on last space
   const parts = cleaned.split(/\s+/);
   if (parts.length < 2) {
     warnings.push("Only one name token found");
-    return { firstName: cleaned, lastName: "", warnings };
+    return { firstName: cleaned, lastName: "", preferredName, warnings };
   }
   const firstName = parts.slice(0, -1).join(" ");
   const lastName = parts[parts.length - 1];
-  return { firstName, lastName, warnings };
+  return { firstName, lastName, preferredName, warnings };
 }
 
 function normalisePhone(raw: string | number | null | undefined): {
@@ -238,6 +261,9 @@ function isGroupHeader(row: (string | number | null | undefined)[]): boolean {
 
 export async function POST(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const forceFormat = searchParams.get("forceFormat") as "header" | "group" | null;
+
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
 
@@ -263,31 +289,74 @@ export async function POST(request: NextRequest) {
       defval: null,
     });
 
-    // Find the first non-empty row and check if it is a header row
+    // Find the first non-empty row and check if it is a header row.
+    // When forceFormat=header, skip to header parsing immediately from the first non-empty row.
     const firstNonEmpty = rawRows.find(
       (r) => r && r.some((c) => c !== null && c !== undefined && String(c).trim() !== "")
     ) as (string | number | null)[] | undefined;
 
-    if (firstNonEmpty && detectHeaderRow(firstNonEmpty)) {
+    const useHeaderFormat =
+      forceFormat === "header" ||
+      (forceFormat !== "group" && !!firstNonEmpty && detectHeaderRow(firstNonEmpty));
+
+    if (useHeaderFormat) {
       // ── Header-based format ────────────────────────────────────────────────
-      const headers = firstNonEmpty.map((c) => String(c ?? "").trim()).filter(Boolean);
+      // When forceFormat=header, scan all rows to find the best header row
+      // (first row where ≥1 cell matches a known pattern, or just the first non-empty row).
+      let headerRow: (string | number | null)[] | undefined;
+      let headerRowIdx = -1;
+
+      if (forceFormat === "header") {
+        // Find the first row that looks like a header
+        for (let i = 0; i < rawRows.length; i++) {
+          const row = rawRows[i] as (string | number | null)[];
+          if (!row || row.every((c) => c === null || c === undefined || String(c).trim() === "")) continue;
+          const matchCount = row.filter((c) => {
+            if (typeof c === "number") return false;
+            return KNOWN_HEADER_PATTERNS.some((p) => p.test(String(c).trim()));
+          }).length;
+          if (matchCount >= 1) {
+            headerRow = row;
+            headerRowIdx = i;
+            break;
+          }
+        }
+        // Fall back to first non-empty row if nothing matched
+        if (!headerRow) {
+          for (let i = 0; i < rawRows.length; i++) {
+            const row = rawRows[i] as (string | number | null)[];
+            if (row && row.some((c) => c !== null && c !== undefined && String(c).trim() !== "")) {
+              headerRow = row;
+              headerRowIdx = i;
+              break;
+            }
+          }
+        }
+      } else {
+        headerRow = firstNonEmpty;
+        headerRowIdx = rawRows.indexOf(firstNonEmpty as (string | number | null)[]);
+      }
+
+      if (!headerRow) {
+        return NextResponse.json({ success: false, error: "No data found in file" }, { status: 400 });
+      }
+
+      const headers = headerRow
+        .map((c) => String(c ?? "").trim())
+        .filter(Boolean);
+
       const dataRows: Record<string, string>[] = [];
 
-      let foundHeader = false;
-      for (const rawRow of rawRows) {
-        const row = rawRow as (string | number | null)[];
+      for (let i = 0; i < rawRows.length; i++) {
+        if (i <= headerRowIdx) continue; // skip header row and anything before it
+        const row = rawRows[i] as (string | number | null)[];
         if (!row || row.every((c) => c === null || c === undefined || String(c).trim() === "")) {
           continue;
         }
-        if (!foundHeader) {
-          foundHeader = true;
-          continue; // skip the header row itself
-        }
         const obj: Record<string, string> = {};
-        headers.forEach((h, i) => {
-          obj[h] = String(row[i] ?? "").trim();
+        headers.forEach((h, idx) => {
+          obj[h] = String(row[idx] ?? "").trim();
         });
-        // Only include rows that have at least one non-empty value
         if (Object.values(obj).some((v) => v !== "")) {
           dataRows.push(obj);
         }
@@ -330,7 +399,7 @@ export async function POST(request: NextRequest) {
       const rawName = String(row[0] ?? "").trim();
       if (!rawName) { rowIndex++; continue; }
 
-      const { firstName, lastName, warnings: nameWarnings } = parseName(rawName);
+      const { firstName, lastName, preferredName, warnings: nameWarnings } = parseName(rawName);
       const rawMembership = String(row[1] ?? "").trim();
       const { roleTypeId, unionId, resignationDate } = parseMembershipStatus(rawMembership);
       const { phone, warnings: phoneWarnings } = normalisePhone(row[2]);
@@ -346,6 +415,7 @@ export async function POST(request: NextRequest) {
         rawName,
         firstName,
         lastName,
+        preferredName,
         rawMembershipStatus: rawMembership,
         memberRoleTypeId: roleTypeId,
         unionId,

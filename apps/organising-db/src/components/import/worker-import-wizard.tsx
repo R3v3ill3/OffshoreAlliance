@@ -66,6 +66,8 @@ type FileFormat = "group" | "header";
 type MappableField =
   | "first_name"
   | "last_name"
+  | "full_name"
+  | "preferred_name"
   | "email"
   | "phone"
   | "worksite"
@@ -90,6 +92,7 @@ interface ReviewRow extends ParsedWorkerRow {
   resolvedWorksiteName: string | null;
   overrideFirstName?: string;
   overrideLastName?: string;
+  overridePreferredName?: string;
   overridePhone?: string;
   overrideEmail?: string;
   overrideMemberRoleTypeId?: number | null;
@@ -135,6 +138,8 @@ const ALL_STEPS: { id: WizardStep; label: string }[] = [
 const MAPPABLE_FIELDS: { value: MappableField; label: string }[] = [
   { value: "first_name", label: "First Name" },
   { value: "last_name", label: "Last Name" },
+  { value: "full_name", label: "Full Name (split)" },
+  { value: "preferred_name", label: "Preferred / Nickname" },
   { value: "email", label: "Email" },
   { value: "phone", label: "Phone / Mobile" },
   { value: "worksite", label: "Worksite" },
@@ -143,14 +148,61 @@ const MAPPABLE_FIELDS: { value: MappableField; label: string }[] = [
 
 function autoMapHeader(header: string): MappableField {
   const h = header.toLowerCase().replace(/[\s_-]/g, "");
-  if (["firstname", "givenname", "first"].includes(h)) return "first_name";
+  if (["firstname", "givenname", "forename", "given", "first"].includes(h)) return "first_name";
   if (["lastname", "surname", "familyname", "last"].includes(h)) return "last_name";
-  if (["email", "emailaddress"].includes(h)) return "email";
-  if (["mobile", "phone", "mobilenumber", "phonenumber", "contact", "mob"].includes(h))
+  if (["name", "fullname", "workername", "employeename", "employeefullname"].includes(h))
+    return "full_name";
+  if (
+    [
+      "preferredname", "preferredfirstname", "preferrednm", "nickname",
+      "nicknam", "knownas", "alias", "preferredgivenname",
+    ].includes(h)
+  )
+    return "preferred_name";
+  if (["email", "emailaddress", "emailaddr"].includes(h)) return "email";
+  if (
+    [
+      "mobile", "phone", "mobilenumber", "mobileno", "phonenumber", "phoneno",
+      "contactnumber", "contactno", "mob", "contact",
+    ].includes(h)
+  )
     return "phone";
-  if (["worksite", "site", "location", "worklocation", "worksite"].includes(h))
+  if (["worksite", "site", "location", "worksite", "worklocation"].includes(h))
     return "worksite";
   return "ignore";
+}
+
+// Client-side name parser — mirrors server parseName in parse/route.ts
+function parseName(raw: string): {
+  firstName: string;
+  lastName: string;
+  preferredName: string | null;
+  warnings: string[];
+} {
+  const trimmed = raw.trim();
+  const warnings: string[] = [];
+  const nicknameMatch = trimmed.match(/\(([^)]+)\)/);
+  const preferredName = nicknameMatch ? nicknameMatch[1].trim() : null;
+  const cleaned = trimmed.replace(/\s*\([^)]*\)\s*/g, " ").trim();
+  if (cleaned.includes(",")) {
+    const [lastPart, firstPart] = cleaned.split(",", 2);
+    const firstName = (firstPart ?? "").trim();
+    const lastName = lastPart.trim();
+    if (!firstName) warnings.push("Could not parse first name");
+    if (!lastName) warnings.push("Could not parse last name");
+    return { firstName, lastName, preferredName, warnings };
+  }
+  const parts = cleaned.split(/\s+/);
+  if (parts.length < 2) {
+    warnings.push("Only one name token found");
+    return { firstName: cleaned, lastName: "", preferredName, warnings };
+  }
+  return {
+    firstName: parts.slice(0, -1).join(" "),
+    lastName: parts[parts.length - 1],
+    preferredName,
+    warnings,
+  };
 }
 
 // Client-side phone normalisation (mirrors server logic)
@@ -187,6 +239,7 @@ export function WorkerImportWizard({
   onComplete,
 }: WorkerImportWizardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastParsedFileRef = useRef<File | null>(null);
 
   // ── Step / format state ───────────────────────────────────────────────────
   const [step, setStep] = useState<WizardStep>("upload");
@@ -338,21 +391,22 @@ export function WorkerImportWizard({
   // ─── File handling ────────────────────────────────────────────────────────
 
   const handleFile = useCallback(
-    async (file: File) => {
+    async (file: File, forceFormat?: "header" | "group") => {
       if (!file.name.endsWith(".xlsx") && !file.name.endsWith(".xls")) {
         setParseError("Only .xlsx and .xls files are supported.");
         return;
       }
       setParseError(null);
       setIsLoading(true);
+      lastParsedFileRef.current = file;
 
       try {
         const formData = new FormData();
         formData.append("file", file);
-        const res = await fetch("/api/worker-import/parse", {
-          method: "POST",
-          body: formData,
-        });
+        const url = forceFormat
+          ? `/api/worker-import/parse?forceFormat=${forceFormat}`
+          : "/api/worker-import/parse";
+        const res = await fetch(url, { method: "POST", body: formData });
         const json = await res.json();
         if (!json.success) {
           setParseError(json.error ?? "Parse failed");
@@ -466,6 +520,8 @@ export function WorkerImportWizard({
     if (fileFormat === "header") {
       const firstNameCol = columnMappings.find((m) => m.field === "first_name")?.header ?? "";
       const lastNameCol = columnMappings.find((m) => m.field === "last_name")?.header ?? "";
+      const fullNameCol = columnMappings.find((m) => m.field === "full_name")?.header ?? "";
+      const preferredNameCol = columnMappings.find((m) => m.field === "preferred_name")?.header ?? "";
       const emailCol = columnMappings.find((m) => m.field === "email")?.header ?? "";
       const phoneCol = columnMappings.find((m) => m.field === "phone")?.header ?? "";
       const worksiteCol = columnMappings.find((m) => m.field === "worksite")?.header ?? "";
@@ -476,15 +532,37 @@ export function WorkerImportWizard({
             ? String(row[worksiteCol] ?? "").trim()
             : "";
           const resolution = resolutionMap.get(rawWorksiteVal);
-          const rawFirst = String(row[firstNameCol] ?? "").trim();
-          const rawLast = String(row[lastNameCol] ?? "").trim();
+
+          let firstName = "";
+          let lastName = "";
+          let preferredName: string | null = null;
+          const parseWarnings: string[] = [];
+
+          if (fullNameCol) {
+            const rawFull = String(row[fullNameCol] ?? "").trim();
+            const parsed = parseName(rawFull);
+            firstName = parsed.firstName;
+            lastName = parsed.lastName;
+            preferredName = parsed.preferredName;
+            parseWarnings.push(...parsed.warnings);
+          } else {
+            firstName = String(row[firstNameCol] ?? "").trim();
+            lastName = String(row[lastNameCol] ?? "").trim();
+            if (!firstName || !lastName) parseWarnings.push("Missing first or last name");
+          }
+
+          if (preferredNameCol) {
+            preferredName = String(row[preferredNameCol] ?? "").trim() || preferredName;
+          }
+
           const rawPhone = phoneCol ? String(row[phoneCol] ?? "").trim() : "";
 
           return {
             rowIndex: i,
-            rawName: `${rawFirst} ${rawLast}`.trim(),
-            firstName: rawFirst,
-            lastName: rawLast,
+            rawName: `${firstName} ${lastName}`.trim(),
+            firstName,
+            lastName,
+            preferredName,
             rawMembershipStatus: "",
             memberRoleTypeId: null,
             unionId: null,
@@ -492,7 +570,7 @@ export function WorkerImportWizard({
             rawPhone,
             phone: normalisePhoneClient(rawPhone),
             email: emailCol ? String(row[emailCol] ?? "").trim() || null : null,
-            parseWarnings: rawFirst && rawLast ? [] : ["Missing first or last name"],
+            parseWarnings,
             groupName: rawWorksiteVal,
             resolvedWorksiteId: resolution?.worksiteId ?? null,
             resolvedWorksiteName: resolution?.worksiteName ?? null,
@@ -625,6 +703,7 @@ export function WorkerImportWizard({
         rowIndex: row.rowIndex,
         firstName: row.overrideFirstName ?? row.firstName,
         lastName: row.overrideLastName ?? row.lastName,
+        preferredName: row.overridePreferredName ?? row.preferredName ?? null,
         email: row.overrideEmail ?? row.email,
         phone: row.overridePhone ?? row.phone,
         memberRoleTypeId:
@@ -749,6 +828,12 @@ export function WorkerImportWizard({
             {parseError}
           </div>
         )}
+        {isLoading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Parsing file…
+          </div>
+        )}
         <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground space-y-1">
           <p className="font-medium text-foreground">Supported formats:</p>
           <p>
@@ -766,11 +851,47 @@ export function WorkerImportWizard({
     );
   }
 
+  function renderGroupFormatOverride() {
+    if (!lastParsedFileRef.current) return null;
+    return (
+      <div className="flex items-start gap-3 p-3 rounded-md border bg-amber-50 border-amber-200 text-sm">
+        <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+        <div className="flex-1">
+          <p className="font-medium text-amber-800">
+            Detected as crew list (ESS/Woodside) format.
+          </p>
+          <p className="text-amber-700 text-xs mt-0.5">
+            If your file has column headers (e.g. First Name, Last Name, Email) use column
+            mapping instead.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs h-7 whitespace-nowrap border-amber-400 bg-white"
+          disabled={isLoading}
+          onClick={() => {
+            if (lastParsedFileRef.current) {
+              handleFile(lastParsedFileRef.current, "header");
+            }
+          }}
+        >
+          {isLoading ? (
+            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+          ) : null}
+          Switch to column mapping
+        </Button>
+      </div>
+    );
+  }
+
   function renderColumnMapping() {
     const mappedFields = new Set(
       columnMappings.filter((m) => m.field !== "ignore").map((m) => m.field)
     );
-    const canProceed = mappedFields.has("first_name") && mappedFields.has("last_name");
+    const canProceed =
+      (mappedFields.has("first_name") && mappedFields.has("last_name")) ||
+      mappedFields.has("full_name");
 
     const updateMapping = (header: string, field: MappableField) => {
       setColumnMappings((prev) =>
@@ -784,8 +905,9 @@ export function WorkerImportWizard({
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
           Match each column from your file to the appropriate field.{" "}
-          <span className="font-medium text-foreground">First Name</span> and{" "}
-          <span className="font-medium text-foreground">Last Name</span> are required.
+          Map either <span className="font-medium text-foreground">First Name + Last Name</span>{" "}
+          separately, or a single <span className="font-medium text-foreground">Full Name (split)</span>{" "}
+          column which will be split automatically.
         </p>
 
         <div className="border rounded-lg overflow-auto max-h-[380px]">
@@ -834,7 +956,7 @@ export function WorkerImportWizard({
         {!canProceed && (
           <div className="flex items-center gap-2 text-sm text-amber-600">
             <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-            Map at least First Name and Last Name to continue.
+            Map either First Name + Last Name, or a Full Name (split) column to continue.
           </div>
         )}
 
@@ -869,6 +991,7 @@ export function WorkerImportWizard({
 
     return (
       <div className="space-y-4">
+        {fileFormat === "group" && renderGroupFormatOverride()}
         <p className="text-sm text-muted-foreground">
           Select the employer to assign to all imported workers. You can skip to leave
           employer unassigned.
@@ -1327,6 +1450,7 @@ export function WorkerImportWizard({
               <TableRow>
                 <TableHead className="text-xs">First Name</TableHead>
                 <TableHead className="text-xs">Last Name</TableHead>
+                <TableHead className="text-xs">Preferred Name</TableHead>
                 <TableHead className="text-xs">Phone</TableHead>
                 <TableHead className="text-xs">Email</TableHead>
                 <TableHead className="text-xs">Role Type</TableHead>
@@ -1360,6 +1484,18 @@ export function WorkerImportWizard({
                         })
                       }
                       className="h-7 text-xs"
+                    />
+                  </TableCell>
+                  <TableCell className="p-1">
+                    <Input
+                      value={row.overridePreferredName ?? row.preferredName ?? ""}
+                      onChange={(e) =>
+                        updateReviewRow(row.rowIndex, {
+                          overridePreferredName: e.target.value || undefined,
+                        })
+                      }
+                      className="h-7 text-xs"
+                      placeholder="—"
                     />
                   </TableCell>
                   <TableCell className="p-1">

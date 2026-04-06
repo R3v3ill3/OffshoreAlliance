@@ -4298,6 +4298,7 @@ export type Database = {
     }
     Functions: {
       apply_employer_wizard_changes: { Args: { payload: Json }; Returns: Json }
+      delete_campaign: { Args: { p_campaign_id: number }; Returns: undefined }
       get_user_role: { Args: never; Returns: string }
       is_admin: { Args: never; Returns: boolean }
       is_assigned_to_campaign: {

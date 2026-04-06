@@ -2,20 +2,46 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useCampaigns } from '@/lib/hooks/useCampaigns'
+import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { CampaignDeleteDialog, type CampaignDeleteTarget } from '@/components/campaign/CampaignDeleteDialog'
 import { cn } from '@/lib/utils'
 import { differenceInDays, format } from 'date-fns'
-import { Plus, Search, ChevronRight, Clock, Calendar } from 'lucide-react'
+import { Plus, Search, ChevronRight, Clock, Calendar, MoreVertical } from 'lucide-react'
 import { STAGE_NAMES } from '@/types'
 
 export default function CampaignsPage() {
+  const supabase = createClient()
   const { data: campaigns, isLoading } = useCampaigns()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<CampaignDeleteTarget | null>(null)
+
+  const { data: profile } = useQuery({
+    queryKey: ['user-profile', 'role'],
+    queryFn: async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return null
+      const { data, error } = await supabase.from('user_profiles').select('role').eq('user_id', user.id).single()
+      if (error) throw error
+      return data as { role: string }
+    },
+  })
+
+  const canOfferDelete = profile?.role === 'admin' || profile?.role === 'user'
 
   const filtered = (campaigns || []).filter((c) => {
     const matchesSearch = !search ||
@@ -29,6 +55,7 @@ export default function CampaignsPage() {
 
   return (
     <div className="p-6 space-y-6">
+      <CampaignDeleteDialog campaign={deleteTarget} onClose={() => setDeleteTarget(null)} />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900">Campaigns</h1>
         <Button asChild>
@@ -92,10 +119,16 @@ export default function CampaignsPage() {
             const daysToExpiry = expiryDate ? differenceInDays(new Date(expiryDate), new Date()) : null
 
             return (
-              <Link key={campaign.campaign_id as number} href={`/campaigns/${campaign.campaign_id}`}>
-                <Card className="hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer">
-                  <CardContent className="py-3 px-4">
-                    <div className="flex items-center gap-4">
+              <Card
+                key={campaign.campaign_id as number}
+                className="hover:border-blue-300 hover:shadow-sm transition-all"
+              >
+                <CardContent className="py-3 px-4">
+                  <div className="flex items-center gap-4">
+                    <Link
+                      href={`/campaigns/${campaign.campaign_id}`}
+                      className="flex flex-1 min-w-0 items-center gap-4 cursor-pointer"
+                    >
                       <div className={cn(
                         'w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0',
                         campaign.status === 'active' ? 'bg-blue-100 text-blue-700' :
@@ -151,10 +184,41 @@ export default function CampaignsPage() {
                         )}
                         <ChevronRight className="h-4 w-4 text-muted-foreground" />
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
+                    </Link>
+
+                    {canOfferDelete && (
+                      <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="text-muted-foreground"
+                              aria-label="Campaign actions"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              className="text-red-600 focus:text-red-600"
+                              onSelect={() =>
+                                setDeleteTarget({
+                                  campaign_id: campaign.campaign_id as number,
+                                  name: String(campaign.name),
+                                })
+                              }
+                            >
+                              Delete campaign
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
             )
           })}
         </div>

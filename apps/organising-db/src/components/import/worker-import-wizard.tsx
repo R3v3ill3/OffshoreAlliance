@@ -7,7 +7,7 @@ import { matchWorksiteCandidates } from "@/lib/utils/worksite-fuzzy";
 import type { WorksiteCandidate } from "@/lib/utils/worksite-fuzzy";
 import type { ParsedWorkerRow, ParsedWorkerGroup } from "@/app/api/worker-import/parse/route";
 import type { WorkerImportRow } from "@/app/api/worker-import/apply/route";
-import type { Worksite } from "@/types/database";
+import type { Worksite, WorksiteType } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -46,6 +46,7 @@ import {
   AlertTriangle,
   Users,
   Building2,
+  Plus,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -206,6 +207,11 @@ export function WorkerImportWizard({
   // ── Shared state ──────────────────────────────────────────────────────────
   const [worksiteResolutions, setWorksiteResolutions] = useState<WorksiteResolution[]>([]);
   const [worksiteSearch, setWorksiteSearch] = useState<Record<string, string>>({});
+  const [createWorksiteFor, setCreateWorksiteFor] = useState<string | null>(null);
+  const [newWorksiteName, setNewWorksiteName] = useState("");
+  const [newWorksiteType, setNewWorksiteType] = useState<WorksiteType | "">("");
+  const [isCreatingWorksite, setIsCreatingWorksite] = useState(false);
+  const [createWorksiteError, setCreateWorksiteError] = useState<string | null>(null);
   const [selectedEmployerId, setSelectedEmployerId] = useState<number | null>(null);
   const [selectedEmployerName, setSelectedEmployerName] = useState<string | null>(null);
   const [employerSearch, setEmployerSearch] = useState("");
@@ -423,6 +429,34 @@ export function WorkerImportWizard({
           : r
       )
     );
+  }
+
+  async function handleCreateWorksite(groupName: string) {
+    if (!newWorksiteName.trim() || !newWorksiteType) return;
+    setIsCreatingWorksite(true);
+    setCreateWorksiteError(null);
+    try {
+      const { data, error } = await supabase
+        .from("worksites")
+        .insert({
+          worksite_name: newWorksiteName.trim(),
+          worksite_type: newWorksiteType,
+          ...(selectedEmployerId ? { principal_employer_id: selectedEmployerId } : {}),
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      resolveWorksite(groupName, data as Worksite);
+      setCreateWorksiteFor(null);
+      setNewWorksiteName("");
+      setNewWorksiteType("");
+    } catch (err) {
+      setCreateWorksiteError(
+        err instanceof Error ? err.message : "Failed to create worksite"
+      );
+    } finally {
+      setIsCreatingWorksite(false);
+    }
   }
 
   function proceedToRowReview() {
@@ -980,28 +1014,42 @@ export function WorkerImportWizard({
                 </div>
 
                 {resolution.candidates.length > 0 && (
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     <p className="text-xs font-medium text-muted-foreground">
-                      Suggested matches:
+                      Suggested matches — click to select:
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      {resolution.candidates.map((c) => (
-                        <button
-                          key={c.worksite.worksite_id}
-                          onClick={() =>
-                            resolveWorksite(resolution.groupName, c.worksite)
-                          }
-                          className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border hover:bg-accent transition-colors"
-                        >
-                          <Badge
-                            variant={confidenceBadgeVariant(c.confidence)}
-                            className="text-[10px] px-1 py-0 h-4"
+                      {resolution.candidates.map((c) => {
+                        const isSelected =
+                          resolution.confirmed &&
+                          resolution.worksiteId === c.worksite.worksite_id;
+                        return (
+                          <Button
+                            key={c.worksite.worksite_id}
+                            variant={isSelected ? "default" : "outline"}
+                            size="sm"
+                            onClick={() =>
+                              resolveWorksite(resolution.groupName, c.worksite)
+                            }
+                            className="h-8 text-xs gap-1.5"
                           >
-                            {c.confidence}
-                          </Badge>
-                          {c.worksite.worksite_name}
-                        </button>
-                      ))}
+                            {isSelected && (
+                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                            )}
+                            <Badge
+                              variant={
+                                isSelected
+                                  ? "secondary"
+                                  : confidenceBadgeVariant(c.confidence)
+                              }
+                              className="text-[10px] px-1 py-0 h-4"
+                            >
+                              {c.confidence}
+                            </Badge>
+                            {c.worksite.worksite_name}
+                          </Button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -1043,47 +1091,132 @@ export function WorkerImportWizard({
                   )}
                 </div>
 
+                {createWorksiteFor === resolution.groupName ? (
+                  <div className="border rounded-md p-3 space-y-2 bg-muted/30">
+                    <p className="text-xs font-medium">New worksite</p>
+                    <Input
+                      placeholder="Worksite name"
+                      value={newWorksiteName}
+                      onChange={(e) => setNewWorksiteName(e.target.value)}
+                      className="h-8 text-sm"
+                      autoFocus
+                    />
+                    <Select
+                      value={newWorksiteType}
+                      onValueChange={(v) => setNewWorksiteType(v as WorksiteType)}
+                    >
+                      <SelectTrigger className="h-8 text-sm">
+                        <SelectValue placeholder="Select type..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(
+                          [
+                            "FPSO",
+                            "FPU",
+                            "FLNG",
+                            "Platform",
+                            "Onshore_LNG",
+                            "Gas_Plant",
+                            "Drill_Centre",
+                            "Region",
+                            "Heliport",
+                            "Pipeline",
+                            "Airfield",
+                            "Onshore_Facilities",
+                            "CPF",
+                            "Gas_Field",
+                            "Other",
+                          ] as WorksiteType[]
+                        ).map((t) => (
+                          <SelectItem key={t} value={t}>
+                            {t.replace(/_/g, " ")}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {createWorksiteError && (
+                      <p className="text-xs text-destructive">{createWorksiteError}</p>
+                    )}
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={
+                          !newWorksiteName.trim() ||
+                          !newWorksiteType ||
+                          isCreatingWorksite
+                        }
+                        onClick={() => handleCreateWorksite(resolution.groupName)}
+                      >
+                        {isCreatingWorksite ? (
+                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        ) : (
+                          <Plus className="h-3 w-3 mr-1" />
+                        )}
+                        Create
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          setCreateWorksiteFor(null);
+                          setNewWorksiteName("");
+                          setNewWorksiteType("");
+                          setCreateWorksiteError(null);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="flex gap-2">
-                  {resolution.worksiteId && (
+                  <Button
+                    variant={
+                      resolution.confirmed && !resolution.worksiteId
+                        ? "default"
+                        : "outline"
+                    }
+                    size="sm"
+                    onClick={() =>
+                      setWorksiteResolutions((prev) =>
+                        prev.map((r) =>
+                          r.groupName === resolution.groupName
+                            ? {
+                                ...r,
+                                worksiteId: null,
+                                worksiteName: null,
+                                confirmed: true,
+                              }
+                            : r
+                        )
+                      )
+                    }
+                    className="text-xs h-7 gap-1"
+                  >
+                    {resolution.confirmed && !resolution.worksiteId ? (
+                      <CheckCircle2 className="h-3 w-3" />
+                    ) : (
+                      <X className="h-3 w-3" />
+                    )}
+                    No Worksite
+                  </Button>
+                  {createWorksiteFor !== resolution.groupName && (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() =>
-                        setWorksiteResolutions((prev) =>
-                          prev.map((r) =>
-                            r.groupName === resolution.groupName
-                              ? {
-                                  ...r,
-                                  worksiteId: null,
-                                  worksiteName: null,
-                                  confirmed: true,
-                                }
-                              : r
-                          )
-                        )
-                      }
-                      className="text-xs h-7"
+                      className="text-xs h-7 gap-1"
+                      onClick={() => {
+                        setCreateWorksiteFor(resolution.groupName);
+                        setNewWorksiteName(resolution.groupName);
+                        setNewWorksiteType("");
+                        setCreateWorksiteError(null);
+                      }}
                     >
-                      <X className="h-3 w-3 mr-1" />
-                      No Worksite
-                    </Button>
-                  )}
-                  {!resolution.confirmed && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        setWorksiteResolutions((prev) =>
-                          prev.map((r) =>
-                            r.groupName === resolution.groupName
-                              ? { ...r, confirmed: true }
-                              : r
-                          )
-                        )
-                      }
-                      className="text-xs h-7"
-                    >
-                      Skip (no worksite)
+                      <Plus className="h-3 w-3" />
+                      Create new
                     </Button>
                   )}
                 </div>
@@ -1190,13 +1323,14 @@ export function WorkerImportWizard({
                   <TableCell className="p-1">
                     <Select
                       value={String(
-                        row.overrideMemberRoleTypeId !== undefined
+                        row.overrideMemberRoleTypeId !== undefined &&
+                        row.overrideMemberRoleTypeId !== null
                           ? row.overrideMemberRoleTypeId
-                          : (row.memberRoleTypeId ?? "")
+                          : (row.memberRoleTypeId ?? "__none__")
                       )}
                       onValueChange={(v) =>
                         updateReviewRow(row.rowIndex, {
-                          overrideMemberRoleTypeId: v ? Number(v) : null,
+                          overrideMemberRoleTypeId: v && v !== "__none__" ? Number(v) : null,
                         })
                       }
                     >
@@ -1204,7 +1338,7 @@ export function WorkerImportWizard({
                         <SelectValue placeholder="—" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">—</SelectItem>
+                        <SelectItem value="__none__">—</SelectItem>
                         {memberRoleTypes.map((rt) => (
                           <SelectItem
                             key={rt.role_type_id}

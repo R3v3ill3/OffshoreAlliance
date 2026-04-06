@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Plus, Wand2, ExternalLink } from "lucide-react";
+import { Plus, Wand2, ExternalLink, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -34,6 +34,10 @@ import type { CampaignType, CampaignStatus } from "@/types/database";
 import type { Database } from "@oa/db-types";
 import { resolveCampaignOrganiserId } from "@/lib/campaign/resolve-campaign-organiser";
 import { CampaignOrganiserSelect } from "@/components/campaigns/campaign-organiser-select";
+import {
+  CampaignDeleteDialog,
+  type CampaignDeleteTarget,
+} from "@/components/campaigns/campaign-delete-dialog";
 
 interface StagePlanSummary {
   stage_number: number;
@@ -97,59 +101,6 @@ function formatDate(d: string | null) {
   }
 }
 
-const columns: Column<CampaignRow>[] = [
-  { key: "name", header: "Name" },
-  {
-    key: "campaign_type",
-    header: "Type",
-    render: (row) => (
-      <Badge variant={TYPE_VARIANT[row.campaign_type]}>
-        {row.campaign_type}
-      </Badge>
-    ),
-  },
-  {
-    key: "status",
-    header: "Status",
-    render: (row) => (
-      <Badge variant={STATUS_VARIANT[row.status]}>
-        {row.status}
-      </Badge>
-    ),
-  },
-  {
-    key: "start_date",
-    header: "Start Date",
-    render: (row) => formatDate(row.start_date),
-  },
-  {
-    key: "end_date",
-    header: "End Date",
-    render: (row) => formatDate(row.end_date),
-  },
-  {
-    key: "organiser_name",
-    header: "Organiser",
-    render: (row) => row.organiser?.organiser_name ?? "—",
-  },
-  {
-    key: "campaign_plan",
-    header: "Campaign Plan",
-    render: (row) => (
-      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-        <PlanStatusBadge stagePlans={row.campaign_stage_plans ?? []} />
-        <a
-          href={`${OA_PLANNER_URL}/campaigns/${row.campaign_id}`}
-          className="text-muted-foreground hover:text-foreground transition-colors"
-          title="Open in OA Planner"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </a>
-      </div>
-    ),
-  },
-];
-
 const INITIAL_FORM = {
   name: "",
   description: "",
@@ -167,6 +118,7 @@ export default function CampaignsPage() {
   const supabase = createClient();
   const queryClient = useQueryClient();
 
+  const [deleteTarget, setDeleteTarget] = useState<CampaignDeleteTarget | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [organiserDialogKey, setOrganiserDialogKey] = useState(0);
   const [form, setForm] = useState(INITIAL_FORM);
@@ -221,8 +173,81 @@ export default function CampaignsPage() {
     },
   });
 
+  const columns = useMemo<Column<CampaignRow>[]>(() => {
+    const base: Column<CampaignRow>[] = [
+      { key: "name", header: "Name" },
+      {
+        key: "campaign_type",
+        header: "Type",
+        render: (row) => (
+          <Badge variant={TYPE_VARIANT[row.campaign_type]}>{row.campaign_type}</Badge>
+        ),
+      },
+      {
+        key: "status",
+        header: "Status",
+        render: (row) => <Badge variant={STATUS_VARIANT[row.status]}>{row.status}</Badge>,
+      },
+      {
+        key: "start_date",
+        header: "Start Date",
+        render: (row) => formatDate(row.start_date),
+      },
+      {
+        key: "end_date",
+        header: "End Date",
+        render: (row) => formatDate(row.end_date),
+      },
+      {
+        key: "organiser_name",
+        header: "Organiser",
+        render: (row) => row.organiser?.organiser_name ?? "—",
+      },
+      {
+        key: "campaign_plan",
+        header: "Campaign Plan",
+        render: (row) => (
+          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <PlanStatusBadge stagePlans={row.campaign_stage_plans ?? []} />
+            <a
+              href={`${OA_PLANNER_URL}/campaigns/${row.campaign_id}`}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              title="Open in OA Planner"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          </div>
+        ),
+      },
+    ];
+    if (canWrite) {
+      base.push({
+        key: "_actions",
+        header: "Actions",
+        sortable: false,
+        className: "w-14 text-right",
+        render: (row) => (
+          <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+              aria-label={`Delete ${row.name}`}
+              onClick={() => setDeleteTarget({ campaign_id: row.campaign_id, name: row.name })}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ),
+      });
+    }
+    return base;
+  }, [canWrite]);
+
   return (
     <div className="space-y-6">
+      <CampaignDeleteDialog campaign={deleteTarget} onClose={() => setDeleteTarget(null)} />
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Campaigns</h1>
         {canWrite && (

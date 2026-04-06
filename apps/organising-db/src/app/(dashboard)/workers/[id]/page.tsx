@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
@@ -15,6 +15,7 @@ import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { format } from "date-fns";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -34,10 +35,25 @@ import {
 const AU_STATES = ["WA", "NT", "QLD", "SA", "NSW", "VIC", "TAS", "ACT"];
 const NONE_VALUE = "__none__";
 
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface OccupationOption {
+  occupation_id: number;
+  canonical_name: string;
+  group_name: string | null;
+}
+
+interface SpecialisationOption {
+  specialisation_id: number;
+  name: string;
+  description: string | null;
+}
+
 interface WorkerDetail {
   worker_id: number;
   first_name: string;
   last_name: string;
+  preferred_name: string | null;
   email: string | null;
   phone: string | null;
   address: string | null;
@@ -48,6 +64,7 @@ interface WorkerDetail {
   gender: string | null;
   occupation: string | null;
   classification: string | null;
+  canonical_occupation_id: number | null;
   member_number: string | null;
   join_date: string | null;
   resignation_date: string | null;
@@ -67,9 +84,13 @@ interface WorkerDetail {
   project: { project_id: number; project_name: string } | null;
   member_role_type: { display_name: string } | null;
   union: { union_code: string; union_name: string } | null;
+  canonical_occupation: {
+    occupation_id: number;
+    canonical_name: string;
+    occupation_group: { name: string } | null;
+  } | null;
 }
 
-/** Draft shape while editing; date fields use `YYYY-MM-DD` for date inputs. */
 type WorkerEditForm = {
   first_name: string;
   last_name: string;
@@ -83,6 +104,7 @@ type WorkerEditForm = {
   gender: string;
   occupation: string;
   classification: string;
+  canonical_occupation_id: number | null;
   employer_id: number | null;
   worksite_id: number | null;
   project_id: number | null;
@@ -93,6 +115,8 @@ type WorkerEditForm = {
   resignation_date: string;
   notes: string;
   is_active: boolean;
+  additional_occupation_ids: number[];
+  specialisation_ids: number[];
 };
 
 interface WorkerAgreement {
@@ -136,6 +160,143 @@ interface ContractOption {
   label: string;
 }
 
+// ─── Occupation combobox ─────────────────────────────────────────────────────
+
+function OccupationCombobox({
+  value,
+  onChange,
+  options,
+  placeholder = "Search occupations…",
+  disabled = false,
+}: {
+  value: number | null;
+  onChange: (id: number | null) => void;
+  options: OccupationOption[];
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const selected = options.find((o) => o.occupation_id === value) ?? null;
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return options;
+    return options.filter(
+      (o) =>
+        o.canonical_name.toLowerCase().includes(q) ||
+        (o.group_name?.toLowerCase().includes(q) ?? false)
+    );
+  }, [search, options]);
+
+  // Group the filtered results by group_name
+  const grouped = useMemo(() => {
+    const map = new Map<string, OccupationOption[]>();
+    for (const o of filtered) {
+      const key = o.group_name ?? "Other";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(o);
+    }
+    return map;
+  }, [filtered]);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  function handleSelect(id: number) {
+    onChange(id);
+    setSearch("");
+    setOpen(false);
+  }
+
+  function handleClear(e: React.MouseEvent) {
+    e.stopPropagation();
+    onChange(null);
+    setSearch("");
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div
+        className="flex h-9 w-full cursor-text items-center rounded-md border border-input bg-background px-3 text-sm shadow-sm"
+        onClick={() => {
+          if (!disabled) {
+            setOpen(true);
+            setSearch("");
+            setTimeout(() => inputRef.current?.focus(), 0);
+          }
+        }}
+      >
+        {open ? (
+          <input
+            ref={inputRef}
+            className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
+            value={search}
+            placeholder={placeholder}
+            onChange={(e) => setSearch(e.target.value)}
+            onFocus={() => setOpen(true)}
+          />
+        ) : (
+          <span className={selected ? "flex-1 truncate" : "flex-1 text-muted-foreground"}>
+            {selected ? selected.canonical_name : placeholder}
+          </span>
+        )}
+        {selected && !open && (
+          <button
+            type="button"
+            className="ml-1 rounded text-muted-foreground hover:text-foreground"
+            onClick={handleClear}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto rounded-md border bg-popover shadow-md">
+          {filtered.length === 0 ? (
+            <p className="p-3 text-center text-xs text-muted-foreground">No occupations found.</p>
+          ) : (
+            [...grouped.entries()].map(([group, items]) => (
+              <div key={group}>
+                <div className="sticky top-0 bg-muted/80 px-3 py-1 text-xs font-semibold text-muted-foreground backdrop-blur">
+                  {group}
+                </div>
+                {items.map((o) => (
+                  <button
+                    key={o.occupation_id}
+                    type="button"
+                    className={`flex w-full items-center px-3 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground ${
+                      o.occupation_id === value ? "bg-accent/50 font-medium" : ""
+                    }`}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      handleSelect(o.occupation_id);
+                    }}
+                  >
+                    {o.canonical_name}
+                  </button>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 function FieldRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 sm:gap-4 py-3 sm:py-2 border-b last:border-0">
@@ -161,7 +322,11 @@ function emptyToNull(s: string): string | null {
   return t === "" ? null : t;
 }
 
-function workerToEditForm(w: WorkerDetail): WorkerEditForm {
+function workerToEditForm(
+  w: WorkerDetail,
+  additionalIds: number[],
+  specialisationIds: number[]
+): WorkerEditForm {
   return {
     first_name: w.first_name,
     last_name: w.last_name,
@@ -175,6 +340,7 @@ function workerToEditForm(w: WorkerDetail): WorkerEditForm {
     gender: w.gender ?? "",
     occupation: w.occupation ?? "",
     classification: w.classification ?? "",
+    canonical_occupation_id: w.canonical_occupation_id,
     employer_id: w.employer_id,
     worksite_id: w.worksite_id,
     project_id: w.project_id,
@@ -185,8 +351,12 @@ function workerToEditForm(w: WorkerDetail): WorkerEditForm {
     resignation_date: dateInputValue(w.resignation_date),
     notes: w.notes ?? "",
     is_active: w.is_active,
+    additional_occupation_ids: additionalIds,
+    specialisation_ids: specialisationIds,
   };
 }
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function WorkerDetailPage() {
   const params = useParams<{ id: string }>();
@@ -200,24 +370,31 @@ export default function WorkerDetailPage() {
   const [editForm, setEditForm] = useState<WorkerEditForm | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [addOccupationId, setAddOccupationId] = useState<string>("");
 
   const [dlgAssign, setDlgAssign] = useState(false);
   const [selContractId, setSelContractId] = useState("");
   const [dlgLoading, setDlgLoading] = useState(false);
   const [dlgError, setDlgError] = useState<string | null>(null);
 
+  // ── Worker detail query ──────────────────────────────────────────────────
   const { data: worker, isLoading } = useQuery({
     queryKey: ["worker", params.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("workers")
         .select(
-          `*, 
+          `*,
            employer:employers(employer_name),
            worksite:worksites(worksite_name),
            project:projects(project_id, project_name),
            member_role_type:member_role_types(display_name),
-           union:unions(union_code, union_name)`
+           union:unions(union_code, union_name),
+           canonical_occupation:occupations(
+             occupation_id,
+             canonical_name,
+             occupation_group:occupation_groups(name)
+           )`
         )
         .eq("worker_id", workerId)
         .single();
@@ -226,6 +403,73 @@ export default function WorkerDetailPage() {
       return data as unknown as WorkerDetail;
     },
     enabled: !!user && workerIdValid,
+  });
+
+  // ── Additional occupations for this worker ───────────────────────────────
+  const { data: workerAdditionalOccupations = [] } = useQuery({
+    queryKey: ["worker-additional-occupations", params.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worker_additional_occupations")
+        .select("occupation_id, occupation:occupations(occupation_id, canonical_name, occupation_group:occupation_groups(name))")
+        .eq("worker_id", workerId);
+      if (error) throw error;
+      return (data ?? []) as unknown as {
+        occupation_id: number;
+        occupation: { occupation_id: number; canonical_name: string; occupation_group: { name: string } | null };
+      }[];
+    },
+    enabled: !!user && workerIdValid,
+  });
+
+  // ── Worker specialisations ───────────────────────────────────────────────
+  const { data: workerSpecialisations = [] } = useQuery({
+    queryKey: ["worker-specialisations", params.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worker_specialisations")
+        .select("specialisation_id, specialisation:specialisations(specialisation_id, name)")
+        .eq("worker_id", workerId);
+      if (error) throw error;
+      return (data ?? []) as unknown as {
+        specialisation_id: number;
+        specialisation: { specialisation_id: number; name: string };
+      }[];
+    },
+    enabled: !!user && workerIdValid,
+  });
+
+  // ── Reference data (only when editing) ──────────────────────────────────
+  const { data: allOccupations = [] } = useQuery({
+    queryKey: ["occupations-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("occupations")
+        .select("occupation_id, canonical_name, occupation_group:occupation_groups(name)")
+        .eq("is_active", true)
+        .order("canonical_name");
+      if (error) throw error;
+      return (data ?? []).map((o) => ({
+        occupation_id: o.occupation_id,
+        canonical_name: o.canonical_name,
+        group_name: (o.occupation_group as unknown as { name: string } | null)?.name ?? null,
+      })) as OccupationOption[];
+    },
+    enabled: !!user && editing,
+  });
+
+  const { data: allSpecialisations = [] } = useQuery({
+    queryKey: ["specialisations-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("specialisations")
+        .select("specialisation_id, name, description")
+        .eq("is_active", true)
+        .order("name");
+      if (error) throw error;
+      return data as SpecialisationOption[];
+    },
+    enabled: !!user && editing,
   });
 
   const { data: memberRoleTypes = [] } = useQuery({
@@ -309,11 +553,10 @@ export default function WorkerDetailPage() {
     if (!projectsForWorksiteFetched) return;
     if (editForm.project_id == null) return;
     const ok = projectsForWorksite.some((p) => p.project_id === editForm.project_id);
-    if (!ok) {
-      setEditForm((prev) => (prev ? { ...prev, project_id: null } : prev));
-    }
+    if (!ok) setEditForm((prev) => (prev ? { ...prev, project_id: null } : prev));
   }, [editing, editForm?.worksite_id, editForm?.project_id, projectsForWorksite, projectsForWorksiteFetched]);
 
+  // ── Agreements ───────────────────────────────────────────────────────────
   const { data: workerAgreements = [], isLoading: loadingAgreements } = useQuery({
     queryKey: ["worker-agreements", params.id],
     queryFn: async () => {
@@ -324,13 +567,13 @@ export default function WorkerDetailPage() {
            agreement:agreements(agreement_id, decision_no, agreement_name, status, expiry_date)`
         )
         .eq("worker_id", workerId);
-
       if (error) throw error;
       return (data ?? []) as unknown as WorkerAgreement[];
     },
     enabled: !!user && workerIdValid,
   });
 
+  // ── Assignments ──────────────────────────────────────────────────────────
   const { data: workerAssignments = [], isLoading: loadingAssignments } = useQuery({
     queryKey: ["worker-assignments", params.id],
     queryFn: async () => {
@@ -351,7 +594,6 @@ export default function WorkerDetailPage() {
         .eq("worker_id", workerId)
         .order("is_current", { ascending: false })
         .order("start_date", { ascending: false });
-
       if (error) throw error;
       return (data ?? []) as unknown as WorkerAssignmentRow[];
     },
@@ -394,18 +636,27 @@ export default function WorkerDetailPage() {
       .map((c) => {
         const scope = c.work_scope?.scope_name ?? "Scope";
         const contractor = c.contractor?.employer_name ?? "Employer";
-
         const ctx: string[] = [];
         if (c.program?.program_name) ctx.push(`Program: ${c.program.program_name}`);
         if (c.project?.project_name) ctx.push(`Project: ${c.project.project_name}`);
         if (c.agreement?.decision_no) ctx.push(`EBA: ${c.agreement.decision_no}`);
-
         const base = `${scope} — ${contractor}`;
-        const label = ctx.length ? `${base} (${ctx.join(", ")})` : base;
-        return { contract_id: c.contract_id, label };
+        return { contract_id: c.contract_id, label: ctx.length ? `${base} (${ctx.join(", ")})` : base };
       })
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [availableContracts]);
+
+  // ── Additional occupations available to add ──────────────────────────────
+  const additionalOccupationOptions = useMemo(() => {
+    if (!editForm) return allOccupations;
+    const excluded = new Set([
+      ...(editForm.canonical_occupation_id != null ? [editForm.canonical_occupation_id] : []),
+      ...editForm.additional_occupation_ids,
+    ]);
+    return allOccupations.filter((o) => !excluded.has(o.occupation_id));
+  }, [allOccupations, editForm?.canonical_occupation_id, editForm?.additional_occupation_ids]);
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
 
   const resetAssignDlg = () => {
     setDlgError(null);
@@ -422,21 +673,14 @@ export default function WorkerDetailPage() {
       contract_id: Number(selContractId),
       is_current: true,
     });
-    if (error) {
-      setDlgError(error.message);
-      setDlgLoading(false);
-      return;
-    }
+    if (error) { setDlgError(error.message); setDlgLoading(false); return; }
     await queryClient.invalidateQueries({ queryKey: ["worker-assignments", params.id] });
     setDlgAssign(false);
     resetAssignDlg();
   };
 
   const handleRemoveAssignment = async (assignmentId: number) => {
-    const { error } = await supabase
-      .from("worker_assignments")
-      .delete()
-      .eq("assignment_id", assignmentId);
+    const { error } = await supabase.from("worker_assignments").delete().eq("assignment_id", assignmentId);
     if (error) return;
     await queryClient.invalidateQueries({ queryKey: ["worker-assignments", params.id] });
   };
@@ -452,7 +696,9 @@ export default function WorkerDetailPage() {
 
   const startEditing = () => {
     if (!worker) return;
-    setEditForm(workerToEditForm(worker));
+    const additionalIds = workerAdditionalOccupations.map((a) => a.occupation_id);
+    const specialisationIds = workerSpecialisations.map((s) => s.specialisation_id);
+    setEditForm(workerToEditForm(worker, additionalIds, specialisationIds));
     setEditing(true);
     setSaveError(null);
   };
@@ -461,24 +707,44 @@ export default function WorkerDetailPage() {
     setEditing(false);
     setEditForm(null);
     setSaveError(null);
+    setAddOccupationId("");
   };
 
   const patchForm = (patch: Partial<WorkerEditForm>) => {
     setEditForm((prev) => (prev ? { ...prev, ...patch } : prev));
   };
 
+  const handleAddOccupation = () => {
+    const id = Number(addOccupationId);
+    if (!id || !editForm) return;
+    if (editForm.additional_occupation_ids.includes(id)) return;
+    patchForm({ additional_occupation_ids: [...editForm.additional_occupation_ids, id] });
+    setAddOccupationId("");
+  };
+
+  const handleRemoveAdditionalOccupation = (id: number) => {
+    if (!editForm) return;
+    patchForm({ additional_occupation_ids: editForm.additional_occupation_ids.filter((x) => x !== id) });
+  };
+
+  const handleToggleSpecialisation = (id: number, checked: boolean) => {
+    if (!editForm) return;
+    const current = editForm.specialisation_ids;
+    patchForm({
+      specialisation_ids: checked ? [...current, id] : current.filter((x) => x !== id),
+    });
+  };
+
   const saveEdits = async () => {
     if (!worker || !editForm) return;
     const fn = editForm.first_name.trim();
     const ln = editForm.last_name.trim();
-    if (!fn || !ln) {
-      setSaveError("First name and last name are required.");
-      return;
-    }
+    if (!fn || !ln) { setSaveError("First name and last name are required."); return; }
 
     setSaving(true);
     setSaveError(null);
 
+    // 1. Update core worker fields
     const payload = {
       first_name: fn,
       last_name: ln,
@@ -492,6 +758,7 @@ export default function WorkerDetailPage() {
       gender: emptyToNull(editForm.gender),
       occupation: emptyToNull(editForm.occupation),
       classification: emptyToNull(editForm.classification),
+      canonical_occupation_id: editForm.canonical_occupation_id,
       employer_id: editForm.employer_id,
       worksite_id: editForm.worksite_id,
       project_id: editForm.project_id,
@@ -504,23 +771,56 @@ export default function WorkerDetailPage() {
       is_active: editForm.is_active,
     };
 
-    const { error } = await supabase.from("workers").update(payload).eq("worker_id", worker.worker_id);
+    const { error: workerError } = await supabase
+      .from("workers")
+      .update(payload)
+      .eq("worker_id", worker.worker_id);
 
-    if (error) {
-      setSaveError(error.message);
-      setSaving(false);
-      return;
+    if (workerError) { setSaveError(workerError.message); setSaving(false); return; }
+
+    // 2. Sync additional occupations (delete + re-insert)
+    const { error: delAddlError } = await supabase
+      .from("worker_additional_occupations")
+      .delete()
+      .eq("worker_id", worker.worker_id);
+
+    if (!delAddlError && editForm.additional_occupation_ids.length > 0) {
+      await supabase.from("worker_additional_occupations").insert(
+        editForm.additional_occupation_ids.map((occupation_id) => ({
+          worker_id: worker.worker_id,
+          occupation_id,
+        }))
+      );
+    }
+
+    // 3. Sync specialisations (delete + re-insert)
+    const { error: delSpecError } = await supabase
+      .from("worker_specialisations")
+      .delete()
+      .eq("worker_id", worker.worker_id);
+
+    if (!delSpecError && editForm.specialisation_ids.length > 0) {
+      await supabase.from("worker_specialisations").insert(
+        editForm.specialisation_ids.map((specialisation_id) => ({
+          worker_id: worker.worker_id,
+          specialisation_id,
+        }))
+      );
     }
 
     await queryClient.invalidateQueries({ queryKey: ["worker", params.id] });
+    await queryClient.invalidateQueries({ queryKey: ["worker-additional-occupations", params.id] });
+    await queryClient.invalidateQueries({ queryKey: ["worker-specialisations", params.id] });
     await queryClient.invalidateQueries({ queryKey: ["workers"] });
-    await queryClient.invalidateQueries({
-      queryKey: ["worksite-contracts-for-worker", params.id],
-    });
+    await queryClient.invalidateQueries({ queryKey: ["worksite-contracts-for-worker", params.id] });
+
     setEditing(false);
     setEditForm(null);
     setSaving(false);
+    setAddOccupationId("");
   };
+
+  // ── Derived display values ────────────────────────────────────────────────
 
   if (isLoading) {
     return (
@@ -548,8 +848,11 @@ export default function WorkerDetailPage() {
   const displayLast = editing && f ? f.last_name : worker.last_name;
   const displayActive = editing && f ? f.is_active : worker.is_active;
 
+  // ── Render ────────────────────────────────────────────────────────────────
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => router.back()}>
@@ -596,9 +899,11 @@ export default function WorkerDetailPage() {
           <TabsTrigger value="communications">Communications</TabsTrigger>
         </TabsList>
 
+        {/* ── Details tab ──────────────────────────────────────────────── */}
         <TabsContent value="details" className="space-y-6 mt-4">
           {editing && f ? (
             <>
+              {/* Personal */}
               <Card>
                 <CardHeader>
                   <CardTitle>Personal Information</CardTitle>
@@ -685,9 +990,7 @@ export default function WorkerDetailPage() {
                         <SelectContent>
                           <SelectItem value={NONE_VALUE}>—</SelectItem>
                           {AU_STATES.map((s) => (
-                            <SelectItem key={s} value={s}>
-                              {s}
-                            </SelectItem>
+                            <SelectItem key={s} value={s}>{s}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -704,6 +1007,7 @@ export default function WorkerDetailPage() {
                 </CardContent>
               </Card>
 
+              {/* Employment */}
               <Card>
                 <CardHeader>
                   <CardTitle>Employment</CardTitle>
@@ -713,11 +1017,7 @@ export default function WorkerDetailPage() {
                     <Label>Employer</Label>
                     <Select
                       value={f.employer_id != null ? String(f.employer_id) : NONE_VALUE}
-                      onValueChange={(v) =>
-                        patchForm({
-                          employer_id: v === NONE_VALUE ? null : Number(v),
-                        })
-                      }
+                      onValueChange={(v) => patchForm({ employer_id: v === NONE_VALUE ? null : Number(v) })}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select employer" />
@@ -736,11 +1036,7 @@ export default function WorkerDetailPage() {
                     <Label>Worksite</Label>
                     <Select
                       value={f.worksite_id != null ? String(f.worksite_id) : NONE_VALUE}
-                      onValueChange={(v) =>
-                        patchForm({
-                          worksite_id: v === NONE_VALUE ? null : Number(v),
-                        })
-                      }
+                      onValueChange={(v) => patchForm({ worksite_id: v === NONE_VALUE ? null : Number(v) })}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select worksite" />
@@ -759,20 +1055,12 @@ export default function WorkerDetailPage() {
                     <Label>Project</Label>
                     <Select
                       value={f.project_id != null ? String(f.project_id) : NONE_VALUE}
-                      onValueChange={(v) =>
-                        patchForm({
-                          project_id: v === NONE_VALUE ? null : Number(v),
-                        })
-                      }
+                      onValueChange={(v) => patchForm({ project_id: v === NONE_VALUE ? null : Number(v) })}
                       disabled={f.worksite_id == null}
                     >
                       <SelectTrigger>
                         <SelectValue
-                          placeholder={
-                            f.worksite_id == null
-                              ? "Select a worksite first"
-                              : "Select project (optional)"
-                          }
+                          placeholder={f.worksite_id == null ? "Select a worksite first" : "Select project (optional)"}
                         />
                       </SelectTrigger>
                       <SelectContent className="max-h-72">
@@ -788,14 +1076,129 @@ export default function WorkerDetailPage() {
                       <p className="text-xs text-muted-foreground">No active projects at this worksite.</p>
                     )}
                   </div>
+
+                  {/* Primary (canonical) occupation */}
                   <div className="space-y-2">
-                    <Label htmlFor="worker-occupation">Occupation</Label>
+                    <Label>Primary Occupation</Label>
+                    <OccupationCombobox
+                      value={f.canonical_occupation_id}
+                      onChange={(id) => patchForm({ canonical_occupation_id: id })}
+                      options={allOccupations.filter(
+                        (o) => !f.additional_occupation_ids.includes(o.occupation_id)
+                      )}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Select from the standardised occupation list.
+                    </p>
+                  </div>
+
+                  {/* Additional occupations */}
+                  <div className="space-y-2">
+                    <Label>Additional Occupations</Label>
+                    {f.additional_occupation_ids.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {f.additional_occupation_ids.map((id) => {
+                          const occ = allOccupations.find((o) => o.occupation_id === id);
+                          return (
+                            <Badge key={id} variant="secondary" className="gap-1 pr-1">
+                              {occ?.canonical_name ?? `ID ${id}`}
+                              <button
+                                type="button"
+                                className="rounded hover:text-destructive"
+                                onClick={() => handleRemoveAdditionalOccupation(id)}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <Select
+                          value={addOccupationId}
+                          onValueChange={setAddOccupationId}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Add an additional occupation…" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-72">
+                            {additionalOccupationOptions.map((o) => (
+                              <SelectItem key={o.occupation_id} value={String(o.occupation_id)}>
+                                {o.canonical_name}
+                                {o.group_name && (
+                                  <span className="text-muted-foreground"> · {o.group_name}</span>
+                                )}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleAddOccupation}
+                        disabled={!addOccupationId}
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      For dual-trade workers, e.g. Boilermaker + Welder.
+                    </p>
+                  </div>
+
+                  {/* Specialisations */}
+                  <div className="space-y-2">
+                    <Label>Specialisations</Label>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {allSpecialisations.map((spec) => (
+                        <div key={spec.specialisation_id} className="flex items-start gap-2">
+                          <Checkbox
+                            id={`spec-${spec.specialisation_id}`}
+                            checked={f.specialisation_ids.includes(spec.specialisation_id)}
+                            onCheckedChange={(checked) =>
+                              handleToggleSpecialisation(spec.specialisation_id, !!checked)
+                            }
+                          />
+                          <label
+                            htmlFor={`spec-${spec.specialisation_id}`}
+                            className="text-sm leading-none cursor-pointer"
+                          >
+                            {spec.name}
+                            {spec.description && (
+                              <span className="block text-xs text-muted-foreground mt-0.5">
+                                {spec.description}
+                              </span>
+                            )}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Cross-cutting qualifications that apply on top of the primary occupation.
+                    </p>
+                  </div>
+
+                  {/* Legacy raw occupation */}
+                  <div className="space-y-2 pt-2 border-t">
+                    <Label htmlFor="worker-occupation" className="text-muted-foreground">
+                      Raw occupation (legacy)
+                    </Label>
                     <Input
                       id="worker-occupation"
                       value={f.occupation}
                       onChange={(e) => patchForm({ occupation: e.target.value })}
+                      className="text-muted-foreground"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Original free-text entry from source data. Use Primary Occupation above for the canonical value.
+                    </p>
                   </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="worker-classification">Classification</Label>
                     <Input
@@ -807,6 +1210,7 @@ export default function WorkerDetailPage() {
                 </CardContent>
               </Card>
 
+              {/* Membership */}
               <Card>
                 <CardHeader>
                   <CardTitle>Membership</CardTitle>
@@ -815,13 +1219,9 @@ export default function WorkerDetailPage() {
                   <div className="space-y-2">
                     <Label>Role</Label>
                     <Select
-                      value={
-                        f.member_role_type_id != null ? String(f.member_role_type_id) : NONE_VALUE
-                      }
+                      value={f.member_role_type_id != null ? String(f.member_role_type_id) : NONE_VALUE}
                       onValueChange={(v) =>
-                        patchForm({
-                          member_role_type_id: v === NONE_VALUE ? null : Number(v),
-                        })
+                        patchForm({ member_role_type_id: v === NONE_VALUE ? null : Number(v) })
                       }
                     >
                       <SelectTrigger>
@@ -842,9 +1242,7 @@ export default function WorkerDetailPage() {
                     <Select
                       value={f.union_id != null ? String(f.union_id) : NONE_VALUE}
                       onValueChange={(v) =>
-                        patchForm({
-                          union_id: v === NONE_VALUE ? null : Number(v),
-                        })
+                        patchForm({ union_id: v === NONE_VALUE ? null : Number(v) })
                       }
                     >
                       <SelectTrigger>
@@ -906,6 +1304,7 @@ export default function WorkerDetailPage() {
                 </CardContent>
               </Card>
 
+              {/* Notes */}
               <Card>
                 <CardHeader>
                   <CardTitle>Notes</CardTitle>
@@ -920,14 +1319,14 @@ export default function WorkerDetailPage() {
                 </CardContent>
               </Card>
 
+              {/* Engagement (read-only in edit mode) */}
               <Card>
                 <CardHeader>
                   <CardTitle>Engagement</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <p className="text-xs text-muted-foreground">
-                    Engagement score and level are read-only; they are intended to reflect system or campaign
-                    activity rather than manual edits.
+                    Engagement score and level are read-only; they reflect system or campaign activity.
                   </p>
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Engagement Score</span>
@@ -945,6 +1344,7 @@ export default function WorkerDetailPage() {
             </>
           ) : (
             <>
+              {/* Personal */}
               <Card>
                 <CardHeader>
                   <CardTitle>Personal Information</CardTitle>
@@ -952,6 +1352,9 @@ export default function WorkerDetailPage() {
                 <CardContent>
                   <dl>
                     <FieldRow label="Full Name" value={`${worker.first_name} ${worker.last_name}`} />
+                    {worker.preferred_name && (
+                      <FieldRow label="Preferred Name" value={worker.preferred_name} />
+                    )}
                     <FieldRow label="Email" value={worker.email} />
                     <FieldRow label="Phone" value={worker.phone} />
                     <FieldRow label="Date of Birth" value={formatDate(worker.date_of_birth)} />
@@ -968,6 +1371,7 @@ export default function WorkerDetailPage() {
                 </CardContent>
               </Card>
 
+              {/* Employment */}
               <Card>
                 <CardHeader>
                   <CardTitle>Employment</CardTitle>
@@ -977,12 +1381,72 @@ export default function WorkerDetailPage() {
                     <FieldRow label="Employer" value={worker.employer?.employer_name} />
                     <FieldRow label="Worksite" value={worker.worksite?.worksite_name} />
                     <FieldRow label="Project" value={worker.project?.project_name} />
-                    <FieldRow label="Occupation" value={worker.occupation} />
+
+                    {/* Canonical occupation */}
+                    <FieldRow
+                      label="Primary Occupation"
+                      value={
+                        worker.canonical_occupation ? (
+                          <span className="flex items-center gap-2">
+                            {worker.canonical_occupation.canonical_name}
+                            {worker.canonical_occupation.occupation_group && (
+                              <Badge variant="outline" className="text-xs font-normal">
+                                {worker.canonical_occupation.occupation_group.name}
+                              </Badge>
+                            )}
+                          </span>
+                        ) : null
+                      }
+                    />
+
+                    {/* Additional occupations */}
+                    {workerAdditionalOccupations.length > 0 && (
+                      <FieldRow
+                        label="Additional Occupations"
+                        value={
+                          <span className="flex flex-wrap gap-1.5">
+                            {workerAdditionalOccupations.map((a) => (
+                              <Badge key={a.occupation_id} variant="secondary">
+                                {a.occupation.canonical_name}
+                              </Badge>
+                            ))}
+                          </span>
+                        }
+                      />
+                    )}
+
+                    {/* Specialisations */}
+                    {workerSpecialisations.length > 0 && (
+                      <FieldRow
+                        label="Specialisations"
+                        value={
+                          <span className="flex flex-wrap gap-1.5">
+                            {workerSpecialisations.map((s) => (
+                              <Badge key={s.specialisation_id} variant="outline">
+                                {s.specialisation.name}
+                              </Badge>
+                            ))}
+                          </span>
+                        }
+                      />
+                    )}
+
                     <FieldRow label="Classification" value={worker.classification} />
+
+                    {/* Legacy field shown only when it differs from canonical or no canonical set */}
+                    {worker.occupation && (
+                      <FieldRow
+                        label="Raw Occupation"
+                        value={
+                          <span className="text-muted-foreground text-xs">{worker.occupation}</span>
+                        }
+                      />
+                    )}
                   </dl>
                 </CardContent>
               </Card>
 
+              {/* Membership */}
               <Card>
                 <CardHeader>
                   <CardTitle>Membership</CardTitle>
@@ -1005,6 +1469,7 @@ export default function WorkerDetailPage() {
                 </CardContent>
               </Card>
 
+              {/* Notes */}
               <Card>
                 <CardHeader>
                   <CardTitle>Notes</CardTitle>
@@ -1014,6 +1479,7 @@ export default function WorkerDetailPage() {
                 </CardContent>
               </Card>
 
+              {/* Engagement */}
               <Card>
                 <CardHeader>
                   <CardTitle>Engagement</CardTitle>
@@ -1036,6 +1502,7 @@ export default function WorkerDetailPage() {
           )}
         </TabsContent>
 
+        {/* ── Agreements tab ───────────────────────────────────────────── */}
         <TabsContent value="agreements" className="mt-4">
           <Card>
             <CardHeader>
@@ -1096,6 +1563,7 @@ export default function WorkerDetailPage() {
           </Card>
         </TabsContent>
 
+        {/* ── Assignments tab ──────────────────────────────────────────── */}
         <TabsContent value="assignments" className="mt-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
@@ -1247,6 +1715,7 @@ export default function WorkerDetailPage() {
           </Card>
         </TabsContent>
 
+        {/* ── Activity tab ─────────────────────────────────────────────── */}
         <TabsContent value="activity" className="mt-4">
           <Card>
             <CardHeader>
@@ -1258,6 +1727,7 @@ export default function WorkerDetailPage() {
           </Card>
         </TabsContent>
 
+        {/* ── Communications tab ───────────────────────────────────────── */}
         <TabsContent value="communications" className="mt-4">
           <Card>
             <CardHeader>

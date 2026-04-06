@@ -150,9 +150,13 @@ function parseName(raw: string): {
   const trimmed = raw.trim();
   const warnings: string[] = [];
 
+  // Strip parenthetical nicknames/preferred names before parsing,
+  // e.g. "Alfred (Alfie) Smith" → "Alfred Smith", "Ben (Benny)" → "Ben"
+  const cleaned = trimmed.replace(/\s*\([^)]*\)\s*/g, " ").trim();
+
   // "LASTNAME, Firstname [Middlename]" format
-  if (trimmed.includes(",")) {
-    const [lastPart, firstPart] = trimmed.split(",", 2);
+  if (cleaned.includes(",")) {
+    const [lastPart, firstPart] = cleaned.split(",", 2);
     const firstName = (firstPart ?? "").trim();
     const lastName = lastPart.trim();
     if (!firstName) warnings.push("Could not parse first name");
@@ -161,10 +165,10 @@ function parseName(raw: string): {
   }
 
   // "Firstname Lastname" format — split on last space
-  const parts = trimmed.split(/\s+/);
+  const parts = cleaned.split(/\s+/);
   if (parts.length < 2) {
     warnings.push("Only one name token found");
-    return { firstName: trimmed, lastName: "", warnings };
+    return { firstName: cleaned, lastName: "", warnings };
   }
   const firstName = parts.slice(0, -1).join(" ");
   const lastName = parts[parts.length - 1];

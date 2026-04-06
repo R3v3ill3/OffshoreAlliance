@@ -212,6 +212,7 @@ export function WorkerImportWizard({
   const [newWorksiteType, setNewWorksiteType] = useState<WorksiteType | "">("");
   const [isCreatingWorksite, setIsCreatingWorksite] = useState(false);
   const [createWorksiteError, setCreateWorksiteError] = useState<string | null>(null);
+  const [bulkRoleType, setBulkRoleType] = useState("");
   const [selectedEmployerId, setSelectedEmployerId] = useState<number | null>(null);
   const [selectedEmployerName, setSelectedEmployerName] = useState<string | null>(null);
   const [employerSearch, setEmployerSearch] = useState("");
@@ -1239,12 +1240,17 @@ export function WorkerImportWizard({
 
   function renderRowReview() {
     const warningCount = reviewRows.filter((r) => r.parseWarnings.length > 0).length;
+    const noRoleTypeCount = reviewRows.filter(
+      (r) =>
+        (r.overrideMemberRoleTypeId === undefined || r.overrideMemberRoleTypeId === null) &&
+        !r.memberRoleTypeId
+    ).length;
     const backStep: WizardStep =
       worksiteResolutions.length > 0 ? "worksite_matching" : "employer_selection";
 
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <p className="text-sm text-muted-foreground">
             {reviewRows.length} workers parsed.
             {warningCount > 0 && (
@@ -1252,7 +1258,67 @@ export function WorkerImportWizard({
                 {warningCount} row{warningCount !== 1 ? "s" : ""} with warnings.
               </span>
             )}
+            {noRoleTypeCount > 0 && (
+              <span className="ml-2 text-muted-foreground">
+                {noRoleTypeCount} with no role type.
+              </span>
+            )}
           </p>
+          {fileFormat === "header" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs h-7 gap-1 text-muted-foreground"
+              onClick={() => setStep("column_mapping")}
+            >
+              <ArrowLeft className="h-3 w-3" />
+              Fix column mapping
+            </Button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-muted-foreground">Set all role types:</span>
+          <Select
+            value={bulkRoleType}
+            onValueChange={setBulkRoleType}
+          >
+            <SelectTrigger className="h-7 text-xs w-36">
+              <SelectValue placeholder="Choose role…" />
+            </SelectTrigger>
+            <SelectContent>
+              {memberRoleTypes.map((rt) => (
+                <SelectItem key={rt.role_type_id} value={String(rt.role_type_id)} className="text-xs">
+                  {rt.display_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            disabled={!bulkRoleType}
+            onClick={() => {
+              if (!bulkRoleType) return;
+              const id = Number(bulkRoleType);
+              setReviewRows((prev) =>
+                prev.map((r) => ({ ...r, overrideMemberRoleTypeId: id }))
+              );
+            }}
+          >
+            Apply to all
+          </Button>
+          {bulkRoleType && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs text-muted-foreground"
+              onClick={() => setBulkRoleType("")}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          )}
         </div>
 
         <div className="border rounded-lg overflow-auto max-h-[400px]">

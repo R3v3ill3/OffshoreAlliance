@@ -289,25 +289,35 @@ export async function POST(request: NextRequest) {
       defval: null,
     });
 
-    // Find the first non-empty row and check if it is a header row.
-    // When forceFormat=header, skip to header parsing immediately from the first non-empty row.
-    const firstNonEmpty = rawRows.find(
-      (r) => r && r.some((c) => c !== null && c !== undefined && String(c).trim() !== "")
-    ) as (string | number | null)[] | undefined;
+    // Find the first row with ≥2 non-empty cells — this skips single-cell title rows
+    // (e.g. "Worker Import - January 2026" in A1 only) and finds the actual header row.
+    let headerCandidate: (string | number | null)[] | undefined;
+    let headerCandidateIdx = -1;
+    for (let i = 0; i < rawRows.length; i++) {
+      const row = rawRows[i] as (string | number | null)[];
+      if (!row) continue;
+      const nonEmptyCount = row.filter(
+        (c) => c !== null && c !== undefined && String(c).trim() !== ""
+      ).length;
+      if (nonEmptyCount >= 2) {
+        headerCandidate = row;
+        headerCandidateIdx = i;
+        break;
+      }
+    }
 
     const useHeaderFormat =
       forceFormat === "header" ||
-      (forceFormat !== "group" && !!firstNonEmpty && detectHeaderRow(firstNonEmpty));
+      (forceFormat !== "group" && !!headerCandidate && detectHeaderRow(headerCandidate));
 
     if (useHeaderFormat) {
       // ── Header-based format ────────────────────────────────────────────────
-      // When forceFormat=header, scan all rows to find the best header row
-      // (first row where ≥1 cell matches a known pattern, or just the first non-empty row).
+      // When forceFormat=header, prefer the first row where ≥1 cell matches a
+      // known header pattern; otherwise fall back to headerCandidate.
       let headerRow: (string | number | null)[] | undefined;
       let headerRowIdx = -1;
 
       if (forceFormat === "header") {
-        // Find the first row that looks like a header
         for (let i = 0; i < rawRows.length; i++) {
           const row = rawRows[i] as (string | number | null)[];
           if (!row || row.every((c) => c === null || c === undefined || String(c).trim() === "")) continue;
@@ -321,20 +331,15 @@ export async function POST(request: NextRequest) {
             break;
           }
         }
-        // Fall back to first non-empty row if nothing matched
+        // Fall back to headerCandidate if no pattern match found
         if (!headerRow) {
-          for (let i = 0; i < rawRows.length; i++) {
-            const row = rawRows[i] as (string | number | null)[];
-            if (row && row.some((c) => c !== null && c !== undefined && String(c).trim() !== "")) {
-              headerRow = row;
-              headerRowIdx = i;
-              break;
-            }
-          }
+          headerRow = headerCandidate;
+          headerRowIdx = headerCandidateIdx;
         }
       } else {
-        headerRow = firstNonEmpty;
-        headerRowIdx = rawRows.indexOf(firstNonEmpty as (string | number | null)[]);
+        // Auto-detected: use the multi-cell row we already found
+        headerRow = headerCandidate;
+        headerRowIdx = headerCandidateIdx;
       }
 
       if (!headerRow) {

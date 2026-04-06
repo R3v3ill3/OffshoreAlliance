@@ -162,9 +162,13 @@ const WORKSITE_TYPES = [
 ];
 
 const OCCUPATION_CATEGORIES = [
-  "Trades", "Inspection", "Operations", "Marine", "Catering",
-  "Management", "Lifting", "Aviation", "Rope_Access", "Engineering",
-  "Administration", "Other",
+  "Welding_and_Fabrication", "Mechanical", "Rigging_and_Scaffolding",
+  "Electrical_and_Instrumentation", "Painting_and_Coatings",
+  "Insulation_and_Cladding", "Operations_and_Process", "Marine",
+  "Lifting_and_Cranes", "Inspection_and_NDT", "ROV_and_Subsea",
+  "Drilling", "Catering_and_Hospitality", "Engineering_and_Technical",
+  "Aviation", "Construction_Trades", "Administration_and_Logistics",
+  "Safety_and_Emergency", "Management_and_Supervision",
 ];
 
 const EWR_ROLE_TYPES = [

@@ -1,0 +1,2345 @@
+{
+  "summary": {
+    "totalRaw": 5324,
+    "uniqueRaw": 1755,
+    "matched": 1755,
+    "matchedTotal": 5324,
+    "unmatched": 0,
+    "unmatchedTotal": 0
+  },
+  "groups": {
+    "Welding and Fabrication": {
+      "Boilermaker": {
+        "count": 126,
+        "aliases": [
+          "Rope Access Boilermaker/welder",
+          "Boilermaker/Welder",
+          "Deck boilermaker",
+          "Boulermaker",
+          "Boilermaker/welder",
+          "Rope access / boilermaker",
+          "Boilermaker/pipefitter/welder",
+          "Boilermaker welder",
+          "Boilermaker/Pipe Fitter",
+          "Rope access Boilermaker",
+          "Boilermaker Welder",
+          "Boilermaker/ Welder",
+          "BOILERMAKER / WELDER",
+          "Rope access boilermaker",
+          "Boilermaker/Pipefitter",
+          "Boilermaker/Coded Welder",
+          "Rope access Boilermaker Welder",
+          "RA Boilermaker Welder",
+          "Boilermaker, Mechanical Fitter",
+          "L3 rope access boilermaker",
+          "boilermaker/rigger",
+          "Rope Access Boilermaker",
+          "Welder boilermaker",
+          "Boiler Maker Welder",
+          "Boilermaker welder/rope access",
+          "boilermaker/welder",
+          "Rope Access Boilermaker Welder",
+          "Rope access Boilermaker/code welder",
+          "Boilermaker/pipefitter",
+          "Boilermaker,  mechanical fitter, scaffolder,  rigger, rope access",
+          "Boilermaker welder , rope access",
+          "BOILERMAKER/WELDER",
+          "Boilermaker/ coded welder",
+          "Welder Boilermaker",
+          "Boilermaker/welder/rope access",
+          "boilermaker/pipe fitter",
+          "boilermaker/ welder",
+          "Boilermaker/ welder",
+          "Boilermaker/welder/Rigger",
+          "Boiler maker/pipe fitter",
+          "Irata level 3 boilermaker",
+          "BoilerMaker/PipeFitter",
+          "Boiler maker"
+        ]
+      },
+      "Welder": {
+        "count": 151,
+        "aliases": [
+          "welding",
+          "Welding",
+          "Welder, Helper",
+          "Welder / welder helper",
+          "Welder/TA",
+          "Welding/Coatngs Inspector",
+          "Weldr",
+          "Barge welder",
+          "Barge Welder",
+          "Deck welder",
+          "Deck Welder",
+          "deck welder",
+          "Rope access welder",
+          "Welder/Boilermaker",
+          "Welder/bmw",
+          "Welder / boilermaker",
+          "Repair welder",
+          "Welder/rigger",
+          "Fill in Welder",
+          "Welder / Pipe Fitter",
+          "Welder / TA"
+        ]
+      },
+      "Coded Welder": {
+        "count": 11,
+        "aliases": [
+          "Coded pipe welder",
+          "Coded Welding Supervisor",
+          "Rope access coded welder",
+          "Coded welder fabricator/rope access technician",
+          "Rope Access / Coded Welder"
+        ]
+      },
+      "Special Class Welder": {
+        "count": 4,
+        "aliases": [
+          "Pressure Welder"
+        ]
+      },
+      "Pipe Welder": {
+        "count": 8,
+        "aliases": [
+          "Pipeline Welder",
+          "Pipeline welder",
+          "Pipe lay welder"
+        ]
+      },
+      "Mainline Welder": {
+        "count": 2,
+        "aliases": []
+      },
+      "Welder Helper": {
+        "count": 18,
+        "aliases": [
+          "Weld Hand",
+          "Welder's Assistant",
+          "Ta  welder",
+          "Welders TA",
+          "Welder TA"
+        ]
+      },
+      "Fabricator": {
+        "count": 2,
+        "aliases": [
+          "Fabricator welder",
+          "Fabricator level 3"
+        ]
+      },
+      "Welding Inspector": {
+        "count": 4,
+        "aliases": [
+          "QA/QC Welding Inspector",
+          "QC Welding Inspector",
+          "API / Welding Inspector",
+          "Rope Access NDT/Welding Inspector"
+        ]
+      },
+      "Welding Technician": {
+        "count": 1,
+        "aliases": []
+      }
+    },
+    "Mechanical": {
+      "Mechanical Fitter": {
+        "count": 231,
+        "aliases": [
+          "Fitter / machinist",
+          "Fitter",
+          "Fitter/ Operator",
+          "Mech fitter",
+          "Mechanical fiter/BMO",
+          "Mechanical Fitter class 5",
+          "Mech Fitter",
+          "Fitter /Turner",
+          "Fitter/Blaster",
+          "Mechanical Fitter / IRATA L3",
+          "Rope Access Mechanical Fitter",
+          "Apprentice Mechanical Fitter",
+          "Mechanical fitter apprentice",
+          "Mech fitter/rope technician",
+          "Fitter / pipe fitter / welder / operator",
+          "Mechanical Fitter Rope Access",
+          "Pipe/Mecanical Fitter",
+          "Mechanical fitter/technician",
+          "Mechanical Fitter / Rope access",
+          "Rope access Level 3 fitter",
+          "Mechanical Fitter / BMO",
+          "Mechanical Fitter / Deck Mechanic",
+          "Mechanical fitter/rope access",
+          "Mechanical Fitter (Contractor)",
+          "Fitter/BMO",
+          "fitter",
+          "Rope access level 3 and mechanical fitter"
+        ]
+      },
+      "Mechanical Technician": {
+        "count": 171,
+        "aliases": [
+          "Front line mechanical technician",
+          "CSU Mechanical Technician",
+          "Mechanical Tech",
+          "Mechanical Lead",
+          "Mechanical Maintainer",
+          "Flexilay Mechanical Technician",
+          "Frontline Mechanical Technician",
+          "Mechanical Specialist",
+          "Mechanical specialist",
+          "Mech Tech",
+          "Senior Rotating Mechanical Technician",
+          "Mech Technician",
+          "Mechanical Technican",
+          "Mechanical tech",
+          "Mechanical Tradesman",
+          "Rope access mechanical technician",
+          "Campaign Mech Tech",
+          "Mechanical Technician/Rope Access Technician",
+          "Mechanical Technician`",
+          "Mechanic Technician",
+          "Front-line mechanical technician",
+          "Mechanical tradesperson",
+          "Mechanical Maintenace Technician",
+          "Mechanical lead",
+          "Mechanical Rope Access Technician"
+        ]
+      },
+      "Fitter and Turner": {
+        "count": 3,
+        "aliases": [
+          "Fitter and turner BMO",
+          "Fitter and turner / mechanical"
+        ]
+      },
+      "Fitter Machinist": {
+        "count": 7,
+        "aliases": [
+          "Machinist",
+          "Insitu machinist"
+        ]
+      },
+      "Pipefitter": {
+        "count": 45,
+        "aliases": [
+          "Boilermaker pipefitter",
+          "Pipe Fitter",
+          "Pipe fitter",
+          "pipe fitting",
+          "PIPEFITTER / BOILERMAKER-WELDER (CODED)",
+          "Senior Pipe fitter",
+          "pipe fitter",
+          "Pipe Fitter/Boilermaker",
+          "Pipe Fitter/Welder",
+          "Pipefitter boilermaker"
+        ]
+      },
+      "Tube Fitter": {
+        "count": 3,
+        "aliases": []
+      },
+      "Bevel Machine Operator": {
+        "count": 28,
+        "aliases": [
+          "BMO",
+          "Bmo/fitter and machinist",
+          "Bmo",
+          "Beveler",
+          "BMW",
+          "L2 BMW/ Maintenance crew",
+          "Rope access L3 BMW",
+          "Pipe beveler",
+          "Bevel mechine operator"
+        ]
+      },
+      "Mechanic": {
+        "count": 53,
+        "aliases": [
+          "Mechanical",
+          "Mechanic/fitter",
+          "Mech",
+          "Mechanical FMO",
+          "Chief mechanic",
+          "Mechanical/Operator",
+          "Mechanical Techinican",
+          "Mechanic/Hydraulic Tech",
+          "Field Maintenance Officers Mechanical",
+          "Mech Super",
+          "Rope access mechanical"
+        ]
+      },
+      "Diesel Mechanic": {
+        "count": 4,
+        "aliases": [
+          "Apprentice Heavy Diesel Mechanic",
+          "Hd mechanic",
+          "HD Fitter"
+        ]
+      },
+      "Hydraulic Mechanic": {
+        "count": 2,
+        "aliases": []
+      },
+      "Deck Mechanic": {
+        "count": 16,
+        "aliases": [
+          "Deck Mech",
+          "Deck mechanic/rigger"
+        ]
+      },
+      "HVAC Technician": {
+        "count": 19,
+        "aliases": [
+          "HVAC Mechanical Technician",
+          "HVAC tech",
+          "HVAC",
+          "Senior HVAC",
+          "HVAC Tech",
+          "Refrigeration Mechanic",
+          "HVAC & Refrigeration",
+          "Refrigeration and HVAC"
+        ]
+      },
+      "Plumber": {
+        "count": 13,
+        "aliases": [
+          "Roof plumber",
+          "Roof Plumber"
+        ]
+      },
+      "Valve Technician": {
+        "count": 1,
+        "aliases": []
+      },
+      "Turbine Technician": {
+        "count": 3,
+        "aliases": [
+          "Turbomachinery maintenance Advisor",
+          "Turbine Advisor",
+          "Turbine advisor"
+        ]
+      },
+      "Instrument Fitter": {
+        "count": 3,
+        "aliases": []
+      },
+      "Flange Technician": {
+        "count": 1,
+        "aliases": [
+          "Flange management technician / machinist"
+        ]
+      }
+    },
+    "Rigging and Scaffolding": {
+      "Rigger": {
+        "count": 476,
+        "aliases": [
+          "Rigging foreman",
+          "Rigger/Leaderman",
+          "Rigger/scaff",
+          "Rope Access/ Rigger",
+          "advanced offshore rigger",
+          "Rigger/ Rigging Foreman",
+          "Rigger/Scaffolder",
+          "Rope access , rigger , scaffolder",
+          "Rope Access Rigger/Scaffolder",
+          "Rigger/scaffold",
+          "Rope Access Rigger",
+          "Rigger/Trade Assistant",
+          "Rigger / rousty  oil and gas",
+          "Rigging",
+          "Rope Access - Rigger/Scaffolder",
+          "Scaffolder rigger",
+          "Scaffolder Rigger",
+          "Rigger/ Scaffolder",
+          "L/H Rigger / Scaffolder",
+          "Rigger / Scaffolder",
+          "Rigger/scaffolder",
+          "Riggers/scaffolder",
+          "Rope access Rigger Scaf",
+          "Rigger/Scaffolder/ crane operator",
+          "Rigger/Scaff",
+          "Scaff/rigger rope access",
+          "Rope access rigger",
+          "Rigger scaff",
+          "Rigging Supervisor",
+          "Rigger/Scaf",
+          "Rigger/Crane Operator",
+          "Rigger/Scaffoler",
+          "rigger/scaffolder",
+          "Rigger/ scaffolding",
+          "Rigger scaffolder",
+          "Rope Access L3 rigger/scaff",
+          "rigger/scoffolder",
+          "Rigger Scaffolder",
+          "Level 3 Rope Access Technician/ Rigger",
+          "Rigger/ Scaffolding",
+          "Rigger/ rope access",
+          "Rope Access rigger",
+          "Rigger/Scaffolder/Deck Crew",
+          "Rope Access/Rigging/Scaffolding",
+          "Rigger/Scaffold",
+          "Rigger, Rope Access",
+          "Scaff rigger rope access",
+          "rigging/Scaffolding",
+          "Scaffolder -Rigger",
+          "Rigger/Scaffolding/Rope access",
+          "Rope access rigger scaffolder",
+          "rigger / scaffolder",
+          "scaffolder rigger",
+          "Rope Access/Rigger",
+          "Rigger/ Crane Operator",
+          "Scaff. Rigger",
+          "Rigger/Crane op",
+          "Rigger/crane op",
+          "Rigger/scaff/rope/plant operator",
+          "Rigger / scaffolder",
+          "Riggger",
+          "Rigger/scaffolder/crane operator",
+          "Rigger/Scaffolder/Dogman",
+          "Rigger/diver",
+          "Rigger Scaffolding",
+          "Rope access level 3/rigger",
+          "Scaffold Rigger",
+          "Rope Access Mechanical Fitter Rigger Scaffolder",
+          "Rigger/scaffolder/ropey",
+          "Rigger/crane operator",
+          "Rigger/ Dogman",
+          "Rigger/operator",
+          "Bull rigger",
+          "Scaffolder/Rigger/Rope Access technician",
+          "Rigger CW3",
+          "Rigging / Rope access",
+          "Rigger/rope access",
+          "Rope Access Supervisor/ Rigger",
+          "Rigger/ Scaffolder Service Tech.",
+          "Scaffolder/rigger/rope access",
+          "Rigger advanced",
+          "Offshore Rigger",
+          "Rigger Scaffolder Rope Access",
+          "Rope Access Rigger/t-a",
+          "Rope Access, Rigger, Scaffolder",
+          "Rigging / Crane op",
+          "Rope access L3 rigger scaffolder",
+          "Rigger Welder",
+          "Rigging supervisor",
+          "Rope Access Rigger Scaffolder",
+          "Rigger/ Commercial Diver",
+          "Deck Rigger",
+          "Rigger/ Scaff",
+          "Ropey rigger/scaffolder",
+          "Rigger/Scaff L3 Irata tech",
+          "Rope Access Rigger/ Supervision",
+          "Rope Access / Rigging",
+          "Adv Rigger / Scaffolder",
+          "Rope Access / Rigger / Rope Access",
+          "Rigger/Scaffolder Level 3 rope access tech",
+          "Rigger/ scoper",
+          "Rope Access Mechanical Fitter/Rigger",
+          "Scaffolder, rigger and rope access tech"
+        ]
+      },
+      "Advanced Rigger": {
+        "count": 20,
+        "aliases": [
+          "Advanced Rigger Trade Assistant",
+          "Advanced Scaffold Advanced Rigger",
+          "Advanced rigger/ rope access",
+          "Advanced Rigger/Scaffolder",
+          "Advance rigger",
+          "Advance Rigger",
+          "Level 3 Rope Access Advanced Rigger",
+          "advanced rigger/scaffolder/rope tech",
+          "Rope access L3/ Advanced Rigger/ Mechanical Fitter"
+        ]
+      },
+      "Scaffolder": {
+        "count": 379,
+        "aliases": [
+          "Scaffolder/rigger",
+          "Scaffold Yard",
+          "Scaffolding",
+          "Scaffolder/Rigger",
+          "Rope access scaffolder",
+          "Scaffold / Rigger",
+          "Rope Access Technician/ Scaffolder",
+          "Scaffolder / rigger",
+          "Scaffolder /rigger",
+          "Sacff/Rig",
+          "scaffolder/rigger",
+          "Scaffolder/ rigger",
+          "Scaffolder / Rigger",
+          "Scaff/Rigger",
+          "Scaffold/ rigger",
+          "Scaffolder/ Rigger",
+          "Scaffold/Rigger",
+          "Scaffold",
+          "Rig/Scaff",
+          "Scaff/rigger",
+          "Scaffold/rigger",
+          "Scaffolder/ rope access",
+          "scaffolder /rigger",
+          "Rope access/scaffolder",
+          "Rope Access Scaffolder",
+          "SCAFFOLDER / RIGGER",
+          "Scaffold/rigger/Ropey",
+          "Scaffolder/Painter Blaster",
+          "Scaffolder/Rigger/Deck Crew",
+          "SCAFF/RIGGER",
+          "Scaffolder/Yardsman",
+          "Adv scaffolder",
+          "Scaffold/Rigging/Truck/Fork/Tele/OS",
+          "Scaffolding/rigging",
+          "Scaffolder /Rigger",
+          "Scaffolding/Rigging",
+          "Level 3 scaff/rigger - deck crew"
+        ]
+      },
+      "Advanced Scaffolder": {
+        "count": 10,
+        "aliases": [
+          "Advanced Scaffolder/Rigger",
+          "Advanced scaffolder/advanced rigger",
+          "Advance scaffolder"
+        ]
+      },
+      "Dogman": {
+        "count": 3,
+        "aliases": []
+      },
+      "Rope Access Technician": {
+        "count": 72,
+        "aliases": [
+          "Rope access level three",
+          "Level 3",
+          "Rope access level 3",
+          "L3 IRATA RA",
+          "SA-RA",
+          "Rope access",
+          "Rope Access level 3",
+          "SA/RA/RAT",
+          "Rope Access",
+          "L3 rope access technician",
+          "Rope acces",
+          "Rope Access L3",
+          "Rope Access Level 3",
+          "Rope access L3",
+          "Level 3 Rope Access",
+          "IRATA level 3",
+          "Rope Access Tehnician L3",
+          "Rope technician",
+          "rope access",
+          "L3 Rope Access Technician",
+          "L3 Irata Tech",
+          "Rope Access Technician L3",
+          "Ropey",
+          "Rope Access - Level 3",
+          "Rope Access Technition",
+          "Rope Access Lead Hand",
+          "Rope Access Team Lead",
+          "Ra/sa co",
+          "Rope Access tech L3",
+          "Rope access tech",
+          "Access Lead",
+          "Access tech"
+        ]
+      }
+    },
+    "Electrical and Instrumentation": {
+      "Electrician": {
+        "count": 77,
+        "aliases": [
+          "Deck Electrician",
+          "Electrical",
+          "Electrical/Instrument",
+          "Electrical Trades Assistant",
+          "Electrician/HV/Instrumentation/ET",
+          "QMI Specialist Electrical/Instrument",
+          "electrical",
+          "Electrician/Inspector",
+          "Electrician / Instrumentation Tech / Operations",
+          "Responsible Person Electrical",
+          "Electrician/ tech /handyman",
+          "Electrician Instrumentation",
+          "Electrical/Instrument Technician",
+          "Deck electrician",
+          "Electrician/ ROV Technician",
+          "Industrial Electrician"
+        ]
+      },
+      "INLEC Technician": {
+        "count": 249,
+        "aliases": [
+          "E&I",
+          "Instrument technician",
+          "Instrument Electrical",
+          "Instrument / Electrician",
+          "Inlec",
+          "E and I technician",
+          "INLEC",
+          "Instrumentation & Controls Technician",
+          "Electrical Instrumentation",
+          "E&I technician",
+          "E&I Technician",
+          "Senior E&I Technician",
+          "Instrument & Control Technician",
+          "Production E&I",
+          "Inlec/RPE",
+          "E/I",
+          "INLEC Lead",
+          "E & I Technician",
+          "I& E Technician",
+          "Operations Inlec/QMI Technician",
+          "Instrument Electrician",
+          "Inlec (Instrumentation/Electrical)",
+          "E & I",
+          "Electrical Instrumentation Tech",
+          "E & I technician",
+          "Instrument electrician",
+          "Inlec Tech",
+          "Inlec Apprentice",
+          "Instrument Technician",
+          "Inlec Tech / Production Tech",
+          "Electrical & Instrumentation Tech.",
+          "FMO E&I",
+          "Maintenance Tech - E&I",
+          "Inlec Operations E&1",
+          "Instrument Electrical Tech",
+          "RPE/frontline INLEC",
+          "Instrument/electrical tech",
+          "Instrumentation Electrical",
+          "Inlec - ICC",
+          "Rope Access INLEC",
+          "InLec",
+          "E+I",
+          "E&I Supervisor",
+          "Instrumentation Electrician",
+          "Inlecs",
+          "Instrument Electrician (Inlec)",
+          "E/I Technician",
+          "E@I Technician",
+          "Production Technician E/I",
+          "INLEC Operator Maintainer",
+          "I & E Tech",
+          "ELECTRICAL AND INSTRUMENTATION",
+          "E&I Operator/Maintainer",
+          "instrument electrical",
+          "Maintenance inlec",
+          "Instrumentation electrician"
+        ]
+      },
+      "Electrical Technician": {
+        "count": 24,
+        "aliases": [
+          "Electrical specialist",
+          "Instrument electrical technician",
+          "Instrument Electrical technician",
+          "Electrical and Instrumentation Technician",
+          "Electrical Instrumentation Technician",
+          "Maintenance electrical specialist/REP",
+          "Electrical Instrument Technician",
+          "Instrument Electrical Technician",
+          "Electrical Specialist",
+          "Electrical & Instrumentation technician",
+          "Instrument/Electrical Technician",
+          "Instrumentation/Electrical Technician (Inlec)",
+          "Electrical & Instrumentation Rope Access Technician",
+          "Electrical & Instrumentation Technician",
+          "Electrical Specialists"
+        ]
+      },
+      "Electrical Trade Assistant": {
+        "count": 2,
+        "aliases": [
+          "Electrical TA"
+        ]
+      },
+      "HV Specialist": {
+        "count": 6,
+        "aliases": [
+          "HV REP",
+          "Electrical Specialist HV/RPE",
+          "Electrical Specialist HV RPE",
+          "HV LNG Systems Electrician",
+          "HV Inlec Technician",
+          "HV Specialist/ REP"
+        ]
+      },
+      "Telecommunications Technician": {
+        "count": 8,
+        "aliases": [
+          "Communications Technician",
+          "Telecoms Technician"
+        ]
+      },
+      "EEHA Inspector": {
+        "count": 2,
+        "aliases": [
+          "E&I technician/EEHA inspector",
+          "E&I/EEHA Technician"
+        ]
+      },
+      "Electronics Technician": {
+        "count": 4,
+        "aliases": [
+          "Electronic Technician"
+        ]
+      }
+    },
+    "Painting and Coatings": {
+      "Painter": {
+        "count": 72,
+        "aliases": [
+          "Industrial Painter",
+          "Industrial painter",
+          "Rope access painter",
+          "Painter rope access",
+          "Rope Access, Painter.",
+          "Painter, blaster",
+          "RA painter",
+          "Rope access / painter",
+          "Painter/Blater",
+          "Painter/Rope access",
+          "Painter Blasy",
+          "Rope Access Painter",
+          "Painter/rope access",
+          "Industrial Painter / Fireproofer",
+          "Chartek Painter",
+          "Paint/blast/scaffolding",
+          "Rope access/painter",
+          "Painter/ Inspection",
+          "Paint supervisor",
+          "painting"
+        ]
+      },
+      "Blaster": {
+        "count": 7,
+        "aliases": [
+          "Water blaster",
+          "Sandblaster/Spraypainter",
+          "HPW Blaster",
+          "Blasters/Painter",
+          "Blast",
+          "Sand blaster / spray painter"
+        ]
+      },
+      "Painter/Blaster": {
+        "count": 174,
+        "aliases": [
+          "Rope access blaster painter",
+          "Rope access painter/blaster",
+          "Blaster/Painter",
+          "Painter & Blaster",
+          "Painter Blaster / L3",
+          "Painter blaster / lvl 3 rope access",
+          "Painter blaster",
+          "blaster painter",
+          "Blaster Painter",
+          "Blaster painter",
+          "mech/blaster/painter",
+          "Blaster/Painter - Rope Access Technician",
+          "Painter sandblaster",
+          "painter blaster/team leader",
+          "Blaster/ Painter",
+          "Offshore Rope Access Painter/Blaster",
+          "Painter / Blaster",
+          "Painter/ blaster",
+          "Rope Access Paint and Blast",
+          "Trade blaster/painter",
+          "Painter Blaster",
+          "painter/ blaster",
+          "Blaster /Painter",
+          "Blaster/Painter - Rope Access",
+          "Blaster/painter",
+          "rope access blaster/painter",
+          "Painter/ Blaster",
+          "Sandblaster and spray-painter",
+          "Painter / blaster bl",
+          "Blaster/painter trade",
+          "Rope access painter blaster",
+          "Rope Access painter blaster",
+          "Blaster /painter",
+          "Rope Access Blaster/Painter",
+          "Rope access / painter Blaster",
+          "Painter blaster rope level 1",
+          "Painter / blaster",
+          "Rope Access Level 3 Painter/blaster",
+          "Painter/Blaster/Rope Access",
+          "Rope Access Painter/Blaster",
+          "Painter blaster rope access",
+          "Blaster painter rope access",
+          "Blast/Paint/Rope Access",
+          "Rope Access Painter Blaster",
+          "Rope access/painter blaster",
+          "Rope access ,painter blaster",
+          "Industrial blaster/painter",
+          "Blaster/ painter",
+          "Blast abd paint",
+          "Industrial Blaster/Painter",
+          "Blaster / Painter",
+          "painter blaster",
+          "Industrial Paint Blaster",
+          "Blaster painter rope tech",
+          "Rope Access Technician/Painter/Blaster",
+          "Rope Level 3 Painter Blaster",
+          "Rope Access Blaster Painter",
+          "Painter/blaster, rope access",
+          "Paint & Blast",
+          "Painter/ blaster, rope access",
+          "Painter/Blaster Rope Access"
+        ]
+      },
+      "Field Joint Coater": {
+        "count": 37,
+        "aliases": [
+          "Field Joint Coating",
+          "field coat joiner offshore",
+          "Field Join Coasting",
+          "Wrapper",
+          "TA field joint coater",
+          "FJC",
+          "Field joint coaters",
+          "Field Joint Coater/Wrapper",
+          "Field joint coating technician",
+          "Wrapper/Blaster/Field Joint Coater",
+          "Field joint coating/Ta",
+          "Field coat joiner",
+          "TechnoWrap - Blast/paint",
+          "Field Joint coating"
+        ]
+      },
+      "Coatings Technician": {
+        "count": 16,
+        "aliases": [
+          "Coater",
+          "Coating",
+          "Surface preparation and industrial coatings",
+          "Pipe Coater",
+          "Coater / Blaster  FJC",
+          "Coatings remediation technition"
+        ]
+      },
+      "UHP Operator": {
+        "count": 4,
+        "aliases": [
+          "UHP Ops/ Blaster/Painter/ Coating Inspector",
+          "Uhp water blaster",
+          "Rope Access / UHP Blaster Painter",
+          "UHP Operator, Rope Access Tech, Rigger, Painter/Blaster"
+        ]
+      }
+    },
+    "Insulation and Cladding": {
+      "Sheet Metal Worker": {
+        "count": 50,
+        "aliases": [
+          "Sheetmetal worker",
+          "Sheetmetal/Painting",
+          "Sheetmetal Worker",
+          "Sheet metal worker/ lagger",
+          "Sheet Metal Worker/Painter Blaster",
+          "Sheet metal",
+          "Sheet metal tradesman",
+          "1st class sheet metal worker",
+          "First Class Sheetmetal Worker",
+          "1st Class Sheetmetal Worker",
+          "SMW",
+          "Sheet Metal Worker/Boilermaker",
+          "Rope Access SMW",
+          "1st class SHEET METAL WORKER",
+          "Sheetmetal",
+          "Sheetmetalworker",
+          "Sheet metal worker / insulator",
+          "Sheet metal tradesmen",
+          "Level 3 Rope Access tech, Sheetmetal technician"
+        ]
+      },
+      "Insulator": {
+        "count": 16,
+        "aliases": [
+          "Cryogenic insulation",
+          "Sheetmetal and insulation",
+          "Cryogenic insulator",
+          "Roofer and insulator",
+          "Insulator/smw",
+          "Insulation"
+        ]
+      },
+      "Lagger/Cladder": {
+        "count": 9,
+        "aliases": [
+          "Pipe Lagger",
+          "Cladder / Lagger",
+          "Lagger",
+          "Lagger Cladder",
+          "Cladder/lagger/power/",
+          "Rope Access Lagger / Cladder"
+        ]
+      },
+      "Fireproofer": {
+        "count": 5,
+        "aliases": [
+          "Fireproofing",
+          "Fire proof ."
+        ]
+      }
+    },
+    "Operations and Process": {
+      "Production Technician": {
+        "count": 360,
+        "aliases": [
+          "Production tech",
+          "Production Tecnician",
+          "Production Techincian",
+          "Production Operator",
+          "Production Tech",
+          "production tech",
+          "Production Technician / CCR",
+          "Production Technician / Control Panel operator",
+          "Operations Production Tech",
+          "Production Technician/Mechanical Technician",
+          "Production Techni",
+          "Production operator",
+          "Offshore Production Technician",
+          "Production Techncian",
+          "Production Technician / Mechanical Trade",
+          "Production Technician (Water Systems))",
+          "Services Production Technician",
+          "Production Technician - Operations",
+          "Production Technician-Mechanical",
+          "Senior Production Technician",
+          "Production Technition",
+          "Prod Tech",
+          "Production Operator / PTW Coordinator",
+          "LNG Production Technician",
+          "Upstream Production Technician",
+          "Production Technician - Utilities",
+          "Production tech.",
+          "Prod tech",
+          "Production Technican"
+        ]
+      },
+      "Production Operator": {
+        "count": 116,
+        "aliases": [
+          "Operations",
+          "ROV Operator",
+          "Winch Operator (Technical Crew)",
+          "Field technician operator II offshore",
+          "Operations Rep",
+          "All rounder Operator",
+          "GOR operation",
+          "Operator",
+          "Waste operator",
+          "Multi Skilled Operator",
+          "Waste and Vehicle Operator",
+          "Water Operator",
+          "Mobile plant/Tipper operator",
+          "Excavator Operator",
+          "Machine Operator",
+          "Operator Maintainer",
+          "Operator maintainer mechanical",
+          "Operations Specialist",
+          "Deck",
+          "Beval machine operator",
+          "Waste & Vehicle Operator",
+          "Excavator operator",
+          "frontline mechanical operator maintianer",
+          "Operations Supervisor",
+          "Operator Technician",
+          "HPU Operator Assistant",
+          "Service Operator",
+          "Offshore Operations Texhnician",
+          "Operator / Production Tech",
+          "Boiler operator",
+          "Operation Representative- Area2",
+          "Operations Adviser",
+          "operator",
+          "csu operations",
+          "Operater",
+          "Utilities",
+          "Marine operator",
+          "Marine operations",
+          "Operations and Maintenance",
+          "Operator/Maintainer",
+          "Operator/maintainer (Inlec)",
+          "Operrater on site",
+          "Shore Operations Officer"
+        ]
+      },
+      "Production Specialist": {
+        "count": 24,
+        "aliases": [
+          "Production Specialist - OMS",
+          "Production Specialist Operator"
+        ]
+      },
+      "Operations Technician": {
+        "count": 74,
+        "aliases": [
+          "Ops Tech",
+          "Operations Technician / Inlec",
+          "Senior Ops Tech",
+          "Operations Technician Cargo",
+          "Senior Operations Technician",
+          "Ops tech - Production",
+          "Operations Technician Mechanical",
+          "Operations Technician - INLEC",
+          "Mechanical operations technician",
+          "Operations Technician Production",
+          "Operation technician",
+          "Ops Tech Mech",
+          "Operations Technician SERVICES",
+          "Operations Tech - Inlec",
+          "Operation Technician",
+          "Operations Technician - Production",
+          "Operations Technician, Production",
+          "Operations Technician (mech)",
+          "OPS TECH",
+          "Ops Tech Inlec",
+          "Lead Operations Technician",
+          "Offshore Operations Technician",
+          "Production Operations Technician",
+          "Operations Tech",
+          "Production Operations Tech",
+          "Productions Operations Technician",
+          "Operations Technician (Services)"
+        ]
+      },
+      "Process Technician": {
+        "count": 18,
+        "aliases": [
+          "Process technican"
+        ]
+      },
+      "Process Operator": {
+        "count": 16,
+        "aliases": [
+          "Chevron process operator trainee",
+          "Process Operator Technician",
+          "Process opertaor"
+        ]
+      },
+      "Control Room Technician": {
+        "count": 83,
+        "aliases": [
+          "Control Room Operator",
+          "Lng Ccr Technician",
+          "LNG CCR Operator",
+          "CCR Technician",
+          "CCR technician",
+          "CCR Production Technician",
+          "CCR",
+          "Crux CCR",
+          "CCR Tech",
+          "Control Room",
+          "Control Room Lead",
+          "CCR Operator",
+          "CCR Marine",
+          "Control room operator",
+          "remote-control room operator",
+          "CCR technican",
+          "CCR Panel Technician",
+          "LNG CCR",
+          "S&L CCR",
+          "Prod Tech Upstream CCR",
+          "Upstream CCR",
+          "Utilities CCR",
+          "Production Tech - LNG CCR",
+          "CCR tech",
+          "CCR Relief Production Techncian",
+          "LNG Control Room Technician",
+          "Operations CCR Technician",
+          "Control Room Tech",
+          "control room tech"
+        ]
+      },
+      "Control Room Operator": {
+        "count": 1,
+        "aliases": [
+          "Ballast Control Operator"
+        ]
+      },
+      "Field Operator": {
+        "count": 9,
+        "aliases": [
+          "TRS Field operator",
+          "Feild opperator",
+          "Field Operator 1",
+          "Field Operator/Supervisor"
+        ]
+      },
+      "Plant Operator": {
+        "count": 7,
+        "aliases": [
+          "Batch plant operator",
+          "Plant Operations Specialist",
+          "Water Plant Operator"
+        ]
+      },
+      "Pipeline Controller": {
+        "count": 10,
+        "aliases": []
+      },
+      "Gas Systems Operator": {
+        "count": 2,
+        "aliases": [
+          "Gas Pipeline controller"
+        ]
+      },
+      "Service Technician": {
+        "count": 80,
+        "aliases": [
+          "Field Service Tech",
+          "Service Tech",
+          "Service tech",
+          "Production service tech I.R",
+          "Platform Service Technician",
+          "Offshore Service Technician",
+          "Industrial Service",
+          "Service Tech/Rigger",
+          "Leads Service Technician",
+          "Field Service Technician",
+          "Service Technician 4",
+          "Industrial services supervisor",
+          "Service technician - Mechanical fiitter",
+          "Offshore Service Tech (PST)",
+          "Service Technition",
+          "Industrial service technician",
+          "Service tech rigger/scaffolder",
+          "Service Technician (Access)",
+          "Service Provider"
+        ]
+      },
+      "General Service Operator": {
+        "count": 31,
+        "aliases": [
+          "Gso Rigger",
+          "GSO",
+          "General Services Operator",
+          "Service Technician (GSO)",
+          "GSO scaffold / rigger",
+          "GSO/Rigger",
+          "IR / GSO",
+          "IR/GSO",
+          "GSO Tech / Crane Operator",
+          "GSO (TA)",
+          "GSO Tech",
+          "Gs tech",
+          "GS Tech"
+        ]
+      },
+      "Production Maintenance Technician": {
+        "count": 46,
+        "aliases": [
+          "Maintenance Specialist HV/REP",
+          "Maintenance Technician Mechanical",
+          "core maintenance",
+          "Maintenance Technician - Mech",
+          "Maintenance Technician - INLEC",
+          "Mechanical Maintenance Technician",
+          "Maintenance Specialist",
+          "Maintenance Technician",
+          "Habitat Technician",
+          "Production Maintenance Operator",
+          "maintenance specialist E&I",
+          "Maintenance Technician - Inlec",
+          "Maintenance Technician - Mechanical",
+          "HABITAT TECH",
+          "maintenance specialist (controls)",
+          "Production maintenance Technician (PMT)",
+          "Production maintenance tech",
+          "Production Maintenance Technician (Marine)",
+          "Maintenance Specialist - Electrical",
+          "Fabric Maintenance",
+          "Maintenance technician",
+          "Habitat technician",
+          "Maintenance Specialist - Controls",
+          "Maintenance specialist HV",
+          "Maintenance Specialist - HV/REP",
+          "Operations- Maintenance Specialist"
+        ]
+      },
+      "Line Up Operator": {
+        "count": 13,
+        "aliases": [
+          "line-up operator",
+          "Line-up Operator",
+          "Lineup operator",
+          "Line up",
+          "Lineup Operator"
+        ]
+      },
+      "Radio Operator": {
+        "count": 10,
+        "aliases": [
+          "Radio Operator / Administrator",
+          "Radio Op",
+          "Radio operatpr"
+        ]
+      },
+      "Commissioning Technician": {
+        "count": 9,
+        "aliases": [
+          "Mech commissioning tech",
+          "Commissioning",
+          "Snr mechanical Commissioning tech",
+          "Senior Electrical Commissioning Tech",
+          "I&C Commissioning Technician",
+          "Commissioning & operating technician",
+          "Mechanical Commissioning Technician",
+          "Commissioning Engineer"
+        ]
+      },
+      "Trade Assistant": {
+        "count": 105,
+        "aliases": [
+          "TA",
+          "T/A",
+          "Tried assistant",
+          "Trades assistant",
+          "Ta",
+          "Organiser",
+          "Trades Assistant",
+          "Labourer",
+          "Trades person",
+          "Labourer/storeperson/operator",
+          "Helper",
+          "Trades assistant to",
+          "Order helper",
+          "TA / Rigger",
+          "T/a",
+          "Plug Hole Filler",
+          "Rope access/trade assistant",
+          "Runner",
+          "Pr",
+          "YARD PERSONEL",
+          "structural/ ATA",
+          "Trade Assistance",
+          "T.A",
+          "TRADES ASSISTANT",
+          "Trades assistance",
+          "T.a/labourer",
+          "Yard Labourer",
+          "Ta/umbilical op",
+          "Trade assistance"
+        ]
+      },
+      "Technician": {
+        "count": 101,
+        "aliases": [
+          "Catalyst Technician",
+          "Tubular running services field technician",
+          "Inlet Specialist",
+          "Maintenance QMI Specialist",
+          "LNG Technician",
+          "Industrial Technician",
+          "Project Tech",
+          "Tech",
+          "Pool technician/ handyman",
+          "Maintenance fotter",
+          "Pot-P",
+          "I&C Tecnician",
+          "Specialist applicator rope access",
+          "Specialist",
+          "Control Specialist",
+          "MLO",
+          "MLC",
+          "ROPE ACCESS CABLE REPAIR TECHNICIAN",
+          "Offshore Technician",
+          "Skilled Services",
+          "Instrument Electircian / PMT",
+          "Controls Specialist",
+          "Maintenence Specialist",
+          "Senior Composite Technician",
+          "Technician Manufacturing",
+          "Product Technician",
+          "Crayonic",
+          "TWR Technician",
+          "Maintenance",
+          "RMS",
+          "Project Technician",
+          "PMT",
+          "Technician / Marine Master",
+          "PST AND OLC AND IR",
+          "Composite Technician",
+          "Crew Chief TRS",
+          "Field Technician",
+          "Hazardous Contaminant Specialist",
+          "Project technician",
+          "QMI Specialist",
+          "Field tech",
+          "QMI/INLEC",
+          "Services Technician",
+          "Loading & storage technician",
+          "Services Technician/Crane",
+          "QMI tech",
+          "MAC Lead",
+          "Ml",
+          "Senior Trade Technician",
+          "S & O Technician",
+          "POT I/E",
+          "POT-PTU",
+          "Senior Multiskilled Services Technician",
+          "Composite tech",
+          "Trainee",
+          "IE Technician",
+          "Inlet Technician",
+          "Field Senior Technician",
+          "Cat Tech",
+          "ES specialist",
+          "Heat Technician",
+          "Oil field technician",
+          "ENI Tech",
+          "QMI specialist",
+          "Spec",
+          "CTR Technician"
+        ]
+      }
+    },
+    "Marine": {
+      "Master": {
+        "count": 43,
+        "aliases": [
+          "Captain",
+          "Master chief mate",
+          "Master Mariner",
+          "Trainee Jack up barge master",
+          "Master and 2nd Officer",
+          "Vessel Master",
+          "Shipmaster",
+          "Master/PMT",
+          "Master / Chief Officer",
+          "Master / SDPO",
+          "Vessel master / chief officer",
+          "Master/Chief Officer",
+          "Master/ chief officer",
+          "Vessel master"
+        ]
+      },
+      "Chief Officer": {
+        "count": 27,
+        "aliases": [
+          "Chief Officer/DPO",
+          "Chief Mate",
+          "C/O",
+          "chief mate/marine",
+          "Chief Officer / SDPO"
+        ]
+      },
+      "Deck Officer": {
+        "count": 55,
+        "aliases": [
+          "Marine Navigator",
+          "Seafarer - Deck Officer",
+          "1st Officer",
+          "Marine - Deck Officer/DPO",
+          "Deck Officers",
+          "Deck Officer (2nd Officer)",
+          "Marine officer",
+          "Ship officer",
+          "Bridge Officer",
+          "Ship Officer/Master/SDPO",
+          "Navigation Officer",
+          "Deck Officer / DPO",
+          "Deck Officer /DPO",
+          "Chief/1st officer",
+          "Marine Deck Officer",
+          "Shore Officer"
+        ]
+      },
+      "Second Officer": {
+        "count": 57,
+        "aliases": [
+          "2/O",
+          "2nd Officer",
+          "2nd officer",
+          "2nd Officer/DPO",
+          "Watchkeeper 2nd Officer / DPO",
+          "2nd Officer / DPO",
+          "2nd officer / DPO",
+          "Second Officer/Chief Officer",
+          "Deck Mate  2nd Off / Ch Off",
+          "Seafarer - second officer",
+          "2nd officer/DPO",
+          "Casual Second Officer"
+        ]
+      },
+      "Second Mate": {
+        "count": 10,
+        "aliases": [
+          "2nd Mate / DPO",
+          "OOW/2nd mate",
+          "Second Mate/DPO",
+          "2nd mate",
+          "2nd Mate",
+          "Chief or 2nd Mate"
+        ]
+      },
+      "Dynamic Positioning Officer": {
+        "count": 25,
+        "aliases": [
+          "Chief Mate SDPO",
+          "DPO",
+          "DPO / 2nd Officer",
+          "TDPO",
+          "Deck Watch keeper - DPO",
+          "Senior Dynamic Positioning Officer",
+          "2nd Officer & DPO",
+          "Senior DPO",
+          "DPO Trainee",
+          "Ship's officer DPO",
+          "DPO/2nd Mate",
+          "Senior Dynamic Positioning Operator",
+          "DPO/SDPO - Bridge Officer"
+        ]
+      },
+      "Marine Engineer": {
+        "count": 60,
+        "aliases": [
+          "1st Engineer",
+          "Chief Engineer",
+          "First Marine Engineer",
+          "2nd Engineer",
+          "Marine Engine",
+          "Mechanical Tech - Marine Engineer",
+          "Marine Enginner",
+          "2nd engineer",
+          "Marine Engineer / Utes 1",
+          "Marine Engineer Officer",
+          "First Engineering Officer",
+          "Second Engineer",
+          "2nd Engineer (Marine)",
+          "1st Engineer Siem Pilot",
+          "First Engineer",
+          "Marine Engineering Officer",
+          "Chief/1st engineer"
+        ]
+      },
+      "Electro-Technical Officer": {
+        "count": 12,
+        "aliases": [
+          "Electro Technical Officer",
+          "ETO",
+          "Electro- Technical Officer",
+          "ETO/ Marine Engineer",
+          "ETO/Engineer",
+          "Electro Technical Officer (ETO)"
+        ]
+      },
+      "Bosun": {
+        "count": 0,
+        "aliases": []
+      },
+      "Integrated Rating": {
+        "count": 4,
+        "aliases": [
+          "Seaman",
+          "Merchant Seaman"
+        ]
+      },
+      "Deck Crew": {
+        "count": 10,
+        "aliases": [
+          "Deckhand",
+          "Deck Cadet",
+          "Deck Watchkeeper",
+          "Deck Watchkeeper Bridge/2nd Officer",
+          "Bridge Watchkeeper/2nd Officer"
+        ]
+      },
+      "Motorman": {
+        "count": 4,
+        "aliases": [
+          "Oiler"
+        ]
+      },
+      "Seafarer": {
+        "count": 22,
+        "aliases": [
+          "Officer",
+          "Merchant Seafarer",
+          "Ships Officer",
+          "Utes2 (Marine, Master Mariner)",
+          "Seafarers/Marine Sector",
+          "Nautical Cadet",
+          "Mariner"
+        ]
+      },
+      "Hydrographic Surveyor": {
+        "count": 17,
+        "aliases": [
+          "Principal Survey Engineer",
+          "Trainee Survey Engineer",
+          "Survey Engineer/ Technician",
+          "Offshore Survey Engineer",
+          "Offshore Principal Survey Engineer",
+          "Graduate Hydrographic Surveyor",
+          "Survey Engineer"
+        ]
+      },
+      "Marine Technician": {
+        "count": 12,
+        "aliases": [
+          "Marine Tech",
+          "Marine Service Tech",
+          "Marine ops support",
+          "Storage and Loading Technician",
+          "Storage & Loading Marine Tech",
+          "Storage and Loading Marine Support Technician",
+          "Marine Lead Technician",
+          "marine service technician"
+        ]
+      }
+    },
+    "Lifting and Cranes": {
+      "Crane Operator": {
+        "count": 76,
+        "aliases": [
+          "Rigger crane operator",
+          "Crane op/rigger",
+          "Crane op",
+          "crane operator rigger",
+          "Subsea Crane Operator",
+          "Rigger scaffold crane op",
+          "Lifting and Rigging supervisor",
+          "Crane/op",
+          "Assistant Crane Operator",
+          "Deck - PST - Crane Op",
+          "Crane opertor",
+          "Rigger Scaffolder Crane op",
+          "Rigger, Scaffolder, Crane Operator, Rope Access",
+          "Rigger  crane operator",
+          "Crane Operator/ Lead Tech",
+          "Crane operator/service technician",
+          "Access Technician (Crane op)",
+          "ACO , crane ops",
+          "GSO Crane Operator",
+          "Site Focal Point - Lifting",
+          "Crane Op",
+          "Crane Opp",
+          "Crane Operator (rigger/scaffolder/ rope access worker)",
+          "Stage 3 Crane op",
+          "Rigger - Crane Operator"
+        ]
+      },
+      "Crane Technician": {
+        "count": 4,
+        "aliases": [
+          "Crane Tech",
+          "Electrical Crane Tech",
+          "Crane Techncian"
+        ]
+      }
+    },
+    "Inspection and NDT": {
+      "AICIP Inspector": {
+        "count": 28,
+        "aliases": [
+          "Plant Inspector - AICIP - Casual",
+          "AICIP Rope Access Inspector",
+          "AICIP/API Plant Inspector",
+          "AICIPRope Access",
+          "AICIP Inspector/ Crane Inspector",
+          "AICIP",
+          "Plant Inspector AICIP",
+          "AICIP Plant Inspector",
+          "Rope access AICIP inspector",
+          "AICIP In-Service Inspection"
+        ]
+      },
+      "API Inspector": {
+        "count": 2,
+        "aliases": [
+          "API-510 and API-570 Plant Inspector"
+        ]
+      },
+      "Plant Inspector": {
+        "count": 14,
+        "aliases": [
+          "Plant Inspector / AICIP Inspector",
+          "Onboard inspector",
+          "Multi skilled plant inspector"
+        ]
+      },
+      "NDT Technician": {
+        "count": 91,
+        "aliases": [
+          "NDT Tech",
+          "Inspector / NDT",
+          "NDT",
+          "NDT Helper",
+          "Non destructive testing",
+          "NDT Technican",
+          "Inspection/NDT",
+          "NDT/QC/Welding Inspector",
+          "NDT Multi technician",
+          "Inspector",
+          "Lv 3 rope Access Inspector",
+          "NDT Technician/ Rope access",
+          "Integrity Inspector",
+          "Offshore Inspecter / Advanced NDT",
+          "NDT / Rope Access",
+          "Inspection",
+          "NDT / Rope access Technician",
+          "Rope Access NDT",
+          "Non-Destructive Technician (NDT)",
+          "NDT RA Technician",
+          "Rope access NDT technician",
+          "NDT inspector",
+          "NDT/ rope access",
+          "Rope Access L3 Inspector",
+          "Rope access Inspection technician",
+          "Rope Access Rigger/NDT Inspection",
+          "Rope Access NDT Technician",
+          "Inspector & NDT",
+          "Rigger / NDT / Rope Access Supervisor",
+          "NDT / Plant inspector",
+          "Rope access NDT hull inspector",
+          "NDT Rope Access",
+          "Inspector /rope access / ndt",
+          "Cswip",
+          "NDT/L3 Rope Access Supervisor",
+          "Ndt",
+          "Inspection Technician",
+          "NDT HELPER",
+          "Rope Access NDT technician",
+          "Offshore Inspection Engineer",
+          "Inspector / ndt tech",
+          "NDT, rope access level 3",
+          "Level 3 Rope Access Supervisor/ NDT Inspector",
+          "AUT Scanner Technician"
+        ]
+      },
+      "Hull Tank Inspector": {
+        "count": 10,
+        "aliases": [
+          "Senior Hull Tank Inspector",
+          "Senior Hulltank inspector/Advanced NDT/Rope Access Level 3",
+          "Hull tank inspector / ndt tech / api570",
+          "Senior Hull Tank Inspector / Supervisor",
+          "Senior hull tank inspector"
+        ]
+      },
+      "Corrosion Technician": {
+        "count": 1,
+        "aliases": [
+          "Corrosion Tech"
+        ]
+      },
+      "NACE Inspector": {
+        "count": 7,
+        "aliases": [
+          "NACE  inspector"
+        ]
+      },
+      "Inspection Supervisor": {
+        "count": 7,
+        "aliases": [
+          "Inspection coordinator",
+          "Inspection lead"
+        ]
+      },
+      "Quality Inspector": {
+        "count": 2,
+        "aliases": [
+          "TE & QA/QC Inspector"
+        ]
+      },
+      "Topside Inspector": {
+        "count": 3,
+        "aliases": [
+          "Top Side Inspector",
+          "Level 3 Topside Inspector"
+        ]
+      },
+      "Marine Inspector": {
+        "count": 5,
+        "aliases": [
+          "Pressure Vessel Inspector"
+        ]
+      }
+    },
+    "ROV and Subsea": {
+      "ROV Pilot Technician": {
+        "count": 38,
+        "aliases": [
+          "ROV Pilot Tech",
+          "ROV Senior Pilot Technitian",
+          "ROV Senior Pilot Technician",
+          "Remotely Operated Vehicle Pilot Tech",
+          "Pilot Tech",
+          "ROV pilot tech",
+          "Senior Pilot Tech",
+          "ROV PT",
+          "ROV Pilot tech",
+          "ROV Pilot Tech 1",
+          "ROV SPT",
+          "Pilot technician",
+          "ROV Pilot Tech/Sub Engineer",
+          "ROV Senior Pilot Tech",
+          "Pilot Technician",
+          "Pilot tech",
+          "Senior ROV Pilot Technician"
+        ]
+      },
+      "ROV Pilot": {
+        "count": 61,
+        "aliases": [
+          "ROV",
+          "ROV Pilot/Technician",
+          "Rov",
+          "ROV Pilot / workshop tech",
+          "Remote Vehicle Operator",
+          "ROV Senrior Pilot Technician",
+          "ROV Pilot/Tech",
+          "Rov sun engineer",
+          "ROV Pilot/Technicain",
+          "ROV Pilot/Supervisor",
+          "ROV pilot and Maintainer"
+        ]
+      },
+      "ROV Supervisor": {
+        "count": 41,
+        "aliases": [
+          "ROV SUPERIOR",
+          "ROV Supervisor/Senior Pilot",
+          "ROV Supv",
+          "ROV Senior Supervisor",
+          "ROV senior Supervisor",
+          "ROV Senior Supervisor/ Bridge Supervisor"
+        ]
+      },
+      "ROV Technician": {
+        "count": 15,
+        "aliases": [
+          "ROV Tech",
+          "ROV tech",
+          "ROV Tech/Supervisor",
+          "ROV Senior TECHNICIAN",
+          "Rov tech",
+          "ROV Technician / Pilot",
+          "ROV senior tech"
+        ]
+      },
+      "ROV Submersible Engineer": {
+        "count": 19,
+        "aliases": [
+          "Snr Subsea Eng",
+          "Sub Sea Engineer",
+          "Subsea Engineer",
+          "ROV Sub Eng",
+          "ROV Sub engineer",
+          "ROV Sub Engineer",
+          "ROV Submersible Technician",
+          "Submersible Engineer / Senior Pilot",
+          "Senior tech / sub eng",
+          "Submersible Engineer",
+          "SUB ENGINEER / PILOT TECHNICIAN"
+        ]
+      },
+      "ROV Superintendent": {
+        "count": 3,
+        "aliases": []
+      },
+      "ROV Trainee": {
+        "count": 1,
+        "aliases": []
+      },
+      "Subsea Engineer": {
+        "count": 1,
+        "aliases": [
+          "Subsea controls"
+        ]
+      },
+      "Subsea Supervisor": {
+        "count": 5,
+        "aliases": [
+          "Subsea Field Specialist",
+          "Assistant Subsea Supervisor",
+          "Controls Subsea Field Specialist"
+        ]
+      },
+      "Diver": {
+        "count": 5,
+        "aliases": [
+          "Pumphand",
+          "Mechanical Fitter / Rope Access / Commercial Diver",
+          "Diver / rigger",
+          "Diver/Rigger"
+        ]
+      }
+    },
+    "Drilling": {
+      "Driller": {
+        "count": 6,
+        "aliases": [
+          "Dual DD/LWD",
+          "Drilling"
+        ]
+      },
+      "Assistant Driller": {
+        "count": 3,
+        "aliases": []
+      },
+      "Derrickman": {
+        "count": 8,
+        "aliases": [
+          "Assistant derrickman",
+          "Assistant Derrickman"
+        ]
+      },
+      "Floorhand": {
+        "count": 18,
+        "aliases": [
+          "Floor man",
+          "Floor Hand",
+          "Floorhand / rigger-scaffolder",
+          "Floorman",
+          "Floor hand and project technician"
+        ]
+      },
+      "Roughneck": {
+        "count": 4,
+        "aliases": []
+      },
+      "Roustabout": {
+        "count": 39,
+        "aliases": [
+          "Rousty"
+        ]
+      },
+      "Toolpusher": {
+        "count": 6,
+        "aliases": [
+          "Senior Toolpusher"
+        ]
+      },
+      "Casing Hand": {
+        "count": 3,
+        "aliases": []
+      }
+    },
+    "Catering and Hospitality": {
+      "Chef": {
+        "count": 67,
+        "aliases": [
+          "Chef/ utility",
+          "Chef Supervisor",
+          "Chef/Baker",
+          "Hospitality",
+          "Chef/utility",
+          "Head Chef",
+          "Chef/manager",
+          "Chef/Service Attendant",
+          "Head chef",
+          "Wellness Coach",
+          "Chef/cook/baker",
+          "Chef/Manager"
+        ]
+      },
+      "Cook": {
+        "count": 9,
+        "aliases": [
+          "Cook / Chef",
+          "Cook/Caterer",
+          "Cook / Baker",
+          "Marine Cook"
+        ]
+      },
+      "Baker": {
+        "count": 3,
+        "aliases": [
+          "Baker /chef",
+          "Baker/Chef"
+        ]
+      },
+      "Steward": {
+        "count": 20,
+        "aliases": [
+          "Chief Steward",
+          "Stewart",
+          "Stewardess",
+          "Steward/ utility"
+        ]
+      },
+      "Utility": {
+        "count": 56,
+        "aliases": [
+          "Contractor",
+          "Offshore",
+          "Stwd/utility",
+          "Utility worker",
+          "Utility/Steward",
+          "All rounder",
+          "Night Laundry Utility",
+          "Experienced Utility",
+          "Oil and gas",
+          "Utility/Refueler",
+          "Utes II",
+          "Utlitly",
+          "Peggy",
+          "Full Time",
+          "PEGGY",
+          "Oil and Gas",
+          "Casual utility",
+          "Offshore worker",
+          "Varied",
+          "Chef Utility"
+        ]
+      },
+      "Service Attendant": {
+        "count": 15,
+        "aliases": []
+      },
+      "Camp Boss": {
+        "count": 5,
+        "aliases": [
+          "Camp Boss/Chef"
+        ]
+      },
+      "Galley Hand": {
+        "count": 2,
+        "aliases": []
+      },
+      "Chief Caterer": {
+        "count": 3,
+        "aliases": [
+          "Catering",
+          "Utility Catering"
+        ]
+      },
+      "Cleaner": {
+        "count": 4,
+        "aliases": [
+          "Janitor",
+          "Level 2 Tank Cleaner, HWP assistant",
+          "Industrial Cleaner"
+        ]
+      }
+    },
+    "Engineering and Technical": {
+      "Engineer": {
+        "count": 25,
+        "aliases": [
+          "Licenced Engineer",
+          "Licensed engineer",
+          "Site support Engineer",
+          "Protective engineer",
+          "Technical support engineer",
+          "Technical Engineer",
+          "Senior Service engineer",
+          "Mechanical engineer",
+          "Systems Engineer",
+          "Class 3 engineer - MRO",
+          "Engineer/Technician",
+          "Oiltools Technical Support Engineer"
+        ]
+      },
+      "Field Service Engineer": {
+        "count": 11,
+        "aliases": [
+          "Field Service",
+          "FSE",
+          "Field Service Specialist",
+          "Field Specialist"
+        ]
+      },
+      "Laboratory Analyst": {
+        "count": 16,
+        "aliases": [
+          "LAB ANALYST",
+          "Lab Technician",
+          "Platform Laboratory Analyst",
+          "Offshore Laboratory Analyst"
+        ]
+      },
+      "Chemist": {
+        "count": 14,
+        "aliases": [
+          "Production Chemist",
+          "Senior Chemist Inspector",
+          "Offshore Chemist",
+          "Production chemist",
+          "Senior Chemist"
+        ]
+      },
+      "Survey Engineer": {
+        "count": 0,
+        "aliases": []
+      }
+    },
+    "Aviation": {
+      "Licensed Aircraft Maintenance Engineer": {
+        "count": 74,
+        "aliases": [
+          "Aircraft Maintenance Engineer",
+          "B1.3 LAME",
+          "Licenced Aircraft Maintenance Engineer",
+          "Licenced aircraft maintenance engineer",
+          "Licensed Maintenance Aircraft Engineer",
+          "B1",
+          "LAME",
+          "Aircraft maintenance engineer",
+          "Licensed Aircraft Engineer",
+          "Lead Engineer (LAME)",
+          "Licensed Aircraft Maintenance Engineer (LAME)",
+          "Licenced Aircraft Engineer",
+          "Aviation Maintenance Engineer",
+          "Apprentice B2",
+          "Helicopter maintenance engineer",
+          "Licenced Aircraft Maintenance Engineer B1.3",
+          "Licence Aircraft Maintenance Engineer",
+          "Licensed aircraft engineer",
+          "Helicopter L.A.M.E.",
+          "B2 licensed aircraft maintenance engimeer",
+          "B1 LAME",
+          "Helicopter engineer",
+          "B2 LAME",
+          "Licenced Aircraft Maintenance Engineer (LAME)",
+          "Licensed Helicopter Engineer",
+          "Licensed Aircraft Maintenance Engineer B2",
+          "Licensed Aircraft  Maintenance Engineer",
+          "LAME B2",
+          "B2 Licensed aircraft maintenance engineer",
+          "B2 Licensed Aircraft Engineer"
+        ]
+      },
+      "Aircraft Engineer": {
+        "count": 8,
+        "aliases": [
+          "Aircraft Mechanic",
+          "Helicopter Mechanic"
+        ]
+      },
+      "Avionics Technician": {
+        "count": 5,
+        "aliases": [
+          "Licenced Aircraft Maintenance Engineer Avionics",
+          "Avionics LAME",
+          "Helicopter avionics Lame",
+          "Avionics",
+          "Aircraft Engineer - Avionics"
+        ]
+      },
+      "Pilot": {
+        "count": 4,
+        "aliases": [
+          "Pilot/Technician",
+          "Pilot / Technician"
+        ]
+      },
+      "Helicopter Landing Officer": {
+        "count": 13,
+        "aliases": [
+          "Ramp Officer",
+          "Ramp assistant",
+          "Ramp Attendant",
+          "Heli admin / Utility",
+          "Heli-admin / Steward",
+          "Heli Admin Coordinator",
+          "Heli Admin",
+          "Heli-Administration/Service Attendant",
+          "Helicopter Administrator",
+          "Helicopter refueler/ground staff"
+        ]
+      }
+    },
+    "Construction Trades": {
+      "Carpenter": {
+        "count": 16,
+        "aliases": [
+          "carpenter/scaffolder",
+          "Carpenter / concreter",
+          "Carpenter,Rigger, crane operator"
+        ]
+      },
+      "Concreter": {
+        "count": 4,
+        "aliases": [
+          "Concreater",
+          "Concrete specialist"
+        ]
+      },
+      "Spacer": {
+        "count": 10,
+        "aliases": []
+      },
+      "Refractory Installer": {
+        "count": 1,
+        "aliases": []
+      },
+      "Buffer/Grinder": {
+        "count": 5,
+        "aliases": [
+          "Grinder/buffer",
+          "Buffer grinder",
+          "Buffer and Grinder"
+        ]
+      }
+    },
+    "Administration and Logistics": {
+      "Storeperson": {
+        "count": 37,
+        "aliases": [
+          "Storekeeper",
+          "Storeman",
+          "Touring Stores Person",
+          "Waste Management",
+          "Storesperson",
+          "Store person",
+          "Storekeeper / Logistics Coordinator",
+          "Store Person",
+          "StoreMan",
+          "Store-person",
+          "Store Assistant",
+          "offshore Stores Assistant",
+          "Offshore Store Person",
+          "Storman/ramp/ground crew"
+        ]
+      },
+      "Warehouse Officer": {
+        "count": 14,
+        "aliases": [
+          "Warehouse Lead",
+          "warehouse office",
+          "Warehouse / logistics",
+          "Warehouse store man"
+        ]
+      },
+      "Logistics Coordinator": {
+        "count": 13,
+        "aliases": [
+          "Material Logistics/ TA",
+          "Materials and Logistics Coordinator",
+          "Offshore Logistics Coordinator",
+          "OFFSHORE LOGISTICS CO ORDINATOR",
+          "Logistics Operator",
+          "Logistics, crane",
+          "Offshore Logistics Co Ordinator",
+          "Project Logistics Coordinator"
+        ]
+      },
+      "Materials Controller": {
+        "count": 5,
+        "aliases": [
+          "Materials Lead",
+          "Material Comtroller",
+          "Material Controller",
+          "Offshore Materials Coordinator"
+        ]
+      },
+      "Scheduler/Planner": {
+        "count": 19,
+        "aliases": [
+          "LNG Maintenance planner",
+          "Scheduler",
+          "Maintance Planner",
+          "Planner",
+          "Maintenance Planner/Scheduler",
+          "Offshore Planner",
+          "Maintenance scheduler",
+          "Schedule planner",
+          "Planner /Coordinator",
+          "Offshore Execution Readiness Planner",
+          "Planner - Offshore mechanical",
+          "Site Scheduler",
+          "Maintenance Planning Specialist",
+          "Near Term Planner/Scheduler",
+          "Planner/Scheduler",
+          "Maintenance Planner"
+        ]
+      },
+      "Driver": {
+        "count": 11,
+        "aliases": [
+          "Driver/Operator",
+          "Truck Driver/Operator",
+          "Waste Operator Driver",
+          "Crane Driver",
+          "Crane driver",
+          "Truck Driver",
+          "Transport",
+          "Driver / Operator",
+          "Waste Truck Operator"
+        ]
+      },
+      "Admin": {
+        "count": 1,
+        "aliases": []
+      }
+    },
+    "Safety and Emergency": {
+      "Emergency Services Officer": {
+        "count": 15,
+        "aliases": [
+          "Emergency Response Officer",
+          "ESO",
+          "Emergency Response Officer (ESO)",
+          "Fire & Emergency Services Officer",
+          "Electrical Fire Technician",
+          "Firefighter"
+        ]
+      },
+      "Paramedic": {
+        "count": 10,
+        "aliases": [
+          "Medic",
+          "intensive care/ extended care paramedic"
+        ]
+      },
+      "HSE Advisor": {
+        "count": 16,
+        "aliases": [
+          "Safety inspector",
+          "Offshore HSE Advisor",
+          "Notification Officer",
+          "Radiation Advisor",
+          "HSEC",
+          "Notification officer",
+          "Health Safety Environment Coordinator (HSEC)",
+          "Safety Department representative",
+          "Rig Safety Advisor",
+          "HSEC/Medic",
+          "Occupational Health & Safety",
+          "Rope Access L3 Safety Leader",
+          "SHEQ Field Advisor"
+        ]
+      },
+      "ERT Member": {
+        "count": 2,
+        "aliases": [
+          "ERT"
+        ]
+      },
+      "Security Officer": {
+        "count": 4,
+        "aliases": [
+          "Security",
+          "Security officials"
+        ]
+      }
+    },
+    "Management and Supervision": {
+      "Supervisor": {
+        "count": 43,
+        "aliases": [
+          "Linesman / Supervisor",
+          "Mechanical supervisor",
+          "Fabric Maintenance Supervisor",
+          "Execution Supervisor",
+          "Supervisor Fabric Maintenance",
+          "Fabric Maintenance supervisor",
+          "Rope accrss level 3 site supervisor",
+          "IRATA Level 3 Rope Access Supervisor",
+          "Offshore Supervisor",
+          "Maintenance Supervisor",
+          "Field Technician Supervisor",
+          "SMP Supervisor",
+          "SMP Supervisor for Technip",
+          "I&C Supervisor",
+          "Scaffold Foreman",
+          "Welding Foreman",
+          "TRS Offshore Supervisor",
+          "Welder Supervisor"
+        ]
+      },
+      "Coordinator": {
+        "count": 17,
+        "aliases": [
+          "Production Coordinator",
+          "Warehouse Coordinator",
+          "Materials & Logisitics Coordinator",
+          "Preservation Coordinator",
+          "Maintenance Coordinator",
+          "Permit coordinator and production technician",
+          "Major scope Coordinator",
+          "Resource Estimator/Co-Coordinator- Inspection",
+          "Permit Co-ordinator",
+          "Stores co Ordinator/supervisor",
+          "Supply Base Coordinator",
+          "Tastelife Coordinator"
+        ]
+      },
+      "Leading Hand": {
+        "count": 17,
+        "aliases": [
+          "L/H Rigger",
+          "Leading hand rigger",
+          "Leading Hand - electrical and Instrumentation field Maintenance Officer",
+          "Leading Hand Rigger",
+          "Leading Hand Rope Access Fitter",
+          "Leading hand scaffolder",
+          "Leading hand boilermaker",
+          "Leading Hand Scaffolder",
+          "Leading hand, scaffolder/rigger",
+          "Leading hand/ CSWIP",
+          "Storeperson Leading Hand",
+          "LH Mechanical fitter",
+          "LH Rigger"
+        ]
+      },
+      "Manager": {
+        "count": 6,
+        "aliases": [
+          "Chef Manager",
+          "Offshore Unit Manager"
+        ]
+      },
+      "OIM": {
+        "count": 1,
+        "aliases": [
+          "Deputy OIM"
+        ]
+      },
+      "Deck Foreman": {
+        "count": 16,
+        "aliases": [
+          "DFO",
+          "Deck Supervisor/Rigger",
+          "Deck Foreman/ Rigger",
+          "Deck Supervisor",
+          "deck forman",
+          "Rigging deck foreman",
+          "Deck Foreman/Rigging Supervisor"
+        ]
+      },
+      "Lead Technician": {
+        "count": 35,
+        "aliases": [
+          "Team Lead, Asset Management & Services 2",
+          "Crux Lead Prod Tech",
+          "Lead inlec technician",
+          "Lead Mechanical Technician",
+          "Lead Mechanical Tech",
+          "Crux Lead Inlec Technician",
+          "Lead Production Technician",
+          "Lead Services Technician",
+          "Lead Service Technician",
+          "Lead Marine Inspector / NDT Technican",
+          "Lead E and I Tech",
+          "Utilities Lead Prod Tech",
+          "Area Team Leaf - S&L",
+          "Campaign Maintenance Mechanical Lead Technician",
+          "Process Lead Prod Tech",
+          "S&L Lead Prod Tech",
+          "Lead Inlec",
+          "Area Team Lead - Utilities",
+          "Inlec Lead Technician",
+          "E &I Lead Technician",
+          "Lead Crane Tech"
+        ]
+      }
+    }
+  },
+  "specialisations": [
+    "Rope Access",
+    "Subsea",
+    "HV",
+    "EEHA",
+    "Cryogenic",
+    "UHP",
+    "Composite"
+  ],
+  "unmatched": []
+}

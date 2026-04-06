@@ -244,6 +244,7 @@ export function WorkerImportWizard({
   // ── Step / format state ───────────────────────────────────────────────────
   const [step, setStep] = useState<WizardStep>("upload");
   const [fileFormat, setFileFormat] = useState<FileFormat>("group");
+  const [preferredFormat, setPreferredFormat] = useState<"auto" | "header" | "group">("auto");
   const [isLoading, setIsLoading] = useState(false);
   const [fileName, setFileName] = useState("");
   const [dragOver, setDragOver] = useState(false);
@@ -370,6 +371,7 @@ export function WorkerImportWizard({
   function reset() {
     setStep("upload");
     setFileFormat("group");
+    setPreferredFormat("auto");
     setIsLoading(false);
     setFileName("");
     setDragOver(false);
@@ -403,8 +405,12 @@ export function WorkerImportWizard({
       try {
         const formData = new FormData();
         formData.append("file", file);
-        const url = forceFormat
-          ? `/api/worker-import/parse?forceFormat=${forceFormat}`
+        // preferredFormat (set before upload) takes precedence; forceFormat is used for
+        // the "Switch to column mapping" re-parse button on the employer step.
+        const effectiveFormat =
+          forceFormat ?? (preferredFormat !== "auto" ? preferredFormat : undefined);
+        const url = effectiveFormat
+          ? `/api/worker-import/parse?forceFormat=${effectiveFormat}`
           : "/api/worker-import/parse";
         const res = await fetch(url, { method: "POST", body: formData });
         const json = await res.json();
@@ -793,10 +799,52 @@ export function WorkerImportWizard({
   // ─── Step renderers ────────────────────────────────────────────────────────
 
   function renderUpload() {
+    const formatOptions: { value: "auto" | "header" | "group"; label: string; desc: string }[] = [
+      {
+        value: "header",
+        label: "Column headers",
+        desc: "Spreadsheet has a header row (First Name, Last Name, Email…). You will map columns to fields.",
+      },
+      {
+        value: "group",
+        label: "Crew list (ESS/Woodside)",
+        desc: "Worksite group names as rows; columns: Name | Status | Phone | Email.",
+      },
+    ];
+
     return (
       <div className="space-y-4">
+        {/* Format selector — choose before uploading to guarantee correct parsing */}
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-2">
+            What format is your file?
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {formatOptions.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setPreferredFormat(opt.value)}
+                className={`text-left rounded-lg border p-3 transition-colors ${
+                  preferredFormat === opt.value
+                    ? "border-primary bg-primary/5 ring-1 ring-primary"
+                    : "border-muted-foreground/30 hover:border-primary/40"
+                }`}
+              >
+                <p className="text-sm font-medium">{opt.label}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{opt.desc}</p>
+              </button>
+            ))}
+          </div>
+          {preferredFormat === "auto" && (
+            <p className="text-xs text-muted-foreground mt-1.5 italic">
+              No format selected — the wizard will try to detect it automatically.
+            </p>
+          )}
+        </div>
+
         <div
-          className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors cursor-pointer ${
+          className={`border-2 border-dashed rounded-lg p-10 text-center transition-colors cursor-pointer ${
             dragOver
               ? "border-primary bg-primary/5"
               : "border-muted-foreground/30 hover:border-primary/50"
@@ -806,11 +854,9 @@ export function WorkerImportWizard({
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
         >
-          <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
+          <FileSpreadsheet className="mx-auto h-10 w-10 text-muted-foreground mb-2" />
           <p className="text-sm font-medium">Drop your .xlsx file here</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            or click to browse — supports header-row and ESS/Woodside crew list formats
-          </p>
+          <p className="text-xs text-muted-foreground mt-1">or click to browse</p>
           <input
             ref={fileInputRef}
             type="file"
@@ -834,19 +880,6 @@ export function WorkerImportWizard({
             Parsing file…
           </div>
         )}
-        <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground space-y-1">
-          <p className="font-medium text-foreground">Supported formats:</p>
-          <p>
-            <span className="font-medium text-foreground">Header row</span> — first row
-            contains column names (e.g. first name, last name, email, mobile, worksite).
-            You will be prompted to map columns to database fields.
-          </p>
-          <p>
-            <span className="font-medium text-foreground">ESS/Woodside crew list</span> —
-            worksite group names appear as rows with only the first column filled; columns:
-            Name | Membership Status | Phone | Email.
-          </p>
-        </div>
       </div>
     );
   }

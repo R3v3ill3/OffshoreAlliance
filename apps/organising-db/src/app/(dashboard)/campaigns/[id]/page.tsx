@@ -57,6 +57,7 @@ import { CampaignTaskListsSection } from "@/components/campaigns/campaign-task-l
 import { CampaignPlanPanel } from "@/components/campaigns/campaign-plan-panel";
 import { CampaignWorkplanSection } from "@/components/campaigns/campaign-workplan";
 import { CampaignUniverseSection } from "@/components/campaigns/campaign-universe-section";
+import { CampaignCommsSection } from "@/components/campaigns/campaign-comms-section";
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
 
 interface CampaignDetail {
@@ -366,6 +367,7 @@ export default function CampaignDetailPage() {
           <TabsTrigger value="reporting">Reporting</TabsTrigger>
           <TabsTrigger value="wall">Wall chart</TabsTrigger>
           <TabsTrigger value="tasklists">Task lists</TabsTrigger>
+          <TabsTrigger value="comms">Comms</TabsTrigger>
           <TabsTrigger value="actions">Actions</TabsTrigger>
           <TabsTrigger value="results">Results</TabsTrigger>
         </TabsList>
@@ -576,6 +578,10 @@ export default function CampaignDetailPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="comms">
+          <CampaignCommsSection campaignId={id} canWrite={!!canWrite} />
         </TabsContent>
 
         <TabsContent value="actions">

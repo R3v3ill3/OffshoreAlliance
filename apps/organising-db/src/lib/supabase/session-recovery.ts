@@ -138,16 +138,17 @@ function goToLogin(reasonCode: string): void {
   window.location.href = nextUrl;
 }
 
-async function failRecovery(
+/** Session/auth problems only: clear caches and Supabase browser storage. */
+async function hardFailRecovery(
   queryClient: QueryClient,
   reason: FailureReason,
   message: string,
   redirectOnFailure: boolean
 ): Promise<SessionRecoveryResult> {
   agentDebugLog({
-    location: "session-recovery.ts:recover-fail",
-    message: "Session recovery failed",
-    data: { reason, message, redirectOnFailure },
+    location: "session-recovery.ts:recover-fail-hard",
+    message: "Session recovery failed (destructive)",
+    data: { reason, message, redirectOnFailure, willClearStorage: true },
     hypothesisId: "H6",
   });
   await queryClient.cancelQueries();
@@ -169,13 +170,37 @@ async function failRecovery(
   return { ok: false, message, reasonCode: reason, redirectedToLogin: false };
 }
 
+/** DB/RPC issues: do not wipe sb-* storage or clear all queries (avoids breaking the SPA). */
+function softFailRecovery(
+  reason: FailureReason,
+  message: string
+): SessionRecoveryResult {
+  console.error("[session-recovery] Non-destructive recovery failure", {
+    reason,
+    message,
+    willClearStorage: false,
+  });
+  agentDebugLog({
+    location: "session-recovery.ts:recover-fail-soft",
+    message: "Session recovery failed (non-destructive)",
+    data: { reason, message, willClearStorage: false },
+    hypothesisId: "H6",
+  });
+  if (reason === "workload_probe_error") {
+    console.error(
+      "[session-recovery] Workload RPC probe failed; session was not cleared. Fix DB/RPC or use validateWorkloadAccess: false."
+    );
+  }
+  return { ok: false, message, reasonCode: reason, redirectedToLogin: false };
+}
+
 export async function recoverSessionConnection({
   supabase,
   queryClient,
   source,
   reloadOnSuccess = true,
   redirectOnFailure = true,
-  validateWorkloadAccess = true,
+  validateWorkloadAccess = false,
 }: RecoverSessionOptions): Promise<SessionRecoveryResult> {
   agentDebugLog({
     location: "session-recovery.ts:recover-start",
@@ -196,7 +221,7 @@ export async function recoverSessionConnection({
       error instanceof Error && error.message.includes("Timed out")
         ? "session_check_timeout"
         : "session_check_error";
-    return failRecovery(
+    return hardFailRecovery(
       queryClient,
       reason,
       readErrorMessage(error),
@@ -205,7 +230,7 @@ export async function recoverSessionConnection({
   }
 
   if (sessionResult.error) {
-    return failRecovery(
+    return hardFailRecovery(
       queryClient,
       "session_check_error",
       sessionResult.error.message,
@@ -216,7 +241,7 @@ export async function recoverSessionConnection({
   const session = sessionResult.data.session;
   const user = session?.user ?? null;
   if (!user) {
-    return failRecovery(
+    return hardFailRecovery(
       queryClient,
       "missing_session",
       "No active session found. Redirecting to login.",
@@ -239,32 +264,44 @@ export async function recoverSessionConnection({
       error instanceof Error && error.message.includes("Timed out")
         ? "probe_timeout"
         : "probe_error";
-    return failRecovery(queryClient, reason, readErrorMessage(error), redirectOnFailure);
+    return softFailRecovery(reason, readErrorMessage(error));
   }
 
   if (probeResult.error) {
-    return failRecovery(
-      queryClient,
+    return softFailRecovery(
       "probe_error",
-      buildErrorSummary(probeResult.error),
-      redirectOnFailure
+      buildErrorSummary(probeResult.error)
     );
   }
 
   if (validateWorkloadAccess) {
+    agentDebugLog({
+      location: "session-recovery.ts:workload-probe-start",
+      message: "Workload RPC probe (optional)",
+      data: { source, validateWorkloadAccess },
+      hypothesisId: "H6",
+    });
     const workloadProbeResult = await supabase.rpc("get_workload_dashboard_data", {
       p_filter_organiser: null,
       p_filter_status: null,
       p_filter_days: null,
     });
     if (workloadProbeResult.error) {
-      return failRecovery(
-        queryClient,
-        "workload_probe_error",
-        buildErrorSummary(workloadProbeResult.error),
-        redirectOnFailure
-      );
+      const summary = buildErrorSummary(workloadProbeResult.error);
+      agentDebugLog({
+        location: "session-recovery.ts:workload-probe-fail",
+        message: "Workload RPC probe failed",
+        data: { source, errorSummary: summary },
+        hypothesisId: "H6",
+      });
+      return softFailRecovery("workload_probe_error", summary);
     }
+    agentDebugLog({
+      location: "session-recovery.ts:workload-probe-ok",
+      message: "Workload RPC probe succeeded",
+      data: { source },
+      hypothesisId: "H6",
+    });
   }
 
   await queryClient.invalidateQueries();

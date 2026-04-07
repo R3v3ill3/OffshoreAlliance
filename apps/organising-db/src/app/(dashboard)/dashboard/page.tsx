@@ -24,18 +24,8 @@ import { CampaignEntitiesCard } from "@/components/dashboard/campaign-entities-c
 import { CampaignActivitiesCard } from "@/components/dashboard/campaign-activities-card";
 import type { PrincipalEmployerEbaSummary } from "@/types/database";
 import { useRouter } from "next/navigation";
-
-interface WorkloadData {
-  campaigns: any[];
-  metrics: {
-    campaignsByStage: { name: string; value: number }[];
-    totalCampaigns: number;
-    averageProgress: number;
-    totalActivitiesUnderway: number;
-    overdueCount: number;
-    dueSoonCount: number;
-  };
-}
+import { fetchWorkloadDashboard } from "@/lib/api/fetch-workload-dashboard";
+import type { WorkloadDashboardData } from "@/lib/api/fetch-workload-dashboard";
 
 export default function DashboardPage() {
   const { user, hardRefreshConnection, connectionRecoveryInProgress } = useAuth();
@@ -194,48 +184,12 @@ export default function DashboardPage() {
       filterStatus,
       filterTimePeriod,
     ],
-    queryFn: async (): Promise<WorkloadData> => {
-      const params = new URLSearchParams();
-      if (filterOrganiser !== "all") {
-        params.set("filterOrganiser", filterOrganiser);
-      }
-      if (filterStatus !== "all") {
-        params.set("filterStatus", filterStatus);
-      }
-      if (filterTimePeriod !== "all") {
-        params.set("filterTimePeriod", filterTimePeriod);
-      }
-
-      const response = await fetch(
-        `/api/workload?${params.toString()}`
-      );
-
-      if (!response.ok) {
-        let payload: Record<string, unknown> | null = null;
-        try {
-          payload = (await response.json()) as Record<string, unknown>;
-        } catch {
-          payload = null;
-        }
-
-        const detailMessage = typeof payload?.message === "string"
-          ? payload.message
-          : typeof payload?.error === "string"
-            ? payload.error
-            : "Unknown API error";
-        const code = typeof payload?.code === "string" ? payload.code : null;
-        const err = new Error(
-          `Failed to fetch workload data (status ${response.status}) - ${detailMessage}${code ? ` [${code}]` : ""}`
-        ) as Error & { status?: number; code?: string };
-        err.status = response.status;
-        if (code) {
-          err.code = code;
-        }
-        throw err;
-      }
-
-      return response.json();
-    },
+    queryFn: async (): Promise<WorkloadDashboardData> =>
+      fetchWorkloadDashboard({
+        filterOrganiser,
+        filterStatus,
+        filterTimePeriod,
+      }),
     enabled: !!user,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });

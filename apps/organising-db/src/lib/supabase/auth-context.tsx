@@ -148,6 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             source: "auth-change",
             reloadOnSuccess: false,
             redirectOnFailure: true,
+            validateWorkloadAccess: false,
           });
           return;
         }
@@ -222,6 +223,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         source: "menu-hard-refresh",
         reloadOnSuccess: true,
         redirectOnFailure: true,
+        validateWorkloadAccess: false,
       });
     } finally {
       setConnectionRecoveryInProgress(false);

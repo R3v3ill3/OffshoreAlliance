@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useCapacityOptions, useOrganisers } from '@/lib/hooks/usePlannerOptions'
 import { useAddCapacity, useUpdateCapacity } from '@/lib/hooks/useStagePlan'
 import { OptionSelector, type SelectableOption } from './OptionSelector'
+import { DraftGeneratorCard } from './DraftGeneratorCard'
+import { DraftPreview } from './DraftPreview'
 import { Button } from '@/components/ui/button'
 import { DateInput } from '@/components/ui/date-input'
 import { Label } from '@/components/ui/label'
@@ -12,10 +14,25 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils/cn'
-import { CheckCircle, AlertTriangle, Clock, HelpCircle, Zap, Plus } from 'lucide-react'
+import { CheckCircle, AlertTriangle, Clock, HelpCircle, Zap, Plus, MessageCircle } from 'lucide-react'
 import { formatCategoryLabel } from '@/lib/utils/option-sorting'
-import type { PlanCapacity, PlanWhereToPlay, CapacityStatus } from '@/types/planner-types'
+import { createClient } from '@/lib/supabase/client'
+import type { PlanCapacity, PlanWhereToPlay, CapacityStatus, CommsPlatform, DraftStatus } from '@/types/planner-types'
 import { toast } from 'sonner'
+
+interface SavedDraft {
+  draft_id: number
+  platform: CommsPlatform
+  title: string | null
+  subject: string | null
+  body_text: string | null
+  body_html: string | null
+  status: DraftStatus
+  tone: string | null
+  audience_segment: string | null
+  created_at: string
+  ai_model_used: string | null
+}
 
 interface CapacitiesPanelProps {
   planId: number
@@ -25,7 +42,10 @@ interface CapacitiesPanelProps {
     capacity_options?: { option_text: string; category: string; linked_wtp_categories?: number[] | null } | null
     organisers?: { organiser_name: string } | null
   })[]
-  whereToPlay: (PlanWhereToPlay & { wtp_categories?: { category_id: number; category_name: string } | null })[]
+  whereToPlay: (PlanWhereToPlay & {
+    wtp_categories?: { category_id: number; category_name: string } | null
+    wtp_options?: { option_text: string } | null
+  })[]
 }
 
 const STATUS_CONFIG: Record<CapacityStatus, { label: string; icon: React.ReactNode; color: string; badge: string }> = {
@@ -159,6 +179,72 @@ export function CapacitiesPanel({
 
   const gapCount = capacities.filter((c) => c.status === 'gap').length
   const availableCount = capacities.filter((c) => c.status === 'available').length
+
+  // --- Communication Drafts detection ---
+  const commsPlatforms = useMemo(() => {
+    const platforms: CommsPlatform[] = []
+    for (const w of whereToPlay) {
+      const catName = w.wtp_categories?.category_name || ''
+      if (!catName.toLowerCase().includes('communication')) continue
+      const optText = (w.wtp_options?.option_text || w.custom_text || '').toLowerCase()
+      if (optText.includes('email') && !platforms.includes('email')) platforms.push('email')
+      if (optText.includes('sms') && !platforms.includes('sms')) platforms.push('sms')
+      if (optText.includes('phone') && !platforms.includes('phone_script')) platforms.push('phone_script')
+    }
+    return platforms
+  }, [whereToPlay])
+
+  const wtpSelections = useMemo(() => {
+    const tone: string[] = []
+    const audience: string[] = []
+    const platforms: string[] = []
+    let engagement_intensity: string | undefined
+
+    for (const w of whereToPlay) {
+      const catName = w.wtp_categories?.category_name || ''
+      const optText = w.wtp_options?.option_text || w.custom_text || ''
+      const catLower = catName.toLowerCase()
+
+      if (catLower.includes('narrative') || catLower.includes('tone')) {
+        if (optText) tone.push(optText)
+      } else if (catLower.includes('contact') || catLower.includes('audience')) {
+        if (optText) audience.push(optText)
+      } else if (catLower.includes('communication')) {
+        if (optText) platforms.push(optText)
+      } else if (catLower.includes('engagement') || catLower.includes('intensity')) {
+        engagement_intensity = optText || undefined
+      }
+    }
+
+    return { tone, audience, platforms, engagement_intensity }
+  }, [whereToPlay])
+
+  const campaignContext = useMemo(() => ({
+    agreement_name: '',
+    employer_name: '',
+    worksite_names: [] as string[],
+    sector: '',
+    campaign_type: undefined as string | undefined,
+    agreement_expiry: undefined as string | undefined,
+  }), [])
+
+  const stageName = (['', 'Contact ID & Mapping', 'Intro Comms & Education', 'Member Mobilisation', 'Develop Claims / MSD', 'Endorsement & Commence Bargaining', 'Bargaining to Win'] as const)[stageNumber] || `Stage ${stageNumber}`
+
+  // Fetch existing saved drafts
+  const [savedDrafts, setSavedDrafts] = useState<SavedDraft[]>([])
+  useEffect(() => {
+    if (commsPlatforms.length === 0) return
+    const supabase = createClient()
+    supabase
+      .from('campaign_comms_drafts')
+      .select('draft_id, platform, title, subject, body_text, body_html, status, tone, audience_segment, created_at, ai_model_used')
+      .eq('campaign_id', campaignId)
+      .eq('stage_number', stageNumber)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        if (data) setSavedDrafts(data as SavedDraft[])
+      })
+  }, [campaignId, stageNumber, commsPlatforms.length])
 
   return (
     <div className="space-y-6">
@@ -343,6 +429,47 @@ export function CapacitiesPanel({
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Communication Drafts section */}
+      {commsPlatforms.length > 0 && (
+        <div className="space-y-4 pt-4 border-t border-slate-200">
+          <div className="flex items-center gap-2">
+            <MessageCircle className="h-5 w-5 text-slate-500" />
+            <h4 className="font-semibold text-slate-900 text-sm">Communication Drafts</h4>
+            <Badge variant="secondary" className="text-xs">
+              {commsPlatforms.length} platform{commsPlatforms.length !== 1 ? 's' : ''}
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Generate AI-powered communication drafts based on your Where to Play selections.
+          </p>
+
+          <div className="space-y-3">
+            {commsPlatforms.map((platform) => (
+              <DraftGeneratorCard
+                key={platform}
+                platform={platform}
+                campaignId={campaignId}
+                planId={planId}
+                stageNumber={stageNumber}
+                stageName={stageName}
+                campaignContext={campaignContext}
+                wtpSelections={wtpSelections}
+              />
+            ))}
+          </div>
+
+          {/* Existing saved drafts */}
+          {savedDrafts.length > 0 && (
+            <div className="space-y-2 pt-2">
+              <p className="text-xs font-medium text-slate-600">Saved Drafts</p>
+              {savedDrafts.map((draft) => (
+                <DraftPreview key={draft.draft_id} draft={draft} />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

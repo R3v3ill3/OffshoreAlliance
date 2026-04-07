@@ -121,6 +121,59 @@ export class ActionNetworkClient {
       body: JSON.stringify({ person }),
     });
   }
+
+  // Messages
+  async getMessages(page = 1): Promise<ActionNetworkResponse> {
+    return this.request(`/messages?page=${page}`);
+  }
+
+  async getMessage(id: string): Promise<ActionNetworkResponse> {
+    return this.request(`/messages/${id}`);
+  }
+
+  async createMessage(message: {
+    subject: string;
+    body: string;
+    from: string;
+    reply_to: string;
+    targets?: { href: string }[];
+  }): Promise<ActionNetworkResponse> {
+    return this.request("/messages", {
+      method: "POST",
+      body: JSON.stringify({
+        subject: message.subject,
+        body: message.body,
+        from: message.from,
+        reply_to: message.reply_to,
+        ...(message.targets ? { targets: message.targets } : {}),
+      }),
+    });
+  }
+
+  async sendMessage(messageId: string): Promise<ActionNetworkResponse> {
+    return this.request(`/messages/${messageId}/send`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  }
+
+  // Taggings - get people with a specific tag
+  async getTaggings(tagId: string, page = 1): Promise<ActionNetworkResponse> {
+    return this.request(`/tags/${tagId}/taggings?page=${page}`);
+  }
+
+  // Person tags - get all tags for a specific person
+  async getPersonTags(personId: string, page = 1): Promise<ActionNetworkResponse> {
+    return this.request(`/people/${personId}/taggings?page=${page}`);
+  }
+
+  // Create a tag
+  async createTag(name: string): Promise<ActionNetworkResponse> {
+    return this.request("/tags", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+  }
 }
 
 export function syncWorkerToActionNetwork(

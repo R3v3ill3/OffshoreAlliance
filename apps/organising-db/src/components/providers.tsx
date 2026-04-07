@@ -1,7 +1,7 @@
 "use client";
 
 import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-query";
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { AuthProvider } from "@/lib/supabase/auth-context";
 import { agentDebugLog } from "@/lib/agent-debug-log";
 import { DeviceProvider } from "@/contexts/device-context";
@@ -10,58 +10,70 @@ import { isLikelyAuthError, recoverSessionConnection } from "@/lib/supabase/sess
 // Import Sentry client configuration for error tracking
 import "../../../../sentry.client.config";
 
-export function Providers({ children, isMobile }: { children: ReactNode; isMobile: boolean }) {
-  const authRecoveryInProgressRef = useRef(false);
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        queryCache: new QueryCache({
-          onError: (error, query) => {
-            console.error("[QueryCache] Error in query", query.queryKey, error);
-            // #region agent log
-            const errRec = error as unknown as Record<string, unknown>;
-            agentDebugLog({
-              location: "providers.tsx:QueryCache.onError",
-              message: "Query error",
-              data: {
-                queryKey: query.queryKey,
-                errorMessage:
-                  error instanceof Error ? error.message : String(error),
-                errorCode: errRec?.code ?? null,
-                errorDetails: errRec?.details ?? null,
-                errorHint: errRec?.hint ?? null,
-                errorStatus: errRec?.status ?? null,
-                authRecoveryInProgress: authRecoveryInProgressRef.current,
-              },
-              hypothesisId: "H2",
-            });
-            // #endregion
-            if (isLikelyAuthError(error)) {
-              if (authRecoveryInProgressRef.current) {
-                return;
-              }
+/** Prevents overlapping auth recovery from QueryCache onError (module scope: one tab). */
+const queryCacheRecoveryGuard = { inProgress: false };
 
-              authRecoveryInProgressRef.current = true;
-              void recoverSessionConnection({
-                supabase: createClient(),
-                queryClient,
-                source: "query-cache-auth-error",
-                reloadOnSuccess: false,
-                redirectOnFailure: true,
-              }).finally(() => {
-                authRecoveryInProgressRef.current = false;
-              });
+export function Providers({ children, isMobile }: { children: ReactNode; isMobile: boolean }) {
+  const [queryClient] = useState(() => {
+    const client = new QueryClient({
+      queryCache: new QueryCache({
+        onError: (error, query) => {
+          const key0 = query.queryKey[0];
+          if (key0 === "workload-dashboard") {
+            console.error(
+              "[QueryCache] workload-dashboard error (not treated as auth unless JWT/401/403)",
+              query.queryKey,
+              error
+            );
+          } else {
+            console.error("[QueryCache] Error in query", query.queryKey, error);
+          }
+          // #region agent log
+          const errRec = error as unknown as Record<string, unknown>;
+          agentDebugLog({
+            location: "providers.tsx:QueryCache.onError",
+            message: "Query error",
+            data: {
+              queryKey: query.queryKey,
+              errorMessage:
+                error instanceof Error ? error.message : String(error),
+              errorCode: errRec?.code ?? null,
+              errorDetails: errRec?.details ?? null,
+              errorHint: errRec?.hint ?? null,
+              errorStatus: errRec?.status ?? null,
+              authRecoveryInProgress: queryCacheRecoveryGuard.inProgress,
+            },
+            hypothesisId: "H2",
+          });
+          // #endregion
+          if (isLikelyAuthError(error)) {
+            if (queryCacheRecoveryGuard.inProgress) {
+              return;
             }
-          },
-        }),
-        defaultOptions: {
-          queries: {
-            staleTime: 60 * 1000,
-            retry: 1,
-          },
+
+            queryCacheRecoveryGuard.inProgress = true;
+            void recoverSessionConnection({
+              supabase: createClient(),
+              queryClient: client,
+              source: "query-cache-auth-error",
+              reloadOnSuccess: false,
+              redirectOnFailure: true,
+              validateWorkloadAccess: false,
+            }).finally(() => {
+              queryCacheRecoveryGuard.inProgress = false;
+            });
+          }
         },
-      })
-  );
+      }),
+      defaultOptions: {
+        queries: {
+          staleTime: 60 * 1000,
+          retry: 1,
+        },
+      },
+    });
+    return client;
+  });
 
   // #region agent log
   useEffect(() => {

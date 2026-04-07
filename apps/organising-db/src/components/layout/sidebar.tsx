@@ -11,6 +11,7 @@ import {
   MapPin,
   FileText,
   Megaphone,
+  FileStack,
   BarChart3,
   Settings,
   Map,
@@ -39,6 +40,7 @@ export const navItems = [
   { href: "/agreements", label: "Agreements", icon: FileText },
   { href: "/work-scopes", label: "Work Scopes", icon: Layers },
   { href: "/campaigns", label: "Campaigns", icon: Megaphone },
+  { href: "/templates", label: "Templates", icon: FileStack },
   { href: "/reports", label: "Reports", icon: BarChart3 },
 ];
 

@@ -10,18 +10,8 @@ import { CampaignProgressCard } from "@/components/dashboard/campaign-progress-c
 import { CampaignEntitiesCard } from "@/components/dashboard/campaign-entities-card";
 import { CampaignActivitiesCard } from "@/components/dashboard/campaign-activities-card";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
-
-interface WorkloadData {
-  campaigns: any[];
-  metrics: {
-    campaignsByStage: { name: string; value: number }[];
-    totalCampaigns: number;
-    averageProgress: number;
-    totalActivitiesUnderway: number;
-    overdueCount: number;
-    dueSoonCount: number;
-  };
-}
+import { fetchWorkloadDashboard } from "@/lib/api/fetch-workload-dashboard";
+import type { WorkloadDashboardData } from "@/lib/api/fetch-workload-dashboard";
 
 export default function WorkloadDashboardPage() {
   const { user } = useAuth();
@@ -30,35 +20,19 @@ export default function WorkloadDashboardPage() {
   const [filterTimePeriod, setFilterTimePeriod] = useState("all");
 
   // Fetch workload data from API
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: [
       "workload-dashboard",
       filterOrganiser,
       filterStatus,
       filterTimePeriod,
     ],
-    queryFn: async (): Promise<WorkloadData> => {
-      const params = new URLSearchParams();
-      if (filterOrganiser !== "all") {
-        params.set("filterOrganiser", filterOrganiser);
-      }
-      if (filterStatus !== "all") {
-        params.set("filterStatus", filterStatus);
-      }
-      if (filterTimePeriod !== "all") {
-        params.set("filterTimePeriod", filterTimePeriod);
-      }
-
-      const response = await fetch(
-        `/api/workload?${params.toString()}`
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch workload data");
-      }
-
-      return response.json();
-    },
+    queryFn: async (): Promise<WorkloadDashboardData> =>
+      fetchWorkloadDashboard({
+        filterOrganiser,
+        filterStatus,
+        filterTimePeriod,
+      }),
     enabled: !!user,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });

@@ -188,3 +188,48 @@ export const DEFAULT_GATE_CRITERIA = {
     { criterion_name: 'PABO Preparation Complete', metric_type: 'boolean' as MetricType, target_value: 'true', description: 'PABO application materials prepared and ready to file', is_hard_gate: false },
   ],
 } as const
+
+// Communication Draft types
+export type CommsPlatform = 'email' | 'sms' | 'phone_script'
+export type DraftStatus = 'generating' | 'draft' | 'approved' | 'sent' | 'failed'
+export type SendVia = 'action_network' | 'yabbr' | 'manual'
+
+export interface CommsDraftRequest {
+  campaign_id: number
+  plan_id: number
+  stage_number: number
+  stage_name: string
+  platform: CommsPlatform
+  campaign_context: {
+    employer_name: string
+    worksite_names: string[]
+    agreement_name: string
+    agreement_expiry?: string
+    sector: string
+    campaign_type?: string
+  }
+  wtp_selections: {
+    tone: string[]
+    audience: string[]
+    platforms: string[]
+    engagement_intensity?: string
+    contact_method_priority?: string[]
+  }
+  template_examples?: {
+    title: string
+    subject_line?: string
+    body_text: string
+  }[]
+  custom_instructions?: string
+}
+
+export interface CommsDraftResponse {
+  platform: CommsPlatform
+  subject?: string
+  body_text: string
+  body_html?: string
+  variables_used: string[]
+  tone_applied: string
+  audience_targeted: string
+  estimated_character_count: number
+}

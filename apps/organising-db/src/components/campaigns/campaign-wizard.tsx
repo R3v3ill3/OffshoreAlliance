@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
@@ -243,7 +243,19 @@ export function CampaignWizard() {
   const searchParams = useSearchParams();
   const supabase = createClient();
   const queryClient = useQueryClient();
-  const { user, canWrite, isAdmin } = useAuth();
+  const { user, canWrite, isAdmin, profile, loading: authLoading } = useAuth();
+  const permissionDeniedLoggedForUser = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!user || canWrite) return;
+    if (permissionDeniedLoggedForUser.current === user.id) return;
+    permissionDeniedLoggedForUser.current = user.id;
+    console.warn("[CampaignWizard] Signed in but canWrite is false", {
+      userId: user.id,
+      role: profile?.role ?? null,
+      authLoading,
+    });
+  }, [user, canWrite, profile?.role, authLoading]);
 
   const initialCid = searchParams.get("cid");
   const [step, setStep] = useState(initialCid ? 2 : 1);

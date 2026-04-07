@@ -30,6 +30,25 @@ export async function GET(request: NextRequest) {
       case "tags":
         data = await client.getTags(page);
         break;
+      case "messages":
+        data = await client.getMessages(page);
+        break;
+      case "message": {
+        const id = searchParams.get("id");
+        if (!id) {
+          return NextResponse.json({ error: "Missing id parameter" }, { status: 400 });
+        }
+        data = await client.getMessage(id);
+        break;
+      }
+      case "taggings": {
+        const tagId = searchParams.get("tagId");
+        if (!tagId) {
+          return NextResponse.json({ error: "Missing tagId parameter" }, { status: 400 });
+        }
+        data = await client.getTaggings(tagId, page);
+        break;
+      }
       default:
         return NextResponse.json({ error: `Unknown resource: ${resource}` }, { status: 400 });
     }
@@ -63,6 +82,21 @@ export async function POST(request: NextRequest) {
         break;
       case "add_tagging":
         data = await client.addTagging(params.tagId, params.person);
+        break;
+      case "create_message":
+        data = await client.createMessage(params.message);
+        break;
+      case "send_message":
+        if (!params.messageId) {
+          return NextResponse.json({ error: "Missing messageId parameter" }, { status: 400 });
+        }
+        data = await client.sendMessage(params.messageId);
+        break;
+      case "create_tag":
+        if (!params.name) {
+          return NextResponse.json({ error: "Missing name parameter" }, { status: 400 });
+        }
+        data = await client.createTag(params.name);
         break;
       default:
         return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });

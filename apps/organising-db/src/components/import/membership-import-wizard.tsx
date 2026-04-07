@@ -44,7 +44,7 @@ import {
   UserPlus,
   SkipForward,
 } from "lucide-react";
-import type { Worksite } from "@/types/database";
+import type { Worksite, WorksiteType } from "@/types/database";
 import type { MembershipImportType, ParsedMembershipRow } from "@/app/api/membership-import/parse/route";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -68,6 +68,11 @@ interface EmployerResolution {
   candidates: { employer_id: number; employer_name: string; score: number }[];
   confirmed: boolean;
   search: string;
+  /** When true, create a new employer on apply */
+  createNew: boolean;
+  newEmployerName: string;
+  newTradingName: string;
+  newCategory: string;
 }
 
 interface WorksiteResolution {
@@ -78,6 +83,10 @@ interface WorksiteResolution {
   candidates: { worksite_id: number; worksite_name: string; confidence: string }[];
   confirmed: boolean;
   search: string;
+  /** When true, create a new worksite on apply */
+  createNew: boolean;
+  newWorksiteName: string;
+  newWorksiteType: string;
 }
 
 interface OccupationResolution {
@@ -149,6 +158,21 @@ interface UnionMembershipTypeRow {
 }
 
 // ─── Fuzzy employer scoring ───────────────────────────────────────────────────
+
+const WORKSITE_TYPES: WorksiteType[] = [
+  "FPSO", "FPU", "FLNG", "Platform", "Onshore_LNG", "Gas_Plant",
+  "Drill_Centre", "Region", "Heliport", "Pipeline", "Airfield",
+  "Onshore_Facilities", "CPF", "Gas_Field", "Other",
+];
+
+const EMPLOYER_CATEGORIES = [
+  { value: "Producer", label: "Producer" },
+  { value: "Major_Contractor", label: "Major Contractor" },
+  { value: "Subcontractor", label: "Subcontractor" },
+  { value: "Labour_Hire", label: "Labour Hire" },
+  { value: "Specialist", label: "Specialist" },
+  { value: "Principal_Employer", label: "Principal Employer" },
+];
 
 function normStr(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
@@ -418,6 +442,10 @@ export function MembershipImportWizard({
         candidates,
         confirmed: autoAccept,
         search: "",
+        createNew: false,
+        newEmployerName: raw,
+        newTradingName: "",
+        newCategory: "",
       };
     });
   }
@@ -440,6 +468,9 @@ export function MembershipImportWizard({
         })),
         confirmed: autoAccept,
         search: "",
+        createNew: false,
+        newWorksiteName: raw,
+        newWorksiteType: "",
       };
     });
   }
@@ -670,6 +701,42 @@ export function MembershipImportWizard({
     const occMap = new Map(occupationResolutions.map((r) => [r.rawValue, r.resolvedOccupationId]));
     const mtMap = new Map(membershipTypeResolutions.map((r) => [r.rawValue, r.resolvedId]));
     const dedupMap = new Map(dedupRows.map((d) => [d.rowIndex, d]));
+
+    // Create new employers first
+    const newEmployers = employerResolutions.filter((r) => r.createNew && r.newEmployerName.trim());
+    for (const res of newEmployers) {
+      const { data } = await supabase
+        .from("employers")
+        .insert({
+          employer_name: res.newEmployerName.trim(),
+          trading_name: res.newTradingName.trim() || null,
+          employer_category: res.newCategory || null,
+          is_active: true,
+        })
+        .select("employer_id, employer_name")
+        .single();
+      if (data) {
+        empMap.set(res.rawValue, data.employer_id);
+      }
+    }
+
+    // Create new worksites
+    const newWorksites = worksiteResolutions.filter((r) => r.createNew && r.newWorksiteName.trim());
+    for (const res of newWorksites) {
+      const { data } = await supabase
+        .from("worksites")
+        .insert({
+          worksite_name: res.newWorksiteName.trim(),
+          worksite_type: res.newWorksiteType || "Other",
+          is_active: true,
+          is_offshore: false,
+        })
+        .select("worksite_id, worksite_name")
+        .single();
+      if (data) {
+        wsMap.set(res.rawValue, data.worksite_id);
+      }
+    }
 
     // Handle "create new occupations" — create them first before bulk apply
     const newOccupations = occupationResolutions.filter((r) => r.createNew && !r.resolvedOccupationId);
@@ -905,7 +972,7 @@ export function MembershipImportWizard({
 
   // ── Render: Employer Matching ─────────────────────────────────────────────
   function renderEmployerMatching() {
-    const allConfirmed = employerResolutions.every((r) => r.confirmed);
+    const allConfirmed = employerResolutions.every((r) => r.confirmed || (r.createNew && r.newEmployerName.trim().length > 0));
     const filteredEmployers = (search: string) =>
       search
         ? employers.filter((e) =>
@@ -1005,23 +1072,99 @@ export function MembershipImportWizard({
                 )}
               </div>
 
-              <Button
-                variant={res.confirmed && !res.resolvedId ? "default" : "outline"}
-                size="sm"
-                className="text-xs h-7"
-                onClick={() =>
-                  setEmployerResolutions((prev) =>
-                    prev.map((r) =>
-                      r.rawValue === res.rawValue
-                        ? { ...r, resolvedId: null, resolvedName: null, confirmed: true }
-                        : r
-                    )
-                  )
-                }
-              >
-                <X className="h-3 w-3 mr-1" />
-                No employer match
-              </Button>
+              {res.createNew ? (
+                <div className="border rounded-md p-3 space-y-2 bg-muted/30">
+                  <p className="text-xs font-medium">New employer</p>
+                  <Input
+                    placeholder="Employer name (required)"
+                    value={res.newEmployerName}
+                    onChange={(e) =>
+                      setEmployerResolutions((prev) =>
+                        prev.map((r) => r.rawValue === res.rawValue ? { ...r, newEmployerName: e.target.value } : r)
+                      )
+                    }
+                    className="h-8 text-sm"
+                    autoFocus
+                  />
+                  <Input
+                    placeholder="Trading name (optional)"
+                    value={res.newTradingName}
+                    onChange={(e) =>
+                      setEmployerResolutions((prev) =>
+                        prev.map((r) => r.rawValue === res.rawValue ? { ...r, newTradingName: e.target.value } : r)
+                      )
+                    }
+                    className="h-8 text-sm"
+                  />
+                  <Select
+                    value={res.newCategory || "__none__"}
+                    onValueChange={(v) =>
+                      setEmployerResolutions((prev) =>
+                        prev.map((r) => r.rawValue === res.rawValue ? { ...r, newCategory: v === "__none__" ? "" : v } : r)
+                      )
+                    }
+                  >
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue placeholder="Category (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">No category</SelectItem>
+                      {EMPLOYER_CATEGORIES.map((c) => (
+                        <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-7"
+                    onClick={() =>
+                      setEmployerResolutions((prev) =>
+                        prev.map((r) => r.rawValue === res.rawValue ? { ...r, createNew: false } : r)
+                      )
+                    }
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Button
+                    variant={res.confirmed && !res.resolvedId ? "default" : "outline"}
+                    size="sm"
+                    className="text-xs h-7"
+                    onClick={() =>
+                      setEmployerResolutions((prev) =>
+                        prev.map((r) =>
+                          r.rawValue === res.rawValue
+                            ? { ...r, resolvedId: null, resolvedName: null, confirmed: true, createNew: false }
+                            : r
+                        )
+                      )
+                    }
+                  >
+                    <X className="h-3 w-3 mr-1" />
+                    No employer match
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-7"
+                    onClick={() =>
+                      setEmployerResolutions((prev) =>
+                        prev.map((r) =>
+                          r.rawValue === res.rawValue
+                            ? { ...r, createNew: true, confirmed: false }
+                            : r
+                        )
+                      )
+                    }
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Create new
+                  </Button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -1039,7 +1182,7 @@ export function MembershipImportWizard({
 
   // ── Render: Worksite Matching ─────────────────────────────────────────────
   function renderWorksiteMatching() {
-    const allConfirmed = worksiteResolutions.every((r) => r.confirmed);
+    const allConfirmed = worksiteResolutions.every((r) => r.confirmed || (r.createNew && r.newWorksiteName.trim().length > 0));
 
     return (
       <div className="space-y-4">
@@ -1135,23 +1278,89 @@ export function MembershipImportWizard({
                   )}
                 </div>
 
-                <Button
-                  variant={res.confirmed && !res.resolvedId ? "default" : "outline"}
-                  size="sm"
-                  className="text-xs h-7"
-                  onClick={() =>
-                    setWorksiteResolutions((prev) =>
-                      prev.map((r) =>
-                        r.rawValue === res.rawValue
-                          ? { ...r, resolvedId: null, resolvedName: null, confirmed: true }
-                          : r
-                      )
-                    )
-                  }
-                >
-                  <X className="h-3 w-3 mr-1" />
-                  No worksite
-                </Button>
+                {res.createNew ? (
+                  <div className="border rounded-md p-3 space-y-2 bg-muted/30">
+                    <p className="text-xs font-medium">New worksite</p>
+                    <Input
+                      placeholder="Worksite name (required)"
+                      value={res.newWorksiteName}
+                      onChange={(e) =>
+                        setWorksiteResolutions((prev) =>
+                          prev.map((r) => r.rawValue === res.rawValue ? { ...r, newWorksiteName: e.target.value } : r)
+                        )
+                      }
+                      className="h-8 text-sm"
+                      autoFocus
+                    />
+                    <Select
+                      value={res.newWorksiteType || "__none__"}
+                      onValueChange={(v) =>
+                        setWorksiteResolutions((prev) =>
+                          prev.map((r) => r.rawValue === res.rawValue ? { ...r, newWorksiteType: v === "__none__" ? "" : v } : r)
+                        )
+                      }
+                    >
+                      <SelectTrigger className="h-8 text-sm">
+                        <SelectValue placeholder="Worksite type (required)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Select type…</SelectItem>
+                        {WORKSITE_TYPES.map((t) => (
+                          <SelectItem key={t} value={t}>{t.replace(/_/g, " ")}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-7"
+                      onClick={() =>
+                        setWorksiteResolutions((prev) =>
+                          prev.map((r) => r.rawValue === res.rawValue ? { ...r, createNew: false } : r)
+                        )
+                      }
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button
+                      variant={res.confirmed && !res.resolvedId ? "default" : "outline"}
+                      size="sm"
+                      className="text-xs h-7"
+                      onClick={() =>
+                        setWorksiteResolutions((prev) =>
+                          prev.map((r) =>
+                            r.rawValue === res.rawValue
+                              ? { ...r, resolvedId: null, resolvedName: null, confirmed: true, createNew: false }
+                              : r
+                          )
+                        )
+                      }
+                    >
+                      <X className="h-3 w-3 mr-1" />
+                      No worksite
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-7"
+                      onClick={() =>
+                        setWorksiteResolutions((prev) =>
+                          prev.map((r) =>
+                            r.rawValue === res.rawValue
+                              ? { ...r, createNew: true, confirmed: false }
+                              : r
+                          )
+                        )
+                      }
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Create new
+                    </Button>
+                  </div>
+                )}
               </div>
             );
           })}

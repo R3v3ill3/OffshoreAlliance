@@ -72,7 +72,7 @@ export function WorkerFilterBar({ filters, onChange }: WorkerFilterBarProps) {
     queryFn: async () => {
       const { data } = await supabase
         .from("union_membership_types")
-        .select("id, display_name")
+        .select("union_membership_type_id, display_name")
         .order("display_name");
       return data ?? [];
     },
@@ -99,7 +99,7 @@ export function WorkerFilterBar({ filters, onChange }: WorkerFilterBarProps) {
       const { data } = await supabase
         .from("campaigns")
         .select("campaign_id, campaign_name")
-        .in("status", ["Active", "Planning"])
+        .in("status", ["active", "planning"])
         .order("campaign_name");
       return data ?? [];
     },
@@ -130,7 +130,7 @@ export function WorkerFilterBar({ filters, onChange }: WorkerFilterBarProps) {
   }
   if (filters.union_membership_type_id != null) {
     const m = membershipTypes.find(
-      (x: { id: number }) => x.id === filters.union_membership_type_id
+      (x: { union_membership_type_id: number }) => x.union_membership_type_id === filters.union_membership_type_id
     );
     if (m) activeLabels.push({ key: "union_membership_type_id", label: `Membership: ${(m as { display_name: string }).display_name}` });
   }
@@ -201,8 +201,8 @@ export function WorkerFilterBar({ filters, onChange }: WorkerFilterBarProps) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">All types</SelectItem>
-            {membershipTypes.map((m: { id: number; display_name: string }) => (
-              <SelectItem key={m.id} value={String(m.id)}>
+            {membershipTypes.map((m: { union_membership_type_id: number; display_name: string }) => (
+              <SelectItem key={m.union_membership_type_id} value={String(m.union_membership_type_id)}>
                 {m.display_name}
               </SelectItem>
             ))}

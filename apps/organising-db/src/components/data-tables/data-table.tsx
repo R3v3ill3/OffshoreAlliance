@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import {
   Table,
@@ -132,8 +132,11 @@ export function DataTable<T extends Record<string, unknown>>({
     selection && visibleRowIds.some((id) => selection.selectedIds.has(id));
   const colCount = columns.length + (selection ? 1 : 0);
 
+  const prevSortedRef = useRef<T[]>();
   useEffect(() => {
-    onFilteredDataChange?.(sorted);
+    if (!onFilteredDataChange || sorted === prevSortedRef.current) return;
+    prevSortedRef.current = sorted;
+    onFilteredDataChange(sorted);
   }, [sorted, onFilteredDataChange]);
 
   const handleSort = (key: string) => {

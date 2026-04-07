@@ -13,6 +13,37 @@ import { WorkerFilterBar, EMPTY_FILTERS, type WorkerFilters } from "@/components
 import { BatchEditDialog } from "@/components/workers/batch-edit-dialog";
 import { Upload, Filter, Pencil, X, CheckSquare } from "lucide-react";
 
+function FilterableCell({
+  value,
+  filterKey,
+  filterId,
+  onFilter,
+}: {
+  value: string | null;
+  filterKey: keyof WorkerFilters;
+  filterId: number | null;
+  onFilter: (patch: Partial<WorkerFilters>) => void;
+}) {
+  if (!value) return <span>—</span>;
+  return (
+    <span className="group/filter inline-flex items-center gap-1">
+      {value}
+      {filterId != null && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onFilter({ [filterKey]: filterId });
+          }}
+          className="opacity-0 group-hover/filter:opacity-100 transition-opacity p-0.5 rounded hover:bg-muted"
+          title={`Filter by this ${filterKey.replace(/_id$/, "").replace(/_/g, " ")}`}
+        >
+          <Filter className="h-3 w-3 text-muted-foreground" />
+        </button>
+      )}
+    </span>
+  );
+}
+
 export interface WorkerRow {
   worker_id: number;
   first_name: string;
@@ -142,35 +173,6 @@ export default function WorkersPage() {
     },
   };
 
-  const FilterableCell = ({
-    value,
-    filterKey,
-    filterId,
-  }: {
-    value: string | null;
-    filterKey: keyof WorkerFilters;
-    filterId: number | null;
-  }) => {
-    if (!value) return <span>—</span>;
-    return (
-      <span className="group/filter inline-flex items-center gap-1">
-        {value}
-        {filterId != null && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              applyFilter({ [filterKey]: filterId });
-            }}
-            className="opacity-0 group-hover/filter:opacity-100 transition-opacity p-0.5 rounded hover:bg-muted"
-            title={`Filter by this ${filterKey.replace(/_id$/, "").replace(/_/g, " ")}`}
-          >
-            <Filter className="h-3 w-3 text-muted-foreground" />
-          </button>
-        )}
-      </span>
-    );
-  };
-
   const columns: Column<WorkerRow>[] = [
     {
       key: "name",
@@ -196,6 +198,7 @@ export default function WorkersPage() {
           value={row.employer?.employer_name ?? null}
           filterKey="employer_id"
           filterId={row.employer_id}
+          onFilter={applyFilter}
         />
       ),
     },
@@ -207,6 +210,7 @@ export default function WorkersPage() {
           value={row.worksite?.worksite_name ?? null}
           filterKey="worksite_id"
           filterId={row.worksite_id}
+          onFilter={applyFilter}
         />
       ),
     },
@@ -218,6 +222,7 @@ export default function WorkersPage() {
           value={row.union_membership_type?.display_name ?? null}
           filterKey="union_membership_type_id"
           filterId={row.union_membership_type_id}
+          onFilter={applyFilter}
         />
       ),
     },
@@ -229,6 +234,7 @@ export default function WorkersPage() {
           value={row.member_role_type?.display_name ?? null}
           filterKey="member_role_type_id"
           filterId={row.member_role_type_id}
+          onFilter={applyFilter}
         />
       ),
     },

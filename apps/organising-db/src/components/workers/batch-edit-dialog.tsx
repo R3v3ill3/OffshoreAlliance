@@ -91,7 +91,7 @@ export function BatchEditDialog({
     queryFn: async () => {
       const { data } = await supabase
         .from("union_membership_types")
-        .select("id, display_name")
+        .select("union_membership_type_id, display_name")
         .order("display_name");
       return data ?? [];
     },
@@ -237,7 +237,7 @@ export function BatchEditDialog({
       case "worksite_id":
         return find(worksites, "worksite_id", numVal, "worksite_name");
       case "union_membership_type_id":
-        return find(membershipTypes, "id", numVal, "display_name");
+        return find(membershipTypes, "union_membership_type_id", numVal, "display_name");
       case "member_role_type_id":
         return find(roleTypes, "role_type_id", numVal, "display_name");
       case "canonical_occupation_id":
@@ -306,8 +306,8 @@ export function BatchEditDialog({
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {membershipTypes.map((m: { id: number; display_name: string }) => (
-                    <SelectItem key={m.id} value={String(m.id)}>
+                  {membershipTypes.map((m: { union_membership_type_id: number; display_name: string }) => (
+                    <SelectItem key={m.union_membership_type_id} value={String(m.union_membership_type_id)}>
                       {m.display_name}
                     </SelectItem>
                   ))}

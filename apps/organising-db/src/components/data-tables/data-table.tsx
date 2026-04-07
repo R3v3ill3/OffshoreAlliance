@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import {
   Table,
@@ -50,8 +50,6 @@ interface DataTableProps<T> {
   loading?: boolean;
   selection?: DataTableSelection<T>;
   filterBar?: React.ReactNode;
-  /** Expose the full filtered dataset (not just current page) for select-all-filtered. */
-  onFilteredDataChange?: (data: T[]) => void;
 }
 
 const DEFAULT_PAGE_SIZE = 50;
@@ -67,7 +65,6 @@ export function DataTable<T extends Record<string, unknown>>({
   loading = false,
   selection,
   filterBar,
-  onFilteredDataChange,
 }: DataTableProps<T>) {
   const { isMobile } = useDevice();
   const pathname = usePathname();
@@ -131,13 +128,6 @@ export function DataTable<T extends Record<string, unknown>>({
   const someVisibleSelected =
     selection && visibleRowIds.some((id) => selection.selectedIds.has(id));
   const colCount = columns.length + (selection ? 1 : 0);
-
-  const prevSortedRef = useRef<T[] | undefined>(undefined);
-  useEffect(() => {
-    if (!onFilteredDataChange || sorted === prevSortedRef.current) return;
-    prevSortedRef.current = sorted;
-    onFilteredDataChange(sorted);
-  }, [sorted, onFilteredDataChange]);
 
   const handleSort = (key: string) => {
     if (sortKey === key) {

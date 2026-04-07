@@ -75,7 +75,6 @@ export default function WorkersPage() {
   const [batchEditOpen, setBatchEditOpen] = useState(false);
   const [filters, setFilters] = useState<WorkerFilters>(EMPTY_FILTERS);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [filteredData, setFilteredData] = useState<WorkerRow[]>([]);
 
   const { data: workers = [], isLoading } = useQuery({
     queryKey: ["workers"],
@@ -145,13 +144,9 @@ export default function WorkersPage() {
     []
   );
 
-  const handleFilteredDataChange = useCallback((data: WorkerRow[]) => {
-    setFilteredData(data);
-  }, []);
-
   const selectAllFiltered = useCallback(() => {
-    setSelectedIds(new Set(filteredData.map((w) => String(w.worker_id))));
-  }, [filteredData]);
+    setSelectedIds(new Set(clientFiltered.map((w) => String(w.worker_id))));
+  }, [clientFiltered]);
 
   const selection: DataTableSelection<WorkerRow> = {
     rowId: (w) => String(w.worker_id),
@@ -280,7 +275,7 @@ export default function WorkersPage() {
             className="h-7 text-xs"
             onClick={selectAllFiltered}
           >
-            Select all {filteredData.length} matching
+            Select all {clientFiltered.length} matching
           </Button>
           <Button
             variant="ghost"
@@ -313,7 +308,6 @@ export default function WorkersPage() {
         onRowClick={(row) => router.push(`/workers/${row.worker_id}`)}
         loading={isLoading}
         selection={selection}
-        onFilteredDataChange={handleFilteredDataChange}
         filterBar={
           <WorkerFilterBar filters={filters} onChange={applyFilter} />
         }

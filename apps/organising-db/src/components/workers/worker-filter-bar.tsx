@@ -98,9 +98,9 @@ export function WorkerFilterBar({ filters, onChange }: WorkerFilterBarProps) {
     queryFn: async () => {
       const { data } = await supabase
         .from("campaigns")
-        .select("campaign_id, campaign_name")
+        .select("campaign_id, name")
         .in("status", ["active", "planning"])
-        .order("campaign_name");
+        .order("name");
       return data ?? [];
     },
     enabled: !!user,
@@ -144,7 +144,7 @@ export function WorkerFilterBar({ filters, onChange }: WorkerFilterBarProps) {
     const c = campaigns.find(
       (x: { campaign_id: number }) => x.campaign_id === filters.campaign_id
     );
-    if (c) activeLabels.push({ key: "campaign_id", label: `Campaign: ${(c as { campaign_name: string }).campaign_name}` });
+    if (c) activeLabels.push({ key: "campaign_id", label: `Campaign: ${(c as { name: string }).name}` });
   }
   if (filters.is_active != null) {
     activeLabels.push({
@@ -235,9 +235,9 @@ export function WorkerFilterBar({ filters, onChange }: WorkerFilterBarProps) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">All campaigns</SelectItem>
-            {campaigns.map((c: { campaign_id: number; campaign_name: string }) => (
+            {campaigns.map((c: { campaign_id: number; name: string }) => (
               <SelectItem key={c.campaign_id} value={String(c.campaign_id)}>
-                {c.campaign_name}
+                {c.name}
               </SelectItem>
             ))}
           </SelectContent>

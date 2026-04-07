@@ -5,6 +5,17 @@ import type { Database } from '@/types/database'
 import { createClient } from '@/lib/supabase/client'
 import { syncAmbitionTargetDatesForCampaign } from '@/lib/supabase/syncAmbitionTargetDates'
 
+/** Stage row from the creation wizard → persisted on campaign_stage_plans */
+export type PlannerStageDateInput = {
+  stage_number: number
+  planned_start: string
+  planned_end: string
+  duration_weeks: number
+  plan_status?: 'completed' | 'active' | 'draft' | 'blocked'
+  actual_start?: string | null
+  actual_end?: string | null
+}
+
 export function useCampaigns() {
   const supabase = createClient()
 
@@ -285,6 +296,7 @@ export function useExistingCampaignForPlanning(campaignId: number | null) {
           status,
           organiser_id,
           start_date,
+          end_date,
           enterprise_agreement_subtype,
           replaced_agreement_id,
           campaign_stage_plans(plan_id)
@@ -322,17 +334,21 @@ export function useAddPlanToCampaign() {
       start_date?: string
       agreement_id?: number
       expiry_date?: string
-      stage_dates?: Array<{ stage_number: number; planned_start: string; planned_end: string; duration_weeks: number }>
+      stage_dates?: PlannerStageDateInput[]
     }) => {
-      if (payload.organiser_id || payload.start_date) {
-        const updates: Record<string, unknown> = { status: 'active' }
-        if (payload.organiser_id) updates.organiser_id = payload.organiser_id
-        if (payload.start_date) updates.start_date = payload.start_date
-        await supabase
-          .from('campaigns')
-          .update(updates)
-          .eq('campaign_id', payload.campaign_id)
+      const { data: existing } = await supabase
+        .from('campaigns')
+        .select('start_date')
+        .eq('campaign_id', payload.campaign_id)
+        .single()
+
+      const updates: Record<string, unknown> = { status: 'active' }
+      if (payload.organiser_id) updates.organiser_id = payload.organiser_id
+      if (!existing?.start_date && payload.start_date) {
+        updates.start_date = payload.start_date
       }
+
+      await supabase.from('campaigns').update(updates).eq('campaign_id', payload.campaign_id)
 
       const STAGE_NAMES_LIST = [
         'Contact ID & Mapping',
@@ -345,14 +361,17 @@ export function useAddPlanToCampaign() {
 
       const stagePlans = STAGE_NAMES_LIST.map((name, i) => {
         const stageNum = i + 1
-        const stageDates = payload.stage_dates?.find((s) => s.stage_number === stageNum)
+        const sd = payload.stage_dates?.find((s) => s.stage_number === stageNum)
+        const status = sd?.plan_status ?? (stageNum === 1 ? 'active' : 'draft')
         return {
           campaign_id: payload.campaign_id,
           stage_number: stageNum,
           stage_name: name,
-          status: stageNum === 1 ? 'active' : 'draft',
-          planned_start_date: stageDates?.planned_start || null,
-          planned_end_date: stageDates?.planned_end || null,
+          status,
+          planned_start_date: sd?.planned_start || null,
+          planned_end_date: sd?.planned_end || null,
+          actual_start_date: sd?.actual_start ?? null,
+          actual_end_date: sd?.actual_end ?? null,
         }
       })
 
@@ -470,7 +489,7 @@ export function useCreateCampaign() {
       agreement_id?: number
       expiry_date?: string
       msd_required?: boolean
-      stage_dates?: Array<{ stage_number: number; planned_start: string; planned_end: string; duration_weeks: number }>
+      stage_dates?: PlannerStageDateInput[]
       gate_overrides?: Partial<Record<number, { enforcement_type: string }>>
     }) => {
       type CampaignInsert = Database['public']['Tables']['campaigns']['Insert']
@@ -503,14 +522,17 @@ export function useCreateCampaign() {
 
       const stagePlans = STAGE_NAMES.map((name, i) => {
         const stageNum = i + 1
-        const stageDates = payload.stage_dates?.find((s) => s.stage_number === stageNum)
+        const sd = payload.stage_dates?.find((s) => s.stage_number === stageNum)
+        const status = sd?.plan_status ?? (stageNum === 1 ? 'active' : 'draft')
         return {
           campaign_id: campaign.campaign_id,
           stage_number: stageNum,
           stage_name: name,
-          status: stageNum === 1 ? 'active' : 'draft',
-          planned_start_date: stageDates?.planned_start || null,
-          planned_end_date: stageDates?.planned_end || null,
+          status,
+          planned_start_date: sd?.planned_start || null,
+          planned_end_date: sd?.planned_end || null,
+          actual_start_date: sd?.actual_start ?? null,
+          actual_end_date: sd?.actual_end ?? null,
         }
       })
 

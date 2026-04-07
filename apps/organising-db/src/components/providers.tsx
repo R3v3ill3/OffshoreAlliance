@@ -1,14 +1,17 @@
 "use client";
 
 import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-query";
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { AuthProvider } from "@/lib/supabase/auth-context";
 import { agentDebugLog } from "@/lib/agent-debug-log";
 import { DeviceProvider } from "@/contexts/device-context";
+import { createClient } from "@/lib/supabase/client";
+import { isLikelyAuthError, recoverSessionConnection } from "@/lib/supabase/session-recovery";
 // Import Sentry client configuration for error tracking
 import "../../../../sentry.client.config";
 
 export function Providers({ children, isMobile }: { children: ReactNode; isMobile: boolean }) {
+  const authRecoveryInProgressRef = useRef(false);
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -28,25 +31,26 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
                 errorDetails: errRec?.details ?? null,
                 errorHint: errRec?.hint ?? null,
                 errorStatus: errRec?.status ?? null,
+                authRecoveryInProgress: authRecoveryInProgressRef.current,
               },
               hypothesisId: "H2",
             });
             // #endregion
-            const msg = error instanceof Error ? error.message : String(error);
-            if (
-              msg.includes("JWT") ||
-              msg.includes("not authenticated") ||
-              msg.includes("401")
-            ) {
-              // #region agent log
-              agentDebugLog({
-                location: "providers.tsx:QueryCache.jwt-redirect",
-                message: "Redirecting to login from query error",
-                data: { queryKey: query.queryKey, msgSnippet: msg.slice(0, 120) },
-                hypothesisId: "H2",
+            if (isLikelyAuthError(error)) {
+              if (authRecoveryInProgressRef.current) {
+                return;
+              }
+
+              authRecoveryInProgressRef.current = true;
+              void recoverSessionConnection({
+                supabase: createClient(),
+                queryClient,
+                source: "query-cache-auth-error",
+                reloadOnSuccess: false,
+                redirectOnFailure: true,
+              }).finally(() => {
+                authRecoveryInProgressRef.current = false;
               });
-              // #endregion
-              window.location.href = "/login";
             }
           },
         }),

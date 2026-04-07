@@ -44,10 +44,11 @@ export function WorkerFilterBar({ filters, onChange }: WorkerFilterBarProps) {
   const { data: employers = [] } = useQuery({
     queryKey: ["filter-employers"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("employers")
         .select("employer_id, employer_name")
         .order("employer_name");
+      if (error) throw error;
       return data ?? [];
     },
     enabled: !!user,
@@ -57,10 +58,11 @@ export function WorkerFilterBar({ filters, onChange }: WorkerFilterBarProps) {
   const { data: worksites = [] } = useQuery({
     queryKey: ["filter-worksites"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("worksites")
         .select("worksite_id, worksite_name")
         .order("worksite_name");
+      if (error) throw error;
       return data ?? [];
     },
     enabled: !!user,
@@ -70,10 +72,11 @@ export function WorkerFilterBar({ filters, onChange }: WorkerFilterBarProps) {
   const { data: membershipTypes = [] } = useQuery({
     queryKey: ["filter-union-membership-types"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("union_membership_types")
         .select("union_membership_type_id, display_name")
         .order("display_name");
+      if (error) throw error;
       return data ?? [];
     },
     enabled: !!user,
@@ -83,10 +86,11 @@ export function WorkerFilterBar({ filters, onChange }: WorkerFilterBarProps) {
   const { data: roleTypes = [] } = useQuery({
     queryKey: ["filter-member-role-types"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("member_role_types")
         .select("role_type_id, display_name")
         .order("display_name");
+      if (error) throw error;
       return data ?? [];
     },
     enabled: !!user,
@@ -96,11 +100,12 @@ export function WorkerFilterBar({ filters, onChange }: WorkerFilterBarProps) {
   const { data: campaigns = [] } = useQuery({
     queryKey: ["filter-campaigns"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("campaigns")
         .select("campaign_id, name")
         .in("status", ["active", "planning"])
         .order("name");
+      if (error) throw error;
       return data ?? [];
     },
     enabled: !!user,

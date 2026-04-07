@@ -41,3 +41,7 @@ export function createClient(): SupabaseClient {
   ) as unknown as SupabaseClient;
   return _client;
 }
+
+export function resetClient(): void {
+  _client = undefined;
+}

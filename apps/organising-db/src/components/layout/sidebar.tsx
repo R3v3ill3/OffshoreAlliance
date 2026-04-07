@@ -21,6 +21,8 @@ import {
   LayoutGrid,
   Folder,
   Activity,
+  RefreshCcw,
+  Loader2,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -47,8 +49,37 @@ export const adminItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { user, profile, signOut, isAdmin } = useAuth();
+  const {
+    user,
+    profile,
+    signOut,
+    hardRefreshConnection,
+    connectionRecoveryInProgress,
+    isAdmin,
+  } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+  const [signOutInProgress, setSignOutInProgress] = useState(false);
+  const [recoveryFeedback, setRecoveryFeedback] = useState<string | null>(null);
+
+  const handleSignOut = async () => {
+    if (signOutInProgress) return;
+    setSignOutInProgress(true);
+    try {
+      await signOut();
+    } finally {
+      setSignOutInProgress(false);
+    }
+  };
+
+  const handleHardRefresh = async () => {
+    setRecoveryFeedback("Checking database connection...");
+    const result = await hardRefreshConnection();
+    if (result.ok) {
+      setRecoveryFeedback("Connection restored. Reloading now...");
+    } else if (!result.redirectedToLogin) {
+      setRecoveryFeedback(`Connection refresh failed: ${result.message}`);
+    }
+  };
 
   return (
     <aside
@@ -128,11 +159,31 @@ export function Sidebar() {
           </div>
         )}
         <button
-          onClick={signOut}
+          onClick={() => void handleHardRefresh()}
+          disabled={connectionRecoveryInProgress}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors disabled:opacity-60 disabled:pointer-events-none"
+        >
+          {connectionRecoveryInProgress ? (
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+          ) : (
+            <RefreshCcw className="h-4 w-4 shrink-0" />
+          )}
+          {!collapsed && <span>Hard Refresh Connection</span>}
+        </button>
+        {recoveryFeedback && !collapsed && (
+          <p className="px-3 text-[11px] text-muted-foreground">{recoveryFeedback}</p>
+        )}
+        <button
+          onClick={() => void handleSignOut()}
+          disabled={signOutInProgress}
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
         >
-          <LogOut className="h-4 w-4 shrink-0" />
-          {!collapsed && <span>Sign out</span>}
+          {signOutInProgress ? (
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+          ) : (
+            <LogOut className="h-4 w-4 shrink-0" />
+          )}
+          {!collapsed && <span>{signOutInProgress ? "Signing out..." : "Sign out"}</span>}
         </button>
         <Button
           variant="ghost"

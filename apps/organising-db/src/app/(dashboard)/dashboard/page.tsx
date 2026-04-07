@@ -38,7 +38,7 @@ interface WorkloadData {
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, hardRefreshConnection, connectionRecoveryInProgress } = useAuth();
   const supabase = createClient();
   const router = useRouter();
 
@@ -49,9 +49,10 @@ export default function DashboardPage() {
   const { data: workerCount = 0, isLoading: loadingWorkers } = useQuery({
     queryKey: ["workers-count"],
     queryFn: async () => {
-      const { count } = await supabase
+      const { count, error } = await supabase
         .from("workers")
         .select("*", { count: "exact", head: true });
+      if (error) throw error;
       return count ?? 0;
     },
     enabled: !!user,
@@ -60,11 +61,12 @@ export default function DashboardPage() {
   const { data: memberCount = 0, isLoading: loadingMembers } = useQuery({
     queryKey: ["members-count"],
     queryFn: async () => {
-      const { count } = await supabase
+      const { count, error } = await supabase
         .from("workers")
         .select("*", { count: "exact", head: true })
         .eq("is_active", true)
         .not("member_number", "is", null);
+      if (error) throw error;
       return count ?? 0;
     },
     enabled: !!user,
@@ -73,10 +75,11 @@ export default function DashboardPage() {
   const { data: agreementCount = 0, isLoading: loadingAgreements } = useQuery({
     queryKey: ["agreements-count"],
     queryFn: async () => {
-      const { count } = await supabase
+      const { count, error } = await supabase
         .from("agreements")
         .select("*", { count: "exact", head: true })
         .eq("status", "Current");
+      if (error) throw error;
       return count ?? 0;
     },
     enabled: !!user,
@@ -85,10 +88,11 @@ export default function DashboardPage() {
   const { data: campaignCount = 0, isLoading: loadingCampaigns } = useQuery({
     queryKey: ["campaigns-count"],
     queryFn: async () => {
-      const { count } = await supabase
+      const { count, error } = await supabase
         .from("campaigns")
         .select("*", { count: "exact", head: true })
         .eq("status", "active");
+      if (error) throw error;
       return count ?? 0;
     },
     enabled: !!user,
@@ -101,7 +105,7 @@ export default function DashboardPage() {
       const cutoff = new Date(now);
       cutoff.setDate(cutoff.getDate() + 90);
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("agreements")
         .select(
           `
@@ -117,6 +121,7 @@ export default function DashboardPage() {
         .gte("expiry_date", now.toISOString().split("T")[0])
         .lte("expiry_date", cutoff.toISOString().split("T")[0])
         .order("expiry_date", { ascending: true });
+      if (error) throw error;
       return data ?? [];
     },
     enabled: !!user,
@@ -125,12 +130,13 @@ export default function DashboardPage() {
   const { data: activeCampaigns = [], isLoading: loadingActiveCampaigns } = useQuery({
     queryKey: ["active-campaigns"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("campaigns")
         .select("*")
         .eq("status", "active")
         .order("start_date", { ascending: false })
         .limit(5);
+      if (error) throw error;
       return data ?? [];
     },
     enabled: !!user,
@@ -140,10 +146,11 @@ export default function DashboardPage() {
     queryKey: ["worksite-distribution"],
     queryFn: async () => {
       // Fetch worksite types to aggregate
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("worksites")
         .select("worksite_type")
         .eq("is_active", true);
+      if (error) throw error;
 
       if (!data) return [];
 
@@ -174,7 +181,13 @@ export default function DashboardPage() {
   });
 
   // Fetch workload dashboard data
-  const { data: workloadData, isLoading: loadingWorkload } = useQuery({
+  const {
+    data: workloadData,
+    isLoading: loadingWorkload,
+    isError: workloadIsError,
+    error: workloadError,
+    refetch: refetchWorkload,
+  } = useQuery({
     queryKey: [
       "workload-dashboard",
       filterOrganiser,
@@ -198,7 +211,11 @@ export default function DashboardPage() {
       );
 
       if (!response.ok) {
-        throw new Error("Failed to fetch workload data");
+        const responseText = await response.text();
+        const details = responseText ? ` - ${responseText.slice(0, 160)}` : "";
+        throw new Error(
+          `Failed to fetch workload data (status ${response.status})${details}`
+        );
       }
 
       return response.json();
@@ -233,6 +250,8 @@ export default function DashboardPage() {
       const plannedAgreementIds = new Set(
         (timelinesRes.data ?? []).map((t) => t.agreement_id)
       );
+      if (agreementsRes.error) throw agreementsRes.error;
+      if (timelinesRes.error) throw timelinesRes.error;
 
       return (agreementsRes.data ?? []).filter(
         (a) => !plannedAgreementIds.has(a.agreement_id)
@@ -242,6 +261,9 @@ export default function DashboardPage() {
   });
 
   const expiringCount = expiringAgreements.length;
+  const workloadErrorMessage = workloadError instanceof Error
+    ? workloadError.message
+    : "Unable to load workload data.";
 
   const stats = useMemo(
     () => [
@@ -389,9 +411,33 @@ export default function DashboardPage() {
             onFilterTimePeriodChange={setFilterTimePeriod}
           />
 
-          {loadingWorkload || !workloadData ? (
+          {loadingWorkload ? (
             <div className="flex items-center justify-center py-12">
               <EurekaLoadingSpinner size="md" />
+            </div>
+          ) : workloadIsError ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4">
+              <p className="text-sm font-medium text-destructive">
+                Could not load workload dashboard data.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">{workloadErrorMessage}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => void refetchWorkload()}>
+                  Retry
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={connectionRecoveryInProgress}
+                  onClick={() => void hardRefreshConnection()}
+                >
+                  Hard Refresh Connection
+                </Button>
+              </div>
+            </div>
+          ) : !workloadData ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+              Workload data is unavailable. Try refreshing the connection.
             </div>
           ) : (
             <>

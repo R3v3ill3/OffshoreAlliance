@@ -5,8 +5,19 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { format, addDays, subDays } from 'date-fns'
 import { useAgreements, useLeadOrganisers, useCurrentUserProfile } from '@/lib/hooks/useOptions'
-import { useCreateCampaign, useAddPlanToCampaign, useExistingCampaignForPlanning } from '@/lib/hooks/useCampaigns'
-import { calculateBackwardsTimeline, calculateForwardsTimeline } from '@/lib/utils/timeline'
+import {
+  useCreateCampaign,
+  useAddPlanToCampaign,
+  useExistingCampaignForPlanning,
+  type PlannerStageDateInput,
+} from '@/lib/hooks/useCampaigns'
+import {
+  buildInitialStageTimeline,
+  calculateForwardsTimeline,
+  calculateProportionalTimeline,
+  redistributeAfterCompletedPrefix,
+  type StageDateRange,
+} from '@/lib/utils/timeline'
 import { STAGE_NAMES } from '@/types'
 import { Button } from '@/components/ui/button'
 import { DateInput } from '@/components/ui/date-input'
@@ -36,6 +47,33 @@ const STEPS = [
   { id: 3, title: 'Configure Timeline', icon: Calendar },
 ]
 
+interface WizardState {
+  agreement_id?: number
+  agreement_name?: string
+  employer_name?: string
+  expiry_date?: string
+  sector_name?: string
+  worksite_names?: string[]
+  campaign_name: string
+  description: string
+  organiser_id?: number
+  msd_required: boolean
+  stage_dates: Array<{
+    stage_number: number
+    stage_name: string
+    planned_start: string
+    planned_end: string
+    duration_weeks: number
+  }>
+  timeline_mode: 'proportional' | 'backwards' | 'forwards'
+  org_campaign_end_ymd: string | null
+  completed_prefix_stages: number
+}
+
+function atNoonYmd(ymd: string): Date {
+  return new Date(`${ymd}T12:00:00`)
+}
+
 function rebuildTimelineFromCampaignStart(
   startYmd: string,
   prev: Array<{ stage_number: number; stage_name: string; planned_start: string; planned_end: string; duration_weeks: number }>
@@ -43,7 +81,7 @@ function rebuildTimelineFromCampaignStart(
   if (!startYmd || prev.length === 0) return prev
   const custom: Partial<Record<number, number>> = {}
   for (const s of prev) custom[s.stage_number] = s.duration_weeks
-  const ranges = calculateForwardsTimeline(new Date(`${startYmd}T12:00:00`), custom)
+  const ranges = calculateForwardsTimeline(atNoonYmd(startYmd), custom)
   return ranges.map((t) => ({
     stage_number: t.stage_number,
     stage_name: STAGE_NAMES[t.stage_number as keyof typeof STAGE_NAMES],
@@ -53,29 +91,55 @@ function rebuildTimelineFromCampaignStart(
   }))
 }
 
-interface WizardState {
-  // Step 1
-  agreement_id?: number
-  agreement_name?: string
-  employer_name?: string
-  expiry_date?: string
-  sector_name?: string
-  worksite_names?: string[]
+function mapRangesToWizardStages(ranges: StageDateRange[]): WizardState['stage_dates'] {
+  return ranges.map((t) => ({
+    stage_number: t.stage_number,
+    stage_name: STAGE_NAMES[t.stage_number as keyof typeof STAGE_NAMES],
+    planned_start: format(t.planned_start, 'yyyy-MM-dd'),
+    planned_end: format(t.planned_end, 'yyyy-MM-dd'),
+    duration_weeks: t.duration_weeks,
+  }))
+}
 
-  // Step 2
-  campaign_name: string
-  description: string
-  organiser_id?: number
-  msd_required: boolean
+function resolveTimelineMode(
+  linked: boolean,
+  ec: { start_date?: string | null; end_date?: string | null } | null | undefined,
+  agreementExpiry: string | null | undefined
+): 'proportional' | 'backwards' | 'forwards' {
+  if (linked && ec?.start_date && ec?.end_date) return 'proportional'
+  if (linked && ec?.start_date) return 'forwards'
+  if (agreementExpiry) return 'backwards'
+  return 'forwards'
+}
 
-  // Step 3
-  stage_dates: Array<{
-    stage_number: number
-    stage_name: string
-    planned_start: string
-    planned_end: string
-    duration_weeks: number
-  }>
+function buildStagePayloadForSubmit(
+  stages: WizardState['stage_dates'],
+  organisingActive: boolean,
+  completedPrefix: number
+): PlannerStageDateInput[] {
+  return stages.map((s) => {
+    const n = s.stage_number
+    if (organisingActive && completedPrefix > 0) {
+      if (n <= completedPrefix) {
+        return {
+          ...s,
+          plan_status: 'completed',
+          actual_start: s.planned_start,
+          actual_end: s.planned_end,
+        }
+      }
+      if (n === completedPrefix + 1) {
+        return { ...s, plan_status: 'active', actual_start: null, actual_end: null }
+      }
+      return { ...s, plan_status: 'draft', actual_start: null, actual_end: null }
+    }
+    return {
+      ...s,
+      plan_status: n === 1 ? 'active' : 'draft',
+      actual_start: null,
+      actual_end: null,
+    }
+  })
 }
 
 export function CampaignCreationWizard() {
@@ -87,7 +151,12 @@ export function CampaignCreationWizard() {
     description: '',
     msd_required: false,
     stage_dates: [],
+    timeline_mode: 'forwards',
+    org_campaign_end_ymd: null,
+    completed_prefix_stages: 0,
   })
+
+  const initialTimelineRef = useRef<StageDateRange[] | null>(null)
 
   const { data: agreements, isLoading: agreementsLoading } = useAgreements()
   const { data: leadOrganisers, isLoading: organisersLoading } = useLeadOrganisers()
@@ -218,30 +287,24 @@ export function CampaignCreationWizard() {
     const year = new Date().getFullYear()
     const shortName = agreement.short_name || employerName
 
-    // Auto-calculate timeline if expiry date exists
-    let stageDates: WizardState['stage_dates'] = []
-    if (expiryDate) {
-      const paboDate = subDays(new Date(expiryDate), 30)
-      const timeline = calculateBackwardsTimeline(paboDate)
-      stageDates = timeline.map((t) => ({
-        stage_number: t.stage_number,
-        stage_name: STAGE_NAMES[t.stage_number as keyof typeof STAGE_NAMES],
-        planned_start: format(t.planned_start, 'yyyy-MM-dd'),
-        planned_end: format(t.planned_end, 'yyyy-MM-dd'),
-        duration_weeks: t.duration_weeks,
-      }))
-    } else {
-      // Start from today
-      const today = new Date()
-      const timeline = calculateForwardsTimeline(today)
-      stageDates = timeline.map((t) => ({
-        stage_number: t.stage_number,
-        stage_name: STAGE_NAMES[t.stage_number as keyof typeof STAGE_NAMES],
-        planned_start: format(t.planned_start, 'yyyy-MM-dd'),
-        planned_end: format(t.planned_end, 'yyyy-MM-dd'),
-        duration_weeks: t.duration_weeks,
-      }))
-    }
+    const ranges = buildInitialStageTimeline({
+      linkedStart: isLinkedMode ? existingCampaign?.start_date ?? null : null,
+      linkedEnd: isLinkedMode ? existingCampaign?.end_date ?? null : null,
+      agreementExpiry: expiryDate ?? null,
+    })
+
+    const mode = resolveTimelineMode(isLinkedMode, existingCampaign, expiryDate ?? null)
+
+    initialTimelineRef.current = ranges.map((r) => ({
+      stage_number: r.stage_number,
+      planned_start: new Date(r.planned_start),
+      planned_end: new Date(r.planned_end),
+      duration_weeks: r.duration_weeks,
+    }))
+
+    const stageDates = mapRangesToWizardStages(ranges)
+    const linkedName =
+      isLinkedMode && existingCampaign?.name ? String(existingCampaign.name) : null
 
     setState((prev) => ({
       ...prev,
@@ -251,8 +314,12 @@ export function CampaignCreationWizard() {
       expiry_date: expiryDate || undefined,
       sector_name: sectorName,
       worksite_names: worksiteNames,
-      campaign_name: `${shortName} EBA ${year}`,
+      campaign_name: linkedName ?? `${shortName} EBA ${year}`,
       stage_dates: stageDates,
+      timeline_mode: mode,
+      org_campaign_end_ymd:
+        isLinkedMode && existingCampaign?.end_date ? String(existingCampaign.end_date) : null,
+      completed_prefix_stages: 0,
     }))
   }
 
@@ -294,6 +361,9 @@ export function CampaignCreationWizard() {
     })
   }
 
+  const isLinkedOrganisingActive =
+    isLinkedMode && existingCampaign?.status?.toLowerCase() === 'active'
+
   const isSubmitting = createCampaign.isPending || addPlan.isPending
 
   async function handleSubmit() {
@@ -307,6 +377,12 @@ export function CampaignCreationWizard() {
     }
 
     try {
+      const stagePayload = buildStagePayloadForSubmit(
+        state.stage_dates,
+        isLinkedOrganisingActive,
+        state.completed_prefix_stages
+      )
+
       if (isLinkedMode && linkedCampaignId) {
         await addPlan.mutateAsync({
           campaign_id: linkedCampaignId,
@@ -314,7 +390,7 @@ export function CampaignCreationWizard() {
           start_date: state.stage_dates[0]?.planned_start || format(new Date(), 'yyyy-MM-dd'),
           agreement_id: state.agreement_id,
           expiry_date: state.expiry_date,
-          stage_dates: state.stage_dates,
+          stage_dates: stagePayload,
         })
 
         toast.success('Campaign plan created successfully')
@@ -329,7 +405,7 @@ export function CampaignCreationWizard() {
           agreement_id: state.agreement_id,
           expiry_date: state.expiry_date,
           msd_required: state.msd_required,
-          stage_dates: state.stage_dates,
+          stage_dates: stagePayload,
         })
 
         toast.success('Campaign created successfully')
@@ -596,12 +672,54 @@ export function CampaignCreationWizard() {
           <CardHeader>
             <CardTitle>Configure Timeline</CardTitle>
             <CardDescription>
-              {state.expiry_date
-                ? `Timeline calculated working backwards from PABO date (${format(subDays(new Date(state.expiry_date), 30), 'dd MMM yyyy')}). Adjust stage durations as needed.`
-                : 'No agreement expiry date — timeline calculated forwards from today. Adjust as needed.'}
+              {state.timeline_mode === 'proportional'
+                ? 'Stages are scaled between your Organising DB campaign start and end dates using the same duration ratios as the default OA Planner timeline. Adjust stage lengths as needed.'
+                : state.timeline_mode === 'backwards' && state.expiry_date
+                  ? `Timeline calculated working backwards from PABO date (${format(subDays(new Date(state.expiry_date), 30), 'dd MMM yyyy')}). Adjust stage durations as needed.`
+                  : state.timeline_mode === 'forwards' && isLinkedMode && existingCampaign?.start_date
+                    ? 'Timeline runs forward from your Organising DB campaign start date. Adjust stage durations as needed.'
+                    : state.expiry_date
+                      ? `Timeline calculated working backwards from PABO date (${format(subDays(new Date(state.expiry_date), 30), 'dd MMM yyyy')}). Adjust stage durations as needed.`
+                      : 'No agreement expiry date — timeline calculated forwards from today. Adjust as needed.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {isLinkedOrganisingActive && (
+              <div className="space-y-2 rounded-lg border bg-muted/30 p-4">
+                <Label>Stages already complete</Label>
+                <p className="text-xs text-muted-foreground">
+                  This campaign is marked Active in Organising DB. Choose how many opening stages are already finished;
+                  later stages will be rescheduled from the end of that block (using the same ratios in any remaining
+                  window to your campaign end date, if set).
+                </p>
+                <Select
+                  value={String(state.completed_prefix_stages)}
+                  onValueChange={(v) => {
+                    const n = parseInt(v, 10)
+                    const base = initialTimelineRef.current
+                    if (!base?.length) return
+                    const next = redistributeAfterCompletedPrefix(base, n, state.org_campaign_end_ymd)
+                    setState((p) => ({
+                      ...p,
+                      completed_prefix_stages: n,
+                      stage_dates: mapRangesToWizardStages(next),
+                    }))
+                  }}
+                >
+                  <SelectTrigger className="max-w-md">
+                    <SelectValue placeholder="Completed stages" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[0, 1, 2, 3, 4, 5].map((k) => (
+                      <SelectItem key={k} value={String(k)}>
+                        {k === 0 ? 'None — stage 1 is the active stage' : `Stages 1–${k} already complete`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="campaign-start">Campaign start date</Label>
               <p className="text-xs text-muted-foreground">
@@ -613,6 +731,32 @@ export function CampaignCreationWizard() {
                   value={state.stage_dates[0]?.planned_start ?? ''}
                   onChange={(v) => {
                     if (!v) return
+                    if (state.timeline_mode === 'proportional' && state.org_campaign_end_ymd) {
+                      const base = calculateProportionalTimeline(
+                        atNoonYmd(v),
+                        atNoonYmd(state.org_campaign_end_ymd)
+                      )
+                      initialTimelineRef.current = base.map((r) => ({
+                        stage_number: r.stage_number,
+                        planned_start: new Date(r.planned_start),
+                        planned_end: new Date(r.planned_end),
+                        duration_weeks: r.duration_weeks,
+                      }))
+                      const k = state.completed_prefix_stages
+                      const final =
+                        k > 0
+                          ? redistributeAfterCompletedPrefix(
+                              initialTimelineRef.current,
+                              k,
+                              state.org_campaign_end_ymd
+                            )
+                          : base
+                      setState((p) => ({
+                        ...p,
+                        stage_dates: mapRangesToWizardStages(final),
+                      }))
+                      return
+                    }
                     setState((p) => ({
                       ...p,
                       stage_dates: rebuildTimelineFromCampaignStart(v, p.stage_dates),
@@ -646,7 +790,15 @@ export function CampaignCreationWizard() {
                       {stage.stage_number}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{stage.stage_name}</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-medium">{stage.stage_name}</p>
+                        {isLinkedOrganisingActive &&
+                          stage.stage_number <= state.completed_prefix_stages && (
+                            <Badge variant="secondary" className="text-xs">
+                              Marked complete
+                            </Badge>
+                          )}
+                      </div>
                       <p className="text-xs text-muted-foreground">
                         {format(new Date(stage.planned_start), 'dd/MM/yyyy')} →{' '}
                         {format(new Date(stage.planned_end), 'dd/MM/yyyy')}

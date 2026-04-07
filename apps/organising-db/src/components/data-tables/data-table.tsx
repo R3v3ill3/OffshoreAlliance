@@ -227,7 +227,7 @@ export function DataTable<T extends Record<string, unknown>>({
                         }
                         aria-label="Select row"
                       />
-                      <span className="text-xs text-muted-foreground">Select for merge</span>
+                      <span className="text-xs text-muted-foreground">Select</span>
                     </div>
                   )}
                   {/* First column is usually the "title" or main identifier */}

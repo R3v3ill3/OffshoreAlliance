@@ -32,10 +32,10 @@ interface SignOutOptions {
   source?: string;
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutError: Error): Promise<T> {
+function withTimeout<T>(promiseLike: PromiseLike<T>, timeoutMs: number, timeoutError: Error): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = window.setTimeout(() => reject(timeoutError), timeoutMs);
-    promise
+    Promise.resolve(promiseLike)
       .then((result) => {
         window.clearTimeout(timer);
         resolve(result);
@@ -201,11 +201,7 @@ export async function recoverSessionConnection({
 
   const probeStartedAt = Date.now();
   const probe = withTimeout(
-    supabase
-      .from("user_profiles")
-      .select("user_id")
-      .eq("user_id", user.id)
-      .maybeSingle(),
+    supabase.from("user_profiles").select("user_id").eq("user_id", user.id).maybeSingle(),
     8000,
     new Error("Timed out while validating database connection")
   );

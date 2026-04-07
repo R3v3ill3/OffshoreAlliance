@@ -131,7 +131,7 @@ export function calculateProportionalTimeline(
   const sumW = w.reduce((a, b) => a + b, 0)
 
   const dayCounts = w.map((wi) => Math.floor((totalDays * wi) / sumW))
-  let used = dayCounts.reduce((a, b) => a + b, 0)
+  const used = dayCounts.reduce((a, b) => a + b, 0)
   dayCounts[5] += totalDays - used
 
   for (let i = 0; i < 6; i++) {
@@ -197,7 +197,7 @@ export function redistributeAfterCompletedPrefix(
     const w = remainingStages.map((n) => weights[n] ?? 6)
     const sumW = w.reduce((a, b) => a + b, 0)
     const dayCounts = w.map((wi) => Math.floor((totalDays * wi) / sumW))
-    let used = dayCounts.reduce((a, b) => a + b, 0)
+    const used = dayCounts.reduce((a, b) => a + b, 0)
     dayCounts[dayCounts.length - 1] += totalDays - used
 
     for (let i = 0; i < dayCounts.length; i++) {

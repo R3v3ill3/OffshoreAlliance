@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { format, differenceInDays } from 'date-fns'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/utils/cn'
 import { STAGE_NAMES } from '@/types/planner-types'
 import { CheckCircle, Lock, AlertTriangle, Circle, Clock } from 'lucide-react'
 

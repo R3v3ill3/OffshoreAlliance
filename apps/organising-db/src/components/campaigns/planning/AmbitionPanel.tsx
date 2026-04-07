@@ -20,7 +20,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/utils/cn'
 import { format, parseISO, isValid } from 'date-fns'
 import { Trash2, Plus, CheckCircle, Calendar } from 'lucide-react'
 import { formatCategoryLabel } from '@/lib/utils/option-sorting'

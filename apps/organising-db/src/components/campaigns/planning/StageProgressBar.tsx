@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Info } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/utils/cn'
 import { STAGE_NAMES, type StageNumber } from '@/types/planner-types'
 import { stageInfoBody } from '@/lib/planning/stage-narrative'
 import { Button } from '@/components/ui/button'

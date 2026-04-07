@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { format, parse, isValid } from 'date-fns'
 import { Calendar } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/utils/cn'
 
 interface DateInputProps
   extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> {

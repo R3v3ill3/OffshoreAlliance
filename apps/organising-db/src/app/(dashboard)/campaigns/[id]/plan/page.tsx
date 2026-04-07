@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { STAGE_NAMES } from '@/types/planner-types'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/utils/cn'
 import { ChevronRight, Shield, CheckCircle, Pencil, X, Check, UserPlus, Trash2, Users } from 'lucide-react'
 
 const CAMPAIGN_ROLE_LABELS: Record<string, string> = {

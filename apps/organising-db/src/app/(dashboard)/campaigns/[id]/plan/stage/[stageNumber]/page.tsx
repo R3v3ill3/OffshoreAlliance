@@ -51,7 +51,7 @@ import {
 import { OverviewDialog } from '@/components/campaigns/planning/OverviewDialog'
 import { stageHeaderBlurb } from '@/lib/planning/stage-narrative'
 import { STAGE_NAMES } from '@/types/planner-types'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/utils/cn'
 import type { TheoryOfWinningRequest } from '@/types/planner-types'
 
 interface PageProps {

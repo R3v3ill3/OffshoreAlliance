@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { isWorkerMemberLike } from "@/lib/campaign/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Bar,
@@ -36,7 +37,8 @@ export function CampaignReportingCharts({ campaignId }: { campaignId: string }) 
           `worker_id, oa_leader_role,
            worker:workers(
              worker_id,
-             member_role_type:member_role_types(role_name)
+             member_role_type:member_role_types(role_name),
+             union_membership_type:union_membership_types(type_name)
            )`
         )
         .eq("campaign_id", campaignId);
@@ -82,24 +84,25 @@ export function CampaignReportingCharts({ campaignId }: { campaignId: string }) 
   });
 
   const stats = useMemo(() => {
-    function roleNameForMember(m: unknown): string | null {
-      const row = m as { worker?: unknown; oa_leader_role?: string | null };
-      const wr = row.worker;
-      const w = (Array.isArray(wr) ? wr[0] : wr) as {
-        member_role_type?: unknown;
-      } | null;
-      const mt = w?.member_role_type;
-      const mtr = (Array.isArray(mt) ? mt[0] : mt) as { role_name?: string } | null;
-      return mtr?.role_name ?? null;
-    }
-
     const named = members.length;
     const estimate = (campaign?.total_worker_estimate as number | null) ?? 0;
     const unmapped = Math.max(0, estimate - named);
 
     const memberLike = members.filter((m) => {
-      const r = roleNameForMember(m);
-      return r && r !== "non_member" && r !== "resigned_member";
+      const row = m as { worker?: unknown };
+      const wr = row.worker;
+      const w = (Array.isArray(wr) ? wr[0] : wr) as {
+        member_role_type?: unknown;
+        union_membership_type?: unknown;
+      } | null;
+      const mtRaw = w?.member_role_type;
+      const mt = (Array.isArray(mtRaw) ? mtRaw[0] : mtRaw) as { role_name?: string } | null;
+      const umRaw = w?.union_membership_type;
+      const um = (Array.isArray(umRaw) ? umRaw[0] : umRaw) as { type_name?: string } | null;
+      return isWorkerMemberLike({
+        unionMembershipTypeName: um?.type_name,
+        memberRoleName: mt?.role_name,
+      });
     }).length;
 
     const pctNamedOfEst = estimate > 0 ? Math.round((named / estimate) * 1000) / 10 : 0;

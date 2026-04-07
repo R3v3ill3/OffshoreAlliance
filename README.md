@@ -164,7 +164,7 @@ The OA Planner implements a structured 5-step strategic planning process applied
 - `campaign_timelines`, `stage_timeline_targets`, `reporting_snapshots`
 
 **Supporting Tables:**
-- `sectors`, `unions`, `member_role_types`, `work_scopes`
+- `sectors`, `unions`, `member_role_types`, `union_membership_types`, `work_scopes`
 - `documents`, `communications_log`, `organiser_patches`
 - `tags`, `import_logs`
 

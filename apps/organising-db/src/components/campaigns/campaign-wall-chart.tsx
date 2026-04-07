@@ -22,7 +22,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import type { OaLeaderRole } from "@/types/database";
-import { MEMBER_ELIGIBLE_ROLE_NAMES } from "@/lib/campaign/constants";
+import { isWorkerMemberLike } from "@/lib/campaign/constants";
 
 function ratingBgClass(cumulative: number | null | undefined): string {
   if (cumulative == null) return "bg-zinc-300/80 dark:bg-zinc-600/80";
@@ -52,7 +52,8 @@ export function CampaignWallChart({
           `membership_id, worker_id, oa_leader_role,
            worker:workers(
              worker_id, first_name, last_name, email, phone,
-             member_role_type:member_role_types(role_name, role_type_id)
+             member_role_type:member_role_types(role_name, role_type_id),
+             union_membership_type:union_membership_types(type_name)
            )`
         )
         .eq("campaign_id", campaignId);
@@ -153,12 +154,15 @@ export function CampaignWallChart({
       email: string | null;
       phone: string | null;
       member_role_type: unknown;
+      union_membership_type: unknown;
     } | null;
     const mtRaw = w?.member_role_type;
     const mt = (Array.isArray(mtRaw) ? mtRaw[0] : mtRaw) as {
       role_name: string;
       role_type_id: number;
     } | null;
+    const umRaw = w?.union_membership_type;
+    const um = (Array.isArray(umRaw) ? umRaw[0] : umRaw) as { type_name: string } | null;
     if (!w) return undefined;
     return {
       membership_id: m.membership_id,
@@ -167,6 +171,7 @@ export function CampaignWallChart({
       worker: {
         ...w,
         member_role_type: mt,
+        union_membership_type: um,
       },
     };
   }, [members, selectedWorkerId]);
@@ -241,13 +246,19 @@ export function CampaignWallChart({
       first_name: string;
       last_name: string;
       member_role_type: unknown;
+      union_membership_type: unknown;
     } | null;
     const mtRaw = w?.member_role_type;
     const mt = (Array.isArray(mtRaw) ? mtRaw[0] : mtRaw) as { role_name: string } | null;
+    const umRaw = w?.union_membership_type;
+    const um = (Array.isArray(umRaw) ? umRaw[0] : umRaw) as { type_name: string } | null;
     const sum = summaryByWorker.get(workerId);
     const cum = sum?.cumulative_rating ?? null;
     const last = sum?.last_activity_rating ?? null;
-    const isMemberLike = !!mt && MEMBER_ELIGIBLE_ROLE_NAMES.has(mt.role_name);
+    const isMemberLike = isWorkerMemberLike({
+      unionMembershipTypeName: um?.type_name,
+      memberRoleName: mt?.role_name,
+    });
 
     return (
       <button
@@ -391,6 +402,7 @@ function WorkerCampaignSheetBody({
     email: string | null;
     phone: string | null;
     member_role_type: { role_name: string; role_type_id: number } | null;
+    union_membership_type: { type_name: string } | null;
   };
   oaLeaderRole: OaLeaderRole | null;
   roleTypes: { role_type_id: number; role_name: string; display_name: string }[];
@@ -417,9 +429,10 @@ function WorkerCampaignSheetBody({
   const [roleId, setRoleId] = useState(String(worker.member_role_type?.role_type_id ?? ""));
   const [oa, setOa] = useState<OaLeaderRole | "">(oaLeaderRole ?? "");
 
-  const delegateOk =
-    worker.member_role_type?.role_name != null &&
-    MEMBER_ELIGIBLE_ROLE_NAMES.has(worker.member_role_type.role_name);
+  const delegateOk = isWorkerMemberLike({
+    unionMembershipTypeName: worker.union_membership_type?.type_name,
+    memberRoleName: worker.member_role_type?.role_name,
+  });
 
   return (
     <div className="grid gap-4 py-4">
@@ -440,7 +453,7 @@ function WorkerCampaignSheetBody({
         <Input value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!canWrite} />
       </div>
       <div className="space-y-2">
-        <Label>Member / role type</Label>
+        <Label>Organising role</Label>
         <Select value={roleId || "__none__"} onValueChange={setRoleId} disabled={!canWrite}>
           <SelectTrigger>
             <SelectValue placeholder="Select" />

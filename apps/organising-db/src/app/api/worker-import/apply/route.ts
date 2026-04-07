@@ -8,7 +8,11 @@ export interface WorkerImportRow {
   preferredName: string | null;
   email: string | null;
   phone: string | null;
-  memberRoleTypeId: number | null;
+  /** Resolved FK; preferred when set */
+  unionMembershipTypeId: number | null;
+  /** Fallback when id not sent (matches union_membership_types.type_name) */
+  unionMembershipTypeKey?: string | null;
+  memberRoleTypeId?: number | null;
   unionId: number | null;
   resignationDate: string | null;
   worksiteId: number | null;
@@ -59,11 +63,37 @@ export async function POST(request: NextRequest) {
   let skipped = 0;
   const errors: string[] = [];
 
+  const { data: unionTypes, error: unionTypesError } = await supabase
+    .from("union_membership_types")
+    .select("union_membership_type_id, type_name");
+
+  if (unionTypesError) {
+    return NextResponse.json(
+      { success: false, error: `Could not load union membership types: ${unionTypesError.message}` },
+      { status: 500 }
+    );
+  }
+
+  const membershipIdByTypeName = new Map(
+    (unionTypes ?? []).map((r) => [r.type_name, r.union_membership_type_id])
+  );
+  const resignedMembershipId = membershipIdByTypeName.get("resigned_member") ?? null;
+
   for (const row of rows) {
     if (row.action === "skip") {
       skipped++;
       continue;
     }
+
+    const unionMembershipTypeId =
+      row.unionMembershipTypeId ??
+      (row.unionMembershipTypeKey
+        ? membershipIdByTypeName.get(row.unionMembershipTypeKey) ?? null
+        : null);
+
+    const isResigned =
+      row.unionMembershipTypeKey === "resigned_member" ||
+      (resignedMembershipId != null && unionMembershipTypeId === resignedMembershipId);
 
     const workerData = {
       first_name: row.firstName.trim(),
@@ -71,14 +101,14 @@ export async function POST(request: NextRequest) {
       preferred_name: row.preferredName || null,
       email: row.email || null,
       phone: row.phone || null,
-      member_role_type_id: row.memberRoleTypeId,
+      union_membership_type_id: unionMembershipTypeId,
+      member_role_type_id: row.memberRoleTypeId ?? null,
       union_id: row.unionId,
       resignation_date: row.resignationDate,
       worksite_id: row.worksiteId,
       employer_id: row.employerId ?? null,
       notes: row.notes || null,
-      // Mark as active unless resigned/archived
-      is_active: row.memberRoleTypeId !== 6,
+      is_active: !isResigned,
       updated_at: new Date().toISOString(),
     };
 

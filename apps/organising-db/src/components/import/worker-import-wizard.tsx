@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { matchWorksiteCandidates } from "@/lib/utils/worksite-fuzzy";
@@ -95,7 +95,8 @@ interface ReviewRow extends ParsedWorkerRow {
   overridePreferredName?: string;
   overridePhone?: string;
   overrideEmail?: string;
-  overrideMemberRoleTypeId?: number | null;
+  /** When set (including null), overrides parsed unionMembershipTypeKey → id */
+  overrideUnionMembershipTypeId?: number | null;
 }
 
 interface DedupMatch {
@@ -110,9 +111,9 @@ interface DedupMatch {
   action: "update" | "skip" | "create";
 }
 
-interface MemberRoleType {
-  role_type_id: number;
-  role_name: string;
+interface UnionMembershipTypeRow {
+  union_membership_type_id: number;
+  type_name: string;
   display_name: string;
 }
 
@@ -266,7 +267,7 @@ export function WorkerImportWizard({
   const [newWorksiteType, setNewWorksiteType] = useState<WorksiteType | "">("");
   const [isCreatingWorksite, setIsCreatingWorksite] = useState(false);
   const [createWorksiteError, setCreateWorksiteError] = useState<string | null>(null);
-  const [bulkRoleType, setBulkRoleType] = useState("");
+  const [bulkUnionMembershipId, setBulkUnionMembershipId] = useState("");
   const [selectedEmployerId, setSelectedEmployerId] = useState<number | null>(null);
   const [selectedEmployerName, setSelectedEmployerName] = useState<string | null>(null);
   const [employerSearch, setEmployerSearch] = useState("");
@@ -295,18 +296,47 @@ export function WorkerImportWizard({
     enabled: open,
   });
 
-  const { data: memberRoleTypes = [] } = useQuery<MemberRoleType[]>({
-    queryKey: ["member-role-types"],
+  const { data: unionMembershipTypes = [] } = useQuery<UnionMembershipTypeRow[]>({
+    queryKey: ["union-membership-types"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("member_role_types")
-        .select("role_type_id, role_name, display_name")
+        .from("union_membership_types")
+        .select("union_membership_type_id, type_name, display_name")
+        .eq("is_active", true)
         .order("sort_order");
       if (error) throw error;
       return data ?? [];
     },
     enabled: open,
   });
+
+  const membershipIdByKey = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const t of unionMembershipTypes) {
+      m.set(t.type_name, t.union_membership_type_id);
+    }
+    return m;
+  }, [unionMembershipTypes]);
+
+  function unionMembershipSelectValue(row: ReviewRow): string {
+    if (row.overrideUnionMembershipTypeId !== undefined) {
+      return row.overrideUnionMembershipTypeId != null
+        ? String(row.overrideUnionMembershipTypeId)
+        : "__none__";
+    }
+    const id = row.unionMembershipTypeKey
+      ? membershipIdByKey.get(row.unionMembershipTypeKey) ?? null
+      : null;
+    return id != null ? String(id) : "__none__";
+  }
+
+  function resolvedUnionMembershipIdForApply(row: ReviewRow): number | null {
+    if (row.overrideUnionMembershipTypeId !== undefined) {
+      return row.overrideUnionMembershipTypeId;
+    }
+    if (!row.unionMembershipTypeKey) return null;
+    return membershipIdByKey.get(row.unionMembershipTypeKey) ?? null;
+  }
 
   const { data: employers = [] } = useQuery<Employer[]>({
     queryKey: ["employers-active"],
@@ -570,7 +600,7 @@ export function WorkerImportWizard({
             lastName,
             preferredName,
             rawMembershipStatus: "",
-            memberRoleTypeId: null,
+            unionMembershipTypeKey: null,
             unionId: null,
             resignationDate: null,
             rawPhone,
@@ -712,10 +742,8 @@ export function WorkerImportWizard({
         preferredName: row.overridePreferredName ?? row.preferredName ?? null,
         email: row.overrideEmail ?? row.email,
         phone: row.overridePhone ?? row.phone,
-        memberRoleTypeId:
-          row.overrideMemberRoleTypeId !== undefined
-            ? row.overrideMemberRoleTypeId
-            : row.memberRoleTypeId,
+        unionMembershipTypeId: resolvedUnionMembershipIdForApply(row),
+        unionMembershipTypeKey: row.unionMembershipTypeKey,
         unionId: row.unionId,
         resignationDate: row.resignationDate,
         worksiteId: row.resolvedWorksiteId,
@@ -1396,10 +1424,8 @@ export function WorkerImportWizard({
 
   function renderRowReview() {
     const warningCount = reviewRows.filter((r) => r.parseWarnings.length > 0).length;
-    const noRoleTypeCount = reviewRows.filter(
-      (r) =>
-        (r.overrideMemberRoleTypeId === undefined || r.overrideMemberRoleTypeId === null) &&
-        !r.memberRoleTypeId
+    const noMembershipTypeCount = reviewRows.filter(
+      (r) => resolvedUnionMembershipIdForApply(r) == null
     ).length;
     const backStep: WizardStep =
       worksiteResolutions.length > 0 ? "worksite_matching" : "employer_selection";
@@ -1414,9 +1440,9 @@ export function WorkerImportWizard({
                 {warningCount} row{warningCount !== 1 ? "s" : ""} with warnings.
               </span>
             )}
-            {noRoleTypeCount > 0 && (
+            {noMembershipTypeCount > 0 && (
               <span className="ml-2 text-muted-foreground">
-                {noRoleTypeCount} with no role type.
+                {noMembershipTypeCount} with no member type.
               </span>
             )}
           </p>
@@ -1434,17 +1460,21 @@ export function WorkerImportWizard({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-muted-foreground">Set all role types:</span>
+          <span className="text-xs text-muted-foreground">Set all member types:</span>
           <Select
-            value={bulkRoleType}
-            onValueChange={setBulkRoleType}
+            value={bulkUnionMembershipId}
+            onValueChange={setBulkUnionMembershipId}
           >
             <SelectTrigger className="h-7 text-xs w-36">
-              <SelectValue placeholder="Choose role…" />
+              <SelectValue placeholder="Choose type…" />
             </SelectTrigger>
             <SelectContent>
-              {memberRoleTypes.map((rt) => (
-                <SelectItem key={rt.role_type_id} value={String(rt.role_type_id)} className="text-xs">
+              {unionMembershipTypes.map((rt) => (
+                <SelectItem
+                  key={rt.union_membership_type_id}
+                  value={String(rt.union_membership_type_id)}
+                  className="text-xs"
+                >
                   {rt.display_name}
                 </SelectItem>
               ))}
@@ -1454,23 +1484,23 @@ export function WorkerImportWizard({
             size="sm"
             variant="outline"
             className="h-7 text-xs"
-            disabled={!bulkRoleType}
+            disabled={!bulkUnionMembershipId}
             onClick={() => {
-              if (!bulkRoleType) return;
-              const id = Number(bulkRoleType);
+              if (!bulkUnionMembershipId) return;
+              const id = Number(bulkUnionMembershipId);
               setReviewRows((prev) =>
-                prev.map((r) => ({ ...r, overrideMemberRoleTypeId: id }))
+                prev.map((r) => ({ ...r, overrideUnionMembershipTypeId: id }))
               );
             }}
           >
             Apply to all
           </Button>
-          {bulkRoleType && (
+          {bulkUnionMembershipId && (
             <Button
               size="sm"
               variant="ghost"
               className="h-7 text-xs text-muted-foreground"
-              onClick={() => setBulkRoleType("")}
+              onClick={() => setBulkUnionMembershipId("")}
             >
               <X className="h-3 w-3" />
             </Button>
@@ -1486,7 +1516,7 @@ export function WorkerImportWizard({
                 <TableHead className="text-xs">Preferred Name</TableHead>
                 <TableHead className="text-xs">Phone</TableHead>
                 <TableHead className="text-xs">Email</TableHead>
-                <TableHead className="text-xs">Role Type</TableHead>
+                <TableHead className="text-xs">Member type</TableHead>
                 <TableHead className="text-xs">Worksite</TableHead>
                 <TableHead className="text-xs w-8"></TableHead>
               </TableRow>
@@ -1557,15 +1587,10 @@ export function WorkerImportWizard({
                   </TableCell>
                   <TableCell className="p-1">
                     <Select
-                      value={String(
-                        row.overrideMemberRoleTypeId !== undefined &&
-                        row.overrideMemberRoleTypeId !== null
-                          ? row.overrideMemberRoleTypeId
-                          : (row.memberRoleTypeId ?? "__none__")
-                      )}
+                      value={unionMembershipSelectValue(row)}
                       onValueChange={(v) =>
                         updateReviewRow(row.rowIndex, {
-                          overrideMemberRoleTypeId: v && v !== "__none__" ? Number(v) : null,
+                          overrideUnionMembershipTypeId: v && v !== "__none__" ? Number(v) : null,
                         })
                       }
                     >
@@ -1574,10 +1599,10 @@ export function WorkerImportWizard({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none__">—</SelectItem>
-                        {memberRoleTypes.map((rt) => (
+                        {unionMembershipTypes.map((rt) => (
                           <SelectItem
-                            key={rt.role_type_id}
-                            value={String(rt.role_type_id)}
+                            key={rt.union_membership_type_id}
+                            value={String(rt.union_membership_type_id)}
                           >
                             {rt.display_name}
                           </SelectItem>

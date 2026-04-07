@@ -37,10 +37,22 @@ export const EA_SUBTYPE_LABELS: Record<string, string> = {
   boss_initiated: "Enterprise Agreement — boss initiated",
 };
 
-/** Roles that count as union members for OA delegate eligibility. */
-export const MEMBER_ELIGIBLE_ROLE_NAMES = new Set([
-  "member",
-  "member_other_union",
-  "delegate",
-  "bargaining_rep",
+/** Union membership categories that count as members for density / delegate eligibility. */
+export const UNION_MEMBER_LIKE_TYPE_NAMES = new Set([
+  "financial_member",
+  "non_oa_member",
 ]);
+
+/** Activism/leadership roles that imply member-like status for OA delegate eligibility. */
+export const MEMBER_LIKE_ROLE_NAMES = new Set(["delegate", "bargaining_rep"]);
+
+export function isWorkerMemberLike(args: {
+  unionMembershipTypeName: string | null | undefined;
+  memberRoleName: string | null | undefined;
+}): boolean {
+  const u = args.unionMembershipTypeName;
+  if (u && UNION_MEMBER_LIKE_TYPE_NAMES.has(u)) return true;
+  const r = args.memberRoleName;
+  if (r && MEMBER_LIKE_ROLE_NAMES.has(r)) return true;
+  return false;
+}

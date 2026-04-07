@@ -20,6 +20,7 @@ interface WorkerRow {
   is_active: boolean;
   employer: { employer_name: string } | null;
   worksite: { worksite_name: string } | null;
+  union_membership_type: { display_name: string } | null;
   member_role_type: { display_name: string } | null;
   [key: string]: unknown;
 }
@@ -52,8 +53,13 @@ const columns: Column<WorkerRow>[] = [
     render: (row) => row.worksite?.worksite_name ?? "—",
   },
   {
+    key: "member_type",
+    header: "Member type",
+    render: (row) => row.union_membership_type?.display_name ?? "—",
+  },
+  {
     key: "role",
-    header: "Role",
+    header: "Organising role",
     render: (row) => row.member_role_type?.display_name ?? "—",
   },
   {
@@ -83,6 +89,7 @@ export default function WorkersPage() {
           `worker_id, first_name, last_name, email, phone, is_active,
            employer:employers(employer_name),
            worksite:worksites(worksite_name),
+           union_membership_type:union_membership_types(display_name),
            member_role_type:member_role_types(display_name)`
         )
         .order("last_name", { ascending: true });

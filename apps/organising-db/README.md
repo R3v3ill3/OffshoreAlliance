@@ -123,7 +123,7 @@ scripts/
 
 The database includes 30+ tables covering:
 
-- **Reference tables**: sectors, unions, member_role_types
+- **Reference tables**: sectors, unions, member_role_types (organising roles), union_membership_types (member status)
 - **Entity tables**: employers, worksites, agreements, workers, organisers
 - **Relationship tables**: agreement_worksites, agreement_unions, employer_worksite_roles, worker_agreements, etc.
 - **Campaign tables**: campaigns, campaign_universes, campaign_universe_rules, campaign_actions, campaign_action_results

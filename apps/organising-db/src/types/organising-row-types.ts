@@ -187,6 +187,15 @@ export interface MemberRoleType {
   sort_order: number;
 }
 
+export interface UnionMembershipType {
+  union_membership_type_id: number;
+  type_name: string;
+  display_name: string;
+  is_default: boolean;
+  is_active: boolean;
+  sort_order: number;
+}
+
 export interface Employer {
   employer_id: number;
   employer_name: string;
@@ -286,6 +295,7 @@ export interface Worker {
   worksite_id: number | null;
   project_id: number | null;
   member_role_type_id: number | null;
+  union_membership_type_id: number | null;
   union_id: number | null;
   member_number: string | null;
   join_date: string | null;
@@ -295,6 +305,7 @@ export interface Worker {
   action_network_id: string | null;
   notes: string | null;
   is_active: boolean;
+  is_hsr: boolean | null;
   created_at: string;
   updated_at: string;
 }

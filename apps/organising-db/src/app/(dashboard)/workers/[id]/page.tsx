@@ -78,11 +78,14 @@ interface WorkerDetail {
   worksite_id: number | null;
   project_id: number | null;
   member_role_type_id: number | null;
+  union_membership_type_id: number | null;
   union_id: number | null;
+  is_hsr: boolean | null;
   employer: { employer_name: string } | null;
   worksite: { worksite_name: string } | null;
   project: { project_id: number; project_name: string } | null;
   member_role_type: { display_name: string } | null;
+  union_membership_type: { display_name: string } | null;
   union: { union_code: string; union_name: string } | null;
   canonical_occupation: {
     occupation_id: number;
@@ -109,12 +112,14 @@ type WorkerEditForm = {
   worksite_id: number | null;
   project_id: number | null;
   member_role_type_id: number | null;
+  union_membership_type_id: number | null;
   union_id: number | null;
   member_number: string;
   join_date: string;
   resignation_date: string;
   notes: string;
   is_active: boolean;
+  is_hsr: boolean | null;
   additional_occupation_ids: number[];
   specialisation_ids: number[];
 };
@@ -345,12 +350,14 @@ function workerToEditForm(
     worksite_id: w.worksite_id,
     project_id: w.project_id,
     member_role_type_id: w.member_role_type_id,
+    union_membership_type_id: w.union_membership_type_id,
     union_id: w.union_id,
     member_number: w.member_number ?? "",
     join_date: dateInputValue(w.join_date),
     resignation_date: dateInputValue(w.resignation_date),
     notes: w.notes ?? "",
     is_active: w.is_active,
+    is_hsr: w.is_hsr,
     additional_occupation_ids: additionalIds,
     specialisation_ids: specialisationIds,
   };
@@ -378,22 +385,23 @@ export default function WorkerDetailPage() {
   const [dlgError, setDlgError] = useState<string | null>(null);
 
   // ── Worker detail query ──────────────────────────────────────────────────
-  const { data: worker, isLoading } = useQuery({
+  const { data: worker, isLoading, isError, error: workerQueryError } = useQuery({
     queryKey: ["worker", params.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("workers")
         .select(
           `*,
-           employer:employers(employer_name),
-           worksite:worksites(worksite_name),
-           project:projects(project_id, project_name),
-           member_role_type:member_role_types(display_name),
-           union:unions(union_code, union_name),
-           canonical_occupation:occupations(
+           employer:employers!workers_employer_id_fkey(employer_name),
+           worksite:worksites!workers_worksite_id_fkey(worksite_name),
+           project:projects!workers_project_id_fkey(project_id, project_name),
+           member_role_type:member_role_types!workers_member_role_type_id_fkey(display_name),
+           union_membership_type:union_membership_types!workers_union_membership_type_id_fkey(display_name),
+           union:unions!workers_union_id_fkey(union_code, union_name),
+           canonical_occupation:occupations!workers_canonical_occupation_id_fkey(
              occupation_id,
              canonical_name,
-             occupation_group:occupation_groups(name)
+             occupation_group:occupation_groups!occupations_occupation_group_id_fkey(name)
            )`
         )
         .eq("worker_id", workerId)
@@ -482,6 +490,20 @@ export default function WorkerDetailPage() {
         .order("sort_order");
       if (error) throw error;
       return data as { role_type_id: number; display_name: string }[];
+    },
+    enabled: !!user && editing,
+  });
+
+  const { data: unionMembershipTypes = [] } = useQuery({
+    queryKey: ["union-membership-types"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("union_membership_types")
+        .select("union_membership_type_id, display_name")
+        .eq("is_active", true)
+        .order("sort_order");
+      if (error) throw error;
+      return data as { union_membership_type_id: number; display_name: string }[];
     },
     enabled: !!user && editing,
   });
@@ -763,7 +785,9 @@ export default function WorkerDetailPage() {
       worksite_id: editForm.worksite_id,
       project_id: editForm.project_id,
       member_role_type_id: editForm.member_role_type_id,
+      union_membership_type_id: editForm.union_membership_type_id,
       union_id: editForm.union_id,
+      is_hsr: editForm.is_hsr,
       member_number: emptyToNull(editForm.member_number),
       join_date: editForm.join_date.trim() || null,
       resignation_date: editForm.resignation_date.trim() || null,
@@ -826,6 +850,21 @@ export default function WorkerDetailPage() {
     return (
       <div className="flex items-center justify-center h-64">
         <EurekaLoadingSpinner size="lg" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4 max-w-lg mx-auto text-center">
+        <p className="text-destructive font-medium">Could not load this worker.</p>
+        <p className="text-sm text-muted-foreground">
+          {workerQueryError instanceof Error ? workerQueryError.message : String(workerQueryError)}
+        </p>
+        <Button variant="outline" onClick={() => router.back()}>
+          <ArrowLeft className="h-4 w-4" />
+          Go Back
+        </Button>
       </div>
     );
   }
@@ -1217,7 +1256,37 @@ export default function WorkerDetailPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Role</Label>
+                    <Label>Member type</Label>
+                    <Select
+                      value={
+                        f.union_membership_type_id != null
+                          ? String(f.union_membership_type_id)
+                          : NONE_VALUE
+                      }
+                      onValueChange={(v) =>
+                        patchForm({
+                          union_membership_type_id: v === NONE_VALUE ? null : Number(v),
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select member type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE_VALUE}>—</SelectItem>
+                        {unionMembershipTypes.map((r) => (
+                          <SelectItem
+                            key={r.union_membership_type_id}
+                            value={String(r.union_membership_type_id)}
+                          >
+                            {r.display_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Organising role</Label>
                     <Select
                       value={f.member_role_type_id != null ? String(f.member_role_type_id) : NONE_VALUE}
                       onValueChange={(v) =>
@@ -1265,6 +1334,18 @@ export default function WorkerDetailPage() {
                       value={f.member_number}
                       onChange={(e) => patchForm({ member_number: e.target.value })}
                     />
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="worker-hsr"
+                      checked={f.is_hsr === true}
+                      onCheckedChange={(c) =>
+                        patchForm({ is_hsr: c === true ? true : null })
+                      }
+                    />
+                    <label htmlFor="worker-hsr" className="text-sm font-medium leading-none">
+                      Health and safety representative (HSR)
+                    </label>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
@@ -1453,7 +1534,18 @@ export default function WorkerDetailPage() {
                 </CardHeader>
                 <CardContent>
                   <dl>
-                    <FieldRow label="Role" value={worker.member_role_type?.display_name} />
+                    <FieldRow
+                      label="Member type"
+                      value={worker.union_membership_type?.display_name}
+                    />
+                    <FieldRow
+                      label="Organising role"
+                      value={worker.member_role_type?.display_name}
+                    />
+                    <FieldRow
+                      label="HSR"
+                      value={worker.is_hsr === true ? "Yes" : null}
+                    />
                     <FieldRow
                       label="Union"
                       value={

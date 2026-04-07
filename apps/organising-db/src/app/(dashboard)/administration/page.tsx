@@ -33,6 +33,7 @@ import type {
   UserRole,
   WorkRole,
   MemberRoleType,
+  UnionMembershipType,
   Sector,
   ImportLog,
 } from "@/types/database";
@@ -678,7 +679,191 @@ function UsersTab() {
   );
 }
 
-// ---------- Member Roles Tab ----------
+// ---------- Union membership types (worker union status) ----------
+
+interface UnionMembershipRow extends UnionMembershipType {
+  [key: string]: unknown;
+}
+
+function UnionMembershipTypesTab() {
+  const supabase = createClient();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [typeName, setTypeName] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [sortOrder, setSortOrder] = useState("0");
+
+  const { data: rows = [], isLoading } = useQuery({
+    queryKey: ["admin-union-membership-types"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("union_membership_types")
+        .select("*")
+        .order("sort_order");
+      if (error) throw error;
+      return data as UnionMembershipRow[];
+    },
+  });
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("union_membership_types").insert({
+        type_name: typeName,
+        display_name: displayName,
+        sort_order: parseInt(sortOrder, 10) || 0,
+        is_default: false,
+        is_active: true,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-union-membership-types"] });
+      queryClient.invalidateQueries({ queryKey: ["union-membership-types"] });
+      setOpen(false);
+      setTypeName("");
+      setDisplayName("");
+      setSortOrder("0");
+    },
+  });
+
+  const toggleActive = useMutation({
+    mutationFn: async ({ id, active }: { id: number; active: boolean }) => {
+      const { error } = await supabase
+        .from("union_membership_types")
+        .update({ is_active: active })
+        .eq("union_membership_type_id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-union-membership-types"] });
+      queryClient.invalidateQueries({ queryKey: ["union-membership-types"] });
+    },
+  });
+
+  const umColumns: Column<UnionMembershipRow>[] = [
+    { key: "type_name", header: "Type key" },
+    { key: "display_name", header: "Display name" },
+    {
+      key: "is_default",
+      header: "Default",
+      render: (row) =>
+        row.is_default ? (
+          <Badge variant="info">Default</Badge>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+    {
+      key: "is_active",
+      header: "Status",
+      render: (row) => (
+        <Badge variant={row.is_active ? "success" : "secondary"}>
+          {row.is_active ? "Active" : "Inactive"}
+        </Badge>
+      ),
+    },
+    { key: "sort_order", header: "Order" },
+    {
+      key: "actions",
+      header: "Actions",
+      sortable: false,
+      render: (row) => (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() =>
+            toggleActive.mutate({
+              id: row.union_membership_type_id,
+              active: !row.is_active,
+            })
+          }
+        >
+          {row.is_active ? (
+            <ShieldOff className="h-4 w-4" />
+          ) : (
+            <Shield className="h-4 w-4" />
+          )}
+          {row.is_active ? "Deactivate" : "Activate"}
+        </Button>
+      ),
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">Union member types</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Financial / non-member / resigned / other-union categories on each worker record.
+          </p>
+        </div>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm">
+              <Plus className="h-4 w-4" />
+              Add type
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add union member type</DialogTitle>
+              <DialogDescription>
+                Stable type key (snake_case) used in imports and reporting; display name is shown in the UI.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-1.5">
+                <Label>Type key</Label>
+                <Input
+                  value={typeName}
+                  onChange={(e) => setTypeName(e.target.value)}
+                  placeholder="e.g. financial_member"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Display name</Label>
+                <Input
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="e.g. Financial member"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Sort order</Label>
+                <Input
+                  type="number"
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value)}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={() => addMutation.mutate()}
+                disabled={!typeName || !displayName || addMutation.isPending}
+              >
+                {addMutation.isPending && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                Add type
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+      <DataTable<UnionMembershipRow>
+        data={rows}
+        columns={umColumns}
+        searchPlaceholder="Search member types..."
+        searchKeys={["type_name", "display_name"]}
+        loading={isLoading}
+      />
+    </div>
+  );
+}
+
+// ---------- Organising role types (delegate / rep / contact) ----------
 
 interface RoleRow extends MemberRoleType {
   [key: string]: unknown;
@@ -717,6 +902,7 @@ function MemberRolesTab() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-roles"] });
+      queryClient.invalidateQueries({ queryKey: ["member-role-types"] });
       setOpen(false);
       setRoleName("");
       setDisplayName("");
@@ -738,8 +924,10 @@ function MemberRolesTab() {
         .eq("role_type_id", id);
       if (error) throw error;
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["admin-roles"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-roles"] });
+      queryClient.invalidateQueries({ queryKey: ["member-role-types"] });
+    },
   });
 
   const roleColumns: Column<RoleRow>[] = [
@@ -794,19 +982,24 @@ function MemberRolesTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Member Role Types</h2>
+        <div>
+          <h2 className="text-xl font-semibold">Organising role types</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Activism and leadership roles (contact, delegate, bargaining rep). Separate from union member type.
+          </p>
+        </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button size="sm">
               <Plus className="h-4 w-4" />
-              Add Role
+              Add role
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add Member Role</DialogTitle>
+              <DialogTitle>Add organising role</DialogTitle>
               <DialogDescription>
-                Create a new member role type.
+                Create a new organising role type (stable key in snake_case).
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
@@ -843,7 +1036,7 @@ function MemberRolesTab() {
                 {addMutation.isPending && (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 )}
-                Add Role
+                Add role
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -852,7 +1045,7 @@ function MemberRolesTab() {
       <DataTable<RoleRow>
         data={roles}
         columns={roleColumns}
-        searchPlaceholder="Search roles..."
+        searchPlaceholder="Search organising roles..."
         searchKeys={["role_name", "display_name"]}
         loading={isLoading}
       />
@@ -1185,7 +1378,7 @@ export default function AdministrationPage() {
       <Tabs defaultValue="users">
         <TabsList className="w-full justify-start overflow-x-auto h-auto p-1 flex-nowrap">
           <TabsTrigger value="users">Users</TabsTrigger>
-          <TabsTrigger value="roles">Member Roles</TabsTrigger>
+          <TabsTrigger value="roles">Roles &amp; membership</TabsTrigger>
           <TabsTrigger value="sectors">Sectors</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
           <TabsTrigger value="imports">Import History</TabsTrigger>
@@ -1198,7 +1391,10 @@ export default function AdministrationPage() {
           <UsersTab />
         </TabsContent>
         <TabsContent value="roles">
-          <MemberRolesTab />
+          <div className="space-y-12">
+            <UnionMembershipTypesTab />
+            <MemberRolesTab />
+          </div>
         </TabsContent>
         <TabsContent value="sectors">
           <SectorsTab />

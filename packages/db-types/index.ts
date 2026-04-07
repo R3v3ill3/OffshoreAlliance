@@ -3340,6 +3340,33 @@ export type Database = {
         }
         Relationships: []
       }
+      union_membership_types: {
+        Row: {
+          display_name: string
+          is_active: boolean
+          is_default: boolean
+          sort_order: number
+          type_name: string
+          union_membership_type_id: number
+        }
+        Insert: {
+          display_name: string
+          is_active?: boolean
+          is_default?: boolean
+          sort_order?: number
+          type_name: string
+          union_membership_type_id?: number
+        }
+        Update: {
+          display_name?: string
+          is_active?: boolean
+          is_default?: boolean
+          sort_order?: number
+          type_name?: string
+          union_membership_type_id?: number
+        }
+        Relationships: []
+      }
       occupation_aliases: {
         Row: {
           alias_name: string
@@ -5072,6 +5099,7 @@ export type Database = {
           first_name: string
           gender: string | null
           is_active: boolean
+          is_hsr: boolean | null
           join_date: string | null
           last_name: string
           member_number: string | null
@@ -5086,6 +5114,7 @@ export type Database = {
           state: string | null
           suburb: string | null
           union_id: number | null
+          union_membership_type_id: number | null
           updated_at: string
           worker_id: number
           worksite_id: number | null
@@ -5104,6 +5133,7 @@ export type Database = {
           first_name: string
           gender?: string | null
           is_active?: boolean
+          is_hsr?: boolean | null
           join_date?: string | null
           last_name: string
           member_number?: string | null
@@ -5118,6 +5148,7 @@ export type Database = {
           state?: string | null
           suburb?: string | null
           union_id?: number | null
+          union_membership_type_id?: number | null
           updated_at?: string
           worker_id?: number
           worksite_id?: number | null
@@ -5136,6 +5167,7 @@ export type Database = {
           first_name?: string
           gender?: string | null
           is_active?: boolean
+          is_hsr?: boolean | null
           join_date?: string | null
           last_name?: string
           member_number?: string | null
@@ -5150,6 +5182,7 @@ export type Database = {
           state?: string | null
           suburb?: string | null
           union_id?: number | null
+          union_membership_type_id?: number | null
           updated_at?: string
           worker_id?: number
           worksite_id?: number | null
@@ -5189,6 +5222,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "member_role_types"
             referencedColumns: ["role_type_id"]
+          },
+          {
+            foreignKeyName: "workers_union_membership_type_id_fkey"
+            columns: ["union_membership_type_id"]
+            isOneToOne: false
+            referencedRelation: "union_membership_types"
+            referencedColumns: ["union_membership_type_id"]
           },
           {
             foreignKeyName: "workers_project_id_fkey"
@@ -6519,6 +6559,7 @@ export type Database = {
           first_name: string | null
           gender: string | null
           is_active: boolean | null
+          is_hsr: boolean | null
           is_offshore: boolean | null
           join_date: string | null
           last_name: string | null
@@ -6537,6 +6578,8 @@ export type Database = {
           suburb: string | null
           union_code: string | null
           union_id: number | null
+          union_membership_display: string | null
+          union_membership_type_id: number | null
           union_name: string | null
           updated_at: string | null
           work_type: string | null
@@ -6572,6 +6615,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "member_role_types"
             referencedColumns: ["role_type_id"]
+          },
+          {
+            foreignKeyName: "workers_union_membership_type_id_fkey"
+            columns: ["union_membership_type_id"]
+            isOneToOne: false
+            referencedRelation: "union_membership_types"
+            referencedColumns: ["union_membership_type_id"]
           },
           {
             foreignKeyName: "workers_project_id_fkey"

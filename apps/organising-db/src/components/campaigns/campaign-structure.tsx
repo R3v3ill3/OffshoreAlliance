@@ -30,7 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { CampaignOuType, OaLeaderRole } from "@/types/database";
-import { MEMBER_ELIGIBLE_ROLE_NAMES } from "@/lib/campaign/constants";
+import { isWorkerMemberLike } from "@/lib/campaign/constants";
 
 const OU_TYPES: CampaignOuType[] = [
   "shift",
@@ -81,7 +81,8 @@ export function CampaignStructureSection({
           `membership_id, worker_id, oa_leader_role,
            worker:workers(
              worker_id, first_name, last_name,
-             member_role_type:member_role_types(role_name)
+             member_role_type:member_role_types(role_name),
+             union_membership_type:union_membership_types(type_name)
            )`
         )
         .eq("campaign_id", campaignId);
@@ -259,11 +260,19 @@ export function CampaignStructureSection({
                         first_name: string;
                         last_name: string;
                         member_role_type: { role_name: string } | { role_name: string }[] | null;
+                        union_membership_type:
+                          | { type_name: string }
+                          | { type_name: string }[]
+                          | null;
                       } | null;
                       const mtRaw = w?.member_role_type;
                       const mt = (Array.isArray(mtRaw) ? mtRaw[0] : mtRaw) as { role_name: string } | null;
-                      const delegateOk =
-                        mt != null && MEMBER_ELIGIBLE_ROLE_NAMES.has(mt.role_name);
+                      const umRaw = w?.union_membership_type;
+                      const um = (Array.isArray(umRaw) ? umRaw[0] : umRaw) as { type_name: string } | null;
+                      const delegateOk = isWorkerMemberLike({
+                        unionMembershipTypeName: um?.type_name,
+                        memberRoleName: mt?.role_name,
+                      });
                       return (
                         <TableRow key={r.membership_id}>
                           <TableCell className="font-medium">

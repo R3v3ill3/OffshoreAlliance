@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 
+/** Stable keys matching union_membership_types.type_name */
+export type UnionMembershipTypeKey =
+  | "financial_member"
+  | "non_oa_member"
+  | "non_member"
+  | "resigned_member";
+
 export interface ParsedWorkerRow {
   rowIndex: number;
   rawName: string;
@@ -8,7 +15,7 @@ export interface ParsedWorkerRow {
   lastName: string;
   preferredName: string | null;
   rawMembershipStatus: string;
-  memberRoleTypeId: number | null;
+  unionMembershipTypeKey: UnionMembershipTypeKey | null;
   unionId: number | null;
   resignationDate: string | null;
   rawPhone: string;
@@ -39,28 +46,26 @@ export type ParseWorkerImportResponse =
       totalRows: number;
     };
 
-// Membership status → member_role_type_id mapping
-// member=1, member_other_union=2, contact=3, bargaining_rep=4,
-// non_member=5, resigned_member=6, delegate=7
+// Membership status → union_membership_types.type_name
 const MEMBERSHIP_PATTERNS: {
   pattern: RegExp;
-  roleTypeId: number;
+  membershipKey: UnionMembershipTypeKey;
   unionCode?: string;
 }[] = [
-  { pattern: /financial\s+awu\s+member/i, roleTypeId: 2, unionCode: "AWU" },
-  { pattern: /financial\s+mua\s+member/i, roleTypeId: 2, unionCode: "MUA" },
-  { pattern: /financial\s+cfmeu\s+member/i, roleTypeId: 2, unionCode: "CFMEU" },
-  { pattern: /financial\s+amwu\s+member/i, roleTypeId: 2, unionCode: "AMWU" },
-  { pattern: /financial\s+amou\s+member/i, roleTypeId: 2, unionCode: "AMOU" },
-  { pattern: /financial\s+aimpe\s+member/i, roleTypeId: 2, unionCode: "AIMPE" },
-  { pattern: /financial\s+member/i, roleTypeId: 1 },
-  { pattern: /\bmember\b/i, roleTypeId: 1 },
-  { pattern: /not\s+a\s+member/i, roleTypeId: 5 },
-  { pattern: /awu\s+membership\s+archived/i, roleTypeId: 6, unionCode: "AWU" },
-  { pattern: /membership\s+archived/i, roleTypeId: 6 },
-  { pattern: /membership\s+resigned/i, roleTypeId: 6 },
-  { pattern: /resigned/i, roleTypeId: 6 },
-  { pattern: /archived/i, roleTypeId: 6 },
+  { pattern: /financial\s+awu\s+member/i, membershipKey: "non_oa_member", unionCode: "AWU" },
+  { pattern: /financial\s+mua\s+member/i, membershipKey: "non_oa_member", unionCode: "MUA" },
+  { pattern: /financial\s+cfmeu\s+member/i, membershipKey: "non_oa_member", unionCode: "CFMEU" },
+  { pattern: /financial\s+amwu\s+member/i, membershipKey: "non_oa_member", unionCode: "AMWU" },
+  { pattern: /financial\s+amou\s+member/i, membershipKey: "non_oa_member", unionCode: "AMOU" },
+  { pattern: /financial\s+aimpe\s+member/i, membershipKey: "non_oa_member", unionCode: "AIMPE" },
+  { pattern: /financial\s+member/i, membershipKey: "financial_member" },
+  { pattern: /\bmember\b/i, membershipKey: "financial_member" },
+  { pattern: /not\s+a\s+member/i, membershipKey: "non_member" },
+  { pattern: /awu\s+membership\s+archived/i, membershipKey: "resigned_member", unionCode: "AWU" },
+  { pattern: /membership\s+archived/i, membershipKey: "resigned_member" },
+  { pattern: /membership\s+resigned/i, membershipKey: "resigned_member" },
+  { pattern: /resigned/i, membershipKey: "resigned_member" },
+  { pattern: /archived/i, membershipKey: "resigned_member" },
 ];
 
 // Union code → union_id (matches DB)
@@ -123,19 +128,19 @@ function detectHeaderRow(
 }
 
 function parseMembershipStatus(raw: string): {
-  roleTypeId: number | null;
+  membershipKey: UnionMembershipTypeKey | null;
   unionId: number | null;
   resignationDate: string | null;
 } {
   const trimmed = raw.trim();
-  if (!trimmed) return { roleTypeId: null, unionId: null, resignationDate: null };
+  if (!trimmed) return { membershipKey: null, unionId: null, resignationDate: null };
 
-  let roleTypeId: number | null = null;
+  let membershipKey: UnionMembershipTypeKey | null = null;
   let unionId: number | null = null;
 
-  for (const { pattern, roleTypeId: rid, unionCode } of MEMBERSHIP_PATTERNS) {
+  for (const { pattern, membershipKey: key, unionCode } of MEMBERSHIP_PATTERNS) {
     if (pattern.test(trimmed)) {
-      roleTypeId = rid;
+      membershipKey = key;
       if (unionCode) unionId = UNION_CODE_TO_ID[unionCode] ?? null;
       break;
     }
@@ -143,7 +148,7 @@ function parseMembershipStatus(raw: string): {
 
   // Extract date from resigned/archived statuses (e.g. "membership resigned 29/4/24")
   let resignationDate: string | null = null;
-  if (roleTypeId === 6) {
+  if (membershipKey === "resigned_member") {
     const dateMatch = trimmed.match(
       /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/
     );
@@ -157,7 +162,7 @@ function parseMembershipStatus(raw: string): {
     }
   }
 
-  return { roleTypeId, unionId, resignationDate };
+  return { membershipKey, unionId, resignationDate };
 }
 
 function parseName(raw: string): {
@@ -406,12 +411,12 @@ export async function POST(request: NextRequest) {
 
       const { firstName, lastName, preferredName, warnings: nameWarnings } = parseName(rawName);
       const rawMembership = String(row[1] ?? "").trim();
-      const { roleTypeId, unionId, resignationDate } = parseMembershipStatus(rawMembership);
+      const { membershipKey, unionId, resignationDate } = parseMembershipStatus(rawMembership);
       const { phone, warnings: phoneWarnings } = normalisePhone(row[2]);
       const email = row[3] ? String(row[3]).trim() || null : null;
 
       const parseWarnings = [...nameWarnings, ...phoneWarnings];
-      if (!roleTypeId && rawMembership) {
+      if (!membershipKey && rawMembership) {
         parseWarnings.push(`Unknown membership status: "${rawMembership}"`);
       }
 
@@ -422,7 +427,7 @@ export async function POST(request: NextRequest) {
         lastName,
         preferredName,
         rawMembershipStatus: rawMembership,
-        memberRoleTypeId: roleTypeId,
+        unionMembershipTypeKey: membershipKey,
         unionId,
         resignationDate,
         rawPhone: String(row[2] ?? "").trim(),

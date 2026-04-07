@@ -55,14 +55,29 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Pencil, X, Save, Star, Building2, Plus, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Pencil,
+  X,
+  Save,
+  Star,
+  Building2,
+  Plus,
+  Trash2,
+  MapPin,
+  Ship,
+  Factory,
+  ImageIcon,
+} from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { format } from "date-fns";
+import Image from "next/image";
 import { LinkAgreementDialog } from "@/components/worksites/link-agreement-dialog";
 import { AddEmployerDialog } from "@/components/worksites/add-employer-dialog";
 import { AddScopeDialog } from "@/components/worksites/add-scope-dialog";
 import { EditEmployerRoleDialog } from "@/components/worksites/edit-employer-role-dialog";
 import { TermHint } from "@/components/ui/term-hint";
+import { WorksiteDetailMap } from "@/components/maps/worksite-detail-map";
 
 const WORKSITE_TYPES: WorksiteType[] = [
   "FPSO",
@@ -81,6 +96,14 @@ const WORKSITE_TYPES: WorksiteType[] = [
   "Gas_Field",
   "Other",
 ];
+
+function worksiteTypeIcon(type: string) {
+  const vesselTypes = ["FPSO", "FPU", "FLNG", "Vessel"];
+  if (vesselTypes.includes(type)) {
+    return <Ship className="h-10 w-10 text-muted-foreground/30" />;
+  }
+  return <Factory className="h-10 w-10 text-muted-foreground/30" />;
+}
 
 function formatDate(dateStr: string | null) {
   if (!dateStr) return "—";
@@ -1658,21 +1681,87 @@ export default function WorksiteDetailPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Map</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div
-              id="worksite-map"
-              className="h-64 bg-muted rounded-lg flex items-center justify-center"
-            >
-              <p className="text-muted-foreground text-sm">
-                Map view coming soon
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="space-y-6">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2">
+                <MapPin className="h-4 w-4" />
+                Map
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div id="worksite-map">
+                {worksite.latitude != null && worksite.longitude != null ? (
+                  <WorksiteDetailMap
+                    latitude={Number(worksite.latitude)}
+                    longitude={Number(worksite.longitude)}
+                    worksiteName={worksite.worksite_name}
+                    worksiteType={worksite.worksite_type}
+                    isOffshore={worksite.is_offshore}
+                  />
+                ) : (
+                  <div className="h-48 bg-muted rounded-lg flex flex-col items-center justify-center gap-2">
+                    <MapPin className="h-8 w-8 text-muted-foreground/40" />
+                    <p className="text-muted-foreground text-sm">
+                      No coordinates available
+                    </p>
+                    {canWrite && !editing && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs"
+                        onClick={startEditing}
+                      >
+                        <Pencil className="h-3 w-3" />
+                        Add coordinates
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {worksite.image_url ? (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2">
+                  <ImageIcon className="h-4 w-4" />
+                  Worksite Image
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="relative w-full h-48 rounded-lg overflow-hidden">
+                  <Image
+                    src={worksite.image_url}
+                    alt={worksite.worksite_name}
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 768px) 100vw, 50vw"
+                    unoptimized
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2">
+                  <ImageIcon className="h-4 w-4" />
+                  Worksite Image
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-32 bg-muted rounded-lg flex flex-col items-center justify-center gap-2">
+                  {worksiteTypeIcon(worksite.worksite_type)}
+                  <p className="text-muted-foreground text-xs">
+                    No image available
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

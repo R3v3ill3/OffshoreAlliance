@@ -177,7 +177,7 @@ export function PrincipalEmployerEbaChart({
 
   return (
     <div style={{ height: chartHeight }}>
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
         <BarChart
           data={chartData}
           layout="vertical"

@@ -5840,6 +5840,7 @@ export type Database = {
         Row: {
           basin: string | null
           created_at: string
+          image_url: string | null
           is_active: boolean
           is_offshore: boolean
           latitude: number | null
@@ -5857,6 +5858,7 @@ export type Database = {
         Insert: {
           basin?: string | null
           created_at?: string
+          image_url?: string | null
           is_active?: boolean
           is_offshore?: boolean
           latitude?: number | null
@@ -5874,6 +5876,7 @@ export type Database = {
         Update: {
           basin?: string | null
           created_at?: string
+          image_url?: string | null
           is_active?: boolean
           is_offshore?: boolean
           latitude?: number | null

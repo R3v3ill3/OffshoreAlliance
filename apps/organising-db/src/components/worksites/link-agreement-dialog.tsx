@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import type {
@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { X, ChevronRight, ChevronDown } from "lucide-react";
 
 const ROLE_TYPES: EmployerRoleType[] = [
   "Owner",
@@ -42,7 +43,7 @@ type AgreementOption = Pick<
   "agreement_id" | "agreement_name" | "short_name" | "decision_no" | "status"
 >;
 
-type ScopeOption = Pick<WorkScope, "scope_id" | "scope_name" | "is_whole_of_project"> & {
+type ScopeOption = Pick<WorkScope, "scope_id" | "scope_name" | "is_whole_of_project" | "parent_scope_id"> & {
   parent?: { scope_name: string; parent?: { scope_name: string } };
 };
 
@@ -80,6 +81,15 @@ export function LinkAgreementDialog({
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Agreement combobox state
+  const [agreementSearch, setAgreementSearch] = useState("");
+  const [agreementOpen, setAgreementOpen] = useState(false);
+  const comboboxRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Scope tree expansion state
+  const [expandedScopeIds, setExpandedScopeIds] = useState<Set<number>>(new Set());
 
   // Fetch employer linked to this agreement (both direct FK and agreement_employers)
   const { data: agreementEmployers = [] } = useQuery({
@@ -149,28 +159,70 @@ export function LinkAgreementDialog({
     enabled: !!selectedAgreementId,
   });
 
-  // Build scope label helper
-  function scopeLabel(s: ScopeOption) {
-    const parts: string[] = [];
-    if (s.parent?.parent) parts.push(s.parent.parent.scope_name);
-    if (s.parent) parts.push(s.parent.scope_name);
-    parts.push(s.scope_name);
-    return parts.join(" › ");
+  // Agreement combobox: close on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (comboboxRef.current && !comboboxRef.current.contains(e.target as Node)) {
+        setAgreementOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const availableAgreements = useMemo(
+    () => allAgreements.filter((a) => !linkedAgreementIds.has(a.agreement_id)),
+    [allAgreements, linkedAgreementIds]
+  );
+
+  const selectedAgreement = useMemo(
+    () => availableAgreements.find((a) => String(a.agreement_id) === selectedAgreementId) ?? null,
+    [availableAgreements, selectedAgreementId]
+  );
+
+  const filteredAgreements = useMemo(() => {
+    const q = agreementSearch.toLowerCase().trim();
+    if (!q) return availableAgreements;
+    return availableAgreements.filter(
+      (a) =>
+        (a.agreement_name?.toLowerCase().includes(q)) ||
+        (a.short_name?.toLowerCase().includes(q)) ||
+        (a.decision_no?.toLowerCase().includes(q))
+    );
+  }, [agreementSearch, availableAgreements]);
+
+  function agreementDisplayName(a: AgreementOption) {
+    return `${a.short_name || a.agreement_name} (${a.decision_no})`;
   }
 
-  // Scopes to show: agreement-linked first, then others not already on worksite
-  const scopeOptions = [...allScopes]
-    .filter((s) => !s.is_whole_of_project)
-    .map((s) => ({
-      ...s,
-      linkedToAgreement: agreementScopes.includes(s.scope_id),
-      alreadyOnSite: linkedScopeIds.has(s.scope_id),
-    }))
-    .sort((a, b) => {
-      if (a.linkedToAgreement !== b.linkedToAgreement)
-        return a.linkedToAgreement ? -1 : 1;
-      return scopeLabel(a).localeCompare(scopeLabel(b));
+  // Scope tree: group by parent_scope_id for hierarchical rendering
+  const scopeTree = useMemo(() => {
+    const enriched = allScopes
+      .filter((s) => !s.is_whole_of_project)
+      .map((s) => ({
+        ...s,
+        linkedToAgreement: agreementScopes.includes(s.scope_id),
+        alreadyOnSite: linkedScopeIds.has(s.scope_id),
+      }));
+
+    const byParent = new Map<number | null, typeof enriched>();
+    for (const s of enriched) {
+      const key = s.parent_scope_id ?? null;
+      if (!byParent.has(key)) byParent.set(key, []);
+      byParent.get(key)!.push(s);
+    }
+
+    return { enriched, byParent };
+  }, [allScopes, agreementScopes, linkedScopeIds]);
+
+  const toggleScopeExpand = (scopeId: number) => {
+    setExpandedScopeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(scopeId)) next.delete(scopeId);
+      else next.add(scopeId);
+      return next;
     });
+  };
 
   const toggleScope = (scopeId: number) => {
     setSelectedScopeIds((prev) => {
@@ -210,15 +262,13 @@ export function LinkAgreementDialog({
       }
     }
 
-    // 3. Optionally link scopes
+    // 3. Optionally link scopes (duplicates handled by DB unique constraint)
     for (const scopeId of selectedScopeIds) {
-      if (!linkedScopeIds.has(scopeId)) {
-        await supabase.from("worksite_scopes").insert({
-          worksite_id: worksiteId,
-          scope_id: scopeId,
-          is_current: true,
-        });
-      }
+      await supabase.from("worksite_scopes").insert({
+        worksite_id: worksiteId,
+        scope_id: scopeId,
+        is_current: true,
+      });
     }
 
     setSaving(false);
@@ -231,13 +281,12 @@ export function LinkAgreementDialog({
     setLinkEmployer(true);
     setEmployerRoleType("Subcontractor");
     setSelectedScopeIds(new Set());
+    setAgreementSearch("");
+    setAgreementOpen(false);
+    setExpandedScopeIds(new Set());
     setError(null);
     onOpenChange(false);
   };
-
-  const availableAgreements = allAgreements.filter(
-    (a) => !linkedAgreementIds.has(a.agreement_id)
-  );
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose(); else onOpenChange(true); }}>
@@ -251,23 +300,77 @@ export function LinkAgreementDialog({
         </DialogHeader>
 
         <div className="space-y-5 py-2">
-          {/* Step 1: Agreement */}
+          {/* Step 1: Agreement (searchable combobox) */}
           <div className="space-y-2">
             <Label>
               Agreement <span className="text-destructive">*</span>
             </Label>
-            <Select value={selectedAgreementId} onValueChange={setSelectedAgreementId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select agreement..." />
-              </SelectTrigger>
-              <SelectContent>
-                {availableAgreements.map((a) => (
-                  <SelectItem key={a.agreement_id} value={String(a.agreement_id)}>
-                    {a.short_name || a.agreement_name} ({a.decision_no})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div ref={comboboxRef} className="relative">
+              <div
+                className="flex h-9 w-full cursor-text items-center rounded-md border border-input bg-background px-3 text-sm shadow-sm min-w-0"
+                onClick={() => {
+                  setAgreementOpen(true);
+                  setAgreementSearch("");
+                  setTimeout(() => searchInputRef.current?.focus(), 0);
+                }}
+              >
+                {agreementOpen ? (
+                  <input
+                    ref={searchInputRef}
+                    className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground min-w-0"
+                    value={agreementSearch}
+                    placeholder="Search agreements…"
+                    onChange={(e) => setAgreementSearch(e.target.value)}
+                    onFocus={() => setAgreementOpen(true)}
+                  />
+                ) : (
+                  <span
+                    className={selectedAgreement ? "flex-1 truncate" : "flex-1 text-muted-foreground"}
+                    title={selectedAgreement ? agreementDisplayName(selectedAgreement) : undefined}
+                  >
+                    {selectedAgreement ? agreementDisplayName(selectedAgreement) : "Select agreement…"}
+                  </span>
+                )}
+                {selectedAgreement && !agreementOpen && (
+                  <button
+                    type="button"
+                    className="ml-1 rounded text-muted-foreground hover:text-foreground"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedAgreementId("");
+                      setAgreementSearch("");
+                    }}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              {agreementOpen && (
+                <div className="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto rounded-md border bg-popover shadow-md">
+                  {filteredAgreements.length === 0 ? (
+                    <p className="p-3 text-center text-xs text-muted-foreground">No agreements found.</p>
+                  ) : (
+                    filteredAgreements.map((a) => (
+                      <button
+                        key={a.agreement_id}
+                        type="button"
+                        className={`flex w-full items-center px-3 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground ${
+                          String(a.agreement_id) === selectedAgreementId ? "bg-accent/50 font-medium" : ""
+                        }`}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setSelectedAgreementId(String(a.agreement_id));
+                          setAgreementSearch("");
+                          setAgreementOpen(false);
+                        }}
+                      >
+                        {agreementDisplayName(a)}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Step 2: Employer linking */}
@@ -326,40 +429,23 @@ export function LinkAgreementDialog({
             </div>
           )}
 
-          {/* Step 3: Work scopes */}
+          {/* Step 3: Work scopes (hierarchical tree) */}
           {selectedAgreementId && (
             <div className="space-y-2">
               <Label>Also add work scopes (optional)</Label>
-              {scopeOptions.length === 0 ? (
+              {scopeTree.enriched.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No active scopes available.</p>
               ) : (
-                <div className="max-h-48 overflow-y-auto rounded-md border p-2 space-y-1">
-                  {scopeOptions.map((s) => (
-                    <div key={s.scope_id} className="flex items-center gap-2 py-0.5">
-                      <Checkbox
-                        id={`scope-${s.scope_id}`}
-                        checked={selectedScopeIds.has(s.scope_id)}
-                        onCheckedChange={() => toggleScope(s.scope_id)}
-                        disabled={s.alreadyOnSite}
-                      />
-                      <Label
-                        htmlFor={`scope-${s.scope_id}`}
-                        className={`text-sm font-normal cursor-pointer ${s.alreadyOnSite ? "text-muted-foreground line-through" : ""}`}
-                      >
-                        {scopeLabel(s)}
-                      </Label>
-                      {s.linkedToAgreement && (
-                        <Badge variant="secondary" className="text-xs ml-auto">
-                          in agreement
-                        </Badge>
-                      )}
-                      {s.alreadyOnSite && (
-                        <Badge variant="success" className="text-xs ml-auto">
-                          on site
-                        </Badge>
-                      )}
-                    </div>
-                  ))}
+                <div className="max-h-56 overflow-y-auto rounded-md border p-2">
+                  <ScopeTreeLevel
+                    parentId={null}
+                    byParent={scopeTree.byParent}
+                    depth={0}
+                    selectedScopeIds={selectedScopeIds}
+                    expandedScopeIds={expandedScopeIds}
+                    onToggleScope={toggleScope}
+                    onToggleExpand={toggleScopeExpand}
+                  />
                 </div>
               )}
             </div>
@@ -378,5 +464,96 @@ export function LinkAgreementDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─── Scope tree recursive renderer ──────────────────────────────────────────
+
+type EnrichedScope = ScopeOption & {
+  linkedToAgreement: boolean;
+  alreadyOnSite: boolean;
+};
+
+function ScopeTreeLevel({
+  parentId,
+  byParent,
+  depth,
+  selectedScopeIds,
+  expandedScopeIds,
+  onToggleScope,
+  onToggleExpand,
+}: {
+  parentId: number | null;
+  byParent: Map<number | null, EnrichedScope[]>;
+  depth: number;
+  selectedScopeIds: Set<number>;
+  expandedScopeIds: Set<number>;
+  onToggleScope: (id: number) => void;
+  onToggleExpand: (id: number) => void;
+}) {
+  const children = byParent.get(parentId);
+  if (!children || children.length === 0) return null;
+
+  return (
+    <div className={depth > 0 ? "pl-5 border-l border-border/50" : undefined}>
+      {children.map((s) => {
+        const hasChildren = byParent.has(s.scope_id);
+        const expanded = expandedScopeIds.has(s.scope_id);
+
+        return (
+          <div key={s.scope_id}>
+            <div className="flex items-center gap-1.5 py-0.5">
+              {hasChildren ? (
+                <button
+                  type="button"
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded hover:bg-accent"
+                  onClick={() => onToggleExpand(s.scope_id)}
+                >
+                  {expanded ? (
+                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                  )}
+                </button>
+              ) : (
+                <span className="w-5 shrink-0" />
+              )}
+              <Checkbox
+                id={`scope-${s.scope_id}`}
+                checked={selectedScopeIds.has(s.scope_id)}
+                onCheckedChange={() => onToggleScope(s.scope_id)}
+              />
+              <Label
+                htmlFor={`scope-${s.scope_id}`}
+                className="text-sm font-normal cursor-pointer"
+              >
+                {s.scope_name}
+              </Label>
+              {s.linkedToAgreement && (
+                <Badge variant="secondary" className="text-xs ml-auto shrink-0">
+                  in agreement
+                </Badge>
+              )}
+              {s.alreadyOnSite && (
+                <Badge variant="outline" className="text-xs ml-auto shrink-0">
+                  on site
+                </Badge>
+              )}
+            </div>
+            {hasChildren && expanded && (
+              <ScopeTreeLevel
+                parentId={s.scope_id}
+                byParent={byParent}
+                depth={depth + 1}
+                selectedScopeIds={selectedScopeIds}
+                expandedScopeIds={expandedScopeIds}
+                onToggleScope={onToggleScope}
+                onToggleExpand={onToggleExpand}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }

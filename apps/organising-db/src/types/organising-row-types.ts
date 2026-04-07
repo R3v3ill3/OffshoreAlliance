@@ -250,6 +250,7 @@ export interface Worksite {
   basin: string | null;
   is_offshore: boolean;
   is_active: boolean;
+  image_url: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;

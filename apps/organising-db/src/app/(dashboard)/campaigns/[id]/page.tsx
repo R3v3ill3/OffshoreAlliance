@@ -4,13 +4,13 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ArrowLeft, Pencil, Plus, Users } from "lucide-react";
+import { ArrowLeft, Pencil, Plus } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,6 +55,7 @@ import { CampaignReportingCharts } from "@/components/campaigns/campaign-reporti
 import { CampaignWallChart } from "@/components/campaigns/campaign-wall-chart";
 import { CampaignTaskListsSection } from "@/components/campaigns/campaign-task-lists";
 import { CampaignPlanPanel } from "@/components/campaigns/campaign-plan-panel";
+import { CampaignUniverseSection } from "@/components/campaigns/campaign-universe-section";
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
 
 interface CampaignDetail {
@@ -465,23 +466,31 @@ export default function CampaignDetailPage() {
           <CampaignTaskListsSection campaignId={id} canWrite={!!canWrite} />
         </TabsContent>
 
-        <TabsContent value="universe">
+        <TabsContent value="universe" className="space-y-6">
+          <CampaignUniverseSection campaignId={id} canWrite={!!canWrite} />
+
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-lg">Campaign Universes</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <div className="space-y-1 min-w-0">
+                <CardTitle className="text-lg">Named universes (optional)</CardTitle>
+                <CardDescription>
+                  Labels for the Actions tab only. Campaign scope (employers, worksites, workers) is
+                  managed above.
+                </CardDescription>
+              </div>
               {canWrite && (
                 <Dialog open={universeDialogOpen} onOpenChange={setUniverseDialogOpen}>
                   <DialogTrigger asChild>
-                    <Button size="sm">
+                    <Button size="sm" variant="outline">
                       <Plus className="h-4 w-4" />
-                      Define Universe
+                      Add named universe
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>Define Universe</DialogTitle>
+                      <DialogTitle>Add named universe</DialogTitle>
                       <DialogDescription>
-                        Create a target universe for this campaign.
+                        Optional grouping you can attach when creating a campaign action.
                       </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
@@ -525,7 +534,7 @@ export default function CampaignDetailPage() {
             <CardContent>
               {universes.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">
-                  No universes defined for this campaign.
+                  No named universes. Actions can still be created without one.
                 </p>
               ) : (
                 <div className="space-y-4">
@@ -533,19 +542,13 @@ export default function CampaignDetailPage() {
                     const rules = rulesByUniverse[u.universe_id] ?? [];
                     return (
                       <div key={u.universe_id} className="rounded-md border p-4 space-y-3">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <h4 className="font-medium">{u.name}</h4>
-                            {u.description && (
-                              <p className="text-sm text-muted-foreground mt-0.5">
-                                {u.description}
-                              </p>
-                            )}
-                          </div>
-                          <Button variant="outline" size="sm">
-                            <Users className="h-3.5 w-3.5" />
-                            Preview Universe
-                          </Button>
+                        <div>
+                          <h4 className="font-medium">{u.name}</h4>
+                          {u.description && (
+                            <p className="text-sm text-muted-foreground mt-0.5">
+                              {u.description}
+                            </p>
+                          )}
                         </div>
                         {rules.length > 0 && (
                           <div className="flex flex-wrap gap-1.5">

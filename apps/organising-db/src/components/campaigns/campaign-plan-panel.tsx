@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle2, XCircle, Clock, AlertCircle, Circle, ListTodo, Users } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, AlertCircle, Circle, ListTodo, Users, ExternalLink } from "lucide-react";
 import { differenceInDays, format, parseISO } from "date-fns";
 import Link from "next/link";
 

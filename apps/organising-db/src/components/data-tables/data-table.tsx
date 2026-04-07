@@ -49,6 +49,9 @@ interface DataTableProps<T> {
   pageSize?: number;
   loading?: boolean;
   selection?: DataTableSelection<T>;
+  filterBar?: React.ReactNode;
+  /** Expose the full filtered dataset (not just current page) for select-all-filtered. */
+  onFilteredDataChange?: (data: T[]) => void;
 }
 
 const DEFAULT_PAGE_SIZE = 50;
@@ -63,6 +66,8 @@ export function DataTable<T extends Record<string, unknown>>({
   pageSize: initialPageSize = DEFAULT_PAGE_SIZE,
   loading = false,
   selection,
+  filterBar,
+  onFilteredDataChange,
 }: DataTableProps<T>) {
   const { isMobile } = useDevice();
   const pathname = usePathname();
@@ -127,6 +132,10 @@ export function DataTable<T extends Record<string, unknown>>({
     selection && visibleRowIds.some((id) => selection.selectedIds.has(id));
   const colCount = columns.length + (selection ? 1 : 0);
 
+  useEffect(() => {
+    onFilteredDataChange?.(sorted);
+  }, [sorted, onFilteredDataChange]);
+
   const handleSort = (key: string) => {
     if (sortKey === key) {
       setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -184,6 +193,8 @@ export function DataTable<T extends Record<string, unknown>>({
           </span>
         </div>
       </div>
+
+      {filterBar}
 
       {isMobile ? (
         // Mobile Card View

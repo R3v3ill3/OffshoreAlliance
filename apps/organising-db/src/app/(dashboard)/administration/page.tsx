@@ -59,6 +59,7 @@ import {
 } from "lucide-react";
 import { EmployerWizard } from "@/components/administration/employer-wizard";
 import { ReferenceDataWizard } from "@/components/import/reference-data-wizard";
+import { MembershipImportWizard } from "@/components/import/membership-import-wizard";
 
 const WORK_ROLES: { value: WorkRole; label: string }[] = [
   { value: "coordinator", label: "Co-ordinator" },
@@ -1306,6 +1307,57 @@ function ImportHistoryTab() {
   );
 }
 
+// ---------- Membership Import Tab ----------
+
+function MembershipImportTab() {
+  const [wizardOpen, setWizardOpen] = useState(false);
+
+  return (
+    <div className="space-y-4 pt-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">Monthly Membership Import</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Import the three monthly membership files: New Joins, Resignations, and Recommencing Members.
+            Each file is matched against existing workers by Reference ID, then email/phone.
+          </p>
+        </div>
+        <Button onClick={() => setWizardOpen(true)}>
+          <Upload className="h-4 w-4 mr-2" />
+          Start Import
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {[
+          {
+            title: "New Joins",
+            desc: "Creates new member records or updates existing ones by Reference ID. Sets join date, worksite, occupation, and employer.",
+          },
+          {
+            title: "Resignations",
+            desc: "Matches existing members by Reference ID and marks them as inactive, setting resignation date and reason.",
+          },
+          {
+            title: "Recommencing Members",
+            desc: "Re-activates resigned members, updating the rejoin date (only if more recent than the existing date).",
+          },
+        ].map((card) => (
+          <div key={card.title} className="rounded-lg border p-4 space-y-2">
+            <p className="font-medium text-sm">{card.title}</p>
+            <p className="text-xs text-muted-foreground">{card.desc}</p>
+          </div>
+        ))}
+      </div>
+
+      <MembershipImportWizard
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
+      />
+    </div>
+  );
+}
+
 // ---------- Reference Data Import Tab ----------
 
 function ReferenceDataTab() {
@@ -1382,6 +1434,7 @@ export default function AdministrationPage() {
           <TabsTrigger value="sectors">Sectors</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
           <TabsTrigger value="imports">Import History</TabsTrigger>
+          <TabsTrigger value="membership_import">Membership Import</TabsTrigger>
           <TabsTrigger value="employer_wizard">Employer Wizard</TabsTrigger>
           <TabsTrigger value="ref_data">Reference Data Import</TabsTrigger>
           <TabsTrigger value="monitoring">System Monitoring</TabsTrigger>
@@ -1404,6 +1457,9 @@ export default function AdministrationPage() {
         </TabsContent>
         <TabsContent value="imports">
           <ImportHistoryTab />
+        </TabsContent>
+        <TabsContent value="membership_import">
+          <MembershipImportTab />
         </TabsContent>
         <TabsContent value="employer_wizard">
           <EmployerWizard />

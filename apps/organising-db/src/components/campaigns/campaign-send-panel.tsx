@@ -452,12 +452,12 @@ export function CampaignSendPanel({
                               </div>
                             </div>
                           )}
-                          {stats.polled_at && (
+                          {stats.polled_at ? (
                             <p className="text-xs text-muted-foreground/70">
                               Stats updated:{" "}
                               {formatDate(stats.polled_at as string)}
                             </p>
-                          )}
+                          ) : null}
                         </div>
                       );
                     })()}

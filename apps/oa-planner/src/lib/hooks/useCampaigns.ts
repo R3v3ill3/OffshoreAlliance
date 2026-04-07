@@ -266,6 +266,195 @@ export function useRemoveCampaignOrganiser() {
   })
 }
 
+export function useExistingCampaignForPlanning(campaignId: number | null) {
+  const supabase = createClient()
+
+  return useQuery({
+    queryKey: ['existing-campaign-for-planning', campaignId],
+    queryFn: async () => {
+      if (!campaignId) return null
+
+      const { data: campaign, error } = await supabase
+        .from('campaigns')
+        .select(`
+          campaign_id,
+          name,
+          description,
+          campaign_type,
+          status,
+          organiser_id,
+          start_date,
+          enterprise_agreement_subtype,
+          replaced_agreement_id,
+          campaign_stage_plans(plan_id)
+        `)
+        .eq('campaign_id', campaignId)
+        .single()
+
+      if (error) throw error
+
+      const { data: timeline } = await supabase
+        .from('campaign_timelines')
+        .select('timeline_id, agreement_id, agreement_expiry_date')
+        .eq('campaign_id', campaignId)
+        .maybeSingle()
+
+      return {
+        ...campaign,
+        has_plan: (campaign.campaign_stage_plans?.length ?? 0) > 0,
+        timeline_agreement_id: timeline?.agreement_id ?? null,
+        timeline_expiry_date: timeline?.agreement_expiry_date ?? null,
+      }
+    },
+    enabled: !!campaignId && campaignId > 0,
+  })
+}
+
+export function useAddPlanToCampaign() {
+  const supabase = createClient()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (payload: {
+      campaign_id: number
+      organiser_id?: number
+      start_date?: string
+      agreement_id?: number
+      expiry_date?: string
+      stage_dates?: Array<{ stage_number: number; planned_start: string; planned_end: string; duration_weeks: number }>
+    }) => {
+      if (payload.organiser_id || payload.start_date) {
+        const updates: Record<string, unknown> = { status: 'active' }
+        if (payload.organiser_id) updates.organiser_id = payload.organiser_id
+        if (payload.start_date) updates.start_date = payload.start_date
+        await supabase
+          .from('campaigns')
+          .update(updates)
+          .eq('campaign_id', payload.campaign_id)
+      }
+
+      const STAGE_NAMES_LIST = [
+        'Contact ID & Mapping',
+        'Intro Comms & Education',
+        'Member Mobilisation',
+        'Develop Claims / MSD',
+        'Endorsement & Commence Bargaining',
+        'Bargaining to Win',
+      ]
+
+      const stagePlans = STAGE_NAMES_LIST.map((name, i) => {
+        const stageNum = i + 1
+        const stageDates = payload.stage_dates?.find((s) => s.stage_number === stageNum)
+        return {
+          campaign_id: payload.campaign_id,
+          stage_number: stageNum,
+          stage_name: name,
+          status: stageNum === 1 ? 'active' : 'draft',
+          planned_start_date: stageDates?.planned_start || null,
+          planned_end_date: stageDates?.planned_end || null,
+        }
+      })
+
+      const { error: plansError } = await supabase.from('campaign_stage_plans').insert(stagePlans)
+      if (plansError) throw plansError
+
+      const { data: insertedPlans, error: plansSelectError } = await supabase
+        .from('campaign_stage_plans')
+        .select('plan_id, stage_number, planned_end_date')
+        .eq('campaign_id', payload.campaign_id)
+        .order('stage_number')
+
+      if (plansSelectError) throw plansSelectError
+
+      const membershipRows =
+        insertedPlans?.flatMap((p) => [
+          {
+            plan_id: p.plan_id,
+            custom_text: 'Expected new members',
+            is_system_default: true,
+            metric_type: 'count',
+            sort_order: 0,
+            target_date: p.planned_end_date,
+            target_date_user_overridden: false,
+            is_hard_gate: false,
+          },
+          {
+            plan_id: p.plan_id,
+            custom_text: 'Membership density',
+            is_system_default: true,
+            metric_type: 'percentage',
+            sort_order: 1,
+            target_date: p.planned_end_date,
+            target_date_user_overridden: false,
+            is_hard_gate: false,
+          },
+        ]) ?? []
+
+      if (membershipRows.length > 0) {
+        const { error: ambError } = await supabase.from('plan_ambitions').insert(membershipRows)
+        if (ambError) throw ambError
+      }
+
+      const gates = [
+        { gate_number: 1, gate_name: 'Member Engagement Threshold' },
+        { gate_number: 2, gate_name: 'Engagement Ready Assessment' },
+        { gate_number: 3, gate_name: 'Log of Claims Survey Participation' },
+        { gate_number: 4, gate_name: 'Ready for Bargaining' },
+        { gate_number: 5, gate_name: 'Strike Ready' },
+      ].map((g) => ({
+        campaign_id: payload.campaign_id,
+        gate_number: g.gate_number,
+        gate_name: g.gate_name,
+        enforcement_type: 'soft',
+      }))
+
+      const { error: gatesError } = await supabase.from('gate_definitions').insert(gates)
+      if (gatesError) throw gatesError
+
+      if (payload.agreement_id || payload.expiry_date) {
+        const expiryDate = payload.expiry_date
+        const paboDate = expiryDate
+          ? new Date(new Date(expiryDate).getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+          : null
+
+        const { data: timeline, error: timelineError } = await supabase
+          .from('campaign_timelines')
+          .insert({
+            campaign_id: payload.campaign_id,
+            agreement_id: payload.agreement_id,
+            agreement_expiry_date: expiryDate || null,
+            pabo_available_date: paboDate,
+            peak_engagement_target_date: paboDate,
+            working_backwards: !!expiryDate,
+          })
+          .select()
+          .single()
+
+        if (timelineError) throw timelineError
+
+        if (payload.stage_dates && timeline) {
+          const targets = payload.stage_dates.map((s) => ({
+            timeline_id: timeline.timeline_id,
+            stage_number: s.stage_number,
+            planned_start: s.planned_start,
+            planned_end: s.planned_end,
+            duration_weeks: s.duration_weeks,
+          }))
+
+          await supabase.from('stage_timeline_targets').insert(targets)
+        }
+      }
+
+      return { campaign_id: payload.campaign_id }
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] })
+      queryClient.invalidateQueries({ queryKey: ['campaign', variables.campaign_id] })
+      queryClient.invalidateQueries({ queryKey: ['existing-campaign-for-planning', variables.campaign_id] })
+    },
+  })
+}
+
 export function useCreateCampaign() {
   const supabase = createClient()
   const queryClient = useQueryClient()
@@ -283,16 +472,21 @@ export function useCreateCampaign() {
       stage_dates?: Array<{ stage_number: number; planned_start: string; planned_end: string; duration_weeks: number }>
       gate_overrides?: Partial<Record<number, { enforcement_type: string }>>
     }) => {
+      const campaignInsert: Record<string, unknown> = {
+        name: payload.name,
+        description: payload.description,
+        campaign_type: payload.campaign_type,
+        organiser_id: payload.organiser_id,
+        start_date: payload.start_date,
+        status: 'active',
+      }
+      if (payload.msd_required != null) {
+        campaignInsert.msd_required = payload.msd_required
+      }
+
       const { data: campaign, error: campaignError } = await supabase
         .from('campaigns')
-        .insert({
-          name: payload.name,
-          description: payload.description,
-          campaign_type: payload.campaign_type,
-          organiser_id: payload.organiser_id,
-          start_date: payload.start_date,
-          status: 'active',
-        })
+        .insert(campaignInsert)
         .select()
         .single()
 

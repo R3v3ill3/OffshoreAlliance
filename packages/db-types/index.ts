@@ -2258,6 +2258,7 @@ export type Database = {
           description: string | null
           end_date: string | null
           enterprise_agreement_subtype: string | null
+          msd_required: boolean
           name: string
           notes: string | null
           organiser_id: number | null
@@ -2277,6 +2278,7 @@ export type Database = {
           description?: string | null
           end_date?: string | null
           enterprise_agreement_subtype?: string | null
+          msd_required?: boolean
           name: string
           notes?: string | null
           organiser_id?: number | null
@@ -2296,6 +2298,7 @@ export type Database = {
           description?: string | null
           end_date?: string | null
           enterprise_agreement_subtype?: string | null
+          msd_required?: boolean
           name?: string
           notes?: string | null
           organiser_id?: number | null

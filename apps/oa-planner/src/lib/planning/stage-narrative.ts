@@ -57,3 +57,57 @@ export function stageInfoBody(stageNumber: number): string[] | undefined {
   if (!isStageNumber(stageNumber)) return undefined
   return STAGE_INFO_BODY[stageNumber]
 }
+
+export type StepId = 'ambitions' | 'where-to-play' | 'theory' | 'capacities' | 'management'
+
+export const STEP_NAMES: Record<StepId, string> = {
+  'ambitions': 'Ambitions',
+  'where-to-play': 'Where to Play',
+  'theory': 'Theory of Winning',
+  'capacities': 'Capacities',
+  'management': 'Management Systems',
+}
+
+export const STEP_HEADER_BLURB: Record<StepId, string> = {
+  'ambitions': 'Define what success looks like and the metrics that will prove you have achieved it.',
+  'where-to-play': 'Choose which sites, employers, and groups of workers to focus your resources on.',
+  'theory': 'Develop the logical sequence of events that leads to victory based on your leverage.',
+  'capacities': 'Identify the skills, structures, and resources needed to execute your theory of winning.',
+  'management': 'Establish the systems, meetings, and reviews that keep the campaign on track.',
+}
+
+export const STEP_INFO_BODY: Record<StepId, string[]> = {
+  'ambitions': [
+    'Ambitions define the measurable outcomes you need to achieve by the end of this stage.',
+    'Focus on clear targets: numbers, percentages, or specific completed actions. Every ambition should help answer the question, "How will we know we are ready for the next stage?"',
+    'Set whether each ambition is a "Hard Gate" (must be completed to proceed) or "Soft Gate" (desirable, but not strictly required if other factors compensate).'
+  ],
+  'where-to-play': [
+    'Where to Play focuses your limited resources on the areas that matter most for this stage.',
+    'You cannot be everywhere at once. Decide which employers, worksites, and workgroups are critical for your current objectives.',
+    'In early stages, this might mean mapping specific sites. In later stages, it could mean focusing on sites with the highest density or strategic leverage.'
+  ],
+  'theory': [
+    'Your Theory of Winning connects your current position to your ambitions through a logical sequence of cause and effect.',
+    'It takes the form of an "If we do X, then Y will happen, resulting in Z" statement.',
+    'This is the core hypothesis of your campaign. If it is flawed or relying on assumptions you cannot prove, your ambitions will be at risk.'
+  ],
+  'capacities': [
+    'Capacities are the capabilities, structures, and resources you need to make your Theory of Winning work.',
+    'These could be physical resources (like flyers or data access), skills (like trained delegates), or structures (like a functioning committee).',
+    'Identifying required capacities early helps you spot gaps before they cause your strategy to fail.'
+  ],
+  'management': [
+    'Management Systems are the routines, meetings, and tracking methods that keep the campaign disciplined and on schedule.',
+    'A strategy is useless without execution. Decide how often the team will meet, what data you will review, and who is accountable for moving the work forward.',
+    'Effective management systems ensure that when assumptions in your Theory of Winning turn out to be wrong, you notice quickly and adapt.'
+  ]
+}
+
+export function stepHeaderBlurb(stepId: StepId): string | undefined {
+  return STEP_HEADER_BLURB[stepId]
+}
+
+export function stepInfoBody(stepId: StepId): string[] | undefined {
+  return STEP_INFO_BODY[stepId]
+}

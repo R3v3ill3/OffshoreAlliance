@@ -1,9 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
+
+const OA_PLANNER_URL =
+  process.env.NEXT_PUBLIC_OA_PLANNER_URL ?? "https://oaplanner.uconstruct.app";
 
 /**
  * Campaign Status Badge
@@ -40,12 +42,15 @@ const SIZE_STYLES = {
   lg: "text-sm px-3 py-1",
 };
 
+function openInPlanner(campaignId: number) {
+  window.open(`${OA_PLANNER_URL}/campaigns/${campaignId}`, "_blank", "noopener");
+}
+
 export function CampaignStatusBadge({
   agreementId,
   size = "sm",
   className = "",
 }: CampaignStatusBadgeProps) {
-  const router = useRouter();
 
   // Client-side query to get the campaign status
   // NOTE: In production with large lists, consider:
@@ -105,7 +110,7 @@ export function CampaignStatusBadge({
       <Badge
         variant="secondary"
         className={`${SIZE_STYLES[size]} ${className} cursor-pointer hover:bg-secondary/80`}
-        onClick={() => router.push("/campaigns")}
+        onClick={() => window.open("/campaigns", "_self")}
         title="No campaign plan - Click to create one"
       >
         No campaign plan
@@ -120,8 +125,7 @@ export function CampaignStatusBadge({
         variant="success"
         className={`${SIZE_STYLES[size]} ${className} cursor-pointer hover:bg-green-200 dark:hover:bg-green-900`}
         onClick={() =>
-          campaignStatus.campaignId &&
-          router.push(`/oa-planner/campaigns/${campaignStatus.campaignId}`)
+          campaignStatus.campaignId && openInPlanner(campaignStatus.campaignId)
         }
         title="Campaign completed - Click to view details"
       >
@@ -142,8 +146,7 @@ export function CampaignStatusBadge({
         variant="warning"
         className={`${SIZE_STYLES[size]} ${className} cursor-pointer hover:bg-amber-200 dark:hover:bg-amber-900`}
         onClick={() =>
-          campaignStatus.campaignId &&
-          router.push(`/oa-planner/campaigns/${campaignStatus.campaignId}`)
+          campaignStatus.campaignId && openInPlanner(campaignStatus.campaignId)
         }
         title="Planning blocked - Click to resolve"
       >
@@ -163,8 +166,7 @@ export function CampaignStatusBadge({
         variant="info"
         className={`${SIZE_STYLES[size]} ${className} cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-900`}
         onClick={() =>
-          campaignStatus.campaignId &&
-          router.push(`/oa-planner/campaigns/${campaignStatus.campaignId}`)
+          campaignStatus.campaignId && openInPlanner(campaignStatus.campaignId)
         }
         title={`Stage ${campaignStatus.stageNumber}: ${campaignStatus.stageName} - Click to view campaign`}
       >

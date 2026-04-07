@@ -40,12 +40,15 @@ import {
   CalendarDays,
   Check,
   Info,
+  BookOpen,
+  X,
 } from 'lucide-react'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { OverviewDialog } from '@/components/planning/OverviewDialog'
 import { stageHeaderBlurb } from '@/lib/planning/stage-narrative'
 import { STAGE_NAMES } from '@/types'
 import { cn } from '@/lib/utils'
@@ -84,6 +87,8 @@ export default function StageplanPage({ params }: PageProps) {
 
   const { overrides, setOverride } = useP2wStepOverrides(campaignId, stageNumber)
   const [activeTab, setActiveTab] = useState<string>('ambitions')
+  const [overviewOpen, setOverviewOpen] = useState(false)
+  const [showBlurb, setShowBlurb] = useState(true)
 
   const stageName = STAGE_NAMES[stageNumber as keyof typeof STAGE_NAMES] || `Stage ${stageNumber}`
   const plan = stagePlanData?.plan
@@ -210,10 +215,28 @@ export default function StageplanPage({ params }: PageProps) {
                   {plan.status}
                 </Badge>
               </div>
+              {headerBlurb && showBlurb && (
+                <div className="flex items-start gap-2 mt-1">
+                  <p className="text-xs text-muted-foreground leading-snug max-w-2xl">
+                    {headerBlurb}
+                  </p>
+                  <button 
+                    onClick={() => setShowBlurb(false)}
+                    className="text-slate-400 hover:text-slate-600 transition-colors shrink-0 mt-0.5"
+                    title="Hide blurb"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-auto">
+            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setOverviewOpen(true)}>
+              <BookOpen className="h-3 w-3 mr-1" />
+              Overview
+            </Button>
             {prevStage && (
               <Button asChild variant="outline" size="sm" className="h-8 text-xs">
                 <Link href={`/campaigns/${campaignId}/stage/${prevStage}`}>
@@ -405,6 +428,8 @@ export default function StageplanPage({ params }: PageProps) {
           </div>
         </Tabs>
       </div>
+
+      <OverviewDialog open={overviewOpen} onOpenChange={setOverviewOpen} />
     </div>
   )
 }

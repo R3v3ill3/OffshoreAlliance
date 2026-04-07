@@ -356,16 +356,40 @@ export default function AgreementDetailPage() {
     enabled: !!user,
   });
 
-  // Fetch campaigns linked to this agreement from OA Planner
+  // Fetch campaigns linked to this agreement via campaign_timelines or replaced_agreement_id
   const { data: linkedCampaigns = [] } = useQuery({
     queryKey: ["agreement-campaigns", id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data: timelineLinks, error: tlErr } = await supabase
+        .from("campaign_timelines")
+        .select("campaign_id, campaigns(campaign_id, name, status)")
+        .eq("agreement_id", agreementId);
+      if (tlErr) throw tlErr;
+
+      const { data: replacementLinks, error: rlErr } = await supabase
         .from("campaigns")
         .select("campaign_id, name, status")
-        .eq("agreement_id", agreementId);
-      if (error) throw error;
-      return data ?? [];
+        .eq("replaced_agreement_id", agreementId);
+      if (rlErr) throw rlErr;
+
+      const seen = new Set<number>();
+      const result: Array<{ campaign_id: number; name: string; status: string }> = [];
+
+      for (const tl of timelineLinks ?? []) {
+        const c = tl.campaigns as { campaign_id: number; name: string; status: string } | null;
+        if (c && !seen.has(c.campaign_id)) {
+          seen.add(c.campaign_id);
+          result.push(c);
+        }
+      }
+      for (const c of replacementLinks ?? []) {
+        if (!seen.has(c.campaign_id)) {
+          seen.add(c.campaign_id);
+          result.push(c);
+        }
+      }
+
+      return result;
     },
     enabled: !!user && agreementIdValid,
   });

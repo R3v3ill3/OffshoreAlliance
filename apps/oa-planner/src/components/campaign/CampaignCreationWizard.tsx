@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { format, addDays, subDays } from 'date-fns'
 import { useAgreements, useLeadOrganisers, useCurrentUserProfile } from '@/lib/hooks/useOptions'
-import { useCreateCampaign } from '@/lib/hooks/useCampaigns'
+import { useCreateCampaign, useAddPlanToCampaign, useExistingCampaignForPlanning } from '@/lib/hooks/useCampaigns'
 import { calculateBackwardsTimeline, calculateForwardsTimeline } from '@/lib/utils/timeline'
 import { STAGE_NAMES } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -93,25 +93,101 @@ export function CampaignCreationWizard() {
   const { data: leadOrganisers, isLoading: organisersLoading } = useLeadOrganisers()
   const { data: myProfile } = useCurrentUserProfile()
   const createCampaign = useCreateCampaign()
+  const addPlan = useAddPlanToCampaign()
 
-  // Pre-select agreement from URL param (e.g. launched from dashboard "Create Plan" button)
+  // Read all relevant query params from the launching context
   const autoAgreementId = Number(searchParams.get('agreement_id')) || null
+  const linkedCampaignId = Number(searchParams.get('campaign_id')) || null
+  const paramOrganiserId = Number(searchParams.get('organiser_id')) || null
+  const paramExpiryDate = searchParams.get('expiry_date') || null
+
+  const isLinkedMode = !!linkedCampaignId
+
+  const { data: existingCampaign, isLoading: existingCampaignLoading } =
+    useExistingCampaignForPlanning(linkedCampaignId)
+
+  // Redirect to existing plan if one already exists for this campaign
+  const hasRedirected = useRef(false)
+  useEffect(() => {
+    if (hasRedirected.current || !existingCampaign) return
+    if (existingCampaign.has_plan) {
+      hasRedirected.current = true
+      router.replace(`/campaigns/${existingCampaign.campaign_id}`)
+    }
+  }, [existingCampaign, router])
+
+  // Pre-select agreement from existing campaign context or URL param
   const hasAutoSelected = useRef(false)
 
   useEffect(() => {
-    if (hasAutoSelected.current) return
-    if (!autoAgreementId || !agreements || agreements.length === 0) return
-    const found = agreements.find((a) => a.agreement_id === autoAgreementId)
-    if (!found) return
-    hasAutoSelected.current = true
-    handleAgreementSelect(autoAgreementId)
-    setStep(2)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agreements, autoAgreementId])
+    if (hasAutoSelected.current || !agreements || agreements.length === 0) return
 
-  // Auto-default the organiser based on the signed-in user's profile
+    // Priority 1: Linked campaign's replaced_agreement_id or timeline agreement
+    if (existingCampaign && !existingCampaign.has_plan) {
+      const agreementToSelect =
+        existingCampaign.replaced_agreement_id ??
+        existingCampaign.timeline_agreement_id ??
+        null
+
+      if (agreementToSelect) {
+        const found = agreements.find((a) => a.agreement_id === agreementToSelect)
+        if (found) {
+          hasAutoSelected.current = true
+          handleAgreementSelect(agreementToSelect)
+          setState((p) => ({
+            ...p,
+            campaign_name: existingCampaign.name || p.campaign_name,
+            description: (existingCampaign.description as string) || p.description,
+          }))
+          setStep(2)
+          return
+        }
+      }
+
+      // Even without an agreement, pre-fill name/description from the existing campaign
+      hasAutoSelected.current = true
+      setState((p) => ({
+        ...p,
+        campaign_name: existingCampaign.name || p.campaign_name,
+        description: (existingCampaign.description as string) || p.description,
+      }))
+      return
+    }
+
+    // Priority 2: agreement_id from URL param (e.g. launched from dashboard or agreement page)
+    if (autoAgreementId) {
+      const found = agreements.find((a) => a.agreement_id === autoAgreementId)
+      if (found) {
+        hasAutoSelected.current = true
+        handleAgreementSelect(autoAgreementId)
+        setStep(2)
+        return
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agreements, existingCampaign, autoAgreementId])
+
+  // Use expiry_date from query param as fallback when agreement doesn't have one
   useEffect(() => {
-    if (!myProfile || !leadOrganisers || state.organiser_id) return
+    if (!paramExpiryDate || state.expiry_date || !state.agreement_id) return
+    setState((p) => ({ ...p, expiry_date: paramExpiryDate }))
+  }, [paramExpiryDate, state.expiry_date, state.agreement_id])
+
+  // Auto-default the organiser: query param > existing campaign > user profile
+  useEffect(() => {
+    if (!leadOrganisers || state.organiser_id) return
+
+    if (paramOrganiserId) {
+      setState((p) => ({ ...p, organiser_id: paramOrganiserId }))
+      return
+    }
+
+    if (existingCampaign?.organiser_id) {
+      setState((p) => ({ ...p, organiser_id: existingCampaign.organiser_id as number }))
+      return
+    }
+
+    if (!myProfile) return
 
     if (myProfile.work_role === 'lead_organiser' && myProfile.organiser_id) {
       setState((p) => ({ ...p, organiser_id: myProfile.organiser_id as number }))
@@ -124,7 +200,7 @@ export function CampaignCreationWizard() {
         setState((p) => ({ ...p, organiser_id: manager.organiser_id }))
       }
     }
-  }, [myProfile, leadOrganisers, state.organiser_id])
+  }, [myProfile, leadOrganisers, state.organiser_id, paramOrganiserId, existingCampaign])
 
   const progress = ((step - 1) / (STEPS.length - 1)) * 100
 
@@ -218,6 +294,8 @@ export function CampaignCreationWizard() {
     })
   }
 
+  const isSubmitting = createCampaign.isPending || addPlan.isPending
+
   async function handleSubmit() {
     if (!state.organiser_id) {
       toast.error('Please select a lead organiser')
@@ -229,22 +307,36 @@ export function CampaignCreationWizard() {
     }
 
     try {
-      const campaign = await createCampaign.mutateAsync({
-        name: state.campaign_name,
-        description: state.description,
-        campaign_type: 'bargaining',
-        organiser_id: state.organiser_id,
-        start_date: state.stage_dates[0]?.planned_start || format(new Date(), 'yyyy-MM-dd'),
-        agreement_id: state.agreement_id,
-        expiry_date: state.expiry_date,
-        msd_required: state.msd_required,
-        stage_dates: state.stage_dates,
-      })
+      if (isLinkedMode && linkedCampaignId) {
+        await addPlan.mutateAsync({
+          campaign_id: linkedCampaignId,
+          organiser_id: state.organiser_id,
+          start_date: state.stage_dates[0]?.planned_start || format(new Date(), 'yyyy-MM-dd'),
+          agreement_id: state.agreement_id,
+          expiry_date: state.expiry_date,
+          stage_dates: state.stage_dates,
+        })
 
-      toast.success('Campaign created successfully')
-      router.push(`/campaigns/${campaign.campaign_id}`)
+        toast.success('Campaign plan created successfully')
+        router.push(`/campaigns/${linkedCampaignId}`)
+      } else {
+        const campaign = await createCampaign.mutateAsync({
+          name: state.campaign_name,
+          description: state.description,
+          campaign_type: existingCampaign?.campaign_type || 'bargaining',
+          organiser_id: state.organiser_id,
+          start_date: state.stage_dates[0]?.planned_start || format(new Date(), 'yyyy-MM-dd'),
+          agreement_id: state.agreement_id,
+          expiry_date: state.expiry_date,
+          msd_required: state.msd_required,
+          stage_dates: state.stage_dates,
+        })
+
+        toast.success('Campaign created successfully')
+        router.push(`/campaigns/${campaign.campaign_id}`)
+      }
     } catch (error) {
-      toast.error('Failed to create campaign. Please try again.')
+      toast.error('Failed to create campaign plan. Please try again.')
       console.error(error)
     }
   }
@@ -255,8 +347,28 @@ export function CampaignCreationWizard() {
 
   const daysToPane = state.expiry_date ? (daysToExpiry || 0) - 30 : null
 
+  if (isLinkedMode && existingCampaignLoading) {
+    return (
+      <div className="max-w-3xl mx-auto py-12 text-center text-muted-foreground text-sm">
+        Loading campaign details...
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-3xl mx-auto">
+      {/* Linked campaign banner */}
+      {isLinkedMode && existingCampaign && (
+        <div className="mb-6 rounded-lg bg-blue-50 border border-blue-200 p-4">
+          <p className="text-sm font-semibold text-blue-900">
+            Adding campaign plan to: {existingCampaign.name}
+          </p>
+          <p className="text-xs text-blue-700 mt-1">
+            The campaign was created in the Organising DB. This wizard will add stage plans, gates, and timelines.
+          </p>
+        </div>
+      )}
+
       {/* Progress header */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
@@ -400,7 +512,11 @@ export function CampaignCreationWizard() {
         <Card>
           <CardHeader>
             <CardTitle>Set Campaign Parameters</CardTitle>
-            <CardDescription>Configure the campaign name, lead organiser and key settings.</CardDescription>
+            <CardDescription>
+              {isLinkedMode
+                ? 'Confirm the lead organiser and key settings for this campaign plan.'
+                : 'Configure the campaign name, lead organiser and key settings.'}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-2">
@@ -410,6 +526,8 @@ export function CampaignCreationWizard() {
                 value={state.campaign_name}
                 onChange={(e) => setState((p) => ({ ...p, campaign_name: e.target.value }))}
                 placeholder="e.g. Chevron EBA 2026"
+                readOnly={isLinkedMode}
+                className={isLinkedMode ? 'bg-muted cursor-not-allowed' : ''}
               />
             </div>
 
@@ -421,6 +539,8 @@ export function CampaignCreationWizard() {
                 onChange={(e) => setState((p) => ({ ...p, description: e.target.value }))}
                 placeholder="Brief description of this campaign..."
                 rows={3}
+                readOnly={isLinkedMode}
+                className={isLinkedMode ? 'bg-muted cursor-not-allowed' : ''}
               />
             </div>
 
@@ -588,9 +708,9 @@ export function CampaignCreationWizard() {
         ) : (
           <Button
             onClick={handleSubmit}
-            disabled={createCampaign.isPending || !state.organiser_id || !state.campaign_name}
+            disabled={isSubmitting || !state.organiser_id || !state.campaign_name}
           >
-            {createCampaign.isPending ? 'Creating...' : 'Create Campaign'}
+            {isSubmitting ? 'Creating...' : isLinkedMode ? 'Create Campaign Plan' : 'Create Campaign'}
           </Button>
         )}
       </div>

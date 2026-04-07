@@ -10,6 +10,8 @@ export type UnionMembershipTypeKey =
 
 export interface ParsedWorkerRow {
   rowIndex: number;
+  /** External reference / member number from source system. Always null in group format. */
+  referenceId: string | null;
   rawName: string;
   firstName: string;
   lastName: string;
@@ -422,6 +424,7 @@ export async function POST(request: NextRequest) {
 
       currentRows.push({
         rowIndex,
+        referenceId: null, // group format has no reference ID column
         rawName,
         firstName,
         lastName,

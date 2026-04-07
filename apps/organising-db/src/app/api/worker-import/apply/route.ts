@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 
 export interface WorkerImportRow {
   rowIndex: number;
+  /** External reference / member number from source system */
+  referenceId: string | null;
   firstName: string;
   lastName: string;
   preferredName: string | null;
@@ -15,6 +17,10 @@ export interface WorkerImportRow {
   memberRoleTypeId?: number | null;
   unionId: number | null;
   resignationDate: string | null;
+  /** Original join date */
+  joinDate: string | null;
+  /** Latest re-join date — only advanced if more recent than existing */
+  rejoinDate: string | null;
   worksiteId: number | null;
   employerId: number | null;
   rawMembershipStatus: string;
@@ -95,16 +101,18 @@ export async function POST(request: NextRequest) {
       row.unionMembershipTypeKey === "resigned_member" ||
       (resignedMembershipId != null && unionMembershipTypeId === resignedMembershipId);
 
-    const workerData = {
+    const workerData: Record<string, unknown> = {
       first_name: row.firstName.trim(),
       last_name: row.lastName.trim(),
       preferred_name: row.preferredName || null,
+      reference_id: row.referenceId || null,
       email: row.email || null,
       phone: row.phone || null,
       union_membership_type_id: unionMembershipTypeId,
       member_role_type_id: row.memberRoleTypeId ?? null,
       union_id: row.unionId,
       resignation_date: row.resignationDate,
+      join_date: row.joinDate || null,
       worksite_id: row.worksiteId,
       employer_id: row.employerId ?? null,
       notes: row.notes || null,
@@ -113,6 +121,19 @@ export async function POST(request: NextRequest) {
     };
 
     if (row.action === "update" && row.existingWorkerId) {
+      // Apply rejoin_date recency guard: only advance if incoming date is more recent
+      if (row.rejoinDate) {
+        const { data: existing } = await supabase
+          .from("workers")
+          .select("rejoin_date")
+          .eq("worker_id", row.existingWorkerId)
+          .single();
+        const existingRejoin = existing?.rejoin_date as string | null;
+        if (!existingRejoin || row.rejoinDate > existingRejoin) {
+          workerData.rejoin_date = row.rejoinDate;
+        }
+      }
+
       const { error } = await supabase
         .from("workers")
         .update(workerData)
@@ -126,6 +147,9 @@ export async function POST(request: NextRequest) {
         updated++;
       }
     } else if (row.action === "create") {
+      // For creates, set rejoin_date directly with no guard needed
+      if (row.rejoinDate) workerData.rejoin_date = row.rejoinDate;
+
       const { error } = await supabase.from("workers").insert({
         ...workerData,
         engagement_score: 0,

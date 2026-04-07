@@ -65,6 +65,7 @@ type WizardStep =
 type FileFormat = "group" | "header";
 
 type MappableField =
+  | "reference_id"
   | "first_name"
   | "last_name"
   | "full_name"
@@ -74,6 +75,8 @@ type MappableField =
   | "worksite"
   | "membership_status"
   | "member_role_type"
+  | "join_date"
+  | "rejoin_date"
   | "notes"
   | "ignore";
 
@@ -112,12 +115,19 @@ interface ReviewRow extends ParsedWorkerRow {
   resolvedWorksiteName: string | null;
   /** Notes from a mapped column or user-entered */
   notes: string | null;
+  /** Join date from mapped column (ISO date string or null) */
+  joinDate: string | null;
+  /** Re-join date from mapped column (ISO date string or null) */
+  rejoinDate: string | null;
   overrideFirstName?: string;
   overrideLastName?: string;
   overridePreferredName?: string;
+  overrideReferenceId?: string;
   overridePhone?: string;
   overrideEmail?: string;
   overrideNotes?: string;
+  overrideJoinDate?: string;
+  overrideRejoinDate?: string;
   /** When set (including null), overrides parsed unionMembershipTypeKey → id */
   overrideUnionMembershipTypeId?: number | null;
   /** Role type from value-mapping step */
@@ -132,7 +142,7 @@ interface DedupMatch {
   existingEmail: string | null;
   existingPhone: string | null;
   existingWorksiteName: string | null;
-  matchedOn: "email" | "phone";
+  matchedOn: "reference_id" | "email" | "phone";
   action: "update" | "skip" | "create";
 }
 
@@ -163,6 +173,7 @@ const ALL_STEPS: { id: WizardStep; label: string }[] = [
 ];
 
 const MAPPABLE_FIELDS: { value: MappableField; label: string }[] = [
+  { value: "reference_id", label: "Reference ID / Member Number" },
   { value: "first_name", label: "First Name" },
   { value: "last_name", label: "Last Name" },
   { value: "full_name", label: "Full Name (split)" },
@@ -172,12 +183,21 @@ const MAPPABLE_FIELDS: { value: MappableField; label: string }[] = [
   { value: "worksite", label: "Worksite" },
   { value: "membership_status", label: "Membership Status (map values)" },
   { value: "member_role_type", label: "Role Type (map values)" },
+  { value: "join_date", label: "Join Date" },
+  { value: "rejoin_date", label: "Re-join Date" },
   { value: "notes", label: "Notes / Comments" },
   { value: "ignore", label: "(Ignore)" },
 ];
 
 function autoMapHeader(header: string): MappableField {
   const h = header.toLowerCase().replace(/[\s_-]/g, "");
+  if (
+    [
+      "referenceid", "refid", "membernumber", "membernum", "memberno",
+      "employeeid", "externalid", "memberid", "refno", "referenceno",
+    ].includes(h)
+  )
+    return "reference_id";
   if (["firstname", "givenname", "forename", "given", "first"].includes(h)) return "first_name";
   if (["lastname", "surname", "familyname", "last"].includes(h)) return "last_name";
   if (["name", "fullname", "workername", "employeename", "employeefullname"].includes(h))
@@ -201,8 +221,32 @@ function autoMapHeader(header: string): MappableField {
   if (["membership", "membershipstatus", "status", "memberstatus", "membertype"].includes(h))
     return "membership_status";
   if (["roletype", "role", "memberroletype"].includes(h)) return "member_role_type";
+  if (["joindate", "joiningdate", "memberjoindate", "datejoined", "memberjoindate"].includes(h))
+    return "join_date";
+  if (
+    ["rejoindate", "rejoineddate", "recommencedate", "dateofrejoin", "recomdate"].includes(h)
+  )
+    return "rejoin_date";
   if (["notes", "note", "comments", "comment", "remarks", "remark"].includes(h)) return "notes";
   return "ignore";
+}
+
+// Client-side date parser — handles dd/mm/yyyy, dd-mm-yyyy and ISO formats
+function parseIsoDate(raw: string | null | undefined): string | null {
+  if (!raw || !raw.trim()) return null;
+  const s = raw.trim();
+  // dd/mm/yyyy or dd-mm-yyyy or dd.mm.yyyy
+  const dmy = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+  if (dmy) {
+    const [, day, month, year] = dmy;
+    const fullYear = year.length === 2 ? `20${year}` : year;
+    const d = new Date(`${fullYear}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`);
+    if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+  }
+  // Try ISO / other standard formats
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+  return null;
 }
 
 // Client-side name parser — mirrors server parseName in parse/route.ts
@@ -697,6 +741,7 @@ export function WorkerImportWizard({
     );
 
     if (fileFormat === "header") {
+      const referenceIdCol = columnMappings.find((m) => m.field === "reference_id")?.header ?? "";
       const firstNameCol = columnMappings.find((m) => m.field === "first_name")?.header ?? "";
       const lastNameCol = columnMappings.find((m) => m.field === "last_name")?.header ?? "";
       const fullNameCol = columnMappings.find((m) => m.field === "full_name")?.header ?? "";
@@ -706,6 +751,8 @@ export function WorkerImportWizard({
       const worksiteCol = columnMappings.find((m) => m.field === "worksite")?.header ?? "";
       const membershipCol = columnMappings.find((m) => m.field === "membership_status")?.header ?? "";
       const roleTypeCol = columnMappings.find((m) => m.field === "member_role_type")?.header ?? "";
+      const joinDateCol = columnMappings.find((m) => m.field === "join_date")?.header ?? "";
+      const rejoinDateCol = columnMappings.find((m) => m.field === "rejoin_date")?.header ?? "";
       const notesCol = columnMappings.find((m) => m.field === "notes")?.header ?? "";
 
       const rows: ReviewRow[] = headerRows
@@ -762,11 +809,14 @@ export function WorkerImportWizard({
 
           return {
             rowIndex: i,
+            referenceId: referenceIdCol ? String(row[referenceIdCol] ?? "").trim() || null : null,
             rawName: `${firstName} ${lastName}`.trim(),
             firstName,
             lastName,
             preferredName,
             notes: notesCol ? String(row[notesCol] ?? "").trim() || null : null,
+            joinDate: joinDateCol ? parseIsoDate(String(row[joinDateCol] ?? "").trim()) : null,
+            rejoinDate: rejoinDateCol ? parseIsoDate(String(row[rejoinDateCol] ?? "").trim()) : null,
             rawMembershipStatus: membershipCol ? String(row[membershipCol] ?? "").trim() : "",
             unionMembershipTypeKey,
             ...(overrideUnionMembershipTypeId !== undefined
@@ -795,6 +845,8 @@ export function WorkerImportWizard({
         return g.rows.map((row) => ({
           ...row,
           notes: null,
+          joinDate: null,
+          rejoinDate: null,
           groupName: g.groupName,
           resolvedWorksiteId: resolution?.worksiteId ?? null,
           resolvedWorksiteName: resolution?.worksiteName ?? null,
@@ -810,6 +862,9 @@ export function WorkerImportWizard({
     setIsLoading(true);
     setStep("dedup_check");
 
+    const refIds = reviewRows
+      .map((r) => r.overrideReferenceId ?? r.referenceId)
+      .filter((x): x is string => !!x);
     const emails = reviewRows
       .map((r) => r.overrideEmail ?? r.email)
       .filter((e): e is string => !!e);
@@ -818,24 +873,28 @@ export function WorkerImportWizard({
       .filter((p): p is string => !!p);
 
     const matches: DedupMatch[] = [];
+    const worksiteSelect = "worker_id, first_name, last_name, email, phone, reference_id, worksite:worksites(worksite_name)";
 
-    if (emails.length > 0) {
-      const { data: emailMatches } = await supabase
+    function extractWorksite(raw: unknown): string | null {
+      const worksiteRaw = raw as unknown;
+      const ws = Array.isArray(worksiteRaw)
+        ? (worksiteRaw[0] as { worksite_name: string } | undefined) ?? null
+        : (worksiteRaw as { worksite_name: string } | null);
+      return ws?.worksite_name ?? null;
+    }
+
+    // 1. Reference ID (primary — highest confidence, exact unique key)
+    if (refIds.length > 0) {
+      const { data: refMatches } = await supabase
         .from("workers")
-        .select(
-          "worker_id, first_name, last_name, email, phone, worksite:worksites(worksite_name)"
-        )
-        .in("email", emails);
+        .select(worksiteSelect)
+        .in("reference_id", refIds);
 
-      for (const existing of emailMatches ?? []) {
+      for (const existing of refMatches ?? []) {
         const row = reviewRows.find(
-          (r) => (r.overrideEmail ?? r.email) === existing.email
+          (r) => (r.overrideReferenceId ?? r.referenceId) === existing.reference_id
         );
         if (row) {
-          const worksiteRaw = existing.worksite as unknown;
-          const worksite = Array.isArray(worksiteRaw)
-            ? (worksiteRaw[0] as { worksite_name: string } | undefined) ?? null
-            : (worksiteRaw as { worksite_name: string } | null);
           matches.push({
             rowIndex: row.rowIndex,
             existingWorkerId: existing.worker_id,
@@ -843,7 +902,37 @@ export function WorkerImportWizard({
             existingLastName: existing.last_name,
             existingEmail: existing.email,
             existingPhone: existing.phone,
-            existingWorksiteName: worksite?.worksite_name ?? null,
+            existingWorksiteName: extractWorksite(existing.worksite),
+            matchedOn: "reference_id",
+            action: "update",
+          });
+        }
+      }
+    }
+
+    // 2. Email (for rows not already matched by reference_id)
+    if (emails.length > 0) {
+      const matchedRowIndices = new Set(matches.map((m) => m.rowIndex));
+      const { data: emailMatches } = await supabase
+        .from("workers")
+        .select(worksiteSelect)
+        .in("email", emails);
+
+      for (const existing of emailMatches ?? []) {
+        const row = reviewRows.find(
+          (r) =>
+            !matchedRowIndices.has(r.rowIndex) &&
+            (r.overrideEmail ?? r.email) === existing.email
+        );
+        if (row) {
+          matches.push({
+            rowIndex: row.rowIndex,
+            existingWorkerId: existing.worker_id,
+            existingFirstName: existing.first_name,
+            existingLastName: existing.last_name,
+            existingEmail: existing.email,
+            existingPhone: existing.phone,
+            existingWorksiteName: extractWorksite(existing.worksite),
             matchedOn: "email",
             action: "update",
           });
@@ -851,13 +940,12 @@ export function WorkerImportWizard({
       }
     }
 
+    // 3. Phone (for rows not yet matched)
     if (phones.length > 0) {
       const matchedRowIndices = new Set(matches.map((m) => m.rowIndex));
       const { data: phoneMatches } = await supabase
         .from("workers")
-        .select(
-          "worker_id, first_name, last_name, email, phone, worksite:worksites(worksite_name)"
-        )
+        .select(worksiteSelect)
         .in("phone", phones);
 
       for (const existing of phoneMatches ?? []) {
@@ -867,10 +955,6 @@ export function WorkerImportWizard({
             (r.overridePhone ?? r.phone) === existing.phone
         );
         if (row) {
-          const worksiteRaw = existing.worksite as unknown;
-          const worksite = Array.isArray(worksiteRaw)
-            ? (worksiteRaw[0] as { worksite_name: string } | undefined) ?? null
-            : (worksiteRaw as { worksite_name: string } | null);
           matches.push({
             rowIndex: row.rowIndex,
             existingWorkerId: existing.worker_id,
@@ -878,7 +962,7 @@ export function WorkerImportWizard({
             existingLastName: existing.last_name,
             existingEmail: existing.email,
             existingPhone: existing.phone,
-            existingWorksiteName: worksite?.worksite_name ?? null,
+            existingWorksiteName: extractWorksite(existing.worksite),
             matchedOn: "phone",
             action: "update",
           });
@@ -912,6 +996,7 @@ export function WorkerImportWizard({
 
       return {
         rowIndex: row.rowIndex,
+        referenceId: row.overrideReferenceId ?? row.referenceId ?? null,
         firstName: row.overrideFirstName ?? row.firstName,
         lastName: row.overrideLastName ?? row.lastName,
         preferredName: row.overridePreferredName ?? row.preferredName ?? null,
@@ -922,6 +1007,8 @@ export function WorkerImportWizard({
         memberRoleTypeId: row.resolvedMemberRoleTypeId ?? null,
         unionId: row.unionId,
         resignationDate: row.resignationDate,
+        joinDate: row.overrideJoinDate ?? row.joinDate ?? null,
+        rejoinDate: row.overrideRejoinDate ?? row.rejoinDate ?? null,
         worksiteId: row.resolvedWorksiteId,
         employerId: selectedEmployerId,
         rawMembershipStatus: row.rawMembershipStatus,
@@ -1842,12 +1929,15 @@ export function WorkerImportWizard({
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="text-xs">Ref ID</TableHead>
                 <TableHead className="text-xs">First Name</TableHead>
                 <TableHead className="text-xs">Last Name</TableHead>
                 <TableHead className="text-xs">Preferred Name</TableHead>
                 <TableHead className="text-xs">Phone</TableHead>
                 <TableHead className="text-xs">Email</TableHead>
                 <TableHead className="text-xs">Member type</TableHead>
+                <TableHead className="text-xs">Join Date</TableHead>
+                <TableHead className="text-xs">Re-join Date</TableHead>
                 <TableHead className="text-xs">Notes</TableHead>
                 <TableHead className="text-xs">Worksite</TableHead>
                 <TableHead className="text-xs w-8"></TableHead>
@@ -1859,6 +1949,18 @@ export function WorkerImportWizard({
                   key={row.rowIndex}
                   className={row.parseWarnings.length > 0 ? "bg-amber-50" : ""}
                 >
+                  <TableCell className="p-1">
+                    <Input
+                      value={row.overrideReferenceId ?? row.referenceId ?? ""}
+                      onChange={(e) =>
+                        updateReviewRow(row.rowIndex, {
+                          overrideReferenceId: e.target.value || undefined,
+                        })
+                      }
+                      className="h-7 text-xs font-mono"
+                      placeholder="—"
+                    />
+                  </TableCell>
                   <TableCell className="p-1">
                     <Input
                       value={row.overrideFirstName ?? row.firstName}
@@ -1941,6 +2043,30 @@ export function WorkerImportWizard({
                         ))}
                       </SelectContent>
                     </Select>
+                  </TableCell>
+                  <TableCell className="p-1">
+                    <Input
+                      value={row.overrideJoinDate ?? row.joinDate ?? ""}
+                      onChange={(e) =>
+                        updateReviewRow(row.rowIndex, {
+                          overrideJoinDate: e.target.value || undefined,
+                        })
+                      }
+                      className="h-7 text-xs"
+                      placeholder="yyyy-mm-dd"
+                    />
+                  </TableCell>
+                  <TableCell className="p-1">
+                    <Input
+                      value={row.overrideRejoinDate ?? row.rejoinDate ?? ""}
+                      onChange={(e) =>
+                        updateReviewRow(row.rowIndex, {
+                          overrideRejoinDate: e.target.value || undefined,
+                        })
+                      }
+                      className="h-7 text-xs"
+                      placeholder="yyyy-mm-dd"
+                    />
                   </TableCell>
                   <TableCell className="p-1">
                     <Input
@@ -2037,8 +2163,11 @@ export function WorkerImportWizard({
                   <div className="text-xs text-muted-foreground">
                     Matched on{" "}
                     <span className="font-medium text-foreground">
-                      {match.matchedOn}
+                      {match.matchedOn === "reference_id" ? "Reference ID" : match.matchedOn}
                     </span>
+                    {match.matchedOn === "reference_id" && (
+                      <Badge variant="default" className="ml-2 text-[10px] px-1.5 h-4">Primary key</Badge>
+                    )}
                   </div>
                 </div>
 

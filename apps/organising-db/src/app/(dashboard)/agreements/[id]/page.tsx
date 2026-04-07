@@ -373,13 +373,18 @@ export default function AgreementDetailPage() {
       if (rlErr) throw rlErr;
 
       const seen = new Set<number>();
-      const result: Array<{ campaign_id: number; name: string; status: string }> = [];
+      type CampaignBrief = { campaign_id: number; name: string; status: string };
+      const result: CampaignBrief[] = [];
 
       for (const tl of timelineLinks ?? []) {
-        const c = tl.campaigns as { campaign_id: number; name: string; status: string } | null;
-        if (c && !seen.has(c.campaign_id)) {
-          seen.add(c.campaign_id);
-          result.push(c);
+        const embed = tl.campaigns as CampaignBrief | CampaignBrief[] | null;
+        const fromTimeline: CampaignBrief[] =
+          embed == null ? [] : Array.isArray(embed) ? embed : [embed];
+        for (const c of fromTimeline) {
+          if (!seen.has(c.campaign_id)) {
+            seen.add(c.campaign_id);
+            result.push(c);
+          }
         }
       }
       for (const c of replacementLinks ?? []) {

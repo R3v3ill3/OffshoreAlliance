@@ -1,6 +1,7 @@
 'use client'
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { Database } from '@/types/database'
 import { createClient } from '@/lib/supabase/client'
 import { syncAmbitionTargetDatesForCampaign } from '@/lib/supabase/syncAmbitionTargetDates'
 
@@ -472,16 +473,15 @@ export function useCreateCampaign() {
       stage_dates?: Array<{ stage_number: number; planned_start: string; planned_end: string; duration_weeks: number }>
       gate_overrides?: Partial<Record<number, { enforcement_type: string }>>
     }) => {
-      const campaignInsert: Record<string, unknown> = {
+      type CampaignInsert = Database['public']['Tables']['campaigns']['Insert']
+      const campaignInsert: CampaignInsert = {
         name: payload.name,
         description: payload.description,
         campaign_type: payload.campaign_type,
         organiser_id: payload.organiser_id,
         start_date: payload.start_date,
         status: 'active',
-      }
-      if (payload.msd_required != null) {
-        campaignInsert.msd_required = payload.msd_required
+        ...(payload.msd_required != null ? { msd_required: payload.msd_required } : {}),
       }
 
       const { data: campaign, error: campaignError } = await supabase

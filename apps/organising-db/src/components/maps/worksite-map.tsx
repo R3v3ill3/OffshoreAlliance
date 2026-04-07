@@ -25,6 +25,7 @@ interface WorksiteMapProps {
   markerColorResolver?: (worksite: Worksite) => string | undefined;
   popupExtraContent?: (worksite: Worksite) => ReactNode;
   selectedWorksiteId?: number | null;
+  useEurekaMarkers?: boolean;
 }
 
 const WORKSITE_TYPE_COLORS: Record<string, string> = {
@@ -54,6 +55,7 @@ export function WorksiteMap({
   markerColorResolver,
   popupExtraContent,
   selectedWorksiteId = null,
+  useEurekaMarkers = false,
 }: WorksiteMapProps) {
   const [mounted, setMounted] = useState(false);
   const [filterType, setFilterType] = useState<string>("all");
@@ -65,6 +67,8 @@ export function WorksiteMap({
     Popup: React.ComponentType<Record<string, unknown>>;
     CircleMarker: React.ComponentType<Record<string, unknown>>;
   } | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [eurekaIcon, setEurekaIcon] = useState<any>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -78,6 +82,19 @@ export function WorksiteMap({
       });
     });
 
+    if (useEurekaMarkers) {
+      import("leaflet").then((L) => {
+        setEurekaIcon(
+          L.icon({
+            iconUrl: "/eurekaflag.gif",
+            iconSize: [24, 28],
+            iconAnchor: [12, 28],
+            popupAnchor: [0, -28],
+          })
+        );
+      });
+    }
+
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
@@ -86,7 +103,7 @@ export function WorksiteMap({
     return () => {
       document.head.removeChild(link);
     };
-  }, []);
+  }, [useEurekaMarkers]);
 
   const filtered = worksites.filter((ws) => {
     if (filterType !== "all" && ws.worksite_type !== filterType) return false;
@@ -112,7 +129,7 @@ export function WorksiteMap({
     );
   }
 
-  const { MapContainer, TileLayer, CircleMarker, Popup } = MapComponents;
+  const { MapContainer, TileLayer, CircleMarker, Marker, Popup } = MapComponents;
 
   const center = geoWorksites.length > 0
     ? {
@@ -120,6 +137,49 @@ export function WorksiteMap({
         lng: geoWorksites.reduce((s, w) => s + (w.longitude || 0), 0) / geoWorksites.length,
       }
     : { lat: -20.7, lng: 116.8 };
+
+  const renderPopup = (ws: (typeof geoWorksites)[number]) => (
+    <Popup>
+      <div className="min-w-48">
+        <h3 className="font-semibold text-sm">{ws.worksite_name}</h3>
+        <div className="mt-1 space-y-0.5 text-xs">
+          <p><span className="font-medium">Type:</span> {ws.worksite_type.replace(/_/g, " ")}</p>
+          {ws.operator_name && (
+            <p><span className="font-medium">Operator:</span> {ws.operator_name}</p>
+          )}
+          {ws.location_description && (
+            <p><span className="font-medium">Location:</span> {ws.location_description}</p>
+          )}
+          {ws.basin && (
+            <p><span className="font-medium">Basin:</span> {ws.basin}</p>
+          )}
+          <p>
+            <span className="font-medium">Status:</span>{" "}
+            {ws.is_offshore ? "Offshore" : "Onshore"} | {ws.is_active ? "Active" : "Inactive"}
+          </p>
+          {ws.agreement_count !== undefined && (
+            <p><span className="font-medium">Agreements:</span> {ws.agreement_count}</p>
+          )}
+          {ws.worker_count !== undefined && (
+            <p><span className="font-medium">Workers:</span> {ws.worker_count}</p>
+          )}
+          {popupExtraContent && (
+            <div className="pt-1">
+              {popupExtraContent(ws)}
+            </div>
+          )}
+        </div>
+        {onWorksiteClick && (
+          <button
+            className="mt-2 text-xs text-blue-600 hover:underline"
+            onClick={() => onWorksiteClick(ws)}
+          >
+            View Details
+          </button>
+        )}
+      </div>
+    </Popup>
+  );
 
   return (
     <div className="space-y-4">
@@ -169,69 +229,43 @@ export function WorksiteMap({
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          {geoWorksites.map((ws) => (
-            <CircleMarker
-              key={ws.worksite_id}
-              center={[ws.latitude!, ws.longitude!]}
-              radius={selectedWorksiteId === ws.worksite_id ? 11 : 8}
-              pathOptions={{
-                color:
-                  markerColorResolver?.(ws) ||
-                  WORKSITE_TYPE_COLORS[ws.worksite_type] ||
-                  "#9CA3AF",
-                fillColor:
-                  markerColorResolver?.(ws) ||
-                  WORKSITE_TYPE_COLORS[ws.worksite_type] ||
-                  "#9CA3AF",
-                fillOpacity: 0.7,
-                weight: selectedWorksiteId === ws.worksite_id ? 3 : 2,
-              }}
-              eventHandlers={{
-                click: () => onWorksiteClick?.(ws),
-              }}
-            >
-              <Popup>
-                <div className="min-w-48">
-                  <h3 className="font-semibold text-sm">{ws.worksite_name}</h3>
-                  <div className="mt-1 space-y-0.5 text-xs">
-                    <p><span className="font-medium">Type:</span> {ws.worksite_type.replace(/_/g, " ")}</p>
-                    {ws.operator_name && (
-                      <p><span className="font-medium">Operator:</span> {ws.operator_name}</p>
-                    )}
-                    {ws.location_description && (
-                      <p><span className="font-medium">Location:</span> {ws.location_description}</p>
-                    )}
-                    {ws.basin && (
-                      <p><span className="font-medium">Basin:</span> {ws.basin}</p>
-                    )}
-                    <p>
-                      <span className="font-medium">Status:</span>{" "}
-                      {ws.is_offshore ? "Offshore" : "Onshore"} | {ws.is_active ? "Active" : "Inactive"}
-                    </p>
-                    {ws.agreement_count !== undefined && (
-                      <p><span className="font-medium">Agreements:</span> {ws.agreement_count}</p>
-                    )}
-                    {ws.worker_count !== undefined && (
-                      <p><span className="font-medium">Workers:</span> {ws.worker_count}</p>
-                    )}
-                    {popupExtraContent && (
-                      <div className="pt-1">
-                        {popupExtraContent(ws)}
-                      </div>
-                    )}
-                  </div>
-                  {onWorksiteClick && (
-                    <button
-                      className="mt-2 text-xs text-blue-600 hover:underline"
-                      onClick={() => onWorksiteClick(ws)}
-                    >
-                      View Details
-                    </button>
-                  )}
-                </div>
-              </Popup>
-            </CircleMarker>
-          ))}
+          {geoWorksites.map((ws) =>
+            useEurekaMarkers && eurekaIcon ? (
+              <Marker
+                key={ws.worksite_id}
+                position={[ws.latitude!, ws.longitude!]}
+                icon={eurekaIcon}
+                eventHandlers={{
+                  click: () => onWorksiteClick?.(ws),
+                }}
+              >
+                {renderPopup(ws)}
+              </Marker>
+            ) : (
+              <CircleMarker
+                key={ws.worksite_id}
+                center={[ws.latitude!, ws.longitude!]}
+                radius={selectedWorksiteId === ws.worksite_id ? 11 : 8}
+                pathOptions={{
+                  color:
+                    markerColorResolver?.(ws) ||
+                    WORKSITE_TYPE_COLORS[ws.worksite_type] ||
+                    "#9CA3AF",
+                  fillColor:
+                    markerColorResolver?.(ws) ||
+                    WORKSITE_TYPE_COLORS[ws.worksite_type] ||
+                    "#9CA3AF",
+                  fillOpacity: 0.7,
+                  weight: selectedWorksiteId === ws.worksite_id ? 3 : 2,
+                }}
+                eventHandlers={{
+                  click: () => onWorksiteClick?.(ws),
+                }}
+              >
+                {renderPopup(ws)}
+              </CircleMarker>
+            )
+          )}
         </MapContainer>
       </div>
 

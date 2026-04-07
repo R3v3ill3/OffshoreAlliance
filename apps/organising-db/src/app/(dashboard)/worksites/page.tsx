@@ -27,8 +27,9 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus } from "lucide-react";
+import { Plus, List, MapIcon } from "lucide-react";
 import { TermHint } from "@/components/ui/term-hint";
+import { WorksiteMap } from "@/components/maps/worksite-map";
 
 const WORKSITE_TYPES: WorksiteType[] = [
   "FPSO",
@@ -89,6 +90,7 @@ export default function WorksitesPage() {
   const [error, setError] = useState<string | null>(null);
   const [scopeFilter, setScopeFilter] = useState<string>("all");
   const [offshoreFilter, setOffshoreFilter] = useState<OffshoreFilter>("all");
+  const [viewMode, setViewMode] = useState<"table" | "map">("table");
 
   const { data: worksites = [], isLoading, isError } = useQuery({
     queryKey: ["worksites"],
@@ -177,6 +179,26 @@ export default function WorksitesPage() {
     }
     return list;
   }, [worksites, offshoreFilter, scopeFilter, worksiteScopeLinks]);
+
+  const geoWorksites = useMemo(
+    () => filteredWorksites.filter((w) => w.latitude != null && w.longitude != null),
+    [filteredWorksites]
+  );
+
+  const nonGeoWorksites = useMemo(
+    () => filteredWorksites.filter((w) => w.latitude == null || w.longitude == null),
+    [filteredWorksites]
+  );
+
+  const mapWorksites = useMemo(
+    () =>
+      filteredWorksites.map((w) => ({
+        ...w,
+        operator_name: w.operator?.employer_name,
+        agreement_count: w.agreement_worksites?.length ?? 0,
+      })),
+    [filteredWorksites]
+  );
 
   const columns: Column<WorksiteRow>[] = useMemo(
     () => [
@@ -616,18 +638,67 @@ export default function WorksitesPage() {
               ))}
           </SelectContent>
         </Select>
+        <div className="ml-auto flex gap-1">
+          <Button
+            variant={viewMode === "table" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setViewMode("table")}
+          >
+            <List className="h-4 w-4" />
+            Table
+          </Button>
+          <Button
+            variant={viewMode === "map" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setViewMode("map")}
+          >
+            <MapIcon className="h-4 w-4" />
+            Map
+          </Button>
+        </div>
       </div>
 
-      <DataTable
-        data={filteredWorksites}
-        columns={columns}
-        searchPlaceholder="Search worksites..."
-        searchKeys={["worksite_name", "location_description"]}
-        onRowClick={(item) =>
-          router.push(`/worksites/${item.worksite_id}`)
-        }
-        loading={isLoading}
-      />
+      {viewMode === "table" ? (
+        <DataTable
+          data={filteredWorksites}
+          columns={columns}
+          searchPlaceholder="Search worksites..."
+          searchKeys={["worksite_name", "location_description"]}
+          onRowClick={(item) =>
+            router.push(`/worksites/${item.worksite_id}`)
+          }
+          loading={isLoading}
+        />
+      ) : (
+        <div className="space-y-6">
+          <WorksiteMap
+            worksites={mapWorksites}
+            height="500px"
+            showFilters={false}
+            useEurekaMarkers
+            onWorksiteClick={(ws) =>
+              router.push(`/worksites/${ws.worksite_id}`)
+            }
+          />
+
+          {nonGeoWorksites.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold text-muted-foreground">
+                Worksites Without Coordinates ({nonGeoWorksites.length})
+              </h2>
+              <DataTable
+                data={nonGeoWorksites}
+                columns={columns}
+                searchPlaceholder="Search worksites..."
+                searchKeys={["worksite_name", "location_description"]}
+                onRowClick={(item) =>
+                  router.push(`/worksites/${item.worksite_id}`)
+                }
+              />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -81,7 +81,7 @@ export function CapacitiesPanel({
     if (!options) return []
     return options.filter((o) => {
       if (!o.linked_wtp_categories || o.linked_wtp_categories.length === 0) return true
-      return o.linked_wtp_categories.some((catId) => selectedWtpCategoryIds.includes(catId))
+      return o.linked_wtp_categories.some((catId: number) => selectedWtpCategoryIds.includes(catId))
     })
   }, [options, selectedWtpCategoryIds])
 

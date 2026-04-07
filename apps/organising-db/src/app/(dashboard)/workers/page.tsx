@@ -61,7 +61,6 @@ export interface WorkerRow {
   worksite: { worksite_name: string } | null;
   union_membership_type: { display_name: string } | null;
   member_role_type: { display_name: string } | null;
-  canonical_occupation: { canonical_name: string } | null;
   [key: string]: unknown;
 }
 
@@ -88,8 +87,7 @@ export default function WorkersPage() {
            employer:employers(employer_name),
            worksite:worksites(worksite_name),
            union_membership_type:union_membership_types(display_name),
-           member_role_type:member_role_types(display_name),
-           canonical_occupation:occupations(canonical_name)`
+           member_role_type:member_role_types(display_name)`
         )
         .order("last_name", { ascending: true });
 

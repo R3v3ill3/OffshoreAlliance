@@ -1225,33 +1225,42 @@ export type Database = {
         Row: {
           anchor_worker_id: number | null
           campaign_id: number
+          commonality_logic: string | null
           created_at: string
           name: string
           ou_id: number
           ou_type: string
+          source: string
           source_metadata: Json | null
+          target_size: number | null
           total_workers_estimated: number | null
           updated_at: string
         }
         Insert: {
           anchor_worker_id?: number | null
           campaign_id: number
+          commonality_logic?: string | null
           created_at?: string
           name: string
           ou_id?: number
           ou_type: string
+          source?: string
           source_metadata?: Json | null
+          target_size?: number | null
           total_workers_estimated?: number | null
           updated_at?: string
         }
         Update: {
           anchor_worker_id?: number | null
           campaign_id?: number
+          commonality_logic?: string | null
           created_at?: string
           name?: string
           ou_id?: number
           ou_type?: string
+          source?: string
           source_metadata?: Json | null
+          target_size?: number | null
           total_workers_estimated?: number | null
           updated_at?: string
         }
@@ -1537,6 +1546,159 @@ export type Database = {
           },
         ]
       }
+      campaign_ou_candidates: {
+        Row: {
+          candidate_id: number
+          campaign_id: number
+          suggested_name: string
+          suggested_ou_type: string
+          source: string
+          source_wtp_id: number | null
+          status: string
+          accepted_ou_id: number | null
+          estimated_workers: number | null
+          commonality_logic: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          candidate_id?: number
+          campaign_id: number
+          suggested_name: string
+          suggested_ou_type: string
+          source: string
+          source_wtp_id?: number | null
+          status?: string
+          accepted_ou_id?: number | null
+          estimated_workers?: number | null
+          commonality_logic?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          candidate_id?: number
+          campaign_id?: number
+          suggested_name?: string
+          suggested_ou_type?: string
+          source?: string
+          source_wtp_id?: number | null
+          status?: string
+          accepted_ou_id?: number | null
+          estimated_workers?: number | null
+          commonality_logic?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_ou_candidates_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_ou_candidates_source_wtp_id_fkey"
+            columns: ["source_wtp_id"]
+            isOneToOne: false
+            referencedRelation: "plan_where_to_play"
+            referencedColumns: ["wtp_id"]
+          },
+          {
+            foreignKeyName: "campaign_ou_candidates_accepted_ou_id_fkey"
+            columns: ["accepted_ou_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_organising_units"
+            referencedColumns: ["ou_id"]
+          },
+        ]
+      }
+      campaign_stage_workplan_tasks: {
+        Row: {
+          task_id: number
+          campaign_id: number
+          stage_number: number
+          plan_ambition_id: number | null
+          title: string
+          description: string | null
+          task_type: string
+          status: string
+          assigned_organiser_id: number | null
+          assigned_ou_id: number | null
+          due_date: string | null
+          completed_at: string | null
+          priority: number
+          outcome_notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          task_id?: number
+          campaign_id: number
+          stage_number: number
+          plan_ambition_id?: number | null
+          title: string
+          description?: string | null
+          task_type?: string
+          status?: string
+          assigned_organiser_id?: number | null
+          assigned_ou_id?: number | null
+          due_date?: string | null
+          completed_at?: string | null
+          priority?: number
+          outcome_notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          task_id?: number
+          campaign_id?: number
+          stage_number?: number
+          plan_ambition_id?: number | null
+          title?: string
+          description?: string | null
+          task_type?: string
+          status?: string
+          assigned_organiser_id?: number | null
+          assigned_ou_id?: number | null
+          due_date?: string | null
+          completed_at?: string | null
+          priority?: number
+          outcome_notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_stage_workplan_tasks_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_stage_workplan_tasks_plan_ambition_id_fkey"
+            columns: ["plan_ambition_id"]
+            isOneToOne: false
+            referencedRelation: "plan_ambitions"
+            referencedColumns: ["ambition_id"]
+          },
+          {
+            foreignKeyName: "campaign_stage_workplan_tasks_assigned_organiser_id_fkey"
+            columns: ["assigned_organiser_id"]
+            isOneToOne: false
+            referencedRelation: "organisers"
+            referencedColumns: ["organiser_id"]
+          },
+          {
+            foreignKeyName: "campaign_stage_workplan_tasks_assigned_ou_id_fkey"
+            columns: ["assigned_ou_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_organising_units"
+            referencedColumns: ["ou_id"]
+          },
+        ]
+      }
       campaign_stage_plans: {
         Row: {
           actual_end_date: string | null
@@ -1551,6 +1713,7 @@ export type Database = {
           stage_number: number
           status: string
           updated_at: string | null
+          workplan_status: string | null
         }
         Insert: {
           actual_end_date?: string | null
@@ -1565,6 +1728,7 @@ export type Database = {
           stage_number: number
           status?: string
           updated_at?: string | null
+          workplan_status?: string | null
         }
         Update: {
           actual_end_date?: string | null

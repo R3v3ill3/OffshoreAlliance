@@ -1,6 +1,23 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 
+function isAuthLikeError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const rec = error as Record<string, unknown>;
+  const code = typeof rec.code === "string" ? rec.code.toUpperCase() : "";
+  const msg = typeof rec.message === "string" ? rec.message.toLowerCase() : "";
+
+  return (
+    code === "PGRST301" ||
+    code === "401" ||
+    code === "403" ||
+    msg.includes("jwt") ||
+    msg.includes("not authenticated") ||
+    msg.includes("unauthorized") ||
+    msg.includes("forbidden")
+  );
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -49,9 +66,17 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("Error fetching workload data:", error);
+      const status = isAuthLikeError(error) ? 401 : 500;
       return NextResponse.json(
-        { error: "Failed to fetch workload data" },
-        { status: 500 }
+        {
+          error: "Failed to fetch workload data",
+          status,
+          code: error.code ?? null,
+          details: error.details ?? null,
+          hint: error.hint ?? null,
+          message: error.message ?? null,
+        },
+        { status }
       );
     }
 
@@ -109,8 +134,9 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error in workload API route:", error);
+    const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Internal server error", message },
       { status: 500 }
     );
   }

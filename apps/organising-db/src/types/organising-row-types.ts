@@ -81,7 +81,29 @@ export type CampaignActivityKind = "task" | "assessment";
 
 export type ActivityRatingSource = "staff" | "leader_form";
 
-export type CampaignOuType = "shift" | "department" | "network" | "job_type" | "worksite";
+export type CampaignOuType =
+  | "shift"
+  | "department"
+  | "network"
+  | "job_type"
+  | "worksite"
+  | "ethnic_community"
+  | "crew_rotation"
+  | "accommodation"
+  | "work_area"
+  | "custom";
+
+export type WorkplanTaskType = "discovery" | "outreach" | "mapping" | "engagement" | "admin" | "other";
+
+export type WorkplanTaskStatus = "planned" | "in_progress" | "completed" | "blocked" | "cancelled";
+
+export type WorkplanStatus = "not_started" | "in_progress" | "completed";
+
+export type OuCandidateSource = "wtp_worksite" | "wtp_sector" | "wtp_employer" | "wtp_contact_group" | "manual" | "field_discovery";
+
+export type OuCandidateStatus = "suggested" | "accepted" | "rejected" | "merged";
+
+export type OuSource = "manual" | "wtp_seeded" | "generated" | "field_discovery";
 
 export type CampaignTaskListStatus = "draft" | "active" | "completed";
 
@@ -425,6 +447,9 @@ export interface CampaignOrganisingUnit {
   total_workers_estimated: number | null;
   source_metadata: Record<string, unknown> | null;
   anchor_worker_id: number | null;
+  commonality_logic: string | null;
+  target_size: number | null;
+  source: OuSource;
   created_at: string;
   updated_at: string;
 }
@@ -435,6 +460,65 @@ export interface CampaignWorkerOu {
   worker_id: number;
   is_primary: boolean;
   created_at: string;
+}
+
+export interface CampaignStageWorkplanTask {
+  task_id: number;
+  campaign_id: number;
+  stage_number: number;
+  plan_ambition_id: number | null;
+  title: string;
+  description: string | null;
+  task_type: WorkplanTaskType;
+  status: WorkplanTaskStatus;
+  assigned_organiser_id: number | null;
+  assigned_ou_id: number | null;
+  due_date: string | null;
+  completed_at: string | null;
+  priority: number;
+  outcome_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CampaignOuCandidate {
+  candidate_id: number;
+  campaign_id: number;
+  suggested_name: string;
+  suggested_ou_type: CampaignOuType;
+  source: OuCandidateSource;
+  source_wtp_id: number | null;
+  status: OuCandidateStatus;
+  accepted_ou_id: number | null;
+  estimated_workers: number | null;
+  commonality_logic: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CampaignOuCoverageSummary {
+  campaign_id: number;
+  total_ous: number;
+  sized_ous: number;
+  ous_with_contact: number;
+  ous_with_activist: number;
+  ous_with_delegate: number;
+  ous_with_anchor: number;
+  total_estimated_workers: number;
+  total_assigned_workers: number;
+}
+
+export interface WorkplanProgressRow {
+  campaign_id: number;
+  stage_number: number;
+  plan_ambition_id: number | null;
+  total_tasks: number;
+  completed_tasks: number;
+  in_progress_tasks: number;
+  blocked_tasks: number;
+  planned_tasks: number;
+  cancelled_tasks: number;
+  completion_pct: number;
 }
 
 export interface CampaignTaskList {

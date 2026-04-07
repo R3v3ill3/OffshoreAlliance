@@ -211,11 +211,27 @@ export default function DashboardPage() {
       );
 
       if (!response.ok) {
-        const responseText = await response.text();
-        const details = responseText ? ` - ${responseText.slice(0, 160)}` : "";
-        throw new Error(
-          `Failed to fetch workload data (status ${response.status})${details}`
-        );
+        let payload: Record<string, unknown> | null = null;
+        try {
+          payload = (await response.json()) as Record<string, unknown>;
+        } catch {
+          payload = null;
+        }
+
+        const detailMessage = typeof payload?.message === "string"
+          ? payload.message
+          : typeof payload?.error === "string"
+            ? payload.error
+            : "Unknown API error";
+        const code = typeof payload?.code === "string" ? payload.code : null;
+        const err = new Error(
+          `Failed to fetch workload data (status ${response.status}) - ${detailMessage}${code ? ` [${code}]` : ""}`
+        ) as Error & { status?: number; code?: string };
+        err.status = response.status;
+        if (code) {
+          err.code = code;
+        }
+        throw err;
       }
 
       return response.json();

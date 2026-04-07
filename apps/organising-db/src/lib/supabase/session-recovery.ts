@@ -9,7 +9,8 @@ type FailureReason =
   | "session_check_error"
   | "missing_session"
   | "probe_timeout"
-  | "probe_error";
+  | "probe_error"
+  | "workload_probe_error";
 
 export interface SessionRecoveryResult {
   ok: boolean;
@@ -24,6 +25,7 @@ interface RecoverSessionOptions {
   source: RecoverySource;
   reloadOnSuccess?: boolean;
   redirectOnFailure?: boolean;
+  validateWorkloadAccess?: boolean;
 }
 
 interface SignOutOptions {
@@ -62,6 +64,21 @@ function readErrorCode(error: unknown): string | null {
 function readErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+function buildErrorSummary(error: unknown): string {
+  if (!error || typeof error !== "object") {
+    return readErrorMessage(error);
+  }
+
+  const rec = error as Record<string, unknown>;
+  const parts = [
+    typeof rec.message === "string" ? rec.message : null,
+    typeof rec.code === "string" ? `code=${rec.code}` : null,
+    typeof rec.details === "string" ? `details=${rec.details}` : null,
+    typeof rec.hint === "string" ? `hint=${rec.hint}` : null,
+  ].filter(Boolean);
+  return parts.join(" | ") || readErrorMessage(error);
 }
 
 export function isLikelyAuthError(error: unknown): boolean {
@@ -138,6 +155,13 @@ async function failRecovery(
   clearSupabaseLocalState();
 
   if (redirectOnFailure) {
+    const shouldRedirect =
+      reason === "session_check_timeout" ||
+      reason === "session_check_error" ||
+      reason === "missing_session";
+    if (!shouldRedirect) {
+      return { ok: false, message, reasonCode: reason, redirectedToLogin: false };
+    }
     goToLogin(reason);
     return { ok: false, message, reasonCode: reason, redirectedToLogin: true };
   }
@@ -151,6 +175,7 @@ export async function recoverSessionConnection({
   source,
   reloadOnSuccess = true,
   redirectOnFailure = true,
+  validateWorkloadAccess = true,
 }: RecoverSessionOptions): Promise<SessionRecoveryResult> {
   agentDebugLog({
     location: "session-recovery.ts:recover-start",
@@ -218,7 +243,28 @@ export async function recoverSessionConnection({
   }
 
   if (probeResult.error) {
-    return failRecovery(queryClient, "probe_error", probeResult.error.message, redirectOnFailure);
+    return failRecovery(
+      queryClient,
+      "probe_error",
+      buildErrorSummary(probeResult.error),
+      redirectOnFailure
+    );
+  }
+
+  if (validateWorkloadAccess) {
+    const workloadProbeResult = await supabase.rpc("get_workload_dashboard_data", {
+      p_filter_organiser: null,
+      p_filter_status: null,
+      p_filter_days: null,
+    });
+    if (workloadProbeResult.error) {
+      return failRecovery(
+        queryClient,
+        "workload_probe_error",
+        buildErrorSummary(workloadProbeResult.error),
+        redirectOnFailure
+      );
+    }
   }
 
   await queryClient.invalidateQueries();
@@ -261,7 +307,12 @@ export async function performRobustSignOut({
   queryClient.clear();
 
   try {
-    const { error } = await supabase.auth.signOut();
+    const signOutResult = await withTimeout(
+      supabase.auth.signOut(),
+      5000,
+      new Error("Timed out while signing out")
+    );
+    const { error } = signOutResult;
     if (error) {
       agentDebugLog({
         location: "session-recovery.ts:signout-error",

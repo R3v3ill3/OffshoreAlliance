@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useWtpCategories, useAddCustomWtpOption, useWorksites, useSectors } from '@/lib/hooks/useOptions'
+import { useWtpCategories, useAddCustomWtpOption, useWorksites, useSectors, useCampaignOrganisingUnits } from '@/lib/hooks/useOptions'
 import { useAddWhereToPlay, useUpdateWhereToPlay, useDeleteWhereToPlay } from '@/lib/hooks/useStagePlan'
 import { OptionSelector, type SelectableOption } from './OptionSelector'
 import { Textarea } from '@/components/ui/textarea'
@@ -50,6 +50,7 @@ export function WhereToPlayPanel({
   const { data: categories } = useWtpCategories(stageNumber)
   const { data: worksites } = useWorksites(agreementId)
   const { data: sectors } = useSectors()
+  const { data: campaignOUs } = useCampaignOrganisingUnits(campaignId)
   const addWtp = useAddWhereToPlay()
   const updateWtp = useUpdateWhereToPlay()
   const deleteWtp = useDeleteWhereToPlay()
@@ -99,9 +100,25 @@ export function WhereToPlayPanel({
     if (catName.includes('sector') || catName.includes('work group')) {
       sectors?.forEach((s) => {
         dynamicOptions.push({
-          id: -(s.sector_id + 10000), // Offset to avoid conflicts
+          id: -(s.sector_id + 10000),
           text: s.sector_name,
           description: 'Work group / sector',
+          use_count: 0,
+        })
+      })
+    }
+
+    if (catName.includes('organising unit')) {
+      campaignOUs?.forEach((ou) => {
+        const desc = [
+          ou.ou_type.replace(/_/g, ' '),
+          ou.total_workers_estimated != null ? `est. ${ou.total_workers_estimated} workers` : null,
+          ou.commonality_logic,
+        ].filter(Boolean).join(' · ')
+        dynamicOptions.push({
+          id: -(ou.ou_id + 20000),
+          text: ou.name,
+          description: desc || 'Organising unit',
           use_count: 0,
         })
       })

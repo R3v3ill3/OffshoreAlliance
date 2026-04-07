@@ -115,6 +115,7 @@ export default function StageplanPage({ params }: PageProps) {
   // Build campaign context for Theory of Winning
   const timeline = (campaign as any)?.campaign_timelines
   const agreement = timeline?.agreements
+  const campaignRow = campaign as { campaign_type?: string; enterprise_agreement_subtype?: string | null } | null
 
   const campaignContext: TheoryOfWinningRequest['campaign_context'] = {
     employer_name: (campaign as any)?.organisers?.organiser_name || '',
@@ -122,10 +123,12 @@ export default function StageplanPage({ params }: PageProps) {
     agreement_name: agreement?.agreement_name || campaign?.name || '',
     agreement_expiry: agreement?.expiry_date || timeline?.agreement_expiry_date,
     sector: '',
-    is_greenfield: !timeline?.agreement_expiry_date,
+    is_greenfield: agreement != null ? Boolean(agreement.is_greenfield) : false,
     days_to_pabo: timeline?.pabo_available_date
       ? Math.ceil((new Date(timeline.pabo_available_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
       : undefined,
+    campaign_type: campaignRow?.campaign_type,
+    enterprise_agreement_subtype: campaignRow?.enterprise_agreement_subtype ?? undefined,
   }
 
   if (isLoading) {

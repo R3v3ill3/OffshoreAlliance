@@ -113,6 +113,10 @@ export interface TheoryOfWinningRequest {
     sector: string
     is_greenfield: boolean
     days_to_pabo?: number
+    /** Bargaining campaign classification from campaigns.campaign_type */
+    campaign_type?: string
+    /** From campaigns.enterprise_agreement_subtype (e.g. agreement renewal) */
+    enterprise_agreement_subtype?: string | null
   }
   previous_stage_theory?: string
 }

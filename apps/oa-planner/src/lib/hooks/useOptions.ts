@@ -281,6 +281,26 @@ export function useAllOrganisers() {
   })
 }
 
+export function useCampaignOrganisingUnits(campaignId?: number) {
+  const supabase = createClient()
+
+  return useQuery({
+    queryKey: ['campaign-organising-units', campaignId],
+    queryFn: async () => {
+      if (!campaignId) return []
+      const { data, error } = await supabase
+        .from('campaign_organising_units')
+        .select('ou_id, name, ou_type, total_workers_estimated, anchor_worker_id, commonality_logic')
+        .eq('campaign_id', campaignId)
+        .order('name')
+
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!campaignId,
+  })
+}
+
 export function useAddCustomWtpOption() {
   const supabase = createClient()
   const queryClient = useQueryClient()

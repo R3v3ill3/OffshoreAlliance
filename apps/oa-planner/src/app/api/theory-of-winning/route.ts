@@ -15,6 +15,7 @@ The Offshore Alliance uses a highly structured, high-intensity organising model 
 - Member-driven, shared-responsibility approach
 - Stage-and-gate progression model for enterprise bargaining campaigns
 - Rapid mobilisation to action capability
+- Factual discipline: only describe the campaign as greenfield or a "first agreement" when the campaign context explicitly says so. If an enterprise agreement name or expiry date is provided, treat the situation as replacement or renewal bargaining unless the context clearly contradicts that.
 
 TASK:
 Given the organiser's Ambitions (what they want to achieve) and Where to Play choices (where they'll focus effort), generate:
@@ -79,17 +80,20 @@ export async function POST(req: NextRequest) {
     }
 
     const body: TheoryOfWinningRequest = await req.json()
+    const ctx = body.campaign_context
 
     // Build the user message
     const userMessage = `
-Campaign: ${body.campaign_context.agreement_name}
-Employer: ${body.campaign_context.employer_name}
-Sector: ${body.campaign_context.sector}
-Worksites: ${body.campaign_context.worksite_names.join(', ') || 'Not specified'}
+Campaign: ${ctx.agreement_name}
+Employer: ${ctx.employer_name}
+Sector: ${ctx.sector}
+Worksites: ${ctx.worksite_names.join(', ') || 'Not specified'}
 Stage: ${body.stage_number} — ${body.stage_name}
-${body.campaign_context.agreement_expiry ? `Agreement Expiry: ${body.campaign_context.agreement_expiry}` : ''}
-${body.campaign_context.days_to_pabo ? `Days until PABO available: ${body.campaign_context.days_to_pabo}` : ''}
-${body.campaign_context.is_greenfield ? 'This is a greenfield/first bargaining campaign.' : ''}
+${ctx.campaign_type ? `Campaign type: ${ctx.campaign_type}` : ''}
+${ctx.enterprise_agreement_subtype ? `EA subtype: ${ctx.enterprise_agreement_subtype}` : ''}
+${ctx.agreement_expiry ? `Agreement Expiry: ${ctx.agreement_expiry}` : ''}
+${ctx.days_to_pabo ? `Days until PABO available: ${ctx.days_to_pabo}` : ''}
+${ctx.is_greenfield ? 'This is a greenfield/first bargaining campaign.' : ''}
 
 AMBITIONS (What we want to achieve):
 ${body.ambitions.map((a, i) => `${i + 1}. [${a.category}] ${a.text}${a.target_value ? ` (Target: ${a.target_value}${a.target_unit ? ' ' + a.target_unit : ''})` : ''}`).join('\n')}

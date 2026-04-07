@@ -5,7 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ExternalLink, CheckCircle2, XCircle, Clock, AlertCircle, Circle } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { ExternalLink, CheckCircle2, XCircle, Clock, AlertCircle, Circle, ListTodo, Users } from "lucide-react";
 import { differenceInDays, format, parseISO } from "date-fns";
 
 const OA_PLANNER_URL = process.env.NEXT_PUBLIC_OA_PLANNER_URL ?? "https://oaplanner.uconstruct.app";
@@ -33,11 +34,43 @@ interface StagePlan {
   stage_number: number;
   stage_name: string;
   status: string;
+  workplan_status: string | null;
   planned_start_date: string | null;
   planned_end_date: string | null;
   actual_start_date: string | null;
   actual_end_date: string | null;
 }
+
+interface WorkplanProgressRow {
+  campaign_id: number;
+  stage_number: number;
+  plan_ambition_id: number | null;
+  total_tasks: number;
+  completed_tasks: number;
+  in_progress_tasks: number;
+  blocked_tasks: number;
+  planned_tasks: number;
+  cancelled_tasks: number;
+  completion_pct: number;
+}
+
+interface OuCoverageRow {
+  campaign_id: number;
+  total_ous: number;
+  sized_ous: number;
+  ous_with_contact: number;
+  ous_with_activist: number;
+  ous_with_delegate: number;
+  ous_with_anchor: number;
+  total_estimated_workers: number;
+  total_assigned_workers: number;
+}
+
+const WORKPLAN_STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  not_started: { label: "Not started", color: "text-muted-foreground" },
+  in_progress: { label: "In progress", color: "text-blue-600" },
+  completed: { label: "Done", color: "text-green-600" },
+};
 
 interface GateCriterion {
   criterion_id: number;
@@ -96,18 +129,41 @@ function DaysCountdown({ date, label }: { date: string; label: string }) {
   );
 }
 
-function StageRail({ stages }: { stages: StagePlan[] }) {
+function StageRail({
+  stages,
+  workplanProgress,
+}: {
+  stages: StagePlan[];
+  workplanProgress: WorkplanProgressRow[];
+}) {
   if (!stages.length) return null;
   const sorted = [...stages].sort((a, b) => a.stage_number - b.stage_number);
 
+  function stageWorkplanSummary(stageNumber: number) {
+    const rows = workplanProgress.filter((r) => r.stage_number === stageNumber);
+    if (rows.length === 0) return null;
+    const total = rows.reduce((s, r) => s + r.total_tasks, 0);
+    const completed = rows.reduce((s, r) => s + r.completed_tasks, 0);
+    const cancelled = rows.reduce((s, r) => s + r.cancelled_tasks, 0);
+    const active = total - cancelled;
+    if (active === 0) return null;
+    const pct = Math.round((completed / active) * 100);
+    return { total: active, completed, pct };
+  }
+
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2.5">
       {sorted.map((stage) => {
         const config = STAGE_STATUS_CONFIG[stage.status] ?? STAGE_STATUS_CONFIG.draft;
         const Icon = config.icon;
+        const wp = stageWorkplanSummary(stage.stage_number);
+        const wpLabel = stage.workplan_status
+          ? WORKPLAN_STATUS_LABELS[stage.workplan_status]
+          : null;
+
         return (
-          <div key={stage.plan_id} className="flex items-center gap-3">
-            <Icon className={`h-4 w-4 shrink-0 ${stage.status === "completed" ? "text-green-500" : stage.status === "active" ? "text-blue-500" : stage.status === "blocked" ? "text-destructive" : "text-muted-foreground/40"}`} />
+          <div key={stage.plan_id} className="flex items-start gap-3">
+            <Icon className={`h-4 w-4 shrink-0 mt-0.5 ${stage.status === "completed" ? "text-green-500" : stage.status === "active" ? "text-blue-500" : stage.status === "blocked" ? "text-destructive" : "text-muted-foreground/40"}`} />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground w-14 shrink-0">
@@ -117,22 +173,42 @@ function StageRail({ stages }: { stages: StagePlan[] }) {
                   {stage.stage_name}
                 </span>
               </div>
-              {(stage.planned_start_date || stage.actual_start_date) && (
-                <div className="text-xs text-muted-foreground ml-[3.5rem]">
-                  {stage.actual_start_date
-                    ? `Started ${formatDateShort(stage.actual_start_date)}`
-                    : `Planned ${formatDateShort(stage.planned_start_date)}`}
-                  {stage.actual_end_date
-                    ? ` → completed ${formatDateShort(stage.actual_end_date)}`
-                    : stage.planned_end_date
-                    ? ` → ${formatDateShort(stage.planned_end_date)}`
-                    : ""}
+              <div className="flex items-center gap-3 ml-[3.5rem] mt-0.5 flex-wrap">
+                {(stage.planned_start_date || stage.actual_start_date) && (
+                  <span className="text-xs text-muted-foreground">
+                    {stage.actual_start_date
+                      ? `Started ${formatDateShort(stage.actual_start_date)}`
+                      : `Planned ${formatDateShort(stage.planned_start_date)}`}
+                    {stage.actual_end_date
+                      ? ` → ${formatDateShort(stage.actual_end_date)}`
+                      : stage.planned_end_date
+                      ? ` → ${formatDateShort(stage.planned_end_date)}`
+                      : ""}
+                  </span>
+                )}
+                {wp && (
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <ListTodo className="h-3 w-3" />
+                    {wp.completed}/{wp.total} tasks ({wp.pct}%)
+                  </span>
+                )}
+              </div>
+              {wp && wp.total > 0 && (
+                <div className="ml-[3.5rem] mt-1">
+                  <Progress value={wp.pct} className="h-1" />
                 </div>
               )}
             </div>
-            <Badge variant={config.badgeVariant} className="shrink-0 text-xs">
-              {config.label}
-            </Badge>
+            <div className="flex flex-col items-end gap-0.5 shrink-0">
+              <Badge variant={config.badgeVariant} className="text-xs">
+                {config.label}
+              </Badge>
+              {wpLabel && stage.workplan_status !== "not_started" && (
+                <span className={`text-[10px] ${wpLabel.color}`}>
+                  {wpLabel.label}
+                </span>
+              )}
+            </div>
           </div>
         );
       })}
@@ -207,7 +283,7 @@ export function CampaignPlanPanel({
       const { data, error } = await supabase
         .from("campaign_stage_plans")
         .select(
-          "plan_id, stage_number, stage_name, status, planned_start_date, planned_end_date, actual_start_date, actual_end_date"
+          "plan_id, stage_number, stage_name, status, workplan_status, planned_start_date, planned_end_date, actual_start_date, actual_end_date"
         )
         .eq("campaign_id", campaignId)
         .order("stage_number");
@@ -241,6 +317,31 @@ export function CampaignPlanPanel({
         .maybeSingle();
       if (error) throw error;
       return data as CampaignTimeline | null;
+    },
+  });
+
+  const { data: workplanProgress = [] } = useQuery({
+    queryKey: ["campaign-workplan-progress", campaignId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campaign_stage_workplan_progress")
+        .select("*")
+        .eq("campaign_id", campaignId);
+      if (error) throw error;
+      return (data ?? []) as WorkplanProgressRow[];
+    },
+  });
+
+  const { data: ouCoverage } = useQuery({
+    queryKey: ["campaign-ou-coverage-panel", campaignId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campaign_ou_coverage_summary")
+        .select("*")
+        .eq("campaign_id", campaignId)
+        .maybeSingle();
+      if (error) throw error;
+      return data as OuCoverageRow | null;
     },
   });
 
@@ -341,14 +442,54 @@ export function CampaignPlanPanel({
         </Card>
       )}
 
-      {/* Stage Progress */}
+      {/* Stage Progress with workplan */}
       {stages && stages.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold">Stage Progress</CardTitle>
           </CardHeader>
           <CardContent>
-            <StageRail stages={stages} />
+            <StageRail stages={stages} workplanProgress={workplanProgress} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* OU Coverage Summary */}
+      {ouCoverage && ouCoverage.total_ous > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-semibold">Organising Unit Coverage</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+              <div>
+                <p className="text-xl font-bold">{ouCoverage.total_ous}</p>
+                <p className="text-xs text-muted-foreground">Units defined</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold">
+                  {ouCoverage.ous_with_contact}/{ouCoverage.total_ous}
+                </p>
+                <p className="text-xs text-muted-foreground">Have contact</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold">
+                  {ouCoverage.ous_with_activist}/{ouCoverage.total_ous}
+                </p>
+                <p className="text-xs text-muted-foreground">Have activist</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold">
+                  {ouCoverage.total_assigned_workers}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Workers assigned (of {ouCoverage.total_estimated_workers} est.)
+                </p>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}

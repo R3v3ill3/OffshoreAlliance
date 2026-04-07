@@ -63,7 +63,7 @@ export function useCampaign(id: number, options?: { enabled?: boolean }) {
           ),
           campaign_timelines(
             *,
-            agreements(agreement_name, short_name, expiry_date, status),
+            agreements(agreement_name, short_name, expiry_date, status, is_greenfield),
             stage_timeline_targets(*)
           ),
           gate_definitions(

@@ -55,6 +55,7 @@ import { CampaignReportingCharts } from "@/components/campaigns/campaign-reporti
 import { CampaignWallChart } from "@/components/campaigns/campaign-wall-chart";
 import { CampaignTaskListsSection } from "@/components/campaigns/campaign-task-lists";
 import { CampaignPlanPanel } from "@/components/campaigns/campaign-plan-panel";
+import { CampaignWorkplanSection } from "@/components/campaigns/campaign-workplan";
 import { CampaignUniverseSection } from "@/components/campaigns/campaign-universe-section";
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
 
@@ -358,6 +359,7 @@ export default function CampaignDetailPage() {
         <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="campaign-plan">Campaign Plan</TabsTrigger>
+          <TabsTrigger value="workplan">Workplan</TabsTrigger>
           <TabsTrigger value="universe">Universe</TabsTrigger>
           <TabsTrigger value="assessments">Assessments</TabsTrigger>
           <TabsTrigger value="structure">Structure</TabsTrigger>
@@ -444,6 +446,10 @@ export default function CampaignDetailPage() {
 
         <TabsContent value="campaign-plan">
           <CampaignPlanPanel campaignId={Number(id)} organiserId={campaign?.organiser_id} />
+        </TabsContent>
+
+        <TabsContent value="workplan">
+          <CampaignWorkplanSection campaignId={id} canWrite={!!canWrite} />
         </TabsContent>
 
         <TabsContent value="assessments">

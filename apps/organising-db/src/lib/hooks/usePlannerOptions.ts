@@ -153,9 +153,9 @@ export function useLeadOrganisers() {
 
       if (error) throw error
 
-      return data.filter((up) => (up.organisers as { organiser_id: number } | null)?.organiser_id)
+      return data.filter((up) => (up.organisers as unknown as { organiser_id: number } | null)?.organiser_id)
         .map((up) => {
-          const org = up.organisers as { organiser_id: number; organiser_name: string; email: string | null }
+          const org = up.organisers as unknown as { organiser_id: number; organiser_name: string; email: string | null }
           return {
             organiser_id: up.organiser_id as number,
             organiser_name: org.organiser_name,

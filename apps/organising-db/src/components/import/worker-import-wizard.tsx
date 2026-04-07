@@ -54,6 +54,7 @@ import {
 type WizardStep =
   | "upload"
   | "column_mapping"
+  | "value_mapping"
   | "employer_selection"
   | "worksite_matching"
   | "row_review"
@@ -71,6 +72,9 @@ type MappableField =
   | "email"
   | "phone"
   | "worksite"
+  | "membership_status"
+  | "member_role_type"
+  | "notes"
   | "ignore";
 
 interface ColumnMapping {
@@ -86,17 +90,38 @@ interface WorksiteResolution {
   confirmed: boolean;
 }
 
+interface ValueResolution {
+  columnHeader: string;
+  targetField: "membership_status" | "member_role_type";
+  rawValue: string;
+  occurrences: number;
+  resolvedId: number | null;
+  resolvedLabel: string | null;
+  confirmed: boolean;
+}
+
+interface MemberRoleType {
+  role_type_id: number;
+  role_name: string;
+  display_name: string;
+}
+
 interface ReviewRow extends ParsedWorkerRow {
   groupName: string;
   resolvedWorksiteId: number | null;
   resolvedWorksiteName: string | null;
+  /** Notes from a mapped column or user-entered */
+  notes: string | null;
   overrideFirstName?: string;
   overrideLastName?: string;
   overridePreferredName?: string;
   overridePhone?: string;
   overrideEmail?: string;
+  overrideNotes?: string;
   /** When set (including null), overrides parsed unionMembershipTypeKey → id */
   overrideUnionMembershipTypeId?: number | null;
+  /** Role type from value-mapping step */
+  resolvedMemberRoleTypeId?: number | null;
 }
 
 interface DedupMatch {
@@ -128,6 +153,7 @@ interface Employer {
 const ALL_STEPS: { id: WizardStep; label: string }[] = [
   { id: "upload", label: "Upload" },
   { id: "column_mapping", label: "Map Columns" },
+  { id: "value_mapping", label: "Map Values" },
   { id: "employer_selection", label: "Employer" },
   { id: "worksite_matching", label: "Worksites" },
   { id: "row_review", label: "Review Rows" },
@@ -144,6 +170,9 @@ const MAPPABLE_FIELDS: { value: MappableField; label: string }[] = [
   { value: "email", label: "Email" },
   { value: "phone", label: "Phone / Mobile" },
   { value: "worksite", label: "Worksite" },
+  { value: "membership_status", label: "Membership Status (map values)" },
+  { value: "member_role_type", label: "Role Type (map values)" },
+  { value: "notes", label: "Notes / Comments" },
   { value: "ignore", label: "(Ignore)" },
 ];
 
@@ -168,8 +197,11 @@ function autoMapHeader(header: string): MappableField {
     ].includes(h)
   )
     return "phone";
-  if (["worksite", "site", "location", "worksite", "worklocation"].includes(h))
-    return "worksite";
+  if (["worksite", "site", "location", "worklocation"].includes(h)) return "worksite";
+  if (["membership", "membershipstatus", "status", "memberstatus", "membertype"].includes(h))
+    return "membership_status";
+  if (["roletype", "role", "memberroletype"].includes(h)) return "member_role_type";
+  if (["notes", "note", "comments", "comment", "remarks", "remark"].includes(h)) return "notes";
   return "ignore";
 }
 
@@ -261,7 +293,8 @@ export function WorkerImportWizard({
 
   // ── Shared state ──────────────────────────────────────────────────────────
   const [worksiteResolutions, setWorksiteResolutions] = useState<WorksiteResolution[]>([]);
-  const [worksiteSearch, setWorksiteSearch] = useState<Record<string, string>>({});
+  const [valueResolutions, setValueResolutions] = useState<ValueResolution[]>([]);
+  const [worksiteSearch, setWorksiteSearch] = useState<Record<string, string>>({}); 
   const [createWorksiteFor, setCreateWorksiteFor] = useState<string | null>(null);
   const [newWorksiteName, setNewWorksiteName] = useState("");
   const [newWorksiteType, setNewWorksiteType] = useState<WorksiteType | "">("");
@@ -352,12 +385,28 @@ export function WorkerImportWizard({
     enabled: open,
   });
 
+  const { data: memberRoleTypes = [] } = useQuery<MemberRoleType[]>({
+    queryKey: ["member-role-types"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("member_role_types")
+        .select("role_type_id, role_name, display_name")
+        .order("sort_order");
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: open,
+  });
+
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
   function getVisibleSteps() {
-    return fileFormat === "group"
+    const steps = fileFormat === "group"
       ? ALL_STEPS.filter((s) => s.id !== "column_mapping")
       : ALL_STEPS;
+    return steps.filter(
+      (s) => s.id !== "value_mapping" || valueResolutions.length > 0
+    );
   }
 
   function buildGroupWorksiteResolutions(parsedGroups: ParsedWorkerGroup[]): WorksiteResolution[] {
@@ -411,6 +460,7 @@ export function WorkerImportWizard({
     setHeaderRows([]);
     setColumnMappings([]);
     setWorksiteResolutions([]);
+    setValueResolutions([]);
     setWorksiteSearch({});
     setSelectedEmployerId(null);
     setSelectedEmployerName(null);
@@ -489,6 +539,78 @@ export function WorkerImportWizard({
 
   // ─── Navigation handlers ──────────────────────────────────────────────────
 
+  // Membership auto-match patterns (mirrors server MEMBERSHIP_PATTERNS)
+  const MEMBERSHIP_AUTO_PATTERNS: { pattern: RegExp; key: string }[] = [
+    { pattern: /financial\s+(awu|mua|cfmeu|amwu|amou|aimpe)\s+member/i, key: "non_oa_member" },
+    { pattern: /financial\s+member/i, key: "financial_member" },
+    { pattern: /\bmember\b/i, key: "financial_member" },
+    { pattern: /not\s+a\s+member/i, key: "non_member" },
+    { pattern: /(membership\s+)?(archived|resigned)/i, key: "resigned_member" },
+  ];
+
+  function buildValueResolutions(): ValueResolution[] {
+    const resolutions: ValueResolution[] = [];
+
+    for (const mapping of columnMappings) {
+      if (mapping.field !== "membership_status" && mapping.field !== "member_role_type") continue;
+
+      const uniqueValues = [
+        ...new Set(
+          headerRows.map((r) => String(r[mapping.header] ?? "").trim()).filter(Boolean)
+        ),
+      ];
+
+      for (const raw of uniqueValues) {
+        const occurrences = headerRows.filter(
+          (r) => String(r[mapping.header] ?? "").trim() === raw
+        ).length;
+
+        let resolvedId: number | null = null;
+        let resolvedLabel: string | null = null;
+        let confirmed = false;
+
+        if (mapping.field === "membership_status") {
+          // Auto-match against membership patterns using type_name key
+          for (const { pattern, key } of MEMBERSHIP_AUTO_PATTERNS) {
+            if (pattern.test(raw)) {
+              const found = unionMembershipTypes.find((t) => t.type_name === key);
+              if (found) {
+                resolvedId = found.union_membership_type_id;
+                resolvedLabel = found.display_name;
+                confirmed = true;
+              }
+              break;
+            }
+          }
+        } else {
+          // member_role_type: exact case-insensitive match on display_name or role_name
+          const lower = raw.toLowerCase();
+          const found = memberRoleTypes.find(
+            (rt) =>
+              rt.display_name.toLowerCase() === lower ||
+              rt.role_name.toLowerCase() === lower
+          );
+          if (found) {
+            resolvedId = found.role_type_id;
+            resolvedLabel = found.display_name;
+            confirmed = true;
+          }
+        }
+
+        resolutions.push({
+          columnHeader: mapping.header,
+          targetField: mapping.field,
+          rawValue: raw,
+          occurrences,
+          resolvedId,
+          resolvedLabel,
+          confirmed,
+        });
+      }
+    }
+    return resolutions;
+  }
+
   function proceedFromColumnMapping() {
     const worksiteCol = columnMappings.find((m) => m.field === "worksite")?.header;
     if (worksiteCol) {
@@ -496,7 +618,15 @@ export function WorkerImportWizard({
     } else {
       setWorksiteResolutions([]);
     }
-    setStep("employer_selection");
+
+    const vr = buildValueResolutions();
+    setValueResolutions(vr);
+
+    if (vr.length > 0) {
+      setStep("value_mapping");
+    } else {
+      setStep("employer_selection");
+    }
   }
 
   function proceedFromEmployerSelection() {
@@ -553,6 +683,19 @@ export function WorkerImportWizard({
   function proceedToRowReview() {
     const resolutionMap = new Map(worksiteResolutions.map((r) => [r.groupName, r]));
 
+    // Build lookup maps from value resolutions
+    // key: "columnHeader|rawValue" → resolved id
+    const membershipResMap = new Map<string, ValueResolution>(
+      valueResolutions
+        .filter((r) => r.targetField === "membership_status")
+        .map((r) => [`${r.columnHeader}|${r.rawValue}`, r])
+    );
+    const roleTypeResMap = new Map<string, ValueResolution>(
+      valueResolutions
+        .filter((r) => r.targetField === "member_role_type")
+        .map((r) => [`${r.columnHeader}|${r.rawValue}`, r])
+    );
+
     if (fileFormat === "header") {
       const firstNameCol = columnMappings.find((m) => m.field === "first_name")?.header ?? "";
       const lastNameCol = columnMappings.find((m) => m.field === "last_name")?.header ?? "";
@@ -561,6 +704,9 @@ export function WorkerImportWizard({
       const emailCol = columnMappings.find((m) => m.field === "email")?.header ?? "";
       const phoneCol = columnMappings.find((m) => m.field === "phone")?.header ?? "";
       const worksiteCol = columnMappings.find((m) => m.field === "worksite")?.header ?? "";
+      const membershipCol = columnMappings.find((m) => m.field === "membership_status")?.header ?? "";
+      const roleTypeCol = columnMappings.find((m) => m.field === "member_role_type")?.header ?? "";
+      const notesCol = columnMappings.find((m) => m.field === "notes")?.header ?? "";
 
       const rows: ReviewRow[] = headerRows
         .map((row, i) => {
@@ -593,14 +739,42 @@ export function WorkerImportWizard({
 
           const rawPhone = phoneCol ? String(row[phoneCol] ?? "").trim() : "";
 
+          // Resolve membership status from value mapping
+          let unionMembershipTypeKey: ReviewRow["unionMembershipTypeKey"] = null;
+          let overrideUnionMembershipTypeId: number | null | undefined = undefined;
+          if (membershipCol) {
+            const rawMembership = String(row[membershipCol] ?? "").trim();
+            const res = membershipResMap.get(`${membershipCol}|${rawMembership}`);
+            if (res?.confirmed) {
+              overrideUnionMembershipTypeId = res.resolvedId;
+            }
+          }
+
+          // Resolve role type from value mapping
+          let resolvedMemberRoleTypeId: number | null | undefined = undefined;
+          if (roleTypeCol) {
+            const rawRole = String(row[roleTypeCol] ?? "").trim();
+            const res = roleTypeResMap.get(`${roleTypeCol}|${rawRole}`);
+            if (res?.confirmed) {
+              resolvedMemberRoleTypeId = res.resolvedId;
+            }
+          }
+
           return {
             rowIndex: i,
             rawName: `${firstName} ${lastName}`.trim(),
             firstName,
             lastName,
             preferredName,
-            rawMembershipStatus: "",
-            unionMembershipTypeKey: null,
+            notes: notesCol ? String(row[notesCol] ?? "").trim() || null : null,
+            rawMembershipStatus: membershipCol ? String(row[membershipCol] ?? "").trim() : "",
+            unionMembershipTypeKey,
+            ...(overrideUnionMembershipTypeId !== undefined
+              ? { overrideUnionMembershipTypeId }
+              : {}),
+            ...(resolvedMemberRoleTypeId !== undefined
+              ? { resolvedMemberRoleTypeId }
+              : {}),
             unionId: null,
             resignationDate: null,
             rawPhone,
@@ -620,6 +794,7 @@ export function WorkerImportWizard({
         const resolution = resolutionMap.get(g.groupName);
         return g.rows.map((row) => ({
           ...row,
+          notes: null,
           groupName: g.groupName,
           resolvedWorksiteId: resolution?.worksiteId ?? null,
           resolvedWorksiteName: resolution?.worksiteName ?? null,
@@ -744,12 +919,13 @@ export function WorkerImportWizard({
         phone: row.overridePhone ?? row.phone,
         unionMembershipTypeId: resolvedUnionMembershipIdForApply(row),
         unionMembershipTypeKey: row.unionMembershipTypeKey,
+        memberRoleTypeId: row.resolvedMemberRoleTypeId ?? null,
         unionId: row.unionId,
         resignationDate: row.resignationDate,
         worksiteId: row.resolvedWorksiteId,
         employerId: selectedEmployerId,
         rawMembershipStatus: row.rawMembershipStatus,
-        notes: null,
+        notes: row.overrideNotes ?? row.notes ?? null,
         action,
         existingWorkerId,
       };
@@ -1026,6 +1202,161 @@ export function WorkerImportWizard({
             <ArrowLeft className="h-4 w-4 mr-1" /> Back
           </Button>
           <Button onClick={proceedFromColumnMapping} disabled={!canProceed}>
+            Select Employer <ArrowRight className="h-4 w-4 ml-1" />
+          </Button>
+        </DialogFooter>
+      </div>
+    );
+  }
+
+  function renderValueMapping() {
+    const allConfirmed = valueResolutions.every((r) => r.confirmed);
+
+    // Group by column header for display
+    const byColumn = new Map<string, ValueResolution[]>();
+    for (const r of valueResolutions) {
+      const key = r.columnHeader;
+      if (!byColumn.has(key)) byColumn.set(key, []);
+      byColumn.get(key)!.push(r);
+    }
+
+    function updateResolution(columnHeader: string, rawValue: string, patch: Partial<ValueResolution>) {
+      setValueResolutions((prev) =>
+        prev.map((r) =>
+          r.columnHeader === columnHeader && r.rawValue === rawValue
+            ? { ...r, ...patch }
+            : r
+        )
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Map the raw text values from your spreadsheet to the correct database values.
+          Auto-matched entries are pre-filled — review and confirm any that need attention.
+        </p>
+
+        <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1">
+          {[...byColumn.entries()].map(([colHeader, resolutions]) => {
+            const targetField = resolutions[0].targetField;
+            const targetLabel =
+              targetField === "membership_status" ? "Membership Status" : "Role Type";
+            const options =
+              targetField === "membership_status" ? unionMembershipTypes : memberRoleTypes;
+
+            return (
+              <div key={colHeader} className="border rounded-lg overflow-hidden">
+                <div className="px-3 py-2 bg-muted/50 border-b flex items-center gap-2">
+                  <span className="text-xs font-semibold text-foreground">{colHeader}</span>
+                  <Badge variant="outline" className="text-[10px] px-1.5 h-4">
+                    {targetLabel}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground ml-auto">
+                    {resolutions.filter((r) => r.confirmed).length}/{resolutions.length} confirmed
+                  </span>
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs w-1/2">Spreadsheet value</TableHead>
+                      <TableHead className="text-xs w-12 text-right">Rows</TableHead>
+                      <TableHead className="text-xs">Map to</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {resolutions.map((res) => {
+                      const selectValue = res.confirmed
+                        ? res.resolvedId != null
+                          ? String(res.resolvedId)
+                          : "__ignore__"
+                        : "__unset__";
+
+                      return (
+                        <TableRow
+                          key={res.rawValue}
+                          className={!res.confirmed ? "bg-amber-50" : ""}
+                        >
+                          <TableCell className="p-2 text-xs font-mono">
+                            &ldquo;{res.rawValue}&rdquo;
+                          </TableCell>
+                          <TableCell className="p-2 text-xs text-right text-muted-foreground">
+                            {res.occurrences}
+                          </TableCell>
+                          <TableCell className="p-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <Select
+                                value={selectValue}
+                                onValueChange={(v) => {
+                                  if (v === "__unset__") return;
+                                  const isIgnore = v === "__ignore__";
+                                  const id = isIgnore ? null : Number(v);
+                                  const label = isIgnore
+                                    ? "Ignore"
+                                    : targetField === "membership_status"
+                                    ? unionMembershipTypes.find(
+                                        (t) => t.union_membership_type_id === id
+                                      )?.display_name ?? null
+                                    : memberRoleTypes.find((t) => t.role_type_id === id)
+                                        ?.display_name ?? null;
+                                  updateResolution(colHeader, res.rawValue, {
+                                    resolvedId: id,
+                                    resolvedLabel: label,
+                                    confirmed: true,
+                                  });
+                                }}
+                              >
+                                <SelectTrigger className="h-7 text-xs">
+                                  <SelectValue placeholder="Select…" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__ignore__" className="text-xs text-muted-foreground">
+                                    — Ignore (leave blank)
+                                  </SelectItem>
+                                  {targetField === "membership_status"
+                                    ? unionMembershipTypes.map((t) => (
+                                        <SelectItem
+                                          key={t.union_membership_type_id}
+                                          value={String(t.union_membership_type_id)}
+                                          className="text-xs"
+                                        >
+                                          {t.display_name}
+                                        </SelectItem>
+                                      ))
+                                    : memberRoleTypes.map((t) => (
+                                        <SelectItem
+                                          key={t.role_type_id}
+                                          value={String(t.role_type_id)}
+                                          className="text-xs"
+                                        >
+                                          {t.display_name}
+                                        </SelectItem>
+                                      ))}
+                                </SelectContent>
+                              </Select>
+                              {res.confirmed && (
+                                <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
+                              )}
+                              {!res.confirmed && (
+                                <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            );
+          })}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setStep("column_mapping")}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back
+          </Button>
+          <Button onClick={() => setStep("employer_selection")} disabled={!allConfirmed}>
             Select Employer <ArrowRight className="h-4 w-4 ml-1" />
           </Button>
         </DialogFooter>
@@ -1517,6 +1848,7 @@ export function WorkerImportWizard({
                 <TableHead className="text-xs">Phone</TableHead>
                 <TableHead className="text-xs">Email</TableHead>
                 <TableHead className="text-xs">Member type</TableHead>
+                <TableHead className="text-xs">Notes</TableHead>
                 <TableHead className="text-xs">Worksite</TableHead>
                 <TableHead className="text-xs w-8"></TableHead>
               </TableRow>
@@ -1609,6 +1941,18 @@ export function WorkerImportWizard({
                         ))}
                       </SelectContent>
                     </Select>
+                  </TableCell>
+                  <TableCell className="p-1">
+                    <Input
+                      value={row.overrideNotes ?? row.notes ?? ""}
+                      onChange={(e) =>
+                        updateReviewRow(row.rowIndex, {
+                          overrideNotes: e.target.value || undefined,
+                        })
+                      }
+                      className="h-7 text-xs"
+                      placeholder="—"
+                    />
                   </TableCell>
                   <TableCell className="p-1 text-xs text-muted-foreground whitespace-nowrap">
                     {row.resolvedWorksiteName ?? "—"}
@@ -1950,6 +2294,7 @@ export function WorkerImportWizard({
           <>
             {step === "upload" && renderUpload()}
             {step === "column_mapping" && renderColumnMapping()}
+            {step === "value_mapping" && renderValueMapping()}
             {step === "employer_selection" && renderEmployerSelection()}
             {step === "worksite_matching" && renderWorksiteMatching()}
             {step === "row_review" && renderRowReview()}

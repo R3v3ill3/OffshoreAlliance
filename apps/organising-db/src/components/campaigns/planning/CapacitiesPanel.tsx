@@ -25,7 +25,7 @@ interface SavedDraft {
   platform: CommsPlatform
   title: string | null
   subject: string | null
-  body_text: string | null
+  body: string | null
   body_html: string | null
   status: DraftStatus
   tone: string | null
@@ -237,7 +237,7 @@ export function CapacitiesPanel({
     const supabase = createClient()
     supabase
       .from('campaign_comms_drafts')
-      .select('draft_id, platform, title, subject, body_text, body_html, status, tone, audience_segment, created_at, ai_model_used')
+      .select('draft_id, platform, title, subject, body, body_html, status, tone, audience_segment, created_at, ai_model_used')
       .eq('campaign_id', campaignId)
       .eq('stage_number', stageNumber)
       .order('created_at', { ascending: false })

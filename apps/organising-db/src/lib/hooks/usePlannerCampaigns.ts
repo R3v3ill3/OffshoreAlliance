@@ -189,7 +189,7 @@ export function useCampaignOrganisers(campaignId: number) {
   return useQuery({
     queryKey: ['campaign-organisers', campaignId],
     queryFn: async (): Promise<CampaignOrganiserMember[]> => {
-      const res = await fetch(`/api/campaigns/${campaignId}/organisers`)
+      const res = await fetch(`/api/campaign-organisers/${campaignId}`)
       if (!res.ok) throw new Error('Failed to load campaign team')
       return res.json()
     },
@@ -207,7 +207,7 @@ export function useAddCampaignOrganiser() {
       campaign_role: string
       reports_to_organiser_id?: number | null
     }) => {
-      const res = await fetch(`/api/campaigns/${payload.campaign_id}/organisers`, {
+      const res = await fetch(`/api/campaign-organisers/${payload.campaign_id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -238,7 +238,7 @@ export function useUpdateCampaignTeamMember() {
       campaign_role?: string
       reports_to_organiser_id?: number | null
     }) => {
-      const res = await fetch(`/api/campaigns/${payload.campaign_id}/organisers`, {
+      const res = await fetch(`/api/campaign-organisers/${payload.campaign_id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -264,7 +264,7 @@ export function useRemoveCampaignOrganiser() {
 
   return useMutation({
     mutationFn: async ({ campaign_id, row_id }: { campaign_id: number; row_id: number }) => {
-      const res = await fetch(`/api/campaigns/${campaign_id}/organisers?rowId=${row_id}`, {
+      const res = await fetch(`/api/campaign-organisers/${campaign_id}?rowId=${row_id}`, {
         method: 'DELETE',
       })
       if (!res.ok) {

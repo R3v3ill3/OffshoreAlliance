@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
-// Import Sentry server configuration
+import { ConnectionStatusBanner } from "@/components/connection-status-banner";
 import "../../../../sentry.server.config";
 
 const geistSans = Geist({
@@ -32,7 +32,10 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <Providers isMobile={isMobile}>{children}</Providers>
+        <Providers isMobile={isMobile}>
+          {children}
+          <ConnectionStatusBanner />
+        </Providers>
       </body>
     </html>
   );

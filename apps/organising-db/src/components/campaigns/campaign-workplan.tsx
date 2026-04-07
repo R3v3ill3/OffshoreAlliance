@@ -106,10 +106,10 @@ interface TaskRow {
 interface AmbitionRow {
   ambition_id: number;
   plan_id: number;
-  ambition_text: string;
+  custom_text: string | null;
   target_value: string | null;
   target_unit: string | null;
-  category: string | null;
+  ambition_options: { category: string } | null;
 }
 
 interface OuRow {
@@ -185,7 +185,7 @@ export function CampaignWorkplanSection({
       if (!currentPlan) return [];
       const { data, error } = await supabase
         .from("plan_ambitions")
-        .select("ambition_id, plan_id, ambition_text, target_value, target_unit, category")
+        .select("ambition_id, plan_id, custom_text, target_value, target_unit, ambition_options(category)")
         .eq("plan_id", currentPlan.plan_id);
       if (error) throw error;
       return (data ?? []) as AmbitionRow[];
@@ -334,7 +334,7 @@ export function CampaignWorkplanSection({
   }
 
   function ambitionLabel(a: AmbitionRow): string {
-    let text = a.ambition_text;
+    let text = a.custom_text ?? "Ambition";
     if (a.target_value) {
       text = text.replace("{target_value}", a.target_value);
     }

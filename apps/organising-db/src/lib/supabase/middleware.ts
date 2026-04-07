@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { getCookieOptions } from "@/lib/supabase/cookie-options";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -8,9 +9,7 @@ export async function updateSession(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      cookieOptions: {
-        domain: ".uconstruct.app",
-      },
+      cookieOptions: getCookieOptions(),
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -28,21 +27,29 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
+  const pathname = request.nextUrl.pathname;
+
+  // API routes handle their own auth — skip the getUser() network
+  // roundtrip. The Supabase client above already refreshes cookies.
+  if (pathname.startsWith("/api/")) {
+    return supabaseResponse;
+  }
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (
     !user &&
-    !request.nextUrl.pathname.startsWith("/login") &&
-    !request.nextUrl.pathname.startsWith("/auth")
+    !pathname.startsWith("/login") &&
+    !pathname.startsWith("/auth")
   ) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
-  if (user && request.nextUrl.pathname === "/login") {
+  if (user && pathname === "/login") {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);

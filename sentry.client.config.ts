@@ -29,7 +29,10 @@ if (typeof window !== "undefined") {
       const errorMessage = (hint.originalException as Error)?.message ?? "";
 
       if (errorMessage.includes("Failed to fetch") || errorMessage.includes("NetworkError")) {
-        return null;
+        event.fingerprint = ["supabase-network-error"];
+        event.level = "warning";
+        event.tags = { ...event.tags, error_category: "network" };
+        return event;
       }
 
       return event;

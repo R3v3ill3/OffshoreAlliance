@@ -3,12 +3,12 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { agentDebugLog } from "@/lib/agent-debug-log";
 import {
   performRobustSignOut,
   recoverSessionConnection,
   type SessionRecoveryResult,
 } from "@/lib/supabase/session-recovery";
+import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
 import type { User } from "@supabase/supabase-js";
 import type { UserRole, UserProfile } from "@/types/database";
 
@@ -54,64 +54,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    // Use getSession() (reads local cookie state, no network request) instead of
-    // getUser() (verifies JWT with auth server, can hang and block all Supabase ops).
-    // Server-side JWT verification is handled by middleware — client doesn't need it.
     const initSession = async () => {
-      // #region agent log
-      agentDebugLog({
-        location: "auth-context.tsx:getSession-start",
-        message: "getSession called (replaces getUser)",
-        data: { href: window.location.href },
-        hypothesisId: "H5",
-      });
-      // #endregion
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) {
-          agentDebugLog({
-            location: "auth-context.tsx:getSession-error",
-            message: "getSession returned error",
-            data: { errorMessage: error.message, errorCode: error.code ?? null },
-            hypothesisId: "H5",
-          });
+          logConnectionEvent({ type: "token_refresh_fail", detail: error.message });
           setUser(null);
           setProfile(null);
           return;
         }
-        const user = session?.user ?? null;
-      // #region agent log
-        agentDebugLog({
-          location: "auth-context.tsx:getSession-result",
-          message: "getSession result",
-          data: {
-            userId: user?.id ?? null,
-            hasSession: !!session,
-            tokenExpiresAt: session?.expires_at ?? null,
-          },
-          hypothesisId: "H5",
-        });
-        // #endregion
-        setUser(user);
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
 
-        if (user) {
+        if (currentUser) {
           const { data } = await supabase
             .from("user_profiles")
             .select("*")
-            .eq("user_id", user.id)
+            .eq("user_id", currentUser.id)
             .single();
           setProfile(data);
         } else {
           setProfile(null);
         }
       } catch (error: unknown) {
-        agentDebugLog({
-          location: "auth-context.tsx:getSession-exception",
-          message: "getSession threw exception",
-          data: {
-            errorMessage: error instanceof Error ? error.message : String(error),
-          },
-          hypothesisId: "H5",
+        logConnectionEvent({
+          type: "token_refresh_fail",
+          detail: error instanceof Error ? error.message : String(error),
         });
         setUser(null);
         setProfile(null);
@@ -124,24 +92,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        // #region agent log
-        const redirectLogin =
+        const shouldRecover =
           event === "SIGNED_OUT" ||
           (!session && event === "TOKEN_REFRESHED");
-        agentDebugLog({
-          location: "auth-context.tsx:onAuthStateChange",
-          message: "auth state change",
-          data: {
-            event,
-            sessionUserId: session?.user?.id ?? null,
-            hasSession: !!session,
-            tokenExpiresAt: session?.expires_at ?? null,
-            redirectLogin,
-          },
-          hypothesisId: "H1",
-        });
-        // #endregion
-        if (redirectLogin) {
+
+        if (event === "TOKEN_REFRESHED" && session) {
+          logConnectionEvent({ type: "token_refresh_ok", detail: "onAuthStateChange" });
+        }
+
+        if (shouldRecover) {
+          logConnectionEvent({ type: "token_refresh_fail", detail: `event=${event}` });
           await recoverSessionConnection({
             supabase,
             queryClient,
@@ -155,33 +115,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setUser(session?.user ?? null);
         if (session?.user) {
-          // #region agent log
-          const _profileFetchStart = Date.now();
-          agentDebugLog({
-            location: "auth-context.tsx:profileFetch-start",
-            message: "Profile fetch START in onAuthStateChange",
-            data: { event, userId: session.user.id },
-            hypothesisId: "H1",
-          });
-          // #endregion
           const { data } = await supabase
             .from("user_profiles")
             .select("*")
             .eq("user_id", session.user.id)
             .single();
-          // #region agent log
-          agentDebugLog({
-            location: "auth-context.tsx:profileFetch-done",
-            message: "Profile fetch DONE in onAuthStateChange",
-            data: {
-              event,
-              userId: session.user.id,
-              durationMs: Date.now() - _profileFetchStart,
-              hasData: !!data,
-            },
-            hypothesisId: "H1",
-          });
-          // #endregion
           setProfile(data);
         } else {
           setProfile(null);
@@ -191,7 +129,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     return () => subscription.unsubscribe();
-  // supabase is a singleton so this dep is stable; queryClient is stable from useState
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

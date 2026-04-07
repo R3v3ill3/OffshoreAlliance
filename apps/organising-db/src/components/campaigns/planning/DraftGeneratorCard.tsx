@@ -122,7 +122,7 @@ export function DraftGeneratorCard({
         platform,
         title: `${config.label} – ${stageName}`,
         subject: subject || null,
-        body_text: bodyText,
+        body: bodyText,
         body_html: draft.body_html || null,
         status: 'draft',
         tone: draft.tone_applied || null,

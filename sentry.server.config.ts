@@ -13,8 +13,15 @@ Sentry.init({
   beforeSend(event, hint) {
     const errorMessage = (hint.originalException as Error)?.message ?? '';
 
-    if (errorMessage.includes('AuthApiError') || errorMessage.includes('Invalid login')) {
+    if (errorMessage.includes('Invalid login')) {
       return null;
+    }
+
+    if (errorMessage.includes('AuthApiError')) {
+      event.fingerprint = ['supabase-auth-error'];
+      event.level = 'warning';
+      event.tags = { ...event.tags, error_category: 'auth' };
+      return event;
     }
 
     return event;

@@ -27,7 +27,7 @@ interface DraftPreviewProps {
     platform: CommsPlatform
     title: string | null
     subject: string | null
-    body_text: string | null
+    body: string | null
     body_html: string | null
     status: DraftStatus
     tone: string | null
@@ -76,7 +76,7 @@ export function DraftPreview({ draft }: DraftPreviewProps) {
         )}
 
         <p className="text-xs text-muted-foreground line-clamp-3 whitespace-pre-wrap">
-          {draft.body_text}
+          {draft.body}
         </p>
 
         <div className="flex items-center justify-between pt-1 border-t">

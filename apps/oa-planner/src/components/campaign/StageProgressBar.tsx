@@ -50,7 +50,6 @@ export function StageProgressBar({ campaignId, currentStageNumber, stages }: Sta
               const status = (row?.status as keyof typeof STAGE_COLORS) || 'draft'
               const stageColorClass = STAGE_COLORS[status] ?? STAGE_COLORS.draft
               const isCurrent = num === currentStageNumber
-              const paragraphs = stageInfoBody(num)
 
               return (
                 <div key={num} className="flex items-stretch flex-1 min-w-0">

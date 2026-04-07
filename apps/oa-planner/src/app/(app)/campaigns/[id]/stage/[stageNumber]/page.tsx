@@ -12,6 +12,7 @@ import {
   type P2wTabId,
 } from '@/lib/planning/p2w-step-completion'
 import type { AmbitionMetricRow } from '@/lib/planning/ambition-metric-status'
+import { StageProgressBar } from '@/components/campaign/StageProgressBar'
 import { AmbitionPanel } from '@/components/planning/AmbitionPanel'
 import { WhereToPlayPanel } from '@/components/planning/WhereToPlayPanel'
 import { TheoryOfWinningPanel } from '@/components/planning/TheoryOfWinningPanel'
@@ -39,6 +40,7 @@ import {
   CalendarDays,
   Check,
 } from 'lucide-react'
+import { stageHeaderBlurb } from '@/lib/planning/stage-narrative'
 import { STAGE_NAMES } from '@/types'
 import { cn } from '@/lib/utils'
 import type { TheoryOfWinningRequest } from '@/types'
@@ -80,8 +82,18 @@ export default function StageplanPage({ params }: PageProps) {
   const stageName = STAGE_NAMES[stageNumber as keyof typeof STAGE_NAMES] || `Stage ${stageNumber}`
   const plan = stagePlanData?.plan
 
-  const allStagePlans = (campaign as any)?.campaign_stage_plans || []
-  const nextStagePlan = allStagePlans.find(
+  const sortedStagePlans = useMemo(() => {
+    const plans =
+      (campaign as {
+        campaign_stage_plans?: {
+          stage_number: number
+          status: string
+          planned_start_date?: string | null
+        }[]
+      } | undefined)?.campaign_stage_plans ?? []
+    return [...plans].sort((a, b) => a.stage_number - b.stage_number)
+  }, [campaign])
+  const nextStagePlan = sortedStagePlans.find(
     (s: { stage_number: number; planned_start_date?: string | null }) => s.stage_number === stageNumber + 1
   )
   const nextStagePlannedStartDate: string | null = nextStagePlan?.planned_start_date ?? null
@@ -127,6 +139,8 @@ export default function StageplanPage({ params }: PageProps) {
       </div>
     )
   }
+
+  const headerBlurb = stageHeaderBlurb(stageNumber)
 
   const agreementId = timeline?.agreement_id
 
@@ -208,57 +222,29 @@ export default function StageplanPage({ params }: PageProps) {
             )}
           </div>
         </div>
+
+        {headerBlurb && (
+          <p className="mt-3 text-sm text-muted-foreground max-w-3xl leading-snug">
+            {headerBlurb}
+          </p>
+        )}
       </div>
 
-      {/* Tabs + stepper */}
-      <div className="flex-1 overflow-hidden">
+      <StageProgressBar
+        campaignId={campaignId}
+        currentStageNumber={stageNumber}
+        stages={sortedStagePlans}
+      />
+
+      {/* Tabs: Playing to Win steps for this stage */}
+      <div className="flex-1 overflow-hidden min-h-0">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
           <div className="border-b bg-white px-6 flex-shrink-0 space-y-3 pt-3 pb-0">
-            <p className="text-xs text-muted-foreground max-w-3xl mx-auto text-center sm:text-left">
-              Work through the five steps in order for the clearest plan. You can still switch tabs freely — nothing is
+            <p className="text-xs text-muted-foreground max-w-3xl text-center sm:text-left">
+              The bar above is your place in the six campaign stages. Use these five tabs for the Playing to Win planning
+              model in this stage. Work in order for the clearest plan — you can still switch tabs freely; nothing is
               blocked.
             </p>
-            <div className="flex items-center justify-center gap-1 sm:gap-2 max-w-4xl mx-auto pb-2">
-              {P2W_TABS.map((tab, i) => {
-                const tabId = tab.id as P2wTabId
-                const done = stepDone(tabId)
-                const isActive = activeTab === tab.id
-                return (
-                  <div key={tab.id} className="flex items-center flex-1 min-w-0 max-w-[120px]">
-                    {i > 0 && (
-                      <div
-                        className={cn(
-                          'hidden sm:block h-px flex-1 min-w-[4px] mx-0.5',
-                          stepDone(P2W_TAB_ORDER[i - 1]) && done ? 'bg-green-300' : 'bg-slate-200'
-                        )}
-                      />
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab(tab.id)}
-                      className={cn(
-                        'flex flex-col sm:flex-row items-center gap-1 w-full justify-center rounded-lg px-1 py-1.5 text-center transition-colors',
-                        isActive ? 'bg-blue-50 text-blue-800' : 'hover:bg-slate-50 text-slate-600'
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          'w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0',
-                          done
-                            ? 'bg-green-100 text-green-800'
-                            : isActive
-                              ? 'bg-blue-200 text-blue-800'
-                              : 'bg-slate-100 text-slate-600'
-                        )}
-                      >
-                        {done ? <Check className="h-4 w-4" strokeWidth={2.5} /> : i + 1}
-                      </span>
-                      <span className="text-[10px] sm:text-xs font-medium leading-tight line-clamp-2">{tab.label}</span>
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
 
             <TabsList className="h-auto bg-transparent p-0 gap-0 w-full justify-start flex-wrap">
               {P2W_TABS.map((tab, i) => {

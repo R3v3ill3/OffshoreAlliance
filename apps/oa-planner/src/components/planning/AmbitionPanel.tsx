@@ -22,7 +22,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { format, parseISO, isValid } from 'date-fns'
-import { Target, Trash2, Plus, CheckCircle, Calendar } from 'lucide-react'
+import { Trash2, Plus, CheckCircle, Calendar } from 'lucide-react'
 import { formatCategoryLabel } from '@/lib/utils/option-sorting'
 import { isAmbitionMetricIncomplete } from '@/lib/planning/ambition-metric-status'
 import type { PlanAmbition } from '@/types'
@@ -67,7 +67,6 @@ export function AmbitionPanel({
   nextStagePlannedStartDate,
   ambitions,
 }: AmbitionPanelProps) {
-  const [showSelector, setShowSelector] = useState(ambitions.length === 0)
   const [customOpen, setCustomOpen] = useState(false)
   const [customStatement, setCustomStatement] = useState('')
   const [customMetric, setCustomMetric] = useState<'count' | 'percentage' | 'range' | 'boolean' | 'text'>('percentage')
@@ -207,25 +206,23 @@ export function AmbitionPanel({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-2 flex-wrap">
-        <div>
-          <h3 className="font-semibold text-slate-900">Step 1: Ambitions</h3>
-          <p className="text-sm text-muted-foreground mt-1">
-            Select ambitions, set targets and target dates (defaults to stage end). Mark each as a hard or soft gate for
-            progression.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setCustomOpen(true)}>
-            <Plus className="h-4 w-4 mr-1" />
-            Custom ambition
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowSelector(!showSelector)}>
-            <Plus className="h-4 w-4 mr-1" />
-            From list
-          </Button>
-        </div>
+      <div>
+        <h3 className="font-semibold text-slate-900">Step 1: Ambitions</h3>
+        <p className="text-sm text-muted-foreground mt-1">
+          Pick from suggested ambitions below, or add your own. Then set targets and dates (defaults to stage end) and
+          mark each as a hard or soft gate for progression.
+        </p>
       </div>
+
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full h-11 border-dashed border-2 text-base font-medium border-slate-300 hover:border-blue-400 hover:bg-blue-50/50"
+        onClick={() => setCustomOpen(true)}
+      >
+        <Plus className="h-5 w-5 mr-2" />
+        Custom ambition
+      </Button>
 
       <Dialog open={customOpen} onOpenChange={setCustomOpen}>
         <DialogContent className="sm:max-w-md">
@@ -296,40 +293,29 @@ export function AmbitionPanel({
         </DialogContent>
       </Dialog>
 
-      {showSelector && (
-        <Card>
-          <CardContent className="pt-4">
-            <OptionSelector
-              options={selectableOptions}
-              selectedIds={selectedOptionIds}
-              onSelect={handleSelect}
-              onDeselect={handleDeselect}
-              extraSelectedItems={extraSelectedItems}
-              selectedHeading="Your selections"
-              libraryHeading="Suggested ambitions"
-              muteLibraryRows
-              allowCustom={false}
-              showCategories
-              placeholder="Search ambitions..."
-              maxHeight="300px"
-            />
-            <Button variant="ghost" size="sm" className="mt-3 w-full" onClick={() => setShowSelector(false)}>
-              Done selecting
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+      <Card>
+        <CardContent className="pt-4">
+          <OptionSelector
+            options={selectableOptions}
+            selectedIds={selectedOptionIds}
+            onSelect={handleSelect}
+            onDeselect={handleDeselect}
+            extraSelectedItems={extraSelectedItems}
+            selectedHeading="Your selections"
+            libraryHeading="Suggested ambitions"
+            muteLibraryRows
+            allowCustom={false}
+            showCategories
+            placeholder="Search ambitions..."
+            maxHeight="300px"
+          />
+        </CardContent>
+      </Card>
 
-      {ambitions.length === 0 && !showSelector ? (
-        <div className="text-center py-12 rounded-lg border-2 border-dashed border-slate-200">
-          <Target className="h-10 w-10 text-slate-300 mx-auto mb-3" />
-          <p className="text-sm font-medium text-slate-500">No ambitions set yet</p>
-          <p className="text-xs text-muted-foreground mt-1">Add ambitions to define what success looks like for this stage</p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={() => setShowSelector(true)}>
-            <Plus className="h-4 w-4 mr-1" />
-            Add First Ambition
-          </Button>
-        </div>
+      {ambitions.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-2">
+          No ambitions on your plan yet — choose from the list above or use <span className="font-medium">Custom ambition</span>.
+        </p>
       ) : (
         <div className="space-y-3">
           {ambitions.map((ambition) => {

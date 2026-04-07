@@ -57,7 +57,6 @@ interface CampaignRow {
   [key: string]: unknown;
 }
 
-const OA_PLANNER_URL = process.env.NEXT_PUBLIC_OA_PLANNER_URL ?? "https://oaplanner.uconstruct.app";
 
 function PlanStatusBadge({ stagePlans }: { stagePlans: StagePlanSummary[] }) {
   if (!stagePlans || stagePlans.length === 0) {
@@ -210,9 +209,9 @@ export default function CampaignsPage() {
           <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
             <PlanStatusBadge stagePlans={row.campaign_stage_plans ?? []} />
             <a
-              href={`${OA_PLANNER_URL}/campaigns/${row.campaign_id}`}
+              href={`/campaigns/${row.campaign_id}/plan`}
               className="text-muted-foreground hover:text-foreground transition-colors"
-              title="Open in OA Planner"
+              title="View campaign plan"
             >
               <ExternalLink className="h-3.5 w-3.5" />
             </a>

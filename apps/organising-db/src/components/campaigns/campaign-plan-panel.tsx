@@ -6,10 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ExternalLink, CheckCircle2, XCircle, Clock, AlertCircle, Circle, ListTodo, Users } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, AlertCircle, Circle, ListTodo, Users } from "lucide-react";
 import { differenceInDays, format, parseISO } from "date-fns";
-
-const OA_PLANNER_URL = process.env.NEXT_PUBLIC_OA_PLANNER_URL ?? "https://oaplanner.uconstruct.app";
+import Link from "next/link";
 
 const STAGE_STATUS_CONFIG: Record<
   string,
@@ -348,12 +347,8 @@ export function CampaignPlanPanel({
   const isLoading = stagesLoading || gatesLoading || timelineLoading;
   const hasPlan = (stages?.length ?? 0) > 0;
 
-  const plannerUrl = `${OA_PLANNER_URL}/campaigns/${campaignId}`;
-  const createPlanUrl = [
-    `${OA_PLANNER_URL}/campaigns/new`,
-    `?campaign_id=${campaignId}`,
-    organiserId ? `&organiser_id=${organiserId}` : "",
-  ].join("");
+  const plannerUrl = `/campaigns/${campaignId}/plan`;
+  const createPlanUrl = `/campaigns/new?campaign_id=${campaignId}${organiserId ? `&organiser_id=${organiserId}` : ""}`;
 
   if (isLoading) {
     return (
@@ -377,10 +372,9 @@ export function CampaignPlanPanel({
           </p>
         </div>
         <Button asChild>
-          <a href={createPlanUrl}>
-            <ExternalLink className="h-4 w-4 mr-2" />
-            Create Campaign Plan in OA Planner
-          </a>
+          <Link href={createPlanUrl}>
+            Create Campaign Plan
+          </Link>
         </Button>
       </div>
     );
@@ -399,10 +393,9 @@ export function CampaignPlanPanel({
           )}
         </div>
         <Button variant="outline" size="sm" asChild>
-          <a href={plannerUrl}>
-            <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-            Open in OA Planner
-          </a>
+          <Link href={plannerUrl}>
+            View Full Plan
+          </Link>
         </Button>
       </div>
 

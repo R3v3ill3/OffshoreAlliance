@@ -4,8 +4,6 @@ import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
 
-const OA_PLANNER_URL =
-  process.env.NEXT_PUBLIC_OA_PLANNER_URL ?? "https://oaplanner.uconstruct.app";
 
 /**
  * Campaign Status Badge
@@ -43,7 +41,7 @@ const SIZE_STYLES = {
 };
 
 function openInPlanner(campaignId: number) {
-  window.open(`${OA_PLANNER_URL}/campaigns/${campaignId}`, "_blank", "noopener");
+  window.location.href = `/campaigns/${campaignId}/plan`;
 }
 
 export function CampaignStatusBadge({

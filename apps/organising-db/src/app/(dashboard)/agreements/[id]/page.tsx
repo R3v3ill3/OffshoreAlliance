@@ -610,18 +610,18 @@ export default function AgreementDetailPage() {
           {/* Cross-app link to OA Planner */}
           {linkedCampaigns.length > 0 ? (
             <ExternalLinkComponent
-              href={`${process.env.NEXT_PUBLIC_OA_PLANNER_URL || 'https://oaplanner.uconstruct.app'}/campaigns/${linkedCampaigns[0].campaign_id}`}
+              href={`/campaigns/${linkedCampaigns[0].campaign_id}/plan`}
               variant="button"
-              target="_blank"
+              target="_self"
               className="gap-2"
             >
               View Campaign Plan
             </ExternalLinkComponent>
           ) : canWrite ? (
             <ExternalLinkComponent
-              href={`${process.env.NEXT_PUBLIC_OA_PLANNER_URL || 'https://oaplanner.uconstruct.app'}/campaigns/new?agreement_id=${agreement.agreement_id}&employer_id=${agreement.employer_id || ''}`}
+              href={`/campaigns/new?agreement_id=${agreement.agreement_id}&employer_id=${agreement.employer_id || ''}`}
               variant="outline"
-              target="_blank"
+              target="_self"
               className="gap-2"
             >
               <Plus className="h-4 w-4" />

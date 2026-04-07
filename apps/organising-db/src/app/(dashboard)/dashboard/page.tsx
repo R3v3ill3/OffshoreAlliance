@@ -240,7 +240,6 @@ export default function DashboardPage() {
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-  const OA_PLANNER_URL = process.env.NEXT_PUBLIC_OA_PLANNER_URL ?? "https://oaplanner.uconstruct.app";
 
   const { data: unplannedExpiringAgreements = [] } = useQuery({
     queryKey: ["unplanned-expiring-agreements"],
@@ -391,9 +390,8 @@ export default function DashboardPage() {
                     </div>
                     <Button variant="outline" size="sm" className="shrink-0" asChild>
                       <a
-                        href={`${OA_PLANNER_URL}/campaigns/new?agreement_id=${a.agreement_id}&expiry_date=${a.expiry_date}`}
+                        href={`/campaigns/new?agreement_id=${a.agreement_id}&expiry_date=${a.expiry_date}`}
                       >
-                        <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
                         Create Plan
                       </a>
                     </Button>

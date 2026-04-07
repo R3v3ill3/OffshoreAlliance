@@ -433,7 +433,6 @@ export function CampaignWizard() {
 
   // ── Derived state ─────────────────────────────────────────────────────────
 
-  const OA_PLANNER_URL = process.env.NEXT_PUBLIC_OA_PLANNER_URL ?? "https://oaplanner.uconstruct.app";
 
   const stepTitle = useMemo(() => {
     if (step === 1) return "Basics & scope";
@@ -732,13 +731,7 @@ export function CampaignWizard() {
             <div className="flex flex-col sm:flex-row gap-3">
               <Button asChild className="flex-1">
                 <a
-                  href={[
-                    `${OA_PLANNER_URL}/campaigns/new`,
-                    `?campaign_id=${campaignId}`,
-                    existingCampaign?.organiser_id
-                      ? `&organiser_id=${existingCampaign.organiser_id}`
-                      : "",
-                  ].join("")}
+                  href={`/campaigns/${campaignId}/plan?campaign_id=${campaignId}${existingCampaign?.organiser_id ? `&organiser_id=${existingCampaign.organiser_id}` : ""}`}
                 >
                   <ExternalLink className="h-4 w-4 mr-2" />
                   Create Campaign Plan in OA Planner

@@ -1700,7 +1700,7 @@ function MonitoringTab() {
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Environment:</span>
-              <span>{process.env.NEXT_PUBLIC_APP_URL?.includes("oaplanner") ? "OA Planner" : "Organising DB"}</span>
+              <span>Offshore Alliance Platform</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Supabase URL:</span>

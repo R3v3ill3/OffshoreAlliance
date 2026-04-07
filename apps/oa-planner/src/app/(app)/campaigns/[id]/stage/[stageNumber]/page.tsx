@@ -39,7 +39,13 @@ import {
   CheckCircle,
   CalendarDays,
   Check,
+  Info,
 } from 'lucide-react'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { stageHeaderBlurb } from '@/lib/planning/stage-narrative'
 import { STAGE_NAMES } from '@/types'
 import { cn } from '@/lib/utils'
@@ -163,27 +169,38 @@ export default function StageplanPage({ params }: PageProps) {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="border-b bg-white px-6 py-4 flex-shrink-0">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-          <Link href={`/campaigns/${campaignId}`} className="hover:text-foreground">
-            {campaign?.name || 'Campaign'}
-          </Link>
-          <ChevronRight className="h-3 w-3" />
-          <span>Stage {stageNumber}</span>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">
-                {stageNumber}
+      <div className="border-b bg-white px-6 py-3 flex-shrink-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+              {stageNumber}
+            </div>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-0.5">
+                <Link href={`/campaigns/${campaignId}`} className="hover:text-foreground">
+                  {campaign?.name || 'Campaign'}
+                </Link>
+                <ChevronRight className="h-3 w-3" />
+                <span>Stage {stageNumber}</span>
               </div>
-              <div>
-                <h1 className="text-xl font-bold text-slate-900">{stageName}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-bold text-slate-900 leading-tight">{stageName}</h1>
+                {headerBlurb && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="text-slate-400 hover:text-blue-600 transition-colors">
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 text-sm">
+                      {headerBlurb}
+                    </PopoverContent>
+                  </Popover>
+                )}
                 <Badge
                   variant="secondary"
                   className={cn(
-                    'text-xs',
+                    'text-[10px] px-1.5 py-0 h-5 border-none',
                     plan.status === 'active' ? 'bg-blue-100 text-blue-700' :
                     plan.status === 'completed' ? 'bg-green-100 text-green-700' :
                     plan.status === 'blocked' ? 'bg-red-100 text-red-700' :
@@ -196,38 +213,32 @@ export default function StageplanPage({ params }: PageProps) {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 self-start sm:self-auto">
             {prevStage && (
-              <Button asChild variant="outline" size="sm">
+              <Button asChild variant="outline" size="sm" className="h-8 text-xs">
                 <Link href={`/campaigns/${campaignId}/stage/${prevStage}`}>
-                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  <ChevronLeft className="h-3 w-3 mr-1" />
                   Stage {prevStage}
                 </Link>
               </Button>
             )}
             {nextStage && (
-              <Button asChild variant="outline" size="sm">
+              <Button asChild variant="outline" size="sm" className="h-8 text-xs">
                 <Link href={`/campaigns/${campaignId}/stage/${nextStage}`}>
                   Stage {nextStage}
-                  <ChevronRight className="h-4 w-4 ml-1" />
+                  <ChevronRight className="h-3 w-3 ml-1" />
                 </Link>
               </Button>
             )}
             {nextStage && (
-              <Button asChild variant="outline" size="sm">
+              <Button asChild variant="outline" size="sm" className="h-8 text-xs">
                 <Link href={`/campaigns/${campaignId}/gate/${stageNumber}`}>
-                  Gate {stageNumber} Assessment
+                  Gate {stageNumber}
                 </Link>
               </Button>
             )}
           </div>
         </div>
-
-        {headerBlurb && (
-          <p className="mt-3 text-sm text-muted-foreground max-w-3xl leading-snug">
-            {headerBlurb}
-          </p>
-        )}
       </div>
 
       <StageProgressBar
@@ -239,13 +250,7 @@ export default function StageplanPage({ params }: PageProps) {
       {/* Tabs: Playing to Win steps for this stage */}
       <div className="flex-1 overflow-hidden min-h-0">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-          <div className="border-b bg-white px-6 flex-shrink-0 space-y-3 pt-3 pb-0">
-            <p className="text-xs text-muted-foreground max-w-3xl text-center sm:text-left">
-              The bar above is your place in the six campaign stages. Use these five tabs for the Playing to Win planning
-              model in this stage. Work in order for the clearest plan — you can still switch tabs freely; nothing is
-              blocked.
-            </p>
-
+          <div className="border-b bg-white px-6 flex-shrink-0 pt-1 pb-0">
             <TabsList className="h-auto bg-transparent p-0 gap-0 w-full justify-start flex-wrap">
               {P2W_TABS.map((tab, i) => {
                 const Icon = tab.icon
@@ -257,7 +262,7 @@ export default function StageplanPage({ params }: PageProps) {
                     key={tab.id}
                     value={tab.id}
                     className={cn(
-                      'flex items-center gap-2 px-4 py-3 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-600 text-sm',
+                      'flex items-center gap-2 px-3 py-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-600 text-sm',
                       done && 'text-green-700 data-[state=active]:text-blue-600'
                     )}
                   >

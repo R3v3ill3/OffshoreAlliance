@@ -517,9 +517,6 @@ export function MembershipImportWizard({
     if (importType !== "resignations") {
       setOccupationResolutions(buildOccupationResolutions());
       setStep("occupation_matching");
-    } else if (importType === "recommencing") {
-      setMembershipTypeResolutions(buildMembershipTypeResolutions());
-      setStep("value_mapping");
     } else {
       runDedupCheck();
     }
@@ -688,11 +685,13 @@ export function MembershipImportWizard({
       if (data) {
         // Register raw value as an alias
         if (res.rawValue.toLowerCase() !== res.newCanonicalName.toLowerCase()) {
-          await supabase.from("occupation_aliases").insert({
+          const { error: aliasErr } = await supabase.from("occupation_aliases").insert({
             occupation_id: data.occupation_id,
             alias_name: res.rawValue,
             source: "import",
-          }).onConflict("occupation_id, (lower(trim(alias_name)))").ignore();
+          });
+          // Unique index is on (occupation_id, lower(trim(alias_name))); duplicates are safe to skip.
+          if (aliasErr && aliasErr.code !== "23505") throw aliasErr;
         }
         occMap.set(res.rawValue, data.occupation_id);
       }

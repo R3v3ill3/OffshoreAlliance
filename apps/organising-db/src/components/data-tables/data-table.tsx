@@ -132,7 +132,7 @@ export function DataTable<T extends Record<string, unknown>>({
     selection && visibleRowIds.some((id) => selection.selectedIds.has(id));
   const colCount = columns.length + (selection ? 1 : 0);
 
-  const prevSortedRef = useRef<T[]>();
+  const prevSortedRef = useRef<T[] | undefined>(undefined);
   useEffect(() => {
     if (!onFilteredDataChange || sorted === prevSortedRef.current) return;
     prevSortedRef.current = sorted;

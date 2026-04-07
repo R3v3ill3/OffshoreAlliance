@@ -188,7 +188,7 @@ export function CampaignWorkplanSection({
         .select("ambition_id, plan_id, custom_text, target_value, target_unit, ambition_options(category)")
         .eq("plan_id", currentPlan.plan_id);
       if (error) throw error;
-      return (data ?? []) as AmbitionRow[];
+      return (data ?? []) as unknown as AmbitionRow[];
     },
     enabled: !!currentPlan,
   });

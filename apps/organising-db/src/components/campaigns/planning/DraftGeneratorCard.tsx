@@ -20,8 +20,11 @@ import {
   ChevronDown,
   ChevronUp,
   CheckCircle,
+  FileText,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { TemplatePicker } from './TemplatePicker'
+import type { TemplateRow } from '@/lib/hooks/useTemplateLibrary'
 import type { CommsPlatform, CommsDraftRequest, CommsDraftResponse } from '@/types/planner-types'
 
 const PLATFORM_CONFIG: Record<CommsPlatform, { label: string; icon: React.ReactNode; color: string }> = {
@@ -86,6 +89,10 @@ export function DraftGeneratorCard({
   const [showInstructions, setShowInstructions] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false)
+  const [isCustomising, setIsCustomising] = useState(false)
+  const [changeSummary, setChangeSummary] = useState<Array<{ location: string; original_snippet: string; adapted_snippet: string; reason: string }> | null>(null)
+  const [sourceTemplateId, setSourceTemplateId] = useState<number | null>(null)
 
   const generateDraft = useGenerateDraft()
   const config = PLATFORM_CONFIG[platform]
@@ -109,6 +116,73 @@ export function DraftGeneratorCard({
     setBodyText(result.body_text)
   }
 
+  function handleSelectTemplate(template: TemplateRow) {
+    setSubject(template.subject_line || '')
+    setBodyText(template.body_text)
+    setSourceTemplateId(template.template_id)
+    setChangeSummary(null)
+    setDraft({
+      platform,
+      subject: template.subject_line || undefined,
+      body_text: template.body_text,
+      body_html: template.body_html || undefined,
+      variables_used: [],
+      tone_applied: template.tone_tags?.join(', ') || '',
+      audience_targeted: template.audience_segment || '',
+      estimated_character_count: template.body_text.length,
+    })
+    setShowTemplatePicker(false)
+    setSaved(false)
+  }
+
+  async function handleSelectAndCustomise(template: TemplateRow) {
+    setIsCustomising(true)
+    setSourceTemplateId(template.template_id)
+    try {
+      const response = await fetch('/api/templates/customise', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          template_id: template.template_id,
+          subject_line: template.subject_line,
+          body_text: template.body_text,
+          body_html: template.body_html,
+          stage_number: stageNumber,
+          stage_name: stageName,
+          wtp_selections: wtpSelections,
+          custom_instructions: customInstructions || undefined,
+        }),
+      })
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(err.error || 'Customisation failed')
+      }
+
+      const result = await response.json()
+      setSubject(result.adapted_subject || template.subject_line || '')
+      setBodyText(result.adapted_body_text || template.body_text)
+      setChangeSummary(result.changes_summary || null)
+      setDraft({
+        platform,
+        subject: result.adapted_subject || template.subject_line || undefined,
+        body_text: result.adapted_body_text || template.body_text,
+        body_html: result.adapted_body_html || template.body_html || undefined,
+        variables_used: [],
+        tone_applied: result.tone_applied || '',
+        audience_targeted: result.audience_targeted || '',
+        estimated_character_count: (result.adapted_body_text || template.body_text).length,
+      })
+      setShowTemplatePicker(false)
+      setSaved(false)
+      toast.success('Template customised for your campaign context')
+    } catch (err) {
+      toast.error(`Customisation failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setIsCustomising(false)
+    }
+  }
+
   async function handleSave() {
     if (!draft) return
     setIsSaving(true)
@@ -127,9 +201,10 @@ export function DraftGeneratorCard({
         status: 'draft',
         tone: draft.tone_applied || null,
         audience_segment: draft.audience_targeted || null,
-        ai_model_used: 'gpt-4o-mini',
+        ai_model_used: sourceTemplateId ? 'template-customised' : 'claude-sonnet',
         variables_used: draft.variables_used || [],
         custom_instructions: customInstructions || null,
+        source_template_ids: sourceTemplateId ? [sourceTemplateId] : null,
       })
 
       if (error) throw error
@@ -234,24 +309,34 @@ export function DraftGeneratorCard({
               </div>
             )}
 
-            <Button
-              onClick={handleGenerate}
-              disabled={isLoading}
-              className="w-full"
-              variant="outline"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  {config.icon}
-                  <span className="ml-2">Generate Draft</span>
-                </>
-              )}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => setShowTemplatePicker(true)}
+                className="flex-1"
+                variant="outline"
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Use Template
+              </Button>
+              <Button
+                onClick={handleGenerate}
+                disabled={isLoading}
+                className="flex-1"
+                variant="outline"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    {config.icon}
+                    <span className="ml-2">Generate New</span>
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         )}
 
@@ -342,9 +427,27 @@ export function DraftGeneratorCard({
           </>
         )}
 
+        {/* Change summary from template customisation */}
+        {changeSummary && changeSummary.length > 0 && (
+          <div className="space-y-2 pt-2 border-t">
+            <p className="text-xs font-medium text-muted-foreground">AI Customisation Changes</p>
+            {changeSummary.map((change, i) => (
+              <div key={i} className="text-xs space-y-0.5 p-2 rounded bg-muted/30">
+                <p className="font-medium">{change.location}</p>
+                <p className="text-muted-foreground line-through">{change.original_snippet}</p>
+                <p className="text-green-700">{change.adapted_snippet}</p>
+                <p className="text-muted-foreground italic">{change.reason}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* AI metadata */}
         {draft && (
           <div className="flex flex-wrap gap-1.5 pt-1 border-t">
+            {sourceTemplateId && (
+              <Badge variant="outline" className="text-xs">From template #{sourceTemplateId}</Badge>
+            )}
             {draft.tone_applied && (
               <Badge variant="outline" className="text-xs">Tone: {draft.tone_applied}</Badge>
             )}
@@ -359,6 +462,16 @@ export function DraftGeneratorCard({
           </div>
         )}
       </CardContent>
+
+      <TemplatePicker
+        open={showTemplatePicker}
+        onClose={() => setShowTemplatePicker(false)}
+        onSelect={handleSelectTemplate}
+        onSelectAndCustomise={handleSelectAndCustomise}
+        platform={platform}
+        stageNumber={stageNumber}
+        isCustomising={isCustomising}
+      />
     </Card>
   )
 }

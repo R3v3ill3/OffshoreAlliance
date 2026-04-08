@@ -4709,6 +4709,7 @@ export type Database = {
           created_at: string
           display_name: string
           organiser_id: number | null
+          phone: string | null
           reports_to: string | null
           role: string
           updated_at: string
@@ -4719,6 +4720,7 @@ export type Database = {
           created_at?: string
           display_name?: string
           organiser_id?: number | null
+          phone?: string | null
           reports_to?: string | null
           role?: string
           updated_at?: string
@@ -4729,6 +4731,7 @@ export type Database = {
           created_at?: string
           display_name?: string
           organiser_id?: number | null
+          phone?: string | null
           reports_to?: string | null
           role?: string
           updated_at?: string

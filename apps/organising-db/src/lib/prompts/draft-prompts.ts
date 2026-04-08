@@ -20,7 +20,7 @@ You are generating a campaign email draft. The email should:
 - Include a clear call to action appropriate to the stage
 - Be formatted in both HTML and plain text
 
-Standard variables available: {{first_name}}, {{last_name}}, {{agreement_name}}, {{employer_name}}, {{worksite_name}}, {{organiser_name}}, {{organiser_phone}}
+Standard variables available: {{first_name}}, {{last_name}}, {{agreement_name}}, {{employer_name}}, {{worksite_name}}, {{organiser_name}}, {{organiser_phone}}, {{staff_name}}, {{staff_email}}, {{staff_phone}}, {{staff_role}}
 
 Respond in JSON format:
 {
@@ -48,7 +48,7 @@ You are generating an SMS message for a campaign communication via the Yabbr SMS
 - Sign off with "- Offshore Alliance" or "- OA"
 - NOT include HTML or rich formatting
 
-Standard variables: {{first_name}}, {{agreement_name}}, {{organiser_name}}
+Standard variables: {{first_name}}, {{agreement_name}}, {{organiser_name}}, {{staff_name}}, {{staff_email}}, {{staff_phone}}, {{staff_role}}
 
 Respond in JSON format:
 {
@@ -82,6 +82,7 @@ The script should:
 - Be appropriate for the campaign stage and selected tone
 - Include notes/tips in [square brackets] for the organiser
 - Use {{variable_name}} for personalisation
+- Standard variables include: {{first_name}}, {{last_name}}, {{agreement_name}}, {{employer_name}}, {{worksite_name}}, {{organiser_name}}, {{organiser_phone}}, {{staff_name}}, {{staff_email}}, {{staff_phone}}, {{staff_role}}
 
 Respond in JSON format:
 {

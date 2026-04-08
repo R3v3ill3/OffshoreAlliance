@@ -6,6 +6,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Variable } from 'lucide-react'
+import {
+  STAFF_TEMPLATE_SAMPLE_DATA,
+  STAFF_TEMPLATE_VARIABLES,
+} from '@/lib/comms/staff-template-variables'
 
 const COMMON_VARIABLES = [
   '{{first_name}}',
@@ -19,6 +23,11 @@ const COMMON_VARIABLES = [
   '{{campaign_name}}',
 ] as const
 
+const INSERT_VARIABLES = [
+  ...COMMON_VARIABLES,
+  ...STAFF_TEMPLATE_VARIABLES,
+] as const
+
 const SAMPLE_DATA: Record<string, string> = {
   first_name: 'Alex',
   last_name: 'Mitchell',
@@ -29,6 +38,7 @@ const SAMPLE_DATA: Record<string, string> = {
   organiser_phone: '0412 345 678',
   date: '15 April 2026',
   campaign_name: 'NWS Bargaining 2026',
+  ...STAFF_TEMPLATE_SAMPLE_DATA,
 }
 
 function detectVariables(text: string): string[] {
@@ -94,7 +104,7 @@ export function TemplateEditor({ value, onChange, platform }: TemplateEditorProp
           </span>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {COMMON_VARIABLES.map((v) => (
+          {INSERT_VARIABLES.map((v) => (
             <Button
               key={v}
               type="button"

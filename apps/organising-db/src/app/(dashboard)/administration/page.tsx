@@ -83,11 +83,11 @@ import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 // ---------- Users Tab ----------
 
 interface UserRow extends UserProfile {
+  email?: string;
   [key: string]: unknown;
 }
 
 function UsersTab() {
-  const supabase = createClient();
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const [open, setOpen] = useState(false);
@@ -98,8 +98,12 @@ function UsersTab() {
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [editUser, setEditUser] = useState<UserRow | null>(null);
-  const [editWorkRole, setEditWorkRole] = useState<WorkRole | "">("");
-  const [editReportsTo, setEditReportsTo] = useState<string>("");
+  const [editPermissionRole, setEditPermissionRole] = useState<UserRole>("user");
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editWorkRole, setEditWorkRole] = useState<WorkRole | "none">("none");
+  const [editReportsTo, setEditReportsTo] = useState<string>("none");
   const [editError, setEditError] = useState<string | null>(null);
   const [setPasswordUserId, setSetPasswordUserId] = useState<string | null>(null);
   const [setPasswordUserName, setSetPasswordUserName] = useState("");
@@ -112,12 +116,10 @@ function UsersTab() {
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["admin-users"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("user_profiles")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data as UserRow[];
+      const res = await fetch("/api/admin/users");
+      const json = (await res.json()) as { users?: UserRow[]; error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Failed to load users");
+      return json.users ?? [];
     },
   });
 
@@ -174,16 +176,32 @@ function UsersTab() {
       userId,
       workRole,
       reportsTo,
+      role,
+      displayName,
+      email,
+      phone,
     }: {
       userId: string;
       workRole: WorkRole | null;
       reportsTo: string | null;
+      role: UserRole;
+      displayName: string;
+      email: string;
+      phone: string | null;
     }) => {
       setEditError(null);
       const res = await fetch("/api/admin/update-user", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, workRole, reportsTo }),
+        body: JSON.stringify({
+          userId,
+          workRole,
+          reportsTo,
+          role,
+          displayName,
+          email,
+          phone,
+        }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Failed to update user");
@@ -199,6 +217,20 @@ function UsersTab() {
 
   const userColumns: Column<UserRow>[] = [
     { key: "display_name", header: "Name" },
+    {
+      key: "email",
+      header: "Email",
+      render: (row) => (
+        <span className="text-sm break-all">{row.email ?? "—"}</span>
+      ),
+    },
+    {
+      key: "phone",
+      header: "Phone",
+      render: (row) => (
+        <span className="text-sm">{row.phone?.trim() ? row.phone : "—"}</span>
+      ),
+    },
     {
       key: "role",
       header: "Permission",
@@ -254,11 +286,15 @@ function UsersTab() {
           <Button
             variant="ghost"
             size="sm"
-            title="Edit work role & reporting line"
+            title="Edit user details"
             onClick={() => {
               setEditUser(row);
-              setEditWorkRole((row.work_role as WorkRole) ?? "");
-              setEditReportsTo(row.reports_to ?? "");
+              setEditPermissionRole(row.role as UserRole);
+              setEditDisplayName(row.display_name);
+              setEditEmail(row.email ?? "");
+              setEditPhone(row.phone ?? "");
+              setEditWorkRole((row.work_role as WorkRole) ?? "none");
+              setEditReportsTo(row.reports_to ?? "none");
               setEditError(null);
             }}
           >
@@ -476,11 +512,11 @@ function UsersTab() {
         data={users}
         columns={userColumns}
         searchPlaceholder="Search users..."
-        searchKeys={["display_name"]}
+        searchKeys={["display_name", "email"]}
         loading={isLoading}
       />
 
-      {/* Edit user work role & reporting line dialog */}
+      {/* Edit user dialog */}
       <Dialog
         open={!!editUser}
         onOpenChange={(isOpen) => {
@@ -495,20 +531,63 @@ function UsersTab() {
           <DialogHeader>
             <DialogTitle>Edit User — {editUser?.display_name}</DialogTitle>
             <DialogDescription>
-              Update the work role and reporting line for this user.
+              Update permission, contact details, work role, and reporting line.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
+              <Label>Permission level</Label>
+              <Select
+                value={editPermissionRole}
+                onValueChange={(v) => setEditPermissionRole(v as UserRole)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="viewer">Viewer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Display name</Label>
+              <Input
+                value={editDisplayName}
+                onChange={(e) => setEditDisplayName(e.target.value)}
+                placeholder="Full name"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                placeholder="user@example.com"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Phone</Label>
+              <Input
+                type="tel"
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+            <div className="space-y-1.5">
               <Label>Work Role</Label>
               <Select
                 value={editWorkRole}
-                onValueChange={(v) => setEditWorkRole(v as WorkRole)}
+                onValueChange={(v) => setEditWorkRole(v as WorkRole | "none")}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="No work role assigned" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">— No work role —</SelectItem>
                   {WORK_ROLES.map((r) => (
                     <SelectItem key={r.value} value={r.value}>
                       {r.label}
@@ -558,14 +637,22 @@ function UsersTab() {
                 editUser &&
                 updateUserMutation.mutate({
                   userId: editUser.user_id,
-                  workRole: (editWorkRole as WorkRole) || null,
+                  workRole: editWorkRole !== "none" ? editWorkRole : null,
                   reportsTo:
                     editReportsTo && editReportsTo !== "none"
                       ? editReportsTo
                       : null,
+                  role: editPermissionRole,
+                  displayName: editDisplayName.trim(),
+                  email: editEmail.trim(),
+                  phone: editPhone.trim() === "" ? null : editPhone.trim(),
                 })
               }
-              disabled={updateUserMutation.isPending}
+              disabled={
+                updateUserMutation.isPending ||
+                !editDisplayName.trim() ||
+                !editEmail.trim()
+              }
             >
               {updateUserMutation.isPending && (
                 <Loader2 className="h-4 w-4 animate-spin" />

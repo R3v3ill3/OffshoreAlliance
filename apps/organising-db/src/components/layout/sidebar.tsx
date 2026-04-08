@@ -16,6 +16,7 @@ import {
   LayoutGrid,
   RefreshCcw,
   Loader2,
+  MailOpen,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ export const navItems = [
 ];
 
 export const adminItems = [
+  { href: "/email-imports", label: "Email Imports", icon: MailOpen },
   { href: "/administration", label: "Administration", icon: Settings },
 ];
 

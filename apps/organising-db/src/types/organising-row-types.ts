@@ -608,6 +608,7 @@ export interface UserProfile {
   work_role: WorkRole | null;
   reports_to: string | null;
   display_name: string;
+  phone: string | null;
   organiser_id: number | null;
   created_at: string;
   updated_at: string;

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import dynamic from "next/dynamic";
-import { Plus, Wand2, ExternalLink, Trash2, Megaphone, FileStack } from "lucide-react";
+import { Plus, Wand2, ExternalLink, Trash2, Megaphone, FileStack, Mail } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -275,6 +275,12 @@ export default function CampaignsPage() {
                   <Link href="/campaigns/new" className="flex items-center gap-2">
                     <Wand2 className="h-4 w-4" />
                     Campaign wizard
+                  </Link>
+                </Button>
+                <Button variant="outline" asChild>
+                  <Link href="/campaigns/email-wizard" className="flex items-center gap-2">
+                    <Mail className="h-4 w-4" />
+                    Email wizard
                   </Link>
                 </Button>
                 <Dialog

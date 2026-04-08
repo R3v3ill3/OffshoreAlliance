@@ -98,6 +98,11 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invalid import ID' }, { status: 400 })
     }
 
+    await supabase
+      .from('comms_template_library')
+      .update({ source_import_id: null })
+      .eq('source_import_id', importId)
+
     const { error } = await supabase
       .from('email_imports')
       .delete()

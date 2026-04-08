@@ -111,7 +111,7 @@ export function CampaignTimeline({ stages, gates, campaignId, paboDate, expiryDa
               <div key={stage.stage_number} className="flex items-center">
                 {/* Stage block */}
                 <Link
-                  href={`/campaigns/${campaignId}/stage/${stage.stage_number}`}
+                  href={`/campaigns/${campaignId}/plan/stage/${stage.stage_number}`}
                   className={cn(
                     'flex flex-col items-center p-3 rounded-lg border-2 min-w-[120px] text-center hover:opacity-90 transition-opacity cursor-pointer',
                     stageColorClass
@@ -147,7 +147,7 @@ export function CampaignTimeline({ stages, gates, campaignId, paboDate, expiryDa
                 {i < stages.length - 1 && gate && (
                   <div className="flex flex-col items-center mx-1">
                     <Link
-                      href={`/campaigns/${campaignId}/gate/${gate.gate_number}`}
+                      href={`/campaigns/${campaignId}/plan/gate/${gate.gate_number}`}
                       className={cn(
                         'w-8 h-8 rounded-full border-2 flex items-center justify-center transition-colors hover:opacity-80',
                         GATE_COLORS[gateStatus]

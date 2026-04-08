@@ -68,7 +68,7 @@ export function StageProgressBar({ campaignId, currentStageNumber, stages }: Sta
                     )}
                   >
                     <Link
-                      href={`/campaigns/${campaignId}/stage/${num}`}
+                      href={`/campaigns/${campaignId}/plan/stage/${num}`}
                       className="flex items-center justify-between w-full px-2 py-1.5 hover:opacity-90"
                     >
                       <div className="flex items-center gap-2 overflow-hidden">

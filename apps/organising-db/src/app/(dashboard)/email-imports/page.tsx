@@ -117,7 +117,7 @@ export default function EmailImportsPage() {
           <p className="text-muted-foreground mt-1">
             Forward emails to{" "}
             <code className="bg-muted px-1.5 py-0.5 rounded text-sm">
-              templates@oa.uconstruct.app
+              templates@mail.oa.uconstruct.app
             </code>{" "}
             to import them as campaign templates.
           </p>
@@ -149,7 +149,7 @@ export default function EmailImportsPage() {
             <p className="text-muted-foreground mt-1 max-w-md">
               Forward a sample campaign email to{" "}
               <code className="bg-muted px-1 py-0.5 rounded text-sm">
-                templates@oa.uconstruct.app
+                templates@mail.oa.uconstruct.app
               </code>{" "}
               with a subject tag like{" "}
               <code className="bg-muted px-1 py-0.5 rounded text-sm">

@@ -16,17 +16,21 @@ You are adapting an existing email template to match specific campaign "Where to
 Your job is to suggest specific edits that adapt the template to the campaign context while preserving the template's structure and key messaging. Return a JSON object with:
 
 - "adapted_subject": string or null. Adapted subject line (only if the original has one).
-- "adapted_body_text": string. The full adapted body text.
-- "adapted_body_html": string or null. Adapted HTML body if the original has HTML.
-- "changes_summary": array of objects, each with:
-  - "location": string (e.g. "opening paragraph", "call to action", "sign-off")
-  - "original_snippet": string (short excerpt of original text)
-  - "adapted_snippet": string (what it was changed to)
-  - "reason": string (why this change was made based on WTP context)
+- "adapted_body_text": string. The full adapted PLAIN TEXT body. Do NOT include HTML.
+- "changes_summary": array of 3-5 objects (keep brief), each with:
+  - "location": string (e.g. "opening", "call to action", "sign-off")
+  - "original_snippet": string (max 50 chars of original)
+  - "adapted_snippet": string (max 50 chars of replacement)
+  - "reason": string (max 80 chars, why changed)
 - "tone_applied": string. Which tone(s) guided the adaptation.
 - "audience_targeted": string. Which audience segment the adaptation targets.
 
-Preserve template variables in {{variable_name}} format. Keep the email's core message intact. Make targeted, purposeful edits -- don't rewrite everything.
+CRITICAL RULES:
+- Preserve template variables in {{variable_name}} format
+- Keep the email's core message intact — make targeted edits, don't rewrite everything
+- Keep changes_summary entries SHORT (snippets max 50 chars each)
+- Do NOT include any HTML in the response — only plain text
+- The response MUST be valid, complete JSON
 
 Respond with ONLY valid JSON, no markdown formatting or explanation.`
 
@@ -86,16 +90,15 @@ Platforms: ${wtp_selections.platforms.join(', ') || 'Email'}
 ORIGINAL TEMPLATE:
 ${subject_line ? `Subject: ${subject_line}\n` : ''}
 --- Body Text ---
-${body_text.slice(0, 8000)}
+${body_text.slice(0, 6000)}
 ---
-${body_html ? `\n--- Body HTML ---\n${body_html.slice(0, 8000)}\n---` : ''}
 ${custom_instructions ? `\nADDITIONAL INSTRUCTIONS:\n${custom_instructions}` : ''}
 
 Please adapt this template to match the Where to Play context above.`
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 4000,
+      max_tokens: 8000,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
     })

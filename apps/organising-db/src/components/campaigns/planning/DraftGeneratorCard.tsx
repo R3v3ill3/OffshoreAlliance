@@ -167,7 +167,7 @@ export function DraftGeneratorCard({
         platform,
         subject: result.adapted_subject || template.subject_line || undefined,
         body_text: result.adapted_body_text || template.body_text,
-        body_html: result.adapted_body_html || template.body_html || undefined,
+        body_html: template.body_html || undefined,
         variables_used: [],
         tone_applied: result.tone_applied || '',
         audience_targeted: result.audience_targeted || '',

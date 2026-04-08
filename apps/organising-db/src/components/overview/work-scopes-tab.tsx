@@ -1,0 +1,359 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/lib/supabase/auth-context";
+import type { WorkScope } from "@/types/database";
+import { WorkScopeDefinitionDialog } from "@/components/work-scopes/work-scope-definition-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { DataTable, type Column } from "@/components/data-tables/data-table";
+import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
+import { Pencil, Plus } from "lucide-react";
+
+type ScopeTree = WorkScope & {
+  employer_count: number;
+  worksite_count: number;
+  children: ScopeTree[];
+};
+
+type EmployerScopeRow = {
+  employer_id: number;
+  employer_name: string;
+  is_current: boolean;
+  source: string;
+} & Record<string, unknown>;
+
+type WorksiteScopeRow = {
+  worksite_id: number;
+  worksite_name: string;
+  employer_name: string | null;
+  engagement_type: string | null;
+  is_current: boolean;
+} & Record<string, unknown>;
+
+export function WorkScopesTab() {
+  const router = useRouter();
+  const supabase = createClient();
+  const { canWrite } = useAuth();
+
+  const [definitionOpen, setDefinitionOpen] = useState(false);
+  const [definitionMode, setDefinitionMode] = useState<"create" | "edit">(
+    "create"
+  );
+  const [definitionScope, setDefinitionScope] = useState<WorkScope | null>(
+    null
+  );
+
+  const openCreateDefinition = () => {
+    setDefinitionMode("create");
+    setDefinitionScope(null);
+    setDefinitionOpen(true);
+  };
+
+  const openEditDefinition = (scope: WorkScope) => {
+    setDefinitionMode("edit");
+    setDefinitionScope(scope);
+    setDefinitionOpen(true);
+  };
+
+  const { data: scopes = [], isLoading } = useQuery({
+    queryKey: ["work-scopes-browse"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("work_scopes")
+        .select("*")
+        .eq("is_active", true)
+        .order("sort_order");
+      if (error) throw error;
+      return data as WorkScope[];
+    },
+  });
+
+  const { data: employerScopes = [] } = useQuery({
+    queryKey: ["all-employer-scopes"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employer_scopes")
+        .select("scope_id, employer:employers(employer_id, employer_name), is_current, source")
+        .eq("is_current", true);
+      if (error) throw error;
+      return data as unknown as { scope_id: number; employer?: { employer_id: number; employer_name: string }; is_current: boolean; source: string }[];
+    },
+  });
+
+  const { data: worksiteScopes = [] } = useQuery({
+    queryKey: ["all-worksite-scopes"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worksite_scopes")
+        .select("scope_id, worksite:worksites(worksite_id, worksite_name), employer:employers(employer_name), engagement_type, is_current")
+        .eq("is_current", true);
+      if (error) throw error;
+      return data as unknown as { scope_id: number; worksite?: { worksite_id: number; worksite_name: string }; employer?: { employer_name: string }; engagement_type: string | null; is_current: boolean }[];
+    },
+  });
+
+  const employerCountMap = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const es of employerScopes) {
+      map.set(es.scope_id, (map.get(es.scope_id) || 0) + 1);
+    }
+    return map;
+  }, [employerScopes]);
+
+  const worksiteCountMap = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const ws of worksiteScopes) {
+      map.set(ws.scope_id, (map.get(ws.scope_id) || 0) + 1);
+    }
+    return map;
+  }, [worksiteScopes]);
+
+  const tree = useMemo(() => {
+    const scopeMap = new Map<number, ScopeTree>();
+    const roots: ScopeTree[] = [];
+
+    for (const s of scopes) {
+      scopeMap.set(s.scope_id, {
+        ...s,
+        employer_count: employerCountMap.get(s.scope_id) || 0,
+        worksite_count: worksiteCountMap.get(s.scope_id) || 0,
+        children: [],
+      });
+    }
+
+    for (const node of scopeMap.values()) {
+      if (node.parent_scope_id && scopeMap.has(node.parent_scope_id)) {
+        scopeMap.get(node.parent_scope_id)!.children.push(node);
+      } else if (!node.parent_scope_id) {
+        roots.push(node);
+      }
+    }
+
+    return roots;
+  }, [scopes, employerCountMap, worksiteCountMap]);
+
+  function employersForScope(scopeId: number): EmployerScopeRow[] {
+    return employerScopes
+      .filter((es) => es.scope_id === scopeId && es.employer)
+      .map((es) => ({
+        employer_id: es.employer!.employer_id,
+        employer_name: es.employer!.employer_name,
+        is_current: es.is_current,
+        source: es.source,
+      }));
+  }
+
+  function worksitesForScope(scopeId: number): WorksiteScopeRow[] {
+    return worksiteScopes
+      .filter((ws) => ws.scope_id === scopeId && ws.worksite)
+      .map((ws) => ({
+        worksite_id: ws.worksite!.worksite_id,
+        worksite_name: ws.worksite!.worksite_name,
+        employer_name: ws.employer?.employer_name ?? null,
+        engagement_type: ws.engagement_type,
+        is_current: ws.is_current,
+      }));
+  }
+
+  const empCols: Column<EmployerScopeRow>[] = [
+    { key: "employer_name", header: "Employer" },
+    {
+      key: "source",
+      header: "Source",
+      render: (item) => (
+        <Badge variant={item.source === "auto" ? "info" : "secondary"}>
+          {item.source === "auto" ? "Auto" : "Manual"}
+        </Badge>
+      ),
+    },
+  ];
+
+  const wsCols: Column<WorksiteScopeRow>[] = [
+    { key: "worksite_name", header: "Worksite" },
+    { key: "employer_name", header: "Employer", render: (item) => item.employer_name ?? "—" },
+    {
+      key: "engagement_type",
+      header: "Engagement",
+      render: (item) =>
+        item.engagement_type ? (
+          <Badge variant="secondary">{item.engagement_type.replace(/_/g, " ")}</Badge>
+        ) : (
+          "—"
+        ),
+    },
+  ];
+
+  function renderScope(node: ScopeTree, depth: number = 0) {
+    if (node.is_whole_of_project) return null;
+
+    const emps = employersForScope(node.scope_id);
+    const wss = worksitesForScope(node.scope_id);
+    const hasData = emps.length > 0 || wss.length > 0 || node.children.length > 0;
+    const scopeForEdit: WorkScope = {
+      scope_id: node.scope_id,
+      scope_name: node.scope_name,
+      parent_scope_id: node.parent_scope_id,
+      description: node.description,
+      is_whole_of_project: node.is_whole_of_project,
+      sort_order: node.sort_order,
+      is_active: node.is_active,
+      created_at: node.created_at,
+      updated_at: node.updated_at,
+    };
+
+    return (
+      <AccordionItem key={node.scope_id} value={String(node.scope_id)}>
+        <AccordionTrigger className="hover:no-underline [&>svg]:shrink-0">
+          <div className="flex w-full min-w-0 items-center gap-2 pr-2 text-left">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <span className="font-medium">{node.scope_name}</span>
+              {node.employer_count > 0 && (
+                <Badge variant="secondary">
+                  {node.employer_count} employer
+                  {node.employer_count !== 1 ? "s" : ""}
+                </Badge>
+              )}
+              {node.worksite_count > 0 && (
+                <Badge variant="info">
+                  {node.worksite_count} worksite
+                  {node.worksite_count !== 1 ? "s" : ""}
+                </Badge>
+              )}
+            </div>
+            {canWrite && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 shrink-0"
+                title="Edit scope"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openEditDefinition(scopeForEdit);
+                }}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+        </AccordionTrigger>
+        <AccordionContent>
+          <div className="space-y-4 pl-4">
+            {node.children.length > 0 && (
+              <Accordion type="multiple" className="w-full">
+                {node.children.map((child) => renderScope(child, depth + 1))}
+              </Accordion>
+            )}
+            {emps.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium mb-2">Employers</h4>
+                <DataTable
+                  data={emps as EmployerScopeRow[]}
+                  columns={empCols}
+                  searchPlaceholder="Search employers..."
+                  searchKeys={["employer_name"]}
+                  pageSize={10}
+                  onRowClick={(item) => router.push(`/employers/${item.employer_id}`)}
+                />
+              </div>
+            )}
+            {wss.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium mb-2">Worksites</h4>
+                <DataTable
+                  data={wss as WorksiteScopeRow[]}
+                  columns={wsCols}
+                  searchPlaceholder="Search worksites..."
+                  searchKeys={["worksite_name", "employer_name"]}
+                  pageSize={10}
+                  onRowClick={(item) => router.push(`/worksites/${item.worksite_id}`)}
+                />
+              </div>
+            )}
+            {!hasData && (
+              <p className="text-sm text-muted-foreground">No employers or worksites assigned to this scope.</p>
+            )}
+          </div>
+        </AccordionContent>
+      </AccordionItem>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <EurekaLoadingSpinner size="lg" />
+      </div>
+    );
+  }
+
+  const totalEmployers = new Set(employerScopes.filter((e) => e.employer).map((e) => e.employer!.employer_id)).size;
+  const totalWorksites = new Set(worksiteScopes.filter((w) => w.worksite).map((w) => w.worksite!.worksite_id)).size;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-end">
+        {canWrite && (
+          <Button size="sm" onClick={openCreateDefinition}>
+            <Plus className="h-4 w-4" />
+            Add work scope
+          </Button>
+        )}
+      </div>
+
+      <WorkScopeDefinitionDialog
+        open={definitionOpen}
+        onOpenChange={setDefinitionOpen}
+        mode={definitionMode}
+        scope={definitionMode === "edit" ? definitionScope : null}
+      />
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Scopes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{scopes.filter((s) => !s.is_whole_of_project).length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Employers with Scopes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{totalEmployers}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Worksites with Scopes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{totalWorksites}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Accordion type="multiple" className="w-full">
+        {tree.map((root) => renderScope(root))}
+      </Accordion>
+    </div>
+  );
+}

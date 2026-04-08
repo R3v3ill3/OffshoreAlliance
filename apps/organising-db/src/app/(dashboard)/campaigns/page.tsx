@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Plus, Wand2, ExternalLink, Trash2 } from "lucide-react";
+import dynamic from "next/dynamic";
+import { Plus, Wand2, ExternalLink, Trash2, Megaphone, FileStack } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -30,6 +31,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { CampaignType, CampaignStatus } from "@/types/database";
 import type { Database } from "@oa/db-types";
 import { resolveCampaignOrganiserId } from "@/lib/campaign/resolve-campaign-organiser";
@@ -38,6 +40,8 @@ import {
   CampaignDeleteDialog,
   type CampaignDeleteTarget,
 } from "@/components/campaigns/campaign-delete-dialog";
+
+const TemplatesTab = dynamic(() => import("@/components/campaigns/templates-tab").then((m) => ({ default: m.TemplatesTab })), { ssr: false });
 
 interface StagePlanSummary {
   stage_number: number;
@@ -249,152 +253,174 @@ export default function CampaignsPage() {
       <CampaignDeleteDialog campaign={deleteTarget} onClose={() => setDeleteTarget(null)} />
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Campaigns</h1>
-        {canWrite && (
-          <div className="flex gap-2">
-            <Button variant="outline" asChild>
-              <Link href="/campaigns/new" className="flex items-center gap-2">
-                <Wand2 className="h-4 w-4" />
-                Campaign wizard
-              </Link>
-            </Button>
-            <Dialog
-              open={dialogOpen}
-              onOpenChange={(open) => {
-                setDialogOpen(open);
-                if (open) setOrganiserDialogKey((k) => k + 1);
-              }}
-            >
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4" />
-                Create Campaign
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-lg w-full max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Create Campaign</DialogTitle>
-                <DialogDescription>
-                  Set up a new organising or bargaining campaign.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Name *</Label>
-                  <Input
-                    id="name"
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    rows={3}
-                  />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Type *</Label>
-                    <Select
-                      value={form.campaign_type}
-                      onValueChange={(v) => setForm({ ...form, campaign_type: v as CampaignType })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="bargaining">Bargaining</SelectItem>
-                        <SelectItem value="organising">Organising</SelectItem>
-                        <SelectItem value="mobilisation">Mobilisation</SelectItem>
-                        <SelectItem value="political">Political</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Status *</Label>
-                    <Select
-                      value={form.status}
-                      onValueChange={(v) => setForm({ ...form, status: v as CampaignStatus })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="planning">Planning</SelectItem>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                        <SelectItem value="suspended">Suspended</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="start_date">Start Date</Label>
-                    <Input
-                      id="start_date"
-                      type="date"
-                      value={form.start_date}
-                      onChange={(e) => setForm({ ...form, start_date: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="end_date">End Date</Label>
-                    <Input
-                      id="end_date"
-                      type="date"
-                      value={form.end_date}
-                      onChange={(e) => setForm({ ...form, end_date: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <CampaignOrganiserSelect
-                  key={organiserDialogKey}
-                  resetKey={organiserDialogKey}
-                  label="Organiser"
-                  value={form.organiser_id}
-                  onChange={(v) => setForm({ ...form, organiser_id: v === "__none__" ? "" : v })}
-                  allowNone
-                  autoDefaultToCurrentUser
-                />
-                <div className="space-y-2">
-                  <Label htmlFor="notes">Notes</Label>
-                  <Textarea
-                    id="notes"
-                    value={form.notes}
-                    onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                    rows={3}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => createMutation.mutate()}
-                  disabled={!form.name || createMutation.isPending}
-                >
-                  {createMutation.isPending ? "Creating…" : "Create Campaign"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          </div>
-        )}
       </div>
 
-      <DataTable<CampaignRow>
-        data={campaigns}
-        columns={columns}
-        searchPlaceholder="Search campaigns…"
-        searchKeys={["name"]}
-        onRowClick={(row) => router.push(`/campaigns/${row.campaign_id}`)}
-        loading={isLoading}
-      />
+      <Tabs defaultValue="campaigns" className="space-y-4">
+        <TabsList className="h-10">
+          <TabsTrigger value="campaigns" className="gap-2">
+            <Megaphone className="h-4 w-4" />
+            Campaigns
+          </TabsTrigger>
+          <TabsTrigger value="templates" className="gap-2">
+            <FileStack className="h-4 w-4" />
+            Templates
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="campaigns" className="mt-0">
+          <div className="space-y-4">
+            {canWrite && (
+              <div className="flex items-center justify-end gap-2">
+                <Button variant="outline" asChild>
+                  <Link href="/campaigns/new" className="flex items-center gap-2">
+                    <Wand2 className="h-4 w-4" />
+                    Campaign wizard
+                  </Link>
+                </Button>
+                <Dialog
+                  open={dialogOpen}
+                  onOpenChange={(open) => {
+                    setDialogOpen(open);
+                    if (open) setOrganiserDialogKey((k) => k + 1);
+                  }}
+                >
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="h-4 w-4" />
+                    Create Campaign
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Create Campaign</DialogTitle>
+                    <DialogDescription>
+                      Set up a new organising or bargaining campaign.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Name *</Label>
+                      <Input
+                        id="name"
+                        value={form.name}
+                        onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="description">Description</Label>
+                      <Textarea
+                        id="description"
+                        value={form.description}
+                        onChange={(e) => setForm({ ...form, description: e.target.value })}
+                        rows={3}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Type *</Label>
+                        <Select
+                          value={form.campaign_type}
+                          onValueChange={(v) => setForm({ ...form, campaign_type: v as CampaignType })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="bargaining">Bargaining</SelectItem>
+                            <SelectItem value="organising">Organising</SelectItem>
+                            <SelectItem value="mobilisation">Mobilisation</SelectItem>
+                            <SelectItem value="political">Political</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Status *</Label>
+                        <Select
+                          value={form.status}
+                          onValueChange={(v) => setForm({ ...form, status: v as CampaignStatus })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="planning">Planning</SelectItem>
+                            <SelectItem value="active">Active</SelectItem>
+                            <SelectItem value="completed">Completed</SelectItem>
+                            <SelectItem value="suspended">Suspended</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="start_date">Start Date</Label>
+                        <Input
+                          id="start_date"
+                          type="date"
+                          value={form.start_date}
+                          onChange={(e) => setForm({ ...form, start_date: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="end_date">End Date</Label>
+                        <Input
+                          id="end_date"
+                          type="date"
+                          value={form.end_date}
+                          onChange={(e) => setForm({ ...form, end_date: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <CampaignOrganiserSelect
+                      key={organiserDialogKey}
+                      resetKey={organiserDialogKey}
+                      label="Organiser"
+                      value={form.organiser_id}
+                      onChange={(v) => setForm({ ...form, organiser_id: v === "__none__" ? "" : v })}
+                      allowNone
+                      autoDefaultToCurrentUser
+                    />
+                    <div className="space-y-2">
+                      <Label htmlFor="notes">Notes</Label>
+                      <Textarea
+                        id="notes"
+                        value={form.notes}
+                        onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={() => createMutation.mutate()}
+                      disabled={!form.name || createMutation.isPending}
+                    >
+                      {createMutation.isPending ? "Creating…" : "Create Campaign"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              </div>
+            )}
+
+            <DataTable<CampaignRow>
+              data={campaigns}
+              columns={columns}
+              searchPlaceholder="Search campaigns…"
+              searchKeys={["name"]}
+              onRowClick={(row) => router.push(`/campaigns/${row.campaign_id}`)}
+              loading={isLoading}
+            />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="templates" className="mt-0">
+          <TemplatesTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

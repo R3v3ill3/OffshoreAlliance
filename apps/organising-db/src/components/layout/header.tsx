@@ -11,11 +11,14 @@ const pageTitles: Record<string, string> = {
   "/workers": "Workers",
   "/employers": "Employers",
   "/worksites": "Worksites",
+  "/programs": "Programs",
   "/agreements": "Agreements (EBAs)",
   "/work-scopes": "Work Scopes",
   "/campaigns": "Campaigns",
+  "/templates": "Templates",
   "/reports": "Reports",
   "/administration": "Administration",
+  "/workload": "Workload",
   "/organiser-patches": "Organiser Patches",
 };
 

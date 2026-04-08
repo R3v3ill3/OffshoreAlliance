@@ -6,22 +6,14 @@ import { cn } from "@/lib/utils/cn";
 import { useAuth } from "@/lib/supabase/auth-context";
 import {
   LayoutDashboard,
-  Users,
-  Building2,
   MapPin,
-  FileText,
   Megaphone,
-  FileStack,
   BarChart3,
   Settings,
-  Map,
   LogOut,
   ChevronLeft,
   ChevronRight,
-  Layers,
   LayoutGrid,
-  Folder,
-  Activity,
   RefreshCcw,
   Loader2,
 } from "lucide-react";
@@ -31,21 +23,13 @@ import { Separator } from "@/components/ui/separator";
 
 export const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/workload", label: "Workload", icon: Activity },
   { href: "/overview", label: "Overview", icon: LayoutGrid },
-  { href: "/workers", label: "Workers", icon: Users },
-  { href: "/employers", label: "Employers", icon: Building2 },
   { href: "/worksites", label: "Worksites", icon: MapPin },
-  { href: "/programs", label: "Programs", icon: Folder },
-  { href: "/agreements", label: "Agreements", icon: FileText },
-  { href: "/work-scopes", label: "Work Scopes", icon: Layers },
   { href: "/campaigns", label: "Campaigns", icon: Megaphone },
-  { href: "/templates", label: "Templates", icon: FileStack },
   { href: "/reports", label: "Reports", icon: BarChart3 },
 ];
 
 export const adminItems = [
-  { href: "/organiser-patches", label: "Organiser Patches", icon: Map },
   { href: "/administration", label: "Administration", icon: Settings },
 ];
 

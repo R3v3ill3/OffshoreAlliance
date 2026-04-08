@@ -57,9 +57,13 @@ import {
   Database,
   Clock,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import { EmployerWizard } from "@/components/administration/employer-wizard";
 import { ReferenceDataWizard } from "@/components/import/reference-data-wizard";
 import { MembershipImportWizard } from "@/components/import/membership-import-wizard";
+
+const WorkloadTab = dynamic(() => import("@/components/administration/workload-tab").then((m) => ({ default: m.WorkloadTab })), { ssr: false });
+const OrganiserPatchesTab = dynamic(() => import("@/components/administration/organiser-patches-tab").then((m) => ({ default: m.OrganiserPatchesTab })), { ssr: false });
 
 const WORK_ROLES: { value: WorkRole; label: string }[] = [
   { value: "coordinator", label: "Co-ordinator" },
@@ -1427,45 +1431,69 @@ export default function AdministrationPage() {
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Administration</h1>
 
-      <Tabs defaultValue="users">
+      <Tabs defaultValue="system">
         <TabsList className="w-full justify-start overflow-x-auto h-auto p-1 flex-nowrap">
-          <TabsTrigger value="users">Users</TabsTrigger>
-          <TabsTrigger value="roles">Roles &amp; membership</TabsTrigger>
-          <TabsTrigger value="sectors">Sectors</TabsTrigger>
+          <TabsTrigger value="system">System Management</TabsTrigger>
+          <TabsTrigger value="data">Data Management</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
-          <TabsTrigger value="imports">Import History</TabsTrigger>
-          <TabsTrigger value="membership_import">Membership Import</TabsTrigger>
-          <TabsTrigger value="employer_wizard">Employer Wizard</TabsTrigger>
-          <TabsTrigger value="ref_data">Reference Data Import</TabsTrigger>
           <TabsTrigger value="monitoring">System Monitoring</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="users">
-          <UsersTab />
+        <TabsContent value="system">
+          <Tabs defaultValue="users" className="mt-4">
+            <TabsList className="h-9 bg-muted/50">
+              <TabsTrigger value="users">Users</TabsTrigger>
+              <TabsTrigger value="roles">Roles &amp; membership</TabsTrigger>
+              <TabsTrigger value="sectors">Sectors</TabsTrigger>
+              <TabsTrigger value="workload">Workload</TabsTrigger>
+              <TabsTrigger value="patches">Organiser Patches</TabsTrigger>
+            </TabsList>
+            <TabsContent value="users">
+              <UsersTab />
+            </TabsContent>
+            <TabsContent value="roles">
+              <div className="space-y-12">
+                <UnionMembershipTypesTab />
+                <MemberRolesTab />
+              </div>
+            </TabsContent>
+            <TabsContent value="sectors">
+              <SectorsTab />
+            </TabsContent>
+            <TabsContent value="workload">
+              <WorkloadTab />
+            </TabsContent>
+            <TabsContent value="patches">
+              <OrganiserPatchesTab />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
-        <TabsContent value="roles">
-          <div className="space-y-12">
-            <UnionMembershipTypesTab />
-            <MemberRolesTab />
-          </div>
+
+        <TabsContent value="data">
+          <Tabs defaultValue="imports" className="mt-4">
+            <TabsList className="h-9 bg-muted/50">
+              <TabsTrigger value="imports">Import History</TabsTrigger>
+              <TabsTrigger value="membership_import">Membership Import</TabsTrigger>
+              <TabsTrigger value="employer_wizard">Employer Wizard</TabsTrigger>
+              <TabsTrigger value="ref_data">Reference Data Import</TabsTrigger>
+            </TabsList>
+            <TabsContent value="imports">
+              <ImportHistoryTab />
+            </TabsContent>
+            <TabsContent value="membership_import">
+              <MembershipImportTab />
+            </TabsContent>
+            <TabsContent value="employer_wizard">
+              <EmployerWizard />
+            </TabsContent>
+            <TabsContent value="ref_data">
+              <ReferenceDataTab />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
-        <TabsContent value="sectors">
-          <SectorsTab />
-        </TabsContent>
+
         <TabsContent value="settings">
           <SettingsTab />
-        </TabsContent>
-        <TabsContent value="imports">
-          <ImportHistoryTab />
-        </TabsContent>
-        <TabsContent value="membership_import">
-          <MembershipImportTab />
-        </TabsContent>
-        <TabsContent value="employer_wizard">
-          <EmployerWizard />
-        </TabsContent>
-        <TabsContent value="ref_data">
-          <ReferenceDataTab />
         </TabsContent>
         <TabsContent value="monitoring">
           <MonitoringTab />

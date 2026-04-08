@@ -141,17 +141,22 @@ export function CampaignSendPanel({
     queryFn: async () => {
       const { data: campaign } = await supabase
         .from("campaigns")
-        .select("name, agreement_id, organiser_id")
+        .select("name, organiser_id")
         .eq("campaign_id", numericId)
         .single();
 
       let agreementName: string | undefined;
       let employerName: string | undefined;
-      if (campaign?.agreement_id) {
+      const { data: timeline } = await supabase
+        .from("campaign_timelines")
+        .select("agreement_id")
+        .eq("campaign_id", numericId)
+        .maybeSingle();
+      if (timeline?.agreement_id) {
         const { data: agreement } = await supabase
           .from("agreements")
           .select("agreement_name, employer_id")
-          .eq("agreement_id", campaign.agreement_id)
+          .eq("agreement_id", timeline.agreement_id)
           .single();
         agreementName = agreement?.agreement_name ?? undefined;
         if (agreement?.employer_id) {

@@ -148,15 +148,13 @@ export function EmailWizardSteps() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('campaigns')
-        .select('campaign_id, name, agreement_id, organiser_id')
+        .select('campaign_id, name, organiser_id')
         .order('created_at', { ascending: false })
       if (error) throw error
       return data ?? []
     },
     enabled: !!user,
   })
-
-  const selectedCampaign = campaigns.find((c) => c.campaign_id === state.campaignId)
 
   useQuery({
     queryKey: ['wizard-campaign-context', state.campaignId],
@@ -167,11 +165,16 @@ export function EmailWizardSteps() {
 
       let agreementName = ''
       let employerName = ''
-      if (campaign.agreement_id) {
+      const { data: timeline } = await supabase
+        .from('campaign_timelines')
+        .select('agreement_id')
+        .eq('campaign_id', state.campaignId)
+        .maybeSingle()
+      if (timeline?.agreement_id) {
         const { data: agreement } = await supabase
           .from('agreements')
           .select('agreement_name, employer_id')
-          .eq('agreement_id', campaign.agreement_id)
+          .eq('agreement_id', timeline.agreement_id)
           .single()
         agreementName = agreement?.agreement_name ?? ''
         if (agreement?.employer_id) {
@@ -332,7 +335,6 @@ export function EmailWizardSteps() {
   }
 
   async function handleSaveDraft() {
-    if (!state.campaignId) return
     setIsSavingDraft(true)
     try {
       const { data, error } = await supabase
@@ -443,7 +445,7 @@ export function EmailWizardSteps() {
   }
 
   const canProceed: Record<number, boolean> = {
-    1: !!state.campaignId,
+    1: true,
     2: state.tone.length > 0 && state.audience.length > 0,
     3: state.bodyText.trim().length > 0,
     4: true,
@@ -502,15 +504,20 @@ export function EmailWizardSteps() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-1">
-              <Label>Campaign</Label>
+              <Label>Campaign (optional)</Label>
               <Select
-                value={state.campaignId?.toString() ?? ''}
-                onValueChange={(v) => setState((prev) => ({ ...prev, campaignId: Number(v) }))}
+                value={state.campaignId?.toString() ?? '__none__'}
+                onValueChange={(v) => setState((prev) => ({
+                  ...prev,
+                  campaignId: v === '__none__' ? null : Number(v),
+                  ...(v === '__none__' ? { campaignName: '', employerName: '', agreementName: '', worksiteNames: [], organiserName: '', organiserPhone: '' } : {}),
+                }))}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a campaign..." />
+                  <SelectValue placeholder="No campaign — standalone email" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__none__">No campaign — standalone email</SelectItem>
                   {campaigns.map((c) => (
                     <SelectItem key={c.campaign_id} value={c.campaign_id.toString()}>
                       {c.name}
@@ -518,68 +525,69 @@ export function EmailWizardSteps() {
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Linking to a campaign enables variable auto-fill, list building, and draft saving.
+              </p>
             </div>
 
             {state.campaignId && (
-              <>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  {state.employerName && (
-                    <div>
-                      <span className="text-muted-foreground">Employer:</span>{' '}
-                      <span className="font-medium">{state.employerName}</span>
-                    </div>
-                  )}
-                  {state.agreementName && (
-                    <div>
-                      <span className="text-muted-foreground">Agreement:</span>{' '}
-                      <span className="font-medium">{state.agreementName}</span>
-                    </div>
-                  )}
-                  {state.organiserName && (
-                    <div>
-                      <span className="text-muted-foreground">Organiser:</span>{' '}
-                      <span className="font-medium">{state.organiserName}</span>
-                    </div>
-                  )}
-                  {state.worksiteNames.length > 0 && (
-                    <div>
-                      <span className="text-muted-foreground">Worksites:</span>{' '}
-                      <span className="font-medium">{state.worksiteNames.join(', ')}</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Campaign Stage</Label>
-                  <Select
-                    value={state.stageNumber?.toString() ?? '0'}
-                    onValueChange={(v) => setState((prev) => ({ ...prev, stageNumber: v === '0' ? null : Number(v) }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="0">General / not stage-specific</SelectItem>
-                      {Object.entries(STAGE_NAMES).map(([n, name]) => (
-                        <SelectItem key={n} value={n}>
-                          Stage {n}: {name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Email Purpose (optional)</Label>
-                  <Textarea
-                    value={state.emailPurpose}
-                    onChange={(e) => setState((prev) => ({ ...prev, emailPurpose: e.target.value }))}
-                    placeholder="What's the goal of this email? e.g., Announce bargaining dates, Rally support for protected action..."
-                    rows={2}
-                  />
-                </div>
-              </>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                {state.employerName && (
+                  <div>
+                    <span className="text-muted-foreground">Employer:</span>{' '}
+                    <span className="font-medium">{state.employerName}</span>
+                  </div>
+                )}
+                {state.agreementName && (
+                  <div>
+                    <span className="text-muted-foreground">Agreement:</span>{' '}
+                    <span className="font-medium">{state.agreementName}</span>
+                  </div>
+                )}
+                {state.organiserName && (
+                  <div>
+                    <span className="text-muted-foreground">Organiser:</span>{' '}
+                    <span className="font-medium">{state.organiserName}</span>
+                  </div>
+                )}
+                {state.worksiteNames.length > 0 && (
+                  <div>
+                    <span className="text-muted-foreground">Worksites:</span>{' '}
+                    <span className="font-medium">{state.worksiteNames.join(', ')}</span>
+                  </div>
+                )}
+              </div>
             )}
+
+            <div className="space-y-1">
+              <Label>Campaign Stage</Label>
+              <Select
+                value={state.stageNumber?.toString() ?? '0'}
+                onValueChange={(v) => setState((prev) => ({ ...prev, stageNumber: v === '0' ? null : Number(v) }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">General / not stage-specific</SelectItem>
+                  {Object.entries(STAGE_NAMES).map(([n, name]) => (
+                    <SelectItem key={n} value={n}>
+                      Stage {n}: {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label>Email Purpose (optional)</Label>
+              <Textarea
+                value={state.emailPurpose}
+                onChange={(e) => setState((prev) => ({ ...prev, emailPurpose: e.target.value }))}
+                placeholder="What's the goal of this email? e.g., Announce bargaining dates, Rally support for protected action..."
+                rows={2}
+              />
+            </div>
           </CardContent>
         </Card>
       )}
@@ -777,7 +785,7 @@ export function EmailWizardSteps() {
                   </p>
                 </div>
 
-                {!state.draftId && (
+                {!state.draftId && state.campaignId && (
                   <Button onClick={handleSaveDraft} disabled={isSavingDraft || !state.bodyText.trim()}>
                     {isSavingDraft ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -786,6 +794,11 @@ export function EmailWizardSteps() {
                     )}
                     Save Draft
                   </Button>
+                )}
+                {!state.draftId && !state.campaignId && (
+                  <p className="text-xs text-muted-foreground">
+                    Link a campaign in Step 1 to save drafts and build recipient lists.
+                  </p>
                 )}
                 {state.draftId && (
                   <Badge variant="default" className="py-1.5 px-3">

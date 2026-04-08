@@ -1,11 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { Mail, Send } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CampaignSendPanel } from "./campaign-send-panel";
+import { CampaignSendPanel, type PreparedTag } from "./campaign-send-panel";
 import { CampaignListBuilder } from "./campaign-list-builder";
 
 interface CampaignCommsSectionProps {
@@ -20,6 +21,8 @@ export function CampaignCommsSection({
   const supabase = createClient();
   const { user } = useAuth();
   const numericId = Number(campaignId);
+  const [preparedTag, setPreparedTag] = useState<PreparedTag | null>(null);
+  const [activeTab, setActiveTab] = useState("drafts");
 
   const { data: stats } = useQuery({
     queryKey: ["campaign-comms-stats", numericId],
@@ -53,18 +56,29 @@ export function CampaignCommsSection({
         </div>
       )}
 
-      <Tabs defaultValue="drafts">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="drafts">Drafts & Send</TabsTrigger>
           <TabsTrigger value="list-builder">List Builder</TabsTrigger>
         </TabsList>
 
         <TabsContent value="drafts">
-          <CampaignSendPanel campaignId={campaignId} canWrite={canWrite} />
+          <CampaignSendPanel
+            campaignId={campaignId}
+            canWrite={canWrite}
+            preparedTag={preparedTag}
+          />
         </TabsContent>
 
         <TabsContent value="list-builder">
-          <CampaignListBuilder campaignId={campaignId} canWrite={canWrite} />
+          <CampaignListBuilder
+            campaignId={campaignId}
+            canWrite={canWrite}
+            onListPrepared={(tag) => {
+              setPreparedTag(tag);
+              setActiveTab("drafts");
+            }}
+          />
         </TabsContent>
       </Tabs>
     </div>

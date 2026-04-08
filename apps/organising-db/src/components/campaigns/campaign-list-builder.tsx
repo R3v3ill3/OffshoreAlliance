@@ -18,6 +18,7 @@ import {
   Loader2,
   CheckCircle,
   AlertCircle,
+  Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +45,13 @@ import {
 interface CampaignListBuilderProps {
   campaignId: string | number;
   canWrite: boolean;
+  onListPrepared?: (tag: {
+    tag_id: string;
+    tag_href: string;
+    tag_name: string;
+    contacts_tagged: number;
+    contacts_created: number;
+  }) => void;
 }
 
 interface WorkerRow {
@@ -91,6 +99,7 @@ const ROLE_OPTIONS = [
 export function CampaignListBuilder({
   campaignId,
   canWrite,
+  onListPrepared,
 }: CampaignListBuilderProps) {
   const supabase = createClient();
   const { user } = useAuth();
@@ -110,6 +119,11 @@ export function CampaignListBuilder({
   );
   const [syncingTags, setSyncingTags] = useState(false);
   const [syncResult, setSyncResult] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+  const [pushingList, setPushingList] = useState(false);
+  const [pushResult, setPushResult] = useState<{
     type: "success" | "error";
     message: string;
   } | null>(null);
@@ -583,7 +597,76 @@ export function CampaignListBuilder({
               <Download className="h-3 w-3" />
               Export CSV
             </Button>
+            {onListPrepared && (
+              <Button
+                size="sm"
+                onClick={async () => {
+                  setPushingList(true);
+                  setPushResult(null);
+                  try {
+                    const res = await fetch(`/api/campaigns/${numericId}/push-list`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        filters: {
+                          membership: membershipFilter.length > 0 ? membershipFilter : undefined,
+                          roles: roleFilter.length > 0 ? roleFilter : undefined,
+                          employer_id: employerFilter || undefined,
+                          worksite_id: worksiteFilter || undefined,
+                          occupation: occupationSearch || undefined,
+                          an_tags: includeAnTags.length > 0 ? includeAnTags : undefined,
+                          exclude_an_tags: excludeAnTags.length > 0 ? excludeAnTags : undefined,
+                        },
+                      }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                      throw new Error(data.error || "Push failed");
+                    }
+                    setPushResult({
+                      type: "success",
+                      message: `Tag "${data.tag_name}" created: ${data.contacts_tagged} tagged, ${data.contacts_created} new contacts${data.contacts_skipped > 0 ? `, ${data.contacts_skipped} skipped (no email)` : ""}`,
+                    });
+                    onListPrepared({
+                      tag_id: data.tag_id,
+                      tag_href: data.tag_href,
+                      tag_name: data.tag_name,
+                      contacts_tagged: data.contacts_tagged,
+                      contacts_created: data.contacts_created,
+                    });
+                  } catch (err) {
+                    setPushResult({
+                      type: "error",
+                      message: err instanceof Error ? err.message : "Unknown error",
+                    });
+                  } finally {
+                    setPushingList(false);
+                  }
+                }}
+                disabled={workers.length === 0 || pushingList}
+                className="text-xs"
+              >
+                {pushingList ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Send className="h-3 w-3" />
+                )}
+                {pushingList ? "Pushing to AN…" : "Prepare for Send"}
+              </Button>
+            )}
           </div>
+          {pushResult && (
+            <div className={`mt-2 flex items-start gap-2 text-xs p-2 rounded ${
+              pushResult.type === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+            }`}>
+              {pushResult.type === "success" ? (
+                <CheckCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              )}
+              <span>{pushResult.message}</span>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {workers.length === 0 && !workersLoading ? (

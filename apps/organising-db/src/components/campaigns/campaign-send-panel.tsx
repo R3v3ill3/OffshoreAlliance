@@ -19,6 +19,7 @@ import {
   RefreshCw,
   BarChart3,
   Loader2,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,9 +29,18 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { CommsPlatform, DraftStatus } from "@/types/planner-types";
 
+export interface PreparedTag {
+  tag_id: string;
+  tag_href: string;
+  tag_name: string;
+  contacts_tagged: number;
+  contacts_created: number;
+}
+
 interface CampaignSendPanelProps {
   campaignId: string | number;
   canWrite: boolean;
+  preparedTag?: PreparedTag | null;
 }
 
 interface DraftRow {
@@ -100,6 +110,7 @@ function groupByStage(drafts: DraftRow[]): Map<number, DraftRow[]> {
 export function CampaignSendPanel({
   campaignId,
   canWrite,
+  preparedTag,
 }: CampaignSendPanelProps) {
   const supabase = createClient();
   const { user } = useAuth();
@@ -255,17 +266,21 @@ export function CampaignSendPanel({
       const resolvedBody = translateToActionNetwork(
         resolveTemplateVariables(selectedDraft.body_html || selectedDraft.body, ctx)
       );
+      const messagePayload: Record<string, unknown> = {
+        subject: resolvedSubject,
+        body: resolvedBody,
+        from: "Offshore Alliance",
+        reply_to: "info@offshorealliance.org.au",
+      };
+      if (preparedTag?.tag_href) {
+        messagePayload.targets = [{ href: preparedTag.tag_href }];
+      }
       const createRes = await fetch("/api/action-network", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create_message",
-          message: {
-            subject: resolvedSubject,
-            body: resolvedBody,
-            from: "Offshore Alliance",
-            reply_to: "info@offshorealliance.org.au",
-          },
+          message: messagePayload,
         }),
       });
       const createData = await createRes.json();
@@ -583,16 +598,26 @@ export function CampaignSendPanel({
                           Edit
                         </Button>
                         {selectedDraft.platform === "email" && (
-                          <Button
-                            size="sm"
-                            onClick={() => sendAnMutation.mutate()}
-                            disabled={sendAnMutation.isPending}
-                          >
-                            <Send className="h-3.5 w-3.5" />
-                            {sendAnMutation.isPending
-                              ? "Pushing…"
-                              : "Push to Action Network"}
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            {preparedTag && (
+                              <Badge variant="secondary" className="text-xs">
+                                <Users className="h-3 w-3 mr-1" />
+                                {preparedTag.tag_name} ({preparedTag.contacts_tagged + preparedTag.contacts_created} contacts)
+                              </Badge>
+                            )}
+                            <Button
+                              size="sm"
+                              onClick={() => sendAnMutation.mutate()}
+                              disabled={sendAnMutation.isPending}
+                            >
+                              <Send className="h-3.5 w-3.5" />
+                              {sendAnMutation.isPending
+                                ? "Pushing…"
+                                : preparedTag
+                                  ? "Push to AN with List"
+                                  : "Push to Action Network"}
+                            </Button>
+                          </div>
                         )}
                         {selectedDraft.platform === "sms" && (
                           <Button

@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+function getResendClient(): Resend {
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) throw new Error('RESEND_API_KEY not configured')
+  return new Resend(apiKey)
+}
 
 function parseSubjectTag(subject: string): string | null {
   const bracketMatch = subject.match(/\[([^\]]+)\]/)
@@ -32,6 +36,8 @@ export async function POST(req: NextRequest) {
     if (!svixId || !svixTimestamp || !svixSignature) {
       return NextResponse.json({ error: 'Missing signature headers' }, { status: 400 })
     }
+
+    const resend = getResendClient()
 
     let event: { type: string; data: { email_id: string; from: string; to: string[]; subject: string; created_at: string } }
     try {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { useGenerateDraft } from '@/lib/hooks/useGenerateDraft'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,9 +21,15 @@ import {
   ChevronUp,
   CheckCircle,
   FileText,
+  Variable,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { TemplatePicker } from './TemplatePicker'
+import {
+  RECIPIENT_VARIABLES,
+  INSERT_VARIABLES as ALL_INSERT_VARS,
+  resolveTemplateVariables,
+} from '@/lib/comms/template-variables'
 import type { TemplateRow } from '@/lib/hooks/useTemplateLibrary'
 import type { CommsPlatform, CommsDraftRequest, CommsDraftResponse } from '@/types/planner-types'
 
@@ -94,8 +100,43 @@ export function DraftGeneratorCard({
   const [changeSummary, setChangeSummary] = useState<Array<{ location: string; original_snippet: string; adapted_snippet: string; reason: string }> | null>(null)
   const [sourceTemplateId, setSourceTemplateId] = useState<number | null>(null)
 
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
+
   const generateDraft = useGenerateDraft()
   const config = PLATFORM_CONFIG[platform]
+
+  const campaignVarContext: Record<string, string | undefined> = useMemo(() => ({
+    employer_name: campaignContext.employer_name || undefined,
+    agreement_name: campaignContext.agreement_name || undefined,
+    worksite_name: campaignContext.worksite_names?.[0] || undefined,
+    campaign_name: undefined,
+    organiser_name: undefined,
+    organiser_phone: undefined,
+    staff_name: undefined,
+    staff_email: undefined,
+    staff_phone: undefined,
+    staff_role: undefined,
+    date: new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }),
+  }), [campaignContext])
+
+  function insertVariableAtCursor(variable: string) {
+    const textarea = bodyRef.current
+    if (!textarea) {
+      setBodyText(bodyText + variable)
+      setSaved(false)
+      return
+    }
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const newValue = bodyText.substring(0, start) + variable + bodyText.substring(end)
+    setBodyText(newValue)
+    setSaved(false)
+    requestAnimationFrame(() => {
+      const pos = start + variable.length
+      textarea.setSelectionRange(pos, pos)
+      textarea.focus()
+    })
+  }
 
   async function handleGenerate() {
     setSaved(false)
@@ -117,8 +158,10 @@ export function DraftGeneratorCard({
   }
 
   function handleSelectTemplate(template: TemplateRow) {
-    setSubject(template.subject_line || '')
-    setBodyText(template.body_text)
+    const resolvedBody = resolveTemplateVariables(template.body_text, campaignVarContext)
+    const resolvedSubject = resolveTemplateVariables(template.subject_line || '', campaignVarContext)
+    setSubject(resolvedSubject)
+    setBodyText(resolvedBody)
     setSourceTemplateId(template.template_id)
     setChangeSummary(null)
     setDraft({
@@ -160,8 +203,10 @@ export function DraftGeneratorCard({
       }
 
       const result = await response.json()
-      setSubject(result.adapted_subject || template.subject_line || '')
-      setBodyText(result.adapted_body_text || template.body_text)
+      const resolvedSubject = resolveTemplateVariables(result.adapted_subject || template.subject_line || '', campaignVarContext)
+      const resolvedBody = resolveTemplateVariables(result.adapted_body_text || template.body_text, campaignVarContext)
+      setSubject(resolvedSubject)
+      setBodyText(resolvedBody)
       setChangeSummary(result.changes_summary || null)
       setDraft({
         platform,
@@ -353,7 +398,24 @@ export function DraftGeneratorCard({
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Body</Label>
+              <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                <Variable className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground mr-1">Insert:</span>
+                {RECIPIENT_VARIABLES.map((v) => (
+                  <Button
+                    key={v.key}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-6 text-xs font-mono px-1.5"
+                    onClick={() => insertVariableAtCursor(`{{${v.key}}}`)}
+                  >
+                    {`{{${v.key}}}`}
+                  </Button>
+                ))}
+              </div>
               <Textarea
+                ref={bodyRef}
                 value={bodyText}
                 onChange={(e) => { setBodyText(e.target.value); setSaved(false) }}
                 rows={10}

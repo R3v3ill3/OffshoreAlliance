@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { format } from "date-fns";
+import { translateToActionNetwork } from "@/lib/comms/template-variables";
 import {
   Mail,
   MessageSquare,
@@ -175,8 +176,8 @@ export function CampaignSendPanel({
         body: JSON.stringify({
           action: "create_message",
           message: {
-            subject: selectedDraft.subject || selectedDraft.title || "No subject",
-            body: selectedDraft.body_html || selectedDraft.body,
+            subject: translateToActionNetwork(selectedDraft.subject || selectedDraft.title || "No subject"),
+            body: translateToActionNetwork(selectedDraft.body_html || selectedDraft.body),
             from: "Offshore Alliance",
             reply_to: "info@offshorealliance.org.au",
           },

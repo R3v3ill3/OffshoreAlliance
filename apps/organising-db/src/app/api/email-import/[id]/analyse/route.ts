@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { ALL_VARIABLE_KEYS } from '@/lib/comms/template-variables'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -15,7 +16,7 @@ const STAGE_NAMES: Record<number, string> = {
   6: 'Bargaining to Win',
 }
 
-const SYSTEM_PROMPT = `You are analysing a forwarded email for the Offshore Alliance, a joint AWU/MUA union initiative in Australia's offshore oil and gas sector. Your job is to extract campaign planning context from this email so it can be used as a communications template.
+const SYSTEM_PROMPT = `You are analysing a forwarded email for the Offshore Alliance, a joint AWU/MUA union initiative in Australia's offshore oil and gas sector. Your job is to extract campaign planning context from this email so it can be used as a reusable communications template.
 
 The Offshore Alliance campaigns follow a 6-stage model:
 1. Contact ID & Mapping
@@ -25,28 +26,41 @@ The Offshore Alliance campaigns follow a 6-stage model:
 5. Endorsement & Commence Bargaining
 6. Bargaining to Win
 
+KNOWN TEMPLATE VARIABLES (you MUST only use these):
+Campaign context (resolved when creating a draft from the template):
+  employer_name, agreement_name, worksite_name, campaign_name, organiser_name, organiser_phone, staff_name, staff_email, staff_phone, staff_role, date
+Recipient (resolved at send time by Action Network):
+  first_name, last_name
+
 Analyse the email and return a JSON object with ALL of the following fields:
 
-- "stage_number": number 1-6 or null. Which campaign stage this email is most suited for.
-- "stage_rationale": string. Brief explanation of why this stage was chosen.
-- "tone_tags": array of strings from EXACTLY these values: "informative", "urgency", "shared_responsibility", "success_story", "solidarity", "fairness", "worker_voice", "job_security". Select all that apply.
-- "audience_segment": one string from EXACTLY these values: "existing_members", "lapsed_members", "non_members_known", "non_members_unknown", "all_workers", "bargaining_reps", "hsrs", "delegates", "marine_workers", "catering_workers". Pick the best fit.
-- "activity_type": one string from EXACTLY these values: "first_contact", "education", "mobilisation", "bargaining_update", "action_alert", "survey", "meeting_invite", "membership_check", "general_update". Pick the best fit.
-- "suggested_title": string. A short title for this template (e.g. "Bargaining Update - Wage Offer").
-- "variables": array of variable names that could be parameterised (e.g. names, dates, employers, worksites). Use snake_case format without braces.
-- "platform": "email" (confirm or override based on content).
-- "design_elements": object with:
-  - "has_images": boolean
-  - "has_custom_fonts": boolean
-  - "font_families": array of detected font family names
-  - "primary_colors": array of hex colour codes detected in the HTML
-  - "layout_type": one of "single_column", "two_column", "newsletter", "simple_text"
-- "target_audience_description": string. Plain-language description of who this email targets.
-- "call_to_action": string or null. What the email asks the reader to do.
-- "key_themes": array of strings. 2-5 key themes or topics in the email.
-- "suggested_wtp_categories": array of objects, each with "category" (string) and "option" (string), mapping to Where to Play planning dimensions. Categories include: "Narrative & Tone", "Potential Contacts", "Communication Platforms", "Engagement Intensity", "Mobilisation Tactics".
+- "stage_number": number 1-6 or null.
+- "stage_rationale": string. Brief explanation.
+- "tone_tags": array from EXACTLY: "informative", "urgency", "shared_responsibility", "success_story", "solidarity", "fairness", "worker_voice", "job_security".
+- "audience_segment": one from EXACTLY: "existing_members", "lapsed_members", "non_members_known", "non_members_unknown", "all_workers", "bargaining_reps", "hsrs", "delegates", "marine_workers", "catering_workers".
+- "activity_type": one from EXACTLY: "first_contact", "education", "mobilisation", "bargaining_update", "action_alert", "survey", "meeting_invite", "membership_check", "general_update".
+- "suggested_title": string.
+- "platform": "email".
+- "design_elements": { "has_images": boolean, "has_custom_fonts": boolean, "font_families": string[], "primary_colors": string[], "layout_type": "single_column" | "two_column" | "newsletter" | "simple_text" }
+- "target_audience_description": string.
+- "call_to_action": string or null.
+- "key_themes": string[] (2-5 items).
+- "suggested_wtp_categories": array of { "category": string, "option": string }.
 
-Respond with ONLY valid JSON, no markdown formatting or explanation.`
+- "variable_replacements": array of objects identifying specific text in the email that should be replaced with template variables. Each object:
+  - "original_text": string. The EXACT text from the email to replace (e.g. "Woodside Energy", "Dear John").
+  - "variable": string. One of the known variable names listed above (e.g. "employer_name", "first_name"). MUST be from the known list.
+  - "confidence": "high" | "medium". How confident you are this text should be parameterised.
+  - "context": string. Brief explanation (max 60 chars) of why this replacement makes sense.
+
+IMPORTANT for variable_replacements:
+- Scan the email for employer names, company names, agreement/EBA names, worksite/platform names, organiser names, recipient greetings, dates, phone numbers, and email addresses.
+- Match each piece of text to the MOST APPROPRIATE known variable.
+- Include the EXACT text as it appears in the email (case-sensitive, including surrounding context if needed for unique matching).
+- Do NOT invent variable names outside the known list.
+- If text looks parameterisable but no known variable fits, omit it.
+
+Respond with ONLY valid JSON, no markdown formatting.`
 
 export async function POST(
   req: NextRequest,
@@ -101,7 +115,7 @@ ${Object.entries(STAGE_NAMES).map(([n, name]) => `${n}. ${name}`).join('\n')}`
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2000,
+      max_tokens: 4000,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
     })

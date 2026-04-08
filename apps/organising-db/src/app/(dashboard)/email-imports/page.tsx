@@ -22,7 +22,9 @@ import {
   useImportAsTemplate,
   type EmailImportRow,
   type EmailAnalysis,
+  type VariableReplacement,
 } from "@/lib/hooks/useEmailImports";
+import { ALL_TEMPLATE_VARIABLES } from "@/lib/comms/template-variables";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -267,11 +269,22 @@ function ImportDetailDialog({
   const [editedAnalysis, setEditedAnalysis] = useState<Partial<EmailAnalysis>>(
     {}
   );
+  const [replacements, setReplacements] = useState<VariableReplacement[]>([])
+  const [replacementsInitialized, setReplacementsInitialized] = useState(false);
 
   const analysis = detail?.ai_analysis as EmailAnalysis | null;
   const currentAnalysis = editMode
     ? { ...analysis, ...editedAnalysis }
     : analysis;
+
+  if (analysis?.variable_replacements && !replacementsInitialized && detail) {
+    const withAccepted = analysis.variable_replacements.map((r) => ({
+      ...r,
+      accepted: r.accepted ?? r.confidence === 'high',
+    }));
+    setReplacements(withAccepted);
+    setReplacementsInitialized(true);
+  }
 
   const handleSaveReview = async () => {
     if (!detail || !editedAnalysis) return;
@@ -289,6 +302,7 @@ function ImportDetailDialog({
 
   const handleImport = () => {
     if (!detail) return;
+    const acceptedReplacements = replacements.filter((r) => r.accepted);
     importAsTemplate.mutate(
       {
         importId,
@@ -303,6 +317,7 @@ function ImportDetailDialog({
               activity_type: (editedAnalysis as EmailAnalysis).activity_type,
             }
           : undefined,
+        variable_replacements: acceptedReplacements.length > 0 ? acceptedReplacements : undefined,
       },
       { onSuccess: onClose }
     );
@@ -705,21 +720,90 @@ function ImportDetailDialog({
                       </div>
                     )}
 
-                    {/* Detected Variables */}
-                    {(currentAnalysis.variables?.length ?? 0) > 0 && (
+                    {/* Variable Replacements */}
+                    {replacements.length > 0 && (
                       <div>
                         <Label className="text-xs text-muted-foreground">
-                          Detected Variables
+                          Variable Replacements
                         </Label>
-                        <div className="flex flex-wrap gap-1.5 mt-1">
-                          {currentAnalysis.variables!.map((v) => (
-                            <Badge
-                              key={v}
-                              variant="secondary"
-                              className="font-mono text-xs"
+                        <p className="text-xs text-muted-foreground mt-0.5 mb-2">
+                          Accept or reject each replacement. Accepted replacements will be applied when importing as a template.
+                        </p>
+                        <div className="space-y-1.5 mt-1">
+                          {replacements.map((r, i) => (
+                            <div
+                              key={i}
+                              className={`flex items-start gap-2 p-2 rounded text-xs border ${
+                                r.accepted
+                                  ? "bg-green-50 border-green-200"
+                                  : "bg-muted/30 border-transparent"
+                              }`}
                             >
-                              {`{{${v}}}`}
-                            </Badge>
+                              <input
+                                type="checkbox"
+                                checked={r.accepted}
+                                onChange={() => {
+                                  const updated = [...replacements];
+                                  updated[i] = {
+                                    ...updated[i],
+                                    accepted: !updated[i].accepted,
+                                  };
+                                  setReplacements(updated);
+                                }}
+                                className="mt-0.5 shrink-0"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="line-through text-muted-foreground">
+                                    &ldquo;{r.original_text.slice(0, 60)}&rdquo;
+                                  </span>
+                                  <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                                  <Badge
+                                    variant="secondary"
+                                    className="font-mono text-xs"
+                                  >
+                                    {`{{${r.variable}}}`}
+                                  </Badge>
+                                  <Badge
+                                    variant={
+                                      r.confidence === "high"
+                                        ? "default"
+                                        : "secondary"
+                                    }
+                                    className="text-xs"
+                                  >
+                                    {r.confidence}
+                                  </Badge>
+                                </div>
+                                {r.context && (
+                                  <p className="text-muted-foreground mt-0.5">
+                                    {r.context}
+                                  </p>
+                                )}
+                                <Select
+                                  value={r.variable}
+                                  onValueChange={(v) => {
+                                    const updated = [...replacements];
+                                    updated[i] = { ...updated[i], variable: v };
+                                    setReplacements(updated);
+                                  }}
+                                >
+                                  <SelectTrigger className="h-6 w-48 text-xs mt-1">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {ALL_TEMPLATE_VARIABLES.map((tv) => (
+                                      <SelectItem
+                                        key={tv.key}
+                                        value={tv.key}
+                                      >
+                                        {`{{${tv.key}}}`} — {tv.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
                           ))}
                         </div>
                       </div>

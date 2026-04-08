@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { applyVariableReplacements } from '@/lib/comms/template-variables'
 
 export async function POST(
   req: NextRequest,
@@ -25,6 +26,7 @@ export async function POST(
       tone_tags?: string[]
       audience_segment?: string
       activity_type?: string
+      variable_replacements?: Array<{ original_text: string; variable: string; accepted: boolean }>
     }
 
     const { data: emailImport, error: fetchError } = await supabase
@@ -47,8 +49,24 @@ export async function POST(
     const analysis = (emailImport.ai_analysis as Record<string, unknown>) || {}
 
     const designMetadata = analysis.design_elements ?? null
-    const variables = Array.isArray(analysis.variables)
-      ? analysis.variables.reduce((acc: Record<string, string>, v: string) => {
+
+    const acceptedReplacements = (overrides.variable_replacements ?? []).filter((r) => r.accepted)
+
+    let bodyText = emailImport.body_text || ''
+    let bodyHtml = emailImport.body_html ?? null
+    let subjectLine = emailImport.subject
+
+    if (acceptedReplacements.length > 0) {
+      bodyText = applyVariableReplacements(bodyText, acceptedReplacements)
+      if (bodyHtml) {
+        bodyHtml = applyVariableReplacements(bodyHtml, acceptedReplacements)
+      }
+      subjectLine = applyVariableReplacements(subjectLine, acceptedReplacements)
+    }
+
+    const usedVariableKeys = [...new Set(acceptedReplacements.map((r) => r.variable))]
+    const variables = usedVariableKeys.length > 0
+      ? usedVariableKeys.reduce((acc: Record<string, string>, v: string) => {
           acc[v] = `{{${v}}}`
           return acc
         }, {})
@@ -58,9 +76,9 @@ export async function POST(
       .from('comms_template_library')
       .insert({
         title: overrides.title || (analysis.suggested_title as string) || emailImport.subject,
-        subject_line: emailImport.subject,
-        body_html: emailImport.body_html ?? null,
-        body_text: emailImport.body_text || '',
+        subject_line: subjectLine,
+        body_html: bodyHtml,
+        body_text: bodyText,
         stage_number: overrides.stage_number ?? (analysis.stage_number as number) ?? null,
         activity_type: overrides.activity_type || (analysis.activity_type as string) || null,
         tone_tags: overrides.tone_tags || (analysis.tone_tags as string[]) || null,

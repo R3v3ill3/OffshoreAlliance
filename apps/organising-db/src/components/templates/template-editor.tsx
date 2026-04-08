@@ -7,39 +7,10 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Variable } from 'lucide-react'
 import {
-  STAFF_TEMPLATE_SAMPLE_DATA,
-  STAFF_TEMPLATE_VARIABLES,
-} from '@/lib/comms/staff-template-variables'
-
-const COMMON_VARIABLES = [
-  '{{first_name}}',
-  '{{last_name}}',
-  '{{agreement_name}}',
-  '{{employer_name}}',
-  '{{worksite_name}}',
-  '{{organiser_name}}',
-  '{{organiser_phone}}',
-  '{{date}}',
-  '{{campaign_name}}',
-] as const
-
-const INSERT_VARIABLES = [
-  ...COMMON_VARIABLES,
-  ...STAFF_TEMPLATE_VARIABLES,
-] as const
-
-const SAMPLE_DATA: Record<string, string> = {
-  first_name: 'Alex',
-  last_name: 'Mitchell',
-  agreement_name: 'Woodside FPSO EA 2026',
-  employer_name: 'Woodside Energy',
-  worksite_name: 'North West Shelf',
-  organiser_name: 'Sarah Chen',
-  organiser_phone: '0412 345 678',
-  date: '15 April 2026',
-  campaign_name: 'NWS Bargaining 2026',
-  ...STAFF_TEMPLATE_SAMPLE_DATA,
-}
+  INSERT_VARIABLES,
+  SAMPLE_DATA,
+  ALL_TEMPLATE_VARIABLES,
+} from '@/lib/comms/template-variables'
 
 function detectVariables(text: string): string[] {
   const matches = text.match(/\{\{(\w+)\}\}/g)

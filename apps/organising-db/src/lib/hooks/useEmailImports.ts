@@ -19,6 +19,14 @@ export interface EmailImportRow {
   updated_at: string
 }
 
+export interface VariableReplacement {
+  original_text: string
+  variable: string
+  confidence: 'high' | 'medium'
+  context: string
+  accepted: boolean
+}
+
 export interface EmailAnalysis {
   stage_number: number | null
   stage_rationale: string
@@ -39,6 +47,7 @@ export interface EmailAnalysis {
   call_to_action: string | null
   key_themes: string[]
   suggested_wtp_categories: Array<{ category: string; option: string }>
+  variable_replacements?: VariableReplacement[]
 }
 
 export function useEmailImports(status?: string) {
@@ -138,11 +147,15 @@ export function useImportAsTemplate() {
         audience_segment?: string
         activity_type?: string
       }
+      variable_replacements?: VariableReplacement[]
     }) => {
       const response = await fetch(`/api/email-import/${params.importId}/import-template`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params.overrides ?? {}),
+        body: JSON.stringify({
+          ...params.overrides,
+          variable_replacements: params.variable_replacements,
+        }),
       })
       if (!response.ok) {
         const err = await response.json().catch(() => ({ error: 'Unknown error' }))

@@ -1,7 +1,8 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   performRobustSignOut,
@@ -11,6 +12,8 @@ import {
 import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
 import type { User } from "@supabase/supabase-js";
 import type { UserRole, UserProfile } from "@/types/database";
+
+const PUBLIC_PATHS = ["/login", "/auth"];
 
 interface AuthContextType {
   user: User | null;
@@ -52,6 +55,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [connectionRecoveryInProgress, setConnectionRecoveryInProgress] = useState(false);
   const supabase = createClient();
   const queryClient = useQueryClient();
+  const pathname = usePathname();
+
+  const isProtectedRoute = !PUBLIC_PATHS.some((p) => pathname?.startsWith(p));
+
+  const redirectToLogin = useCallback(() => {
+    if (typeof window !== "undefined" && isProtectedRoute) {
+      logConnectionEvent({ type: "session_lost", detail: "client-side null session redirect" });
+      window.location.href = `/login?reason=session_expired`;
+    }
+  }, [isProtectedRoute]);
+
+  const fetchProfile = useCallback(async (userId: string) => {
+    const { data, error: profileError } = await supabase
+      .from("user_profiles")
+      .select("*")
+      .eq("user_id", userId)
+      .single();
+    if (profileError) {
+      logConnectionEvent({ type: "api_error", detail: `profile fetch: ${profileError.message}` });
+    }
+    return data;
+  }, [supabase]);
 
   useEffect(() => {
     const initSession = async () => {
@@ -61,20 +86,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           logConnectionEvent({ type: "token_refresh_fail", detail: error.message });
           setUser(null);
           setProfile(null);
+          redirectToLogin();
           return;
         }
         const currentUser = session?.user ?? null;
         setUser(currentUser);
 
         if (currentUser) {
-          const { data } = await supabase
-            .from("user_profiles")
-            .select("*")
-            .eq("user_id", currentUser.id)
-            .single();
-          setProfile(data);
+          const profileData = await fetchProfile(currentUser.id);
+          setProfile(profileData);
         } else {
           setProfile(null);
+          redirectToLogin();
         }
       } catch (error: unknown) {
         logConnectionEvent({
@@ -83,6 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         setUser(null);
         setProfile(null);
+        redirectToLogin();
       } finally {
         setLoading(false);
       }
@@ -102,7 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (shouldRecover) {
           logConnectionEvent({ type: "token_refresh_fail", detail: `event=${event}` });
-          await recoverSessionConnection({
+          const result = await recoverSessionConnection({
             supabase,
             queryClient,
             source: "auth-change",
@@ -110,19 +134,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             redirectOnFailure: true,
             validateWorkloadAccess: false,
           });
+          if (result.ok) {
+            const { data: { session: newSession } } = await supabase.auth.getSession();
+            const recoveredUser = newSession?.user ?? null;
+            setUser(recoveredUser);
+            if (recoveredUser) {
+              const profileData = await fetchProfile(recoveredUser.id);
+              setProfile(profileData);
+            } else {
+              setProfile(null);
+            }
+          }
           return;
         }
 
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          const { data } = await supabase
-            .from("user_profiles")
-            .select("*")
-            .eq("user_id", session.user.id)
-            .single();
-          setProfile(data);
+        const sessionUser = session?.user ?? null;
+        setUser(sessionUser);
+        if (sessionUser) {
+          const profileData = await fetchProfile(sessionUser.id);
+          setProfile(profileData);
         } else {
           setProfile(null);
+          if (event !== "INITIAL_SESSION") {
+            redirectToLogin();
+          }
         }
         setLoading(false);
       }

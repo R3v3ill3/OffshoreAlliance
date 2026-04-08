@@ -186,7 +186,7 @@ export async function recoverSessionConnection({
   redirectOnFailure = true,
   validateWorkloadAccess = false,
 }: RecoverSessionOptions): Promise<SessionRecoveryResult> {
-  logConnectionEvent({ type: "session_recovered", detail: `recovery-start: ${source}` });
+  logConnectionEvent({ type: "visibility_change", detail: `recovery-start: ${source}` });
 
   // Step 1: Try refreshing the session first (graduated approach)
   if (source === "query-cache-auth-error") {

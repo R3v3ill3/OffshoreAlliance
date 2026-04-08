@@ -103,8 +103,7 @@ export function isLikelyAuthError(error: unknown): boolean {
   );
 }
 
-function clearSupabaseLocalState(): void {
-  resetClient();
+function clearSupabaseLocalStorage(): void {
   if (typeof window === "undefined") return;
 
   try {
@@ -146,16 +145,9 @@ async function hardFailRecovery(
 
   await queryClient.cancelQueries();
   queryClient.clear();
-  clearSupabaseLocalState();
+  clearSupabaseLocalStorage();
 
   if (redirectOnFailure) {
-    const shouldRedirect =
-      reason === "session_check_timeout" ||
-      reason === "session_check_error" ||
-      reason === "missing_session";
-    if (!shouldRedirect) {
-      return { ok: false, message, reasonCode: reason, redirectedToLogin: false };
-    }
     goToLogin(reason);
     return { ok: false, message, reasonCode: reason, redirectedToLogin: true };
   }
@@ -324,6 +316,7 @@ export async function performRobustSignOut({
     console.warn("[session-recovery] signOut exception", readErrorMessage(error));
   }
 
-  clearSupabaseLocalState();
+  clearSupabaseLocalStorage();
+  resetClient();
   goToLogin("signed_out");
 }

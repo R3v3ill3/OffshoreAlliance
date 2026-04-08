@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { format } from "date-fns";
-import { translateToActionNetwork } from "@/lib/comms/template-variables";
+import { resolveTemplateVariables, translateToActionNetwork } from "@/lib/comms/template-variables";
 import {
   Mail,
   MessageSquare,
@@ -125,6 +125,84 @@ export function CampaignSendPanel({
     enabled: !!user,
   });
 
+  const { data: campaignCtx } = useQuery({
+    queryKey: ["campaign-send-context", numericId],
+    queryFn: async () => {
+      const { data: campaign } = await supabase
+        .from("campaigns")
+        .select("name, agreement_id, organiser_id")
+        .eq("campaign_id", numericId)
+        .single();
+
+      let agreementName: string | undefined;
+      let employerName: string | undefined;
+      if (campaign?.agreement_id) {
+        const { data: agreement } = await supabase
+          .from("agreements")
+          .select("agreement_name, employer_id")
+          .eq("agreement_id", campaign.agreement_id)
+          .single();
+        agreementName = agreement?.agreement_name ?? undefined;
+        if (agreement?.employer_id) {
+          const { data: employer } = await supabase
+            .from("employers")
+            .select("employer_name")
+            .eq("employer_id", agreement.employer_id)
+            .single();
+          employerName = employer?.employer_name ?? undefined;
+        }
+      }
+
+      let organiserName: string | undefined;
+      let organiserPhone: string | undefined;
+      if (campaign?.organiser_id) {
+        const { data: organiser } = await supabase
+          .from("organisers")
+          .select("organiser_name, phone")
+          .eq("organiser_id", campaign.organiser_id)
+          .single();
+        organiserName = organiser?.organiser_name ?? undefined;
+        organiserPhone = organiser?.phone ?? undefined;
+      }
+
+      const { data: worksiteLinks } = await supabase
+        .from("campaign_worksites")
+        .select("worksite_id")
+        .eq("campaign_id", numericId)
+        .limit(1);
+      let worksiteName: string | undefined;
+      if (worksiteLinks?.[0]?.worksite_id) {
+        const { data: ws } = await supabase
+          .from("worksites")
+          .select("worksite_name")
+          .eq("worksite_id", worksiteLinks[0].worksite_id)
+          .single();
+        worksiteName = ws?.worksite_name ?? undefined;
+      }
+
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("display_name, phone, role")
+        .eq("user_id", user!.id)
+        .single();
+
+      return {
+        campaign_name: campaign?.name ?? undefined,
+        agreement_name: agreementName,
+        employer_name: employerName,
+        worksite_name: worksiteName,
+        organiser_name: organiserName,
+        organiser_phone: organiserPhone,
+        staff_name: profile?.display_name ?? user?.email ?? undefined,
+        staff_email: user?.email ?? undefined,
+        staff_phone: profile?.phone ?? undefined,
+        staff_role: profile?.role ?? undefined,
+        date: new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }),
+      } as Record<string, string | undefined>;
+    },
+    enabled: !!user,
+  });
+
   const selectedDraft = drafts.find((d) => d.draft_id === selectedDraftId) ?? null;
 
   const saveMutation = useMutation({
@@ -170,14 +248,21 @@ export function CampaignSendPanel({
   const sendAnMutation = useMutation({
     mutationFn: async () => {
       if (!selectedDraft) throw new Error("No draft selected");
+      const ctx = campaignCtx ?? {};
+      const resolvedSubject = translateToActionNetwork(
+        resolveTemplateVariables(selectedDraft.subject || selectedDraft.title || "No subject", ctx)
+      );
+      const resolvedBody = translateToActionNetwork(
+        resolveTemplateVariables(selectedDraft.body_html || selectedDraft.body, ctx)
+      );
       const createRes = await fetch("/api/action-network", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create_message",
           message: {
-            subject: translateToActionNetwork(selectedDraft.subject || selectedDraft.title || "No subject"),
-            body: translateToActionNetwork(selectedDraft.body_html || selectedDraft.body),
+            subject: resolvedSubject,
+            body: resolvedBody,
             from: "Offshore Alliance",
             reply_to: "info@offshorealliance.org.au",
           },

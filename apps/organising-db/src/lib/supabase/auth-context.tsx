@@ -116,13 +116,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (event === "TOKEN_REFRESHED" && session) {
+          logConnectionEvent({ type: "token_refresh_ok", detail: "onAuthStateChange" });
+          setUser((prev) => {
+            if (prev?.id === session.user.id) return prev;
+            return session.user;
+          });
+          return;
+        }
+
         const shouldRecover =
           event === "SIGNED_OUT" ||
           (!session && event === "TOKEN_REFRESHED");
-
-        if (event === "TOKEN_REFRESHED" && session) {
-          logConnectionEvent({ type: "token_refresh_ok", detail: "onAuthStateChange" });
-        }
 
         if (shouldRecover) {
           logConnectionEvent({ type: "token_refresh_fail", detail: `event=${event}` });
@@ -151,6 +156,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const sessionUser = session?.user ?? null;
         setUser(sessionUser);
         if (sessionUser) {
+          setProfile((prev) => {
+            if (prev?.user_id === sessionUser.id) return prev;
+            return null;
+          });
           const profileData = await fetchProfile(sessionUser.id);
           setProfile(profileData);
         } else {

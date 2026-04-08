@@ -46,6 +46,14 @@ interface CapacitiesPanelProps {
     wtp_categories?: { category_id: number; category_name: string } | null
     wtp_options?: { option_text: string } | null
   })[]
+  campaignContext?: {
+    agreement_name: string
+    employer_name: string
+    worksite_names: string[]
+    sector: string
+    campaign_type?: string
+    agreement_expiry?: string
+  }
 }
 
 const STATUS_CONFIG: Record<CapacityStatus, { label: string; icon: React.ReactNode; color: string; badge: string }> = {
@@ -81,6 +89,7 @@ export function CapacitiesPanel({
   campaignId,
   capacities,
   whereToPlay,
+  campaignContext: campaignContextProp,
 }: CapacitiesPanelProps) {
   const [showSelector, setShowSelector] = useState(false)
   const [expandedCapacity, setExpandedCapacity] = useState<number | null>(null)
@@ -219,14 +228,14 @@ export function CapacitiesPanel({
     return { tone, audience, platforms, engagement_intensity }
   }, [whereToPlay])
 
-  const campaignContext = useMemo(() => ({
+  const campaignContext = useMemo(() => campaignContextProp ?? {
     agreement_name: '',
     employer_name: '',
     worksite_names: [] as string[],
     sector: '',
     campaign_type: undefined as string | undefined,
     agreement_expiry: undefined as string | undefined,
-  }), [])
+  }, [campaignContextProp])
 
   const stageName = (['', 'Contact ID & Mapping', 'Intro Comms & Education', 'Member Mobilisation', 'Develop Claims / MSD', 'Endorsement & Commence Bargaining', 'Bargaining to Win'] as const)[stageNumber] || `Stage ${stageNumber}`
 

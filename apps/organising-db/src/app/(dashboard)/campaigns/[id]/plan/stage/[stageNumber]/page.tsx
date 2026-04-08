@@ -354,6 +354,14 @@ export default function StageplanPage({ params }: PageProps) {
                   campaignId={campaignId}
                   capacities={(stagePlanData?.capacities || []) as any}
                   whereToPlay={(stagePlanData?.whereToPlay || []) as any}
+                  campaignContext={{
+                    agreement_name: campaignContext.agreement_name,
+                    employer_name: campaignContext.employer_name,
+                    worksite_names: campaignContext.worksite_names,
+                    sector: campaignContext.sector,
+                    campaign_type: campaignContext.campaign_type,
+                    agreement_expiry: campaignContext.agreement_expiry,
+                  }}
                 />
               </TabsContent>
 

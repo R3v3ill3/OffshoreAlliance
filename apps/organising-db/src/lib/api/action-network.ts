@@ -188,6 +188,7 @@ export function syncWorkerToActionNetwork(
     employer_name?: string;
     worksite_name?: string;
     member_role?: string;
+    occupation?: string | null;
   }
 ): ActionNetworkPerson {
   const person: ActionNetworkPerson = {
@@ -220,6 +221,9 @@ export function syncWorkerToActionNetwork(
   }
   if (worker.member_role) {
     person.custom_fields!.member_role = worker.member_role;
+  }
+  if (worker.occupation) {
+    person.custom_fields!.occupation = worker.occupation;
   }
 
   return person;

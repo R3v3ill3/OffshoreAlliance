@@ -22,6 +22,7 @@ export const CAMPAIGN_CONTEXT_VARIABLES: TemplateVariable[] = [
 export const RECIPIENT_VARIABLES: TemplateVariable[] = [
   { key: 'first_name', label: 'First Name', description: 'Recipient first name (resolved by Action Network at send time)', tier: 'recipient' },
   { key: 'last_name', label: 'Last Name', description: 'Recipient last name (resolved by Action Network at send time)', tier: 'recipient' },
+  { key: 'occupation', label: 'Occupation', description: 'Recipient occupation/trade (resolved by Action Network at send time)', tier: 'recipient' },
 ]
 
 export const ALL_TEMPLATE_VARIABLES: TemplateVariable[] = [
@@ -36,11 +37,13 @@ export const INSERT_VARIABLES = ALL_TEMPLATE_VARIABLES.map((v) => `{{${v.key}}}`
 export const AN_VARIABLE_MAP: Record<string, string> = {
   first_name: '[contact.first_name]',
   last_name: '[contact.last_name]',
+  occupation: '[contact.custom_fields.occupation]',
 }
 
 export const SAMPLE_DATA: Record<string, string> = {
   first_name: 'Alex',
   last_name: 'Mitchell',
+  occupation: 'Boilermaker',
   agreement_name: 'Woodside FPSO EA 2026',
   employer_name: 'Woodside Energy',
   worksite_name: 'North West Shelf',

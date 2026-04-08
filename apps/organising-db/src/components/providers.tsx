@@ -5,7 +5,7 @@ import { useState, useEffect, type ReactNode } from "react";
 import { AuthProvider } from "@/lib/supabase/auth-context";
 import { DeviceProvider } from "@/contexts/device-context";
 import { createClient } from "@/lib/supabase/client";
-import { isLikelyAuthError, recoverSessionConnection } from "@/lib/supabase/session-recovery";
+import { isLikelyAuthError } from "@/lib/supabase/session-recovery";
 import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
 import "../../../../sentry.client.config";
 
@@ -35,18 +35,26 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
 
           if (isLikelyAuthError(error)) {
             if (queryCacheRecoveryGuard.inProgress) return;
-
             queryCacheRecoveryGuard.inProgress = true;
-            void recoverSessionConnection({
-              supabase: createClient(),
-              queryClient: client,
-              source: "query-cache-auth-error",
-              reloadOnSuccess: false,
-              redirectOnFailure: true,
-              validateWorkloadAccess: false,
-            }).finally(() => {
-              queryCacheRecoveryGuard.inProgress = false;
-            });
+
+            const supabase = createClient();
+            supabase.auth.refreshSession()
+              .then(({ data, error: refreshError }) => {
+                if (!refreshError && data.session) {
+                  logConnectionEvent({ type: "token_refresh_ok", detail: "query-cache soft refresh" });
+                  return client.invalidateQueries();
+                }
+                logConnectionEvent({
+                  type: "token_refresh_fail",
+                  detail: `query-cache refresh failed: ${refreshError?.message ?? "no session"}`,
+                });
+              })
+              .catch(() => {
+                logConnectionEvent({ type: "token_refresh_fail", detail: "query-cache refresh exception" });
+              })
+              .finally(() => {
+                queryCacheRecoveryGuard.inProgress = false;
+              });
           }
         },
       }),

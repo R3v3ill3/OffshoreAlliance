@@ -22,9 +22,10 @@ export interface EmailImportRow {
 export interface VariableReplacement {
   original_text: string
   variable: string
-  confidence: 'high' | 'medium'
+  confidence: 'high' | 'medium' | 'manual'
   context: string
   accepted: boolean
+  replacement_text?: string
 }
 
 export interface EmailAnalysis {

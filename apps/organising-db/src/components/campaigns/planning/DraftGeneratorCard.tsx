@@ -27,7 +27,7 @@ import { toast } from 'sonner'
 import { TemplatePicker } from './TemplatePicker'
 import {
   RECIPIENT_VARIABLES,
-  INSERT_VARIABLES as ALL_INSERT_VARS,
+  CAMPAIGN_CONTEXT_VARIABLES,
   resolveTemplateVariables,
 } from '@/lib/comms/template-variables'
 import type { TemplateRow } from '@/lib/hooks/useTemplateLibrary'
@@ -398,21 +398,38 @@ export function DraftGeneratorCard({
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Body</Label>
-              <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-                <Variable className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground mr-1">Insert:</span>
-                {RECIPIENT_VARIABLES.map((v) => (
-                  <Button
-                    key={v.key}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-6 text-xs font-mono px-1.5"
-                    onClick={() => insertVariableAtCursor(`{{${v.key}}}`)}
-                  >
-                    {`{{${v.key}}}`}
-                  </Button>
-                ))}
+              <div className="space-y-1 mb-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <Variable className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-[10px] text-muted-foreground font-medium">Recipient:</span>
+                  {RECIPIENT_VARIABLES.map((v) => (
+                    <Button
+                      key={v.key}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-5 text-[10px] font-mono px-1"
+                      title={v.description}
+                      onClick={() => insertVariableAtCursor(`{{${v.key}}}`)}
+                    >
+                      {v.key}
+                    </Button>
+                  ))}
+                  <span className="text-[10px] text-muted-foreground font-medium ml-1">Campaign:</span>
+                  {CAMPAIGN_CONTEXT_VARIABLES.map((v) => (
+                    <Button
+                      key={v.key}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-5 text-[10px] font-mono px-1"
+                      title={v.description}
+                      onClick={() => insertVariableAtCursor(`{{${v.key}}}`)}
+                    >
+                      {v.key}
+                    </Button>
+                  ))}
+                </div>
               </div>
               <Textarea
                 ref={bodyRef}

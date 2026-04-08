@@ -13,6 +13,8 @@ import {
   Tag,
   AlertCircle,
   Trash2,
+  Plus,
+  X,
 } from "lucide-react";
 import { useAuth } from "@/lib/supabase/auth-context";
 import {
@@ -742,90 +744,226 @@ function ImportDetailDialog({
                     )}
 
                     {/* Variable Replacements */}
-                    {replacements.length > 0 && (
+                    {currentAnalysis && (
                       <div>
                         <Label className="text-xs text-muted-foreground">
                           Variable Replacements
                         </Label>
                         <p className="text-xs text-muted-foreground mt-0.5 mb-2">
-                          Accept or reject each replacement. Accepted replacements will be applied when importing as a template.
+                          Replace specific text with template variables or generic terms. Accepted replacements are applied when importing.
                         </p>
-                        <div className="space-y-1.5 mt-1">
-                          {replacements.map((r, i) => (
-                            <div
-                              key={i}
-                              className={`flex items-start gap-2 p-2 rounded text-xs border ${
-                                r.accepted
-                                  ? "bg-green-50 border-green-200"
-                                  : "bg-muted/30 border-transparent"
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={r.accepted}
-                                onChange={() => {
-                                  const updated = [...replacements];
-                                  updated[i] = {
-                                    ...updated[i],
-                                    accepted: !updated[i].accepted,
-                                  };
-                                  setReplacements(updated);
-                                }}
-                                className="mt-0.5 shrink-0"
-                              />
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="line-through text-muted-foreground">
-                                    &ldquo;{r.original_text.slice(0, 60)}&rdquo;
-                                  </span>
-                                  <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
-                                  <Badge
-                                    variant="secondary"
-                                    className="font-mono text-xs"
-                                  >
-                                    {`{{${r.variable}}}`}
-                                  </Badge>
-                                  <Badge
-                                    variant={
-                                      r.confidence === "high"
-                                        ? "default"
-                                        : "secondary"
-                                    }
-                                    className="text-xs"
-                                  >
-                                    {r.confidence}
-                                  </Badge>
-                                </div>
-                                {r.context && (
-                                  <p className="text-muted-foreground mt-0.5">
-                                    {r.context}
-                                  </p>
-                                )}
-                                <Select
-                                  value={r.variable}
-                                  onValueChange={(v) => {
+
+                        {replacements.length > 0 && (
+                          <div className="space-y-1.5 mt-1">
+                            {replacements.map((r, i) => (
+                              <div
+                                key={i}
+                                className={`flex items-start gap-2 p-2 rounded text-xs border ${
+                                  r.accepted
+                                    ? "bg-green-50 border-green-200"
+                                    : "bg-muted/30 border-transparent"
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={r.accepted}
+                                  onChange={() => {
                                     const updated = [...replacements];
-                                    updated[i] = { ...updated[i], variable: v };
+                                    updated[i] = {
+                                      ...updated[i],
+                                      accepted: !updated[i].accepted,
+                                    };
                                     setReplacements(updated);
                                   }}
-                                >
-                                  <SelectTrigger className="h-6 w-48 text-xs mt-1">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {ALL_TEMPLATE_VARIABLES.map((tv) => (
-                                      <SelectItem
-                                        key={tv.key}
-                                        value={tv.key}
+                                  className="mt-0.5 shrink-0"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    {r.confidence === "manual" ? (
+                                      <Input
+                                        value={r.original_text}
+                                        onChange={(e) => {
+                                          const updated = [...replacements];
+                                          updated[i] = { ...updated[i], original_text: e.target.value };
+                                          setReplacements(updated);
+                                        }}
+                                        placeholder="Text to find..."
+                                        className="h-6 w-40 text-xs"
+                                      />
+                                    ) : (
+                                      <span className="line-through text-muted-foreground">
+                                        &ldquo;{r.original_text.slice(0, 60)}&rdquo;
+                                      </span>
+                                    )}
+                                    <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                                    {r.replacement_text != null ? (
+                                      <Input
+                                        value={r.replacement_text}
+                                        onChange={(e) => {
+                                          const updated = [...replacements];
+                                          updated[i] = { ...updated[i], replacement_text: e.target.value };
+                                          setReplacements(updated);
+                                        }}
+                                        placeholder="Replacement text..."
+                                        className="h-6 w-32 text-xs"
+                                      />
+                                    ) : (
+                                      <Badge
+                                        variant="secondary"
+                                        className="font-mono text-xs"
                                       >
-                                        {`{{${tv.key}}}`} — {tv.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                        {`{{${r.variable}}}`}
+                                      </Badge>
+                                    )}
+                                    {r.confidence !== "manual" && (
+                                      <Badge
+                                        variant={
+                                          r.confidence === "high"
+                                            ? "default"
+                                            : "secondary"
+                                        }
+                                        className="text-xs"
+                                      >
+                                        {r.confidence}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  {r.context && r.confidence !== "manual" && (
+                                    <p className="text-muted-foreground mt-0.5">
+                                      {r.context}
+                                    </p>
+                                  )}
+                                  <div className="flex items-center gap-1.5 mt-1">
+                                    {r.replacement_text == null && (
+                                      <Select
+                                        value={r.variable}
+                                        onValueChange={(v) => {
+                                          const updated = [...replacements];
+                                          updated[i] = { ...updated[i], variable: v };
+                                          setReplacements(updated);
+                                        }}
+                                      >
+                                        <SelectTrigger className="h-6 w-48 text-xs">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {ALL_TEMPLATE_VARIABLES.map((tv) => (
+                                            <SelectItem
+                                              key={tv.key}
+                                              value={tv.key}
+                                            >
+                                              {`{{${tv.key}}}`} — {tv.label}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    )}
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                                      onClick={() => {
+                                        if (r.replacement_text != null) {
+                                          const updated = [...replacements];
+                                          updated[i] = { ...updated[i], replacement_text: undefined };
+                                          setReplacements(updated);
+                                        } else {
+                                          const updated = [...replacements];
+                                          updated[i] = { ...updated[i], replacement_text: "" };
+                                          setReplacements(updated);
+                                        }
+                                      }}
+                                      title={r.replacement_text != null ? "Switch to variable" : "Switch to plain text"}
+                                    >
+                                      {r.replacement_text != null ? (
+                                        <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 cursor-pointer">var</Badge>
+                                      ) : (
+                                        <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 cursor-pointer">txt</Badge>
+                                      )}
+                                    </Button>
+                                    {r.confidence === "manual" && (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                                        onClick={() => {
+                                          setReplacements(replacements.filter((_, j) => j !== i));
+                                        }}
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Add manual replacement */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-2 text-xs"
+                          onClick={() => {
+                            setReplacements([
+                              ...replacements,
+                              {
+                                original_text: "",
+                                variable: ALL_TEMPLATE_VARIABLES[0].key,
+                                confidence: "manual",
+                                context: "",
+                                accepted: true,
+                              },
+                            ]);
+                          }}
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Add Replacement
+                        </Button>
+
+                        {/* Available variables summary */}
+                        <div className="mt-3 pt-2 border-t">
+                          <Label className="text-xs text-muted-foreground">
+                            Available Variables
+                          </Label>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {ALL_TEMPLATE_VARIABLES.map((tv) => {
+                              const isUsed = replacements.some(
+                                (r) => r.accepted && r.variable === tv.key && r.replacement_text == null
+                              );
+                              return (
+                                <Badge
+                                  key={tv.key}
+                                  variant={isUsed ? "default" : "outline"}
+                                  className={`text-xs font-mono cursor-pointer ${
+                                    isUsed ? "" : "opacity-60"
+                                  }`}
+                                  title={`${tv.description}${isUsed ? " (in use)" : " (click to add)"}`}
+                                  onClick={() => {
+                                    if (!isUsed) {
+                                      setReplacements([
+                                        ...replacements,
+                                        {
+                                          original_text: "",
+                                          variable: tv.key,
+                                          confidence: "manual",
+                                          context: "",
+                                          accepted: true,
+                                        },
+                                      ]);
+                                    }
+                                  }}
+                                >
+                                  {`{{${tv.key}}}`}
+                                  {isUsed && <Check className="h-2.5 w-2.5 ml-1" />}
+                                </Badge>
+                              );
+                            })}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground mt-1">
+                            Click an unused variable to add a replacement. Use &ldquo;txt&rdquo; toggle to replace with plain text instead.
+                          </p>
                         </div>
                       </div>
                     )}

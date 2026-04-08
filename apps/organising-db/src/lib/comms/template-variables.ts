@@ -73,12 +73,13 @@ export function translateToActionNetwork(text: string): string {
 
 export function applyVariableReplacements(
   text: string,
-  replacements: Array<{ original_text: string; variable: string; accepted: boolean }>,
+  replacements: Array<{ original_text: string; variable: string; accepted: boolean; replacement_text?: string }>,
 ): string {
   let result = text
   for (const r of replacements) {
     if (!r.accepted) continue
-    result = result.split(r.original_text).join(`{{${r.variable}}}`)
+    const replacement = r.replacement_text != null ? r.replacement_text : `{{${r.variable}}}`
+    result = result.split(r.original_text).join(replacement)
   }
   return result
 }

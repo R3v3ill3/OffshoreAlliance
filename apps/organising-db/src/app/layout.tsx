@@ -4,7 +4,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { ConnectionStatusBanner } from "@/components/connection-status-banner";
-import "../../../../sentry.server.config";
+// Sentry temporarily disabled for API route timeout diagnosis
+// import "../../../../sentry.server.config";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

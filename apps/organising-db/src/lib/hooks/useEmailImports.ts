@@ -134,6 +134,30 @@ export function useUpdateEmailImport() {
   })
 }
 
+export function useDeleteEmailImport() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (importId: number) => {
+      const response = await fetch(`/api/email-import/${importId}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(err.error || 'Delete failed')
+      }
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['email-imports'] })
+      toast.success('Email import deleted')
+    },
+    onError: (err: Error) => {
+      toast.error(`Delete failed: ${err.message}`)
+    },
+  })
+}
+
 export function useImportAsTemplate() {
   const queryClient = useQueryClient()
 

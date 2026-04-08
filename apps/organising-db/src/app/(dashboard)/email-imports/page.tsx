@@ -12,6 +12,7 @@ import {
   Inbox,
   Tag,
   AlertCircle,
+  Trash2,
 } from "lucide-react";
 import { useAuth } from "@/lib/supabase/auth-context";
 import {
@@ -20,6 +21,7 @@ import {
   useAnalyseEmailImport,
   useUpdateEmailImport,
   useImportAsTemplate,
+  useDeleteEmailImport,
   type EmailImportRow,
   type EmailAnalysis,
   type VariableReplacement,
@@ -191,6 +193,7 @@ function ImportCard({
   onSelect: () => void;
 }) {
   const analyse = useAnalyseEmailImport();
+  const deleteImport = useDeleteEmailImport();
   const meta = STATUS_META[item.analysis_status] ?? STATUS_META.pending;
   const analysis = item.ai_analysis as EmailAnalysis | null;
 
@@ -247,6 +250,24 @@ function ImportCard({
             Template #{item.imported_template_id}
           </Badge>
         )}
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (confirm("Delete this email import?")) {
+              deleteImport.mutate(item.import_id);
+            }
+          }}
+          disabled={deleteImport.isPending}
+        >
+          {deleteImport.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="h-4 w-4" />
+          )}
+        </Button>
         <Eye className="h-4 w-4 text-muted-foreground" />
       </CardContent>
     </Card>

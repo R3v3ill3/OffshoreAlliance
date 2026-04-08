@@ -12,10 +12,10 @@ function appOrigin(request: NextRequest) {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ campaignId: string; taskListId: string }> }
+  { params }: { params: Promise<{ id: string; taskListId: string }> }
 ) {
   try {
-    const { campaignId, taskListId } = await params;
+    const { id: campaignId, taskListId } = await params;
     const serverClient = await createClient();
     const staff = await requireStaffUser(serverClient);
     if (!staff) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

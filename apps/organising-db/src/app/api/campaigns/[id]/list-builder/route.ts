@@ -37,64 +37,89 @@ export async function GET(
       .select(
         `
         worker_id,
-        membership_status,
         oa_leader_role,
-        employer_id,
-        worksite_id,
-        workers (
+        workers!inner (
           worker_id,
           first_name,
           last_name,
           email,
           phone,
           occupation,
-          action_network_id
-        ),
-        employers (
-          employer_name
-        ),
-        worksites (
-          worksite_name
+          employer_id,
+          worksite_id,
+          member_role_type_id,
+          action_network_id,
+          employers ( employer_name ),
+          worksites ( worksite_name )
         )
       `
       )
       .eq("campaign_id", campaignId);
 
-    if (membership.length > 0) {
-      query = query.in("membership_status", membership);
-    }
-
     if (roles.length > 0) {
       query = query.in("oa_leader_role", roles);
-    }
-
-    if (employerId && employerId !== "__all__") {
-      query = query.eq("employer_id", Number(employerId));
-    }
-
-    if (worksiteId && worksiteId !== "__all__") {
-      query = query.eq("worksite_id", Number(worksiteId));
     }
 
     const { data: membershipRows, error: membershipError } = await query;
     if (membershipError) throw membershipError;
 
-    let workerIds = (membershipRows ?? []).map(
-      (r: Record<string, unknown>) => r.worker_id as number
-    );
+    let results = (membershipRows ?? []).map((r: Record<string, unknown>) => {
+      const worker = r.workers as {
+        worker_id: number;
+        first_name: string;
+        last_name: string;
+        email: string | null;
+        phone: string | null;
+        occupation: string | null;
+        employer_id: number | null;
+        worksite_id: number | null;
+        member_role_type_id: number | null;
+        action_network_id: string | null;
+        employers: { employer_name: string } | null;
+        worksites: { worksite_name: string } | null;
+      };
 
-    if (occupation) {
-      const { data: occRows, error: occErr } = await supabase
-        .from("workers")
-        .select("worker_id")
-        .in("worker_id", workerIds)
-        .ilike("occupation", `%${occupation}%`);
-      if (occErr) throw occErr;
-      const occSet = new Set((occRows ?? []).map((r) => r.worker_id));
-      workerIds = workerIds.filter((id) => occSet.has(id));
+      const membershipStatus = worker.member_role_type_id ? "member" : "non_member";
+
+      return {
+        worker_id: worker.worker_id,
+        first_name: worker.first_name,
+        last_name: worker.last_name,
+        email: worker.email,
+        phone: worker.phone,
+        occupation: worker.occupation,
+        employer_name: worker.employers?.employer_name ?? null,
+        worksite_name: worker.worksites?.worksite_name ?? null,
+        oa_leader_role: r.oa_leader_role as string | null,
+        membership_status: membershipStatus,
+        action_network_id: worker.action_network_id,
+        employer_id: worker.employer_id,
+        worksite_id: worker.worksite_id,
+      };
+    });
+
+    if (membership.length > 0) {
+      results = results.filter((w) => membership.includes(w.membership_status));
     }
 
-    if (anTags.length > 0) {
+    if (employerId && employerId !== "__all__") {
+      const eid = Number(employerId);
+      results = results.filter((w) => w.employer_id === eid);
+    }
+
+    if (worksiteId && worksiteId !== "__all__") {
+      const wid = Number(worksiteId);
+      results = results.filter((w) => w.worksite_id === wid);
+    }
+
+    if (occupation) {
+      const q = occupation.toLowerCase();
+      results = results.filter((w) => w.occupation?.toLowerCase().includes(q));
+    }
+
+    const workerIds = results.map((w) => w.worker_id);
+
+    if (anTags.length > 0 && workerIds.length > 0) {
       const { data: tagRows, error: tagErr } = await supabase
         .from("worker_an_tags")
         .select("worker_id")
@@ -102,10 +127,10 @@ export async function GET(
         .in("an_tag_id", anTags);
       if (tagErr) throw tagErr;
       const taggedSet = new Set((tagRows ?? []).map((r) => r.worker_id));
-      workerIds = workerIds.filter((id) => taggedSet.has(id));
+      results = results.filter((w) => taggedSet.has(w.worker_id));
     }
 
-    if (excludeAnTags.length > 0) {
+    if (excludeAnTags.length > 0 && workerIds.length > 0) {
       const { data: exclRows, error: exclErr } = await supabase
         .from("worker_an_tags")
         .select("worker_id")
@@ -113,39 +138,8 @@ export async function GET(
         .in("an_tag_id", excludeAnTags);
       if (exclErr) throw exclErr;
       const excludedSet = new Set((exclRows ?? []).map((r) => r.worker_id));
-      workerIds = workerIds.filter((id) => !excludedSet.has(id));
+      results = results.filter((w) => !excludedSet.has(w.worker_id));
     }
-
-    const remainingSet = new Set(workerIds);
-    const results = (membershipRows ?? [])
-      .filter((r: Record<string, unknown>) => remainingSet.has(r.worker_id as number))
-      .map((r: Record<string, unknown>) => {
-        const worker = r.workers as {
-          worker_id: number;
-          first_name: string;
-          last_name: string;
-          email: string | null;
-          phone: string | null;
-          occupation: string | null;
-          action_network_id: string | null;
-        } | null;
-        const employer = r.employers as { employer_name: string } | null;
-        const worksite = r.worksites as { worksite_name: string } | null;
-
-        return {
-          worker_id: worker?.worker_id ?? r.worker_id,
-          first_name: worker?.first_name ?? "",
-          last_name: worker?.last_name ?? "",
-          email: worker?.email ?? null,
-          phone: worker?.phone ?? null,
-          occupation: worker?.occupation ?? null,
-          employer_name: employer?.employer_name ?? null,
-          worksite_name: worksite?.worksite_name ?? null,
-          oa_leader_role: r.oa_leader_role as string | null,
-          membership_status: r.membership_status as string | null,
-          action_network_id: worker?.action_network_id ?? null,
-        };
-      });
 
     return NextResponse.json({ success: true, data: results });
   } catch (err) {

@@ -55,89 +55,85 @@ export async function POST(
       .from('campaign_worker_membership')
       .select(`
         worker_id,
-        membership_status,
         oa_leader_role,
-        employer_id,
-        worksite_id,
-        workers (
-          worker_id, first_name, last_name, email, phone, occupation, action_network_id
-        ),
-        employers ( employer_name ),
-        worksites ( worksite_name )
+        workers!inner (
+          worker_id, first_name, last_name, email, phone, occupation,
+          employer_id, worksite_id, member_role_type_id, action_network_id,
+          employers ( employer_name ),
+          worksites ( worksite_name )
+        )
       `)
       .eq('campaign_id', campaignId)
 
-    if (filters.membership?.length) {
-      query = query.in('membership_status', filters.membership)
-    }
     if (filters.roles?.length) {
       query = query.in('oa_leader_role', filters.roles)
-    }
-    if (filters.employer_id && filters.employer_id !== '__all__') {
-      query = query.eq('employer_id', Number(filters.employer_id))
-    }
-    if (filters.worksite_id && filters.worksite_id !== '__all__') {
-      query = query.eq('worksite_id', Number(filters.worksite_id))
     }
 
     const { data: membershipRows, error: memErr } = await query
     if (memErr) throw memErr
 
-    let workerIds = (membershipRows ?? []).map((r: Record<string, unknown>) => r.worker_id as number)
+    let workers = (membershipRows ?? []).map((r: Record<string, unknown>) => {
+      const w = r.workers as {
+        worker_id: number; first_name: string; last_name: string
+        email: string | null; phone: string | null; occupation: string | null
+        employer_id: number | null; worksite_id: number | null
+        member_role_type_id: number | null; action_network_id: string | null
+        employers: { employer_name: string } | null
+        worksites: { worksite_name: string } | null
+      }
+      return {
+        worker_id: w.worker_id,
+        first_name: w.first_name,
+        last_name: w.last_name,
+        email: w.email,
+        phone: w.phone,
+        occupation: w.occupation,
+        employer_name: w.employers?.employer_name ?? null,
+        worksite_name: w.worksites?.worksite_name ?? null,
+        action_network_id: w.action_network_id,
+        employer_id: w.employer_id,
+        worksite_id: w.worksite_id,
+        membership_status: w.member_role_type_id ? 'member' : 'non_member',
+      }
+    })
 
+    if (filters.membership?.length) {
+      workers = workers.filter((w) => filters.membership!.includes(w.membership_status))
+    }
+    if (filters.employer_id && filters.employer_id !== '__all__') {
+      const eid = Number(filters.employer_id)
+      workers = workers.filter((w) => w.employer_id === eid)
+    }
+    if (filters.worksite_id && filters.worksite_id !== '__all__') {
+      const wid = Number(filters.worksite_id)
+      workers = workers.filter((w) => w.worksite_id === wid)
+    }
     if (filters.occupation) {
-      const { data: occRows } = await supabase
-        .from('workers')
-        .select('worker_id')
-        .in('worker_id', workerIds)
-        .ilike('occupation', `%${filters.occupation}%`)
-      const occSet = new Set((occRows ?? []).map((r) => r.worker_id))
-      workerIds = workerIds.filter((wid) => occSet.has(wid))
+      const q = filters.occupation.toLowerCase()
+      workers = workers.filter((w) => w.occupation?.toLowerCase().includes(q))
     }
 
-    if (filters.an_tags?.length) {
+    let workerIds = workers.map((w) => w.worker_id)
+
+    if (filters.an_tags?.length && workerIds.length > 0) {
       const { data: tagRows } = await supabase
         .from('worker_an_tags')
         .select('worker_id')
         .in('worker_id', workerIds)
         .in('an_tag_id', filters.an_tags)
       const taggedSet = new Set((tagRows ?? []).map((r) => r.worker_id))
-      workerIds = workerIds.filter((wid) => taggedSet.has(wid))
+      workers = workers.filter((w) => taggedSet.has(w.worker_id))
     }
 
-    if (filters.exclude_an_tags?.length) {
+    if (filters.exclude_an_tags?.length && workerIds.length > 0) {
       const { data: exclRows } = await supabase
         .from('worker_an_tags')
         .select('worker_id')
         .in('worker_id', workerIds)
         .in('an_tag_id', filters.exclude_an_tags)
       const excludedSet = new Set((exclRows ?? []).map((r) => r.worker_id))
-      workerIds = workerIds.filter((wid) => !excludedSet.has(wid))
+      workers = workers.filter((w) => !excludedSet.has(w.worker_id))
     }
-
-    const remainingSet = new Set(workerIds)
-    const workers = (membershipRows ?? [])
-      .filter((r: Record<string, unknown>) => remainingSet.has(r.worker_id as number))
-      .map((r: Record<string, unknown>) => {
-        const w = r.workers as {
-          worker_id: number; first_name: string; last_name: string
-          email: string | null; phone: string | null; occupation: string | null
-          action_network_id: string | null
-        } | null
-        const emp = r.employers as { employer_name: string } | null
-        const ws = r.worksites as { worksite_name: string } | null
-        return {
-          worker_id: w?.worker_id ?? (r.worker_id as number),
-          first_name: w?.first_name ?? '',
-          last_name: w?.last_name ?? '',
-          email: w?.email ?? null,
-          phone: w?.phone ?? null,
-          occupation: w?.occupation ?? null,
-          employer_name: emp?.employer_name ?? null,
-          worksite_name: ws?.worksite_name ?? null,
-          action_network_id: w?.action_network_id ?? null,
-        }
-      })
 
     if (workers.length === 0) {
       return NextResponse.json({ error: 'No workers match the filters' }, { status: 400 })

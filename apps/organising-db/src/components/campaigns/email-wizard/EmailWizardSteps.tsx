@@ -349,6 +349,18 @@ export function EmailWizardSteps() {
     ...manualVarOverrides,
   }), [state, profile, user, manualVarOverrides])
 
+  const autoVarContext = useMemo<Record<string, string | undefined>>(() => ({
+    employer_name: state.employerName || undefined,
+    agreement_name: state.agreementName || undefined,
+    worksite_name: state.worksiteNames[0] || undefined,
+    campaign_name: state.campaignName || undefined,
+    organiser_name: state.organiserName || profile?.display_name || user?.email || undefined,
+    organiser_phone: state.organiserPhone || undefined,
+    staff_name: profile?.display_name || user?.email || undefined,
+    staff_email: user?.email || undefined,
+    date: new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }),
+  }), [state.employerName, state.agreementName, state.worksiteNames, state.campaignName, state.organiserName, state.organiserPhone, profile, user])
+
   const unresolvedVars = useMemo(() => {
     if (!state.bodyText) return []
     const allText = state.subject + '\n' + state.bodyText
@@ -357,9 +369,9 @@ export function EmailWizardSteps() {
     const unique = [...new Set(matches.map((m) => m.replace(/\{\{|\}\}/g, '')))]
     return unique.filter((key) => {
       if (RECIPIENT_VARIABLES.some((v) => v.key === key)) return false
-      return !campaignVarContext[key]
+      return !autoVarContext[key]
     })
-  }, [state.bodyText, state.subject, campaignVarContext])
+  }, [state.bodyText, state.subject, autoVarContext])
 
   const wtpSelections = useMemo(() => ({
     tone: state.tone,

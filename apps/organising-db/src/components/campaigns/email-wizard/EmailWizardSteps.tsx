@@ -261,17 +261,34 @@ export function EmailWizardSteps() {
     enabled: !!user && !state.campaignId,
   })
 
+  const [manualVarOverrides, setManualVarOverrides] = useState<Record<string, string>>({})
+
   const campaignVarContext = useMemo<Record<string, string | undefined>>(() => ({
     employer_name: state.employerName || undefined,
     agreement_name: state.agreementName || undefined,
     worksite_name: state.worksiteNames[0] || undefined,
     campaign_name: state.campaignName || undefined,
-    organiser_name: state.organiserName || undefined,
+    organiser_name: state.organiserName || profile?.display_name || user?.email || undefined,
     organiser_phone: state.organiserPhone || undefined,
     staff_name: profile?.display_name || user?.email || undefined,
     staff_email: user?.email || undefined,
+    staff_phone: undefined,
+    staff_role: undefined,
     date: new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }),
-  }), [state, profile, user])
+    ...manualVarOverrides,
+  }), [state, profile, user, manualVarOverrides])
+
+  const unresolvedVars = useMemo(() => {
+    if (!state.bodyText) return []
+    const allText = state.subject + '\n' + state.bodyText
+    const matches = allText.match(/\{\{(\w+)\}\}/g)
+    if (!matches) return []
+    const unique = [...new Set(matches.map((m) => m.replace(/\{\{|\}\}/g, '')))]
+    return unique.filter((key) => {
+      if (RECIPIENT_VARIABLES.some((v) => v.key === key)) return false
+      return !campaignVarContext[key]
+    })
+  }, [state.bodyText, state.subject, campaignVarContext])
 
   const wtpSelections = useMemo(() => ({
     tone: state.tone,
@@ -894,8 +911,40 @@ export function EmailWizardSteps() {
                   </p>
                 </div>
 
+                {/* Unresolved variables editor */}
+                {unresolvedVars.length > 0 && (
+                  <Card className="border-amber-200 bg-amber-50/50">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs font-medium text-amber-800">
+                        Unresolved Variables ({unresolvedVars.length})
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <p className="text-xs text-amber-700 mb-2">
+                        These variables are in your email but don&apos;t have values yet. Fill them in below or they&apos;ll appear as {'{{variable}}'} in the final email.
+                      </p>
+                      {unresolvedVars.map((varKey) => {
+                        const varDef = CAMPAIGN_CONTEXT_VARIABLES.find((v) => v.key === varKey)
+                        return (
+                          <div key={varKey} className="flex items-center gap-2">
+                            <Badge variant="outline" className="font-mono text-xs shrink-0 w-36 justify-center">
+                              {`{{${varKey}}}`}
+                            </Badge>
+                            <Input
+                              value={manualVarOverrides[varKey] ?? ''}
+                              onChange={(e) => setManualVarOverrides((prev) => ({ ...prev, [varKey]: e.target.value }))}
+                              placeholder={varDef?.label || varKey.replace(/_/g, ' ')}
+                              className="h-7 text-sm flex-1"
+                            />
+                          </div>
+                        )
+                      })}
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Preview with resolved variables */}
-                {state.bodyText.trim() && Object.values(campaignVarContext).some(Boolean) && (
+                {state.bodyText.trim() && (
                   <Card className="bg-muted/20">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-xs text-muted-foreground font-medium">
@@ -908,9 +957,8 @@ export function EmailWizardSteps() {
                           Subject: {resolveTemplateVariables(state.subject, campaignVarContext)}
                         </p>
                       )}
-                      <div className="text-sm whitespace-pre-wrap text-muted-foreground max-h-40 overflow-auto">
-                        {resolveTemplateVariables(state.bodyText, campaignVarContext).slice(0, 500)}
-                        {state.bodyText.length > 500 && '...'}
+                      <div className="text-sm whitespace-pre-wrap text-muted-foreground max-h-64 overflow-auto">
+                        {resolveTemplateVariables(state.bodyText, campaignVarContext)}
                       </div>
                     </CardContent>
                   </Card>

@@ -95,6 +95,8 @@ interface WizardState {
   worksiteNames: string[]
   organiserName: string
   organiserPhone: string
+  standaloneEmployerId: number | null
+  standaloneWorksiteId: number | null
   tone: string[]
   audience: string[]
   engagementIntensity: string
@@ -117,6 +119,8 @@ const INITIAL_STATE: WizardState = {
   worksiteNames: [],
   organiserName: '',
   organiserPhone: '',
+  standaloneEmployerId: null,
+  standaloneWorksiteId: null,
   tone: [],
   audience: [],
   engagementIntensity: '',
@@ -221,6 +225,42 @@ export function EmailWizardSteps() {
     enabled: !!state.campaignId && campaigns.length > 0,
   })
 
+  const { data: allEmployers = [] } = useQuery({
+    queryKey: ['wizard-employers'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('employers')
+        .select('employer_id, employer_name')
+        .order('employer_name')
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!user && !state.campaignId,
+  })
+
+  const { data: allWorksites = [] } = useQuery({
+    queryKey: ['wizard-worksites', state.standaloneEmployerId],
+    queryFn: async () => {
+      let query = supabase
+        .from('worksites')
+        .select('worksite_id, worksite_name')
+        .order('worksite_name')
+      if (state.standaloneEmployerId) {
+        const { data: ewrRows } = await supabase
+          .from('employer_worksite_roles')
+          .select('worksite_id')
+          .eq('employer_id', state.standaloneEmployerId)
+        if (ewrRows?.length) {
+          query = query.in('worksite_id', ewrRows.map((r) => r.worksite_id))
+        }
+      }
+      const { data, error } = await query
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!user && !state.campaignId,
+  })
+
   const campaignVarContext = useMemo<Record<string, string | undefined>>(() => ({
     employer_name: state.employerName || undefined,
     agreement_name: state.agreementName || undefined,
@@ -262,12 +302,10 @@ export function EmailWizardSteps() {
   }
 
   function handleSelectTemplate(template: TemplateRow) {
-    const resolved = resolveTemplateVariables(template.body_text, campaignVarContext)
-    const resolvedSubject = resolveTemplateVariables(template.subject_line || '', campaignVarContext)
     setState((prev) => ({
       ...prev,
-      subject: resolvedSubject,
-      bodyText: resolved,
+      subject: template.subject_line || '',
+      bodyText: template.body_text,
       bodyHtml: template.body_html || null,
       sourceTemplateId: template.template_id,
     }))
@@ -291,12 +329,10 @@ export function EmailWizardSteps() {
       })
       if (!response.ok) throw new Error('Customisation failed')
       const result = await response.json()
-      const resolved = resolveTemplateVariables(result.adapted_body_text || template.body_text, campaignVarContext)
-      const resolvedSubject = resolveTemplateVariables(result.adapted_subject || template.subject_line || '', campaignVarContext)
       setState((prev) => ({
         ...prev,
-        subject: resolvedSubject,
-        bodyText: resolved,
+        subject: result.adapted_subject || template.subject_line || '',
+        bodyText: result.adapted_body_text || template.body_text,
         bodyHtml: template.body_html || null,
         sourceTemplateId: template.template_id,
       }))
@@ -366,16 +402,26 @@ export function EmailWizardSteps() {
   }
 
   async function handlePushList() {
-    if (!state.campaignId) return
     setIsPushingList(true)
     try {
-      const res = await fetch(`/api/campaigns/${state.campaignId}/push-list`, {
+      let url: string
+      let payload: Record<string, unknown>
+
+      if (state.campaignId) {
+        url = `/api/campaigns/${state.campaignId}/push-list`
+        payload = { draft_id: state.draftId, filters: {} }
+      } else {
+        url = '/api/email-wizard/push-standalone'
+        payload = {
+          employer_id: state.standaloneEmployerId || undefined,
+          worksite_id: state.standaloneWorksiteId || undefined,
+        }
+      }
+
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          draft_id: state.draftId,
-          filters: {},
-        }),
+        body: JSON.stringify(payload),
       })
       const data = await res.json()
       if (!res.ok || !data.success) throw new Error(data.error || 'Push failed')
@@ -398,7 +444,7 @@ export function EmailWizardSteps() {
   }
 
   async function handlePushToAN() {
-    if (!state.draftId) return
+    if (!state.bodyText.trim()) return
     setIsPushingToAN(true)
     try {
       const ctx = campaignVarContext
@@ -426,14 +472,16 @@ export function EmailWizardSteps() {
       const messageHref = createData.data?._links?.self?.href ?? ''
       const messageId = messageHref.split('/').pop() || ''
 
-      await supabase
-        .from('campaign_comms_drafts')
-        .update({
-          status: 'sent',
-          sent_via: 'action_network',
-          external_message_id: messageId,
-        })
-        .eq('draft_id', state.draftId)
+      if (state.draftId) {
+        await supabase
+          .from('campaign_comms_drafts')
+          .update({
+            status: 'sent',
+            sent_via: 'action_network',
+            external_message_id: messageId,
+          })
+          .eq('draft_id', state.draftId)
+      }
 
       setState((prev) => ({ ...prev, externalMessageId: messageId }))
       toast.success('Email pushed to Action Network')
@@ -556,6 +604,67 @@ export function EmailWizardSteps() {
                     <span className="font-medium">{state.worksiteNames.join(', ')}</span>
                   </div>
                 )}
+              </div>
+            )}
+
+            {!state.campaignId && (
+              <div className="space-y-3 p-3 rounded-lg border bg-muted/20">
+                <p className="text-sm font-medium">Target Universe</p>
+                <div className="space-y-1">
+                  <Label className="text-xs">Employer</Label>
+                  <Select
+                    value={state.standaloneEmployerId?.toString() ?? ''}
+                    onValueChange={(v) => {
+                      const eid = v ? Number(v) : null
+                      const emp = allEmployers.find((e) => e.employer_id === eid)
+                      setState((prev) => ({
+                        ...prev,
+                        standaloneEmployerId: eid,
+                        employerName: emp?.employer_name ?? '',
+                        standaloneWorksiteId: null,
+                        worksiteNames: [],
+                      }))
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select employer..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allEmployers.map((e) => (
+                        <SelectItem key={e.employer_id} value={e.employer_id.toString()}>
+                          {e.employer_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Worksite (optional)</Label>
+                  <Select
+                    value={state.standaloneWorksiteId?.toString() ?? '__all__'}
+                    onValueChange={(v) => {
+                      const wid = v === '__all__' ? null : Number(v)
+                      const ws = allWorksites.find((w) => w.worksite_id === wid)
+                      setState((prev) => ({
+                        ...prev,
+                        standaloneWorksiteId: wid,
+                        worksiteNames: ws ? [ws.worksite_name] : [],
+                      }))
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="All worksites" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">All worksites</SelectItem>
+                      {allWorksites.map((w) => (
+                        <SelectItem key={w.worksite_id} value={w.worksite_id.toString()}>
+                          {w.worksite_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             )}
 
@@ -785,6 +894,28 @@ export function EmailWizardSteps() {
                   </p>
                 </div>
 
+                {/* Preview with resolved variables */}
+                {state.bodyText.trim() && Object.values(campaignVarContext).some(Boolean) && (
+                  <Card className="bg-muted/20">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs text-muted-foreground font-medium">
+                        Preview (with resolved variables)
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {state.subject && (
+                        <p className="text-sm font-medium mb-2">
+                          Subject: {resolveTemplateVariables(state.subject, campaignVarContext)}
+                        </p>
+                      )}
+                      <div className="text-sm whitespace-pre-wrap text-muted-foreground max-h-40 overflow-auto">
+                        {resolveTemplateVariables(state.bodyText, campaignVarContext).slice(0, 500)}
+                        {state.bodyText.length > 500 && '...'}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {!state.draftId && state.campaignId && (
                   <Button onClick={handleSaveDraft} disabled={isSavingDraft || !state.bodyText.trim()}>
                     {isSavingDraft ? (
@@ -794,11 +925,6 @@ export function EmailWizardSteps() {
                     )}
                     Save Draft
                   </Button>
-                )}
-                {!state.draftId && !state.campaignId && (
-                  <p className="text-xs text-muted-foreground">
-                    Link a campaign in Step 1 to save drafts and build recipient lists.
-                  </p>
                 )}
                 {state.draftId && (
                   <Badge variant="default" className="py-1.5 px-3">
@@ -830,21 +956,28 @@ export function EmailWizardSteps() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="text-sm text-muted-foreground">
-              Push all campaign workers to Action Network and create a targeted email.
-              For advanced filtering, use the List Builder on the campaign page.
+              {state.campaignId
+                ? 'Push campaign workers to Action Network and create a targeted email.'
+                : state.standaloneEmployerId
+                  ? `Push workers from ${state.employerName || 'selected employer'} to Action Network.`
+                  : 'Select an employer in Step 1 to build a recipient list, or push the email without targeting.'}
             </div>
 
-            {!state.preparedTag && (
+            {!state.preparedTag && (state.campaignId || state.standaloneEmployerId) && (
               <Button
                 onClick={handlePushList}
-                disabled={isPushingList || !state.campaignId}
+                disabled={isPushingList}
               >
                 {isPushingList ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 ) : (
                   <Users className="h-4 w-4 mr-2" />
                 )}
-                {isPushingList ? 'Pushing contacts to AN...' : 'Push Campaign Workers to AN'}
+                {isPushingList
+                  ? 'Pushing contacts to AN...'
+                  : state.campaignId
+                    ? 'Push Campaign Workers to AN'
+                    : `Push ${state.employerName} Workers to AN`}
               </Button>
             )}
 
@@ -866,7 +999,7 @@ export function EmailWizardSteps() {
                 {!state.externalMessageId && (
                   <Button
                     onClick={handlePushToAN}
-                    disabled={isPushingToAN || !state.draftId}
+                    disabled={isPushingToAN || !state.bodyText.trim()}
                   >
                     {isPushingToAN ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -895,9 +1028,39 @@ export function EmailWizardSteps() {
               </div>
             )}
 
-            {!state.draftId && (
-              <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
-                You need to save your draft in Step 3 before you can send.
+            {!state.preparedTag && !state.campaignId && !state.standaloneEmployerId && (
+              <div className="space-y-3">
+                <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
+                  No target audience defined. You can still push the email to AN without targeting.
+                </div>
+                {!state.externalMessageId && (
+                  <Button
+                    variant="outline"
+                    onClick={handlePushToAN}
+                    disabled={isPushingToAN || !state.bodyText.trim()}
+                  >
+                    {isPushingToAN ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Send className="h-4 w-4 mr-2" />
+                    )}
+                    Push Email to AN (no targeting)
+                  </Button>
+                )}
+                {state.externalMessageId && (
+                  <div className="p-4 rounded-lg bg-blue-50 border border-blue-200 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-5 w-5 text-blue-600" />
+                      <span className="font-medium text-blue-800">Email created in Action Network</span>
+                    </div>
+                    <p className="text-sm text-blue-700">
+                      Go to Action Network to add recipients and schedule the send.
+                    </p>
+                    <Button variant="outline" onClick={() => router.push('/campaigns')}>
+                      Done — Back to Campaigns
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

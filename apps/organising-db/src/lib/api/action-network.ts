@@ -44,7 +44,8 @@ export class ActionNetworkClient {
     });
 
     if (!response.ok) {
-      throw new Error(`Action Network API error: ${response.status} ${response.statusText}`);
+      const errorBody = await response.text().catch(() => '');
+      throw new Error(`Action Network API error: ${response.status} ${response.statusText} - ${errorBody}`);
     }
 
     return response.json();
@@ -119,6 +120,17 @@ export class ActionNetworkClient {
     return this.request(`/tags/${tagId}/taggings`, {
       method: "POST",
       body: JSON.stringify({ person }),
+    });
+  }
+
+  async addTaggingByPersonId(tagId: string, personId: string): Promise<ActionNetworkResponse> {
+    return this.request(`/tags/${tagId}/taggings`, {
+      method: "POST",
+      body: JSON.stringify({
+        _links: {
+          "osdi:person": { href: `${BASE_URL}/people/${personId}` },
+        },
+      }),
     });
   }
 

@@ -48,6 +48,9 @@ import {
   PenLine,
   Variable,
   Users,
+  Search,
+  AlertCircle,
+  XCircle,
 } from 'lucide-react'
 
 const STEPS = [
@@ -146,6 +149,74 @@ export function EmailWizardSteps() {
   const [isPushingToAN, setIsPushingToAN] = useState(false)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
   const generateDraft = useGenerateDraft()
+  const [workerSearch, setWorkerSearch] = useState('')
+  const [selectedWorkerIds, setSelectedWorkerIds] = useState<Set<number>>(new Set())
+  const [workersInitialized, setWorkersInitialized] = useState(false)
+  const [pushResults, setPushResults] = useState<Array<{ worker_id: number; name: string; status: string; detail?: string }> | null>(null)
+
+  interface WorkerPreview {
+    worker_id: number
+    first_name: string
+    last_name: string
+    email: string | null
+    occupation: string | null
+    employer_name: string | null
+    worksite_name: string | null
+  }
+
+  const { data: workerList = [], isLoading: workersLoading } = useQuery({
+    queryKey: ['wizard-worker-list', state.campaignId, state.standaloneEmployerId, state.standaloneWorksiteId],
+    queryFn: async (): Promise<WorkerPreview[]> => {
+      if (state.campaignId) {
+        const res = await fetch(`/api/campaigns/${state.campaignId}/list-builder?`)
+        const json = await res.json()
+        if (!json.success) throw new Error(json.error)
+        return json.data as WorkerPreview[]
+      }
+      if (state.standaloneEmployerId) {
+        let q = supabase
+          .from('workers')
+          .select('worker_id, first_name, last_name, email, occupation, employers(employer_name), worksites(worksite_name)')
+          .eq('employer_id', state.standaloneEmployerId)
+        if (state.standaloneWorksiteId) {
+          q = q.eq('worksite_id', state.standaloneWorksiteId)
+        }
+        const { data, error } = await q
+        if (error) throw error
+        return (data ?? []).map((r: Record<string, unknown>) => {
+          const emp = r.employers as { employer_name: string } | { employer_name: string }[] | null
+          const ws = r.worksites as { worksite_name: string } | { worksite_name: string }[] | null
+          return {
+            worker_id: r.worker_id as number,
+            first_name: r.first_name as string,
+            last_name: r.last_name as string,
+            email: r.email as string | null,
+            occupation: r.occupation as string | null,
+            employer_name: Array.isArray(emp) ? emp[0]?.employer_name ?? null : emp?.employer_name ?? null,
+            worksite_name: Array.isArray(ws) ? ws[0]?.worksite_name ?? null : ws?.worksite_name ?? null,
+          }
+        })
+      }
+      return []
+    },
+    enabled: step === 4 && (!!state.campaignId || !!state.standaloneEmployerId),
+  })
+
+  if (workerList.length > 0 && !workersInitialized) {
+    const withEmail = workerList.filter((w) => w.email)
+    setSelectedWorkerIds(new Set(withEmail.map((w) => w.worker_id)))
+    setWorkersInitialized(true)
+  }
+
+  const filteredWorkers = useMemo(() => {
+    if (!workerSearch.trim()) return workerList
+    const q = workerSearch.toLowerCase()
+    return workerList.filter((w) =>
+      `${w.first_name} ${w.last_name}`.toLowerCase().includes(q) ||
+      w.email?.toLowerCase().includes(q) ||
+      w.occupation?.toLowerCase().includes(q)
+    )
+  }, [workerList, workerSearch])
 
   const { data: campaigns = [] } = useQuery({
     queryKey: ['wizard-campaigns'],
@@ -420,9 +491,11 @@ export function EmailWizardSteps() {
 
   async function handlePushList() {
     setIsPushingList(true)
+    setPushResults(null)
     try {
       let url: string
       let payload: Record<string, unknown>
+      const ids = [...selectedWorkerIds]
 
       if (state.campaignId) {
         url = `/api/campaigns/${state.campaignId}/push-list`
@@ -432,6 +505,7 @@ export function EmailWizardSteps() {
         payload = {
           employer_id: state.standaloneEmployerId || undefined,
           worksite_id: state.standaloneWorksiteId || undefined,
+          worker_ids: ids.length > 0 ? ids : undefined,
         }
       }
 
@@ -452,6 +526,9 @@ export function EmailWizardSteps() {
           contacts_created: data.contacts_created,
         },
       }))
+      if (data.worker_results) {
+        setPushResults(data.worker_results)
+      }
       toast.success(`${data.contacts_tagged + data.contacts_created} contacts pushed to AN`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Push failed')
@@ -1003,32 +1080,141 @@ export function EmailWizardSteps() {
             <CardTitle>Build List & Send</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="text-sm text-muted-foreground">
-              {state.campaignId
-                ? 'Push campaign workers to Action Network and create a targeted email.'
-                : state.standaloneEmployerId
-                  ? `Push workers from ${state.employerName || 'selected employer'} to Action Network.`
-                  : 'Select an employer in Step 1 to build a recipient list, or push the email without targeting.'}
-            </div>
+            {/* Worker list table */}
+            {(state.campaignId || state.standaloneEmployerId) && !state.preparedTag && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      value={workerSearch}
+                      onChange={(e) => setWorkerSearch(e.target.value)}
+                      placeholder="Search by name, email, or occupation..."
+                      className="pl-8 h-8 text-sm"
+                    />
+                  </div>
+                  <Badge variant="secondary" className="shrink-0">
+                    {selectedWorkerIds.size} of {workerList.length} selected
+                  </Badge>
+                </div>
 
-            {!state.preparedTag && (state.campaignId || state.standaloneEmployerId) && (
-              <Button
-                onClick={handlePushList}
-                disabled={isPushingList}
-              >
-                {isPushingList ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm" variant="outline" className="text-xs h-7"
+                    onClick={() => {
+                      const withEmail = workerList.filter((w) => w.email)
+                      setSelectedWorkerIds(new Set(withEmail.map((w) => w.worker_id)))
+                    }}
+                  >Select All</Button>
+                  <Button
+                    size="sm" variant="outline" className="text-xs h-7"
+                    onClick={() => setSelectedWorkerIds(new Set())}
+                  >Deselect All</Button>
+                </div>
+
+                {workersLoading ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : filteredWorkers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-6">No workers found.</p>
                 ) : (
-                  <Users className="h-4 w-4 mr-2" />
+                  <div className="border rounded-md max-h-72 overflow-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/50 sticky top-0">
+                        <tr>
+                          <th className="w-8 p-2" />
+                          <th className="text-left p-2 font-medium">Name</th>
+                          <th className="text-left p-2 font-medium">Email</th>
+                          <th className="text-left p-2 font-medium hidden sm:table-cell">Occupation</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredWorkers.map((w) => {
+                          const checked = selectedWorkerIds.has(w.worker_id)
+                          return (
+                            <tr key={w.worker_id} className={`border-t ${!w.email ? 'opacity-50' : ''}`}>
+                              <td className="p-2 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={!w.email}
+                                  onChange={() => {
+                                    const next = new Set(selectedWorkerIds)
+                                    if (checked) next.delete(w.worker_id)
+                                    else next.add(w.worker_id)
+                                    setSelectedWorkerIds(next)
+                                  }}
+                                />
+                              </td>
+                              <td className="p-2">{w.first_name} {w.last_name}</td>
+                              <td className="p-2 text-muted-foreground">{w.email || 'No email'}</td>
+                              <td className="p-2 text-muted-foreground hidden sm:table-cell">{w.occupation || '—'}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
-                {isPushingList
-                  ? 'Pushing contacts to AN...'
-                  : state.campaignId
-                    ? 'Push Campaign Workers to AN'
-                    : `Push ${state.employerName} Workers to AN`}
-              </Button>
+
+                <Button
+                  onClick={handlePushList}
+                  disabled={isPushingList || selectedWorkerIds.size === 0}
+                >
+                  {isPushingList ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Users className="h-4 w-4 mr-2" />
+                  )}
+                  {isPushingList
+                    ? 'Pushing contacts to AN...'
+                    : `Push ${selectedWorkerIds.size} Selected Workers to AN`}
+                </Button>
+              </div>
             )}
 
+            {/* Push results */}
+            {pushResults && pushResults.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Push Results</Label>
+                <div className="border rounded-md max-h-48 overflow-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/50 sticky top-0">
+                      <tr>
+                        <th className="text-left p-1.5 font-medium">Name</th>
+                        <th className="text-left p-1.5 font-medium">Status</th>
+                        <th className="text-left p-1.5 font-medium">Detail</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pushResults.map((r, i) => (
+                        <tr key={i} className="border-t">
+                          <td className="p-1.5">{r.name}</td>
+                          <td className="p-1.5">
+                            <Badge
+                              variant={r.status === 'error' ? 'destructive' : r.status === 'skipped' ? 'secondary' : 'default'}
+                              className="text-[10px]"
+                            >
+                              {r.status}
+                            </Badge>
+                          </td>
+                          <td className="p-1.5 text-muted-foreground max-w-48 truncate">{r.detail || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {pushResults.some((r) => r.status === 'error') && (
+                  <div className="flex items-start gap-2 p-2 rounded bg-red-50 border border-red-200 text-xs text-red-700">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span>{pushResults.filter((r) => r.status === 'error').length} workers failed. Check the detail column for error messages.</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tag ready + send */}
             {state.preparedTag && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 border border-green-200">
@@ -1039,21 +1225,14 @@ export function EmailWizardSteps() {
                     </p>
                     <p className="text-green-700 text-xs">
                       Tag: {state.preparedTag.tag_name}
-                      {state.preparedTag.contacts_created > 0 && ` (${state.preparedTag.contacts_created} new contacts created)`}
+                      {state.preparedTag.contacts_created > 0 && ` (${state.preparedTag.contacts_created} new)`}
                     </p>
                   </div>
                 </div>
 
                 {!state.externalMessageId && (
-                  <Button
-                    onClick={handlePushToAN}
-                    disabled={isPushingToAN || !state.bodyText.trim()}
-                  >
-                    {isPushingToAN ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <Send className="h-4 w-4 mr-2" />
-                    )}
+                  <Button onClick={handlePushToAN} disabled={isPushingToAN || !state.bodyText.trim()}>
+                    {isPushingToAN ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
                     {isPushingToAN ? 'Pushing email...' : 'Push Email to Action Network'}
                   </Button>
                 )}
@@ -1066,7 +1245,6 @@ export function EmailWizardSteps() {
                     </div>
                     <p className="text-sm text-blue-700">
                       The email has been created in Action Network targeting {state.preparedTag.contacts_tagged + state.preparedTag.contacts_created} contacts.
-                      Go to Action Network to review and schedule the send.
                     </p>
                     <Button variant="outline" onClick={() => router.push('/campaigns')}>
                       Done — Back to Campaigns
@@ -1076,22 +1254,15 @@ export function EmailWizardSteps() {
               </div>
             )}
 
+            {/* No targeting fallback */}
             {!state.preparedTag && !state.campaignId && !state.standaloneEmployerId && (
               <div className="space-y-3">
                 <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
                   No target audience defined. You can still push the email to AN without targeting.
                 </div>
                 {!state.externalMessageId && (
-                  <Button
-                    variant="outline"
-                    onClick={handlePushToAN}
-                    disabled={isPushingToAN || !state.bodyText.trim()}
-                  >
-                    {isPushingToAN ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <Send className="h-4 w-4 mr-2" />
-                    )}
+                  <Button variant="outline" onClick={handlePushToAN} disabled={isPushingToAN || !state.bodyText.trim()}>
+                    {isPushingToAN ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
                     Push Email to AN (no targeting)
                   </Button>
                 )}
@@ -1101,12 +1272,8 @@ export function EmailWizardSteps() {
                       <CheckCircle className="h-5 w-5 text-blue-600" />
                       <span className="font-medium text-blue-800">Email created in Action Network</span>
                     </div>
-                    <p className="text-sm text-blue-700">
-                      Go to Action Network to add recipients and schedule the send.
-                    </p>
-                    <Button variant="outline" onClick={() => router.push('/campaigns')}>
-                      Done — Back to Campaigns
-                    </Button>
+                    <p className="text-sm text-blue-700">Go to Action Network to add recipients and schedule the send.</p>
+                    <Button variant="outline" onClick={() => router.push('/campaigns')}>Done — Back to Campaigns</Button>
                   </div>
                 )}
               </div>

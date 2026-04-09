@@ -158,11 +158,14 @@ export async function POST(
     let contactsCreated = 0
     let contactsSkipped = 0
     const errors: string[] = []
+    const workerResults: Array<{ worker_id: number; name: string; status: 'tagged' | 'created' | 'skipped' | 'error'; detail?: string }> = []
 
     for (const worker of workers) {
+      const fullName = `${worker.first_name} ${worker.last_name}`
       try {
         if (!worker.email) {
           contactsSkipped++
+          workerResults.push({ worker_id: worker.worker_id, name: fullName, status: 'skipped', detail: 'No email' })
           continue
         }
 
@@ -191,13 +194,12 @@ export async function POST(
             contactsCreated++
           } else {
             contactsSkipped++
+            workerResults.push({ worker_id: worker.worker_id, name: fullName, status: 'skipped', detail: 'No AN ID returned' })
             continue
           }
         }
 
-        await anClient.addTagging(tagId, {
-          email_addresses: [{ address: worker.email }],
-        })
+        await anClient.addTaggingByPersonId(tagId, anId)
 
         await supabase.from('worker_an_tags').upsert(
           {
@@ -210,8 +212,13 @@ export async function POST(
         )
 
         contactsTagged++
+        workerResults.push({ worker_id: worker.worker_id, name: fullName, status: anId === worker.action_network_id ? 'tagged' : 'created', detail: `AN ID: ${anId}` })
       } catch (err) {
-        errors.push(`Worker ${worker.worker_id} (${worker.email}): ${err instanceof Error ? err.message : 'Unknown error'}`)
+        const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+        contactsSkipped++
+        errors.push(`Worker ${worker.worker_id} (${worker.email}): ${errorMsg}`)
+        workerResults.push({ worker_id: worker.worker_id, name: fullName, status: 'error', detail: errorMsg })
+        console.error(`Push worker ${worker.worker_id} (${worker.email}):`, errorMsg)
       }
     }
 
@@ -241,6 +248,7 @@ export async function POST(
       contacts_skipped: contactsSkipped,
       errors: errors.length > 0 ? errors : undefined,
       total_workers: workers.length,
+      worker_results: workerResults,
     })
   } catch (error) {
     console.error('Push list error:', error)

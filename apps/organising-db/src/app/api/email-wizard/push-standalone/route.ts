@@ -20,10 +20,11 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { employer_id, worksite_id, tag_name } = body as {
+    const { employer_id, worksite_id, tag_name, worker_ids } = body as {
       employer_id?: number
       worksite_id?: number
       tag_name?: string
+      worker_ids?: number[]
     }
 
     let query = supabase
@@ -35,11 +36,15 @@ export async function POST(req: NextRequest) {
         worksites ( worksite_name )
       `)
 
-    if (employer_id) {
-      query = query.eq('employer_id', employer_id)
-    }
-    if (worksite_id) {
-      query = query.eq('worksite_id', worksite_id)
+    if (worker_ids?.length) {
+      query = query.in('worker_id', worker_ids)
+    } else {
+      if (employer_id) {
+        query = query.eq('employer_id', employer_id)
+      }
+      if (worksite_id) {
+        query = query.eq('worksite_id', worksite_id)
+      }
     }
 
     query = query.not('email', 'is', null)
@@ -71,6 +76,8 @@ export async function POST(req: NextRequest) {
     let contactsTagged = 0
     let contactsCreated = 0
     let contactsSkipped = 0
+    const workerErrors: Array<{ worker_id: number; name: string; email: string | null; error: string }> = []
+    const workerResults: Array<{ worker_id: number; name: string; status: 'tagged' | 'created' | 'skipped' | 'error'; detail?: string }> = []
 
     for (const row of workers) {
       const raw = row as Record<string, unknown>
@@ -87,9 +94,14 @@ export async function POST(req: NextRequest) {
         employer_name: Array.isArray(empRel) ? empRel[0]?.employer_name ?? null : empRel?.employer_name ?? null,
         worksite_name: Array.isArray(wsRel) ? wsRel[0]?.worksite_name ?? null : wsRel?.worksite_name ?? null,
       }
+      const fullName = `${w.first_name} ${w.last_name}`
 
       try {
-        if (!w.email) { contactsSkipped++; continue }
+        if (!w.email) {
+          contactsSkipped++
+          workerResults.push({ worker_id: w.worker_id, name: fullName, status: 'skipped', detail: 'No email address' })
+          continue
+        }
 
         let anId = w.action_network_id
 
@@ -110,19 +122,31 @@ export async function POST(req: NextRequest) {
           if (anId) {
             await supabase.from('workers').update({ action_network_id: anId }).eq('worker_id', w.worker_id)
             contactsCreated++
+            workerResults.push({ worker_id: w.worker_id, name: fullName, status: 'created', detail: `AN ID: ${anId}` })
           } else {
             contactsSkipped++
+            workerResults.push({ worker_id: w.worker_id, name: fullName, status: 'skipped', detail: 'No AN ID returned from createPerson' })
             continue
           }
         }
 
-        await anClient.addTagging(tagId, {
-          email_addresses: [{ address: w.email }],
-        })
+        await anClient.addTaggingByPersonId(tagId, anId)
         contactsTagged++
-      } catch {
+        if (!workerResults.find((r) => r.worker_id === w.worker_id)) {
+          workerResults.push({ worker_id: w.worker_id, name: fullName, status: 'tagged', detail: `AN ID: ${anId}` })
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : 'Unknown error'
         contactsSkipped++
+        workerErrors.push({ worker_id: w.worker_id, name: fullName, email: w.email, error: errorMsg })
+        workerResults.push({ worker_id: w.worker_id, name: fullName, status: 'error', detail: errorMsg })
+        console.error(`Push worker ${w.worker_id} (${w.email}):`, errorMsg)
       }
+    }
+
+    if (workerErrors.length > 0) {
+      console.error(`Push-standalone: ${workerErrors.length} errors out of ${workers.length} workers:`,
+        JSON.stringify(workerErrors.slice(0, 5)))
     }
 
     return NextResponse.json({
@@ -134,6 +158,8 @@ export async function POST(req: NextRequest) {
       contacts_created: contactsCreated,
       contacts_skipped: contactsSkipped,
       total_workers: workers.length,
+      errors: workerErrors.length > 0 ? workerErrors : undefined,
+      worker_results: workerResults,
     })
   } catch (error) {
     console.error('Standalone push-list error:', error)

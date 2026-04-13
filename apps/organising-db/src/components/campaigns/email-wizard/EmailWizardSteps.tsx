@@ -54,6 +54,16 @@ import {
   XCircle,
   ChevronDown,
 } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 interface WorkerPreview {
   worker_id: number
@@ -143,6 +153,8 @@ interface WizardState {
   draftId: number | null
   preparedTag: PreparedTag | null
   externalMessageId: string | null
+  draftGeneratedWithTone: string[]
+  draftGeneratedWithAudience: string[]
 }
 
 const INITIAL_STATE: WizardState = {
@@ -167,6 +179,8 @@ const INITIAL_STATE: WizardState = {
   draftId: null,
   preparedTag: null,
   externalMessageId: null,
+  draftGeneratedWithTone: [],
+  draftGeneratedWithAudience: [],
 }
 
 export function EmailWizardSteps() {
@@ -177,6 +191,7 @@ export function EmailWizardSteps() {
   const [state, setState] = useState<WizardState>(INITIAL_STATE)
   const [showTemplatePicker, setShowTemplatePicker] = useState(false)
   const [isCustomising, setIsCustomising] = useState<number | null>(null)
+  const [showToneChangedDialog, setShowToneChangedDialog] = useState(false)
   const [isSavingDraft, setIsSavingDraft] = useState(false)
   const [isPushingList, setIsPushingList] = useState(false)
   const [isPushingToAN, setIsPushingToAN] = useState(false)
@@ -732,6 +747,8 @@ export function EmailWizardSteps() {
       bodyText: template.body_text,
       bodyHtml: template.body_html || null,
       sourceTemplateId: template.template_id,
+      draftGeneratedWithTone: prev.tone,
+      draftGeneratedWithAudience: prev.audience,
     }))
     setShowTemplatePicker(false)
   }
@@ -759,6 +776,8 @@ export function EmailWizardSteps() {
         bodyText: result.adapted_body_text || template.body_text,
         bodyHtml: template.body_html || null,
         sourceTemplateId: template.template_id,
+        draftGeneratedWithTone: prev.tone,
+        draftGeneratedWithAudience: prev.audience,
       }))
       setShowTemplatePicker(false)
       toast.success('Template customised')
@@ -791,6 +810,8 @@ export function EmailWizardSteps() {
       subject: result.subject || '',
       bodyText: result.body_text,
       bodyHtml: result.body_html || null,
+      draftGeneratedWithTone: prev.tone,
+      draftGeneratedWithAudience: prev.audience,
     }))
   }
 
@@ -937,6 +958,17 @@ export function EmailWizardSteps() {
     2: state.tone.length > 0 && state.audience.length > 0,
     3: state.bodyText.trim().length > 0,
     4: true,
+  }
+
+  function toneOrAudienceChanged(): boolean {
+    if (!state.bodyText.trim()) return false
+    const sameTone =
+      JSON.stringify([...state.draftGeneratedWithTone].sort()) ===
+      JSON.stringify([...state.tone].sort())
+    const sameAudience =
+      JSON.stringify([...state.draftGeneratedWithAudience].sort()) ===
+      JSON.stringify([...state.audience].sort())
+    return !sameTone || !sameAudience
   }
 
   return (
@@ -1245,7 +1277,7 @@ export function EmailWizardSteps() {
                   className="h-24 flex-col gap-2"
                   onClick={() => {
                     setShowTemplatePicker(true)
-                    setIsCustomising(true)
+                    setIsCustomising(null)
                   }}
                 >
                   <Sparkles className="h-6 w-6" />
@@ -1267,7 +1299,7 @@ export function EmailWizardSteps() {
                 <Button
                   variant="outline"
                   className="h-24 flex-col gap-2"
-                  onClick={() => setState((prev) => ({ ...prev, bodyText: ' ' }))}
+                  onClick={() => setState((prev) => ({ ...prev, bodyText: ' ', draftGeneratedWithTone: prev.tone, draftGeneratedWithAudience: prev.audience }))}
                 >
                   <PenLine className="h-6 w-6" />
                   <span>Write from Scratch</span>
@@ -1283,7 +1315,7 @@ export function EmailWizardSteps() {
                     variant="ghost"
                     size="sm"
                     className="text-xs"
-                    onClick={() => setState((prev) => ({ ...prev, subject: '', bodyText: '', bodyHtml: null, sourceTemplateId: null }))}
+                    onClick={() => setState((prev) => ({ ...prev, draftId: null, subject: '', bodyText: '', bodyHtml: null, sourceTemplateId: null, draftGeneratedWithTone: [], draftGeneratedWithAudience: [] }))}
                   >
                     Start Over
                   </Button>
@@ -1839,6 +1871,40 @@ export function EmailWizardSteps() {
         </Card>
       )}
 
+      {/* Tone/audience changed confirmation */}
+      <AlertDialog open={showToneChangedDialog} onOpenChange={setShowToneChangedDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Tone or audience has changed</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your tone or audience settings have changed since this draft was created. Would you like to keep the existing draft or start fresh so the new settings are applied?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setStep(3)}>
+              Keep Existing Draft
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setState((prev) => ({
+                  ...prev,
+                  draftId: null,
+                  subject: '',
+                  bodyText: '',
+                  bodyHtml: null,
+                  sourceTemplateId: null,
+                  draftGeneratedWithTone: [],
+                  draftGeneratedWithAudience: [],
+                }))
+                setStep(3)
+              }}
+            >
+              Start Fresh
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Navigation */}
       <div className="flex justify-between">
         <Button
@@ -1851,7 +1917,13 @@ export function EmailWizardSteps() {
         </Button>
         {step < 4 && (
           <Button
-            onClick={() => setStep(step + 1)}
+            onClick={() => {
+              if (step === 2 && toneOrAudienceChanged()) {
+                setShowToneChangedDialog(true)
+              } else {
+                setStep(step + 1)
+              }
+            }}
             disabled={!canProceed[step]}
           >
             Next

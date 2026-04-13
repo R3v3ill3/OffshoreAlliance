@@ -176,7 +176,7 @@ export function EmailWizardSteps() {
   const [step, setStep] = useState(1)
   const [state, setState] = useState<WizardState>(INITIAL_STATE)
   const [showTemplatePicker, setShowTemplatePicker] = useState(false)
-  const [isCustomising, setIsCustomising] = useState(false)
+  const [isCustomising, setIsCustomising] = useState<number | null>(null)
   const [isSavingDraft, setIsSavingDraft] = useState(false)
   const [isPushingList, setIsPushingList] = useState(false)
   const [isPushingToAN, setIsPushingToAN] = useState(false)
@@ -737,7 +737,7 @@ export function EmailWizardSteps() {
   }
 
   async function handleCustomiseTemplate(template: TemplateRow) {
-    setIsCustomising(true)
+    setIsCustomising(template.template_id)
     try {
       const response = await fetch('/api/templates/customise', {
         method: 'POST',
@@ -765,7 +765,7 @@ export function EmailWizardSteps() {
     } catch {
       toast.error('Customisation failed')
     } finally {
-      setIsCustomising(false)
+      setIsCustomising(null)
     }
   }
 
@@ -1457,7 +1457,7 @@ export function EmailWizardSteps() {
 
             <TemplatePicker
               open={showTemplatePicker}
-              onClose={() => { setShowTemplatePicker(false); setIsCustomising(false) }}
+              onClose={() => { setShowTemplatePicker(false); setIsCustomising(null) }}
               onSelect={handleSelectTemplate}
               onSelectAndCustomise={handleCustomiseTemplate}
               platform="email"

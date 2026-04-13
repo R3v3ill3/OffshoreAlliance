@@ -42,7 +42,7 @@ interface TemplatePickerProps {
   onSelectAndCustomise: (template: TemplateRow) => void
   platform: CommsPlatform
   stageNumber: number
-  isCustomising?: boolean
+  isCustomising?: number | null
 }
 
 export function TemplatePicker({
@@ -83,7 +83,7 @@ export function TemplatePicker({
 
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-5xl min-w-[800px] max-h-[80vh] overflow-y-auto resize-x">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
@@ -141,9 +141,9 @@ export function TemplatePicker({
                         size="sm"
                         className="h-7 text-xs"
                         onClick={() => onSelectAndCustomise(template)}
-                        disabled={isCustomising}
+                        disabled={isCustomising === template.template_id}
                       >
-                        {isCustomising ? (
+                        {isCustomising === template.template_id ? (
                           <Loader2 className="h-3 w-3 animate-spin mr-1" />
                         ) : (
                           <Sparkles className="h-3 w-3 mr-1" />

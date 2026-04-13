@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
@@ -51,7 +52,39 @@ import {
   Search,
   AlertCircle,
   XCircle,
+  ChevronDown,
 } from 'lucide-react'
+
+interface WorkerPreview {
+  worker_id: number
+  first_name: string
+  last_name: string
+  email: string | null
+  occupation: string | null
+  employer_name: string | null
+  worksite_name: string | null
+  membership_status?: string | null
+  oa_leader_role?: string | null
+}
+
+function formatCampaignListSource(w: WorkerPreview): string {
+  const parts: string[] = []
+  if (w.membership_status === 'member') parts.push('Member')
+  else if (w.membership_status === 'non_member') parts.push('Non-member')
+  if (w.oa_leader_role && w.oa_leader_role !== 'none') {
+    const r = w.oa_leader_role
+    parts.push(r.charAt(0).toUpperCase() + r.slice(1))
+  }
+  return parts.length > 0 ? parts.join(', ') : 'Campaign'
+}
+
+function formatStandaloneListSource(w: WorkerPreview): string {
+  const bits = [
+    w.employer_name ? `Employer: ${w.employer_name}` : null,
+    w.worksite_name ? `Worksite: ${w.worksite_name}` : null,
+  ].filter(Boolean) as string[]
+  return bits.length > 0 ? bits.join(' · ') : 'Employer list'
+}
 
 const STEPS = [
   { id: 1, title: 'Campaign Context', icon: Building2 },
@@ -153,16 +186,32 @@ export function EmailWizardSteps() {
   const [selectedWorkerIds, setSelectedWorkerIds] = useState<Set<number>>(new Set())
   const [workersInitialized, setWorkersInitialized] = useState(false)
   const [pushResults, setPushResults] = useState<Array<{ worker_id: number; name: string; status: string; detail?: string }> | null>(null)
+  const [additionalWorkers, setAdditionalWorkers] = useState<WorkerPreview[]>([])
+  const [workerSources, setWorkerSources] = useState<Record<number, string>>({})
+  const [addSearch, setAddSearch] = useState('')
+  const [addSearchDebounced, setAddSearchDebounced] = useState('')
+  const [showIndividualAdd, setShowIndividualAdd] = useState(false)
+  const [showBulkAdd, setShowBulkAdd] = useState(false)
+  const [addFilterEmployerId, setAddFilterEmployerId] = useState<number | null>(null)
+  const [addFilterWorksiteId, setAddFilterWorksiteId] = useState<number | null>(null)
+  const [addFilterOccupation, setAddFilterOccupation] = useState('')
 
-  interface WorkerPreview {
-    worker_id: number
-    first_name: string
-    last_name: string
-    email: string | null
-    occupation: string | null
-    employer_name: string | null
-    worksite_name: string | null
-  }
+  useEffect(() => {
+    const t = setTimeout(() => setAddSearchDebounced(addSearch.trim()), 400)
+    return () => clearTimeout(t)
+  }, [addSearch])
+
+  useEffect(() => {
+    setWorkersInitialized(false)
+    setAdditionalWorkers([])
+    setWorkerSources({})
+    setPushResults(null)
+    setAddSearch('')
+    setAddSearchDebounced('')
+    setAddFilterEmployerId(null)
+    setAddFilterWorksiteId(null)
+    setAddFilterOccupation('')
+  }, [state.campaignId, state.standaloneEmployerId, state.standaloneWorksiteId])
 
   const { data: workerList = [], isLoading: workersLoading } = useQuery({
     queryKey: ['wizard-worker-list', state.campaignId, state.standaloneEmployerId, state.standaloneWorksiteId],
@@ -171,7 +220,11 @@ export function EmailWizardSteps() {
         const res = await fetch(`/api/campaigns/${state.campaignId}/list-builder?`)
         const json = await res.json()
         if (!json.success) throw new Error(json.error)
-        return json.data as WorkerPreview[]
+        return (json.data as WorkerPreview[]).map((row) => ({
+          ...row,
+          membership_status: row.membership_status ?? null,
+          oa_leader_role: row.oa_leader_role ?? null,
+        }))
       }
       if (state.standaloneEmployerId) {
         let q = supabase
@@ -202,21 +255,241 @@ export function EmailWizardSteps() {
     enabled: step === 4 && (!!state.campaignId || !!state.standaloneEmployerId),
   })
 
-  if (workerList.length > 0 && !workersInitialized) {
-    const withEmail = workerList.filter((w) => w.email)
-    setSelectedWorkerIds(new Set(withEmail.map((w) => w.worker_id)))
-    setWorkersInitialized(true)
-  }
+  const combinedWorkers = useMemo(() => {
+    const map = new Map<number, WorkerPreview>()
+    for (const w of workerList) map.set(w.worker_id, w)
+    for (const w of additionalWorkers) {
+      if (!map.has(w.worker_id)) map.set(w.worker_id, w)
+    }
+    return [...map.values()]
+  }, [workerList, additionalWorkers])
+
+  useEffect(() => {
+    if (step !== 4) return
+    if (workersLoading) return
+    if (combinedWorkers.length === 0) {
+      setSelectedWorkerIds(new Set())
+      return
+    }
+    if (!workersInitialized) {
+      const withEmail = combinedWorkers.filter((w) => w.email)
+      setSelectedWorkerIds(new Set(withEmail.map((w) => w.worker_id)))
+      setWorkersInitialized(true)
+    }
+  }, [step, combinedWorkers, workersLoading, workersInitialized])
 
   const filteredWorkers = useMemo(() => {
-    if (!workerSearch.trim()) return workerList
+    if (!workerSearch.trim()) return combinedWorkers
     const q = workerSearch.toLowerCase()
-    return workerList.filter((w) =>
+    return combinedWorkers.filter((w) =>
       `${w.first_name} ${w.last_name}`.toLowerCase().includes(q) ||
       w.email?.toLowerCase().includes(q) ||
       w.occupation?.toLowerCase().includes(q)
     )
-  }, [workerList, workerSearch])
+  }, [combinedWorkers, workerSearch])
+
+  function resolveWorkerSourceLabel(w: WorkerPreview): string {
+    const override = workerSources[w.worker_id]
+    if (override) return override
+    if (state.campaignId) return formatCampaignListSource(w)
+    return formatStandaloneListSource(w)
+  }
+
+  function mapWorkerRow(r: Record<string, unknown>): WorkerPreview {
+    const emp = r.employers as { employer_name: string } | { employer_name: string }[] | null
+    const ws = r.worksites as { worksite_name: string } | { worksite_name: string }[] | null
+    return {
+      worker_id: r.worker_id as number,
+      first_name: r.first_name as string,
+      last_name: r.last_name as string,
+      email: r.email as string | null,
+      occupation: r.occupation as string | null,
+      employer_name: Array.isArray(emp) ? emp[0]?.employer_name ?? null : emp?.employer_name ?? null,
+      worksite_name: Array.isArray(ws) ? ws[0]?.worksite_name ?? null : ws?.worksite_name ?? null,
+      membership_status: (r.membership_status as string | undefined) ?? null,
+      oa_leader_role: (r.oa_leader_role as string | undefined) ?? null,
+    }
+  }
+
+  const { data: addSearchResults = [], isFetching: addSearchLoading } = useQuery({
+    queryKey: ['wizard-add-worker-search', addSearchDebounced, state.campaignId],
+    queryFn: async (): Promise<WorkerPreview[]> => {
+      const q = addSearchDebounced
+      if (q.length < 3) return []
+      const safe = q.replace(/\\/g, '\\\\').replace(/%/g, '\\%')
+      const p = `%${safe}%`
+      const { data: found, error } = await supabase
+        .from('workers')
+        .select('worker_id, first_name, last_name, email, occupation, employers(employer_name), worksites(worksite_name)')
+        .or(`first_name.ilike.${p},last_name.ilike.${p},email.ilike.${p}`)
+        .limit(25)
+      if (error) throw error
+      const rows = (found ?? []).map((row) => mapWorkerRow(row as Record<string, unknown>))
+      if (!state.campaignId) return rows
+      const ids = rows.map((w) => w.worker_id)
+      if (ids.length === 0) return []
+      const { data: mem, error: memErr } = await supabase
+        .from('campaign_worker_membership')
+        .select('worker_id')
+        .eq('campaign_id', state.campaignId)
+        .in('worker_id', ids)
+      if (memErr) throw memErr
+      const allowed = new Set((mem ?? []).map((m) => m.worker_id))
+      return rows.filter((w) => allowed.has(w.worker_id))
+    },
+    enabled: step === 4 && addSearchDebounced.length >= 3,
+  })
+
+  const combinedIdsKey = combinedWorkers
+    .map((w) => w.worker_id)
+    .sort((a, b) => a - b)
+    .join(',')
+
+  const bulkAddFiltersEnabled =
+    step === 4 &&
+    showBulkAdd &&
+    (!!addFilterEmployerId || !!addFilterWorksiteId || addFilterOccupation.trim().length > 0)
+
+  const { data: bulkNewCount = 0, isFetching: bulkCountLoading } = useQuery({
+    queryKey: [
+      'wizard-bulk-new-count',
+      addFilterEmployerId,
+      addFilterWorksiteId,
+      addFilterOccupation,
+      state.campaignId,
+      combinedIdsKey,
+    ],
+    queryFn: async () => {
+      let q = supabase
+        .from('workers')
+        .select('worker_id, first_name, last_name, email, occupation, employers(employer_name), worksites(worksite_name)')
+        .limit(500)
+      if (addFilterEmployerId) q = q.eq('employer_id', addFilterEmployerId)
+      if (addFilterWorksiteId) q = q.eq('worksite_id', addFilterWorksiteId)
+      if (addFilterOccupation.trim()) {
+        const occ = addFilterOccupation.trim().replace(/%/g, '\\%')
+        q = q.ilike('occupation', `%${occ}%`)
+      }
+      const { data, error } = await q
+      if (error) throw error
+      let rows = (data ?? []).map((row) => mapWorkerRow(row as Record<string, unknown>))
+      if (state.campaignId) {
+        const ids = rows.map((w) => w.worker_id)
+        if (ids.length === 0) return 0
+        const { data: mem, error: memErr } = await supabase
+          .from('campaign_worker_membership')
+          .select('worker_id')
+          .eq('campaign_id', state.campaignId)
+          .in('worker_id', ids)
+        if (memErr) throw memErr
+        const allowed = new Set((mem ?? []).map((m) => m.worker_id))
+        rows = rows.filter((w) => allowed.has(w.worker_id))
+      }
+      const existing = new Set(combinedWorkers.map((w) => w.worker_id))
+      return rows.filter((w) => !existing.has(w.worker_id)).length
+    },
+    enabled: bulkAddFiltersEnabled,
+  })
+
+  async function handleAddMatchingWorkers() {
+    let q = supabase
+      .from('workers')
+      .select('worker_id, first_name, last_name, email, occupation, employers(employer_name), worksites(worksite_name)')
+      .limit(500)
+    if (addFilterEmployerId) q = q.eq('employer_id', addFilterEmployerId)
+    if (addFilterWorksiteId) q = q.eq('worksite_id', addFilterWorksiteId)
+    if (addFilterOccupation.trim()) {
+      const occ = addFilterOccupation.trim().replace(/%/g, '\\%')
+      q = q.ilike('occupation', `%${occ}%`)
+    }
+    const { data, error } = await q
+    if (error) {
+      toast.error(error.message)
+      return
+    }
+    let rows = (data ?? []).map((row) => mapWorkerRow(row as Record<string, unknown>))
+    if (state.campaignId) {
+      const ids = rows.map((w) => w.worker_id)
+      if (ids.length === 0) {
+        toast.info('No workers match these filters on this campaign.')
+        return
+      }
+      const { data: mem, error: memErr } = await supabase
+        .from('campaign_worker_membership')
+        .select('worker_id')
+        .eq('campaign_id', state.campaignId)
+        .in('worker_id', ids)
+      if (memErr) {
+        toast.error(memErr.message)
+        return
+      }
+      const allowed = new Set((mem ?? []).map((m) => m.worker_id))
+      rows = rows.filter((w) => allowed.has(w.worker_id))
+    }
+    const existing = new Set(combinedWorkers.map((w) => w.worker_id))
+    const newRows = rows.filter((w) => !existing.has(w.worker_id))
+    if (newRows.length === 0) {
+      toast.info('No new workers to add (all matches are already on the list).')
+      return
+    }
+    const empLabel = allEmployers.find((e) => e.employer_id === addFilterEmployerId)?.employer_name ?? 'Any employer'
+    const wsLabel = addFilterWorksites.find((w) => w.worksite_id === addFilterWorksiteId)?.worksite_name
+      ?? (addFilterWorksiteId ? 'Worksite' : 'All worksites')
+    const sourceLabel = `Filter: ${empLabel} / ${wsLabel}`
+    setAdditionalWorkers((prev) => [...prev, ...newRows])
+    setWorkerSources((prev) => {
+      const next = { ...prev }
+      for (const w of newRows) next[w.worker_id] = sourceLabel
+      return next
+    })
+    setSelectedWorkerIds((prev) => {
+      const n = new Set(prev)
+      for (const w of newRows) {
+        if (w.email) n.add(w.worker_id)
+      }
+      return n
+    })
+    toast.success(`Added ${newRows.length} worker${newRows.length === 1 ? '' : 's'}`)
+  }
+
+  function handleAddIndividualWorker(w: WorkerPreview) {
+    if (combinedWorkers.some((x) => x.worker_id === w.worker_id)) {
+      toast.info('Already on the list')
+      return
+    }
+    if (state.campaignId) {
+      void (async () => {
+        const { data: mem, error } = await supabase
+          .from('campaign_worker_membership')
+          .select('worker_id')
+          .eq('campaign_id', state.campaignId)
+          .eq('worker_id', w.worker_id)
+          .maybeSingle()
+        if (error) {
+          toast.error(error.message)
+          return
+        }
+        if (!mem) {
+          toast.error('This worker is not on the selected campaign.')
+          return
+        }
+        appendManualWorker(w)
+      })()
+      return
+    }
+    appendManualWorker(w)
+  }
+
+  function appendManualWorker(w: WorkerPreview) {
+    setAdditionalWorkers((prev) => [...prev, w])
+    setWorkerSources((prev) => ({ ...prev, [w.worker_id]: 'Added manually' }))
+    setSelectedWorkerIds((prev) => {
+      const n = new Set(prev)
+      if (w.email) n.add(w.worker_id)
+      return n
+    })
+    toast.success('Worker added to list')
+  }
 
   const { data: campaigns = [] } = useQuery({
     queryKey: ['wizard-campaigns'],
@@ -306,7 +579,28 @@ export function EmailWizardSteps() {
       if (error) throw error
       return data ?? []
     },
-    enabled: !!user && !state.campaignId,
+    enabled: !!user && (!state.campaignId || step === 4),
+  })
+
+  const { data: addFilterWorksites = [] } = useQuery({
+    queryKey: ['wizard-add-filter-worksites', addFilterEmployerId],
+    queryFn: async () => {
+      if (!addFilterEmployerId) return []
+      const { data: ewrRows, error: ewrErr } = await supabase
+        .from('employer_worksite_roles')
+        .select('worksite_id')
+        .eq('employer_id', addFilterEmployerId)
+      if (ewrErr) throw ewrErr
+      if (!ewrRows?.length) return []
+      const { data, error } = await supabase
+        .from('worksites')
+        .select('worksite_id, worksite_name')
+        .in('worksite_id', ewrRows.map((r) => r.worksite_id))
+        .order('worksite_name')
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!user && step === 4 && !!addFilterEmployerId,
   })
 
   const { data: allWorksites = [] } = useQuery({
@@ -333,6 +627,7 @@ export function EmailWizardSteps() {
   })
 
   const [manualVarOverrides, setManualVarOverrides] = useState<Record<string, string>>({})
+  const [manualVarConfirmed, setManualVarConfirmed] = useState<Record<string, boolean>>({})
 
   const campaignVarContext = useMemo<Record<string, string | undefined>>(() => ({
     employer_name: state.employerName || undefined,
@@ -372,6 +667,35 @@ export function EmailWizardSteps() {
       return !autoVarContext[key]
     })
   }, [state.bodyText, state.subject, autoVarContext])
+
+  useEffect(() => {
+    const keys = new Set(unresolvedVars)
+    setManualVarConfirmed((prev) => {
+      let changed = false
+      const next = { ...prev }
+      for (const k of Object.keys(next)) {
+        if (!keys.has(k)) {
+          delete next[k]
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+    setManualVarOverrides((prev) => {
+      let changed = false
+      const next = { ...prev }
+      for (const k of Object.keys(next)) {
+        if (!keys.has(k)) {
+          delete next[k]
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [unresolvedVars])
+
+  const allUnresolvedConfirmed =
+    unresolvedVars.length > 0 && unresolvedVars.every((k) => manualVarConfirmed[k] === true)
 
   const wtpSelections = useMemo(() => ({
     tone: state.tone,
@@ -511,7 +835,7 @@ export function EmailWizardSteps() {
 
       if (state.campaignId) {
         url = `/api/campaigns/${state.campaignId}/push-list`
-        payload = { draft_id: state.draftId, filters: {} }
+        payload = { draft_id: state.draftId, filters: {}, worker_ids: ids }
       } else {
         url = '/api/email-wizard/push-standalone'
         payload = {
@@ -1002,18 +1326,41 @@ export function EmailWizardSteps() {
 
                 {/* Unresolved variables editor */}
                 {unresolvedVars.length > 0 && (
-                  <Card className="border-amber-200 bg-amber-50/50">
+                  <Card
+                    className={cn(
+                      allUnresolvedConfirmed
+                        ? 'border-emerald-200 bg-emerald-50/70'
+                        : 'border-amber-200 bg-amber-50/50',
+                    )}
+                  >
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-xs font-medium text-amber-800">
+                      <CardTitle
+                        className={cn(
+                          'text-xs font-medium',
+                          allUnresolvedConfirmed ? 'text-emerald-900' : 'text-amber-800',
+                        )}
+                      >
                         Unresolved Variables ({unresolvedVars.length})
                       </CardTitle>
+                      {allUnresolvedConfirmed ? (
+                        <p className="text-xs text-emerald-800 font-medium pt-0.5">
+                          All values marked as correct.
+                        </p>
+                      ) : null}
                     </CardHeader>
                     <CardContent className="space-y-2">
-                      <p className="text-xs text-amber-700 mb-2">
-                        These variables are in your email but don&apos;t have values yet. Fill them in below or they&apos;ll appear as {'{{variable}}'} in the final email.
+                      <p
+                        className={cn(
+                          'text-xs mb-2',
+                          allUnresolvedConfirmed ? 'text-emerald-800' : 'text-amber-700',
+                        )}
+                      >
+                        These variables are in your email but don&apos;t have values yet. Fill them in below, tick
+                        OK when each value is correct, or they&apos;ll appear as {'{{variable}}'} in the final email.
                       </p>
                       {unresolvedVars.map((varKey) => {
                         const varDef = CAMPAIGN_CONTEXT_VARIABLES.find((v) => v.key === varKey)
+                        const confirmId = `unresolved-confirm-${varKey}`
                         return (
                           <div key={varKey} className="flex items-center gap-2">
                             <Badge variant="outline" className="font-mono text-xs shrink-0 w-36 justify-center">
@@ -1021,10 +1368,27 @@ export function EmailWizardSteps() {
                             </Badge>
                             <Input
                               value={manualVarOverrides[varKey] ?? ''}
-                              onChange={(e) => setManualVarOverrides((prev) => ({ ...prev, [varKey]: e.target.value }))}
+                              onChange={(e) => {
+                                const value = e.target.value
+                                setManualVarOverrides((prev) => ({ ...prev, [varKey]: value }))
+                                setManualVarConfirmed((prev) => ({ ...prev, [varKey]: false }))
+                              }}
                               placeholder={varDef?.label || varKey.replace(/_/g, ' ')}
                               className="h-7 text-sm flex-1"
                             />
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <Checkbox
+                                id={confirmId}
+                                checked={manualVarConfirmed[varKey] ?? false}
+                                onCheckedChange={(checked) => {
+                                  setManualVarConfirmed((prev) => ({ ...prev, [varKey]: checked === true }))
+                                }}
+                                aria-label={`Confirm value for {{${varKey}}}`}
+                              />
+                              <Label htmlFor={confirmId} className="text-xs font-normal cursor-pointer whitespace-nowrap">
+                                OK
+                              </Label>
+                            </div>
                           </div>
                         )
                       })}
@@ -1106,7 +1470,7 @@ export function EmailWizardSteps() {
                     />
                   </div>
                   <Badge variant="secondary" className="shrink-0">
-                    {selectedWorkerIds.size} of {workerList.length} selected
+                    {selectedWorkerIds.size} of {combinedWorkers.length} selected
                   </Badge>
                 </div>
 
@@ -1114,7 +1478,7 @@ export function EmailWizardSteps() {
                   <Button
                     size="sm" variant="outline" className="text-xs h-7"
                     onClick={() => {
-                      const withEmail = workerList.filter((w) => w.email)
+                      const withEmail = filteredWorkers.filter((w) => w.email)
                       setSelectedWorkerIds(new Set(withEmail.map((w) => w.worker_id)))
                     }}
                   >Select All</Button>
@@ -1137,6 +1501,7 @@ export function EmailWizardSteps() {
                         <tr>
                           <th className="w-8 p-2" />
                           <th className="text-left p-2 font-medium">Name</th>
+                          <th className="text-left p-2 font-medium min-w-[8rem]">Source</th>
                           <th className="text-left p-2 font-medium">Email</th>
                           <th className="text-left p-2 font-medium hidden sm:table-cell">Occupation</th>
                         </tr>
@@ -1160,6 +1525,9 @@ export function EmailWizardSteps() {
                                 />
                               </td>
                               <td className="p-2">{w.first_name} {w.last_name}</td>
+                              <td className="p-2 text-muted-foreground max-w-[10rem] sm:max-w-[14rem] align-top">
+                                <span className="line-clamp-2">{resolveWorkerSourceLabel(w)}</span>
+                              </td>
                               <td className="p-2 text-muted-foreground">{w.email || 'No email'}</td>
                               <td className="p-2 text-muted-foreground hidden sm:table-cell">{w.occupation || '—'}</td>
                             </tr>
@@ -1169,6 +1537,164 @@ export function EmailWizardSteps() {
                     </table>
                   </div>
                 )}
+
+                <div className="rounded-md border bg-muted/10">
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm font-medium hover:bg-muted/40"
+                    onClick={() => setShowIndividualAdd((v) => !v)}
+                  >
+                    <span>Add workers (search)</span>
+                    {showIndividualAdd ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                  </button>
+                  {showIndividualAdd && (
+                    <div className="space-y-2 border-t px-3 py-3">
+                      <p className="text-xs text-muted-foreground">
+                        Search by first name, last name, or email (at least 3 characters).
+                        {state.campaignId ? ' Only workers on this campaign can be added.' : ''}
+                      </p>
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={addSearch}
+                          onChange={(e) => setAddSearch(e.target.value)}
+                          placeholder="Search workers..."
+                          className="pl-8 h-8 text-sm"
+                        />
+                      </div>
+                      {addSearchDebounced.length > 0 && addSearchDebounced.length < 3 && (
+                        <p className="text-xs text-muted-foreground">Type at least 3 characters to search.</p>
+                      )}
+                      {addSearchLoading && (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Searching…
+                        </div>
+                      )}
+                      {!addSearchLoading && addSearchDebounced.length >= 3 && addSearchResults.length === 0 && (
+                        <p className="text-xs text-muted-foreground">No matches.</p>
+                      )}
+                      {addSearchResults.length > 0 && (
+                        <ul className="max-h-48 space-y-1 overflow-auto rounded border bg-background p-1">
+                          {addSearchResults.map((w) => {
+                            const onList = combinedWorkers.some((x) => x.worker_id === w.worker_id)
+                            return (
+                              <li
+                                key={w.worker_id}
+                                className="flex items-center justify-between gap-2 rounded px-2 py-1 text-xs hover:bg-muted/50"
+                              >
+                                <span>
+                                  {w.first_name} {w.last_name}
+                                  <span className="text-muted-foreground block">{w.email || 'No email'}</span>
+                                </span>
+                                {onList ? (
+                                  <Badge variant="secondary" className="shrink-0 text-[10px]">Already added</Badge>
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="h-7 shrink-0 text-xs"
+                                    onClick={() => handleAddIndividualWorker(w)}
+                                  >
+                                    Add
+                                  </Button>
+                                )}
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-md border bg-muted/10">
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm font-medium hover:bg-muted/40"
+                    onClick={() => setShowBulkAdd((v) => !v)}
+                  >
+                    <span>Add by filter (bulk)</span>
+                    {showBulkAdd ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                  </button>
+                  {showBulkAdd && (
+                    <div className="space-y-3 border-t px-3 py-3">
+                      <p className="text-xs text-muted-foreground">
+                        Combine employer, worksite, and/or occupation. Multiple filters apply together (AND).
+                        {state.campaignId ? ' Results are limited to workers on this campaign.' : ''}
+                      </p>
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Employer</Label>
+                          <Select
+                            value={addFilterEmployerId?.toString() ?? '__any__'}
+                            onValueChange={(v) => {
+                              setAddFilterEmployerId(v === '__any__' ? null : Number(v))
+                              setAddFilterWorksiteId(null)
+                            }}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Any employer" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__any__">Any employer</SelectItem>
+                              {allEmployers.map((e) => (
+                                <SelectItem key={e.employer_id} value={e.employer_id.toString()}>
+                                  {e.employer_name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Worksite</Label>
+                          <Select
+                            value={addFilterWorksiteId?.toString() ?? '__any__'}
+                            onValueChange={(v) => setAddFilterWorksiteId(v === '__any__' ? null : Number(v))}
+                            disabled={!addFilterEmployerId}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder={addFilterEmployerId ? 'Any worksite' : 'Pick employer first'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__any__">Any worksite</SelectItem>
+                              {addFilterWorksites.map((ws) => (
+                                <SelectItem key={ws.worksite_id} value={ws.worksite_id.toString()}>
+                                  {ws.worksite_name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Occupation contains</Label>
+                          <Input
+                            value={addFilterOccupation}
+                            onChange={(e) => setAddFilterOccupation(e.target.value)}
+                            placeholder="e.g. Rigger"
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="text-xs h-8"
+                          disabled={!bulkAddFiltersEnabled || bulkCountLoading || bulkNewCount === 0}
+                          onClick={() => void handleAddMatchingWorkers()}
+                        >
+                          Add matching workers
+                        </Button>
+                        {bulkAddFiltersEnabled && (
+                          <Badge variant="outline" className="text-[10px]">
+                            {bulkNewCount} new
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <Button
                   onClick={handlePushList}

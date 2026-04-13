@@ -14,6 +14,8 @@ function getAnClient(): ActionNetworkClient {
 interface PushListBody {
   draft_id?: number
   tag_name?: string
+  /** When set, only these workers (must still match campaign membership query) are pushed */
+  worker_ids?: number[]
   filters: {
     membership?: string[]
     roles?: string[]
@@ -43,7 +45,7 @@ export async function POST(
     }
 
     const body: PushListBody = await req.json()
-    const { filters, tag_name, draft_id } = body
+    const { filters, tag_name, draft_id, worker_ids: selectedWorkerIds } = body
 
     const { data: campaign } = await supabase
       .from('campaigns')
@@ -133,6 +135,11 @@ export async function POST(
         .in('an_tag_id', filters.exclude_an_tags)
       const excludedSet = new Set((exclRows ?? []).map((r) => r.worker_id))
       workers = workers.filter((w) => !excludedSet.has(w.worker_id))
+    }
+
+    if (selectedWorkerIds?.length) {
+      const allow = new Set(selectedWorkerIds)
+      workers = workers.filter((w) => allow.has(w.worker_id))
     }
 
     if (workers.length === 0) {

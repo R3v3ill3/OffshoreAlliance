@@ -797,27 +797,37 @@ export function EmailWizardSteps() {
   async function handleSaveDraft() {
     setIsSavingDraft(true)
     try {
-      const { data, error } = await supabase
-        .from('campaign_comms_drafts')
-        .insert({
-          campaign_id: state.campaignId,
-          stage_number: state.stageNumber || 1,
-          platform: 'email',
-          title: `Email – ${stageName}`,
-          subject: state.subject || null,
-          body: state.bodyText,
-          body_html: state.bodyHtml,
-          status: 'draft',
-          tone: state.tone.join(', ') || null,
-          audience_segment: state.audience.join(', ') || null,
-          source_template_ids: state.sourceTemplateId ? [state.sourceTemplateId] : null,
-          created_by: user?.id,
-        })
-        .select('draft_id')
-        .single()
-      if (error) throw error
-      setState((prev) => ({ ...prev, draftId: data.draft_id }))
-      toast.success('Draft saved')
+      const draftFields = {
+        campaign_id: state.campaignId,
+        stage_number: state.stageNumber || 1,
+        platform: 'email' as const,
+        title: `Email – ${stageName}`,
+        subject: state.subject || null,
+        body: state.bodyText,
+        body_html: state.bodyHtml,
+        status: 'draft' as const,
+        tone: state.tone.join(', ') || null,
+        audience_segment: state.audience.join(', ') || null,
+        source_template_ids: state.sourceTemplateId ? [state.sourceTemplateId] : null,
+      }
+
+      if (state.draftId) {
+        const { error } = await supabase
+          .from('campaign_comms_drafts')
+          .update(draftFields)
+          .eq('draft_id', state.draftId)
+        if (error) throw error
+        toast.success('Draft updated')
+      } else {
+        const { data, error } = await supabase
+          .from('campaign_comms_drafts')
+          .insert({ ...draftFields, created_by: user?.id })
+          .select('draft_id')
+          .single()
+        if (error) throw error
+        setState((prev) => ({ ...prev, draftId: data.draft_id }))
+        toast.success('Draft saved')
+      }
     } catch {
       toast.error('Failed to save draft')
     } finally {
@@ -939,7 +949,15 @@ export function EmailWizardSteps() {
             Create and send a campaign email step by step
           </p>
         </div>
-        <Button variant="outline" onClick={() => router.push('/campaigns')}>
+        <Button
+          variant="outline"
+          onClick={() => {
+            // #region agent log
+            fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H1',location:'EmailWizardSteps.tsx:cancel',message:'Email wizard cancel clicked',data:{step,campaignId:state.campaignId,standaloneEmployerId:state.standaloneEmployerId,standaloneWorksiteId:state.standaloneWorksiteId,hasDraft:!!state.draftId},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
+            router.push('/campaigns')
+          }}
+        >
           Cancel
         </Button>
       </div>
@@ -1314,7 +1332,7 @@ export function EmailWizardSteps() {
                   <Textarea
                     ref={bodyRef}
                     value={state.bodyText.trim() === '' ? '' : state.bodyText}
-                    onChange={(e) => setState((prev) => ({ ...prev, bodyText: e.target.value }))}
+                    onChange={(e) => setState((prev) => ({ ...prev, bodyText: e.target.value, bodyHtml: null }))}
                     rows={12}
                     className="font-mono text-sm"
                     placeholder="Write your email body here..."
@@ -1417,21 +1435,22 @@ export function EmailWizardSteps() {
                   </Card>
                 )}
 
-                {!state.draftId && state.campaignId && (
-                  <Button onClick={handleSaveDraft} disabled={isSavingDraft || !state.bodyText.trim()}>
-                    {isSavingDraft ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <CheckCircle className="h-4 w-4 mr-2" />
+                {state.campaignId && (
+                  <div className="flex items-center gap-2">
+                    <Button onClick={handleSaveDraft} disabled={isSavingDraft || !state.bodyText.trim()}>
+                      {isSavingDraft ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                      )}
+                      {state.draftId ? 'Update Draft' : 'Save Draft'}
+                    </Button>
+                    {state.draftId && (
+                      <Badge variant="outline" className="py-1.5 px-3 text-muted-foreground">
+                        Draft #{state.draftId}
+                      </Badge>
                     )}
-                    Save Draft
-                  </Button>
-                )}
-                {state.draftId && (
-                  <Badge variant="default" className="py-1.5 px-3">
-                    <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
-                    Draft saved (#{state.draftId})
-                  </Badge>
+                  </div>
                 )}
               </div>
             )}

@@ -116,6 +116,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H2,H4',location:'auth-context.tsx:onAuthStateChange',message:'Auth state change received',data:{event,hasSession:!!session,sessionUserId:session?.user?.id??null,isProtectedRoute},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         if (event === "TOKEN_REFRESHED" && session) {
           logConnectionEvent({ type: "token_refresh_ok", detail: "onAuthStateChange" });
           setUser((prev) => {
@@ -128,6 +131,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const shouldRecover =
           event === "SIGNED_OUT" ||
           (!session && event === "TOKEN_REFRESHED");
+
+        // #region agent log
+        fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H4',location:'auth-context.tsx:onAuthStateChange:recovery-branch',message:'Evaluated recovery trigger',data:{event,hasSession:!!session,shouldRecover},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
 
         if (shouldRecover) {
           logConnectionEvent({ type: "token_refresh_fail", detail: `event=${event}` });

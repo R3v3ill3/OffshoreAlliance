@@ -130,6 +130,9 @@ function clearSupabaseLocalStorage(): void {
 }
 
 function goToLogin(reasonCode: string): void {
+  // #region agent log
+  fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H2',location:'session-recovery.ts:goToLogin',message:'Redirecting to login',data:{reasonCode,pathname:typeof window!=='undefined'?window.location.pathname:null},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   logConnectionEvent({ type: "session_lost", detail: reasonCode });
   const nextUrl = `/login?reason=${encodeURIComponent(reasonCode)}`;
   window.location.href = nextUrl;
@@ -141,6 +144,9 @@ async function hardFailRecovery(
   message: string,
   redirectOnFailure: boolean
 ): Promise<SessionRecoveryResult> {
+  // #region agent log
+  fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H3',location:'session-recovery.ts:hardFailRecovery',message:'Hard fail recovery invoked',data:{reason,message,redirectOnFailure},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   logConnectionEvent({ type: "session_lost", detail: `${reason}: ${message}` });
 
   await queryClient.cancelQueries();
@@ -159,6 +165,9 @@ function softFailRecovery(
   reason: FailureReason,
   message: string
 ): SessionRecoveryResult {
+  // #region agent log
+  fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H1,H3',location:'session-recovery.ts:softFailRecovery',message:'Soft fail recovery invoked',data:{reason,message},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   console.warn("[session-recovery] Non-destructive recovery failure", { reason, message });
   logConnectionEvent({ type: "api_error", detail: `soft-fail: ${reason} — ${message}` });
   return { ok: false, message, reasonCode: reason, redirectedToLogin: false };
@@ -178,6 +187,9 @@ export async function recoverSessionConnection({
   redirectOnFailure = true,
   validateWorkloadAccess = false,
 }: RecoverSessionOptions): Promise<SessionRecoveryResult> {
+  // #region agent log
+  fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H1,H3,H4',location:'session-recovery.ts:recoverSessionConnection:start',message:'Recovery started',data:{source,reloadOnSuccess,redirectOnFailure,validateWorkloadAccess},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   logConnectionEvent({ type: "visibility_change", detail: `recovery-start: ${source}` });
 
   // Step 1: Try refreshing the session first (graduated approach)
@@ -220,6 +232,9 @@ export async function recoverSessionConnection({
   }
 
   if (sessionResult.error) {
+    // #region agent log
+    fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H3,H4',location:'session-recovery.ts:recoverSessionConnection:session-error',message:'getSession returned error',data:{source,error:sessionResult.error.message},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     return hardFailRecovery(
       queryClient,
       "session_check_error",
@@ -230,6 +245,9 @@ export async function recoverSessionConnection({
 
   const session = sessionResult.data.session;
   const user = session?.user ?? null;
+  // #region agent log
+  fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H1,H2,H3',location:'session-recovery.ts:recoverSessionConnection:session-result',message:'Session check completed',data:{source,hasSession:!!session,userId:user?.id??null,expiresAt:session?.expires_at??null},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   if (!user) {
     return hardFailRecovery(
       queryClient,
@@ -248,6 +266,9 @@ export async function recoverSessionConnection({
       new Error("Timed out while validating database connection")
     );
     if (probeResult.error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H1,H3',location:'session-recovery.ts:recoverSessionConnection:probe-error',message:'Profile probe returned error',data:{source,error:buildErrorSummary(probeResult.error)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return softFailRecovery("probe_error", buildErrorSummary(probeResult.error));
     }
   } catch (error: unknown) {
@@ -294,6 +315,9 @@ export async function performRobustSignOut({
   queryClient,
   source = "manual",
 }: SignOutOptions): Promise<void> {
+  // #region agent log
+  fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H2,H4',location:'session-recovery.ts:performRobustSignOut:start',message:'Robust signout started',data:{source,pathname:typeof window!=='undefined'?window.location.pathname:null},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   logConnectionEvent({ type: "session_lost", detail: `signout: ${source}` });
 
   try {

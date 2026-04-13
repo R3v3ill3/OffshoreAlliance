@@ -184,6 +184,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = async () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-2',hypothesisId:'H7',location:'auth-context.tsx:signOut:start',message:'Auth signOut invoked',data:{pathname:typeof window!=='undefined'?window.location.pathname:null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     await performRobustSignOut({
       supabase,
       queryClient,
@@ -191,9 +194,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     setUser(null);
     setProfile(null);
+    // #region agent log
+    fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-2',hypothesisId:'H7',location:'auth-context.tsx:signOut:done',message:'Auth signOut completed',data:{pathname:typeof window!=='undefined'?window.location.pathname:null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
   };
 
   const hardRefreshConnection = async (): Promise<SessionRecoveryResult> => {
+    // #region agent log
+    fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-2',hypothesisId:'H7',location:'auth-context.tsx:hardRefresh:start',message:'Hard refresh invoked',data:{connectionRecoveryInProgress,pathname:typeof window!=='undefined'?window.location.pathname:null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     if (connectionRecoveryInProgress) {
       return {
         ok: false,
@@ -205,7 +214,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setConnectionRecoveryInProgress(true);
     try {
-      return await recoverSessionConnection({
+      const result = await recoverSessionConnection({
         supabase,
         queryClient,
         source: "menu-hard-refresh",
@@ -213,6 +222,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         redirectOnFailure: true,
         validateWorkloadAccess: false,
       });
+      // #region agent log
+      fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-2',hypothesisId:'H7,H6',location:'auth-context.tsx:hardRefresh:result',message:'Hard refresh result',data:{ok:result.ok,reasonCode:result.reasonCode,redirectedToLogin:result.redirectedToLogin},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      return result;
     } finally {
       setConnectionRecoveryInProgress(false);
     }

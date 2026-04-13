@@ -27,8 +27,13 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
       queryCache: new QueryCache({
         onError: (error, query) => {
           console.error("[QueryCache] Error in query", query.queryKey, error);
+          const statusValue =
+            typeof error === "object" && error !== null && "status" in error
+              ? (error as { status?: unknown }).status
+              : null;
+          const status = typeof statusValue === "number" ? statusValue : null;
           // #region agent log
-          fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-2',hypothesisId:'H6',location:'providers.tsx:queryCache:onError',message:'QueryCache onError fired',data:{queryKey:String(query.queryKey[0]??'unknown'),message:error instanceof Error?error.message:String(error),status:typeof error==='object'&&error!==null&&typeof (error as Record<string,unknown>).status==='number'?(error as Record<string,unknown>).status:null,isAuthLike:isLikelyAuthError(error)},timestamp:Date.now()})}).catch(()=>{});
+          fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-2',hypothesisId:'H6',location:'providers.tsx:queryCache:onError',message:'QueryCache onError fired',data:{queryKey:String(query.queryKey[0]??'unknown'),message:error instanceof Error?error.message:String(error),status,isAuthLike:isLikelyAuthError(error)},timestamp:Date.now()})}).catch(()=>{});
           // #endregion
 
           logConnectionEvent({

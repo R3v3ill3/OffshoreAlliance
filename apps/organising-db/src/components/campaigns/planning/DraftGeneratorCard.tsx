@@ -96,7 +96,7 @@ export function DraftGeneratorCard({
   const [isSaving, setIsSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [showTemplatePicker, setShowTemplatePicker] = useState(false)
-  const [isCustomising, setIsCustomising] = useState(false)
+  const [isCustomising, setIsCustomising] = useState<number | null>(null)
   const [changeSummary, setChangeSummary] = useState<Array<{ location: string; original_snippet: string; adapted_snippet: string; reason: string }> | null>(null)
   const [sourceTemplateId, setSourceTemplateId] = useState<number | null>(null)
 
@@ -179,7 +179,7 @@ export function DraftGeneratorCard({
   }
 
   async function handleSelectAndCustomise(template: TemplateRow) {
-    setIsCustomising(true)
+    setIsCustomising(template.template_id)
     setSourceTemplateId(template.template_id)
     try {
       const response = await fetch('/api/templates/customise', {
@@ -224,7 +224,7 @@ export function DraftGeneratorCard({
     } catch (err) {
       toast.error(`Customisation failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
     } finally {
-      setIsCustomising(false)
+      setIsCustomising(null)
     }
   }
 

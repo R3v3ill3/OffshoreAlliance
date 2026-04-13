@@ -11,6 +11,15 @@ function getAnClient(): ActionNetworkClient {
   return new ActionNetworkClient({ apiKey })
 }
 
+function generateRandomSuffix(length: number = 3): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  let result = ''
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return result
+}
+
 interface PushListBody {
   draft_id?: number
   tag_name?: string
@@ -149,7 +158,8 @@ export async function POST(
     const anClient = getAnClient()
 
     const dateStr = new Date().toISOString().slice(0, 10)
-    const finalTagName = tag_name || `${campaign?.name || `Campaign ${campaignId}`} - ${dateStr}`
+    const randomSuffix = generateRandomSuffix()
+    const finalTagName = tag_name || `${campaign?.name || `Campaign ${campaignId}`} - ${dateStr} - ${randomSuffix}`
 
     const tagResponse = await anClient.createTag(finalTagName)
     const tagHref = (tagResponse as Record<string, unknown>)?._links

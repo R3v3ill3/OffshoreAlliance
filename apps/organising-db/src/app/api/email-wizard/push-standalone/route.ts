@@ -11,6 +11,15 @@ function getAnClient(): ActionNetworkClient {
   return new ActionNetworkClient({ apiKey })
 }
 
+function generateRandomSuffix(length: number = 3): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  let result = ''
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return result
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
@@ -63,7 +72,8 @@ export async function POST(req: NextRequest) {
     const empName = firstEmp
       ? (Array.isArray(firstEmp) ? (firstEmp as { employer_name: string }[])[0]?.employer_name : (firstEmp as { employer_name: string }).employer_name) ?? 'Standalone'
       : 'Standalone'
-    const finalTagName = tag_name || `${empName} - ${dateStr}`
+    const randomSuffix = generateRandomSuffix()
+    const finalTagName = tag_name || `${empName} - ${dateStr} - ${randomSuffix}`
 
     const tagResponse = await anClient.createTag(finalTagName)
     const tagHref = (tagResponse as Record<string, Record<string, { href: string }>>)?._links?.self?.href ?? ''

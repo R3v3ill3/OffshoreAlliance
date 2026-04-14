@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -172,7 +173,7 @@ export function CampaignStructureSection({
     },
   });
 
-  const acceptCandidate = useMutation({
+  const acceptCandidate = useAuthAwareMutation({
     mutationFn: async (c: {
       candidate_id: number;
       suggested_name: string;
@@ -207,7 +208,7 @@ export function CampaignStructureSection({
     },
   });
 
-  const rejectCandidate = useMutation({
+  const rejectCandidate = useAuthAwareMutation({
     mutationFn: async (candidateId: number) => {
       const { error } = await supabase
         .from("campaign_ou_candidates")
@@ -222,7 +223,7 @@ export function CampaignStructureSection({
 
   const [generateMessage, setGenerateMessage] = useState<string | null>(null);
 
-  const generateCandidates = useMutation({
+  const generateCandidates = useAuthAwareMutation({
     mutationFn: async () => {
       const result = await generateOuCandidatesFromWtp(supabase, Number(campaignId));
       if (result.error) throw result.error;
@@ -239,7 +240,7 @@ export function CampaignStructureSection({
     },
   });
 
-  const updateOaRole = useMutation({
+  const updateOaRole = useAuthAwareMutation({
     mutationFn: async (vars: { membership_id: number; oa_leader_role: OaLeaderRole | null }) => {
       const { error } = await supabase
         .from("campaign_worker_membership")
@@ -252,7 +253,7 @@ export function CampaignStructureSection({
     },
   });
 
-  const createOu = useMutation({
+  const createOu = useAuthAwareMutation({
     mutationFn: async () => {
       const payload: Record<string, unknown> = {
         campaign_id: Number(campaignId),
@@ -284,7 +285,7 @@ export function CampaignStructureSection({
     },
   });
 
-  const assignOu = useMutation({
+  const assignOu = useAuthAwareMutation({
     mutationFn: async () => {
       if (!assignDialog || !assignWorkerId) return;
       const { error } = await supabase.from("campaign_worker_ou").insert({
@@ -302,7 +303,7 @@ export function CampaignStructureSection({
     },
   });
 
-  const generateJobTypeOus = useMutation({
+  const generateJobTypeOus = useAuthAwareMutation({
     mutationFn: async () => {
       const workerIds = members.map((m: { worker_id: number }) => m.worker_id);
       if (workerIds.length === 0) return;

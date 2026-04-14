@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { Button } from "@/components/ui/button";
@@ -310,7 +311,7 @@ export function CampaignUniverseSection({
     );
   }, [addableWorkers, workerSearch]);
 
-  const addEmployerMutation = useMutation({
+  const addEmployerMutation = useAuthAwareMutation({
     mutationFn: async (employer_id: number) => {
       const { error } = await supabase.from("campaign_employers").insert({
         campaign_id: cid,
@@ -346,7 +347,7 @@ export function CampaignUniverseSection({
     },
   });
 
-  const removeEmployerMutation = useMutation({
+  const removeEmployerMutation = useAuthAwareMutation({
     mutationFn: async (rowId: number) => {
       const { error } = await supabase.from("campaign_employers").delete().eq("id", rowId);
       if (error) throw error;
@@ -362,7 +363,7 @@ export function CampaignUniverseSection({
     );
   };
 
-  const addWorksiteMutation = useMutation({
+  const addWorksiteMutation = useAuthAwareMutation({
     mutationFn: async (worksite_id: number) => {
       const { error } = await supabase.from("campaign_worksites").insert({
         campaign_id: cid,
@@ -384,7 +385,7 @@ export function CampaignUniverseSection({
     onError: (e: Error) => window.alert(e.message || "Could not add worksite"),
   });
 
-  const removeWorksiteMutation = useMutation({
+  const removeWorksiteMutation = useAuthAwareMutation({
     mutationFn: async (rowId: number) => {
       const { error } = await supabase.from("campaign_worksites").delete().eq("id", rowId);
       if (error) throw error;
@@ -393,7 +394,7 @@ export function CampaignUniverseSection({
     onError: (e: Error) => window.alert(e.message || "Could not remove worksite"),
   });
 
-  const setSectorWideMutation = useMutation({
+  const setSectorWideMutation = useAuthAwareMutation({
     mutationFn: async () => {
       const { error: delErr } = await supabase.from("campaign_worksites").delete().eq("campaign_id", cid);
       if (delErr) throw delErr;
@@ -411,7 +412,7 @@ export function CampaignUniverseSection({
     onError: (e: Error) => window.alert(e.message || "Could not update worksite scope"),
   });
 
-  const clearSectorWideMutation = useMutation({
+  const clearSectorWideMutation = useAuthAwareMutation({
     mutationFn: async () => {
       const { error } = await supabase.from("campaign_worksites").delete().eq("id", sectorWideRow!.id);
       if (error) throw error;
@@ -420,7 +421,7 @@ export function CampaignUniverseSection({
     onError: (e: Error) => window.alert(e.message || "Could not clear sector-wide"),
   });
 
-  const addWorkerMutation = useMutation({
+  const addWorkerMutation = useAuthAwareMutation({
     mutationFn: async (worker_id: number) => {
       const { error } = await supabase.from("campaign_worker_membership").insert({
         campaign_id: cid,
@@ -432,7 +433,7 @@ export function CampaignUniverseSection({
     onError: (e: Error) => window.alert(e.message || "Could not add worker"),
   });
 
-  const removeWorkerMutation = useMutation({
+  const removeWorkerMutation = useAuthAwareMutation({
     mutationFn: async (membership_id: number) => {
       const { error } = await supabase
         .from("campaign_worker_membership")

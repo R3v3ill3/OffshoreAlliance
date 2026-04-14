@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { format } from "date-fns";
 import { ArrowLeft, Pencil, Plus } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
@@ -258,7 +259,7 @@ export default function CampaignDetailPage() {
     enabled: !!user && actions.length > 0,
   });
 
-  const createUniverseMutation = useMutation({
+  const createUniverseMutation = useAuthAwareMutation({
     mutationFn: async () => {
       const payload: Database["public"]["Tables"]["campaign_universes"]["Insert"] = {
         campaign_id: campaignId,
@@ -275,7 +276,7 @@ export default function CampaignDetailPage() {
     },
   });
 
-  const createActionMutation = useMutation({
+  const createActionMutation = useAuthAwareMutation({
     mutationFn: async () => {
       const payload: Database["public"]["Tables"]["campaign_actions"]["Insert"] = {
         campaign_id: campaignId,

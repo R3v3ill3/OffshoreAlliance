@@ -125,7 +125,7 @@ export default function EmployerDetailPage() {
   const router = useRouter();
   const supabase = createClient();
   const queryClient = useQueryClient();
-  const { canWrite } = useAuth();
+  const { user, canWrite } = useAuth();
 
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Employer>>({});
@@ -160,7 +160,7 @@ export default function EmployerDetailPage() {
       if (error) throw error;
       return data as Employer;
     },
-    enabled: employerIdValid,
+    enabled: !!user && employerIdValid,
   });
 
   // All employers for parent company selector + child lookup
@@ -174,6 +174,7 @@ export default function EmployerDetailPage() {
       if (error) throw error;
       return data as Pick<Employer, "employer_id" | "employer_name" | "employer_category">[];
     },
+    enabled: !!user,
   });
 
   const { data: agreements = [] } = useQuery({
@@ -187,7 +188,7 @@ export default function EmployerDetailPage() {
       if (error) throw error;
       return data as Agreement[];
     },
-    enabled: employerIdValid,
+    enabled: !!user && employerIdValid,
   });
 
   const { data: worksiteRoles = [] } = useQuery({
@@ -200,7 +201,7 @@ export default function EmployerDetailPage() {
       if (error) throw error;
       return data as (EmployerWorksiteRole & { worksite?: Worksite })[];
     },
-    enabled: employerIdValid,
+    enabled: !!user && employerIdValid,
   });
 
   const { data: workers = [] } = useQuery({
@@ -214,7 +215,7 @@ export default function EmployerDetailPage() {
       if (error) throw error;
       return data as (Worker & { worksite?: { worksite_name: string } })[];
     },
-    enabled: employerIdValid,
+    enabled: !!user && employerIdValid,
   });
 
   // Child companies (employers where parent_employer_id = this employer)
@@ -229,7 +230,7 @@ export default function EmployerDetailPage() {
       if (error) throw error;
       return data as Employer[];
     },
-    enabled: employerIdValid,
+    enabled: !!user && employerIdValid,
   });
 
   const { data: childWorkerCounts = [] } = useQuery({
@@ -250,7 +251,7 @@ export default function EmployerDetailPage() {
       }
       return Array.from(counts.entries());
     },
-    enabled: childCompanies.length > 0,
+    enabled: !!user && childCompanies.length > 0,
   });
 
   const groupTotals = useMemo(() => {
@@ -272,7 +273,7 @@ export default function EmployerDetailPage() {
       if (error) throw error;
       return data as Worksite[];
     },
-    enabled: employerIdValid,
+    enabled: !!user && employerIdValid,
   });
 
   const { data: employerScopes = [] } = useQuery({
@@ -285,7 +286,7 @@ export default function EmployerDetailPage() {
       if (error) throw error;
       return data as EmployerScopeRow[];
     },
-    enabled: employerIdValid,
+    enabled: !!user && employerIdValid,
   });
 
   const { data: worksiteScopes = [] } = useQuery({
@@ -298,7 +299,7 @@ export default function EmployerDetailPage() {
       if (error) throw error;
       return data as unknown as WorksiteScopeRow[];
     },
-    enabled: employerIdValid,
+    enabled: !!user && employerIdValid,
   });
 
   const { data: projects = [] } = useQuery({
@@ -311,7 +312,7 @@ export default function EmployerDetailPage() {
       if (error) throw error;
       return (data ?? []).map((pe: Record<string, unknown>) => pe.project).filter(Boolean) as ProjectRow[];
     },
-    enabled: employerIdValid,
+    enabled: !!user && employerIdValid,
   });
 
   const { data: allScopes = [] } = useQuery({
@@ -325,6 +326,7 @@ export default function EmployerDetailPage() {
       if (error) throw error;
       return data as (WorkScope & { parent?: { scope_name: string; parent?: { scope_name: string } } })[];
     },
+    enabled: !!user,
   });
 
   const scopeOptions = useMemo(() => {

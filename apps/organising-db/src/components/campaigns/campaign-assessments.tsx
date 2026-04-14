@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -178,7 +179,7 @@ export function CampaignAssessmentsSection({
     enabled: !!activityForRates,
   });
 
-  const createActivity = useMutation({
+  const createActivity = useAuthAwareMutation({
     mutationFn: async () => {
       const templateKey =
         templateChoice !== "__custom__" ? (templateChoice as CampaignActivityTemplateKey) : null;
@@ -216,7 +217,7 @@ export function CampaignAssessmentsSection({
     },
   });
 
-  const saveRating = useMutation({
+  const saveRating = useAuthAwareMutation({
     mutationFn: async (vars: {
       activity_id: number;
       worker_id: number;
@@ -242,7 +243,7 @@ export function CampaignAssessmentsSection({
     },
   });
 
-  const bulkSaveRatings = useMutation({
+  const bulkSaveRatings = useAuthAwareMutation({
     mutationFn: async (rows: AssessmentWorkerRow[]) => {
       if (!activityForRates || rows.length === 0) return;
       const shouldSetRating = bulkRating !== UNSET_VALUE;

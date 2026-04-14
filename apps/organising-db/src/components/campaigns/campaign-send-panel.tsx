@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { format } from "date-fns";
@@ -221,7 +222,7 @@ export function CampaignSendPanel({
 
   const selectedDraft = drafts.find((d) => d.draft_id === selectedDraftId) ?? null;
 
-  const saveMutation = useMutation({
+  const saveMutation = useAuthAwareMutation({
     mutationFn: async () => {
       if (!selectedDraft) return;
       const { error } = await supabase
@@ -241,7 +242,7 @@ export function CampaignSendPanel({
     },
   });
 
-  const approveMutation = useMutation({
+  const approveMutation = useAuthAwareMutation({
     mutationFn: async () => {
       if (!selectedDraft || !user) return;
       const { error } = await supabase
@@ -261,7 +262,7 @@ export function CampaignSendPanel({
     },
   });
 
-  const sendAnMutation = useMutation({
+  const sendAnMutation = useAuthAwareMutation({
     mutationFn: async () => {
       if (!selectedDraft) throw new Error("No draft selected");
       const ctx = campaignCtx ?? {};
@@ -314,7 +315,7 @@ export function CampaignSendPanel({
     },
   });
 
-  const sendSmsMutation = useMutation({
+  const sendSmsMutation = useAuthAwareMutation({
     mutationFn: async (recipients: { to: string; message: string }[]) => {
       if (!selectedDraft) throw new Error("No draft selected");
       const res = await fetch("/api/yabbr", {
@@ -349,7 +350,7 @@ export function CampaignSendPanel({
     },
   });
 
-  const pollStatsMutation = useMutation({
+  const pollStatsMutation = useAuthAwareMutation({
     mutationFn: async (draftId: number) => {
       const res = await fetch(`/api/campaigns/${numericId}/sync-an`, {
         method: "POST",

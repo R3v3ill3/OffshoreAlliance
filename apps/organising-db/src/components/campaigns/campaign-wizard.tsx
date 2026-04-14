@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
+import { useAuthAwareMutation, withSessionGuard } from "@/lib/hooks/useAuthAwareMutation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -96,7 +97,7 @@ function ReplacedAgreementPicker({ value, onChange }: ReplacedAgreementPickerPro
     enabled: !!user,
   });
 
-  const createAgreementMutation = useMutation({
+  const createAgreementMutation = useAuthAwareMutation({
     mutationFn: async (name: string) => {
       const { data, error } = await supabase
         .from("agreements")
@@ -316,7 +317,7 @@ export function CampaignWizard() {
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
-  const createCampaignMutation = useMutation({
+  const createCampaignMutation = useAuthAwareMutation({
     mutationFn: async () => {
       if (!user) throw new Error("Not signed in");
 
@@ -369,52 +370,54 @@ export function CampaignWizard() {
     },
   });
 
-  const saveScopeMutation = useMutation({
+  const saveScopeMutation = useAuthAwareMutation({
     mutationFn: async () => {
       if (!campaignId) throw new Error("No campaign");
-      await supabase.from("campaign_employers").delete().eq("campaign_id", campaignId);
-      await supabase.from("campaign_worksites").delete().eq("campaign_id", campaignId);
 
-      if (selectedEmployers.length > 0) {
-        const { error } = await supabase.from("campaign_employers").insert(
-          selectedEmployers.map((employer_id) => ({ campaign_id: campaignId, employer_id }))
-        );
-        if (error) throw error;
+      await withSessionGuard("saveScopeMutation", async () => {
+        await supabase.from("campaign_employers").delete().eq("campaign_id", campaignId);
+        await supabase.from("campaign_worksites").delete().eq("campaign_id", campaignId);
 
-        // Auto-link employers not yet in the replaced EA
-        if (basics.replaced_agreement_id && eaEmployerIds.length >= 0) {
-          const eaSet = new Set(eaEmployerIds);
-          const toLink = selectedEmployers.filter((id) => !eaSet.has(id));
-          if (toLink.length > 0) {
-            await supabase.from("agreement_employers").upsert(
-              toLink.map((employer_id) => ({
-                agreement_id: basics.replaced_agreement_id!,
-                employer_id,
-                is_primary: false,
-              })),
-              { onConflict: "agreement_id,employer_id", ignoreDuplicates: true }
-            );
+        if (selectedEmployers.length > 0) {
+          const { error } = await supabase.from("campaign_employers").insert(
+            selectedEmployers.map((employer_id) => ({ campaign_id: campaignId, employer_id }))
+          );
+          if (error) throw error;
+
+          if (basics.replaced_agreement_id && eaEmployerIds.length >= 0) {
+            const eaSet = new Set(eaEmployerIds);
+            const toLink = selectedEmployers.filter((id) => !eaSet.has(id));
+            if (toLink.length > 0) {
+              await supabase.from("agreement_employers").upsert(
+                toLink.map((employer_id) => ({
+                  agreement_id: basics.replaced_agreement_id!,
+                  employer_id,
+                  is_primary: false,
+                })),
+                { onConflict: "agreement_id,employer_id", ignoreDuplicates: true }
+              );
+            }
           }
         }
-      }
 
-      if (worksiteSectorWide) {
-        const { error } = await supabase.from("campaign_worksites").insert({
-          campaign_id: campaignId,
-          worksite_id: null,
-          sector_wide: true,
-        });
-        if (error) throw error;
-      } else if (selectedWorksites.length > 0) {
-        const { error } = await supabase.from("campaign_worksites").insert(
-          selectedWorksites.map((worksite_id) => ({
+        if (worksiteSectorWide) {
+          const { error } = await supabase.from("campaign_worksites").insert({
             campaign_id: campaignId,
-            worksite_id,
-            sector_wide: false,
-          }))
-        );
-        if (error) throw error;
-      }
+            worksite_id: null,
+            sector_wide: true,
+          });
+          if (error) throw error;
+        } else if (selectedWorksites.length > 0) {
+          const { error } = await supabase.from("campaign_worksites").insert(
+            selectedWorksites.map((worksite_id) => ({
+              campaign_id: campaignId,
+              worksite_id,
+              sector_wide: false,
+            }))
+          );
+          if (error) throw error;
+        }
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });
@@ -422,15 +425,18 @@ export function CampaignWizard() {
     },
   });
 
-  const saveWorkersMutation = useMutation({
+  const saveWorkersMutation = useAuthAwareMutation({
     mutationFn: async () => {
       if (!campaignId) throw new Error("No campaign");
-      await supabase.from("campaign_worker_membership").delete().eq("campaign_id", campaignId);
-      if (selectedWorkers.length === 0) return;
-      const { error } = await supabase.from("campaign_worker_membership").insert(
-        selectedWorkers.map((worker_id) => ({ campaign_id: campaignId, worker_id }))
-      );
-      if (error) throw error;
+
+      await withSessionGuard("saveWorkersMutation", async () => {
+        await supabase.from("campaign_worker_membership").delete().eq("campaign_id", campaignId);
+        if (selectedWorkers.length === 0) return;
+        const { error } = await supabase.from("campaign_worker_membership").insert(
+          selectedWorkers.map((worker_id) => ({ campaign_id: campaignId, worker_id }))
+        );
+        if (error) throw error;
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });

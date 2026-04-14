@@ -174,6 +174,12 @@ export function CampaignCreationWizard() {
 
   const { data: existingCampaign, isLoading: existingCampaignLoading } =
     useExistingCampaignForPlanning(linkedCampaignId)
+  const hasReplacementSubtypeOrExistingAgreementContext = Boolean(
+    existingCampaign?.requires_replacement_agreement ||
+      existingCampaign?.has_linked_agreement_context ||
+      autoAgreementId
+  )
+  const agreementRequired = !isLinkedMode || hasReplacementSubtypeOrExistingAgreementContext
 
   // Redirect to existing plan if one already exists for this campaign
   const hasRedirected = useRef(false)
@@ -214,11 +220,20 @@ export function CampaignCreationWizard() {
       }
 
       // Even without an agreement, pre-fill name/description from the existing campaign
+      const ranges = buildInitialStageTimeline({
+        linkedStart: existingCampaign.start_date ?? null,
+        linkedEnd: existingCampaign.end_date ?? null,
+        agreementExpiry: null,
+      })
+      const mode = resolveTimelineMode(true, existingCampaign, null)
       hasAutoSelected.current = true
       setState((p) => ({
         ...p,
         campaign_name: existingCampaign.name || p.campaign_name,
         description: (existingCampaign.description as string) || p.description,
+        stage_dates: mapRangesToWizardStages(ranges),
+        timeline_mode: mode,
+        org_campaign_end_ymd: existingCampaign.end_date ? String(existingCampaign.end_date) : null,
       }))
       return
     }
@@ -363,6 +378,7 @@ export function CampaignCreationWizard() {
 
   const isLinkedOrganisingActive =
     isLinkedMode && existingCampaign?.status?.toLowerCase() === 'active'
+  const canContinueFromStep1 = state.agreement_id || !agreementRequired
 
   const isSubmitting = createCampaign.isPending || addPlan.isPending
 
@@ -495,10 +511,20 @@ export function CampaignCreationWizard() {
           <CardHeader>
             <CardTitle>Select Enterprise Agreement</CardTitle>
             <CardDescription>
-              Choose the agreement this campaign relates to. We&apos;ll auto-populate employer, worksite and expiry details.
+              {agreementRequired
+                ? 'Choose the agreement this campaign relates to. We will auto-populate employer, worksite and expiry details.'
+                : 'Agreement selection is optional for this campaign. If there is no linked agreement yet, continue without selecting one.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {!agreementRequired && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <p className="font-medium">Agreement optional for this campaign</p>
+                <p className="text-xs mt-1 text-amber-800">
+                  You can continue without an enterprise agreement and attach one later if needed.
+                </p>
+              </div>
+            )}
             {agreementsLoading ? (
               <div className="text-sm text-muted-foreground">Loading agreements...</div>
             ) : (
@@ -578,6 +604,19 @@ export function CampaignCreationWizard() {
                   )}
                 </div>
               </div>
+            )}
+            {!agreementRequired && !state.agreement_id && (
+              <Button
+                variant="outline"
+                onClick={() => setStep(2)}
+              >
+                Continue without agreement
+              </Button>
+            )}
+            {agreementRequired && !state.agreement_id && (
+              <p className="text-xs text-amber-700">
+                Select an agreement to continue. Replacement agreement campaigns require an agreement link.
+              </p>
             )}
           </CardContent>
         </Card>
@@ -852,7 +891,7 @@ export function CampaignCreationWizard() {
         {step < STEPS.length ? (
           <Button
             onClick={() => setStep((s) => Math.min(STEPS.length, s + 1))}
-            disabled={step === 1 && !state.agreement_id}
+            disabled={step === 1 && !canContinueFromStep1}
           >
             Next
             <ChevronRight className="h-4 w-4 ml-1" />

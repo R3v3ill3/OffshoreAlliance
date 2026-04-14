@@ -1,7 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { resetClient } from "@/lib/supabase/client";
-import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
+import { resetClient, coordinatedRefreshSession } from "@/lib/supabase/client";
+import { logConnectionEvent, generateTraceId } from "@/lib/supabase/connection-monitor";
 
 type RecoverySource = "menu-hard-refresh" | "query-cache-auth-error" | "auth-change" | "manual";
 type FailureReason =
@@ -10,7 +10,8 @@ type FailureReason =
   | "missing_session"
   | "probe_timeout"
   | "probe_error"
-  | "workload_probe_error";
+  | "workload_probe_error"
+  | "circuit_breaker";
 
 export interface SessionRecoveryResult {
   ok: boolean;
@@ -32,6 +33,19 @@ interface SignOutOptions {
   supabase: SupabaseClient;
   queryClient: QueryClient;
   source?: string;
+}
+
+// Circuit breaker: prevent cascading recoveries within a short window
+let _lastRecoveryAttemptTs = 0;
+const CIRCUIT_BREAKER_WINDOW_MS = 30_000;
+
+/**
+ * Flag set during intentional sign-out to prevent the onAuthStateChange
+ * SIGNED_OUT handler from triggering another recovery.
+ */
+let _intentionalSignOut = false;
+export function isIntentionalSignOut(): boolean {
+  return _intentionalSignOut;
 }
 
 function withTimeout<T>(promiseLike: PromiseLike<T>, timeoutMs: number, timeoutError: Error): Promise<T> {
@@ -83,14 +97,17 @@ function buildErrorSummary(error: unknown): string {
 
 /**
  * Determines whether an error is a genuine Supabase auth failure.
- * Intentionally narrow to avoid false-positive recovery cascades
- * from schema errors (400), missing tables (404), or network noise.
+ * 403 alone is NOT sufficient -- RLS violations also return 403.
+ * Only treat 403 as auth failure when accompanied by a known auth error code.
  */
 export function isLikelyAuthError(error: unknown): boolean {
   const status = readErrorStatus(error);
-  if (status === 401 || status === 403) return true;
-
   const code = readErrorCode(error)?.toUpperCase();
+
+  if (status === 401) return true;
+
+  if (status === 403 && code && ["PGRST301", "INVALID_JWT"].includes(code)) return true;
+
   if (code && ["PGRST301", "INVALID_JWT"].includes(code)) return true;
 
   const message = readErrorMessage(error).toLowerCase();
@@ -130,28 +147,30 @@ function clearSupabaseLocalStorage(): void {
 }
 
 function goToLogin(reasonCode: string): void {
-  // #region agent log
-  fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H2',location:'session-recovery.ts:goToLogin',message:'Redirecting to login',data:{reasonCode,pathname:typeof window!=='undefined'?window.location.pathname:null},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   logConnectionEvent({ type: "session_lost", detail: reasonCode });
   const nextUrl = `/login?reason=${encodeURIComponent(reasonCode)}`;
   window.location.href = nextUrl;
 }
 
+/**
+ * Terminal failure: session is confirmed gone. Only clears queries,
+ * does NOT clear storage (storage clearing is reserved for explicit sign-out).
+ */
 async function hardFailRecovery(
   queryClient: QueryClient,
   reason: FailureReason,
   message: string,
-  redirectOnFailure: boolean
+  redirectOnFailure: boolean,
+  traceId: string,
 ): Promise<SessionRecoveryResult> {
-  // #region agent log
-  fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H3',location:'session-recovery.ts:hardFailRecovery',message:'Hard fail recovery invoked',data:{reason,message,redirectOnFailure},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-  logConnectionEvent({ type: "session_lost", detail: `${reason}: ${message}` });
+  logConnectionEvent({ type: "session_lost", detail: `${reason}: ${message}`, traceId });
 
-  await queryClient.cancelQueries();
+  try {
+    await queryClient.cancelQueries();
+  } catch {
+    // best effort
+  }
   queryClient.clear();
-  clearSupabaseLocalStorage();
 
   if (redirectOnFailure) {
     goToLogin(reason);
@@ -163,21 +182,21 @@ async function hardFailRecovery(
 
 function softFailRecovery(
   reason: FailureReason,
-  message: string
+  message: string,
+  traceId: string,
 ): SessionRecoveryResult {
-  // #region agent log
-  fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H1,H3',location:'session-recovery.ts:softFailRecovery',message:'Soft fail recovery invoked',data:{reason,message},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-  console.warn("[session-recovery] Non-destructive recovery failure", { reason, message });
-  logConnectionEvent({ type: "api_error", detail: `soft-fail: ${reason} — ${message}` });
+  console.warn("[session-recovery] Non-destructive recovery failure", { reason, message, traceId });
+  logConnectionEvent({ type: "api_error", detail: `soft-fail: ${reason} — ${message}`, traceId });
   return { ok: false, message, reasonCode: reason, redirectedToLogin: false };
 }
 
 /**
- * Graduated session recovery:
- * 1. Try refreshing the session (soft)
- * 2. Invalidate queries
- * 3. Only clear storage + redirect if session is truly gone
+ * Graduated session recovery with circuit breaker:
+ * 1. Check circuit breaker to prevent cascading recoveries
+ * 2. Try a coordinated token refresh (mutex-protected)
+ * 3. Verify session via getSession
+ * 4. Probe DB connectivity
+ * 5. Only redirect to login if session is confirmed missing after refresh attempt
  */
 export async function recoverSessionConnection({
   supabase,
@@ -187,73 +206,94 @@ export async function recoverSessionConnection({
   redirectOnFailure = true,
   validateWorkloadAccess = false,
 }: RecoverSessionOptions): Promise<SessionRecoveryResult> {
-  // #region agent log
-  fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H1,H3,H4',location:'session-recovery.ts:recoverSessionConnection:start',message:'Recovery started',data:{source,reloadOnSuccess,redirectOnFailure,validateWorkloadAccess},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-  logConnectionEvent({ type: "visibility_change", detail: `recovery-start: ${source}` });
+  const traceId = generateTraceId();
+  const now = Date.now();
 
-  // Step 1: Try refreshing the session first (graduated approach)
-  if (source === "query-cache-auth-error") {
-    try {
-      const { data, error } = await withTimeout(
-        supabase.auth.refreshSession(),
-        8000,
-        new Error("Timed out refreshing session")
-      );
-      if (!error && data.session) {
-        logConnectionEvent({ type: "token_refresh_ok", detail: "refreshed via recovery" });
-        await queryClient.invalidateQueries();
-        return {
-          ok: true,
-          message: "Session refreshed successfully.",
-          reasonCode: "refreshed",
-          redirectedToLogin: false,
-        };
-      }
-    } catch {
-      // Fall through to full recovery
-    }
+  // Circuit breaker: skip if recovery was attempted very recently
+  if (now - _lastRecoveryAttemptTs < CIRCUIT_BREAKER_WINDOW_MS) {
+    const elapsed = now - _lastRecoveryAttemptTs;
+    logConnectionEvent({
+      type: "recovery_start",
+      detail: `circuit-breaker: skipped recovery from ${source} (${elapsed}ms since last attempt)`,
+      traceId,
+    });
+    return {
+      ok: false,
+      message: `Recovery skipped (circuit breaker, ${Math.round(elapsed / 1000)}s since last attempt).`,
+      reasonCode: "circuit_breaker",
+      redirectedToLogin: false,
+    };
   }
 
-  // Step 2: Check session state
+  _lastRecoveryAttemptTs = now;
+  logConnectionEvent({ type: "recovery_start", detail: `${source}`, traceId });
+
+  // Step 1: Always try a coordinated token refresh first
+  try {
+    const { data, error } = await withTimeout(
+      coordinatedRefreshSession(`recovery:${source}`),
+      12_000,
+      new Error("Timed out refreshing session"),
+    );
+    if (!error && data.session) {
+      logConnectionEvent({ type: "token_refresh_ok", detail: `refreshed via recovery: ${source}`, traceId });
+      await queryClient.invalidateQueries();
+      logConnectionEvent({ type: "recovery_end", detail: `success after refresh: ${source}`, traceId });
+
+      if (reloadOnSuccess) {
+        window.location.reload();
+      }
+
+      return {
+        ok: true,
+        message: "Session refreshed successfully.",
+        reasonCode: "refreshed",
+        redirectedToLogin: false,
+      };
+    }
+  } catch {
+    // Fall through to session check
+  }
+
+  // Step 2: Check session state (with generous timeout)
   let sessionResult: Awaited<ReturnType<typeof supabase.auth.getSession>>;
   try {
     sessionResult = await withTimeout(
       supabase.auth.getSession(),
-      8000,
-      new Error("Timed out while checking Supabase session")
+      15_000,
+      new Error("Timed out while checking Supabase session"),
     );
   } catch (error: unknown) {
     const reason =
       error instanceof Error && error.message.includes("Timed out")
         ? "session_check_timeout"
         : "session_check_error";
-    return hardFailRecovery(queryClient, reason, readErrorMessage(error), redirectOnFailure);
+    logConnectionEvent({ type: "recovery_end", detail: `fail: ${reason}`, traceId });
+    return hardFailRecovery(queryClient, reason, readErrorMessage(error), redirectOnFailure, traceId);
   }
 
   if (sessionResult.error) {
-    // #region agent log
-    fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H3,H4',location:'session-recovery.ts:recoverSessionConnection:session-error',message:'getSession returned error',data:{source,error:sessionResult.error.message},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
+    logConnectionEvent({ type: "recovery_end", detail: `fail: session error`, traceId });
     return hardFailRecovery(
       queryClient,
       "session_check_error",
       sessionResult.error.message,
-      redirectOnFailure
+      redirectOnFailure,
+      traceId,
     );
   }
 
   const session = sessionResult.data.session;
   const user = session?.user ?? null;
-  // #region agent log
-  fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H1,H2,H3',location:'session-recovery.ts:recoverSessionConnection:session-result',message:'Session check completed',data:{source,hasSession:!!session,userId:user?.id??null,expiresAt:session?.expires_at??null},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
+
   if (!user) {
+    logConnectionEvent({ type: "recovery_end", detail: `fail: missing session`, traceId });
     return hardFailRecovery(
       queryClient,
       "missing_session",
       "No active session found. Redirecting to login.",
-      redirectOnFailure
+      redirectOnFailure,
+      traceId,
     );
   }
 
@@ -262,21 +302,20 @@ export async function recoverSessionConnection({
   try {
     const probeResult = await withTimeout(
       supabase.from("user_profiles").select("user_id").eq("user_id", user.id).maybeSingle(),
-      8000,
-      new Error("Timed out while validating database connection")
+      12_000,
+      new Error("Timed out while validating database connection"),
     );
     if (probeResult.error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H1,H3',location:'session-recovery.ts:recoverSessionConnection:probe-error',message:'Profile probe returned error',data:{source,error:buildErrorSummary(probeResult.error)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      return softFailRecovery("probe_error", buildErrorSummary(probeResult.error));
+      logConnectionEvent({ type: "recovery_end", detail: `soft-fail: probe error`, traceId });
+      return softFailRecovery("probe_error", buildErrorSummary(probeResult.error), traceId);
     }
   } catch (error: unknown) {
     const reason =
       error instanceof Error && error.message.includes("Timed out")
         ? "probe_timeout"
         : "probe_error";
-    return softFailRecovery(reason, readErrorMessage(error));
+    logConnectionEvent({ type: "recovery_end", detail: `soft-fail: ${reason}`, traceId });
+    return softFailRecovery(reason, readErrorMessage(error), traceId);
   }
 
   // Step 4: Optional workload probe
@@ -287,7 +326,8 @@ export async function recoverSessionConnection({
       p_filter_days: null,
     });
     if (workloadProbeResult.error) {
-      return softFailRecovery("workload_probe_error", buildErrorSummary(workloadProbeResult.error));
+      logConnectionEvent({ type: "recovery_end", detail: `soft-fail: workload probe`, traceId });
+      return softFailRecovery("workload_probe_error", buildErrorSummary(workloadProbeResult.error), traceId);
     }
   }
 
@@ -296,7 +336,9 @@ export async function recoverSessionConnection({
     type: "session_recovered",
     detail: `recovery-success: ${source}`,
     durationMs: Date.now() - probeStartedAt,
+    traceId,
   });
+  logConnectionEvent({ type: "recovery_end", detail: `success: ${source}`, traceId });
 
   if (reloadOnSuccess) {
     window.location.reload();
@@ -315,9 +357,7 @@ export async function performRobustSignOut({
   queryClient,
   source = "manual",
 }: SignOutOptions): Promise<void> {
-  // #region agent log
-  fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H2,H4',location:'session-recovery.ts:performRobustSignOut:start',message:'Robust signout started',data:{source,pathname:typeof window!=='undefined'?window.location.pathname:null},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
+  _intentionalSignOut = true;
   logConnectionEvent({ type: "session_lost", detail: `signout: ${source}` });
 
   try {
@@ -331,7 +371,7 @@ export async function performRobustSignOut({
     const { error } = await withTimeout(
       supabase.auth.signOut(),
       5000,
-      new Error("Timed out while signing out")
+      new Error("Timed out while signing out"),
     );
     if (error) {
       console.warn("[session-recovery] signOut error", error.message);

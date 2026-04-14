@@ -1,7 +1,8 @@
 'use client'
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
 
 export function useAmbitionOptions(stageNumber: number) {
   const supabase = createClient()
@@ -238,7 +239,7 @@ export function useAddCustomAmbitionOption() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: {
       stage_number: number
       category: string
@@ -305,7 +306,7 @@ export function useAddCustomWtpOption() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: { category_id: number; option_text: string; description?: string }) => {
       const { data, error } = await supabase
         .from('wtp_options')

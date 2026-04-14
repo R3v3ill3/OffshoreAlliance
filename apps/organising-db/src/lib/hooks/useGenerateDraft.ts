@@ -1,11 +1,11 @@
 'use client'
 
-import { useMutation } from '@tanstack/react-query'
+import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
 import { toast } from 'sonner'
 import type { CommsDraftRequest, CommsDraftResponse } from '@/types/planner-types'
 
 export function useGenerateDraft() {
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (request: CommsDraftRequest): Promise<CommsDraftResponse> => {
       const response = await fetch('/api/generate-draft', {
         method: 'POST',

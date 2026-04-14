@@ -984,9 +984,6 @@ export function EmailWizardSteps() {
         <Button
           variant="outline"
           onClick={() => {
-            // #region agent log
-            fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-1',hypothesisId:'H1',location:'EmailWizardSteps.tsx:cancel',message:'Email wizard cancel clicked',data:{step,campaignId:state.campaignId,standaloneEmployerId:state.standaloneEmployerId,standaloneWorksiteId:state.standaloneWorksiteId,hasDraft:!!state.draftId},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
             router.push('/campaigns')
           }}
         >

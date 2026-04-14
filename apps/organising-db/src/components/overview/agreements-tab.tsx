@@ -2,7 +2,8 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { format } from "date-fns";
 import { Plus, LayoutList, CalendarDays } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -206,7 +207,7 @@ export function AgreementsTab() {
     enabled: !!user,
   });
 
-  const createMutation = useMutation({
+  const createMutation = useAuthAwareMutation({
     mutationFn: async () => {
       const payload: Database["public"]["Tables"]["agreements"]["Insert"] = {
         decision_no: form.decision_no,

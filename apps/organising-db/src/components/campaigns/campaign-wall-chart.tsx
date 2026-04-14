@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -176,7 +177,7 @@ export function CampaignWallChart({
     };
   }, [members, selectedWorkerId]);
 
-  const updateWorker = useMutation({
+  const updateWorker = useAuthAwareMutation({
     mutationFn: async (vars: {
       worker_id: number;
       first_name: string;
@@ -202,7 +203,7 @@ export function CampaignWallChart({
     },
   });
 
-  const updateMembership = useMutation({
+  const updateMembership = useAuthAwareMutation({
     mutationFn: async (vars: { membership_id: number; oa_leader_role: OaLeaderRole | null }) => {
       const { error } = await supabase
         .from("campaign_worker_membership")

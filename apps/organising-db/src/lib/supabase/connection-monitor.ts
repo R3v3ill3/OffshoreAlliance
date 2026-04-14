@@ -18,12 +18,22 @@ interface ConnectionEvent {
     | "session_lost"
     | "session_recovered"
     | "lock_timeout"
-    | "network_error";
+    | "network_error"
+    | "recovery_start"
+    | "recovery_end";
   detail?: string;
   durationMs?: number;
+  traceId?: string;
 }
 
 const eventLog: ConnectionEvent[] = [];
+
+let _traceCounter = 0;
+
+export function generateTraceId(): string {
+  _traceCounter += 1;
+  return `rcv-${Date.now()}-${_traceCounter}`;
+}
 
 export function logConnectionEvent(event: Omit<ConnectionEvent, "ts">): void {
   const entry: ConnectionEvent = { ...event, ts: Date.now() };
@@ -36,7 +46,7 @@ export function logConnectionEvent(event: Omit<ConnectionEvent, "ts">): void {
     event.type === "lock_timeout" ||
     event.type === "network_error"
   ) {
-    console.warn("[connection-monitor]", event.type, event.detail ?? "");
+    console.warn("[connection-monitor]", event.type, event.detail ?? "", event.traceId ? `trace=${event.traceId}` : "");
   }
 }
 

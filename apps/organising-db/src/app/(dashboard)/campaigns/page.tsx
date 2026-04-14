@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { format } from "date-fns";
 import dynamic from "next/dynamic";
 import { Plus, Wand2, ExternalLink, Trash2, Megaphone, FileStack, Mail } from "lucide-react";
@@ -144,7 +145,7 @@ export default function CampaignsPage() {
     enabled: !!user,
   });
 
-  const createMutation = useMutation({
+  const createMutation = useAuthAwareMutation({
     mutationFn: async () => {
       if (!user) throw new Error("Not signed in");
 

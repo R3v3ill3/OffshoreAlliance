@@ -4,6 +4,7 @@ import { getCookieOptions } from "@/lib/supabase/cookie-options";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
+  let cookiesWereRefreshed = false;
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,6 +16,7 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
+          cookiesWereRefreshed = cookiesToSet.length > 0;
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
@@ -29,8 +31,6 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // API routes handle their own auth — skip the getUser() network
-  // roundtrip. The Supabase client above already refreshes cookies.
   if (pathname.startsWith("/api/")) {
     return supabaseResponse;
   }
@@ -61,6 +61,10 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return redirectWithCookies(url);
+  }
+
+  if (cookiesWereRefreshed) {
+    supabaseResponse.headers.set("x-supabase-cookies-refreshed", "1");
   }
 
   return supabaseResponse;

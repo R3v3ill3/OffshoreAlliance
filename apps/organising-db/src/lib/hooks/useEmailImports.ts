@@ -1,7 +1,8 @@
 'use client'
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
 
 export interface EmailImportRow {
   import_id: number
@@ -87,7 +88,7 @@ export function useEmailImportDetail(importId: number | null) {
 export function useAnalyseEmailImport() {
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (importId: number) => {
       const response = await fetch(`/api/email-import/${importId}/analyse`, {
         method: 'POST',
@@ -112,7 +113,7 @@ export function useAnalyseEmailImport() {
 export function useUpdateEmailImport() {
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: { importId: number; updates: Partial<EmailImportRow> }) => {
       const response = await fetch(`/api/email-import/${params.importId}`, {
         method: 'PUT',
@@ -138,7 +139,7 @@ export function useUpdateEmailImport() {
 export function useDeleteEmailImport() {
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (importId: number) => {
       const response = await fetch(`/api/email-import/${importId}`, {
         method: 'DELETE',
@@ -162,7 +163,7 @@ export function useDeleteEmailImport() {
 export function useImportAsTemplate() {
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: {
       importId: number
       overrides?: {

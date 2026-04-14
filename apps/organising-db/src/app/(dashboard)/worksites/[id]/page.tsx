@@ -4,7 +4,6 @@ import { useState, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { agentDebugLog } from "@/lib/agent-debug-log";
 import { useAuth } from "@/lib/supabase/auth-context";
 import type {
   Worksite,
@@ -196,7 +195,7 @@ export default function WorksiteDetailPage() {
   const router = useRouter();
   const supabase = createClient();
   const queryClient = useQueryClient();
-  const { canWrite, isAdmin } = useAuth();
+  const { user, canWrite, isAdmin } = useAuth();
 
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Worksite>>({});
@@ -260,7 +259,7 @@ export default function WorksiteDetailPage() {
       if (error) throw error;
       return data as WorksiteWithJoins;
     },
-    enabled: worksiteIdValid,
+    enabled: !!user && worksiteIdValid,
   });
 
   // All principal employers for the edit selector
@@ -275,6 +274,7 @@ export default function WorksiteDetailPage() {
       if (error) throw error;
       return data as Pick<Employer, "employer_id" | "employer_name">[];
     },
+    enabled: !!user,
   });
 
   const { data: agreementWorksites = [] } = useQuery({
@@ -287,7 +287,7 @@ export default function WorksiteDetailPage() {
       if (error) throw error;
       return data as { agreement?: AgreementRow }[];
     },
-    enabled: worksiteIdValid,
+    enabled: !!user && worksiteIdValid,
   });
 
   const agreements = useMemo(
@@ -334,7 +334,7 @@ export default function WorksiteDetailPage() {
       if (error) throw error;
       return data as (EmployerWorksiteRole & { employer?: Employer })[];
     },
-    enabled: worksiteIdValid,
+    enabled: !!user && worksiteIdValid,
   });
 
   const employerRoleEmployerIds = useMemo(
@@ -353,7 +353,7 @@ export default function WorksiteDetailPage() {
       if (error) throw error;
       return data as (Worker & { employer?: { employer_name: string } })[];
     },
-    enabled: worksiteIdValid,
+    enabled: !!user && worksiteIdValid,
   });
 
   const { data: wsScopes = [] } = useQuery({
@@ -366,7 +366,7 @@ export default function WorksiteDetailPage() {
       if (error) throw error;
       return data as WorksiteScopeRow[];
     },
-    enabled: worksiteIdValid,
+    enabled: !!user && worksiteIdValid,
   });
 
   const { data: wsProjects = [] } = useQuery({
@@ -380,7 +380,7 @@ export default function WorksiteDetailPage() {
       if (error) throw error;
       return data as ProjectRow[];
     },
-    enabled: worksiteIdValid,
+    enabled: !!user && worksiteIdValid,
   });
 
   const { data: wsProgramLinks = [] } = useQuery({
@@ -396,7 +396,7 @@ export default function WorksiteDetailPage() {
       if (error) throw error;
       return data as ProgramWorksiteRow[];
     },
-    enabled: worksiteIdValid,
+    enabled: !!user && worksiteIdValid,
   });
 
   const { data: wsContracts = [] } = useQuery({
@@ -412,7 +412,7 @@ export default function WorksiteDetailPage() {
       if (error) throw error;
       return data as WorksiteContractRow[];
     },
-    enabled: worksiteIdValid,
+    enabled: !!user && worksiteIdValid,
   });
 
   const filteredWorkers = useMemo(() => {
@@ -470,7 +470,7 @@ export default function WorksiteDetailPage() {
       if (error) throw error;
       return data as Worksite[];
     },
-    enabled: worksiteIdValid,
+    enabled: !!user && worksiteIdValid,
   });
 
   const { data: allWorksites = [] } = useQuery({
@@ -483,6 +483,7 @@ export default function WorksiteDetailPage() {
       if (error) throw error;
       return data as Pick<Worksite, "worksite_id" | "worksite_name">[];
     },
+    enabled: !!user,
   });
 
   const { data: allAgreements = [] } = useQuery({
@@ -495,6 +496,7 @@ export default function WorksiteDetailPage() {
       if (error) throw error;
       return data as Pick<Agreement, "agreement_id" | "agreement_name" | "short_name" | "decision_no" | "status">[];
     },
+    enabled: !!user,
   });
 
   const { data: allPrograms = [] } = useQuery({
@@ -512,6 +514,7 @@ export default function WorksiteDetailPage() {
         is_active: boolean;
       }[];
     },
+    enabled: !!user,
   });
 
   const { data: allEmployers = [] } = useQuery({
@@ -524,6 +527,7 @@ export default function WorksiteDetailPage() {
       if (error) throw error;
       return data as Pick<Employer, "employer_id" | "employer_name" | "employer_category">[];
     },
+    enabled: !!user,
   });
 
   const { data: allScopes = [] } = useQuery({
@@ -537,6 +541,7 @@ export default function WorksiteDetailPage() {
       if (error) throw error;
       return data as (WorkScope & { parent?: { scope_name: string; parent?: { scope_name: string } } })[];
     },
+    enabled: !!user,
   });
 
   const contractScopeOptions = useMemo(() => {
@@ -616,49 +621,16 @@ export default function WorksiteDetailPage() {
     const { operator: _op, principal_employer: _pe, parent_worksite: _pw, ...updateData } =
       editForm as WorksiteWithJoins & Partial<Worksite>;
 
-    // #region agent log
-    agentDebugLog({
-      location: "worksites/[id]/page.tsx:saveEdits-start",
-      message: "worksite update starting",
-      data: {
-        worksiteId: worksite.worksite_id,
-        updateKeys: Object.keys(updateData),
-      },
-      hypothesisId: "H4",
-    });
-    // #endregion
-
     const { error } = await supabase
       .from("worksites")
       .update(updateData)
       .eq("worksite_id", worksite.worksite_id);
 
     if (error) {
-      // #region agent log
-      agentDebugLog({
-        location: "worksites/[id]/page.tsx:saveEdits-error",
-        message: "worksite update failed",
-        data: {
-          worksiteId: worksite.worksite_id,
-          code: error.code,
-          message: error.message,
-        },
-        hypothesisId: "H4",
-      });
-      // #endregion
       setSaveError(error.message);
       setSaving(false);
       return;
     }
-
-    // #region agent log
-    agentDebugLog({
-      location: "worksites/[id]/page.tsx:saveEdits-success",
-      message: "worksite update ok, invalidating",
-      data: { worksiteId: worksite.worksite_id },
-      hypothesisId: "H4",
-    });
-    // #endregion
 
     await queryClient.invalidateQueries({ queryKey: ["worksite", id] });
     setEditing(false);

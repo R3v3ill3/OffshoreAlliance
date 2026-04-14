@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -244,7 +245,7 @@ export function CampaignWorkplanSection({
     return groups;
   }, [stageTasks]);
 
-  const createTask = useMutation({
+  const createTask = useAuthAwareMutation({
     mutationFn: async (payload: typeof form) => {
       const row: Record<string, unknown> = {
         campaign_id: Number(campaignId),
@@ -271,7 +272,7 @@ export function CampaignWorkplanSection({
     },
   });
 
-  const updateTask = useMutation({
+  const updateTask = useAuthAwareMutation({
     mutationFn: async (vars: { task_id: number; updates: Record<string, unknown> }) => {
       const { error } = await supabase
         .from("campaign_stage_workplan_tasks")
@@ -285,7 +286,7 @@ export function CampaignWorkplanSection({
     },
   });
 
-  const updateTaskStatus = useMutation({
+  const updateTaskStatus = useAuthAwareMutation({
     mutationFn: async (vars: { task_id: number; status: string }) => {
       const updates: Record<string, unknown> = { status: vars.status };
       if (vars.status === "completed") updates.completed_at = new Date().toISOString();

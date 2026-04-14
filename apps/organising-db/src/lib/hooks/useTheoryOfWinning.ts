@@ -1,10 +1,10 @@
 'use client'
 
-import { useMutation } from '@tanstack/react-query'
+import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
 import type { TheoryOfWinningRequest, TheoryOfWinningResponse } from '@/types/planner-types'
 
 export function useGenerateTheory() {
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (request: TheoryOfWinningRequest): Promise<TheoryOfWinningResponse> => {
       const response = await fetch('/api/theory-of-winning', {
         method: 'POST',

@@ -1,7 +1,8 @@
 'use client'
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
 import { toast } from 'sonner'
 
 interface TemplateFilters {
@@ -58,7 +59,7 @@ export function useCreateTemplate() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (template: {
       title: string
       subject_line?: string
@@ -93,7 +94,7 @@ export function useUpdateTemplate() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: { template_id: number } & Partial<{
       title: string
       subject_line: string
@@ -131,7 +132,7 @@ export function useDeactivateTemplate() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (templateId: number) => {
       const { error } = await supabase
         .from('comms_template_library')
@@ -150,7 +151,7 @@ export function useDeactivateTemplate() {
 }
 
 export function useAnalyseTemplate() {
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: { content: string; platform?: string }) => {
       const response = await fetch('/api/templates/analyse', {
         method: 'POST',

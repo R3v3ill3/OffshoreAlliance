@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { format } from "date-fns";
 import { ArrowLeft, ExternalLink, Pencil, Plus, Trash2, Star, Loader2, Users, Save, X } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
@@ -424,7 +425,7 @@ export default function AgreementDetailPage() {
     }
   }, [agreement, editing, editForm]);
 
-  const updateMutation = useMutation({
+  const updateMutation = useAuthAwareMutation({
     mutationFn: async () => {
       setSaveError(null);
       const res = await fetch(`/api/agreements/${id}`, {
@@ -446,7 +447,7 @@ export default function AgreementDetailPage() {
     },
   });
 
-  const addOrgMutation = useMutation({
+  const addOrgMutation = useAuthAwareMutation({
     mutationFn: async () => {
       setAddOrgError(null);
       const res = await fetch(`/api/agreements/${id}/organisers`, {
@@ -501,7 +502,7 @@ export default function AgreementDetailPage() {
     },
   });
 
-  const setPrimaryMutation = useMutation({
+  const setPrimaryMutation = useAuthAwareMutation({
     mutationFn: async (assignmentId: number) => {
       const res = await fetch(`/api/agreements/${id}/organisers`, {
         method: "PATCH",
@@ -515,7 +516,7 @@ export default function AgreementDetailPage() {
     },
   });
 
-  const removeOrgMutation = useMutation({
+  const removeOrgMutation = useAuthAwareMutation({
     mutationFn: async (assignmentId: number) => {
       const res = await fetch(
         `/api/agreements/${id}/organisers?assignmentId=${assignmentId}`,
@@ -528,7 +529,7 @@ export default function AgreementDetailPage() {
     },
   });
 
-  const addSuggestedLeadMutation = useMutation({
+  const addSuggestedLeadMutation = useAuthAwareMutation({
     mutationFn: async (organiserId: number) => {
       const res = await fetch(`/api/agreements/${id}/organisers`, {
         method: "POST",

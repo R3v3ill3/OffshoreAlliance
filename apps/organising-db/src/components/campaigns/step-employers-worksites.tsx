@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
+import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -360,7 +361,7 @@ export function StepEmployersWorksites({
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
-  const createEmployerMutation = useMutation({
+  const createEmployerMutation = useAuthAwareMutation({
     mutationFn: async (name: string) => {
       const { data, error } = await supabase
         .from("employers")
@@ -376,7 +377,7 @@ export function StepEmployersWorksites({
     },
   });
 
-  const createWorksiteMutation = useMutation({
+  const createWorksiteMutation = useAuthAwareMutation({
     mutationFn: async (name: string) => {
       const { data, error } = await supabase
         .from("worksites")
@@ -392,7 +393,7 @@ export function StepEmployersWorksites({
     },
   });
 
-  const linkEmployerWorksiteMutation = useMutation({
+  const linkEmployerWorksiteMutation = useAuthAwareMutation({
     mutationFn: async ({
       employer_id,
       worksite_id,

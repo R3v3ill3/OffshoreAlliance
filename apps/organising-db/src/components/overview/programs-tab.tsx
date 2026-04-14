@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -105,7 +106,7 @@ export function ProgramsTab() {
     },
   });
 
-  const createMutation = useMutation({
+  const createMutation = useAuthAwareMutation({
     mutationFn: async () => {
       const payload: Database["public"]["Tables"]["programs"]["Insert"] = {
         program_name: form.program_name.trim(),

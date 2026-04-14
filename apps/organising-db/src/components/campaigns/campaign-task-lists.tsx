@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { resolveCampaignOrganiserId } from "@/lib/campaign/resolve-campaign-organiser";
@@ -121,7 +122,7 @@ export function CampaignTaskListsSection({
     },
   });
 
-  const createList = useMutation({
+  const createList = useAuthAwareMutation({
     mutationFn: async () => {
       if (!user) throw new Error("Not signed in");
 
@@ -190,7 +191,7 @@ export function CampaignTaskListsSection({
     setTokenDialog({ url: json.url, raw: json.token });
   }
 
-  const revokeTokens = useMutation({
+  const revokeTokens = useAuthAwareMutation({
     mutationFn: async (taskListId: number) => {
       const { error } = await supabase
         .from("campaign_leader_tokens")

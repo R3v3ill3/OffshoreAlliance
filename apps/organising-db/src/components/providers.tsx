@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-qu
 import { useState, useEffect, type ReactNode } from "react";
 import { AuthProvider } from "@/lib/supabase/auth-context";
 import { DeviceProvider } from "@/contexts/device-context";
-import { createClient } from "@/lib/supabase/client";
+import { coordinatedRefreshSession } from "@/lib/supabase/client";
 import { isLikelyAuthError } from "@/lib/supabase/session-recovery";
 import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
 import "../../../../sentry.client.config";
@@ -27,14 +27,6 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
       queryCache: new QueryCache({
         onError: (error, query) => {
           console.error("[QueryCache] Error in query", query.queryKey, error);
-          const statusValue =
-            typeof error === "object" && error !== null && "status" in error
-              ? (error as { status?: unknown }).status
-              : null;
-          const status = typeof statusValue === "number" ? statusValue : null;
-          // #region agent log
-          fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42d665'},body:JSON.stringify({sessionId:'42d665',runId:'pre-fix-2',hypothesisId:'H6',location:'providers.tsx:queryCache:onError',message:'QueryCache onError fired',data:{queryKey:String(query.queryKey[0]??'unknown'),message:error instanceof Error?error.message:String(error),status,isAuthLike:isLikelyAuthError(error)},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
 
           logConnectionEvent({
             type: "api_error",
@@ -45,8 +37,7 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
             if (queryCacheRecoveryGuard.inProgress) return;
             queryCacheRecoveryGuard.inProgress = true;
 
-            const supabase = createClient();
-            supabase.auth.refreshSession()
+            coordinatedRefreshSession("query-cache-onError")
               .then(({ data, error: refreshError }) => {
                 if (!refreshError && data.session) {
                   logConnectionEvent({ type: "token_refresh_ok", detail: "query-cache soft refresh" });
@@ -68,9 +59,12 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
       }),
       defaultOptions: {
         queries: {
-          staleTime: 60 * 1000,
+          staleTime: 5 * 60 * 1000,
+          refetchOnWindowFocus: false,
+          refetchOnReconnect: true,
           retry: (failureCount, error) => {
             if (isNonRetryableStatus(error)) return false;
+            if (isLikelyAuthError(error)) return failureCount < 1;
             return failureCount < 3;
           },
           retryDelay: (attemptIndex) =>

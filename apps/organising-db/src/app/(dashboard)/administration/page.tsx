@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
@@ -123,7 +124,7 @@ function UsersTab() {
     },
   });
 
-  const deleteMutation = useMutation({
+  const deleteMutation = useAuthAwareMutation({
     mutationFn: async (userId: string) => {
       const res = await fetch(`/api/admin/delete-user?userId=${userId}`, {
         method: "DELETE",
@@ -137,7 +138,7 @@ function UsersTab() {
     },
   });
 
-  const setPasswordMutation = useMutation({
+  const setPasswordMutation = useAuthAwareMutation({
     mutationFn: async ({
       userId,
       password,
@@ -171,7 +172,7 @@ function UsersTab() {
     setPasswordMutation.reset();
   };
 
-  const updateUserMutation = useMutation({
+  const updateUserMutation = useAuthAwareMutation({
     mutationFn: async ({
       userId,
       workRole,
@@ -329,7 +330,7 @@ function UsersTab() {
     },
   ];
 
-  const inviteMutation = useMutation({
+  const inviteMutation = useAuthAwareMutation({
     mutationFn: async () => {
       setInviteError(null);
       const res = await fetch("/api/admin/invite-user", {
@@ -797,7 +798,7 @@ function UnionMembershipTypesTab() {
     },
   });
 
-  const addMutation = useMutation({
+  const addMutation = useAuthAwareMutation({
     mutationFn: async () => {
       const { error } = await supabase.from("union_membership_types").insert({
         type_name: typeName,
@@ -818,7 +819,7 @@ function UnionMembershipTypesTab() {
     },
   });
 
-  const toggleActive = useMutation({
+  const toggleActive = useAuthAwareMutation({
     mutationFn: async ({ id, active }: { id: number; active: boolean }) => {
       const { error } = await supabase
         .from("union_membership_types")
@@ -981,7 +982,7 @@ function MemberRolesTab() {
     },
   });
 
-  const addMutation = useMutation({
+  const addMutation = useAuthAwareMutation({
     mutationFn: async () => {
       const { error } = await supabase.from("member_role_types").insert({
         role_name: roleName,
@@ -1002,7 +1003,7 @@ function MemberRolesTab() {
     },
   });
 
-  const toggleActive = useMutation({
+  const toggleActive = useAuthAwareMutation({
     mutationFn: async ({
       id,
       active,
@@ -1179,7 +1180,7 @@ function SectorsTab() {
     },
   });
 
-  const addMutation = useMutation({
+  const addMutation = useAuthAwareMutation({
     mutationFn: async () => {
       const { error } = await supabase.from("sectors").insert({
         sector_name: sectorName,

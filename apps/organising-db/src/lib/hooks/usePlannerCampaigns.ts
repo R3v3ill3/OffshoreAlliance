@@ -1,8 +1,9 @@
 'use client'
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Database } from '@/types/database'
 import { createClient } from '@/lib/supabase/client'
+import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
 import { syncAmbitionTargetDatesForCampaign } from '@/lib/supabase/syncAmbitionTargetDates'
 
 /** Stage row from the creation wizard → persisted on campaign_stage_plans */
@@ -85,7 +86,7 @@ export function useUpdateCampaignStagePlans() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (payload: {
       campaign_id: number
       updates: Array<{
@@ -129,7 +130,7 @@ export function useSyncAmbitionTargetDatesForCampaign() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (campaign_id: number) => {
       await syncAmbitionTargetDatesForCampaign(supabase, campaign_id)
     },
@@ -149,7 +150,7 @@ export function useUpdateCampaignOrganiser() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async ({ campaign_id, organiser_id }: { campaign_id: number; organiser_id: number }) => {
       const { error } = await supabase
         .from('campaigns')
@@ -200,7 +201,7 @@ export function useCampaignOrganisers(campaignId: number) {
 export function useAddCampaignOrganiser() {
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (payload: {
       campaign_id: number
       organiser_id: number
@@ -231,7 +232,7 @@ export function useAddCampaignOrganiser() {
 export function useUpdateCampaignTeamMember() {
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (payload: {
       campaign_id: number
       id: number
@@ -262,7 +263,7 @@ export function useUpdateCampaignTeamMember() {
 export function useRemoveCampaignOrganiser() {
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async ({ campaign_id, row_id }: { campaign_id: number; row_id: number }) => {
       const res = await fetch(`/api/campaign-organisers/${campaign_id}?rowId=${row_id}`, {
         method: 'DELETE',
@@ -315,6 +316,10 @@ export function useExistingCampaignForPlanning(campaignId: number | null) {
       return {
         ...campaign,
         has_plan: (campaign.campaign_stage_plans?.length ?? 0) > 0,
+        requires_replacement_agreement:
+          campaign.enterprise_agreement_subtype === 'replacement',
+        has_linked_agreement_context:
+          !!campaign.replaced_agreement_id || !!timeline?.agreement_id,
         timeline_agreement_id: timeline?.agreement_id ?? null,
         timeline_expiry_date: timeline?.agreement_expiry_date ?? null,
       }
@@ -327,7 +332,7 @@ export function useAddPlanToCampaign() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (payload: {
       campaign_id: number
       organiser_id?: number
@@ -479,7 +484,7 @@ export function useCreateCampaign() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (payload: {
       name: string
       description?: string
@@ -646,7 +651,7 @@ export function useDeleteCampaign() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (campaignId: number) => {
       const { error } = await supabase.rpc('delete_campaign', { p_campaign_id: campaignId })
       if (error) throw error

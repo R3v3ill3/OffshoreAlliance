@@ -1,7 +1,8 @@
 'use client'
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
 import { evaluateCriterion } from '@/lib/utils/gate-logic'
 
 export function useGateAssessment(campaignId: number, gateNumber: number) {
@@ -87,7 +88,7 @@ export function useUpdatePlanAmbitionProgress() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: {
       ambition_id: number
       current_value?: string
@@ -125,7 +126,7 @@ export function useUpdateGateCriterion() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: {
       criterion_id: number
       current_value?: string
@@ -168,7 +169,7 @@ export function useSubmitGateAssessment() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: {
       gate_id: number
       outcome: 'passed' | 'failed' | 'override_approved' | 'deferred'

@@ -1,7 +1,8 @@
 'use client'
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
 import type { CapacityStatus } from '@/types/planner-types'
 
 export function useStagePlan(campaignId: number, stageNumber: number) {
@@ -68,7 +69,7 @@ export function useAddAmbition() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: {
       plan_id: number
       ambition_option_id?: number
@@ -130,7 +131,7 @@ export function useUpdateAmbition() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: {
       ambition_id: number
       target_value?: string
@@ -171,7 +172,7 @@ export function useDeleteAmbition() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: { ambition_id: number; campaign_id: number; stage_number: number }) => {
       const { error } = await supabase
         .from('plan_ambitions')
@@ -196,7 +197,7 @@ export function useAddWhereToPlay() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: {
       plan_id: number
       wtp_category_id: number
@@ -228,7 +229,7 @@ export function useUpdateWhereToPlay() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: {
       wtp_id: number
       rationale?: string
@@ -255,7 +256,7 @@ export function useDeleteWhereToPlay() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: { wtp_id: number; campaign_id: number; stage_number: number }) => {
       const { error } = await supabase
         .from('plan_where_to_play')
@@ -274,7 +275,7 @@ export function useAddCapacity() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: {
       plan_id: number
       capacity_option_id?: number
@@ -307,7 +308,7 @@ export function useUpdateCapacity() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: {
       capacity_id: number
       status?: CapacityStatus
@@ -336,7 +337,7 @@ export function useAddManagementSystem() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: {
       plan_id: number
       system_option_id?: number
@@ -367,7 +368,7 @@ export function useSaveTheory() {
   const supabase = createClient()
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useAuthAwareMutation({
     mutationFn: async (params: {
       plan_id: number
       if_then_statement: string

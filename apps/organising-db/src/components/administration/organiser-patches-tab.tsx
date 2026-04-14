@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { Button } from "@/components/ui/button";
@@ -182,7 +183,7 @@ export function OrganiserPatchesTab() {
     enabled: !!selectedPatch,
   });
 
-  const createMutation = useMutation({
+  const createMutation = useAuthAwareMutation({
     mutationFn: async () => {
       const { error } = await supabase.from("organiser_patches").insert({
         patch_name: patchName,
@@ -241,7 +242,7 @@ export function OrganiserPatchesTab() {
     enabled: !!user,
   });
 
-  const assignMutation = useMutation({
+  const assignMutation = useAuthAwareMutation({
     mutationFn: async () => {
       const { error } = await supabase
         .from("organiser_patch_assignments")
@@ -264,7 +265,7 @@ export function OrganiserPatchesTab() {
     },
   });
 
-  const removeMutation = useMutation({
+  const removeMutation = useAuthAwareMutation({
     mutationFn: async (assignmentId: number) => {
       const { error } = await supabase
         .from("organiser_patch_assignments")

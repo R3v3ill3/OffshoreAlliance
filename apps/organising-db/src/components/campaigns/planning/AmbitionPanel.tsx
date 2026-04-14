@@ -1,8 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useAmbitionOptions } from '@/lib/hooks/usePlannerOptions'
 import { useAddAmbition, useUpdateAmbition, useDeleteAmbition } from '@/lib/hooks/useStagePlan'
+import { useCampaignCurrentStats, type CampaignCurrentStats } from '@/lib/hooks/useCampaignCurrentStats'
+import { CurrentSituationBanner } from './CurrentSituationBanner'
 import { OptionSelector, type SelectableOption } from './OptionSelector'
 import { Button } from '@/components/ui/button'
 import { DateInput } from '@/components/ui/date-input'
@@ -20,9 +22,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils/cn'
 import { format, parseISO, isValid } from 'date-fns'
-import { Trash2, Plus, CheckCircle, Calendar } from 'lucide-react'
+import { Trash2, Plus, CheckCircle, Calendar, Link2 } from 'lucide-react'
 import { formatCategoryLabel } from '@/lib/utils/option-sorting'
 import { isAmbitionMetricIncomplete } from '@/lib/planning/ambition-metric-status'
 import type { PlanAmbition } from '@/types/planner-types'
@@ -59,6 +67,52 @@ function mapVariableTypeToMetric(
   return undefined
 }
 
+/**
+ * Returns a contextual "Currently: X" hint for ambitions where current data
+ * can inform the target the user is setting.
+ */
+function currentValueHint(
+  ambition: AmbitionRow,
+  stats: CampaignCurrentStats
+): string | null {
+  const category = ambition.ambition_options?.category
+  const metric = ambition.metric_type || mapVariableTypeToMetric(ambition.ambition_options?.variable_type)
+  const optionText = ambition.ambition_options?.option_text ?? ''
+
+  if (category === 'contact_targets') {
+    if (metric === 'count') return `Currently: ${stats.namedWorkers} named workers`
+    if (optionText.toLowerCase().includes('phone and email'))
+      return `Currently: ${stats.phonePct}% have phone & email`
+    if (metric === 'percentage') return `Currently: ${stats.namedPctOfEstimate}% of est. identified`
+  }
+
+  if (category === 'membership_growth' || category === 'recruitment') {
+    if (metric === 'percentage')
+      return `Currently: ${stats.densityOfEstimate}% density (${stats.memberLikeCount} members)`
+    if (metric === 'count')
+      return `Currently: ${stats.memberLikeCount} members of ${stats.namedWorkers} named`
+  }
+
+  if (category === 'leadership' || category === 'structure') {
+    if (metric === 'count')
+      return `Currently: ${stats.delegates} delegates, ${stats.activists} activists, ${stats.contacts} contacts`
+  }
+
+  if (category === 'engagement') {
+    if (metric === 'percentage' && stats.namedWorkers > 0)
+      return `Universe: ${stats.namedWorkers} named workers`
+  }
+
+  if (ambition.is_system_default) {
+    if (metric === 'count')
+      return `Currently: ${stats.memberLikeCount} members`
+    if (metric === 'percentage')
+      return `Currently: ${stats.densityOfEstimate}% of est. / ${stats.densityOfNamed}% of named`
+  }
+
+  return null
+}
+
 export function AmbitionPanel({
   planId,
   stageNumber,
@@ -67,6 +121,8 @@ export function AmbitionPanel({
   nextStagePlannedStartDate,
   ambitions,
 }: AmbitionPanelProps) {
+  const stats = useCampaignCurrentStats(campaignId)
+
   const [customOpen, setCustomOpen] = useState(false)
   const [customStatement, setCustomStatement] = useState('')
   const [customMetric, setCustomMetric] = useState<'count' | 'percentage' | 'range' | 'boolean' | 'text'>('percentage')
@@ -188,21 +244,80 @@ export function AmbitionPanel({
     }
   }
 
-  async function patchAmbition(
-    ambitionId: number,
-    patch: Record<string, string | boolean | null | undefined>
-  ) {
-    try {
-      await updateAmbition.mutateAsync({
-        ambition_id: ambitionId,
-        campaign_id: campaignId,
-        stage_number: stageNumber,
-        ...patch,
-      })
-    } catch {
-      toast.error('Failed to update ambition')
-    }
-  }
+  // Auto-link: find the system-default membership count and density ambitions
+  const memberCountAmbition = ambitions.find(
+    (a) => a.is_system_default && a.metric_type === 'count'
+  )
+  const memberDensityAmbition = ambitions.find(
+    (a) => a.is_system_default && a.metric_type === 'percentage'
+  )
+  const canAutoLink =
+    !!memberCountAmbition &&
+    !!memberDensityAmbition &&
+    stats.totalWorkerEstimate > 0
+
+  // Track whether the user manually overrode the auto-linked value
+  const autoLinkSuppressed = useRef(new Set<number>())
+
+  const patchAmbition = useCallback(
+    async (
+      ambitionId: number,
+      patch: Record<string, string | boolean | null | undefined>
+    ) => {
+      try {
+        await updateAmbition.mutateAsync({
+          ambition_id: ambitionId,
+          campaign_id: campaignId,
+          stage_number: stageNumber,
+          ...patch,
+        })
+      } catch {
+        toast.error('Failed to update ambition')
+        return
+      }
+
+      // Auto-link: when target_value changes on one membership ambition,
+      // calculate and update the counterpart
+      if (
+        canAutoLink &&
+        patch.target_value != null &&
+        typeof patch.target_value === 'string'
+      ) {
+        const val = parseFloat(patch.target_value)
+        if (isNaN(val)) return
+
+        const est = stats.totalWorkerEstimate
+        const current = stats.memberLikeCount
+
+        if (ambitionId === memberCountAmbition!.ambition_id) {
+          // Count changed -> update density
+          autoLinkSuppressed.current.delete(memberDensityAmbition!.ambition_id)
+          const newDensity = Math.round(((current + val) / est) * 1000) / 10
+          try {
+            await updateAmbition.mutateAsync({
+              ambition_id: memberDensityAmbition!.ambition_id,
+              campaign_id: campaignId,
+              stage_number: stageNumber,
+              target_value: String(Math.min(100, Math.max(0, newDensity))),
+            })
+          } catch { /* non-critical */ }
+        } else if (ambitionId === memberDensityAmbition!.ambition_id) {
+          // Density changed -> update count
+          autoLinkSuppressed.current.delete(memberCountAmbition!.ambition_id)
+          const newCount = Math.max(0, Math.round((val / 100) * est - current))
+          try {
+            await updateAmbition.mutateAsync({
+              ambition_id: memberCountAmbition!.ambition_id,
+              campaign_id: campaignId,
+              stage_number: stageNumber,
+              target_value: String(newCount),
+            })
+          } catch { /* non-critical */ }
+        }
+      }
+    },
+    [updateAmbition, campaignId, stageNumber, canAutoLink, memberCountAmbition, memberDensityAmbition, stats]
+  )
 
   return (
     <div className="space-y-6">
@@ -213,6 +328,8 @@ export function AmbitionPanel({
           mark each as a hard or soft gate for progression.
         </p>
       </div>
+
+      <CurrentSituationBanner stats={stats} />
 
       <Button
         type="button"
@@ -435,58 +552,85 @@ export function AmbitionPanel({
                       </Select>
                     </div>
 
-                    {showNumericTargets && (
-                      <div className="space-y-2">
-                        {rowMetric === 'range' ? (
-                          <div className="flex gap-2 items-end">
-                            <div>
-                              <Label className="text-xs text-muted-foreground">Min</Label>
-                              <Input
-                                className="h-7 w-20 text-sm"
-                                value={ambition.target_value || ''}
-                                onChange={(e) => void patchAmbition(ambition.ambition_id, { target_value: e.target.value })}
-                              />
+                    {showNumericTargets && (() => {
+                      const hint = currentValueHint(ambition, stats)
+                      const isLinkedAmbition =
+                        canAutoLink &&
+                        (ambition.ambition_id === memberCountAmbition?.ambition_id ||
+                         ambition.ambition_id === memberDensityAmbition?.ambition_id)
+
+                      return (
+                        <div className="space-y-1">
+                          {rowMetric === 'range' ? (
+                            <div className="flex gap-2 items-end">
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Min</Label>
+                                <Input
+                                  className="h-7 w-20 text-sm"
+                                  value={ambition.target_value || ''}
+                                  onChange={(e) => void patchAmbition(ambition.ambition_id, { target_value: e.target.value })}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Max</Label>
+                                <Input
+                                  className="h-7 w-20 text-sm"
+                                  value={ambition.target_value_max || ''}
+                                  onChange={(e) =>
+                                    void patchAmbition(ambition.ambition_id, { target_value_max: e.target.value || null })
+                                  }
+                                />
+                              </div>
                             </div>
-                            <div>
-                              <Label className="text-xs text-muted-foreground">Max</Label>
-                              <Input
-                                className="h-7 w-20 text-sm"
-                                value={ambition.target_value_max || ''}
-                                onChange={(e) =>
-                                  void patchAmbition(ambition.ambition_id, { target_value_max: e.target.value || null })
-                                }
-                              />
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <Label className="text-xs text-muted-foreground whitespace-nowrap">
+                                {variableLabel || (rowMetric === 'percentage' ? 'Target %' : rowMetric === 'count' ? 'Target #' : 'Target')}:
+                              </Label>
+                              <div className="flex items-center gap-1">
+                                <Input
+                                  type={variableType === 'date' ? 'date' : 'text'}
+                                  value={ambition.target_value || ''}
+                                  onChange={(e) =>
+                                    void patchAmbition(ambition.ambition_id, { target_value: e.target.value })
+                                  }
+                                  placeholder={
+                                    variableType === 'percentage' || rowMetric === 'percentage'
+                                      ? '0-100'
+                                      : rowMetric === 'count'
+                                        ? '0'
+                                        : ''
+                                  }
+                                  className="w-24 h-7 text-sm"
+                                />
+                                {(variableType === 'percentage' || rowMetric === 'percentage') && (
+                                  <span className="text-xs text-muted-foreground">%</span>
+                                )}
+                                {isLinkedAmbition && (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Link2 className="h-3.5 w-3.5 text-blue-400" />
+                                      </TooltipTrigger>
+                                      <TooltipContent side="right" className="max-w-xs text-xs">
+                                        Linked to {ambition.ambition_id === memberCountAmbition?.ambition_id
+                                          ? 'density' : 'member count'} ambition.
+                                        Editing this target auto-updates the other based on
+                                        {' '}{stats.totalWorkerEstimate} estimated workers and
+                                        {' '}{stats.memberLikeCount} current members.
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <Label className="text-xs text-muted-foreground whitespace-nowrap">
-                              {variableLabel || (rowMetric === 'percentage' ? 'Target %' : rowMetric === 'count' ? 'Target #' : 'Target')}:
-                            </Label>
-                            <div className="flex items-center gap-1">
-                              <Input
-                                type={variableType === 'date' ? 'date' : 'text'}
-                                value={ambition.target_value || ''}
-                                onChange={(e) =>
-                                  void patchAmbition(ambition.ambition_id, { target_value: e.target.value })
-                                }
-                                placeholder={
-                                  variableType === 'percentage' || rowMetric === 'percentage'
-                                    ? '0-100'
-                                    : rowMetric === 'count'
-                                      ? '0'
-                                      : ''
-                                }
-                                className="w-24 h-7 text-sm"
-                              />
-                              {(variableType === 'percentage' || rowMetric === 'percentage') && (
-                                <span className="text-xs text-muted-foreground">%</span>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                          )}
+                          {hint && (
+                            <p className="text-[11px] text-blue-600/80 pl-0.5">{hint}</p>
+                          )}
+                        </div>
+                      )
+                    })()}
 
                     <div className="flex items-center gap-2">
                       <Calendar className="h-3 w-3 text-muted-foreground" />

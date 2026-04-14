@@ -9,12 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -24,10 +26,29 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { CheckCircle2, XCircle, Pencil, Lightbulb, RefreshCw } from "lucide-react";
 import type { CampaignOuType, OuCandidateStatus } from "@/types/database";
 import { generateOuCandidatesFromWtp } from "@/lib/campaign/generate-ou-candidates";
 import { recomputeOuAssignments } from "@/lib/campaign/recompute-ou-assignments";
+import { isWorkerMemberLike } from "@/lib/campaign/constants";
 
 const OU_TYPES: CampaignOuType[] = [
   "shift",
@@ -52,16 +73,67 @@ type UnitRule = {
   value_text: string | null;
 };
 
+type MemberWorkerRow = {
+  worker_id: number;
+  first_name: string | null;
+  last_name: string | null;
+  preferred_name?: string | null;
+  employer?: { employer_name?: string | null } | { employer_name?: string | null }[] | null;
+  worksite?: { worksite_name?: string | null } | { worksite_name?: string | null }[] | null;
+  member_role_type?: { role_name?: string | null } | { role_name?: string | null }[] | null;
+  union_membership_type?: { type_name?: string | null } | { type_name?: string | null }[] | null;
+};
+
+type CampaignMemberRow = {
+  membership_id: number;
+  worker_id: number;
+  oa_leader_role: string | null;
+  worker: MemberWorkerRow | MemberWorkerRow[] | null;
+};
+
 function normalizeMemberWorker(m: unknown): {
   worker_id: number;
-  first_name: string;
-  last_name: string;
+  first_name: string | null;
+  last_name: string | null;
+  preferred_name: string | null;
+  employer_name: string | null;
+  worksite_name: string | null;
+  member_role_name: string | null;
+  union_membership_type_name: string | null;
 } | null {
-  const row = m as { worker_id: number; worker: unknown };
+  const row = m as CampaignMemberRow;
   const wr = row.worker;
-  const w = (Array.isArray(wr) ? wr[0] : wr) as { first_name: string; last_name: string } | null;
+  const w = (Array.isArray(wr) ? wr[0] : wr) as MemberWorkerRow | null;
   if (!w) return null;
-  return { worker_id: row.worker_id, ...w };
+  const employer = Array.isArray(w.employer) ? w.employer[0] : w.employer;
+  const worksite = Array.isArray(w.worksite) ? w.worksite[0] : w.worksite;
+  const memberRole = Array.isArray(w.member_role_type) ? w.member_role_type[0] : w.member_role_type;
+  const unionMembershipType = Array.isArray(w.union_membership_type)
+    ? w.union_membership_type[0]
+    : w.union_membership_type;
+  return {
+    worker_id: row.worker_id,
+    first_name: w.first_name ?? null,
+    last_name: w.last_name ?? null,
+    preferred_name: w.preferred_name ?? null,
+    employer_name: employer?.employer_name ?? null,
+    worksite_name: worksite?.worksite_name ?? null,
+    member_role_name: memberRole?.role_name ?? null,
+    union_membership_type_name: unionMembershipType?.type_name ?? null,
+  };
+}
+
+function workerDisplayName(worker: ReturnType<typeof normalizeMemberWorker>) {
+  if (!worker) return "Worker";
+  const preferred = worker.preferred_name?.trim();
+  if (preferred) return preferred;
+  const full = `${worker.first_name ?? ""} ${worker.last_name ?? ""}`.trim();
+  if (full) return full;
+  const first = worker.first_name?.trim();
+  if (first) return first;
+  const last = worker.last_name?.trim();
+  if (last) return last;
+  return `Worker #${worker.worker_id}`;
 }
 
 const RULE_DIMENSIONS = [
@@ -93,21 +165,39 @@ export function CampaignUnitsSection({
     target_size: "",
   });
   const [assignDialog, setAssignDialog] = useState<{ ou_id: number; name: string } | null>(null);
-  const [assignWorkerId, setAssignWorkerId] = useState("");
+  const [selectedAssignWorkerIds, setSelectedAssignWorkerIds] = useState<Set<number>>(new Set());
   const [assignPrimary, setAssignPrimary] = useState(false);
+  const [assignSearch, setAssignSearch] = useState("");
+  const [assignEmployerFilter, setAssignEmployerFilter] = useState("__all__");
+  const [assignWorksiteFilter, setAssignWorksiteFilter] = useState("__all__");
+  const [assignRoleFilter, setAssignRoleFilter] = useState("__all__");
+  const [assignMembershipFilter, setAssignMembershipFilter] = useState("__all__");
+  const [showOnlyUnassigned, setShowOnlyUnassigned] = useState(true);
+  const [assignSortBy, setAssignSortBy] = useState<"name" | "employer" | "worksite" | "role" | "unit_count">("name");
+  const [assignSortDir, setAssignSortDir] = useState<"asc" | "desc">("asc");
+  const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
+  const [pendingConflictCount, setPendingConflictCount] = useState(0);
+  const [pendingNewCount, setPendingNewCount] = useState(0);
+  const [assignFeedback, setAssignFeedback] = useState<string | null>(null);
   const [ruleFormByOu, setRuleFormByOu] = useState<
     Record<number, { include: boolean; dimension_type: string; operator: string; value: string }>
   >({});
   const [generateMessage, setGenerateMessage] = useState<string | null>(null);
 
-  const { data: members = [] } = useQuery({
+  const { data: members = [], isLoading: membersLoading } = useQuery({
     queryKey: ["campaign-members", campaignId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaign_worker_membership")
         .select(
-          `membership_id, worker_id,
-           worker:workers(worker_id, first_name, last_name)`
+          `membership_id, worker_id, oa_leader_role,
+           worker:workers(
+             worker_id, first_name, last_name, preferred_name,
+             employer:employers(employer_name),
+             worksite:worksites(worksite_name),
+             member_role_type:member_role_types(role_name),
+             union_membership_type:union_membership_types(type_name)
+           )`
         )
         .eq("campaign_id", campaignId);
       if (error) throw error;
@@ -214,6 +304,100 @@ export function CampaignUnitsSection({
     [memberUnitCount]
   );
 
+  const assignTargetAssignedWorkerIds = useMemo(() => {
+    if (!assignDialog) return new Set<number>();
+    return new Set(
+      ouAssignments
+        .filter((row: { ou_id: number }) => row.ou_id === assignDialog.ou_id)
+        .map((row: { worker_id: number }) => row.worker_id)
+    );
+  }, [assignDialog, ouAssignments]);
+
+  const memberOptions = useMemo(() => {
+    return (members as CampaignMemberRow[])
+      .map((member) => {
+        const normalized = normalizeMemberWorker(member);
+        if (!normalized) return null;
+        const membershipStatus = isWorkerMemberLike({
+          memberRoleName: normalized.member_role_name ?? undefined,
+          unionMembershipTypeName: normalized.union_membership_type_name ?? undefined,
+        })
+          ? "member"
+          : "non_member";
+        return {
+          membership_id: member.membership_id,
+          worker_id: normalized.worker_id,
+          label: workerDisplayName(normalized),
+          employer_name: normalized.employer_name ?? "—",
+          worksite_name: normalized.worksite_name ?? "—",
+          oa_leader_role: member.oa_leader_role ?? "none",
+          membership_status: membershipStatus,
+          unit_count: memberUnitCount.get(normalized.worker_id) ?? 0,
+          is_multi_unit_member: multiUnitWorkerIds.has(normalized.worker_id),
+          is_already_assigned: assignTargetAssignedWorkerIds.has(normalized.worker_id),
+        };
+      })
+      .filter(
+        (
+          row
+        ): row is {
+          membership_id: number;
+          worker_id: number;
+          label: string;
+          employer_name: string;
+          worksite_name: string;
+          oa_leader_role: string;
+          membership_status: string;
+          unit_count: number;
+          is_multi_unit_member: boolean;
+          is_already_assigned: boolean;
+        } => !!row
+      );
+  }, [members, memberUnitCount, multiUnitWorkerIds, assignTargetAssignedWorkerIds]);
+
+  const assignEmployerOptions = useMemo(
+    () => [...new Set(memberOptions.map((m) => m.employer_name).filter(Boolean))],
+    [memberOptions]
+  );
+  const assignWorksiteOptions = useMemo(
+    () => [...new Set(memberOptions.map((m) => m.worksite_name).filter(Boolean))],
+    [memberOptions]
+  );
+
+  const filteredAssignableWorkers = useMemo(() => {
+    const loweredSearch = assignSearch.trim().toLowerCase();
+    const rows = memberOptions.filter((m) => {
+      if (assignEmployerFilter !== "__all__" && m.employer_name !== assignEmployerFilter) return false;
+      if (assignWorksiteFilter !== "__all__" && m.worksite_name !== assignWorksiteFilter) return false;
+      if (assignRoleFilter !== "__all__" && m.oa_leader_role !== assignRoleFilter) return false;
+      if (assignMembershipFilter !== "__all__" && m.membership_status !== assignMembershipFilter) return false;
+      if (showOnlyUnassigned && m.is_already_assigned) return false;
+      if (loweredSearch && !m.label.toLowerCase().includes(loweredSearch)) return false;
+      return true;
+    });
+
+    const sortFactor = assignSortDir === "asc" ? 1 : -1;
+    return rows.sort((a, b) => {
+      const safeCompare = (left: string | number, right: string | number) =>
+        left < right ? -1 : left > right ? 1 : 0;
+      if (assignSortBy === "employer") return safeCompare(a.employer_name, b.employer_name) * sortFactor;
+      if (assignSortBy === "worksite") return safeCompare(a.worksite_name, b.worksite_name) * sortFactor;
+      if (assignSortBy === "role") return safeCompare(a.oa_leader_role, b.oa_leader_role) * sortFactor;
+      if (assignSortBy === "unit_count") return safeCompare(a.unit_count, b.unit_count) * sortFactor;
+      return safeCompare(a.label, b.label) * sortFactor;
+    });
+  }, [
+    memberOptions,
+    assignEmployerFilter,
+    assignWorksiteFilter,
+    assignRoleFilter,
+    assignMembershipFilter,
+    showOnlyUnassigned,
+    assignSearch,
+    assignSortBy,
+    assignSortDir,
+  ]);
+
   const acceptCandidate = useAuthAwareMutation({
     mutationFn: async (c: {
       candidate_id: number;
@@ -318,29 +502,49 @@ export function CampaignUnitsSection({
     },
   });
 
+  const resetAssignDialogState = () => {
+    setSelectedAssignWorkerIds(new Set());
+    setAssignPrimary(false);
+    setAssignSearch("");
+    setAssignEmployerFilter("__all__");
+    setAssignWorksiteFilter("__all__");
+    setAssignRoleFilter("__all__");
+    setAssignMembershipFilter("__all__");
+    setShowOnlyUnassigned(true);
+    setAssignSortBy("name");
+    setAssignSortDir("asc");
+  };
+
   const assignOu = useAuthAwareMutation({
-    mutationFn: async () => {
-      if (!assignDialog || !assignWorkerId) return;
+    mutationFn: async (workerIdsToAssign: number[]) => {
+      if (!assignDialog || workerIdsToAssign.length === 0) return { inserted: 0 };
+      const rows = workerIdsToAssign.map((workerId) => ({
+        ou_id: assignDialog.ou_id,
+        worker_id: workerId,
+        is_primary: assignPrimary && workerIdsToAssign.length === 1,
+        assignment_source: "manual",
+      }));
       const { error } = await (supabase as unknown as {
         from: (table: string) => {
-          insert: (row: Record<string, unknown>) => Promise<{ error: Error | null }>;
+          insert: (row: Record<string, unknown>[]) => Promise<{ error: Error | null }>;
         };
       })
         .from("campaign_worker_ou")
-        .insert({
-          ou_id: assignDialog.ou_id,
-          worker_id: Number(assignWorkerId),
-          is_primary: assignPrimary,
-          assignment_source: "manual",
-        });
+        .insert(rows);
       if (error) throw error;
+      return { inserted: rows.length };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
+      setAssignFeedback(
+        result?.inserted
+          ? `Assigned ${result.inserted} worker${result.inserted === 1 ? "" : "s"} to ${assignDialog?.name ?? "unit"}.`
+          : "No new workers were assigned."
+      );
       setAssignDialog(null);
-      setAssignWorkerId("");
-      setAssignPrimary(false);
+      resetAssignDialogState();
+      setTimeout(() => setAssignFeedback(null), 4500);
     },
   });
 
@@ -392,6 +596,65 @@ export function CampaignUnitsSection({
     }
     return map;
   }, [rules]);
+
+  const selectedCount = selectedAssignWorkerIds.size;
+  const allFilteredSelected =
+    filteredAssignableWorkers.length > 0 &&
+    filteredAssignableWorkers.every((w) => selectedAssignWorkerIds.has(w.worker_id));
+
+  const toggleSelectFiltered = () => {
+    setSelectedAssignWorkerIds((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        filteredAssignableWorkers.forEach((w) => next.delete(w.worker_id));
+      } else {
+        filteredAssignableWorkers.forEach((w) => next.add(w.worker_id));
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectOne = (workerId: number) => {
+    setSelectedAssignWorkerIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(workerId)) next.delete(workerId);
+      else next.add(workerId);
+      return next;
+    });
+  };
+
+  const beginBulkAssign = () => {
+    if (!assignDialog || selectedAssignWorkerIds.size === 0) return;
+    const selectedIds = [...selectedAssignWorkerIds];
+    const alreadyAssigned = selectedIds.filter((id) => assignTargetAssignedWorkerIds.has(id));
+    const newIds = selectedIds.filter((id) => !assignTargetAssignedWorkerIds.has(id));
+    setPendingConflictCount(alreadyAssigned.length);
+    setPendingNewCount(newIds.length);
+
+    if (newIds.length === 0) {
+      setAssignFeedback("All selected workers are already assigned to this unit.");
+      setTimeout(() => setAssignFeedback(null), 4500);
+      return;
+    }
+
+    if (alreadyAssigned.length > 0) {
+      setConflictDialogOpen(true);
+      return;
+    }
+
+    assignOu.mutate(newIds);
+  };
+
+  const confirmAssignIgnoringConflicts = () => {
+    if (!assignDialog || selectedAssignWorkerIds.size === 0) {
+      setConflictDialogOpen(false);
+      return;
+    }
+    const newIds = [...selectedAssignWorkerIds].filter((id) => !assignTargetAssignedWorkerIds.has(id));
+    setConflictDialogOpen(false);
+    if (newIds.length === 0) return;
+    assignOu.mutate(newIds);
+  };
 
   return (
     <div className="space-y-6">
@@ -578,7 +841,11 @@ export function CampaignUnitsSection({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setAssignDialog({ ou_id: ou.ou_id, name: ou.name })}
+                      onClick={() => {
+                        setAssignDialog({ ou_id: ou.ou_id, name: ou.name });
+                        resetAssignDialogState();
+                        setAssignFeedback(null);
+                      }}
                     >
                       Assign worker
                     </Button>
@@ -738,6 +1005,9 @@ export function CampaignUnitsSection({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Organising unit</DialogTitle>
+            <DialogDescription>
+              Define the unit details and choose an optional anchor worker.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
             <div className="space-y-2">
@@ -808,7 +1078,7 @@ export function CampaignUnitsSection({
                     if (!nw) return null;
                     return (
                       <SelectItem key={nw.worker_id} value={String(nw.worker_id)}>
-                        {nw.first_name} {nw.last_name}
+                        {workerDisplayName(nw)}
                       </SelectItem>
                     );
                   })}
@@ -830,48 +1100,230 @@ export function CampaignUnitsSection({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!assignDialog} onOpenChange={() => setAssignDialog(null)}>
+      <Dialog
+        open={!!assignDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAssignDialog(null);
+            resetAssignDialogState();
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Assign to {assignDialog?.name}</DialogTitle>
+            <DialogDescription>
+              Filter and select campaign workers to bulk assign to this unit.
+            </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3">
-            <Label>Worker</Label>
-            <Select value={assignWorkerId} onValueChange={setAssignWorkerId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select" />
-              </SelectTrigger>
-              <SelectContent>
-                {members.map((m: unknown) => {
-                  const nw = normalizeMemberWorker(m);
-                  if (!nw) return null;
-                  return (
-                    <SelectItem key={nw.worker_id} value={String(nw.worker_id)}>
-                      {nw.first_name} {nw.last_name}
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={assignPrimary}
-                onChange={(e) => setAssignPrimary(e.target.checked)}
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+              <Input
+                placeholder="Search workers..."
+                value={assignSearch}
+                onChange={(e) => setAssignSearch(e.target.value)}
               />
-              Primary OU for wall chart
-            </label>
+              <Select value={assignEmployerFilter} onValueChange={setAssignEmployerFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Employer" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All employers</SelectItem>
+                  {assignEmployerOptions.map((employer) => (
+                    <SelectItem key={employer} value={employer}>
+                      {employer}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={assignWorksiteFilter} onValueChange={setAssignWorksiteFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Worksite" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All worksites</SelectItem>
+                  {assignWorksiteOptions.map((worksite) => (
+                    <SelectItem key={worksite} value={worksite}>
+                      {worksite}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={assignRoleFilter} onValueChange={setAssignRoleFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="OA role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All OA roles</SelectItem>
+                  <SelectItem value="delegate">Delegate</SelectItem>
+                  <SelectItem value="activist">Activist</SelectItem>
+                  <SelectItem value="contact">Contact</SelectItem>
+                  <SelectItem value="none">None</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={assignMembershipFilter} onValueChange={setAssignMembershipFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Membership" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All membership</SelectItem>
+                  <SelectItem value="member">Members</SelectItem>
+                  <SelectItem value="non_member">Non-members</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={showOnlyUnassigned}
+                    onCheckedChange={(checked) => setShowOnlyUnassigned(checked === true)}
+                  />
+                  Show only unassigned workers
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={assignPrimary}
+                    onCheckedChange={(checked) => setAssignPrimary(checked === true)}
+                    disabled={selectedCount > 1}
+                  />
+                  Set as primary (single worker only)
+                </label>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Sort</span>
+                <Select value={assignSortBy} onValueChange={(v) => setAssignSortBy(v as typeof assignSortBy)}>
+                  <SelectTrigger className="h-8 w-36">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="name">Name</SelectItem>
+                    <SelectItem value="employer">Employer</SelectItem>
+                    <SelectItem value="worksite">Worksite</SelectItem>
+                    <SelectItem value="role">OA role</SelectItem>
+                    <SelectItem value="unit_count">Unit count</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={assignSortDir} onValueChange={(v) => setAssignSortDir(v as typeof assignSortDir)}>
+                  <SelectTrigger className="h-8 w-28">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="asc">Ascending</SelectItem>
+                    <SelectItem value="desc">Descending</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="rounded-md border max-h-80 overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={allFilteredSelected}
+                        onCheckedChange={() => toggleSelectFiltered()}
+                        aria-label="Select all filtered workers"
+                      />
+                    </TableHead>
+                    <TableHead>Worker</TableHead>
+                    <TableHead>Employer</TableHead>
+                    <TableHead>Worksite</TableHead>
+                    <TableHead>OA role</TableHead>
+                    <TableHead>Units</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {membersLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-sm text-muted-foreground text-center py-6">
+                        Loading campaign workers...
+                      </TableCell>
+                    </TableRow>
+                  ) : filteredAssignableWorkers.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-sm text-muted-foreground text-center py-6">
+                        No workers match the current filters.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredAssignableWorkers.map((worker) => (
+                      <TableRow key={worker.worker_id}>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedAssignWorkerIds.has(worker.worker_id)}
+                            onCheckedChange={() => toggleSelectOne(worker.worker_id)}
+                            aria-label={`Select ${worker.label}`}
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {worker.label}
+                          {worker.is_already_assigned && (
+                            <Badge variant="outline" className="ml-2 text-[10px]">
+                              already assigned
+                            </Badge>
+                          )}
+                          {worker.is_multi_unit_member && (
+                            <Badge variant="warning" className="ml-2 text-[10px]">
+                              multi-unit
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs">{worker.employer_name}</TableCell>
+                        <TableCell className="text-xs">{worker.worksite_name}</TableCell>
+                        <TableCell className="text-xs capitalize">{worker.oa_leader_role}</TableCell>
+                        <TableCell className="text-xs">{worker.unit_count}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            {assignFeedback && (
+              <p className="text-xs text-muted-foreground">{assignFeedback}</p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {selectedCount} selected • {pendingConflictCount > 0 ? `${pendingConflictCount} already assigned` : "No conflicts detected yet"}
+            </p>
           </div>
           <DialogFooter>
             <Button
-              onClick={() => assignOu.mutate()}
-              disabled={!assignWorkerId || assignOu.isPending}
+              variant="outline"
+              onClick={() => setSelectedAssignWorkerIds(new Set())}
+              disabled={selectedCount === 0}
             >
-              Assign
+              Clear selection
+            </Button>
+            <Button
+              onClick={() => beginBulkAssign()}
+              disabled={selectedCount === 0 || assignOu.isPending}
+            >
+              {assignOu.isPending ? "Assigning..." : `Assign selected (${selectedCount})`}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={conflictDialogOpen} onOpenChange={setConflictDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Some workers are already assigned</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingConflictCount} selected worker{pendingConflictCount === 1 ? "" : "s"} already belong to this
+              unit. Continue and assign only the {pendingNewCount} new worker{pendingNewCount === 1 ? "" : "s"}?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Review selection</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmAssignIgnoringConflicts}>
+              Continue with new only
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

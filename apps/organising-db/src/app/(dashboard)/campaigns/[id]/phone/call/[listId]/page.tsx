@@ -50,9 +50,12 @@ export default function CallWizardPage() {
   )
   const recordAttempt = useRecordCallAttempt(campaignId)
 
-  const sections: CallScriptSection[] = (
-    (list as Record<string, unknown>)?.call_scripts as Record<string, unknown> | null
-  )?.call_script_sections as CallScriptSection[] || []
+  const sections: CallScriptSection[] = (() => {
+    if (!list) return []
+    const raw = list as unknown as Record<string, unknown>
+    const scriptObj = raw.call_scripts as Record<string, unknown> | null | undefined
+    return (scriptObj?.call_script_sections as CallScriptSection[] | undefined) ?? []
+  })()
 
   const sortedSections = [...sections].sort((a, b) => a.sort_order - b.sort_order)
   const currentSection = sortedSections[flowState.currentSectionIndex] || null

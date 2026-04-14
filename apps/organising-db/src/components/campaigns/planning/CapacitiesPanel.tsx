@@ -475,7 +475,7 @@ export function CapacitiesPanel({
             <div className="space-y-2 pt-2">
               <p className="text-xs font-medium text-slate-600">Saved Drafts</p>
               {savedDrafts.map((draft) => (
-                <DraftPreview key={draft.draft_id} draft={draft} />
+                <DraftPreview key={draft.draft_id} draft={draft} campaignId={campaignId} />
               ))}
             </div>
           )}

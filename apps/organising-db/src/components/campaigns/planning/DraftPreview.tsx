@@ -1,10 +1,11 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils/cn'
-import { Mail, MessageSquare, Phone, Pencil } from 'lucide-react'
+import { Mail, MessageSquare, Phone, Pencil, Wand2, Users } from 'lucide-react'
 import type { CommsPlatform, DraftStatus } from '@/types/planner-types'
 
 const PLATFORM_ICONS: Record<CommsPlatform, React.ReactNode> = {
@@ -34,10 +35,13 @@ interface DraftPreviewProps {
     audience_segment: string | null
     created_at: string
     ai_model_used: string | null
+    structured_script_id?: number | null
   }
+  campaignId?: number | string
 }
 
-export function DraftPreview({ draft }: DraftPreviewProps) {
+export function DraftPreview({ draft, campaignId }: DraftPreviewProps) {
+  const router = useRouter()
   const icon = PLATFORM_ICONS[draft.platform] || PLATFORM_ICONS.email
   const statusConfig = STATUS_BADGE[draft.status] || STATUS_BADGE.draft
   const createdDate = new Date(draft.created_at).toLocaleDateString('en-AU', {
@@ -90,6 +94,35 @@ export function DraftPreview({ draft }: DraftPreviewProps) {
           </div>
           <span className="text-[10px] text-muted-foreground">{createdDate}</span>
         </div>
+
+        {draft.platform === 'phone_script' && campaignId && (
+          <div className="flex items-center gap-1.5 pt-2 border-t">
+            {draft.structured_script_id ? (
+              <Button
+                variant="outline" size="sm" className="h-6 text-xs flex-1"
+                onClick={() => router.push(`/campaigns/${campaignId}/phone/scripts/${draft.structured_script_id}`)}
+              >
+                <Pencil className="h-3 w-3 mr-1" />
+                Edit Script
+              </Button>
+            ) : (
+              <Button
+                variant="outline" size="sm" className="h-6 text-xs flex-1"
+                onClick={() => router.push(`/campaigns/${campaignId}/phone`)}
+              >
+                <Wand2 className="h-3 w-3 mr-1" />
+                Structure for Calling
+              </Button>
+            )}
+            <Button
+              variant="outline" size="sm" className="h-6 text-xs flex-1"
+              onClick={() => router.push(`/campaigns/${campaignId}/phone/lists/new`)}
+            >
+              <Users className="h-3 w-3 mr-1" />
+              Create Call List
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   )

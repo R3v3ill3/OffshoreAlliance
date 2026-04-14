@@ -233,3 +233,250 @@ export interface CommsDraftResponse {
   audience_targeted: string
   estimated_character_count: number
 }
+
+// ============================================================
+// Phone Call Operations types
+// ============================================================
+
+export type ScriptStatus = 'draft' | 'active' | 'archived'
+export type ScriptSectionType =
+  | 'opening'
+  | 'introduction'
+  | 'discovery'
+  | 'education'
+  | 'ask'
+  | 'objection_handling'
+  | 'close'
+  | 'custom'
+
+export type CallListStatus = 'draft' | 'active' | 'completed' | 'paused'
+export type CallListPriorityStrategy =
+  | 'sequential'
+  | 'priority_score'
+  | 'random'
+  | 'least_recently_contacted'
+
+export type CallListItemStatus = 'pending' | 'in_progress' | 'completed' | 'skipped' | 'deferred'
+
+export type DialDisposition =
+  | 'connected'
+  | 'no_answer'
+  | 'voicemail_left'
+  | 'voicemail_no_message'
+  | 'busy'
+  | 'disconnected'
+  | 'wrong_number'
+  | 'do_not_call'
+  | 'callback_requested'
+
+export type CallDisposition =
+  | 'completed_positive'
+  | 'completed_neutral'
+  | 'completed_negative'
+  | 'partial_hung_up'
+  | 'partial_asked_callback'
+  | 'referred_to_other'
+
+export type CtaResponse = 'accepted' | 'considering' | 'declined' | 'not_reached'
+export type SupportLevel = 'strong_supporter' | 'supporter' | 'neutral' | 'unsupportive' | 'hostile'
+export type OutcomeCategory = 'dial' | 'conversation' | 'cta'
+
+export interface CallScript {
+  script_id: number
+  campaign_id: number
+  draft_id: number | null
+  title: string
+  version: number
+  status: ScriptStatus
+  call_objective: string | null
+  estimated_duration_minutes: number | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CallScriptSection {
+  section_id: number
+  script_id: number
+  sort_order: number
+  section_type: ScriptSectionType
+  title: string
+  body_text: string
+  talking_points: string[]
+  prompt_text: string | null
+  expected_outcomes: string[]
+  is_optional: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CallList {
+  list_id: number
+  campaign_id: number
+  script_id: number | null
+  name: string
+  description: string | null
+  status: CallListStatus
+  source_filters: Record<string, unknown> | null
+  priority_strategy: CallListPriorityStrategy
+  total_items: number
+  completed_items: number
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CallListItem {
+  item_id: number
+  list_id: number
+  worker_id: number
+  sort_order: number
+  priority_score: number
+  status: CallListItemStatus
+  assigned_to: string | null
+  attempts_count: number
+  last_attempt_at: string | null
+  best_disposition: string | null
+  next_call_at: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CallAttempt {
+  attempt_id: number
+  list_item_id: number
+  script_id: number | null
+  caller_user_id: string
+  started_at: string
+  ended_at: string | null
+  duration_seconds: number | null
+  dial_disposition: DialDisposition
+  call_disposition: CallDisposition | null
+  overall_notes: string | null
+  callback_datetime: string | null
+  support_level_assessed: SupportLevel | null
+  follow_up_action: string | null
+  cta_response: CtaResponse | null
+  created_at: string
+}
+
+export interface CallStepOutcome {
+  step_outcome_id: number
+  attempt_id: number
+  section_id: number
+  reached: boolean
+  outcome_value: string | null
+  notes: string | null
+  duration_seconds: number | null
+  sort_order: number
+  created_at: string
+}
+
+export interface CallOutcomeDefinition {
+  outcome_id: number
+  campaign_id: number
+  script_id: number | null
+  name: string
+  description: string | null
+  outcome_category: OutcomeCategory
+  maps_to_ambition_id: number | null
+  is_positive: boolean
+  sort_order: number
+  created_at: string
+}
+
+export interface CallScriptWithSections extends CallScript {
+  sections: CallScriptSection[]
+}
+
+export interface CallListWithStats extends CallList {
+  script?: CallScript | null
+  total_attempts?: number
+  connect_rate_pct?: number
+  positive_calls?: number
+}
+
+export interface CallListItemWithWorker extends CallListItem {
+  worker: {
+    worker_id: number
+    first_name: string
+    last_name: string
+    email: string | null
+    phone: string | null
+    occupation: string | null
+    employer_name: string | null
+    worksite_name: string | null
+  }
+  connection?: {
+    connection_status: string
+    support_level: string | null
+    contact_count: number
+    last_contacted_at: string | null
+    notes: string | null
+  } | null
+  recent_attempts?: CallAttempt[]
+}
+
+export interface RecordCallAttemptRequest {
+  list_item_id: number
+  script_id: number | null
+  dial_disposition: DialDisposition
+  call_disposition?: CallDisposition | null
+  overall_notes?: string | null
+  callback_datetime?: string | null
+  support_level_assessed?: SupportLevel | null
+  follow_up_action?: string | null
+  cta_response?: CtaResponse | null
+  duration_seconds?: number | null
+  step_outcomes?: {
+    section_id: number
+    reached: boolean
+    outcome_value?: string | null
+    notes?: string | null
+    duration_seconds?: number | null
+    sort_order: number
+  }[]
+}
+
+export interface CallCampaignSummary {
+  campaign_id: number
+  list_id: number
+  list_name: string
+  list_status: CallListStatus
+  total_items: number
+  completed_items: number
+  priority_strategy: CallListPriorityStrategy
+  script_id: number | null
+  script_title: string | null
+  total_attempts: number
+  unique_contacts_attempted: number
+  connected_count: number
+  no_answer_count: number
+  voicemail_count: number
+  bad_number_count: number
+  dnc_count: number
+  connect_rate_pct: number
+  cta_accepted: number
+  cta_considering: number
+  cta_declined: number
+  positive_calls: number
+  neutral_calls: number
+  negative_calls: number
+  avg_call_duration_seconds: number | null
+  callbacks_pending: number
+}
+
+export interface StructureScriptRequest {
+  draft_id?: number
+  body_text?: string
+  campaign_context?: {
+    employer_name: string
+    agreement_name: string
+    stage_name: string
+  }
+}
+
+export interface StructureScriptResponse {
+  sections: Omit<CallScriptSection, 'section_id' | 'script_id' | 'created_at' | 'updated_at'>[]
+}

@@ -87,7 +87,6 @@ type MemberWorkerRow = {
 type CampaignMemberRow = {
   membership_id: number;
   worker_id: number;
-  oa_leader_role: string | null;
   worker: MemberWorkerRow | MemberWorkerRow[] | null;
 };
 
@@ -190,7 +189,7 @@ export function CampaignUnitsSection({
       const { data, error } = await supabase
         .from("campaign_worker_membership")
         .select(
-          `membership_id, worker_id, oa_leader_role,
+          `membership_id, worker_id,
            worker:workers(
              worker_id, first_name, last_name, preferred_name,
              employer:employers(employer_name),
@@ -330,7 +329,7 @@ export function CampaignUnitsSection({
           label: workerDisplayName(normalized),
           employer_name: normalized.employer_name ?? "—",
           worksite_name: normalized.worksite_name ?? "—",
-          oa_leader_role: member.oa_leader_role ?? "none",
+          organising_role: normalized.member_role_name ?? "none",
           membership_status: membershipStatus,
           unit_count: memberUnitCount.get(normalized.worker_id) ?? 0,
           is_multi_unit_member: multiUnitWorkerIds.has(normalized.worker_id),
@@ -346,7 +345,7 @@ export function CampaignUnitsSection({
           label: string;
           employer_name: string;
           worksite_name: string;
-          oa_leader_role: string;
+          organising_role: string;
           membership_status: string;
           unit_count: number;
           is_multi_unit_member: boolean;
@@ -369,7 +368,7 @@ export function CampaignUnitsSection({
     const rows = memberOptions.filter((m) => {
       if (assignEmployerFilter !== "__all__" && m.employer_name !== assignEmployerFilter) return false;
       if (assignWorksiteFilter !== "__all__" && m.worksite_name !== assignWorksiteFilter) return false;
-      if (assignRoleFilter !== "__all__" && m.oa_leader_role !== assignRoleFilter) return false;
+      if (assignRoleFilter !== "__all__" && m.organising_role !== assignRoleFilter) return false;
       if (assignMembershipFilter !== "__all__" && m.membership_status !== assignMembershipFilter) return false;
       if (showOnlyUnassigned && m.is_already_assigned) return false;
       if (loweredSearch && !m.label.toLowerCase().includes(loweredSearch)) return false;
@@ -382,7 +381,7 @@ export function CampaignUnitsSection({
         left < right ? -1 : left > right ? 1 : 0;
       if (assignSortBy === "employer") return safeCompare(a.employer_name, b.employer_name) * sortFactor;
       if (assignSortBy === "worksite") return safeCompare(a.worksite_name, b.worksite_name) * sortFactor;
-      if (assignSortBy === "role") return safeCompare(a.oa_leader_role, b.oa_leader_role) * sortFactor;
+      if (assignSortBy === "role") return safeCompare(a.organising_role, b.organising_role) * sortFactor;
       if (assignSortBy === "unit_count") return safeCompare(a.unit_count, b.unit_count) * sortFactor;
       return safeCompare(a.label, b.label) * sortFactor;
     });
@@ -1290,7 +1289,7 @@ export function CampaignUnitsSection({
                         </TableCell>
                         <TableCell className="text-xs">{worker.employer_name}</TableCell>
                         <TableCell className="text-xs">{worker.worksite_name}</TableCell>
-                        <TableCell className="text-xs capitalize">{worker.oa_leader_role}</TableCell>
+                        <TableCell className="text-xs capitalize">{worker.organising_role}</TableCell>
                         <TableCell className="text-xs">{worker.unit_count}</TableCell>
                       </TableRow>
                     ))

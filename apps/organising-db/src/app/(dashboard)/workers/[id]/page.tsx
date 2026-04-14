@@ -68,8 +68,6 @@ interface WorkerDetail {
   member_number: string | null;
   join_date: string | null;
   resignation_date: string | null;
-  engagement_score: number;
-  engagement_level: string;
   notes: string | null;
   is_active: boolean;
   created_at: string;
@@ -881,7 +879,6 @@ export default function WorkerDetailPage() {
     );
   }
 
-  const engagementPct = Math.min(Math.max(worker.engagement_score, 0), 100);
   const f = editForm;
   const displayFirst = editing && f ? f.first_name : worker.first_name;
   const displayLast = editing && f ? f.last_name : worker.last_name;
@@ -1400,28 +1397,6 @@ export default function WorkerDetailPage() {
                 </CardContent>
               </Card>
 
-              {/* Engagement (read-only in edit mode) */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Engagement</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <p className="text-xs text-muted-foreground">
-                    Engagement score and level are read-only; they reflect system or campaign activity.
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Engagement Score</span>
-                    <span className="text-sm font-bold">{worker.engagement_score}%</span>
-                  </div>
-                  <div className="h-2 w-full rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full bg-primary transition-all"
-                      style={{ width: `${engagementPct}%` }}
-                    />
-                  </div>
-                  <FieldRow label="Engagement Level" value={worker.engagement_level} />
-                </CardContent>
-              </Card>
             </>
           ) : (
             <>
@@ -1571,25 +1546,6 @@ export default function WorkerDetailPage() {
                 </CardContent>
               </Card>
 
-              {/* Engagement */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Engagement</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Engagement Score</span>
-                    <span className="text-sm font-bold">{worker.engagement_score}%</span>
-                  </div>
-                  <div className="h-2 w-full rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full bg-primary transition-all"
-                      style={{ width: `${engagementPct}%` }}
-                    />
-                  </div>
-                  <FieldRow label="Engagement Level" value={worker.engagement_level} />
-                </CardContent>
-              </Card>
             </>
           )}
         </TabsContent>

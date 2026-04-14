@@ -58,17 +58,18 @@ function pct1(numerator: number, denominator: number): number {
 
 type MemberRow = {
   worker_id: number
-  oa_leader_role: string | null
   worker: {
     worker_id: number
     phone?: string | null
     email?: string | null
+    is_bargaining_rep?: boolean | null
     member_role_type: { role_name: string } | { role_name: string }[] | null
     union_membership_type: { type_name: string } | { type_name: string }[] | null
   } | {
     worker_id: number
     phone?: string | null
     email?: string | null
+    is_bargaining_rep?: boolean | null
     member_role_type: { role_name: string } | { role_name: string }[] | null
     union_membership_type: { type_name: string } | { type_name: string }[] | null
   }[] | null
@@ -103,9 +104,9 @@ export function useCampaignCurrentStats(campaignId: number | string) {
       const { data, error } = await supabase
         .from('campaign_worker_membership')
         .select(
-          `worker_id, oa_leader_role,
+          `worker_id,
            worker:workers(
-             worker_id, phone, email,
+             worker_id, phone, email, is_bargaining_rep,
              member_role_type:member_role_types(role_name),
              union_membership_type:union_membership_types(type_name)
            )`
@@ -193,17 +194,21 @@ export function useCampaignCurrentStats(campaignId: number | string) {
       const mt = normalizeRel(w?.member_role_type)
       const um = normalizeRel(w?.union_membership_type)
 
+      const roleName = (mt as { role_name?: string } | null)?.role_name
+      const isBargRep = (w as { is_bargaining_rep?: boolean | null } | null)?.is_bargaining_rep
+
       if (isWorkerMemberLike({
         unionMembershipTypeName: (um as { type_name?: string } | null)?.type_name,
-        memberRoleName: (mt as { role_name?: string } | null)?.role_name,
+        memberRoleName: roleName,
+        isBargainingRep: isBargRep,
       })) {
         memberLike++
       }
 
-      if (m.oa_leader_role === 'delegate') delegates++
-      else if (m.oa_leader_role === 'activist') activists++
-      else if (m.oa_leader_role === 'contact') contacts++
-      if ((mt as { role_name?: string } | null)?.role_name === 'bargaining_rep') bargainingReps++
+      if (roleName === 'delegate') delegates++
+      else if (roleName === 'Activist') activists++
+      else if (roleName === 'contact') contacts++
+      if (isBargRep) bargainingReps++
 
       const phone = (w as { phone?: string | null } | null)?.phone
       const email = (w as { email?: string | null } | null)?.email
@@ -214,7 +219,9 @@ export function useCampaignCurrentStats(campaignId: number | string) {
     const ouWithDelegate = new Set<number>()
     for (const a of ouAssign) {
       const m = members.find((x) => x.worker_id === a.worker_id)
-      if (m?.oa_leader_role === 'delegate') {
+      const mw = normalizeRel(m?.worker)
+      const mmt = normalizeRel(mw?.member_role_type)
+      if ((mmt as { role_name?: string } | null)?.role_name === 'delegate') {
         ouWithDelegate.add(a.ou_id)
       }
     }

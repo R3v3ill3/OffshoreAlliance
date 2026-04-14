@@ -44,32 +44,34 @@ export const UNION_MEMBER_LIKE_TYPE_NAMES = new Set([
 ]);
 
 /** Activism/leadership roles that imply member-like status for OA delegate eligibility. */
-export const MEMBER_LIKE_ROLE_NAMES = new Set(["delegate", "bargaining_rep"]);
+export const MEMBER_LIKE_ROLE_NAMES = new Set(["delegate"]);
 
 export function isWorkerMemberLike(args: {
   unionMembershipTypeName: string | null | undefined;
   memberRoleName: string | null | undefined;
+  isBargainingRep?: boolean | null;
 }): boolean {
   const u = args.unionMembershipTypeName;
   if (u && UNION_MEMBER_LIKE_TYPE_NAMES.has(u)) return true;
   const r = args.memberRoleName;
   if (r && MEMBER_LIKE_ROLE_NAMES.has(r)) return true;
+  if (args.isBargainingRep) return true;
   return false;
 }
 
 /**
  * Display-only default cumulative for wall chart cell colour when there is no stored rating.
- * Precedence: leadership (1) over member (2). Aligns delegate on worker with oa_leader_role delegate.
+ * Default 1 for workers with any leadership role (contact/activist/delegate) or bargaining rep.
+ * Default 2 for union members without a leadership role. HSR alone does not affect rating.
  */
 export function getWallChartDefaultCumulative(args: {
   unionMembershipTypeName: string | null | undefined;
   memberRoleName: string | null | undefined;
-  oaLeaderRole: string | null | undefined;
+  isBargainingRep?: boolean | null;
 }): 1 | 2 | null {
   const r = args.memberRoleName;
-  if (r === "delegate") return 1;
-  const oa = args.oaLeaderRole;
-  if (oa === "activist" || oa === "delegate") return 1;
+  if (r === "contact" || r === "Activist" || r === "delegate") return 1;
+  if (args.isBargainingRep) return 1;
 
   const u = args.unionMembershipTypeName;
   if (u && UNION_MEMBER_LIKE_TYPE_NAMES.has(u)) return 2;

@@ -165,8 +165,6 @@ export async function POST(request: NextRequest) {
           employer_id: row.resolvedEmployerId || null,
           worksite_id: row.resolvedWorksiteId || null,
           canonical_occupation_id: row.resolvedOccupationId || null,
-          engagement_score: 0,
-          engagement_level: "contact",
           updated_at: new Date().toISOString(),
         };
 

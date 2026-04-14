@@ -152,8 +152,6 @@ export async function POST(request: NextRequest) {
 
       const { error } = await supabase.from("workers").insert({
         ...workerData,
-        engagement_score: 0,
-        engagement_level: "contact",
       });
 
       if (error) {

@@ -109,7 +109,6 @@ export async function buildCrossplatformWorkerList(
     .select(
       `
       worker_id,
-      oa_leader_role,
       workers!inner (
         worker_id,
         first_name,
@@ -144,7 +143,6 @@ export async function buildCrossplatformWorkerList(
     worksite_name: row.workers.worksites?.worksite_name,
     employer_id: row.workers.employer_id,
     worksite_id: row.workers.worksite_id,
-    oa_leader_role: row.oa_leader_role,
     is_member: row.workers.member_role_type_id != null,
   }));
 
@@ -165,9 +163,10 @@ export async function buildCrossplatformWorkerList(
     );
   }
   if (filters.oa_roles?.length) {
-    workers = workers.filter((w: any) =>
-      filters.oa_roles!.includes(w.oa_leader_role || "none")
-    );
+    workers = workers.filter((w: any) => {
+      const roleName = w.member_role_type?.role_name || "none";
+      return filters.oa_roles!.includes(roleName);
+    });
   }
 
   if (filters.include_an_tags?.length || filters.exclude_an_tags?.length) {

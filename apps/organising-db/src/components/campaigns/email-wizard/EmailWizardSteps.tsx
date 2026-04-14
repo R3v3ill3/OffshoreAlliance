@@ -74,16 +74,15 @@ interface WorkerPreview {
   employer_name: string | null
   worksite_name: string | null
   membership_status?: string | null
-  oa_leader_role?: string | null
+  organising_role?: string | null
 }
 
 function formatCampaignListSource(w: WorkerPreview): string {
   const parts: string[] = []
   if (w.membership_status === 'member') parts.push('Member')
   else if (w.membership_status === 'non_member') parts.push('Non-member')
-  if (w.oa_leader_role && w.oa_leader_role !== 'none') {
-    const r = w.oa_leader_role
-    parts.push(r.charAt(0).toUpperCase() + r.slice(1))
+  if (w.organising_role) {
+    parts.push(w.organising_role)
   }
   return parts.length > 0 ? parts.join(', ') : 'Campaign'
 }
@@ -238,7 +237,7 @@ export function EmailWizardSteps() {
         return (json.data as WorkerPreview[]).map((row) => ({
           ...row,
           membership_status: row.membership_status ?? null,
-          oa_leader_role: row.oa_leader_role ?? null,
+          organising_role: row.organising_role ?? null,
         }))
       }
       if (state.standaloneEmployerId) {
@@ -322,7 +321,7 @@ export function EmailWizardSteps() {
       employer_name: Array.isArray(emp) ? emp[0]?.employer_name ?? null : emp?.employer_name ?? null,
       worksite_name: Array.isArray(ws) ? ws[0]?.worksite_name ?? null : ws?.worksite_name ?? null,
       membership_status: (r.membership_status as string | undefined) ?? null,
-      oa_leader_role: (r.oa_leader_role as string | undefined) ?? null,
+      organising_role: (r.organising_role as string | undefined) ?? null,
     }
   }
 

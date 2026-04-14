@@ -22,7 +22,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import type { OaLeaderRole } from "@/types/database";
 import { getWallChartDefaultCumulative, isWorkerMemberLike } from "@/lib/campaign/constants";
 
 function ratingBgClass(cumulative: number | null | undefined): string {
@@ -53,10 +52,11 @@ export function CampaignWallChart({
       const { data, error } = await supabase
         .from("campaign_worker_membership")
         .select(
-          `membership_id, worker_id, oa_leader_role,
+          `membership_id, worker_id,
            worker:workers(
              worker_id, first_name, last_name, email, phone,
-             member_role_type:member_role_types(role_name, role_type_id),
+             member_role_type_id, is_bargaining_rep,
+             member_role_type:member_role_types(role_name, role_type_id, display_name),
              union_membership_type:union_membership_types(type_name)
            )`
         )
@@ -190,7 +190,6 @@ export function CampaignWallChart({
     const m = raw as {
       membership_id: number;
       worker_id: number;
-      oa_leader_role: string | null;
       worker: unknown;
     } | undefined;
     if (!m) return undefined;
@@ -200,6 +199,8 @@ export function CampaignWallChart({
       last_name: string;
       email: string | null;
       phone: string | null;
+      member_role_type_id: number | null;
+      is_bargaining_rep: boolean | null;
       member_role_type: unknown;
       union_membership_type: unknown;
     } | null;
@@ -207,6 +208,7 @@ export function CampaignWallChart({
     const mt = (Array.isArray(mtRaw) ? mtRaw[0] : mtRaw) as {
       role_name: string;
       role_type_id: number;
+      display_name: string;
     } | null;
     const umRaw = w?.union_membership_type;
     const um = (Array.isArray(umRaw) ? umRaw[0] : umRaw) as { type_name: string } | null;
@@ -214,7 +216,6 @@ export function CampaignWallChart({
     return {
       membership_id: m.membership_id,
       worker_id: m.worker_id,
-      oa_leader_role: m.oa_leader_role as OaLeaderRole | null,
       worker: {
         ...w,
         member_role_type: mt,
@@ -249,20 +250,6 @@ export function CampaignWallChart({
     },
   });
 
-  const updateMembership = useAuthAwareMutation({
-    mutationFn: async (vars: { membership_id: number; oa_leader_role: OaLeaderRole | null }) => {
-      const { error } = await supabase
-        .from("campaign_worker_membership")
-        .update({ oa_leader_role: vars.oa_leader_role })
-        .eq("membership_id", vars.membership_id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
-      queryClient.invalidateQueries({ queryKey: ["campaign-members", campaignId] });
-    },
-  });
-
   const { data: roleTypes = [] } = useQuery({
     queryKey: ["member_role_types"],
     queryFn: async () => {
@@ -285,18 +272,18 @@ export function CampaignWallChart({
     const raw = members.find((m: { worker_id: number }) => m.worker_id === workerId) as unknown;
     const row = raw as {
       worker_id: number;
-      oa_leader_role: string | null;
       worker: unknown;
     } | undefined;
     const wr = row?.worker;
     const w = (Array.isArray(wr) ? wr[0] : wr) as {
       first_name: string;
       last_name: string;
+      is_bargaining_rep: boolean | null;
       member_role_type: unknown;
       union_membership_type: unknown;
     } | null;
     const mtRaw = w?.member_role_type;
-    const mt = (Array.isArray(mtRaw) ? mtRaw[0] : mtRaw) as { role_name: string } | null;
+    const mt = (Array.isArray(mtRaw) ? mtRaw[0] : mtRaw) as { role_name: string; display_name?: string } | null;
     const umRaw = w?.union_membership_type;
     const um = (Array.isArray(umRaw) ? umRaw[0] : umRaw) as { type_name: string } | null;
     const sum = summaryByWorker.get(workerId);
@@ -307,13 +294,14 @@ export function CampaignWallChart({
         ? getWallChartDefaultCumulative({
             unionMembershipTypeName: um?.type_name,
             memberRoleName: mt?.role_name,
-            oaLeaderRole: row?.oa_leader_role,
+            isBargainingRep: w?.is_bargaining_rep,
           })
         : null;
     const colourCum = storedCum ?? defaultCum;
     const isMemberLike = isWorkerMemberLike({
       unionMembershipTypeName: um?.type_name,
       memberRoleName: mt?.role_name,
+      isBargainingRep: w?.is_bargaining_rep,
     });
 
     const displayName = w ? `${w.first_name} ${w.last_name}` : String(workerId);
@@ -339,9 +327,9 @@ export function CampaignWallChart({
           c{storedCum ?? "—"} · L{last ?? "—"}
         </span>
         <div className="flex items-center gap-0.5 flex-wrap">
-          {row?.oa_leader_role && (
+          {mt?.role_name && (
             <span className="text-[9px] uppercase bg-background/60 px-0.5 rounded leading-none py-px">
-              {row.oa_leader_role}
+              {mt.display_name ?? mt.role_name}
             </span>
           )}
           {isMemberLike && (
@@ -447,15 +435,12 @@ export function CampaignWallChart({
           {selectedRow?.worker && (
             <WorkerCampaignSheetBody
               key={selectedRow.worker_id}
-              membershipId={selectedRow.membership_id}
               workerId={selectedRow.worker_id}
               worker={selectedRow.worker}
-              oaLeaderRole={selectedRow.oa_leader_role as OaLeaderRole | null}
               roleTypes={roleTypes}
               canWrite={canWrite}
               onClose={() => setSelectedWorkerId(null)}
               updateWorker={updateWorker}
-              updateMembership={updateMembership}
             />
           )}
         </SheetContent>
@@ -465,27 +450,23 @@ export function CampaignWallChart({
 }
 
 function WorkerCampaignSheetBody({
-  membershipId,
   workerId,
   worker,
-  oaLeaderRole,
   roleTypes,
   canWrite,
   onClose,
   updateWorker,
-  updateMembership,
 }: {
-  membershipId: number;
   workerId: number;
   worker: {
     first_name: string;
     last_name: string;
     email: string | null;
     phone: string | null;
-    member_role_type: { role_name: string; role_type_id: number } | null;
+    member_role_type: { role_name: string; role_type_id: number; display_name: string } | null;
     union_membership_type: { type_name: string } | null;
+    is_bargaining_rep?: boolean | null;
   };
-  oaLeaderRole: OaLeaderRole | null;
   roleTypes: { role_type_id: number; role_name: string; display_name: string }[];
   canWrite: boolean;
   onClose: () => void;
@@ -499,20 +480,17 @@ function WorkerCampaignSheetBody({
       member_role_type_id: number | null;
     }) => void;
   };
-  updateMembership: {
-    mutate: (vars: { membership_id: number; oa_leader_role: OaLeaderRole | null }) => void;
-  };
 }) {
   const [first, setFirst] = useState(worker.first_name);
   const [last, setLast] = useState(worker.last_name);
   const [email, setEmail] = useState(worker.email ?? "");
   const [phone, setPhone] = useState(worker.phone ?? "");
   const [roleId, setRoleId] = useState(String(worker.member_role_type?.role_type_id ?? ""));
-  const [oa, setOa] = useState<OaLeaderRole | "">(oaLeaderRole ?? "");
 
   const delegateOk = isWorkerMemberLike({
     unionMembershipTypeName: worker.union_membership_type?.type_name,
     memberRoleName: worker.member_role_type?.role_name,
+    isBargainingRep: worker.is_bargaining_rep,
   });
 
   return (
@@ -542,30 +520,14 @@ function WorkerCampaignSheetBody({
           <SelectContent>
             <SelectItem value="__none__">None</SelectItem>
             {roleTypes.map((r) => (
-              <SelectItem key={r.role_type_id} value={String(r.role_type_id)}>
+              <SelectItem
+                key={r.role_type_id}
+                value={String(r.role_type_id)}
+                disabled={r.role_name === "delegate" && !delegateOk}
+              >
                 {r.display_name}
               </SelectItem>
             ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-2">
-        <Label>OA leader role (this campaign)</Label>
-        <Select
-          value={oa || "__none__"}
-          onValueChange={(v) => setOa(v === "__none__" ? "" : (v as OaLeaderRole))}
-          disabled={!canWrite}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">None</SelectItem>
-            <SelectItem value="contact">Contact</SelectItem>
-            <SelectItem value="activist">Activist</SelectItem>
-            <SelectItem value="delegate" disabled={!delegateOk}>
-              Delegate
-            </SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -579,10 +541,6 @@ function WorkerCampaignSheetBody({
               email: email || null,
               phone: phone || null,
               member_role_type_id: roleId && roleId !== "__none__" ? Number(roleId) : null,
-            });
-            updateMembership.mutate({
-              membership_id: membershipId,
-              oa_leader_role: oa || null,
             });
             onClose();
           }}

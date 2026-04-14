@@ -135,13 +135,13 @@ export function CampaignAssessmentsSection({
       const { data, error } = await supabase
         .from("campaign_worker_membership")
         .select(
-          `membership_id, worker_id, oa_leader_role,
+          `membership_id, worker_id,
            worker:workers(
              *,
              employer:employers!workers_employer_id_fkey(employer_name),
              worksite:worksites!workers_worksite_id_fkey(worksite_name),
              union_membership_type:union_membership_types!workers_union_membership_type_id_fkey(display_name),
-             member_role_type:member_role_types!workers_member_role_type_id_fkey(display_name),
+             member_role_type:member_role_types!workers_member_role_type_id_fkey(display_name, role_name),
              canonical_occupation:occupations!workers_canonical_occupation_id_fkey(occupation_id, canonical_name)
            )`
         )
@@ -314,7 +314,7 @@ export function CampaignAssessmentsSection({
   );
 
   const workerRows = useMemo<AssessmentWorkerRow[]>(() => {
-    return members.map((row: { worker_id: number; worker: unknown; oa_leader_role: string | null }) => {
+    return members.map((row: { worker_id: number; worker: unknown }) => {
       const rawWorkerValue = Array.isArray(row.worker) ? row.worker[0] : row.worker;
       const worker = (rawWorkerValue ?? {}) as Record<string, unknown>;
       const firstName = typeof worker.first_name === "string" ? worker.first_name : "";
@@ -323,10 +323,15 @@ export function CampaignAssessmentsSection({
       const existing = ratingMap.get(row.worker_id);
       const summary = summaryMap.get(row.worker_id);
 
+      const memberRoleType = worker.member_role_type as
+        | { display_name?: string; role_name?: string }
+        | null
+        | undefined;
+
       const fieldValues: Record<string, PrimitiveValue> = {
         worker_name: workerName,
         worker_id: row.worker_id,
-        oa_leader_role: row.oa_leader_role,
+        organising_role: memberRoleType?.display_name ?? null,
         activity_rating: existing?.rating ?? null,
         activity_binary_value: existing?.binary_value ?? null,
         cumulative_rating: summary?.cumulative_rating ?? null,

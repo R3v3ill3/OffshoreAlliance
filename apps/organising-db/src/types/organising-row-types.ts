@@ -75,8 +75,6 @@ export type CampaignScopeType =
   | "multi_employer_single_site"
   | "multi_employer_multi_site";
 
-export type OaLeaderRole = "delegate" | "activist" | "contact";
-
 export type CampaignActivityKind = "task" | "assessment";
 
 export type ActivityRatingSource = "staff" | "leader_form";
@@ -323,12 +321,11 @@ export interface Worker {
   member_number: string | null;
   join_date: string | null;
   resignation_date: string | null;
-  engagement_score: number;
-  engagement_level: string;
   action_network_id: string | null;
   notes: string | null;
   is_active: boolean;
   is_hsr: boolean | null;
+  is_bargaining_rep: boolean | null;
   created_at: string;
   updated_at: string;
 }
@@ -410,7 +407,6 @@ export interface CampaignWorkerMembership {
   membership_id: number;
   campaign_id: number;
   worker_id: number;
-  oa_leader_role: OaLeaderRole | null;
   created_at: string;
   updated_at: string;
 }

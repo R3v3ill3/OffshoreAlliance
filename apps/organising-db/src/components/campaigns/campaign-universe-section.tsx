@@ -134,7 +134,7 @@ export function CampaignUniverseSection({
       const { data, error } = await supabase
         .from("campaign_worker_membership")
         .select(
-          `membership_id, worker_id, oa_leader_role,
+          `membership_id, worker_id,
            worker:workers(
              worker_id, first_name, last_name,
              member_role_type:member_role_types(role_name),

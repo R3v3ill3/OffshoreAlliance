@@ -63,7 +63,9 @@ interface WorkerRow {
   occupation: string | null;
   employer_name: string | null;
   worksite_name: string | null;
-  oa_leader_role: string | null;
+  organising_role: string | null;
+  organising_role_name: string | null;
+  is_bargaining_rep: boolean;
   membership_status: string | null;
   action_network_id: string | null;
   unit_count?: number;
@@ -361,7 +363,7 @@ export function CampaignListBuilder({
           `"${w.employer_name ?? ""}"`,
           `"${w.worksite_name ?? ""}"`,
           `"${w.occupation ?? ""}"`,
-          `"${w.oa_leader_role ?? ""}"`,
+          `"${w.organising_role ?? ""}"`,
           `"${w.membership_status ?? ""}"`,
         ].join(",")
       ),
@@ -800,9 +802,9 @@ export function CampaignListBuilder({
                         {w.worksite_name ?? "—"}
                       </TableCell>
                       <TableCell>
-                        {w.oa_leader_role && w.oa_leader_role !== "none" ? (
+                        {w.organising_role ? (
                           <Badge variant="outline" className="text-xs capitalize">
-                            {w.oa_leader_role}
+                            {w.organising_role}
                           </Badge>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>

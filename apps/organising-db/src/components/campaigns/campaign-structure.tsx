@@ -20,7 +20,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { OaLeaderRole } from "@/types/database";
 import { isWorkerMemberLike } from "@/lib/campaign/constants";
 import { CampaignUnitsSection } from "@/components/campaigns/campaign-units-section";
 
@@ -34,16 +33,29 @@ export function CampaignStructureSection({
   const supabase = createClient();
   const queryClient = useQueryClient();
 
+  const { data: roleTypes = [] } = useQuery({
+    queryKey: ["member_role_types"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("member_role_types")
+        .select("role_type_id, role_name, display_name")
+        .eq("is_active", true)
+        .order("sort_order");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
   const { data: members = [] } = useQuery({
     queryKey: ["campaign-members", campaignId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaign_worker_membership")
         .select(
-          `membership_id, worker_id, oa_leader_role,
+          `membership_id, worker_id,
            worker:workers(
-             worker_id, first_name, last_name,
-             member_role_type:member_role_types(role_name),
+             worker_id, first_name, last_name, member_role_type_id, is_bargaining_rep,
+             member_role_type:member_role_types(role_name, role_type_id, display_name),
              union_membership_type:union_membership_types(type_name)
            )`
         )
@@ -53,12 +65,12 @@ export function CampaignStructureSection({
     },
   });
 
-  const updateOaRole = useAuthAwareMutation({
-    mutationFn: async (vars: { membership_id: number; oa_leader_role: OaLeaderRole | null }) => {
+  const updateWorkerRole = useAuthAwareMutation({
+    mutationFn: async (vars: { worker_id: number; member_role_type_id: number | null }) => {
       const { error } = await supabase
-        .from("campaign_worker_membership")
-        .update({ oa_leader_role: vars.oa_leader_role })
-        .eq("membership_id", vars.membership_id);
+        .from("workers")
+        .update({ member_role_type_id: vars.member_role_type_id })
+        .eq("worker_id", vars.worker_id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -72,7 +84,7 @@ export function CampaignStructureSection({
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Campaign workers & OA roles</CardTitle>
+          <CardTitle className="text-lg">Campaign workers & organising roles</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="rounded-md border">
@@ -80,7 +92,7 @@ export function CampaignStructureSection({
               <TableHeader>
                 <TableRow>
                   <TableHead>Worker</TableHead>
-                  <TableHead>OA leader role</TableHead>
+                  <TableHead>Organising role</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -95,26 +107,28 @@ export function CampaignStructureSection({
                       const r = row as {
                         membership_id: number;
                         worker_id: number;
-                        oa_leader_role: string | null;
                         worker: unknown;
                       };
                       const wr = r.worker;
                       const w = (Array.isArray(wr) ? wr[0] : wr) as {
                         first_name: string;
                         last_name: string;
-                        member_role_type: { role_name: string } | { role_name: string }[] | null;
+                        member_role_type_id: number | null;
+                        is_bargaining_rep: boolean | null;
+                        member_role_type: { role_name: string; role_type_id: number; display_name: string } | { role_name: string; role_type_id: number; display_name: string }[] | null;
                         union_membership_type:
                           | { type_name: string }
                           | { type_name: string }[]
                           | null;
                       } | null;
                       const mtRaw = w?.member_role_type;
-                      const mt = (Array.isArray(mtRaw) ? mtRaw[0] : mtRaw) as { role_name: string } | null;
+                      const mt = (Array.isArray(mtRaw) ? mtRaw[0] : mtRaw) as { role_name: string; role_type_id: number } | null;
                       const umRaw = w?.union_membership_type;
                       const um = (Array.isArray(umRaw) ? umRaw[0] : umRaw) as { type_name: string } | null;
                       const delegateOk = isWorkerMemberLike({
                         unionMembershipTypeName: um?.type_name,
                         memberRoleName: mt?.role_name,
+                        isBargainingRep: w?.is_bargaining_rep,
                       });
                       return (
                         <TableRow key={r.membership_id}>
@@ -123,13 +137,14 @@ export function CampaignStructureSection({
                           </TableCell>
                           <TableCell>
                             <Select
-                              value={r.oa_leader_role ?? "__none__"}
+                              value={w?.member_role_type_id != null ? String(w.member_role_type_id) : "__none__"}
                               onValueChange={(v) => {
-                                const role = v === "__none__" ? null : (v as OaLeaderRole);
-                                if (role === "delegate" && !delegateOk) return;
-                                updateOaRole.mutate({
-                                  membership_id: r.membership_id,
-                                  oa_leader_role: role,
+                                const roleTypeId = v === "__none__" ? null : Number(v);
+                                const selectedRole = roleTypes.find((rt) => rt.role_type_id === roleTypeId);
+                                if (selectedRole?.role_name === "delegate" && !delegateOk) return;
+                                updateWorkerRole.mutate({
+                                  worker_id: r.worker_id,
+                                  member_role_type_id: roleTypeId,
                                 });
                               }}
                               disabled={!canWrite}
@@ -139,11 +154,16 @@ export function CampaignStructureSection({
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="__none__">None</SelectItem>
-                                <SelectItem value="contact">Contact</SelectItem>
-                                <SelectItem value="activist">Activist</SelectItem>
-                                <SelectItem value="delegate" disabled={!delegateOk}>
-                                  Delegate (members only)
-                                </SelectItem>
+                                {roleTypes.map((rt) => (
+                                  <SelectItem
+                                    key={rt.role_type_id}
+                                    value={String(rt.role_type_id)}
+                                    disabled={rt.role_name === "delegate" && !delegateOk}
+                                  >
+                                    {rt.display_name}
+                                    {rt.role_name === "delegate" && !delegateOk ? " (members only)" : ""}
+                                  </SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
                           </TableCell>

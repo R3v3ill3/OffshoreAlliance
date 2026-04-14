@@ -2171,7 +2171,6 @@ export type Database = {
           campaign_id: number
           created_at: string
           membership_id: number
-          oa_leader_role: string | null
           updated_at: string
           worker_id: number
         }
@@ -2179,7 +2178,6 @@ export type Database = {
           campaign_id: number
           created_at?: string
           membership_id?: number
-          oa_leader_role?: string | null
           updated_at?: string
           worker_id: number
         }
@@ -2187,7 +2185,6 @@ export type Database = {
           campaign_id?: number
           created_at?: string
           membership_id?: number
-          oa_leader_role?: string | null
           updated_at?: string
           worker_id?: number
         }
@@ -5264,8 +5261,6 @@ export type Database = {
           date_of_birth: string | null
           email: string | null
           employer_id: number | null
-          engagement_level: string
-          engagement_score: number
           first_name: string
           gender: string | null
           is_active: boolean
@@ -5298,8 +5293,6 @@ export type Database = {
           date_of_birth?: string | null
           email?: string | null
           employer_id?: number | null
-          engagement_level?: string
-          engagement_score?: number
           first_name: string
           gender?: string | null
           is_active?: boolean
@@ -5332,8 +5325,6 @@ export type Database = {
           date_of_birth?: string | null
           email?: string | null
           employer_id?: number | null
-          engagement_level?: string
-          engagement_score?: number
           first_name?: string
           gender?: string | null
           is_active?: boolean
@@ -6727,8 +6718,6 @@ export type Database = {
           email: string | null
           employer_id: number | null
           employer_name: string | null
-          engagement_level: string | null
-          engagement_score: number | null
           first_name: string | null
           gender: string | null
           is_active: boolean | null

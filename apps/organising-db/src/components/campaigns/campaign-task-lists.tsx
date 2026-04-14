@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
@@ -33,6 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 
 function normalizeMemberWorker(m: unknown): {
   worker_id: number;
@@ -65,6 +66,8 @@ export function CampaignTaskListsSection({
     leader_organiser_pick: "",
     title: "",
     worker_ids: [] as number[],
+    populate_from_ou: "" as string,
+    create_ou_from_list: false,
   });
 
   const { data: activities = [] } = useQuery({
@@ -90,6 +93,35 @@ export function CampaignTaskListsSection({
       if (error) throw error;
       return data ?? [];
     },
+  });
+
+  const { data: ous = [] } = useQuery({
+    queryKey: ["campaign-ous", campaignId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campaign_organising_units")
+        .select("ou_id, name, ou_type")
+        .eq("campaign_id", campaignId)
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const ouIds = useMemo(() => ous.map((o: { ou_id: number }) => o.ou_id), [ous]);
+
+  const { data: ouWorkers = [] } = useQuery({
+    queryKey: ["campaign-ou-workers", campaignId, ouIds.join(",")],
+    queryFn: async () => {
+      if (ouIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from("campaign_worker_ou")
+        .select("ou_id, worker_id")
+        .in("ou_id", ouIds);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: ouIds.length > 0,
   });
 
   const { data: taskLists = [] } = useQuery({
@@ -121,6 +153,17 @@ export function CampaignTaskListsSection({
       return data ?? [];
     },
   });
+
+  function populateFromOu(ouId: string) {
+    if (ouId === "__none__") {
+      setForm((f) => ({ ...f, populate_from_ou: "", worker_ids: [] }));
+      return;
+    }
+    const workerIds = ouWorkers
+      .filter((ow: { ou_id: number }) => ow.ou_id === Number(ouId))
+      .map((ow: { worker_id: number }) => ow.worker_id);
+    setForm((f) => ({ ...f, populate_from_ou: ouId, worker_ids: workerIds }));
+  }
 
   const createList = useAuthAwareMutation({
     mutationFn: async () => {
@@ -162,10 +205,40 @@ export function CampaignTaskListsSection({
         );
         if (iErr) throw iErr;
       }
+
+      if (form.create_ou_from_list && form.worker_ids.length > 0 && !form.populate_from_ou) {
+        const ouName = form.title || `Task list ${task_list_id}`;
+        const { data: newOu, error: ouErr } = await supabase
+          .from("campaign_organising_units")
+          .insert({
+            campaign_id: Number(campaignId),
+            ou_type: "custom",
+            name: ouName,
+            source: "manual",
+            anchor_worker_id: leader_worker_id,
+          })
+          .select("ou_id")
+          .single();
+        if (!ouErr && newOu) {
+          await supabase.from("campaign_worker_ou").insert(
+            form.worker_ids.map((wid) => ({
+              ou_id: newOu.ou_id,
+              worker_id: wid,
+              is_primary: wid === leader_worker_id,
+              assignment_source: "manual",
+            }))
+          );
+        }
+      }
+
       return task_list_id;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-task-lists", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-activity-ratings"] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-members", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["organisers"] });
       queryClient.invalidateQueries({ queryKey: ["user-profiles-staff-organiser-picker"] });
       setDialogOpen(false);
@@ -175,6 +248,8 @@ export function CampaignTaskListsSection({
         leader_organiser_pick: "",
         title: "",
         worker_ids: [],
+        populate_from_ou: "",
+        create_ou_from_list: false,
       });
       setOrganiserFieldKey((k) => k + 1);
     },
@@ -224,6 +299,10 @@ export function CampaignTaskListsSection({
           )}
         </CardHeader>
         <CardContent>
+          <p className="text-xs text-muted-foreground mb-3">
+            Workers added to a task list are automatically rated 1 (supportive) for the linked activity.
+            A worker assigned as leader is auto-promoted to at least Activist.
+          </p>
           {activities.length === 0 ? (
             <p className="text-sm text-muted-foreground">Create an activity under Assessments first.</p>
           ) : taskLists.length === 0 ? (
@@ -401,8 +480,40 @@ export function CampaignTaskListsSection({
               <Label>List title</Label>
               <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
             </div>
+
+            {ous.length > 0 && (
+              <div className="space-y-2">
+                <Label>Populate from organising unit</Label>
+                <Select
+                  value={form.populate_from_ou || "__none__"}
+                  onValueChange={populateFromOu}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select an OU (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Manual selection</SelectItem>
+                    {ous.map((ou: { ou_id: number; name: string; ou_type: string }) => (
+                      <SelectItem key={ou.ou_id} value={String(ou.ou_id)}>
+                        {ou.name}
+                        <Badge variant="outline" className="ml-1 text-[10px]">{ou.ou_type}</Badge>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Pre-populates the worker list from the selected OU. You can still add or remove workers below.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-2">
-              <Label>Workers on list</Label>
+              <Label>
+                Workers on list
+                {form.worker_ids.length > 0 && (
+                  <span className="text-muted-foreground font-normal ml-2">({form.worker_ids.length} selected)</span>
+                )}
+              </Label>
               <div className="max-h-40 overflow-y-auto border rounded-md p-2 space-y-1">
                 {members.map((m: unknown) => {
                   const nw = normalizeMemberWorker(m);
@@ -420,6 +531,17 @@ export function CampaignTaskListsSection({
                 })}
               </div>
             </div>
+
+            {!form.populate_from_ou && form.worker_ids.length > 0 && (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.create_ou_from_list}
+                  onChange={(e) => setForm({ ...form, create_ou_from_list: e.target.checked })}
+                />
+                Also create an organising unit from these workers
+              </label>
+            )}
           </div>
           <DialogFooter>
             <Button

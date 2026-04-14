@@ -473,8 +473,6 @@ async function seed() {
         union_membership_type_id: unionMembershipTypeId,
         union_id: unionId,
         member_number: memberNumber,
-        engagement_level: eng.level,
-        engagement_score: eng.score,
         is_active: true,
         state,
         is_hsr: rand() < 0.03 ? true : null,

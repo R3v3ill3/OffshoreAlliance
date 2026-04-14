@@ -35,12 +35,11 @@ export async function GET(
     const anTags = searchParams.get("an_tags")?.split(",").filter(Boolean) ?? [];
     const excludeAnTags = searchParams.get("exclude_an_tags")?.split(",").filter(Boolean) ?? [];
 
-    let query = supabase
+    const query = supabase
       .from("campaign_worker_membership")
       .select(
         `
         worker_id,
-        oa_leader_role,
         workers!inner (
           worker_id,
           first_name,
@@ -51,17 +50,15 @@ export async function GET(
           employer_id,
           worksite_id,
           member_role_type_id,
+          is_bargaining_rep,
           action_network_id,
           employers ( employer_name ),
-          worksites ( worksite_name )
+          worksites ( worksite_name ),
+          member_role_type:member_role_types ( role_name, display_name )
         )
       `
       )
       .eq("campaign_id", campaignId);
-
-    if (roles.length > 0) {
-      query = query.in("oa_leader_role", roles);
-    }
 
     const { data: membershipRows, error: membershipError } = await query;
     if (membershipError) throw membershipError;
@@ -77,12 +74,15 @@ export async function GET(
         employer_id: number | null;
         worksite_id: number | null;
         member_role_type_id: number | null;
+        is_bargaining_rep: boolean | null;
         action_network_id: string | null;
         employers: { employer_name: string } | null;
         worksites: { worksite_name: string } | null;
+        member_role_type: { role_name: string; display_name: string } | null;
       };
 
       const membershipStatus = worker.member_role_type_id ? "member" : "non_member";
+      const mrt = Array.isArray(worker.member_role_type) ? worker.member_role_type[0] : worker.member_role_type;
 
       return {
         worker_id: worker.worker_id,
@@ -93,7 +93,9 @@ export async function GET(
         occupation: worker.occupation,
         employer_name: worker.employers?.employer_name ?? null,
         worksite_name: worker.worksites?.worksite_name ?? null,
-        oa_leader_role: r.oa_leader_role as string | null,
+        organising_role: mrt?.display_name ?? null,
+        organising_role_name: mrt?.role_name ?? null,
+        is_bargaining_rep: worker.is_bargaining_rep ?? false,
         membership_status: membershipStatus,
         action_network_id: worker.action_network_id,
         employer_id: worker.employer_id,
@@ -102,6 +104,10 @@ export async function GET(
         is_multi_unit_member: false,
       };
     });
+
+    if (roles.length > 0) {
+      results = results.filter((w) => w.organising_role_name && roles.includes(w.organising_role_name));
+    }
 
     if (membership.length > 0) {
       results = results.filter((w) => membership.includes(w.membership_status));

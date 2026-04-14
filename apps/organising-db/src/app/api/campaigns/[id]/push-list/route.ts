@@ -65,23 +65,19 @@ export async function POST(
       .eq('campaign_id', campaignId)
       .single()
 
-    let query = supabase
+    const query = supabase
       .from('campaign_worker_membership')
       .select(`
         worker_id,
-        oa_leader_role,
         workers!inner (
           worker_id, first_name, last_name, email, phone, occupation,
           employer_id, worksite_id, member_role_type_id, action_network_id,
           employers ( employer_name ),
-          worksites ( worksite_name )
+          worksites ( worksite_name ),
+          member_role_type:member_role_types ( role_name )
         )
       `)
       .eq('campaign_id', campaignId)
-
-    if (filters.roles?.length) {
-      query = query.in('oa_leader_role', filters.roles)
-    }
 
     const { data: membershipRows, error: memErr } = await query
     if (memErr) throw memErr
@@ -94,7 +90,9 @@ export async function POST(
         member_role_type_id: number | null; action_network_id: string | null
         employers: { employer_name: string } | null
         worksites: { worksite_name: string } | null
+        member_role_type: { role_name: string } | { role_name: string }[] | null
       }
+      const mrt = Array.isArray(w.member_role_type) ? w.member_role_type[0] : w.member_role_type
       return {
         worker_id: w.worker_id,
         first_name: w.first_name,
@@ -108,8 +106,15 @@ export async function POST(
         employer_id: w.employer_id,
         worksite_id: w.worksite_id,
         membership_status: w.member_role_type_id ? 'member' : 'non_member',
+        role_name: mrt?.role_name ?? null,
       }
     })
+
+    if (filters.roles?.length) {
+      workers = workers.filter((w: { role_name: string | null }) =>
+        w.role_name && filters.roles!.includes(w.role_name)
+      )
+    }
 
     if (filters.membership?.length) {
       workers = workers.filter((w) => filters.membership!.includes(w.membership_status))

@@ -724,9 +724,9 @@ export function CampaignUnitsSection({
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm">{c.suggested_name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {c.suggested_ou_type.replace(/_/g, " ")}
+                    {c.suggested_ou_type?.replace(/_/g, " ")}
                     {c.estimated_workers != null && ` · est. ${c.estimated_workers} workers`}
-                    {` · source: ${c.source.replace(/_/g, " ")}`}
+                    {c.source && ` · source: ${c.source.replace(/_/g, " ")}`}
                   </p>
                   {c.commonality_logic && (
                     <p className="text-xs text-muted-foreground mt-0.5 italic">{c.commonality_logic}</p>
@@ -830,7 +830,7 @@ export function CampaignUnitsSection({
                   <div>
                     <p className="font-medium">{ou.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {ou.ou_type.replace(/_/g, " ")}
+                      {ou.ou_type?.replace(/_/g, " ")}
                       {ou.total_workers_estimated != null && ` · est. ${ou.total_workers_estimated}`}
                       {ou.source && ou.source !== "manual" && (
                         <Badge variant="outline" className="ml-1.5 text-[10px] px-1 py-0">

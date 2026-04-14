@@ -3,6 +3,7 @@
 import { useParams, useRouter } from 'next/navigation'
 import { useCallLists } from '@/lib/hooks/useCallList'
 import { useCallScripts } from '@/lib/hooks/useCallScripts'
+import type { CallListWithStats } from '@/types/planner-types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -158,17 +159,17 @@ function CallListCard({
   campaignId,
   router,
 }: {
-  list: Record<string, unknown>
+  list: CallListWithStats
   campaignId: string
   router: ReturnType<typeof useRouter>
 }) {
-  const listId = list.list_id as number
-  const name = list.name as string
-  const status = list.status as string
-  const totalItems = (list.total_items as number) || 0
-  const completedItems = (list.completed_items as number) || 0
+  const listId = list.list_id
+  const name = list.name
+  const status = list.status
+  const totalItems = list.total_items || 0
+  const completedItems = list.completed_items || 0
   const progressPct = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0
-  const script = list.call_scripts as Record<string, unknown> | null
+  const scriptName = list.script?.title ?? null
 
   return (
     <Card className="hover:bg-muted/30 transition-colors">
@@ -183,7 +184,7 @@ function CallListCard({
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <span>{completedItems}/{totalItems} contacts</span>
-              {script && <span>Script: {script.title as string}</span>}
+              {scriptName && <span>Script: {scriptName}</span>}
             </div>
             {totalItems > 0 && (
               <Progress value={progressPct} className="h-1 mt-2" />

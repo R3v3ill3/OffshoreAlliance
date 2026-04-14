@@ -227,10 +227,13 @@ export function CampaignOverviewMetrics({ campaignId }: { campaignId: number }) 
                 <XAxis dataKey="stage" tick={{ fontSize: 11 }} />
                 <YAxis allowDecimals={false} domain={[0, 100]} />
                 <Tooltip
-                  formatter={(value: number, key: string) => {
-                    if (key === 'target') return [`${value}%`, 'Target']
-                    if (key === 'current') return [`${value}%`, 'Current']
-                    return [value, key]
+                  formatter={(value, key) => {
+                    const raw = Array.isArray(value) ? value[0] : value
+                    const numeric = typeof raw === 'number' ? raw : Number(raw)
+                    const displayPct = Number.isFinite(numeric) ? `${numeric}%` : '—'
+                    if (key === 'target') return [displayPct, 'Target']
+                    if (key === 'current') return [displayPct, 'Current']
+                    return [raw ?? '—', String(key)]
                   }}
                   labelFormatter={(label) => {
                     const row = ambitionStageData.find((item) => item.stage === label)

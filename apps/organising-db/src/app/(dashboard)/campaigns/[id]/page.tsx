@@ -59,6 +59,7 @@ import { CampaignPlanPanel } from "@/components/campaigns/campaign-plan-panel";
 import { CampaignWorkplanSection } from "@/components/campaigns/campaign-workplan";
 import { CampaignUniverseSection } from "@/components/campaigns/campaign-universe-section";
 import { CampaignCommsSection } from "@/components/campaigns/campaign-comms-section";
+import { CampaignOverviewMetrics } from "@/components/campaigns/CampaignOverviewMetrics";
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
 
 interface CampaignDetail {
@@ -373,7 +374,8 @@ export default function CampaignDetailPage() {
           <TabsTrigger value="results">Results</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview">
+        <TabsContent value="overview" className="space-y-6">
+          <CampaignOverviewMetrics campaignId={campaignId} />
           <Card>
             <CardContent className="pt-6">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-4 text-sm">

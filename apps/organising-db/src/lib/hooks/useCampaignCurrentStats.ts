@@ -15,6 +15,7 @@ export interface CampaignCurrentStats {
   delegates: number
   activists: number
   contacts: number
+  bargainingReps: number
   ouCount: number
   ousWithDelegate: number
   phoneCount: number
@@ -33,6 +34,7 @@ const EMPTY_STATS: CampaignCurrentStats = {
   delegates: 0,
   activists: 0,
   contacts: 0,
+  bargainingReps: 0,
   ouCount: 0,
   ousWithDelegate: 0,
   phoneCount: 0,
@@ -147,6 +149,7 @@ export function useCampaignCurrentStats(campaignId: number | string) {
     let delegates = 0
     let activists = 0
     let contacts = 0
+    let bargainingReps = 0
     let phoneCount = 0
     let emailCount = 0
 
@@ -165,6 +168,7 @@ export function useCampaignCurrentStats(campaignId: number | string) {
       if (m.oa_leader_role === 'delegate') delegates++
       else if (m.oa_leader_role === 'activist') activists++
       else if (m.oa_leader_role === 'contact') contacts++
+      if ((mt as { role_name?: string } | null)?.role_name === 'bargaining_rep') bargainingReps++
 
       const phone = (w as { phone?: string | null } | null)?.phone
       const email = (w as { email?: string | null } | null)?.email
@@ -190,6 +194,7 @@ export function useCampaignCurrentStats(campaignId: number | string) {
       delegates,
       activists,
       contacts,
+      bargainingReps,
       ouCount: ous.length,
       ousWithDelegate: ouWithDelegate.size,
       phoneCount,

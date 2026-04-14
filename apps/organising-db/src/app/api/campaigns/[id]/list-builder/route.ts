@@ -158,7 +158,7 @@ export async function GET(
       }
     }
 
-    const workerIds = results.map((w) => w.worker_id);
+    let workerIds = results.map((w) => w.worker_id);
 
     if (anTags.length > 0 && workerIds.length > 0) {
       const { data: tagRows, error: tagErr } = await supabase

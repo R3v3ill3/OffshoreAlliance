@@ -95,9 +95,12 @@ export async function recomputeOuAssignments(
     .eq("campaign_id", campaignId);
   if (membersError) throw membersError;
 
-  const workerIds = (members ?? [])
-    .map((m: { worker_id?: number }) => m.worker_id)
-    .filter((id: number | undefined): id is number => Number.isFinite(id));
+  type MemberRow = { worker_id?: number; worker?: WorkerRow | WorkerRow[] | null };
+  const memberRows = (members ?? []) as MemberRow[];
+
+  const workerIds = memberRows
+    .map((m) => m.worker_id)
+    .filter((id): id is number => Number.isFinite(id));
 
   if (workerIds.length === 0) {
     return { inserted: 0, removed: 0 };
@@ -116,7 +119,7 @@ export async function recomputeOuAssignments(
       .select("ou_id")
       .eq("campaign_id", campaignId);
     if (ousError) throw ousError;
-    const ouIds = (campaignOus ?? []).map((r: { ou_id: number }) => r.ou_id);
+    const ouIds = ((campaignOus ?? []) as { ou_id: number }[]).map((r) => r.ou_id);
     if (ouIds.length > 0) {
       const { error: clearError } = await scoped
         .from("campaign_worker_ou")
@@ -148,11 +151,9 @@ export async function recomputeOuAssignments(
     tagsByWorker.get(workerId)?.add(tagName.trim().toLowerCase());
   }
 
-  const workers: WorkerRow[] = (members ?? [])
-    .map((m: { worker?: WorkerRow | WorkerRow[] | null }) =>
-      Array.isArray(m.worker) ? m.worker[0] : m.worker
-    )
-    .filter((w: WorkerRow | null | undefined): w is WorkerRow => !!w);
+  const workers: WorkerRow[] = memberRows
+    .map((m) => (Array.isArray(m.worker) ? m.worker[0] : m.worker))
+    .filter((w): w is WorkerRow => !!w);
 
   const rulesByOu = new Map<number, RuleRow[]>();
   for (const rule of ruleRows) {

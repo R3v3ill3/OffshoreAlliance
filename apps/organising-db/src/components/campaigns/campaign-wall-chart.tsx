@@ -23,7 +23,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import type { OaLeaderRole } from "@/types/database";
-import { isWorkerMemberLike } from "@/lib/campaign/constants";
+import { getWallChartDefaultCumulative, isWorkerMemberLike } from "@/lib/campaign/constants";
 
 function ratingBgClass(cumulative: number | null | undefined): string {
   if (cumulative == null) return "bg-zinc-300/80 dark:bg-zinc-600/80";
@@ -300,30 +300,43 @@ export function CampaignWallChart({
     const umRaw = w?.union_membership_type;
     const um = (Array.isArray(umRaw) ? umRaw[0] : umRaw) as { type_name: string } | null;
     const sum = summaryByWorker.get(workerId);
-    const cum = sum?.cumulative_rating ?? null;
+    const storedCum = sum?.cumulative_rating ?? null;
     const last = sum?.last_activity_rating ?? null;
+    const defaultCum =
+      storedCum == null
+        ? getWallChartDefaultCumulative({
+            unionMembershipTypeName: um?.type_name,
+            memberRoleName: mt?.role_name,
+            oaLeaderRole: row?.oa_leader_role,
+          })
+        : null;
+    const colourCum = storedCum ?? defaultCum;
     const isMemberLike = isWorkerMemberLike({
       unionMembershipTypeName: um?.type_name,
       memberRoleName: mt?.role_name,
     });
 
     const displayName = w ? `${w.first_name} ${w.last_name}` : String(workerId);
-    const titleRatings = `Cumulative ${cum ?? "—"}, last activity ${last ?? "—"}`;
+    const titleRatings = `Cumulative ${storedCum ?? "—"}, last activity ${last ?? "—"}`;
+    const titleDefaultHint =
+      defaultCum != null
+        ? ` Background uses default ${defaultCum} (${defaultCum === 1 ? "leadership" : "member"}) for colour only.`
+        : "";
 
     return (
       <button
         key={workerId}
         type="button"
         disabled={!canWrite}
-        title={`${displayName}. ${titleRatings}`}
+        title={`${displayName}. ${titleRatings}.${titleDefaultHint}`}
         onClick={() => canWrite && setSelectedWorkerId(workerId)}
         className={`text-left text-[11px] leading-tight p-1.5 rounded border min-h-[3.25rem] flex flex-col gap-0.5 justify-between ${ratingBgClass(
-          cum
+          colourCum
         )} ${canWrite ? "cursor-pointer hover:opacity-90" : ""}`}
       >
         <span className="font-medium line-clamp-2 break-words">{displayName}</span>
         <span className="text-[9px] text-muted-foreground tabular-nums">
-          c{cum ?? "—"} · L{last ?? "—"}
+          c{storedCum ?? "—"} · L{last ?? "—"}
         </span>
         <div className="flex items-center gap-0.5 flex-wrap">
           {row?.oa_leader_role && (
@@ -345,7 +358,8 @@ export function CampaignWallChart({
         <CardTitle className="text-lg">Wall chart</CardTitle>
         <p className="text-sm text-muted-foreground">
           Colours: blue &lt;2, green 2–&lt;3, orange 3–&lt;4, red ≥4, grey unrated. Cells show c = cumulative
-          and L = last activity (hover for full labels).{" "}
+          and L = last activity (hover for full labels). Unrated cells may use membership or leadership defaults
+          for background colour only (see hover text).{" "}
           <span className="text-foreground/90">
             Campaign-level unmapped slots are unnamed gaps from the worker estimate; unassigned are named members
             not placed in an organising unit yet.

@@ -56,3 +56,23 @@ export function isWorkerMemberLike(args: {
   if (r && MEMBER_LIKE_ROLE_NAMES.has(r)) return true;
   return false;
 }
+
+/**
+ * Display-only default cumulative for wall chart cell colour when there is no stored rating.
+ * Precedence: leadership (1) over member (2). Aligns delegate on worker with oa_leader_role delegate.
+ */
+export function getWallChartDefaultCumulative(args: {
+  unionMembershipTypeName: string | null | undefined;
+  memberRoleName: string | null | undefined;
+  oaLeaderRole: string | null | undefined;
+}): 1 | 2 | null {
+  const r = args.memberRoleName;
+  if (r === "delegate") return 1;
+  const oa = args.oaLeaderRole;
+  if (oa === "activist" || oa === "delegate") return 1;
+
+  const u = args.unionMembershipTypeName;
+  if (u && UNION_MEMBER_LIKE_TYPE_NAMES.has(u)) return 2;
+
+  return null;
+}

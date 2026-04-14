@@ -213,7 +213,7 @@ export function CallCampaignReporting({ campaignId }: CallCampaignReportingProps
                 <XAxis dataKey="section_title" tick={{ fontSize: 11 }} />
                 <YAxis unit="%" />
                 <Tooltip
-                  formatter={(value: number) => [`${value}%`, 'Reached']}
+                  formatter={(value) => [`${value}%`, 'Reached']}
                 />
                 <Bar dataKey="reach_rate_pct" fill="#6366f1" radius={[4, 4, 0, 0]} />
               </BarChart>

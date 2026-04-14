@@ -98,6 +98,8 @@ export async function GET(
         action_network_id: worker.action_network_id,
         employer_id: worker.employer_id,
         worksite_id: worker.worksite_id,
+        unit_count: 0,
+        is_multi_unit_member: false,
       };
     });
 

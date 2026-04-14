@@ -155,7 +155,7 @@ export function CallCampaignReporting({ campaignId }: CallCampaignReportingProps
                     cx="50%"
                     cy="50%"
                     outerRadius={80}
-                    label={({ name, percent }: { name: string; percent?: number }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                    label={(props: Record<string, unknown>) => `${props.name ?? ''} ${(((props.percent as number) ?? 0) * 100).toFixed(0)}%`}
                   >
                     {dispositionPieData.map((_, i) => (
                       <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
@@ -184,7 +184,7 @@ export function CallCampaignReporting({ campaignId }: CallCampaignReportingProps
                     cx="50%"
                     cy="50%"
                     outerRadius={80}
-                    label={({ name, percent }: { name: string; percent?: number }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                    label={(props: Record<string, unknown>) => `${props.name ?? ''} ${(((props.percent as number) ?? 0) * 100).toFixed(0)}%`}
                   >
                     <Cell fill="#22c55e" />
                     <Cell fill="#f59e0b" />

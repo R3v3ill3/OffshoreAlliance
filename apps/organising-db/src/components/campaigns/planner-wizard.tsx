@@ -181,10 +181,17 @@ export function CampaignCreationWizard() {
   )
   const agreementRequired = !isLinkedMode || hasReplacementSubtypeOrExistingAgreementContext
 
-  // Redirect to existing plan if one already exists for this campaign
+  // Redirect to existing plan if one already exists for this campaign.
+  // Only check on initial data load — once the wizard becomes active
+  // (user has advanced from step 1 or a submission is in progress),
+  // suppress redirect even if useExistingCampaignForPlanning refetches
+  // and finds has_plan: true (which happens after our own mutation
+  // inserts campaign_stage_plans).
   const hasRedirected = useRef(false)
+  const wizardInteracted = useRef(false)
   useEffect(() => {
-    if (hasRedirected.current || !existingCampaign) return
+    if (hasRedirected.current || wizardInteracted.current) return
+    if (!existingCampaign) return
     if (existingCampaign.has_plan) {
       hasRedirected.current = true
       router.replace(`/campaigns/${existingCampaign.campaign_id}`)
@@ -288,7 +295,12 @@ export function CampaignCreationWizard() {
 
   const progress = ((step - 1) / (STEPS.length - 1)) * 100
 
+  function markWizardActive() {
+    wizardInteracted.current = true
+  }
+
   function handleAgreementSelect(agreementId: number) {
+    markWizardActive()
     const agreement = agreements?.find((a) => a.agreement_id === agreementId)
     if (!agreement) return
 
@@ -443,6 +455,14 @@ export function CampaignCreationWizard() {
     return (
       <div className="max-w-3xl mx-auto py-12 text-center text-muted-foreground text-sm">
         Loading campaign details...
+      </div>
+    )
+  }
+
+  if (isLinkedMode && existingCampaign?.has_plan && !wizardInteracted.current) {
+    return (
+      <div className="max-w-3xl mx-auto py-12 text-center text-muted-foreground text-sm">
+        This campaign already has a plan. Redirecting...
       </div>
     )
   }
@@ -608,7 +628,7 @@ export function CampaignCreationWizard() {
             {!agreementRequired && !state.agreement_id && (
               <Button
                 variant="outline"
-                onClick={() => setStep(2)}
+                onClick={() => { markWizardActive(); setStep(2) }}
               >
                 Continue without agreement
               </Button>
@@ -890,7 +910,7 @@ export function CampaignCreationWizard() {
 
         {step < STEPS.length ? (
           <Button
-            onClick={() => setStep((s) => Math.min(STEPS.length, s + 1))}
+            onClick={() => { markWizardActive(); setStep((s) => Math.min(STEPS.length, s + 1)) }}
             disabled={step === 1 && !canContinueFromStep1}
           >
             Next

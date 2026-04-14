@@ -59,6 +59,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isProtectedRoute = !PUBLIC_PATHS.some((p) => pathname?.startsWith(p));
 
+  const wait = (ms: number) =>
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, ms);
+    });
+
+  const isRetryableProfileError = (message: string) => {
+    const lower = message.toLowerCase();
+    return (
+      lower.includes("failed to fetch") ||
+      lower.includes("network") ||
+      lower.includes("timeout") ||
+      lower.includes("connection")
+    );
+  };
+
   const redirectToLogin = useCallback(() => {
     if (typeof window !== "undefined" && isProtectedRoute) {
       logConnectionEvent({ type: "session_lost", detail: "client-side null session redirect" });
@@ -67,15 +82,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [isProtectedRoute]);
 
   const fetchProfile = useCallback(async (userId: string) => {
-    const { data, error: profileError } = await supabase
-      .from("user_profiles")
-      .select("*")
-      .eq("user_id", userId)
-      .single();
-    if (profileError) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const { data, error: profileError } = await supabase
+        .from("user_profiles")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (!profileError) {
+        console.info("[AuthProvider] profile fetch result", {
+          userId,
+          outcome: data ? "ok" : "not_found",
+          attempt: attempt + 1,
+        });
+        return data;
+      }
+
       logConnectionEvent({ type: "api_error", detail: `profile fetch: ${profileError.message}` });
+      console.info("[AuthProvider] profile fetch result", {
+        userId,
+        outcome: "error",
+        attempt: attempt + 1,
+        message: profileError.message,
+      });
+
+      if (attempt === 0 && isRetryableProfileError(profileError.message)) {
+        await wait(250);
+        continue;
+      }
+
+      return null;
     }
-    return data;
+
+    return null;
   }, [supabase]);
 
   useEffect(() => {

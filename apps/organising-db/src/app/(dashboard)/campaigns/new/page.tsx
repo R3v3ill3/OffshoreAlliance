@@ -1,26 +1,24 @@
+"use client";
+
 import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { CampaignWizard } from "@/components/campaigns/campaign-wizard";
 import { CampaignCreationWizard } from "@/components/campaigns/planner-wizard";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 
-type SearchParams = Record<string, string | string[] | undefined>;
-
-function hasPlannerContext(searchParams: SearchParams): boolean {
+function WizardEntryPoint() {
+  const searchParams = useSearchParams();
   const plannerKeys = ["campaign_id", "agreement_id", "organiser_id", "expiry_date"];
-  return plannerKeys.some((key) => {
-    const value = searchParams[key];
-    if (Array.isArray(value)) return value.length > 0 && value[0].length > 0;
-    return typeof value === "string" && value.length > 0;
+
+  const showPlannerWizard = plannerKeys.some((key) => {
+    const value = searchParams.get(key);
+    return !!value && value.length > 0;
   });
+
+  return showPlannerWizard ? <CampaignCreationWizard /> : <CampaignWizard />;
 }
 
-export default function NewCampaignPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
-  const showPlannerWizard = hasPlannerContext(searchParams);
-
+export default function NewCampaignPage() {
   return (
     <Suspense
       fallback={
@@ -29,7 +27,7 @@ export default function NewCampaignPage({
         </div>
       }
     >
-      {showPlannerWizard ? <CampaignCreationWizard /> : <CampaignWizard />}
+      <WizardEntryPoint />
     </Suspense>
   );
 }

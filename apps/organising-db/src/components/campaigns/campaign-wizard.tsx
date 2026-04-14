@@ -247,7 +247,7 @@ export function CampaignWizard() {
   const permissionDeniedLoggedForUser = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!user || canWrite) return;
+    if (authLoading || !user || canWrite) return;
     if (permissionDeniedLoggedForUser.current === user.id) return;
     permissionDeniedLoggedForUser.current = user.id;
     console.warn("[CampaignWizard] Signed in but canWrite is false", {
@@ -458,6 +458,14 @@ export function CampaignWizard() {
     (basics.enterprise_agreement_subtype !== "replacement" || !!basics.replaced_agreement_id);
 
   // ── Guards ────────────────────────────────────────────────────────────────
+
+  if (authLoading) {
+    return (
+      <div className="flex justify-center py-16">
+        <EurekaLoadingSpinner />
+      </div>
+    );
+  }
 
   if (!user) {
     return (

@@ -743,7 +743,7 @@ export function CampaignWizard() {
             <div className="flex flex-col sm:flex-row gap-3">
               <Button asChild className="flex-1">
                 <a
-                  href={`/campaigns/${campaignId}/plan?campaign_id=${campaignId}${existingCampaign?.organiser_id ? `&organiser_id=${existingCampaign.organiser_id}` : ""}`}
+                  href={`/campaigns/new?campaign_id=${campaignId}${existingCampaign?.organiser_id ? `&organiser_id=${existingCampaign.organiser_id}` : ""}`}
                 >
                   <ExternalLink className="h-4 w-4 mr-2" />
                   Create Campaign Plan in OA Planner

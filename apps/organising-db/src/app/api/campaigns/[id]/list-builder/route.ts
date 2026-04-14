@@ -29,6 +29,9 @@ export async function GET(
     const employerId = searchParams.get("employer_id");
     const worksiteId = searchParams.get("worksite_id");
     const occupation = searchParams.get("occupation");
+    const ouId = searchParams.get("ou_id");
+    const ouType = searchParams.get("ou_type");
+    const multiUnitOnly = searchParams.get("multi_unit_only") === "true";
     const anTags = searchParams.get("an_tags")?.split(",").filter(Boolean) ?? [];
     const excludeAnTags = searchParams.get("exclude_an_tags")?.split(",").filter(Boolean) ?? [];
 
@@ -117,6 +120,44 @@ export async function GET(
       results = results.filter((w) => w.occupation?.toLowerCase().includes(q));
     }
 
+    if (ouId || ouType) {
+      const workerIdsBeforeOu = results.map((w) => w.worker_id);
+      if (workerIdsBeforeOu.length > 0) {
+        let ouQuery = supabase
+          .from("campaign_worker_ou")
+          .select(
+            `worker_id, ou:campaign_organising_units!inner(ou_id, campaign_id, ou_type)`
+          )
+          .in("worker_id", workerIdsBeforeOu);
+
+        if (ouId) {
+          const numericOuId = Number(ouId);
+          if (Number.isFinite(numericOuId)) {
+            ouQuery = ouQuery.eq("ou_id", numericOuId);
+          }
+        }
+
+        if (ouType && ouType !== "__all__") {
+          ouQuery = ouQuery.eq("ou.ou_type", ouType);
+        }
+
+        const { data: ouRows, error: ouErr } = await ouQuery;
+        if (ouErr) throw ouErr;
+        const allowedWorkers = new Set(
+          (ouRows ?? [])
+            .filter((row: Record<string, unknown>) => {
+              const ou = row.ou as { campaign_id?: number } | { campaign_id?: number }[] | null;
+              const joined = Array.isArray(ou) ? ou[0] : ou;
+              return joined?.campaign_id === campaignId;
+            })
+            .map((row: Record<string, unknown>) => row.worker_id as number)
+        );
+        results = results.filter((w) => allowedWorkers.has(w.worker_id));
+      } else {
+        results = [];
+      }
+    }
+
     const workerIds = results.map((w) => w.worker_id);
 
     if (anTags.length > 0 && workerIds.length > 0) {
@@ -139,6 +180,43 @@ export async function GET(
       if (exclErr) throw exclErr;
       const excludedSet = new Set((exclRows ?? []).map((r) => r.worker_id));
       results = results.filter((w) => !excludedSet.has(w.worker_id));
+    }
+
+    workerIds = results.map((w) => w.worker_id);
+
+    let summaryByWorker = new Map<number, { unit_count: number; is_multi_unit_member: boolean }>();
+    if (workerIds.length > 0) {
+      const { data: summaryRows, error: summaryErr } = await supabase
+        .from("campaign_worker_unit_membership_summary")
+        .select("worker_id, unit_count, is_multi_unit_member")
+        .eq("campaign_id", campaignId)
+        .in("worker_id", workerIds);
+      if (summaryErr) throw summaryErr;
+      summaryByWorker = new Map(
+        (summaryRows ?? []).map((r) => [
+          r.worker_id,
+          {
+            unit_count: r.unit_count ?? 0,
+            is_multi_unit_member: !!r.is_multi_unit_member,
+          },
+        ])
+      );
+    }
+
+    results = results.map((w) => {
+      const summary = summaryByWorker.get(w.worker_id) ?? {
+        unit_count: 0,
+        is_multi_unit_member: false,
+      };
+      return {
+        ...w,
+        unit_count: summary.unit_count,
+        is_multi_unit_member: summary.is_multi_unit_member,
+      };
+    });
+
+    if (multiUnitOnly) {
+      results = results.filter((w) => w.is_multi_unit_member);
     }
 
     return NextResponse.json({ success: true, data: results });

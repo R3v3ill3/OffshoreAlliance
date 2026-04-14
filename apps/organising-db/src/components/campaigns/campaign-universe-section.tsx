@@ -37,6 +37,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Building2, MapPin, Plus, Trash2, Users } from "lucide-react";
+import { CampaignUnitsSection } from "@/components/campaigns/campaign-units-section";
 
 const SCOPE_KEYS = {
   employers: (cid: string) => ["campaign-universe-employers", cid] as const,
@@ -468,7 +469,7 @@ export function CampaignUniverseSection({
       <p className="text-sm text-muted-foreground max-w-3xl">
         Campaign universe is the scope of employers, worksites, and workers for this campaign. It
         matches what you set in the campaign wizard and drives who you can add as members. Use the
-        Structure tab for organising units and leader roles.
+        campaign units section below to define and assign organising units.
       </p>
 
       {/* Employers */}
@@ -527,6 +528,18 @@ export function CampaignUniverseSection({
               </TableBody>
             </Table>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Campaign units</CardTitle>
+          <CardDescription>
+            Create units, add rule-based assignment, and flag workers who sit across multiple units.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <CampaignUnitsSection campaignId={campaignId} canWrite={canWrite} />
         </CardContent>
       </Card>
 

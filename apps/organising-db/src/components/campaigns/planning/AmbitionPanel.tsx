@@ -94,6 +94,21 @@ function currentValueHint(
   }
 
   if (category === 'leadership' || category === 'structure') {
+    const text = optionText.toLowerCase()
+    if (category === 'structure' && metric === 'count' && text.includes('organising unit')) {
+      return `Currently: ${stats.ouCount} organising units defined`
+    }
+    if (category === 'structure' && metric === 'percentage' && stats.ouCount > 0) {
+      if (text.includes('contact')) {
+        return `Currently: ${stats.ousWithContact}/${stats.ouCount} units have a contact (${Math.round((stats.ousWithContact / stats.ouCount) * 100)}%)`
+      }
+      if (text.includes('activist')) {
+        return `Currently: ${stats.ousWithActivist}/${stats.ouCount} units have an activist (${Math.round((stats.ousWithActivist / stats.ouCount) * 100)}%)`
+      }
+      if (text.includes('delegate')) {
+        return `Currently: ${stats.ousWithDelegate}/${stats.ouCount} units have a delegate (${Math.round((stats.ousWithDelegate / stats.ouCount) * 100)}%)`
+      }
+    }
     if (metric === 'count')
       return `Currently: ${stats.delegates} delegates, ${stats.activists} activists, ${stats.contacts} contacts`
   }

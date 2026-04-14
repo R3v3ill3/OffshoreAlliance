@@ -1,10 +1,12 @@
+/**
+ * BACKUP — original draft-prompts.ts prior to SOC framework integration.
+ * Captured from git HEAD on 2026-04-14.
+ *
+ * This file is not imported anywhere. It exists solely as a reference
+ * so the original prompts can be restored or compared against.
+ */
+
 import type { CommsDraftRequest } from '@/types/planner-types'
-import {
-  SOC_FRAMEWORK,
-  SOC_FRAMEWORK_PREAMBLE_EMAIL,
-  SOC_FRAMEWORK_PREAMBLE_SMS,
-  SOC_FRAMEWORK_PREAMBLE_PHONE,
-} from './soc-framework'
 
 const OA_CONTEXT = `You are a communications specialist for the Offshore Alliance (OA), a joint union initiative between the AWU (Australian Workers' Union) and the MUA (Maritime Union of Australia) operating in Australia's offshore oil and gas sector.
 
@@ -27,8 +29,7 @@ You are generating a campaign email draft. The email should:
 - Be formatted in both HTML and plain text
 
 Standard variables available: {{first_name}}, {{last_name}}, {{agreement_name}}, {{employer_name}}, {{worksite_name}}, {{organiser_name}}, {{organiser_phone}}, {{staff_name}}, {{staff_email}}, {{staff_phone}}, {{staff_role}}
-${SOC_FRAMEWORK_PREAMBLE_EMAIL}
-${SOC_FRAMEWORK}
+
 Respond in JSON format:
 {
   "subject": "string",
@@ -56,8 +57,7 @@ You are generating an SMS message for a campaign communication via the Yabbr SMS
 - NOT include HTML or rich formatting
 
 Standard variables: {{first_name}}, {{agreement_name}}, {{organiser_name}}, {{staff_name}}, {{staff_email}}, {{staff_phone}}, {{staff_role}}
-${SOC_FRAMEWORK_PREAMBLE_SMS}
-${SOC_FRAMEWORK}
+
 Respond in JSON format:
 {
   "body_text": "string (the SMS message)",
@@ -74,15 +74,19 @@ Respond in JSON format:
 export function buildPhoneScriptPrompt(request: CommsDraftRequest): { system: string; user: string } {
   const system = `${OA_CONTEXT}
 
-You are generating a phone call script for an organiser making 1-on-1 calls to workers.
-${SOC_FRAMEWORK_PREAMBLE_PHONE}
-${SOC_FRAMEWORK}
+You are generating a phone call script for an organiser making 1-on-1 calls to workers. The script should follow the Structured Organising Conversation (SOC) methodology:
+
+1. OPENER: Brief, friendly introduction establishing who you are and why you're calling
+2. LISTEN: Open-ended question to understand the worker's situation and concerns
+3. AGITATE: Connect their concerns to the broader campaign issue
+4. KEY POINTS: 2-3 specific talking points relevant to the campaign stage and tone
+5. INOCULATE: Pre-empt likely employer counter-arguments with factual responses
+6. CALL TO ACTION: Specific ask appropriate to the campaign stage
+7. CLOSE: Next steps, how to stay in touch, thank them
+
 The script should:
 - Feel natural and conversational, not robotic
-- Structure sections around the SOC steps (Introduction & Rapport, Issues, Educate, Ask, Close) — using clear section headings
-- Use the AHA framework (Agitate, Hope, Action) within the Educate section to build momentum
-- Include suggested responses to common objections using the EAR framework (Explore, Acknowledge, Redirect)
-- Include Inoculation guidance in the Close section where appropriate
+- Include suggested responses to common objections
 - Be appropriate for the campaign stage and selected tone
 - Include notes/tips in [square brackets] for the organiser
 - Use {{variable_name}} for personalisation

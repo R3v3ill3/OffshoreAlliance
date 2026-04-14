@@ -1,0 +1,73 @@
+---
+description: Structured Organising Conversation (SOC) framework — context for generating or modifying campaign communications (emails, SMS, phone scripts).
+globs:
+  - apps/organising-db/src/lib/prompts/**
+  - apps/organising-db/src/components/campaigns/*comms*
+  - apps/organising-db/src/components/campaigns/*send*
+  - apps/organising-db/src/components/campaigns/email-wizard/**
+  - apps/organising-db/src/components/campaigns/planning/DraftGeneratorCard*
+  - apps/organising-db/src/app/api/generate-draft/**
+  - apps/organising-db/src/app/api/email-wizard/**
+  - apps/organising-db/src/app/api/templates/**
+---
+
+# Structured Organising Conversation (SOC) Framework
+
+All campaign communications — emails, SMS messages, and phone scripts — are grounded in the Structured Organising Conversation model. This framework describes **how organisers build relationships and move workers to action**. It is contextual background, not a rigid template: a single email may only touch on one or two steps, an SMS may carry just the "Action" moment, while a phone script may walk through the full flow.
+
+## The 5 Steps
+
+### 1. Introduction & Rapport Building
+- Brief introductory statement about who you are and why you're reaching out.
+- Questions of curiosity — make the person feel comfortable and that you are genuinely interested in what they think and have to say.
+
+### 2. Issues
+- Discover what they care about.
+- Ask questions to find out what is going on for them at work.
+- Is there something they would like to be different?
+
+### 3. Educate
+Take the issue they care about and educate them on how being union would help make a difference. This step uses the **AHA framework** — sometimes it takes all three steps to reach the "aha!" moment:
+
+- **Agitate** — "How can we change this? What would it be like if that issue was fixed?"
+- **Hope** — "Do you think we could change things if we …? What if we stood together on this?"
+- **Action** — "Being union, standing together could help."
+
+### 4. Ask
+Ask them to do something specific — be concrete about what it means to be part of the union plan. When the worker raises an objection, use the **EAR framework**:
+
+- **Explore** — Ask a question to find out *why* they object to what you've suggested.
+- **Acknowledge** — Validate how they feel.
+- **Redirect** — Bring the conversation back to their issue: "What will change if we don't stand together?"
+
+### 5. Close
+Finish on a good note, whatever the outcome — you may need to talk to them again. Optionally use **Inoculation**:
+
+- If they decide to join, ask how they think their manager will react.
+- Take the sting out of it by reassuring them that this is a normal reaction.
+
+## Applying the Framework to Drafts
+
+When generating or editing communications, consider:
+
+| Signal | Where to look |
+|--------|---------------|
+| Campaign stage (1–6) | `stage_number` / `stage_name` in the draft request |
+| Campaign type & subtype | `campaign_type`, `enterprise_agreement_subtype` |
+| Tone & audience | `wtp_selections.tone`, `wtp_selections.audience` |
+| Engagement intensity | `wtp_selections.engagement_intensity` |
+| Custom instructions | `custom_instructions` free-text field |
+| Reference templates | `template_examples` array |
+
+**Do not** attempt to reproduce all 5 SOC steps or both sub-frameworks in every draft. Instead, use the framework to:
+- Choose the right emotional register (agitate vs. hope vs. reassurance).
+- Shape the call to action to match the campaign stage.
+- Anticipate and pre-empt objections when the audience is likely sceptical.
+- Decide whether inoculation language is appropriate (e.g., early-stage outreach to non-members).
+
+## Key Files
+
+- `apps/organising-db/src/lib/prompts/soc-framework.ts` — canonical framework text exported for inclusion in AI system prompts.
+- `apps/organising-db/src/lib/prompts/draft-prompts.ts` — prompt builders for email, SMS, and phone script that consume the framework.
+- `apps/organising-db/src/app/api/generate-draft/route.ts` — API route that calls Claude with the built prompts.
+- `apps/organising-db/src/types/planner-types.ts` — `CommsDraftRequest` shape including stage, tone, audience, and custom instructions.

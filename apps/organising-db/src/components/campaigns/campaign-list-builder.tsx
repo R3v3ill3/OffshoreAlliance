@@ -66,6 +66,8 @@ interface WorkerRow {
   oa_leader_role: string | null;
   membership_status: string | null;
   action_network_id: string | null;
+  unit_count?: number;
+  is_multi_unit_member?: boolean;
 }
 
 interface EmployerOption {
@@ -81,6 +83,12 @@ interface WorksiteOption {
 interface AnTagOption {
   an_tag_id: string;
   an_tag_name: string;
+}
+
+interface UnitOption {
+  ou_id: number;
+  name: string;
+  ou_type: string;
 }
 
 const MEMBERSHIP_OPTIONS = [
@@ -111,6 +119,9 @@ export function CampaignListBuilder({
   const [employerFilter, setEmployerFilter] = useState<string>("");
   const [worksiteFilter, setWorksiteFilter] = useState<string>("");
   const [occupationSearch, setOccupationSearch] = useState("");
+  const [ouFilter, setOuFilter] = useState<string>("");
+  const [ouTypeFilter, setOuTypeFilter] = useState<string>("");
+  const [multiUnitOnly, setMultiUnitOnly] = useState(false);
   const [includeAnTags, setIncludeAnTags] = useState<string[]>([]);
   const [excludeAnTags, setExcludeAnTags] = useState<string[]>([]);
   const [showAnTags, setShowAnTags] = useState(false);
@@ -160,6 +171,20 @@ export function CampaignListBuilder({
           row.worksites as { worksite_name: string } | null
         )?.worksite_name ?? "Unknown",
       })) as WorksiteOption[];
+    },
+    enabled: !!user,
+  });
+
+  const { data: units = [] } = useQuery({
+    queryKey: ["campaign-units", numericId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campaign_organising_units")
+        .select("ou_id, name, ou_type")
+        .eq("campaign_id", numericId)
+        .order("name");
+      if (error) throw error;
+      return (data ?? []) as UnitOption[];
     },
     enabled: !!user,
   });
@@ -227,6 +252,9 @@ export function CampaignListBuilder({
       roleFilter,
       employerFilter,
       worksiteFilter,
+      ouFilter,
+      ouTypeFilter,
+      multiUnitOnly,
       occupationSearch,
       includeAnTags,
       excludeAnTags,
@@ -238,6 +266,9 @@ export function CampaignListBuilder({
       if (roleFilter.length) params.set("roles", roleFilter.join(","));
       if (employerFilter) params.set("employer_id", employerFilter);
       if (worksiteFilter) params.set("worksite_id", worksiteFilter);
+      if (ouFilter) params.set("ou_id", ouFilter);
+      if (ouTypeFilter) params.set("ou_type", ouTypeFilter);
+      if (multiUnitOnly) params.set("multi_unit_only", "true");
       if (occupationSearch.trim())
         params.set("occupation", occupationSearch.trim());
       if (includeAnTags.length)
@@ -459,7 +490,49 @@ export function CampaignListBuilder({
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-medium">Campaign unit</Label>
+              <Select value={ouFilter} onValueChange={setOuFilter}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="All units" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All units</SelectItem>
+                  {units.map((u) => (
+                    <SelectItem key={u.ou_id} value={String(u.ou_id)}>
+                      {u.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-medium">Unit type</Label>
+              <Select value={ouTypeFilter} onValueChange={setOuTypeFilter}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="All unit types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All types</SelectItem>
+                  {[...new Set(units.map((u) => u.ou_type))].map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {type.replace(/_/g, " ")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={multiUnitOnly}
+              onCheckedChange={(v) => setMultiUnitOnly(v === true)}
+            />
+            Show only workers assigned to multiple units
+          </label>
 
           {/* Tier 2: AN Tags (expandable) */}
           <div className="border rounded-md">
@@ -613,6 +686,9 @@ export function CampaignListBuilder({
                           roles: roleFilter.length > 0 ? roleFilter : undefined,
                           employer_id: employerFilter || undefined,
                           worksite_id: worksiteFilter || undefined,
+                          ou_id: ouFilter || undefined,
+                          ou_type: ouTypeFilter || undefined,
+                          multi_unit_only: multiUnitOnly || undefined,
                           occupation: occupationSearch || undefined,
                           an_tags: includeAnTags.length > 0 ? includeAnTags : undefined,
                           exclude_an_tags: excludeAnTags.length > 0 ? excludeAnTags : undefined,
@@ -697,6 +773,7 @@ export function CampaignListBuilder({
                     <TableHead>Employer</TableHead>
                     <TableHead>Worksite</TableHead>
                     <TableHead>Role</TableHead>
+                    <TableHead>Units</TableHead>
                     <TableHead className="w-16">Channels</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -730,6 +807,16 @@ export function CampaignListBuilder({
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs">{w.unit_count ?? 0}</span>
+                          {w.is_multi_unit_member ? (
+                            <Badge variant="warning" className="text-[10px]">
+                              multi
+                            </Badge>
+                          ) : null}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">

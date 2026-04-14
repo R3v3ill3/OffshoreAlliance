@@ -17,7 +17,11 @@ export interface CampaignCurrentStats {
   contacts: number
   bargainingReps: number
   ouCount: number
+  ousWithContact: number
+  ousWithActivist: number
   ousWithDelegate: number
+  unitAssignments: number
+  multiUnitMembers: number
   phoneCount: number
   emailCount: number
   phonePct: number
@@ -36,7 +40,11 @@ const EMPTY_STATS: CampaignCurrentStats = {
   contacts: 0,
   bargainingReps: 0,
   ouCount: 0,
+  ousWithContact: 0,
+  ousWithActivist: 0,
   ousWithDelegate: 0,
+  unitAssignments: 0,
+  multiUnitMembers: 0,
   phoneCount: 0,
   emailCount: 0,
   phonePct: 0,
@@ -139,6 +147,33 @@ export function useCampaignCurrentStats(campaignId: number | string) {
     staleTime: 30_000,
   })
 
+  const { data: unitSummary = [] } = useQuery({
+    queryKey: ['campaign-worker-unit-summary', cid],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('campaign_worker_unit_membership_summary')
+        .select('worker_id, unit_count, is_multi_unit_member')
+        .eq('campaign_id', cid)
+      if (error) throw error
+      return data ?? []
+    },
+    staleTime: 30_000,
+  })
+
+  const { data: ouCoverage } = useQuery({
+    queryKey: ['campaign-ou-coverage', cid],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('campaign_ou_coverage_summary')
+        .select('ous_with_contact, ous_with_activist, ous_with_delegate')
+        .eq('campaign_id', cid)
+        .single()
+      if (error && error.code !== 'PGRST116') throw error
+      return data
+    },
+    staleTime: 30_000,
+  })
+
   const stats = useMemo((): CampaignCurrentStats => {
     if (!campaign) return EMPTY_STATS
 
@@ -196,13 +231,17 @@ export function useCampaignCurrentStats(campaignId: number | string) {
       contacts,
       bargainingReps,
       ouCount: ous.length,
-      ousWithDelegate: ouWithDelegate.size,
+      ousWithContact: ouCoverage?.ous_with_contact ?? 0,
+      ousWithActivist: ouCoverage?.ous_with_activist ?? 0,
+      ousWithDelegate: ouCoverage?.ous_with_delegate ?? ouWithDelegate.size,
+      unitAssignments: ouAssign.length,
+      multiUnitMembers: unitSummary.filter((r) => r.is_multi_unit_member).length,
       phoneCount,
       emailCount,
       phonePct: pct1(phoneCount, named),
       emailPct: pct1(emailCount, named),
     }
-  }, [campaign, members, ous, ouAssign])
+  }, [campaign, members, ous, ouAssign, unitSummary, ouCoverage])
 
   return stats
 }

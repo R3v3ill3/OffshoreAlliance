@@ -66,11 +66,16 @@ export function CampaignReportingCharts({ campaignId }: { campaignId: string }) 
         </Card>
         <Card>
           <CardHeader className="py-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">OUs with delegate</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Unit assignment</CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
-            <p className="text-2xl font-semibold">{stats.ousWithDelegate}</p>
-            <p className="text-xs text-muted-foreground">of {stats.ouCount} organising units</p>
+            <p className="text-2xl font-semibold">{stats.unitAssignments}</p>
+            <p className="text-xs text-muted-foreground">
+              assignment rows across {stats.ouCount} units
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {stats.multiUnitMembers} workers are multi-unit (campaign totals are distinct workers)
+            </p>
           </CardContent>
         </Card>
       </div>

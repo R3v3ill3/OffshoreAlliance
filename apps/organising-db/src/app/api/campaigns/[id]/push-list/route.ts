@@ -30,6 +30,9 @@ interface PushListBody {
     roles?: string[]
     employer_id?: string
     worksite_id?: string
+    ou_id?: string
+    ou_type?: string
+    multi_unit_only?: boolean
     occupation?: string
     an_tags?: string[]
     exclude_an_tags?: string[]
@@ -124,6 +127,41 @@ export async function POST(
       workers = workers.filter((w) => w.occupation?.toLowerCase().includes(q))
     }
 
+    if (filters.ou_id || filters.ou_type) {
+      const workerIdsBeforeOu = workers.map((w) => w.worker_id)
+      if (workerIdsBeforeOu.length > 0) {
+        let ouQuery = supabase
+          .from('campaign_worker_ou')
+          .select('worker_id, ou:campaign_organising_units!inner(ou_id, campaign_id, ou_type)')
+          .in('worker_id', workerIdsBeforeOu)
+
+        if (filters.ou_id && filters.ou_id !== '__all__') {
+          const numericOuId = Number(filters.ou_id)
+          if (Number.isFinite(numericOuId)) {
+            ouQuery = ouQuery.eq('ou_id', numericOuId)
+          }
+        }
+        if (filters.ou_type && filters.ou_type !== '__all__') {
+          ouQuery = ouQuery.eq('ou.ou_type', filters.ou_type)
+        }
+
+        const { data: ouRows, error: ouErr } = await ouQuery
+        if (ouErr) throw ouErr
+        const allowed = new Set(
+          (ouRows ?? [])
+            .filter((row: Record<string, unknown>) => {
+              const ou = row.ou as { campaign_id?: number } | { campaign_id?: number }[] | null
+              const joined = Array.isArray(ou) ? ou[0] : ou
+              return joined?.campaign_id === campaignId
+            })
+            .map((row: Record<string, unknown>) => row.worker_id as number),
+        )
+        workers = workers.filter((w) => allowed.has(w.worker_id))
+      } else {
+        workers = []
+      }
+    }
+
     let workerIds = workers.map((w) => w.worker_id)
 
     if (filters.an_tags?.length && workerIds.length > 0) {
@@ -144,6 +182,22 @@ export async function POST(
         .in('an_tag_id', filters.exclude_an_tags)
       const excludedSet = new Set((exclRows ?? []).map((r) => r.worker_id))
       workers = workers.filter((w) => !excludedSet.has(w.worker_id))
+    }
+
+    if (filters.multi_unit_only && workers.length > 0) {
+      const workerIdsAfterFilters = workers.map((w) => w.worker_id)
+      const { data: summaryRows, error: summaryErr } = await supabase
+        .from('campaign_worker_unit_membership_summary')
+        .select('worker_id, is_multi_unit_member')
+        .eq('campaign_id', campaignId)
+        .in('worker_id', workerIdsAfterFilters)
+      if (summaryErr) throw summaryErr
+      const multiSet = new Set(
+        (summaryRows ?? [])
+          .filter((row) => row.is_multi_unit_member)
+          .map((row) => row.worker_id),
+      )
+      workers = workers.filter((w) => multiSet.has(w.worker_id))
     }
 
     if (selectedWorkerIds?.length) {

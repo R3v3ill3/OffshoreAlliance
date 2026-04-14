@@ -9,6 +9,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from 'recharts'
+import type { PieLabelRenderProps } from 'recharts'
 import type { CallCampaignSummary } from '@/types/planner-types'
 
 interface CallCampaignReportingProps {
@@ -155,7 +156,7 @@ export function CallCampaignReporting({ campaignId }: CallCampaignReportingProps
                     cx="50%"
                     cy="50%"
                     outerRadius={80}
-                    label={(props: Record<string, unknown>) => `${props.name ?? ''} ${(((props.percent as number) ?? 0) * 100).toFixed(0)}%`}
+                    label={(props: PieLabelRenderProps) => `${props.name ?? ''} ${((props.percent ?? 0) * 100).toFixed(0)}%`}
                   >
                     {dispositionPieData.map((_, i) => (
                       <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
@@ -184,7 +185,7 @@ export function CallCampaignReporting({ campaignId }: CallCampaignReportingProps
                     cx="50%"
                     cy="50%"
                     outerRadius={80}
-                    label={(props: Record<string, unknown>) => `${props.name ?? ''} ${(((props.percent as number) ?? 0) * 100).toFixed(0)}%`}
+                    label={(props: PieLabelRenderProps) => `${props.name ?? ''} ${((props.percent ?? 0) * 100).toFixed(0)}%`}
                   >
                     <Cell fill="#22c55e" />
                     <Cell fill="#f59e0b" />

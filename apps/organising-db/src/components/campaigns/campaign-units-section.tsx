@@ -601,6 +601,11 @@ export function CampaignUnitsSection({
   const allFilteredSelected =
     filteredAssignableWorkers.length > 0 &&
     filteredAssignableWorkers.every((w) => selectedAssignWorkerIds.has(w.worker_id));
+  const selectedAlreadyAssignedCount = useMemo(
+    () => [...selectedAssignWorkerIds].filter((id) => assignTargetAssignedWorkerIds.has(id)).length,
+    [selectedAssignWorkerIds, assignTargetAssignedWorkerIds]
+  );
+  const selectedNewCount = selectedCount - selectedAlreadyAssignedCount;
 
   const toggleSelectFiltered = () => {
     setSelectedAssignWorkerIds((prev) => {
@@ -1218,6 +1223,18 @@ export function CampaignUnitsSection({
             </div>
 
             <div className="rounded-md border max-h-80 overflow-auto">
+              <div className="sticky top-0 z-10 border-b bg-muted/80 backdrop-blur px-3 py-2">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <Badge variant="secondary">{selectedCount} selected</Badge>
+                  <Badge variant="outline">{filteredAssignableWorkers.length} in view</Badge>
+                  <Badge variant={selectedAlreadyAssignedCount > 0 ? "warning" : "outline"}>
+                    {selectedAlreadyAssignedCount} already assigned
+                  </Badge>
+                  <Badge variant={selectedNewCount > 0 ? "info" : "outline"}>
+                    {selectedNewCount} new assignments
+                  </Badge>
+                </div>
+              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -1286,7 +1303,7 @@ export function CampaignUnitsSection({
               <p className="text-xs text-muted-foreground">{assignFeedback}</p>
             )}
             <p className="text-xs text-muted-foreground">
-              {selectedCount} selected • {pendingConflictCount > 0 ? `${pendingConflictCount} already assigned` : "No conflicts detected yet"}
+              {selectedCount} selected • {selectedAlreadyAssignedCount} already assigned • {selectedNewCount} new
             </p>
           </div>
           <DialogFooter>

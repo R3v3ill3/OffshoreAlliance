@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
@@ -32,6 +32,9 @@ function ratingBgClass(cumulative: number | null | undefined): string {
   if (cumulative < 4) return "bg-amber-600/35";
   return "bg-red-600/35";
 }
+
+const wallChartGridClass =
+  "grid grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))] gap-2 print:grid-cols-[repeat(auto-fill,minmax(6.5rem,1fr))] print:gap-1.5";
 
 export function CampaignWallChart({
   campaignId,
@@ -126,6 +129,46 @@ export function CampaignWallChart({
     return m;
   }, [ratingSummary]);
 
+  const workerNameById = useMemo(() => {
+    const m = new Map<number, { first: string; last: string }>();
+    for (const row of members as { worker_id: number; worker: unknown }[]) {
+      const wr = row.worker;
+      const w = (Array.isArray(wr) ? wr[0] : wr) as { first_name: string; last_name: string } | null;
+      if (w) m.set(row.worker_id, { first: w.first_name, last: w.last_name });
+    }
+    return m;
+  }, [members]);
+
+  const compareWorkerIds = useCallback(
+    (a: number, b: number) => {
+      const na = workerNameById.get(a);
+      const nb = workerNameById.get(b);
+      const lastCmp = (na?.last ?? "").localeCompare(nb?.last ?? "", undefined, { sensitivity: "base" });
+      if (lastCmp !== 0) return lastCmp;
+      const firstCmp = (na?.first ?? "").localeCompare(nb?.first ?? "", undefined, { sensitivity: "base" });
+      if (firstCmp !== 0) return firstCmp;
+      return a - b;
+    },
+    [workerNameById]
+  );
+
+  const assignedWorkerIds = useMemo(() => {
+    const s = new Set<number>();
+    if ((ous as { ou_id: number }[]).length === 0) return s;
+    for (const a of ouAssign as { worker_id: number }[]) {
+      s.add(a.worker_id);
+    }
+    return s;
+  }, [ous, ouAssign]);
+
+  const unassignedWorkerIds = useMemo(() => {
+    const ids = (members as { worker_id: number }[])
+      .map((row) => row.worker_id)
+      .filter((id) => !assignedWorkerIds.has(id));
+    ids.sort(compareWorkerIds);
+    return ids;
+  }, [members, assignedWorkerIds, compareWorkerIds]);
+
   const workersByOu = useMemo(() => {
     const map = new Map<number, number[]>();
     for (const ou of ous as { ou_id: number }[]) {
@@ -135,8 +178,11 @@ export function CampaignWallChart({
       const list = map.get(a.ou_id);
       if (list) list.push(a.worker_id);
     }
+    for (const list of map.values()) {
+      list.sort(compareWorkerIds);
+    }
     return map;
-  }, [ous, ouAssign]);
+  }, [ous, ouAssign, compareWorkerIds]);
 
   const selectedRow = useMemo(() => {
     if (selectedWorkerId == null) return undefined;
@@ -261,28 +307,32 @@ export function CampaignWallChart({
       memberRoleName: mt?.role_name,
     });
 
+    const displayName = w ? `${w.first_name} ${w.last_name}` : String(workerId);
+    const titleRatings = `Cumulative ${cum ?? "—"}, last activity ${last ?? "—"}`;
+
     return (
       <button
         key={workerId}
         type="button"
         disabled={!canWrite}
+        title={`${displayName}. ${titleRatings}`}
         onClick={() => canWrite && setSelectedWorkerId(workerId)}
-        className={`text-left text-xs p-2 rounded border w-full min-h-[52px] flex flex-col gap-0.5 ${ratingBgClass(cum)} ${
-          canWrite ? "cursor-pointer hover:opacity-90" : ""
-        }`}
+        className={`text-left text-[11px] leading-tight p-1.5 rounded border min-h-[3.25rem] flex flex-col gap-0.5 justify-between ${ratingBgClass(
+          cum
+        )} ${canWrite ? "cursor-pointer hover:opacity-90" : ""}`}
       >
-        <span className="font-medium line-clamp-2">
-          {w ? `${w.first_name} ${w.last_name}` : workerId}
+        <span className="font-medium line-clamp-2 break-words">{displayName}</span>
+        <span className="text-[9px] text-muted-foreground tabular-nums">
+          c{cum ?? "—"} · L{last ?? "—"}
         </span>
-        <span className="text-[10px] text-muted-foreground">
-          cum {cum ?? "—"} · last {last ?? "—"}
-        </span>
-        <div className="flex items-center gap-1 mt-0.5">
+        <div className="flex items-center gap-0.5 flex-wrap">
           {row?.oa_leader_role && (
-            <span className="text-[10px] uppercase bg-background/60 px-1 rounded">{row.oa_leader_role}</span>
+            <span className="text-[9px] uppercase bg-background/60 px-0.5 rounded leading-none py-px">
+              {row.oa_leader_role}
+            </span>
           )}
           {isMemberLike && (
-            <Image src="/eurekaflag.gif" alt="Member" width={16} height={12} className="rounded-sm" unoptimized />
+            <Image src="/eurekaflag.gif" alt="Member" width={14} height={10} className="rounded-sm shrink-0" unoptimized />
           )}
         </div>
       </button>
@@ -294,33 +344,49 @@ export function CampaignWallChart({
       <CardHeader>
         <CardTitle className="text-lg">Wall chart</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Colours: blue &lt;2, green 2–&lt;3, orange 3–&lt;4, red ≥4, grey unrated. Click a name to edit (staff
-          only).
+          Colours: blue &lt;2, green 2–&lt;3, orange 3–&lt;4, red ≥4, grey unrated. Cells show c = cumulative
+          and L = last activity (hover for full labels).{" "}
+          <span className="text-foreground/90">
+            Campaign-level unmapped slots are unnamed gaps from the worker estimate; unassigned are named members
+            not placed in an organising unit yet.
+          </span>{" "}
+          Click a name to edit (staff only).
         </p>
       </CardHeader>
       <CardContent className="space-y-8 print:space-y-4">
         {campaignGreySlots > 0 && (
           <div>
             <p className="text-sm font-medium mb-2">Campaign-level unmapped ({campaignGreySlots})</p>
-            <div className="flex flex-wrap gap-1">
+            <div className={`${wallChartGridClass} print:break-inside-avoid`}>
               {Array.from({ length: Math.min(campaignGreySlots, 40) }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-12 w-24 rounded border border-dashed bg-zinc-300/50 dark:bg-zinc-600/50 text-[10px] flex items-center justify-center text-muted-foreground"
+                  className="min-h-[3.25rem] rounded border border-dashed bg-zinc-300/50 dark:bg-zinc-600/50 text-[10px] flex items-center justify-center text-muted-foreground"
                 >
                   —
                 </div>
               ))}
-              {campaignGreySlots > 40 && (
-                <span className="text-xs text-muted-foreground self-center">+{campaignGreySlots - 40} more</span>
-              )}
             </div>
+            {campaignGreySlots > 40 && (
+              <p className="text-xs text-muted-foreground mt-2">+{campaignGreySlots - 40} more unmapped slots</p>
+            )}
+          </div>
+        )}
+
+        {unassignedWorkerIds.length > 0 && (
+          <div className="space-y-2 print:break-inside-avoid">
+            <p className="text-sm font-medium">
+              Unassigned workers
+              <span className="text-muted-foreground font-normal text-xs ml-2">{unassignedWorkerIds.length}</span>
+            </p>
+            <div className={wallChartGridClass}>{unassignedWorkerIds.map((wid) => renderCell(wid))}</div>
           </div>
         )}
 
         {ous.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Add organising units to group workers on the wall chart, or use campaign-level unmapped cells above.
+            Add organising units to group workers into frames on the wall chart. Until then, members appear under
+            unassigned above (if any).
           </p>
         ) : (
           (ous as { ou_id: number; name: string; total_workers_estimated: number | null }[]).map((ou) => {
@@ -329,7 +395,7 @@ export function CampaignWallChart({
             const placeholders = Math.max(0, est - ids.length);
 
             return (
-              <div key={ou.ou_id} className="space-y-2">
+              <div key={ou.ou_id} className="space-y-2 print:break-inside-avoid">
                 <p className="text-sm font-medium">
                   {ou.name}
                   <span className="text-muted-foreground font-normal text-xs ml-2">
@@ -337,18 +403,18 @@ export function CampaignWallChart({
                     {est > 0 && ` / ${est} est.`}
                   </span>
                 </p>
-                <div className="flex flex-wrap gap-2">
+                <div className={wallChartGridClass}>
                   {ids.map((wid) => renderCell(wid))}
                   {Array.from({ length: Math.min(placeholders, 24) }).map((_, i) => (
                     <div
                       key={`p-${i}`}
-                      className="h-[52px] w-[140px] rounded border border-dashed bg-zinc-300/50 dark:bg-zinc-600/50"
+                      className="min-h-[3.25rem] rounded border border-dashed bg-zinc-300/50 dark:bg-zinc-600/50"
                     />
                   ))}
-                  {placeholders > 24 && (
-                    <span className="text-xs text-muted-foreground self-center">+{placeholders - 24}</span>
-                  )}
                 </div>
+                {placeholders > 24 && (
+                  <p className="text-xs text-muted-foreground">+{placeholders - 24} more placeholder cells</p>
+                )}
               </div>
             );
           })

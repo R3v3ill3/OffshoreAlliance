@@ -387,7 +387,8 @@ export interface CallOutcomeDefinition {
 }
 
 export interface CallScriptWithSections extends CallScript {
-  sections: CallScriptSection[]
+  sections?: CallScriptSection[]
+  call_script_sections?: CallScriptSection[]
 }
 
 export interface CallListWithStats extends CallList {

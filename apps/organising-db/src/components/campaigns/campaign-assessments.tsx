@@ -348,10 +348,6 @@ export function CampaignAssessmentsSection({
         | { display_name?: string }
         | null
         | undefined;
-      const memberRoleType = worker.member_role_type as
-        | { display_name?: string }
-        | null
-        | undefined;
       const canonicalOccupation = worker.canonical_occupation as
         | { canonical_name?: string }
         | null

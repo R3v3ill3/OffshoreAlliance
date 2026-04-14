@@ -78,7 +78,12 @@ SET member_role_type_id = 7  -- Delegate
 WHERE engagement_level = 'delegate'
   AND (member_role_type_id IS NULL OR member_role_type_id IN (3, 8));
 
--- ── 5. Drop redundant columns ────────────────────────────────
+-- ── 5. Drop dependent views BEFORE dropping columns ──────────
+
+DROP VIEW IF EXISTS campaign_ou_coverage_summary;
+DROP VIEW IF EXISTS workers_view;
+
+-- ── 6. Drop redundant columns ────────────────────────────────
 
 ALTER TABLE campaign_worker_membership
   DROP COLUMN IF EXISTS oa_leader_role;
@@ -89,10 +94,9 @@ ALTER TABLE workers
 ALTER TABLE workers
   DROP COLUMN IF EXISTS engagement_score;
 
--- ── 6. Update dependent views ────────────────────────────────
+-- ── 7. Recreate dependent views ──────────────────────────────
 
--- 6a. campaign_ou_coverage_summary: replace oa_leader_role with
--- member_role_types join via workers
+-- 7a. campaign_ou_coverage_summary: uses member_role_types join
 CREATE OR REPLACE VIEW campaign_ou_coverage_summary
 WITH (security_invoker = true)
 AS
@@ -131,7 +135,9 @@ FROM campaigns c
 LEFT JOIN campaign_organising_units ou ON ou.campaign_id = c.campaign_id
 GROUP BY c.campaign_id;
 
--- 6b. Update workers_view to remove engagement_level/engagement_score
+GRANT SELECT ON campaign_ou_coverage_summary TO authenticated;
+
+-- 7b. workers_view: without engagement fields, with is_bargaining_rep
 CREATE OR REPLACE VIEW workers_view
 WITH (security_invoker = true)
 AS
@@ -188,12 +194,9 @@ LEFT JOIN union_membership_types umt ON umt.union_membership_type_id = w.union_m
 LEFT JOIN unions u ON u.union_id = w.union_id
 LEFT JOIN projects p ON p.project_id = w.project_id;
 
--- 6c. Update workload_campaign_entities leader count to also
--- count workers who have a leadership role (not just task list leaders)
--- Keep existing task-list-based counting as-is for now; the view
--- references campaign_task_lists which does not use oa_leader_role.
+GRANT SELECT ON workers_view TO authenticated;
 
--- ── 7. Auto-behaviour triggers ───────────────────────────────
+-- ── 8. Auto-behaviour triggers ───────────────────────────────
 
 -- 7a. When a task list item is inserted, auto-insert a rating of 1
 -- for the linked activity (if no rating exists for that worker+activity).

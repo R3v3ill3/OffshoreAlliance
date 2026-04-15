@@ -331,7 +331,7 @@ export function PhoneWizardSteps() {
         if (!json.success) throw new Error(json.error)
         return (json.data as WorkerPreview[]).map((row) => ({
           ...row,
-          phone: (row as Record<string, unknown>).phone as string | null ?? null,
+          phone: row.phone ?? null,
           membership_status: row.membership_status ?? null,
           organising_role: row.organising_role ?? null,
         }))

@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-qu
 import { useState, useEffect, type ReactNode } from "react";
 import { AuthProvider } from "@/lib/supabase/auth-context";
 import { DeviceProvider } from "@/contexts/device-context";
-import { coordinatedRefreshSession } from "@/lib/supabase/client";
+import { createClient, coordinatedRefreshSession } from "@/lib/supabase/client";
 import { isLikelyAuthError } from "@/lib/supabase/session-recovery";
 import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
 import "../../../../sentry.client.config";
@@ -60,7 +60,7 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
       defaultOptions: {
         queries: {
           staleTime: 5 * 60 * 1000,
-          refetchOnWindowFocus: false,
+          refetchOnWindowFocus: true,
           refetchOnReconnect: true,
           retry: (failureCount, error) => {
             if (isNonRetryableStatus(error)) return false;
@@ -76,12 +76,36 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
   });
 
   useEffect(() => {
-    const visHandler = () => {
+    const TOKEN_NEAR_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
+
+    const visHandler = async () => {
       logConnectionEvent({
         type: "visibility_change",
         detail: document.visibilityState,
       });
+
+      if (document.visibilityState !== "visible") return;
+
+      // Proactively refresh the session when the user returns to the tab.
+      // The browser may have throttled the Supabase background refresh timer
+      // while the tab was hidden, leaving the token expired or close to expiry.
+      try {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+
+        const expiresAtMs = (session.expires_at ?? 0) * 1000;
+        const now = Date.now();
+
+        if (expiresAtMs - now < TOKEN_NEAR_EXPIRY_MS) {
+          logConnectionEvent({ type: "token_refresh_ok", detail: "proactive visibility refresh" });
+          coordinatedRefreshSession("visibility-refresh");
+        }
+      } catch {
+        // best effort — failure here is non-fatal; normal recovery paths still apply
+      }
     };
+
     document.addEventListener("visibilitychange", visHandler);
     return () => document.removeEventListener("visibilitychange", visHandler);
   }, []);

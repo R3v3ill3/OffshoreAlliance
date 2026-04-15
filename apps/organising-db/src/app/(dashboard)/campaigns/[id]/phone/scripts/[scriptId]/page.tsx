@@ -197,6 +197,22 @@ export default function ScriptEditorPage() {
         isSaving={updateSections.isPending}
         saved={saved}
       />
+
+      {/* Action footer */}
+      <div className="flex items-center gap-3 pt-4 border-t">
+        <Button
+          onClick={() => router.push(`/campaigns/${campaignId}/phone/lists/new?script_id=${scriptId}`)}
+        >
+          <Phone className="h-4 w-4 mr-1" />
+          Create Call List with This Script
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => router.push(`/campaigns/${campaignId}/phone`)}
+        >
+          Phone Operations
+        </Button>
+      </div>
     </div>
   )
 }

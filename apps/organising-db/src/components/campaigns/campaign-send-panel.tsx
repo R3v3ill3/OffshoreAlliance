@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { format } from "date-fns";
 import { resolveTemplateVariables, translateToActionNetwork } from "@/lib/comms/template-variables";
+import { toast } from "sonner";
 import {
   Mail,
   MessageSquare,
@@ -21,6 +23,7 @@ import {
   BarChart3,
   Loader2,
   Users,
+  Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +64,7 @@ interface DraftRow {
   sent_via: string | null;
   external_message_id: string | null;
   send_stats: Record<string, unknown> | null;
+  structured_script_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -116,19 +120,21 @@ export function CampaignSendPanel({
   const supabase = createClient();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const numericId = Number(campaignId);
 
   const [selectedDraftId, setSelectedDraftId] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
   const [editSubject, setEditSubject] = useState("");
   const [editBody, setEditBody] = useState("");
+  const [isStructuring, setIsStructuring] = useState(false);
 
   const { data: drafts = [], isLoading } = useQuery({
     queryKey: ["campaign-comms-drafts", numericId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaign_comms_drafts")
-        .select("*")
+        .select("*, structured_script_id")
         .eq("campaign_id", numericId)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -368,6 +374,45 @@ export function CampaignSendPanel({
     },
   });
 
+  async function handleStructureForCalling() {
+    if (!selectedDraft) return;
+    setIsStructuring(true);
+    try {
+      const structureRes = await fetch(`/api/campaigns/${numericId}/call-scripts/structure`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draft_id: selectedDraft.draft_id }),
+      });
+      if (!structureRes.ok) {
+        const err = await structureRes.json().catch(() => ({ error: "Structure failed" }));
+        throw new Error(err.error || "Failed to structure script");
+      }
+      const { sections } = await structureRes.json();
+
+      const createRes = await fetch(`/api/campaigns/${numericId}/call-scripts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: selectedDraft.title || "Phone Script",
+          draft_id: selectedDraft.draft_id,
+          sections: sections || [],
+        }),
+      });
+      if (!createRes.ok) {
+        const err = await createRes.json().catch(() => ({ error: "Create failed" }));
+        throw new Error(err.error || "Failed to create script");
+      }
+      const newScript = await createRes.json();
+      toast.success(`Script structured into ${sections?.length || 0} SOC sections`);
+      queryClient.invalidateQueries({ queryKey: ["campaign-comms-drafts", numericId] });
+      router.push(`/campaigns/${numericId}/phone/scripts/${newScript.script_id}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to structure script");
+    } finally {
+      setIsStructuring(false);
+    }
+  }
+
   const startEditing = () => {
     if (!selectedDraft) return;
     setEditSubject(selectedDraft.subject ?? "");
@@ -595,6 +640,21 @@ export function CampaignSendPanel({
                             ? "Approving…"
                             : "Mark as Approved"}
                         </Button>
+                        {selectedDraft.platform === "phone_script" && !selectedDraft.structured_script_id && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleStructureForCalling}
+                            disabled={isStructuring}
+                          >
+                            {isStructuring ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Wand2 className="h-3.5 w-3.5" />
+                            )}
+                            {isStructuring ? "Structuring…" : "Structure for Calling"}
+                          </Button>
+                        )}
                       </>
                     )}
                     {selectedDraft.status === "approved" && (
@@ -636,16 +696,46 @@ export function CampaignSendPanel({
                           </Button>
                         )}
                         {selectedDraft.platform === "phone_script" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              window.print();
-                            }}
-                          >
-                            <FileText className="h-3.5 w-3.5" />
-                            Print Script
-                          </Button>
+                          <div className="flex flex-wrap gap-2">
+                            {selectedDraft.structured_script_id ? (
+                              <Button
+                                size="sm"
+                                onClick={() => router.push(`/campaigns/${numericId}/phone/scripts/${selectedDraft.structured_script_id}`)}
+                              >
+                                <Phone className="h-3.5 w-3.5" />
+                                Open Script Editor
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                onClick={handleStructureForCalling}
+                                disabled={isStructuring}
+                              >
+                                {isStructuring ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Wand2 className="h-3.5 w-3.5" />
+                                )}
+                                {isStructuring ? "Structuring…" : "Structure for Calling"}
+                              </Button>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => router.push(`/campaigns/${numericId}/phone/lists/new`)}
+                            >
+                              <Users className="h-3.5 w-3.5" />
+                              Create Call List
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => router.push(`/campaigns/${numericId}/phone`)}
+                            >
+                              <Phone className="h-3.5 w-3.5" />
+                              Phone Operations
+                            </Button>
+                          </div>
                         )}
                       </>
                     )}

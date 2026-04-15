@@ -99,12 +99,15 @@ export default function NewCallListPage() {
   const backHref = searchParams.get('returnTo')
     ? decodeURIComponent(searchParams.get('returnTo')!)
     : `/campaigns/${campaignId}/phone`
+  const preselectedScriptId = searchParams.get('script_id')
+    ? parseInt(searchParams.get('script_id')!, 10)
+    : null
 
   const [step, setStep] = useState<WizardStep>('details')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [priorityStrategy, setPriorityStrategy] = useState<CallListPriorityStrategy>('sequential')
-  const [selectedScriptId, setSelectedScriptId] = useState<number | null>(null)
+  const [selectedScriptId, setSelectedScriptId] = useState<number | null>(preselectedScriptId)
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS)
   const [priority, setPriority] = useState<PriorityOrderState>(DEFAULT_PRIORITY)
   const [createdListId, setCreatedListId] = useState<number | null>(null)
@@ -241,12 +244,11 @@ export default function NewCallListPage() {
 
   const handleCreate = async () => {
     try {
-      // Store priority order in the list metadata via priority_strategy field
-      const strategyValue = priority.by === 'support_level'
-        ? `support_order:${priority.supportLevelOrder.join(',')}`
-        : priority.by === 'rating'
-          ? `rating_order:${priority.ratingOrder.join(',')}`
-          : priorityStrategy
+      // priority_strategy must be one of the valid DB enum values.
+      // Custom ordering (support_level, rating) is stored in source_filters by the populate route
+      // and applied via priority_score on each call_list_item. The 'priority_score' strategy
+      // tells the calling module to order contacts by their computed score.
+      const strategyValue = priority.by !== 'sequential' ? 'priority_score' : priorityStrategy
 
       const list = await createList.mutateAsync({
         name,
@@ -748,6 +750,12 @@ export default function NewCallListPage() {
             <p className="text-sm text-muted-foreground">
               Attach a structured phone script to guide callers through the conversation.
             </p>
+            {preselectedScriptId && selectedScriptId === preselectedScriptId && (
+              <div className="flex items-center gap-2 p-2.5 rounded-lg bg-primary/5 border border-primary/20 text-xs text-primary">
+                <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                Script pre-selected from editor. You can change it below.
+              </div>
+            )}
             {scripts && scripts.length > 0 ? (
               <div className="space-y-2">
                 {scripts.map((s) => (

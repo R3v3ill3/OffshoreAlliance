@@ -60,7 +60,7 @@ import { CampaignWorkplanSection } from "@/components/campaigns/campaign-workpla
 import { CampaignUniverseSection } from "@/components/campaigns/campaign-universe-section";
 import { CampaignCommsSection } from "@/components/campaigns/campaign-comms-section";
 import { CampaignOverviewMetrics } from "@/components/campaigns/CampaignOverviewMetrics";
-import { CallCampaignReporting } from "@/components/phone/CallCampaignReporting";
+import { InlinePhoneOpsPanel } from "@/components/phone/InlinePhoneOpsPanel";
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
 
 interface CampaignDetail {
@@ -590,21 +590,7 @@ export default function CampaignDetailPage() {
         </TabsContent>
 
         <TabsContent value="phone">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold">Phone Call Operations</h3>
-                <p className="text-sm text-muted-foreground">Call lists, scripts, and reporting</p>
-              </div>
-              <Button
-                variant="outline"
-                onClick={() => router.push(`/campaigns/${id}/phone`)}
-              >
-                Open Phone Operations
-              </Button>
-            </div>
-            <CallCampaignReporting campaignId={id} />
-          </div>
+          <InlinePhoneOpsPanel campaignId={id} />
         </TabsContent>
 
         <TabsContent value="actions">

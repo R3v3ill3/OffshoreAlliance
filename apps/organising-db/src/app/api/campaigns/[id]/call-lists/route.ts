@@ -13,10 +13,7 @@ export async function GET(
 
     const { data, error } = await supabase
       .from('call_lists')
-      .select(`
-        *,
-        call_scripts (script_id, title, status)
-      `)
+      .select('*, call_scripts!script_id(script_id, title, status)')
       .eq('campaign_id', parseInt(campaignId))
       .order('created_at', { ascending: false })
 
@@ -57,7 +54,7 @@ export async function POST(
         status: 'draft',
         created_by: user.id,
       })
-      .select('*, call_scripts (script_id, title, status)')
+      .select('*, call_scripts!script_id(script_id, title, status)')
       .single()
 
     if (error) throw error

@@ -1,11 +1,13 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils/cn'
-import { Mail, MessageSquare, Phone, Pencil, Wand2, Users } from 'lucide-react'
+import { Mail, MessageSquare, Phone, Pencil, Wand2, Users, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import type { CommsPlatform, DraftStatus } from '@/types/planner-types'
 
 const PLATFORM_ICONS: Record<CommsPlatform, React.ReactNode> = {
@@ -38,10 +40,13 @@ interface DraftPreviewProps {
     structured_script_id?: number | null
   }
   campaignId?: number | string
+  onEdit?: () => void
 }
 
-export function DraftPreview({ draft, campaignId }: DraftPreviewProps) {
+export function DraftPreview({ draft, campaignId, onEdit }: DraftPreviewProps) {
   const router = useRouter()
+  const [isStructuring, setIsStructuring] = useState(false)
+
   const icon = PLATFORM_ICONS[draft.platform] || PLATFORM_ICONS.email
   const statusConfig = STATUS_BADGE[draft.status] || STATUS_BADGE.draft
   const createdDate = new Date(draft.created_at).toLocaleDateString('en-AU', {
@@ -50,6 +55,46 @@ export function DraftPreview({ draft, campaignId }: DraftPreviewProps) {
     hour: '2-digit',
     minute: '2-digit',
   })
+
+  async function handleStructureForCalling() {
+    if (!campaignId) return
+    setIsStructuring(true)
+    try {
+      // Step 1: parse the draft into SOC sections via AI
+      const structureRes = await fetch(`/api/campaigns/${campaignId}/call-scripts/structure`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ draft_id: draft.draft_id }),
+      })
+      if (!structureRes.ok) {
+        const err = await structureRes.json().catch(() => ({ error: 'Structure failed' }))
+        throw new Error(err.error || 'Failed to structure script')
+      }
+      const { sections } = await structureRes.json()
+
+      // Step 2: create the call_script record with the parsed sections and link the draft
+      const createRes = await fetch(`/api/campaigns/${campaignId}/call-scripts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: draft.title || 'Phone Script',
+          draft_id: draft.draft_id,
+          sections: sections || [],
+        }),
+      })
+      if (!createRes.ok) {
+        const err = await createRes.json().catch(() => ({ error: 'Create failed' }))
+        throw new Error(err.error || 'Failed to create script')
+      }
+      const newScript = await createRes.json()
+      toast.success(`Script structured into ${sections?.length || 0} SOC sections`)
+      router.push(`/campaigns/${campaignId}/phone/scripts/${newScript.script_id}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to structure script')
+    } finally {
+      setIsStructuring(false)
+    }
+  }
 
   return (
     <Card className="overflow-hidden">
@@ -65,7 +110,14 @@ export function DraftPreview({ draft, campaignId }: DraftPreviewProps) {
             <Badge variant="secondary" className={cn('text-xs', statusConfig.className)}>
               {statusConfig.label}
             </Badge>
-            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled title="Edit (coming soon)">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0"
+              onClick={onEdit}
+              disabled={!onEdit}
+              title={onEdit ? 'Edit draft' : 'Edit not available'}
+            >
               <Pencil className="h-3 w-3" />
             </Button>
           </div>
@@ -95,6 +147,7 @@ export function DraftPreview({ draft, campaignId }: DraftPreviewProps) {
           <span className="text-[10px] text-muted-foreground">{createdDate}</span>
         </div>
 
+        {/* Phone script actions */}
         {draft.platform === 'phone_script' && campaignId && (
           <div className="flex items-center gap-1.5 pt-2 border-t">
             {draft.structured_script_id ? (
@@ -108,10 +161,15 @@ export function DraftPreview({ draft, campaignId }: DraftPreviewProps) {
             ) : (
               <Button
                 variant="outline" size="sm" className="h-6 text-xs flex-1"
-                onClick={() => router.push(`/campaigns/${campaignId}/phone`)}
+                onClick={handleStructureForCalling}
+                disabled={isStructuring}
               >
-                <Wand2 className="h-3 w-3 mr-1" />
-                Structure for Calling
+                {isStructuring ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <Wand2 className="h-3 w-3 mr-1" />
+                )}
+                {isStructuring ? 'Structuring…' : 'Structure for Calling'}
               </Button>
             )}
             <Button
@@ -120,6 +178,19 @@ export function DraftPreview({ draft, campaignId }: DraftPreviewProps) {
             >
               <Users className="h-3 w-3 mr-1" />
               Create Call List
+            </Button>
+          </div>
+        )}
+
+        {/* Email actions */}
+        {draft.platform === 'email' && campaignId && (
+          <div className="flex items-center gap-1.5 pt-2 border-t">
+            <Button
+              variant="outline" size="sm" className="h-6 text-xs flex-1"
+              onClick={() => router.push(`/campaigns/email-wizard?campaign_id=${campaignId}&draft_id=${draft.draft_id}`)}
+            >
+              <Users className="h-3 w-3 mr-1" />
+              Build Email List
             </Button>
           </div>
         )}

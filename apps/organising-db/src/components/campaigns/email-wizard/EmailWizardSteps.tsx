@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/lib/supabase/auth-context'
@@ -184,6 +184,7 @@ const INITIAL_STATE: WizardState = {
 
 export function EmailWizardSteps() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
   const { user, profile } = useAuth()
   const [step, setStep] = useState(1)
@@ -209,6 +210,64 @@ export function EmailWizardSteps() {
   const [addFilterEmployerId, setAddFilterEmployerId] = useState<number | null>(null)
   const [addFilterWorksiteId, setAddFilterWorksiteId] = useState<number | null>(null)
   const [addFilterOccupation, setAddFilterOccupation] = useState('')
+
+  // Pre-fill from URL params: ?campaign_id=123&draft_id=456
+  useEffect(() => {
+    const campaignIdParam = searchParams.get('campaign_id')
+    const draftIdParam = searchParams.get('draft_id')
+    if (!campaignIdParam) return
+
+    const campaignId = parseInt(campaignIdParam, 10)
+    if (!Number.isFinite(campaignId)) return
+
+    async function prefill() {
+      // Load campaign context
+      const { data: campaign } = await supabase
+        .from('campaigns')
+        .select('campaign_id, name, campaign_stage_plans(stage_number, status)')
+        .eq('campaign_id', campaignId)
+        .single()
+
+      if (!campaign) return
+
+      const activeStage = (campaign.campaign_stage_plans as Array<{ stage_number: number; status: string }> | null)
+        ?.find((s) => s.status === 'active')
+
+      setState((prev) => ({
+        ...prev,
+        campaignId,
+        campaignName: campaign.name,
+        stageNumber: activeStage?.stage_number ?? null,
+      }))
+
+      // If a draft_id was also provided, load the draft body/subject into step 3
+      if (draftIdParam) {
+        const draftId = parseInt(draftIdParam, 10)
+        if (!Number.isFinite(draftId)) return
+
+        const { data: draft } = await supabase
+          .from('campaign_comms_drafts')
+          .select('draft_id, subject, body, tone, audience_segment')
+          .eq('draft_id', draftId)
+          .single()
+
+        if (draft) {
+          setState((prev) => ({
+            ...prev,
+            draftId: draft.draft_id,
+            subject: draft.subject || '',
+            bodyText: draft.body || '',
+            tone: draft.tone ? [draft.tone] : prev.tone,
+          }))
+          // Jump to the list-and-send step since the email is already drafted
+          setStep(4)
+        }
+      }
+    }
+
+    prefill()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const t = setTimeout(() => setAddSearchDebounced(addSearch.trim()), 400)

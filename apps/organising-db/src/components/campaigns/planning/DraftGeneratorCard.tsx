@@ -2,6 +2,7 @@
 
 import { useState, useRef, useMemo } from 'react'
 import { useGenerateDraft } from '@/lib/hooks/useGenerateDraft'
+import { useCreateTemplate } from '@/lib/hooks/useTemplateLibrary'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -9,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils/cn'
 import {
   Mail,
@@ -22,6 +24,8 @@ import {
   CheckCircle,
   FileText,
   Variable,
+  BookMarked,
+  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { TemplatePicker } from './TemplatePicker'
@@ -51,6 +55,35 @@ const PLATFORM_CONFIG: Record<CommsPlatform, { label: string; icon: React.ReactN
   },
 }
 
+const TONE_OPTIONS = [
+  { value: 'informative', label: 'Informative' },
+  { value: 'urgency', label: 'Urgency' },
+  { value: 'shared_responsibility', label: 'Shared Responsibility' },
+  { value: 'success_story', label: 'Success Story' },
+  { value: 'solidarity', label: 'Solidarity' },
+  { value: 'fairness', label: 'Fairness' },
+  { value: 'worker_voice', label: 'Worker Voice' },
+  { value: 'job_security', label: 'Job Security' },
+]
+
+const AUDIENCE_OPTIONS = [
+  { value: 'all_workers', label: 'All Workers' },
+  { value: 'members', label: 'Members' },
+  { value: 'non_members', label: 'Non-Members' },
+  { value: 'leaders', label: 'Leaders / WOC' },
+  { value: 'bargaining_reps', label: 'Bargaining Reps' },
+]
+
+export interface InitialDraft {
+  draft_id: number
+  platform: CommsPlatform
+  subject: string | null
+  body: string | null
+  tone: string | null
+  audience_segment: string | null
+  title: string | null
+}
+
 interface DraftGeneratorCardProps {
   platform: CommsPlatform
   campaignId: number
@@ -72,6 +105,9 @@ interface DraftGeneratorCardProps {
     engagement_intensity?: string
     contact_method_priority?: string[]
   }
+  initialDraft?: InitialDraft | null
+  onSaved?: () => void
+  onCancelEdit?: () => void
 }
 
 function smsSegmentCount(length: number): number {
@@ -87,10 +123,26 @@ export function DraftGeneratorCard({
   stageName,
   campaignContext,
   wtpSelections,
+  initialDraft,
+  onSaved,
+  onCancelEdit,
 }: DraftGeneratorCardProps) {
-  const [draft, setDraft] = useState<CommsDraftResponse | null>(null)
-  const [subject, setSubject] = useState('')
-  const [bodyText, setBodyText] = useState('')
+  const isEditMode = !!initialDraft
+
+  const [draft, setDraft] = useState<CommsDraftResponse | null>(() => {
+    if (!initialDraft) return null
+    return {
+      platform,
+      subject: initialDraft.subject || undefined,
+      body_text: initialDraft.body || '',
+      variables_used: [],
+      tone_applied: initialDraft.tone || '',
+      audience_targeted: initialDraft.audience_segment || '',
+      estimated_character_count: (initialDraft.body || '').length,
+    }
+  })
+  const [subject, setSubject] = useState(initialDraft?.subject || '')
+  const [bodyText, setBodyText] = useState(initialDraft?.body || '')
   const [customInstructions, setCustomInstructions] = useState('')
   const [showInstructions, setShowInstructions] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -100,9 +152,16 @@ export function DraftGeneratorCard({
   const [changeSummary, setChangeSummary] = useState<Array<{ location: string; original_snippet: string; adapted_snippet: string; reason: string }> | null>(null)
   const [sourceTemplateId, setSourceTemplateId] = useState<number | null>(null)
 
+  // Save as Template state
+  const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false)
+  const [templateTitle, setTemplateTitle] = useState('')
+  const [templateTones, setTemplateTones] = useState<string[]>([])
+  const [templateAudience, setTemplateAudience] = useState('')
+
   const bodyRef = useRef<HTMLTextAreaElement>(null)
 
   const generateDraft = useGenerateDraft()
+  const createTemplate = useCreateTemplate()
   const config = PLATFORM_CONFIG[platform]
 
   const campaignVarContext: Record<string, string | undefined> = useMemo(() => ({
@@ -234,32 +293,86 @@ export function DraftGeneratorCard({
 
     try {
       const supabase = createClient()
-      const { error } = await supabase.from('campaign_comms_drafts').insert({
-        campaign_id: campaignId,
-        plan_id: planId,
-        stage_number: stageNumber,
-        platform,
-        title: `${config.label} – ${stageName}`,
-        subject: subject || null,
-        body: bodyText,
-        body_html: draft.body_html || null,
-        status: 'draft',
-        tone: draft.tone_applied || null,
-        audience_segment: draft.audience_targeted || null,
-        ai_model_used: sourceTemplateId ? 'template-customised' : 'claude-sonnet',
-        variables_used: draft.variables_used || [],
-        custom_instructions: customInstructions || null,
-        source_template_ids: sourceTemplateId ? [sourceTemplateId] : null,
-      })
 
-      if (error) throw error
-      setSaved(true)
-      toast.success('Draft saved successfully')
+      if (isEditMode && initialDraft?.draft_id) {
+        // UPDATE existing draft
+        const { error } = await supabase
+          .from('campaign_comms_drafts')
+          .update({
+            subject: subject || null,
+            body: bodyText,
+            body_html: draft.body_html || null,
+            tone: draft.tone_applied || null,
+            audience_segment: draft.audience_targeted || null,
+            custom_instructions: customInstructions || null,
+          })
+          .eq('draft_id', initialDraft.draft_id)
+
+        if (error) throw error
+        setSaved(true)
+        toast.success('Draft updated successfully')
+        onSaved?.()
+      } else {
+        // INSERT new draft
+        const { error } = await supabase.from('campaign_comms_drafts').insert({
+          campaign_id: campaignId,
+          plan_id: planId,
+          stage_number: stageNumber,
+          platform,
+          title: `${config.label} – ${stageName}`,
+          subject: subject || null,
+          body: bodyText,
+          body_html: draft.body_html || null,
+          status: 'draft',
+          tone: draft.tone_applied || null,
+          audience_segment: draft.audience_targeted || null,
+          ai_model_used: sourceTemplateId ? 'template-customised' : 'claude-sonnet',
+          variables_used: draft.variables_used || [],
+          custom_instructions: customInstructions || null,
+          source_template_ids: sourceTemplateId ? [sourceTemplateId] : null,
+        })
+
+        if (error) throw error
+        setSaved(true)
+        toast.success('Draft saved successfully')
+        onSaved?.()
+      }
     } catch {
       toast.error('Failed to save draft')
     } finally {
       setIsSaving(false)
     }
+  }
+
+  function handleOpenSaveAsTemplate() {
+    setTemplateTitle(initialDraft?.title || `${config.label} – ${stageName}`)
+    setTemplateTones(draft?.tone_applied ? draft.tone_applied.split(', ').filter(Boolean) : [])
+    setTemplateAudience(draft?.audience_targeted || '')
+    setShowSaveAsTemplate(true)
+  }
+
+  async function handleSaveAsTemplate() {
+    try {
+      await createTemplate.mutateAsync({
+        title: templateTitle,
+        platform,
+        body_text: bodyText,
+        subject_line: subject || undefined,
+        stage_number: stageNumber || undefined,
+        tone_tags: templateTones.length > 0 ? templateTones : undefined,
+        audience_segment: templateAudience || undefined,
+      })
+      setShowSaveAsTemplate(false)
+      toast.success('Template saved — available in the Template Library')
+    } catch {
+      // toast already shown by hook
+    }
+  }
+
+  function toggleTone(tone: string) {
+    setTemplateTones((prev) =>
+      prev.includes(tone) ? prev.filter((t) => t !== tone) : [...prev, tone]
+    )
   }
 
   const charCount = bodyText.length
@@ -271,69 +384,97 @@ export function DraftGeneratorCard({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className={cn('p-1.5 rounded-md', config.color)}>{config.icon}</span>
-            <CardTitle className="text-sm">{config.label}</CardTitle>
+            <CardTitle className="text-sm">
+              {isEditMode ? `Edit ${config.label}` : config.label}
+            </CardTitle>
           </div>
-          {draft && (
-            <div className="flex items-center gap-1.5">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleGenerate}
-                disabled={isLoading}
-                className="h-7 text-xs"
-              >
-                <RefreshCw className={cn('h-3 w-3 mr-1', isLoading && 'animate-spin')} />
-                Regenerate
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleSave}
-                disabled={isSaving || saved}
-                className="h-7 text-xs"
-              >
-                {saved ? (
-                  <>
-                    <CheckCircle className="h-3 w-3 mr-1" />
-                    Saved
-                  </>
-                ) : isSaving ? (
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                ) : (
-                  <>
-                    <Save className="h-3 w-3 mr-1" />
-                    Save Draft
-                  </>
+          <div className="flex items-center gap-1.5">
+            {draft && !showSaveAsTemplate && (
+              <>
+                {!isEditMode && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGenerate}
+                    disabled={isLoading}
+                    className="h-7 text-xs"
+                  >
+                    <RefreshCw className={cn('h-3 w-3 mr-1', isLoading && 'animate-spin')} />
+                    Regenerate
+                  </Button>
                 )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleOpenSaveAsTemplate}
+                  className="h-7 text-xs"
+                  title="Save as reusable template"
+                >
+                  <BookMarked className="h-3 w-3 mr-1" />
+                  Template
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSave}
+                  disabled={isSaving || saved}
+                  className="h-7 text-xs"
+                >
+                  {saved ? (
+                    <>
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      Saved
+                    </>
+                  ) : isSaving ? (
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  ) : (
+                    <>
+                      <Save className="h-3 w-3 mr-1" />
+                      {isEditMode ? 'Update Draft' : 'Save Draft'}
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
+            {isEditMode && onCancelEdit && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onCancelEdit}
+                className="h-7 text-xs text-muted-foreground"
+              >
+                <X className="h-3 w-3 mr-1" />
+                Cancel
               </Button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </CardHeader>
 
       <CardContent className="space-y-3">
         {/* WTP context badges */}
-        <div className="flex flex-wrap gap-1.5">
-          {wtpSelections.tone.map((t) => (
-            <Badge key={t} variant="secondary" className="text-xs bg-amber-50 text-amber-700">
-              {t}
-            </Badge>
-          ))}
-          {wtpSelections.audience.map((a) => (
-            <Badge key={a} variant="secondary" className="text-xs bg-indigo-50 text-indigo-700">
-              {a}
-            </Badge>
-          ))}
-          {wtpSelections.engagement_intensity && (
-            <Badge variant="secondary" className="text-xs bg-slate-100 text-slate-700">
-              {wtpSelections.engagement_intensity}
-            </Badge>
-          )}
-        </div>
+        {!isEditMode && (
+          <div className="flex flex-wrap gap-1.5">
+            {wtpSelections.tone.map((t) => (
+              <Badge key={t} variant="secondary" className="text-xs bg-amber-50 text-amber-700">
+                {t}
+              </Badge>
+            ))}
+            {wtpSelections.audience.map((a) => (
+              <Badge key={a} variant="secondary" className="text-xs bg-indigo-50 text-indigo-700">
+                {a}
+              </Badge>
+            ))}
+            {wtpSelections.engagement_intensity && (
+              <Badge variant="secondary" className="text-xs bg-slate-100 text-slate-700">
+                {wtpSelections.engagement_intensity}
+              </Badge>
+            )}
+          </div>
+        )}
 
-        {/* Before generation */}
-        {!draft && (
+        {/* Before generation (new mode only) */}
+        {!draft && !isEditMode && (
           <div className="space-y-3">
-            {/* Custom Instructions toggle */}
             <button
               onClick={() => setShowInstructions(!showInstructions)}
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
@@ -380,6 +521,87 @@ export function DraftGeneratorCard({
                     <span className="ml-2">Generate New</span>
                   </>
                 )}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Save as Template inline form */}
+        {showSaveAsTemplate && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
+                <BookMarked className="h-3.5 w-3.5" />
+                Save as Reusable Template
+              </p>
+              <Button
+                variant="ghost" size="sm" className="h-5 w-5 p-0 text-amber-700 hover:bg-amber-100"
+                onClick={() => setShowSaveAsTemplate(false)}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-amber-800">Template Title</Label>
+              <Input
+                value={templateTitle}
+                onChange={(e) => setTemplateTitle(e.target.value)}
+                placeholder="e.g. Stage 2 Member Email — Solidarity"
+                className="h-7 text-xs bg-white"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-amber-800">Tone Tags</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {TONE_OPTIONS.map((t) => (
+                  <button
+                    key={t.value}
+                    onClick={() => toggleTone(t.value)}
+                    className={cn(
+                      'text-[10px] px-2 py-0.5 rounded-full border transition-colors',
+                      templateTones.includes(t.value)
+                        ? 'bg-amber-600 text-white border-amber-600'
+                        : 'bg-white text-amber-700 border-amber-300 hover:bg-amber-100'
+                    )}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-amber-800">Audience</Label>
+              <Select value={templateAudience} onValueChange={setTemplateAudience}>
+                <SelectTrigger className="h-7 text-xs bg-white">
+                  <SelectValue placeholder="Select audience..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {AUDIENCE_OPTIONS.map((a) => (
+                    <SelectItem key={a.value} value={a.value} className="text-xs">
+                      {a.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline" size="sm" className="h-7 text-xs"
+                onClick={() => setShowSaveAsTemplate(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm" className="h-7 text-xs bg-amber-600 hover:bg-amber-700"
+                onClick={handleSaveAsTemplate}
+                disabled={!templateTitle.trim() || createTemplate.isPending}
+              >
+                {createTemplate.isPending ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <BookMarked className="h-3 w-3 mr-1" />
+                )}
+                Save Template
               </Button>
             </div>
           </div>
@@ -481,8 +703,8 @@ export function DraftGeneratorCard({
           </div>
         )}
 
-        {/* Custom Instructions (post-generation) */}
-        {draft && (
+        {/* Custom Instructions (post-generation, new mode only) */}
+        {draft && !isEditMode && (
           <>
             <button
               onClick={() => setShowInstructions(!showInstructions)}
@@ -522,7 +744,7 @@ export function DraftGeneratorCard({
         )}
 
         {/* AI metadata */}
-        {draft && (
+        {draft && !showSaveAsTemplate && (
           <div className="flex flex-wrap gap-1.5 pt-1 border-t">
             {sourceTemplateId && (
               <Badge variant="outline" className="text-xs">From template #{sourceTemplateId}</Badge>

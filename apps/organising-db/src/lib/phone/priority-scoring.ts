@@ -1,5 +1,11 @@
 import type { SupportLevel } from '@/types/planner-types'
 
+export interface PriorityOrder {
+  by: 'support_level' | 'rating' | 'sequential'
+  /** Ordered array of support_level values or stringified rating integers, e.g. ['strong_supporter', 'neutral'] or ['1', '3', '2'] */
+  order?: string[]
+}
+
 interface PriorityInput {
   support_level?: SupportLevel | string | null
   connection_status?: string | null
@@ -8,6 +14,8 @@ interface PriorityInput {
   has_phone?: boolean
   preferred_contact_method?: string | null
   manual_override?: number | null
+  cumulative_rating?: number | null
+  priority_order?: PriorityOrder | null
 }
 
 const SUPPORT_SCORES: Record<string, number> = {
@@ -27,6 +35,14 @@ const STATUS_SCORES: Record<string, number> = {
   lost: 2,
 }
 
+/**
+ * Computes a priority score (0–100 base + group bonus).
+ *
+ * When `priority_order` is supplied, a group bonus of (order.length - groupIndex) * 300
+ * is added to ensure the desired bucket ordering dominates over the individual score.
+ * Workers whose support_level (or rating) is not in the specified order array get
+ * a group bonus of 0 and are called last within their priority strategy.
+ */
 export function computePriorityScore(input: PriorityInput): number {
   if (input.manual_override != null) return input.manual_override
 
@@ -55,9 +71,34 @@ export function computePriorityScore(input: PriorityInput): number {
     score += 10
   }
 
+  if (input.cumulative_rating != null) {
+    score += Math.min(input.cumulative_rating * 2, 20)
+  }
+
   if (!input.has_phone) {
     score = 0
   }
 
-  return Math.max(0, Math.min(100, score))
+  score = Math.max(0, Math.min(100, score))
+
+  // Apply group ordering bonus — ensures bucket order dominates individual score
+  if (input.priority_order && input.priority_order.by !== 'sequential' && input.priority_order.order && input.priority_order.order.length > 0) {
+    const { by, order } = input.priority_order
+    let groupKey: string | null = null
+
+    if (by === 'support_level' && input.support_level) {
+      groupKey = input.support_level
+    } else if (by === 'rating' && input.cumulative_rating != null) {
+      groupKey = String(Math.round(input.cumulative_rating))
+    }
+
+    if (groupKey) {
+      const groupIndex = order.indexOf(groupKey)
+      if (groupIndex !== -1) {
+        score += (order.length - groupIndex) * 300
+      }
+    }
+  }
+
+  return score
 }

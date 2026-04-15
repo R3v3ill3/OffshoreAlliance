@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useCapacityOptions, useOrganisers } from '@/lib/hooks/usePlannerOptions'
 import { useAddCapacity, useUpdateCapacity } from '@/lib/hooks/useStagePlan'
 import { OptionSelector, type SelectableOption } from './OptionSelector'
-import { DraftGeneratorCard } from './DraftGeneratorCard'
+import { DraftGeneratorCard, type InitialDraft } from './DraftGeneratorCard'
 import { DraftPreview } from './DraftPreview'
 import { Button } from '@/components/ui/button'
 import { DateInput } from '@/components/ui/date-input'
@@ -32,6 +32,7 @@ interface SavedDraft {
   audience_segment: string | null
   created_at: string
   ai_model_used: string | null
+  structured_script_id: number | null
 }
 
 interface CapacitiesPanelProps {
@@ -239,20 +240,28 @@ export function CapacitiesPanel({
 
   const stageName = (['', 'Contact ID & Mapping', 'Intro Comms & Education', 'Member Mobilisation', 'Develop Claims / MSD', 'Endorsement & Commence Bargaining', 'Bargaining to Win'] as const)[stageNumber] || `Stage ${stageNumber}`
 
+  // Edit mode state — tracks which saved draft is being edited
+  const [editingDraft, setEditingDraft] = useState<InitialDraft | null>(null)
+
   // Fetch existing saved drafts
   const [savedDrafts, setSavedDrafts] = useState<SavedDraft[]>([])
-  useEffect(() => {
+  function refreshDrafts() {
     if (commsPlatforms.length === 0) return
     const supabase = createClient()
     supabase
       .from('campaign_comms_drafts')
-      .select('draft_id, platform, title, subject, body, body_html, status, tone, audience_segment, created_at, ai_model_used')
+      .select('draft_id, platform, title, subject, body, body_html, status, tone, audience_segment, created_at, ai_model_used, structured_script_id')
       .eq('campaign_id', campaignId)
       .eq('stage_number', stageNumber)
       .order('created_at', { ascending: false })
       .then(({ data }) => {
         if (data) setSavedDrafts(data as SavedDraft[])
       })
+  }
+
+  useEffect(() => {
+    refreshDrafts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId, stageNumber, commsPlatforms.length])
 
   return (
@@ -455,27 +464,61 @@ export function CapacitiesPanel({
             Generate AI-powered communication drafts based on your Where to Play selections.
           </p>
 
-          <div className="space-y-3">
-            {commsPlatforms.map((platform) => (
-              <DraftGeneratorCard
-                key={platform}
-                platform={platform}
-                campaignId={campaignId}
-                planId={planId}
-                stageNumber={stageNumber}
-                stageName={stageName}
-                campaignContext={campaignContext}
-                wtpSelections={wtpSelections}
-              />
-            ))}
-          </div>
+          {/* Edit mode: show DraftGeneratorCard for the draft being edited */}
+          {editingDraft && (
+            <DraftGeneratorCard
+              key={`edit-${editingDraft.draft_id}`}
+              platform={editingDraft.platform}
+              campaignId={campaignId}
+              planId={planId}
+              stageNumber={stageNumber}
+              stageName={stageName}
+              campaignContext={campaignContext}
+              wtpSelections={wtpSelections}
+              initialDraft={editingDraft}
+              onSaved={() => { setEditingDraft(null); refreshDrafts() }}
+              onCancelEdit={() => setEditingDraft(null)}
+            />
+          )}
+
+          {/* New draft generators (hidden while editing) */}
+          {!editingDraft && (
+            <div className="space-y-3">
+              {commsPlatforms.map((platform) => (
+                <DraftGeneratorCard
+                  key={platform}
+                  platform={platform}
+                  campaignId={campaignId}
+                  planId={planId}
+                  stageNumber={stageNumber}
+                  stageName={stageName}
+                  campaignContext={campaignContext}
+                  wtpSelections={wtpSelections}
+                  onSaved={refreshDrafts}
+                />
+              ))}
+            </div>
+          )}
 
           {/* Existing saved drafts */}
           {savedDrafts.length > 0 && (
             <div className="space-y-2 pt-2">
               <p className="text-xs font-medium text-slate-600">Saved Drafts</p>
               {savedDrafts.map((draft) => (
-                <DraftPreview key={draft.draft_id} draft={draft} campaignId={campaignId} />
+                <DraftPreview
+                  key={draft.draft_id}
+                  draft={draft}
+                  campaignId={campaignId}
+                  onEdit={() => setEditingDraft({
+                    draft_id: draft.draft_id,
+                    platform: draft.platform,
+                    subject: draft.subject,
+                    body: draft.body,
+                    tone: draft.tone,
+                    audience_segment: draft.audience_segment,
+                    title: draft.title,
+                  })}
+                />
               ))}
             </div>
           )}

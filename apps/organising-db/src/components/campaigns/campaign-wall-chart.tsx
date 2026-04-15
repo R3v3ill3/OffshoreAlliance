@@ -30,7 +30,13 @@ import {
   useDerivedOptions,
 } from "./wall-chart/wall-chart-filter-bar";
 import { WorkerDetailSheet } from "./wall-chart/worker-detail-sheet";
-import { CopyWorkerToUnitDialog } from "./wall-chart/copy-worker-to-unit-dialog";
+import {
+  CopyWorkerToUnitDialog,
+  MoveOrCopyWorkersDialog,
+  type MoveMode,
+} from "./wall-chart/copy-worker-to-unit-dialog";
+import { WallChartSelectionBar } from "./wall-chart/wall-chart-selection-bar";
+import { useWallChartSelection } from "./wall-chart/use-wall-chart-selection";
 import { RelationshipOverlay } from "./wall-chart/relationship-overlay";
 import { useAllLeaderLinks } from "./wall-chart/use-leader-links";
 import {
@@ -58,6 +64,17 @@ export function CampaignWallChart({
   const supabase = createClient();
   const [selectedWorkerId, setSelectedWorkerId] = useState<number | null>(null);
   const [copyWorkerId, setCopyWorkerId] = useState<number | null>(null);
+
+  // Multi-select state for bulk Move/Copy/Link actions.
+  const selection = useWallChartSelection();
+  const [bulkDialog, setBulkDialog] = useState<{ mode: MoveMode } | null>(null);
+
+  // Esc clears selection.
+  const handleRootKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape" && selection.size > 0) {
+      selection.clear();
+    }
+  };
 
   // Relationship overlay state — persisted per-user per-campaign.
   const [overlayEnabled, setOverlayEnabled] = useState(() => {
@@ -376,12 +393,22 @@ export function CampaignWallChart({
           inMultipleUnits={inMultipleUnits}
           otherUnitNames={otherUnitNames}
           canWrite={canWrite}
-          onClick={(id) => setSelectedWorkerId(id)}
+          isSelected={selection.has(ouId, workerId)}
+          onClick={(id, tileOuId, kind) => {
+            if (kind === "toggle-select") {
+              selection.toggle(tileOuId, id);
+              return;
+            }
+            // Plain click: open the sheet. If a selection exists, clear it first
+            // so the user isn't left with a stale selection after drilling in.
+            if (selection.size > 0) selection.clear();
+            setSelectedWorkerId(id);
+          }}
           onCopy={(id) => setCopyWorkerId(id)}
         />
       );
     },
-    [workerById, unitsByWorker, ouNameById, ratingByWorker, canWrite]
+    [workerById, unitsByWorker, ouNameById, ratingByWorker, canWrite, selection]
   );
 
   const copyWorker = copyWorkerId != null ? workerById.get(copyWorkerId) : undefined;
@@ -402,7 +429,22 @@ export function CampaignWallChart({
           Click a name to edit (staff only).
         </p>
       </CardHeader>
-      <CardContent className="space-y-4 print:space-y-2">
+      <CardContent
+        className="space-y-4 print:space-y-2"
+        tabIndex={-1}
+        onKeyDown={handleRootKeyDown}
+      >
+        <WallChartSelectionBar
+          count={selection.size}
+          canWrite={canWrite}
+          onMove={() => setBulkDialog({ mode: "move" })}
+          onCopy={() => setBulkDialog({ mode: "copy" })}
+          onLinkToLeader={() => {
+            // Wired in v2.2.
+          }}
+          onClear={() => selection.clear()}
+          linkDisabled
+        />
         <WallChartSummaryHeader
           campaignName={(campaign as { name?: string | null } | undefined)?.name ?? null}
           metrics={campaignMetrics}
@@ -608,6 +650,23 @@ export function CampaignWallChart({
         ous={ous}
         currentOuIds={copyWorkerOuIds}
       />
+
+      {bulkDialog && (
+        <MoveOrCopyWorkersDialog
+          key={`${bulkDialog.mode}-${selection.size}`}
+          open
+          onOpenChange={(v) => {
+            if (!v) setBulkDialog(null);
+          }}
+          campaignId={campaignId}
+          refs={selection.refs().map((r) => ({ workerId: r.workerId, fromOuId: r.ouId }))}
+          mode={bulkDialog.mode}
+          ous={ous}
+          onCompleted={() => {
+            selection.clear();
+          }}
+        />
+      )}
     </Card>
   );
 }

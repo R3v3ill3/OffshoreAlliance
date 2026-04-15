@@ -209,14 +209,24 @@ export async function recoverSessionConnection({
   const traceId = generateTraceId();
   const now = Date.now();
 
-  // Circuit breaker: skip if recovery was attempted very recently
-  if (now - _lastRecoveryAttemptTs < CIRCUIT_BREAKER_WINDOW_MS) {
+  // Circuit breaker: skip if recovery was attempted very recently.
+  // Exception: menu-initiated hard refresh always bypasses the breaker so the
+  // user is never silently trapped on a broken page.
+  const isBypassSource = source === "menu-hard-refresh";
+  if (!isBypassSource && now - _lastRecoveryAttemptTs < CIRCUIT_BREAKER_WINDOW_MS) {
     const elapsed = now - _lastRecoveryAttemptTs;
     logConnectionEvent({
       type: "recovery_start",
       detail: `circuit-breaker: skipped recovery from ${source} (${elapsed}ms since last attempt)`,
       traceId,
     });
+    // If the caller explicitly asked to redirect on failure, still honour that even
+    // when the circuit breaker fires — being stuck on a blank page is worse than
+    // an extra redirect.
+    if (redirectOnFailure) {
+      goToLogin("circuit_breaker");
+      return { ok: false, message: "Circuit breaker active — redirecting to login.", reasonCode: "circuit_breaker", redirectedToLogin: true };
+    }
     return {
       ok: false,
       message: `Recovery skipped (circuit breaker, ${Math.round(elapsed / 1000)}s since last attempt).`,
@@ -306,6 +316,12 @@ export async function recoverSessionConnection({
       new Error("Timed out while validating database connection"),
     );
     if (probeResult.error) {
+      // If the probe itself returns an auth error, the session is confirmed invalid — hard fail.
+      // Non-auth probe failures (network blip, DB unreachable) remain soft failures.
+      if (isLikelyAuthError(probeResult.error)) {
+        logConnectionEvent({ type: "recovery_end", detail: `hard-fail: probe auth error`, traceId });
+        return hardFailRecovery(queryClient, "probe_error", buildErrorSummary(probeResult.error), redirectOnFailure, traceId);
+      }
       logConnectionEvent({ type: "recovery_end", detail: `soft-fail: probe error`, traceId });
       return softFailRecovery("probe_error", buildErrorSummary(probeResult.error), traceId);
     }

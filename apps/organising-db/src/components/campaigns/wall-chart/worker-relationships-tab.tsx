@@ -10,6 +10,7 @@ import {
   type LinkedWorker,
 } from "./use-leader-links";
 import { BulkAddFollowersDialog } from "./bulk-add-followers-dialog";
+import { useLeaderUnitContext } from "./leader-unit-context";
 
 export type WorkerRelationshipsTabProps = {
   workerId: number;
@@ -33,6 +34,9 @@ export function WorkerRelationshipsTab({
   const asLeader = useLeaderLinksAsLeader({ campaignId, workerId });
   const deleteLink = useDeleteLeaderLink();
   const [bulkOpen, setBulkOpen] = useState(false);
+  // Unit context keyed to the viewer — used to chip each link row with whether
+  // the counterparty shares an organising unit with them.
+  const ctx = useLeaderUnitContext({ campaignId, leaderWorkerId: workerId });
 
   return (
     <div className="space-y-5 py-3">
@@ -51,6 +55,10 @@ export function WorkerRelationshipsTab({
                 key={l.link_id}
                 link={l}
                 subject={l.leader}
+                otherWorkerId={l.leader_worker_id}
+                sharedUnits={ctx.sharedUnitNames(l.leader_worker_id)}
+                hasSharedUnit={ctx.isSharedUnit(l.leader_worker_id)}
+                campaignId={campaignId}
                 canWrite={canWrite}
                 onRemove={() => deleteLink.mutate(l.link_id)}
               />
@@ -96,6 +104,10 @@ export function WorkerRelationshipsTab({
                   key={l.link_id}
                   link={l}
                   subject={l.follower}
+                  otherWorkerId={l.follower_worker_id}
+                  sharedUnits={ctx.sharedUnitNames(l.follower_worker_id)}
+                  hasSharedUnit={ctx.isSharedUnit(l.follower_worker_id)}
+                  campaignId={campaignId}
                   canWrite={canWrite}
                   onRemove={() => deleteLink.mutate(l.link_id)}
                 />
@@ -124,11 +136,20 @@ export function WorkerRelationshipsTab({
 function LinkRow({
   link,
   subject,
+  otherWorkerId: _otherWorkerId,
+  sharedUnits,
+  hasSharedUnit,
+  campaignId,
   canWrite,
   onRemove,
 }: {
   link: LeaderLink;
   subject: LinkedWorker | null;
+  otherWorkerId: number;
+  sharedUnits: string[];
+  hasSharedUnit: boolean;
+  /** Omitted when showing cross-campaign links on /workers/[id]. */
+  campaignId?: string;
   canWrite: boolean;
   onRemove: () => void;
 }) {
@@ -136,10 +157,31 @@ function LinkRow({
     ? `${subject.first_name} ${subject.last_name}`
     : `Worker ${link.leader_worker_id || link.follower_worker_id}`;
   const role = subject?.member_role_type?.display_name ?? subject?.member_role_type?.role_name;
+  // Only show chips when we have campaign context — across campaigns we don't
+  // have enough signal to claim "same unit".
+  const showChip = !!campaignId;
   return (
     <div className="rounded border px-2 py-1.5 flex items-center justify-between gap-2 text-xs">
-      <div className="min-w-0">
-        <p className="font-medium truncate">{name}</p>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <p className="font-medium truncate">{name}</p>
+          {showChip && hasSharedUnit && (
+            <span
+              title={`Shared unit(s): ${sharedUnits.join(", ")}`}
+              className="text-[10px] rounded bg-primary/15 text-primary px-1 truncate max-w-[10rem]"
+            >
+              {sharedUnits.join(", ") || "Same unit"}
+            </span>
+          )}
+          {showChip && !hasSharedUnit && (
+            <span
+              title="This relationship crosses organising units"
+              className="text-[10px] rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 px-1"
+            >
+              Crosses units
+            </span>
+          )}
+        </div>
         <p className="text-muted-foreground">
           {role ? `${role} · ` : ""}
           {link.notes ? link.notes : "—"}

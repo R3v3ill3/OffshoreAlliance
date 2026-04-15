@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Users, UserCheck, Network, Award, BarChart3 } from 'lucide-react'
 import {
@@ -10,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useCampaignsAllStats } from '@/lib/hooks/useCampaignsAllStats'
 import { CampaignDashboardStatCard } from '@/components/campaigns/campaign-dashboard-stat-card'
 import { CampaignsMetricsTable } from '@/components/campaigns/CampaignsMetricsTable'
@@ -38,6 +40,9 @@ interface CampaignsDashboardProps {
   selectedOrganiserId: string
   onOrganiserChange: (value: string) => void
   onRowClick?: (campaignId: number) => void
+  /** Ensures the organiser filter can show the signed-in user even when they have no campaigns */
+  currentUserOrganiser?: { id: number; label: string } | null
+  canWrite?: boolean
 }
 
 export function CampaignsDashboard({
@@ -45,10 +50,12 @@ export function CampaignsDashboard({
   selectedOrganiserId,
   onOrganiserChange,
   onRowClick,
+  currentUserOrganiser = null,
+  canWrite = false,
 }: CampaignsDashboardProps) {
   const router = useRouter()
 
-  // Collect unique organisers from the campaign list
+  // Collect unique organisers from the campaign list, plus current user when linked
   const organisers = useMemo(() => {
     const seen = new Map<string, string>()
     for (const c of campaigns) {
@@ -56,8 +63,14 @@ export function CampaignsDashboard({
         seen.set(String(c.organiser_id), c.organiser.organiser_name)
       }
     }
+    if (currentUserOrganiser) {
+      const idStr = String(currentUserOrganiser.id)
+      if (!seen.has(idStr)) {
+        seen.set(idStr, currentUserOrganiser.label)
+      }
+    }
     return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]))
-  }, [campaigns])
+  }, [campaigns, currentUserOrganiser])
 
   // Filter campaigns by selected organiser
   const filteredCampaigns = useMemo(() => {
@@ -85,12 +98,10 @@ export function CampaignsDashboard({
     let totalMembers = 0
     let totalLeaders = 0
     let totalRated = 0
-    let campaignsWithEstimate = 0
 
     for (const c of filteredCampaigns) {
       const s = statsMap.get(c.campaign_id)
       const est = c.total_worker_estimate ?? 0
-      if (est > 0) campaignsWithEstimate++
       totalEstimate += est
       totalNamed += s?.namedWorkers ?? 0
       totalMembers += s?.memberLikeCount ?? 0
@@ -128,10 +139,12 @@ export function CampaignsDashboard({
     }
   }
 
+  const showEmptyFiltered = filteredCampaigns.length === 0
+
   return (
     <div className="space-y-4">
       {/* Organiser filter */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
           Filter by organiser:
         </span>
@@ -153,47 +166,105 @@ export function CampaignsDashboard({
         </span>
       </div>
 
-      {/* Aggregate summary cards */}
-      <div className="flex flex-wrap gap-3">
-        <CampaignDashboardStatCard
-          icon={Users}
-          label="Total estimate"
-          value={summary.totalEstimate.toLocaleString()}
-          sub={`across ${summary.campaignCount} campaign${summary.campaignCount !== 1 ? 's' : ''}`}
-        />
-        <CampaignDashboardStatCard
-          icon={UserCheck}
-          label="Mapping"
-          value={summary.mappingPct != null ? `${summary.mappingPct}%` : '—'}
-          sub={`${summary.totalNamed.toLocaleString()} named workers`}
-        />
-        <CampaignDashboardStatCard
-          icon={Award}
-          label="Membership"
-          value={summary.membershipPct != null ? `${summary.membershipPct}%` : '—'}
-          sub="members of estimated workers"
-        />
-        <CampaignDashboardStatCard
-          icon={Network}
-          label="Leadership"
-          value={summary.leaderRatio}
-          sub={`${summary.totalLeaders} leaders`}
-        />
-        <CampaignDashboardStatCard
-          icon={BarChart3}
-          label="Participation"
-          value={summary.participationPct != null ? `${summary.participationPct}%` : '—'}
-          sub="workers with at least one rating"
-        />
-      </div>
+      {showEmptyFiltered ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">No campaigns for this filter</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
+            <p>
+              Get started with a guided flow or a quick create, or switch organiser above to see other
+              people&apos;s campaigns.
+            </p>
+            <ul className="list-disc space-y-2 pl-5">
+              <li>
+                <Link href="/campaigns/new" className="text-foreground underline-offset-4 hover:underline">
+                  Campaign wizard
+                </Link>{' '}
+                — step-by-step campaign setup.
+              </li>
+              {canWrite ? (
+                <li>
+                  <span className="text-foreground font-medium">Create Campaign</span> — use the{' '}
+                  <span className="text-foreground">Create Campaign</span> button above this summary area to
+                  add a campaign with the quick form.
+                </li>
+              ) : (
+                <li>
+                  <span className="text-foreground font-medium">Create Campaign</span> — ask an editor to
+                  create a campaign for you, or use the wizards if you have access.
+                </li>
+              )}
+              <li>
+                <Link
+                  href="/campaigns/email-wizard"
+                  className="text-foreground underline-offset-4 hover:underline"
+                >
+                  Email wizard
+                </Link>{' '}
+                — email outreach tools.
+              </li>
+              <li>
+                <Link
+                  href="/campaigns/phone-wizard"
+                  className="text-foreground underline-offset-4 hover:underline"
+                >
+                  Phone wizard
+                </Link>{' '}
+                — calling lists and scripts.
+              </li>
+              <li>
+                Use <span className="text-foreground font-medium">Filter by organiser</span> to include all
+                organisers or pick someone else.
+              </li>
+            </ul>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* Aggregate summary cards */}
+          <div className="flex flex-wrap gap-3">
+            <CampaignDashboardStatCard
+              icon={Users}
+              label="Total estimate"
+              value={summary.totalEstimate.toLocaleString()}
+              sub={`across ${summary.campaignCount} campaign${summary.campaignCount !== 1 ? 's' : ''}`}
+            />
+            <CampaignDashboardStatCard
+              icon={UserCheck}
+              label="Mapping"
+              value={summary.mappingPct != null ? `${summary.mappingPct}%` : '—'}
+              sub={`${summary.totalNamed.toLocaleString()} named workers`}
+            />
+            <CampaignDashboardStatCard
+              icon={Award}
+              label="Membership"
+              value={summary.membershipPct != null ? `${summary.membershipPct}%` : '—'}
+              sub="members of estimated workers"
+            />
+            <CampaignDashboardStatCard
+              icon={Network}
+              label="Leadership"
+              value={summary.leaderRatio}
+              sub={`${summary.totalLeaders} leaders`}
+            />
+            <CampaignDashboardStatCard
+              icon={BarChart3}
+              label="Participation"
+              value={summary.participationPct != null ? `${summary.participationPct}%` : '—'}
+              sub="workers with at least one rating"
+            />
+          </div>
 
-      {/* Per-campaign metrics table */}
-      <CampaignsMetricsTable
-        campaigns={filteredCampaigns}
-        statsMap={statsMap}
-        isLoading={isLoading}
-        onRowClick={handleRowClick}
-      />
+          {/* Per-campaign metrics table */}
+          <CampaignsMetricsTable
+            campaigns={filteredCampaigns}
+            statsMap={statsMap}
+            isLoading={isLoading}
+            onRowClick={handleRowClick}
+          />
+        </>
+      )}
     </div>
   )
 }

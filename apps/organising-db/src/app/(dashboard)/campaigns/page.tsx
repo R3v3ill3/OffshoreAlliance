@@ -122,7 +122,7 @@ const INITIAL_FORM = {
 
 export default function CampaignsPage() {
   const router = useRouter();
-  const { user, canWrite, isAdmin } = useAuth();
+  const { user, profile, canWrite, isAdmin } = useAuth();
   const supabase = createClient();
   const queryClient = useQueryClient();
 
@@ -130,7 +130,14 @@ export default function CampaignsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [organiserDialogKey, setOrganiserDialogKey] = useState(0);
   const [form, setForm] = useState(INITIAL_FORM);
-  const [selectedOrganiserId, setSelectedOrganiserId] = useState<string>("all");
+  /** When null, filter defaults to the signed-in user’s organiser (if any), else "all". */
+  const [organiserFilterOverride, setOrganiserFilterOverride] = useState<string | null>(null);
+
+  const selectedOrganiserId = useMemo(() => {
+    if (organiserFilterOverride !== null) return organiserFilterOverride;
+    if (profile?.organiser_id != null) return String(profile.organiser_id);
+    return "all";
+  }, [organiserFilterOverride, profile?.organiser_id]);
 
   const { data: campaigns = [], isLoading } = useQuery({
     queryKey: ["campaigns"],
@@ -282,13 +289,30 @@ export default function CampaignsPage() {
         <TabsContent value="campaigns" className="mt-0">
           <div className="space-y-6">
             {/* Metrics dashboard — above the table */}
-            {!isLoading && campaigns.length > 0 && (
-              <CampaignsDashboard
-                campaigns={campaigns}
-                selectedOrganiserId={selectedOrganiserId}
-                onOrganiserChange={setSelectedOrganiserId}
-                onRowClick={(id) => router.push(`/campaigns/${id}`)}
-              />
+            {!isLoading && user && (
+              <>
+                {profile?.organiser_id == null && (
+                  <p className="text-xs text-muted-foreground">
+                    Your account is not linked to an organiser record yet, so the list is not scoped to you by
+                    default. Use Administration to link your profile, or filter manually when campaigns exist.
+                  </p>
+                )}
+                <CampaignsDashboard
+                  campaigns={campaigns}
+                  selectedOrganiserId={selectedOrganiserId}
+                  onOrganiserChange={setOrganiserFilterOverride}
+                  onRowClick={(id) => router.push(`/campaigns/${id}`)}
+                  currentUserOrganiser={
+                    profile?.organiser_id != null
+                      ? {
+                          id: profile.organiser_id,
+                          label: profile.display_name?.trim() || "You",
+                        }
+                      : null
+                  }
+                  canWrite={canWrite}
+                />
+              </>
             )}
 
             <div className="space-y-4">

@@ -46,7 +46,7 @@ export default function SetPasswordPage() {
     } else {
       setDone(true);
       setTimeout(() => {
-        router.push("/dashboard");
+        router.push("/campaigns");
         router.refresh();
       }, 2000);
     }

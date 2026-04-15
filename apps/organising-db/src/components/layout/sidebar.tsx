@@ -23,10 +23,10 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
 export const navItems = [
+  { href: "/campaigns", label: "Campaigns", icon: Megaphone },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/overview", label: "Overview", icon: LayoutGrid },
   { href: "/worksites", label: "Worksites", icon: MapPin },
-  { href: "/campaigns", label: "Campaigns", icon: Megaphone },
   { href: "/reports", label: "Reports", icon: BarChart3 },
 ];
 

@@ -1,9 +1,15 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { WALL_CHART_GRID_CLASS } from "./rating-colour";
 import { humanizeOuType, ouDisplayName, type WallChartOU } from "./types";
+import {
+  DND_MIME_TYPE,
+  parseDragPayload,
+  type WorkerDragMode,
+  type WorkerDragPayload,
+} from "./dnd";
 
 export type CampaignUnitCardProps = {
   /** Pass null when rendering a pseudo-unit (e.g. unassigned). */
@@ -20,6 +26,18 @@ export type CampaignUnitCardProps = {
   children: ReactNode;
   /** Placeholder cells (greyed out) for unfilled estimate slots. */
   placeholders?: number;
+  /**
+   * DnD drop handler. Called with the target ou id (the card's own ou),
+   * the payload parsed from dataTransfer, and the resolved mode (copy if
+   * Shift is held at drop time, else move).
+   */
+  onWorkerDrop?: (args: {
+    targetOuId: number | null;
+    payload: WorkerDragPayload;
+    mode: WorkerDragMode;
+  }) => void;
+  /** Disable drop (e.g. read-only viewer). */
+  dropDisabled?: boolean;
 };
 
 const PLACEHOLDER_CAP = 24;
@@ -33,14 +51,55 @@ export function CampaignUnitCard({
   toolbar,
   children,
   placeholders = 0,
+  onWorkerDrop,
+  dropDisabled,
 }: CampaignUnitCardProps) {
   const title = ou ? ouDisplayName(ou) : (fallbackTitle ?? "Unit");
   const typeChip = ou?.ou_type ? humanizeOuType(ou.ou_type) : null;
   const est = estimate ?? ou?.total_workers_estimated ?? 0;
   const cappedPlaceholders = Math.max(0, placeholders);
 
+  const dropEnabled = !!onWorkerDrop && !dropDisabled;
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  const targetOuId: number | null = ou?.ou_id ?? null;
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!dropEnabled) return;
+    // Accept only our own payload.
+    if (!e.dataTransfer.types.includes(DND_MIME_TYPE)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = e.shiftKey ? "copy" : "move";
+    if (!isDragOver) setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!dropEnabled) return;
+    // Only clear highlight when leaving the card itself (not a child).
+    if (e.currentTarget === e.target) setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!dropEnabled || !onWorkerDrop) return;
+    const raw = e.dataTransfer.getData(DND_MIME_TYPE);
+    if (!raw) return;
+    const payload = parseDragPayload(raw);
+    if (!payload) return;
+    e.preventDefault();
+    setIsDragOver(false);
+    const mode: WorkerDragMode = e.shiftKey ? "copy" : "move";
+    onWorkerDrop({ targetOuId, payload, mode });
+  };
+
   return (
-    <Card className="print:break-inside-avoid print:shadow-none">
+    <Card
+      className={`print:break-inside-avoid print:shadow-none transition-[box-shadow,ring] ${
+        isDragOver ? "ring-2 ring-primary" : ""
+      }`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <CardHeader className="pb-2 space-y-2">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">

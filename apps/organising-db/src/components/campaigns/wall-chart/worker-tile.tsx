@@ -1,10 +1,15 @@
 "use client";
 
 import Image from "next/image";
-import type { MouseEvent } from "react";
+import type { DragEvent, MouseEvent } from "react";
 import { getWallChartDefaultCumulative, isWorkerMemberLike } from "@/lib/campaign/constants";
 import { ratingBgClass } from "./rating-colour";
 import type { WallChartRatingSummary, WallChartWorker } from "./types";
+import {
+  DND_MIME_TYPE,
+  serializeDragPayload,
+  type WorkerDragRef,
+} from "./dnd";
 
 export type WorkerTileClickKind = "open" | "toggle-select" | "select-only";
 
@@ -27,6 +32,14 @@ export type WorkerTileProps = {
   onCopy?: (workerId: number) => void;
   /** True when this (ouId, workerId) pair is in the active selection. */
   isSelected?: boolean;
+  /**
+   * Called when a drag starts on this tile. The parent returns the refs
+   * to carry (the current selection when the tile is in it, else just
+   * this tile). Returning an empty array aborts the drag.
+   */
+  onDragStartRefs?: (workerId: number, ouId: number | null) => WorkerDragRef[];
+  /** Called when the drag ends (regardless of drop success). */
+  onDragEnd?: () => void;
 };
 
 export function WorkerTile({
@@ -39,6 +52,8 @@ export function WorkerTile({
   onClick,
   onCopy,
   isSelected,
+  onDragStartRefs,
+  onDragEnd,
 }: WorkerTileProps) {
   const mt = worker.member_role_type;
   const um = worker.union_membership_type;
@@ -84,11 +99,36 @@ export function WorkerTile({
     }
   };
 
+  const handleDragStart = (e: DragEvent<HTMLDivElement>) => {
+    if (!canWrite || !onDragStartRefs) {
+      e.preventDefault();
+      return;
+    }
+    const refs = onDragStartRefs(worker.worker_id, ouId ?? null);
+    if (refs.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.effectAllowed = "copyMove";
+    e.dataTransfer.setData(
+      DND_MIME_TYPE,
+      serializeDragPayload({ version: 1, refs })
+    );
+    // Plain-text fallback for diagnostics; drop targets ignore it.
+    e.dataTransfer.setData(
+      "text/plain",
+      refs.length === 1 ? displayName : `${refs.length} workers`
+    );
+  };
+
   return (
     <div
       className="relative"
       data-worker-id={worker.worker_id}
       data-ou-id={ouId ?? ""}
+      draggable={canWrite && !!onDragStartRefs}
+      onDragStart={handleDragStart}
+      onDragEnd={() => onDragEnd?.()}
       onContextMenu={(e) => {
         if (!canWrite || !onCopy) return;
         e.preventDefault();

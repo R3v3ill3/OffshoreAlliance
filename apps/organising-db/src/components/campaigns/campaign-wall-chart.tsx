@@ -37,6 +37,9 @@ import {
 } from "./wall-chart/copy-worker-to-unit-dialog";
 import { WallChartSelectionBar } from "./wall-chart/wall-chart-selection-bar";
 import { useWallChartSelection } from "./wall-chart/use-wall-chart-selection";
+import { useMoveWorkersMutation } from "./wall-chart/move-worker-mutation";
+import { LinkToLeaderDialog } from "./wall-chart/link-to-leader-dialog";
+import type { WorkerDragRef } from "./wall-chart/dnd";
 import { RelationshipOverlay } from "./wall-chart/relationship-overlay";
 import { useAllLeaderLinks } from "./wall-chart/use-leader-links";
 import {
@@ -68,6 +71,8 @@ export function CampaignWallChart({
   // Multi-select state for bulk Move/Copy/Link actions.
   const selection = useWallChartSelection();
   const [bulkDialog, setBulkDialog] = useState<{ mode: MoveMode } | null>(null);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const moveWorkers = useMoveWorkersMutation(campaignId);
 
   // Esc clears selection.
   const handleRootKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -405,6 +410,17 @@ export function CampaignWallChart({
             setSelectedWorkerId(id);
           }}
           onCopy={(id) => setCopyWorkerId(id)}
+          onDragStartRefs={(id, tileOuId) => {
+            // If the dragged tile is in the current selection, carry the whole
+            // selection; otherwise, drag just this one tile. This matches the
+            // Finder/macOS convention for list drags.
+            if (selection.has(tileOuId, id)) {
+              return selection
+                .refs()
+                .map((r) => ({ workerId: r.workerId, fromOuId: r.ouId }));
+            }
+            return [{ workerId: id, fromOuId: tileOuId }];
+          }}
         />
       );
     },
@@ -413,6 +429,38 @@ export function CampaignWallChart({
 
   const copyWorker = copyWorkerId != null ? workerById.get(copyWorkerId) : undefined;
   const copyWorkerOuIds = copyWorkerId != null ? unitsByWorker.get(copyWorkerId) ?? [] : [];
+
+  const handleWorkerDrop = useCallback(
+    ({
+      targetOuId,
+      payload,
+      mode,
+    }: {
+      targetOuId: number | null;
+      payload: { refs: WorkerDragRef[] };
+      mode: "move" | "copy";
+    }) => {
+      if (!canWrite) return;
+      if (payload.refs.length === 0) return;
+      // Avoid pointless no-ops: dropping on the same unit with no cross-unit refs.
+      const allAlreadyThere = payload.refs.every((r) => r.fromOuId === targetOuId);
+      if (mode === "move" && allAlreadyThere) return;
+      moveWorkers.mutate(
+        {
+          refs: payload.refs,
+          toOuId: targetOuId,
+          mode,
+        },
+        {
+          onSuccess: () => {
+            // Clear selection after successful bulk action.
+            if (selection.size > 0) selection.clear();
+          },
+        }
+      );
+    },
+    [canWrite, moveWorkers, selection]
+  );
 
   return (
     <Card>
@@ -439,11 +487,8 @@ export function CampaignWallChart({
           canWrite={canWrite}
           onMove={() => setBulkDialog({ mode: "move" })}
           onCopy={() => setBulkDialog({ mode: "copy" })}
-          onLinkToLeader={() => {
-            // Wired in v2.2.
-          }}
+          onLinkToLeader={() => setLinkDialogOpen(true)}
           onClear={() => selection.clear()}
-          linkDisabled
         />
         <WallChartSummaryHeader
           campaignName={(campaign as { name?: string | null } | undefined)?.name ?? null}
@@ -509,6 +554,8 @@ export function CampaignWallChart({
               ou={null}
               fallbackTitle="Unassigned workers"
               workerCount={sorted.length}
+              onWorkerDrop={handleWorkerDrop}
+              dropDisabled={!canWrite}
               summary={
                 <UnitSummaryMetrics
                   metrics={unassignedMetrics}
@@ -558,6 +605,8 @@ export function CampaignWallChart({
                 workerCount={sorted.length}
                 estimate={est}
                 placeholders={placeholders}
+                onWorkerDrop={handleWorkerDrop}
+                dropDisabled={!canWrite}
                 summary={
                   unitMetrics && ids.length > 0 ? (
                     <UnitSummaryMetrics
@@ -650,6 +699,21 @@ export function CampaignWallChart({
         ous={ous}
         currentOuIds={copyWorkerOuIds}
       />
+
+      {linkDialogOpen && (
+        <LinkToLeaderDialog
+          key={`link-${selection.size}`}
+          open
+          onOpenChange={(v) => {
+            if (!v) setLinkDialogOpen(false);
+          }}
+          campaignId={campaignId}
+          followerWorkerIds={selection.workerIds()}
+          onCompleted={() => {
+            selection.clear();
+          }}
+        />
+      )}
 
       {bulkDialog && (
         <MoveOrCopyWorkersDialog

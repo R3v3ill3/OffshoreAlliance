@@ -31,6 +31,7 @@ import {
   Phone,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   CheckCircle,
   Loader2,
   Sparkles,
@@ -38,6 +39,7 @@ import {
   Users,
   Search,
   ChevronDown,
+  ChevronsUpDown,
   PlayCircle,
 } from 'lucide-react'
 
@@ -52,7 +54,19 @@ interface WorkerPreview {
   worksite_name: string | null
   membership_status?: string | null
   organising_role?: string | null
+  cumulative_rating?: number | null
+  last_activity_rating?: number | null
 }
+
+type SortCol = 'name' | 'phone' | 'occupation' | 'membership_status' | 'organising_role' | 'cumulative_rating' | 'last_activity_rating'
+type SortDir = 'asc' | 'desc'
+
+const RATING_BANDS = [
+  { key: 'unrated', label: 'Unrated', test: (v: number | null | undefined) => v == null },
+  { key: 'low',    label: '< 2',     test: (v: number | null | undefined) => v != null && v < 2 },
+  { key: 'mid',    label: '2–3',     test: (v: number | null | undefined) => v != null && v >= 2 && v < 3 },
+  { key: 'high',   label: '3+',      test: (v: number | null | undefined) => v != null && v >= 3 },
+]
 
 const STEPS = [
   { id: 1, title: 'Campaign Context', icon: Building2 },
@@ -156,6 +170,15 @@ export function PhoneWizardSteps() {
   const [addFilterEmployerId, setAddFilterEmployerId] = useState<number | null>(null)
   const [addFilterWorksiteId, setAddFilterWorksiteId] = useState<number | null>(null)
   const [addFilterOccupation, setAddFilterOccupation] = useState('')
+
+  // Sorting
+  const [sortCol, setSortCol] = useState<SortCol | null>(null)
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
+
+  // Bulk select by value
+  const [showBulkSelect, setShowBulkSelect] = useState(false)
+  const [bulkSelectOccupation, setBulkSelectOccupation] = useState('')
+  const [bulkSelectRole, setBulkSelectRole] = useState('')
 
   const generateDraft = useGenerateDraft()
 
@@ -366,14 +389,43 @@ export function PhoneWizardSteps() {
     enabled: step === 4 && (!!state.campaignId || !!state.standaloneEmployerId),
   })
 
+  // Supplementary ratings query — campaign mode only
+  const { data: workerRatings = [] } = useQuery({
+    queryKey: ['phone-wizard-ratings', state.campaignId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('campaign_worker_rating_summary')
+        .select('worker_id, cumulative_rating, last_activity_rating')
+        .eq('campaign_id', state.campaignId!)
+      return (data ?? []) as { worker_id: number; cumulative_rating: number | null; last_activity_rating: number | null }[]
+    },
+    enabled: step === 4 && !!state.campaignId,
+    staleTime: 60_000,
+  })
+
+  const ratingsMap = useMemo(() => {
+    const m = new Map<number, { cumulative_rating: number | null; last_activity_rating: number | null }>()
+    for (const r of workerRatings) {
+      m.set(r.worker_id, { cumulative_rating: r.cumulative_rating ?? null, last_activity_rating: r.last_activity_rating ?? null })
+    }
+    return m
+  }, [workerRatings])
+
   const combinedWorkers = useMemo(() => {
     const map = new Map<number, WorkerPreview>()
     for (const w of workerList) map.set(w.worker_id, w)
     for (const w of additionalWorkers) {
       if (!map.has(w.worker_id)) map.set(w.worker_id, w)
     }
-    return [...map.values()]
-  }, [workerList, additionalWorkers])
+    return [...map.values()].map((w) => {
+      const rating = ratingsMap.get(w.worker_id)
+      return {
+        ...w,
+        cumulative_rating: rating?.cumulative_rating ?? w.cumulative_rating ?? null,
+        last_activity_rating: rating?.last_activity_rating ?? w.last_activity_rating ?? null,
+      }
+    })
+  }, [workerList, additionalWorkers, ratingsMap])
 
   // Auto-select workers with phone on first load
   useEffect(() => {
@@ -391,14 +443,57 @@ export function PhoneWizardSteps() {
   }, [step, combinedWorkers, workersLoading, workersInitialized])
 
   const filteredWorkers = useMemo(() => {
-    if (!workerSearch.trim()) return combinedWorkers
-    const q = workerSearch.toLowerCase()
-    return combinedWorkers.filter((w) =>
-      `${w.first_name} ${w.last_name}`.toLowerCase().includes(q) ||
-      w.phone?.toLowerCase().includes(q) ||
-      w.occupation?.toLowerCase().includes(q)
-    )
-  }, [combinedWorkers, workerSearch])
+    let list = combinedWorkers
+    if (workerSearch.trim()) {
+      const q = workerSearch.toLowerCase()
+      list = list.filter((w) =>
+        `${w.first_name} ${w.last_name}`.toLowerCase().includes(q) ||
+        w.phone?.toLowerCase().includes(q) ||
+        w.occupation?.toLowerCase().includes(q)
+      )
+    }
+    if (sortCol) {
+      list = [...list].sort((a, b) => {
+        const mult = sortDir === 'asc' ? 1 : -1
+        if (sortCol === 'cumulative_rating' || sortCol === 'last_activity_rating') {
+          const av = a[sortCol] ?? null
+          const bv = b[sortCol] ?? null
+          if (av === null && bv === null) return 0
+          if (av === null) return 1   // nulls last
+          if (bv === null) return -1
+          return mult * (av - bv)
+        }
+        if (sortCol === 'name') {
+          const an = `${a.first_name} ${a.last_name}`
+          const bn = `${b.first_name} ${b.last_name}`
+          return mult * an.localeCompare(bn)
+        }
+        const av = (a[sortCol] as string | null | undefined) ?? null
+        const bv = (b[sortCol] as string | null | undefined) ?? null
+        if (av === null && bv === null) return 0
+        if (av === null) return 1
+        if (bv === null) return -1
+        return mult * av.localeCompare(bv)
+      })
+    }
+    return list
+  }, [combinedWorkers, workerSearch, sortCol, sortDir])
+
+  function handleSortClick(col: SortCol) {
+    if (sortCol === col) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortCol(col)
+      setSortDir('asc')
+    }
+  }
+
+  function SortIcon({ col }: { col: SortCol }) {
+    if (sortCol !== col) return <ChevronsUpDown className="inline h-3 w-3 ml-0.5 text-muted-foreground/50" />
+    return sortDir === 'asc'
+      ? <ChevronUp className="inline h-3 w-3 ml-0.5" />
+      : <ChevronDown className="inline h-3 w-3 ml-0.5" />
+  }
 
   // Add worker search
   const { data: addSearchResults = [], isFetching: addSearchLoading } = useQuery({
@@ -508,6 +603,8 @@ export function PhoneWizardSteps() {
       occupation: r.occupation as string | null,
       employer_name: Array.isArray(emp) ? emp[0]?.employer_name ?? null : emp?.employer_name ?? null,
       worksite_name: Array.isArray(ws) ? ws[0]?.worksite_name ?? null : ws?.worksite_name ?? null,
+      cumulative_rating: null,
+      last_activity_rating: null,
     }
   }
 
@@ -1182,7 +1279,166 @@ export function PhoneWizardSteps() {
                     size="sm" variant="outline" className="text-xs h-7"
                     onClick={() => setSelectedWorkerIds(new Set())}
                   >Deselect All</Button>
+                  <Button
+                    size="sm" variant="outline" className="text-xs h-7"
+                    onClick={() => setShowBulkSelect((v) => !v)}
+                  >
+                    {showBulkSelect ? 'Hide filters' : 'Select by…'}
+                  </Button>
                 </div>
+
+                {/* Bulk select by value */}
+                {showBulkSelect && (
+                  <div className="rounded-md border bg-muted/10 p-3 space-y-3">
+                    <p className="text-xs font-medium text-muted-foreground">Select / deselect workers in the current view by value</p>
+
+                    {/* Occupation */}
+                    {(() => {
+                      const occupations = [...new Set(filteredWorkers.map((w) => w.occupation).filter(Boolean) as string[])].sort()
+                      return occupations.length > 0 ? (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs w-20 shrink-0 text-muted-foreground">Occupation</span>
+                          <Select value={bulkSelectOccupation} onValueChange={setBulkSelectOccupation}>
+                            <SelectTrigger className="h-7 text-xs w-44">
+                              <SelectValue placeholder="Pick occupation…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {occupations.map((o) => (
+                                <SelectItem key={o} value={o}>{o}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button size="sm" variant="outline" className="h-7 text-xs" disabled={!bulkSelectOccupation}
+                            onClick={() => setSelectedWorkerIds((prev) => {
+                              const n = new Set(prev)
+                              filteredWorkers.filter((w) => w.phone && w.occupation === bulkSelectOccupation).forEach((w) => n.add(w.worker_id))
+                              return n
+                            })}>Select</Button>
+                          <Button size="sm" variant="outline" className="h-7 text-xs" disabled={!bulkSelectOccupation}
+                            onClick={() => setSelectedWorkerIds((prev) => {
+                              const n = new Set(prev)
+                              filteredWorkers.filter((w) => w.occupation === bulkSelectOccupation).forEach((w) => n.delete(w.worker_id))
+                              return n
+                            })}>Deselect</Button>
+                        </div>
+                      ) : null
+                    })()}
+
+                    {/* Status — campaign only */}
+                    {state.campaignId && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs w-20 shrink-0 text-muted-foreground">Status</span>
+                        {['member', 'non_member'].map((val) => {
+                          const label = val === 'member' ? 'Member' : 'Non-member'
+                          const count = filteredWorkers.filter((w) => w.membership_status === val).length
+                          return (
+                            <div key={val} className="flex items-center gap-1">
+                              <Badge variant="outline" className="text-[10px] py-0.5">{label} ({count})</Badge>
+                              <Button size="sm" variant="outline" className="h-6 text-[10px] px-1.5" disabled={count === 0}
+                                onClick={() => setSelectedWorkerIds((prev) => {
+                                  const n = new Set(prev)
+                                  filteredWorkers.filter((w) => w.phone && w.membership_status === val).forEach((w) => n.add(w.worker_id))
+                                  return n
+                                })}>+</Button>
+                              <Button size="sm" variant="outline" className="h-6 text-[10px] px-1.5" disabled={count === 0}
+                                onClick={() => setSelectedWorkerIds((prev) => {
+                                  const n = new Set(prev)
+                                  filteredWorkers.filter((w) => w.membership_status === val).forEach((w) => n.delete(w.worker_id))
+                                  return n
+                                })}>−</Button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* Role — campaign only */}
+                    {state.campaignId && (() => {
+                      const roles = [...new Set(filteredWorkers.map((w) => w.organising_role).filter(Boolean) as string[])].sort()
+                      return roles.length > 0 ? (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs w-20 shrink-0 text-muted-foreground">Role</span>
+                          <Select value={bulkSelectRole} onValueChange={setBulkSelectRole}>
+                            <SelectTrigger className="h-7 text-xs w-44">
+                              <SelectValue placeholder="Pick role…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {roles.map((r) => (
+                                <SelectItem key={r} value={r}>{r}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button size="sm" variant="outline" className="h-7 text-xs" disabled={!bulkSelectRole}
+                            onClick={() => setSelectedWorkerIds((prev) => {
+                              const n = new Set(prev)
+                              filteredWorkers.filter((w) => w.phone && w.organising_role === bulkSelectRole).forEach((w) => n.add(w.worker_id))
+                              return n
+                            })}>Select</Button>
+                          <Button size="sm" variant="outline" className="h-7 text-xs" disabled={!bulkSelectRole}
+                            onClick={() => setSelectedWorkerIds((prev) => {
+                              const n = new Set(prev)
+                              filteredWorkers.filter((w) => w.organising_role === bulkSelectRole).forEach((w) => n.delete(w.worker_id))
+                              return n
+                            })}>Deselect</Button>
+                        </div>
+                      ) : null
+                    })()}
+
+                    {/* Rating band — campaign only */}
+                    {state.campaignId && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs w-20 shrink-0 text-muted-foreground">Rating</span>
+                        {RATING_BANDS.map((band) => {
+                          const count = filteredWorkers.filter((w) => band.test(w.cumulative_rating)).length
+                          return (
+                            <div key={band.key} className="flex items-center gap-1">
+                              <Badge variant="outline" className="text-[10px] py-0.5">{band.label} ({count})</Badge>
+                              <Button size="sm" variant="outline" className="h-6 text-[10px] px-1.5" disabled={count === 0}
+                                onClick={() => setSelectedWorkerIds((prev) => {
+                                  const n = new Set(prev)
+                                  filteredWorkers.filter((w) => w.phone && band.test(w.cumulative_rating)).forEach((w) => n.add(w.worker_id))
+                                  return n
+                                })}>+</Button>
+                              <Button size="sm" variant="outline" className="h-6 text-[10px] px-1.5" disabled={count === 0}
+                                onClick={() => setSelectedWorkerIds((prev) => {
+                                  const n = new Set(prev)
+                                  filteredWorkers.filter((w) => band.test(w.cumulative_rating)).forEach((w) => n.delete(w.worker_id))
+                                  return n
+                                })}>−</Button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* Last activity band — campaign only */}
+                    {state.campaignId && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs w-20 shrink-0 text-muted-foreground">Last activity</span>
+                        {RATING_BANDS.map((band) => {
+                          const count = filteredWorkers.filter((w) => band.test(w.last_activity_rating)).length
+                          return (
+                            <div key={band.key} className="flex items-center gap-1">
+                              <Badge variant="outline" className="text-[10px] py-0.5">{band.label} ({count})</Badge>
+                              <Button size="sm" variant="outline" className="h-6 text-[10px] px-1.5" disabled={count === 0}
+                                onClick={() => setSelectedWorkerIds((prev) => {
+                                  const n = new Set(prev)
+                                  filteredWorkers.filter((w) => w.phone && band.test(w.last_activity_rating)).forEach((w) => n.add(w.worker_id))
+                                  return n
+                                })}>+</Button>
+                              <Button size="sm" variant="outline" className="h-6 text-[10px] px-1.5" disabled={count === 0}
+                                onClick={() => setSelectedWorkerIds((prev) => {
+                                  const n = new Set(prev)
+                                  filteredWorkers.filter((w) => band.test(w.last_activity_rating)).forEach((w) => n.delete(w.worker_id))
+                                  return n
+                                })}>−</Button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {workersLoading ? (
                   <div className="flex justify-center py-8">
@@ -1192,13 +1448,42 @@ export function PhoneWizardSteps() {
                   <p className="text-sm text-muted-foreground text-center py-6">No workers found.</p>
                 ) : (
                   <div className="border rounded-md max-h-72 overflow-auto">
-                    <table className="w-full text-xs">
+                    <table className="w-full text-xs min-w-max">
                       <thead className="bg-muted/50 sticky top-0">
                         <tr>
                           <th className="w-8 p-2" />
-                          <th className="text-left p-2 font-medium">Name</th>
-                          <th className="text-left p-2 font-medium">Phone</th>
-                          <th className="text-left p-2 font-medium hidden sm:table-cell">Occupation</th>
+                          <th className="text-left p-2 font-medium cursor-pointer whitespace-nowrap select-none"
+                              onClick={() => handleSortClick('name')}>
+                            Name <SortIcon col="name" />
+                          </th>
+                          <th className="text-left p-2 font-medium cursor-pointer whitespace-nowrap select-none"
+                              onClick={() => handleSortClick('phone')}>
+                            Phone <SortIcon col="phone" />
+                          </th>
+                          <th className="text-left p-2 font-medium cursor-pointer whitespace-nowrap select-none"
+                              onClick={() => handleSortClick('occupation')}>
+                            Occupation <SortIcon col="occupation" />
+                          </th>
+                          {state.campaignId && (
+                            <>
+                              <th className="text-left p-2 font-medium cursor-pointer whitespace-nowrap select-none"
+                                  onClick={() => handleSortClick('membership_status')}>
+                                Status <SortIcon col="membership_status" />
+                              </th>
+                              <th className="text-left p-2 font-medium cursor-pointer whitespace-nowrap select-none"
+                                  onClick={() => handleSortClick('organising_role')}>
+                                Role <SortIcon col="organising_role" />
+                              </th>
+                              <th className="text-left p-2 font-medium cursor-pointer whitespace-nowrap select-none"
+                                  onClick={() => handleSortClick('cumulative_rating')}>
+                                Rating <SortIcon col="cumulative_rating" />
+                              </th>
+                              <th className="text-left p-2 font-medium cursor-pointer whitespace-nowrap select-none"
+                                  onClick={() => handleSortClick('last_activity_rating')}>
+                                Last <SortIcon col="last_activity_rating" />
+                              </th>
+                            </>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
@@ -1220,14 +1505,36 @@ export function PhoneWizardSteps() {
                                   }}
                                 />
                               </td>
-                              <td className="p-2">
+                              <td className="p-2 whitespace-nowrap">
                                 {w.first_name} {w.last_name}
                                 {sourceLabel && (
                                   <span className="block text-muted-foreground text-[10px]">{sourceLabel}</span>
                                 )}
                               </td>
-                              <td className="p-2 text-muted-foreground">{w.phone || 'No phone'}</td>
-                              <td className="p-2 text-muted-foreground hidden sm:table-cell">{w.occupation || '—'}</td>
+                              <td className="p-2 text-muted-foreground whitespace-nowrap">{w.phone || 'No phone'}</td>
+                              <td className="p-2 text-muted-foreground">{w.occupation || '—'}</td>
+                              {state.campaignId && (
+                                <>
+                                  <td className="p-2 whitespace-nowrap">
+                                    {w.membership_status === 'member' ? (
+                                      <Badge variant="default" className="text-[10px] py-0">Member</Badge>
+                                    ) : w.membership_status ? (
+                                      <Badge variant="secondary" className="text-[10px] py-0">Non-member</Badge>
+                                    ) : '—'}
+                                  </td>
+                                  <td className="p-2 text-muted-foreground whitespace-nowrap">{w.organising_role || '—'}</td>
+                                  <td className="p-2 text-center">
+                                    {w.cumulative_rating != null
+                                      ? <span className="font-mono">{w.cumulative_rating.toFixed(1)}</span>
+                                      : <span className="text-muted-foreground">—</span>}
+                                  </td>
+                                  <td className="p-2 text-center">
+                                    {w.last_activity_rating != null
+                                      ? <span className="font-mono">{w.last_activity_rating.toFixed(1)}</span>
+                                      : <span className="text-muted-foreground">—</span>}
+                                  </td>
+                                </>
+                              )}
                             </tr>
                           )
                         })}

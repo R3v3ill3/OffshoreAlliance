@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
+import { formatWorkerLabel } from "@/lib/workers/format-worker-label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -124,15 +125,11 @@ function normalizeMemberWorker(m: unknown): {
 
 function workerDisplayName(worker: ReturnType<typeof normalizeMemberWorker>) {
   if (!worker) return "Worker";
-  const preferred = worker.preferred_name?.trim();
-  if (preferred) return preferred;
-  const full = `${worker.first_name ?? ""} ${worker.last_name ?? ""}`.trim();
-  if (full) return full;
-  const first = worker.first_name?.trim();
-  if (first) return first;
-  const last = worker.last_name?.trim();
-  if (last) return last;
-  return `Worker #${worker.worker_id}`;
+  return formatWorkerLabel(worker.worker_id, {
+    first_name: worker.first_name,
+    last_name: worker.last_name,
+    preferred_name: worker.preferred_name,
+  });
 }
 
 const RULE_DIMENSIONS = [

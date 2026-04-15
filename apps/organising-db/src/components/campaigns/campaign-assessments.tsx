@@ -34,11 +34,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ACTIVITY_TEMPLATE_OPTIONS, VOTE_SUPPORTER_OPTIONS } from "@/lib/campaign/constants";
+import { formatWorkerLabel } from "@/lib/workers/format-worker-label";
 import type { CampaignActivity, CampaignActivityTemplateKey } from "@/types/database";
 
 type PrimitiveValue = string | number | boolean | null;
 
 interface AssessmentFilter {
+  id: string;
   field: string;
   value: string;
 }
@@ -54,6 +56,23 @@ const EMPTY_VALUE = "__empty__";
 const UNSET_VALUE = "__unset__";
 const DEFAULT_SORT_FIELD = "worker_name";
 
+/** Always offered for sort/filter even when every row is null (e.g. filter “Empty”). */
+const CORE_ASSESSMENT_FIELDS = [
+  "membership_type_name",
+  "member_role_type_name",
+  "employer_name",
+  "worksite_name",
+] as const;
+
+const FIELD_LABEL_OVERRIDES: Record<string, string> = {
+  membership_type_name: "Union membership",
+  member_role_type_name: "Organising role",
+  employer_name: "Employer",
+  worksite_name: "Worksite",
+  organising_role: "Organising role",
+  worker_name: "Worker",
+};
+
 function isPrimitiveValue(value: unknown): value is PrimitiveValue {
   return (
     value === null ||
@@ -68,6 +87,8 @@ function normalizeFilterValue(value: PrimitiveValue): string {
 }
 
 function labelForField(field: string): string {
+  const override = FIELD_LABEL_OVERRIDES[field];
+  if (override) return override;
   return field
     .replaceAll("_", " ")
     .replace(/\b\w/g, (match) => match.toUpperCase());
@@ -104,6 +125,7 @@ export function CampaignAssessmentsSection({
   const [sortField, setSortField] = useState(DEFAULT_SORT_FIELD);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [activeFilters, setActiveFilters] = useState<AssessmentFilter[]>([]);
+  const [filterCombineMode, setFilterCombineMode] = useState<"all" | "any">("all");
   const [filterFieldDraft, setFilterFieldDraft] = useState(DEFAULT_SORT_FIELD);
   const [filterValueDraft, setFilterValueDraft] = useState<string>(UNSET_VALUE);
 
@@ -317,9 +339,7 @@ export function CampaignAssessmentsSection({
     return members.map((row: { worker_id: number; worker: unknown }) => {
       const rawWorkerValue = Array.isArray(row.worker) ? row.worker[0] : row.worker;
       const worker = (rawWorkerValue ?? {}) as Record<string, unknown>;
-      const firstName = typeof worker.first_name === "string" ? worker.first_name : "";
-      const lastName = typeof worker.last_name === "string" ? worker.last_name : "";
-      const workerName = `${firstName} ${lastName}`.trim() || `Worker ${row.worker_id}`;
+      const workerName = formatWorkerLabel(row.worker_id, worker);
       const existing = ratingMap.get(row.worker_id);
       const summary = summaryMap.get(row.worker_id);
 
@@ -371,7 +391,7 @@ export function CampaignAssessmentsSection({
   const selectedActivity = activities.find((activity) => activity.activity_id === activityForRates);
 
   const availableFields = useMemo(() => {
-    const keys = new Set<string>();
+    const keys = new Set<string>(CORE_ASSESSMENT_FIELDS);
     workerRows.forEach((row) => {
       Object.entries(row.fieldValues).forEach(([field, value]) => {
         if (value !== null) keys.add(field);
@@ -419,10 +439,14 @@ export function CampaignAssessmentsSection({
     setSelectedWorkerIds(new Set());
     setBulkRating(UNSET_VALUE);
     setBulkBinaryValue(UNSET_VALUE);
-  }, [activityForRates, activeFilters, tableSearch]);
+  }, [activityForRates, activeFilters, filterCombineMode, tableSearch]);
 
   const filteredRows = useMemo(() => {
     const search = tableSearch.trim().toLowerCase();
+    const matchClause = (row: AssessmentWorkerRow, filter: AssessmentFilter) => {
+      const value = row.fieldValues[filter.field] ?? null;
+      return normalizeFilterValue(value) === filter.value;
+    };
     return workerRows.filter((row) => {
       if (search) {
         const searchHit = Object.values(row.fieldValues).some((value) => {
@@ -432,14 +456,13 @@ export function CampaignAssessmentsSection({
         if (!searchHit) return false;
       }
 
-      const matchesFilters = activeFilters.every((filter) => {
-        const value = row.fieldValues[filter.field] ?? null;
-        return normalizeFilterValue(value) === filter.value;
-      });
-
-      return matchesFilters;
+      if (activeFilters.length === 0) return true;
+      if (filterCombineMode === "all") {
+        return activeFilters.every((f) => matchClause(row, f));
+      }
+      return activeFilters.some((f) => matchClause(row, f));
     });
-  }, [activeFilters, tableSearch, workerRows]);
+  }, [activeFilters, filterCombineMode, tableSearch, workerRows]);
 
   const sortedRows = useMemo(() => {
     const rows = [...filteredRows];
@@ -486,14 +509,21 @@ export function CampaignAssessmentsSection({
 
   const addFilter = () => {
     if (filterValueDraft === UNSET_VALUE || !filterFieldDraft) return;
+    const clause: AssessmentFilter = {
+      id: crypto.randomUUID(),
+      field: filterFieldDraft,
+      value: filterValueDraft,
+    };
     setActiveFilters((prev) => {
-      const withoutSameField = prev.filter((filter) => filter.field !== filterFieldDraft);
-      return [...withoutSameField, { field: filterFieldDraft, value: filterValueDraft }];
+      if (filterCombineMode === "all") {
+        return [...prev.filter((f) => f.field !== filterFieldDraft), clause];
+      }
+      return [...prev, clause];
     });
   };
 
-  const removeFilter = (field: string) => {
-    setActiveFilters((prev) => prev.filter((filter) => filter.field !== field));
+  const removeFilter = (id: string) => {
+    setActiveFilters((prev) => prev.filter((filter) => filter.id !== id));
   };
 
   const applySeedFilters = () => {
@@ -502,6 +532,7 @@ export function CampaignAssessmentsSection({
       .map((field) => {
         const value = selectedSeedRow.fieldValues[field] ?? null;
         return {
+          id: crypto.randomUUID(),
           field,
           value: normalizeFilterValue(value),
         };
@@ -509,9 +540,12 @@ export function CampaignAssessmentsSection({
       .filter((filter) => fieldsByKey.has(filter.field));
 
     setActiveFilters((prev) => {
-      const nextByField = new Map(prev.map((filter) => [filter.field, filter]));
-      nextFilters.forEach((filter) => nextByField.set(filter.field, filter));
-      return [...nextByField.values()];
+      if (filterCombineMode === "all") {
+        const nextByField = new Map(prev.map((filter) => [filter.field, filter]));
+        nextFilters.forEach((filter) => nextByField.set(filter.field, filter));
+        return [...nextByField.values()];
+      }
+      return [...prev, ...nextFilters];
     });
 
     setSeedDialogOpen(false);
@@ -651,9 +685,29 @@ export function CampaignAssessmentsSection({
                   </Button>
                 </div>
 
+                <div className="space-y-1 max-w-xs">
+                  <Label>Match filters</Label>
+                  <Select
+                    value={filterCombineMode}
+                    onValueChange={(value) => setFilterCombineMode(value as "all" | "any")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All conditions (AND)</SelectItem>
+                      <SelectItem value="any">Any condition (OR)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    With OR, you can add several filters on the same field (e.g. two employers). With AND, a
+                    second filter on the same field replaces the first.
+                  </p>
+                </div>
+
                 <div className="flex flex-wrap gap-2">
                   {activeFilters.map((filter) => (
-                    <Badge key={filter.field} variant="secondary" className="gap-1">
+                    <Badge key={filter.id} variant="secondary" className="gap-1">
                       {labelForField(filter.field)}:{" "}
                       {labelForValue(
                         (valuesByField.get(filter.field) ?? []).find(
@@ -663,7 +717,7 @@ export function CampaignAssessmentsSection({
                       <button
                         type="button"
                         className="ml-1 text-xs"
-                        onClick={() => removeFilter(filter.field)}
+                        onClick={() => removeFilter(filter.id)}
                       >
                         x
                       </button>

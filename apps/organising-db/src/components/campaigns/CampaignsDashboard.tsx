@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Users, UserCheck, Network, Award, BarChart3 } from 'lucide-react'
 import {
@@ -10,8 +10,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useCampaignsAllStats } from '@/lib/hooks/useCampaignsAllStats'
+import { CampaignDashboardStatCard } from '@/components/campaigns/campaign-dashboard-stat-card'
 import { CampaignsMetricsTable } from '@/components/campaigns/CampaignsMetricsTable'
 
 interface StagePlanSummary {
@@ -38,33 +38,6 @@ interface CampaignsDashboardProps {
   selectedOrganiserId: string
   onOrganiserChange: (value: string) => void
   onRowClick?: (campaignId: number) => void
-}
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  sub,
-}: {
-  icon: React.ElementType
-  label: string
-  value: string | number
-  sub?: string
-}) {
-  return (
-    <Card className="flex-1 min-w-[130px]">
-      <CardHeader className="pb-1 pt-3 px-3">
-        <CardTitle className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <Icon className="h-3.5 w-3.5 flex-shrink-0" />
-          {label}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="px-3 pb-3 pt-0">
-        <p className="text-xl font-semibold leading-none">{value}</p>
-        {sub && <p className="text-[11px] text-muted-foreground mt-1">{sub}</p>}
-      </CardContent>
-    </Card>
-  )
 }
 
 export function CampaignsDashboard({
@@ -182,31 +155,31 @@ export function CampaignsDashboard({
 
       {/* Aggregate summary cards */}
       <div className="flex flex-wrap gap-3">
-        <StatCard
+        <CampaignDashboardStatCard
           icon={Users}
           label="Total estimate"
           value={summary.totalEstimate.toLocaleString()}
           sub={`across ${summary.campaignCount} campaign${summary.campaignCount !== 1 ? 's' : ''}`}
         />
-        <StatCard
+        <CampaignDashboardStatCard
           icon={UserCheck}
           label="Mapping"
           value={summary.mappingPct != null ? `${summary.mappingPct}%` : '—'}
           sub={`${summary.totalNamed.toLocaleString()} named workers`}
         />
-        <StatCard
+        <CampaignDashboardStatCard
           icon={Award}
           label="Membership"
           value={summary.membershipPct != null ? `${summary.membershipPct}%` : '—'}
           sub="members of estimated workers"
         />
-        <StatCard
+        <CampaignDashboardStatCard
           icon={Network}
           label="Leadership"
           value={summary.leaderRatio}
           sub={`${summary.totalLeaders} leaders`}
         />
-        <StatCard
+        <CampaignDashboardStatCard
           icon={BarChart3}
           label="Participation"
           value={summary.participationPct != null ? `${summary.participationPct}%` : '—'}

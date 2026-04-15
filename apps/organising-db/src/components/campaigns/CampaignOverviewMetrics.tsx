@@ -1,21 +1,25 @@
 'use client'
 
 import { useMemo } from 'react'
-import { useCampaignCurrentStats } from '@/lib/hooks/useCampaignCurrentStats'
+import Link from 'next/link'
+import { Award, BarChart3, ExternalLink, Network, UserCheck, Users } from 'lucide-react'
+import { useCampaignListStats } from '@/lib/hooks/useCampaignListStats'
 import { useCampaignAmbitionsByStage } from '@/lib/hooks/useGateAssessment'
-import { evaluateAmbitions, resolveMetricType, type PlanAmbitionWithOption } from '@/lib/utils/ambition-gate-logic'
-import { STAGE_NAMES } from '@/types/planner-types'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+  evaluateAmbitions,
+  resolveMetricType,
+  type PlanAmbitionWithOption,
+} from '@/lib/utils/ambition-gate-logic'
+import { STAGE_NAMES } from '@/types/planner-types'
+import type { P2wCompletion } from '@/lib/hooks/useCampaignsAllStats'
+import { CampaignDashboardStatCard } from '@/components/campaigns/campaign-dashboard-stat-card'
+import { CampaignPlanningVisual } from '@/components/campaigns/CampaignPlanningVisual'
+import { CampaignUnitMetricsTable } from '@/components/campaigns/CampaignUnitMetricsTable'
+import { OverviewMetricBar } from '@/components/campaigns/overview-metric-bar'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+
+const EMPTY_P2W = new Map<number, P2wCompletion>()
 
 type StageProgressDatum = {
   stage: string
@@ -53,22 +57,49 @@ function ambitionNumericCurrent(ambition: PlanAmbitionWithOption): number {
 }
 
 export function CampaignOverviewMetrics({ campaignId }: { campaignId: number }) {
-  const stats = useCampaignCurrentStats(campaignId)
+  const {
+    stats,
+    totalWorkerEstimate,
+    stagePlans,
+    organisingUnits,
+    members,
+    ratings,
+    ouAssign,
+    isLoading,
+  } = useCampaignListStats(campaignId)
+
   const { data: ambitionsByStage } = useCampaignAmbitionsByStage(campaignId)
 
-  const unmappedWorkers = Math.max(0, stats.totalWorkerEstimate - stats.namedWorkers)
+  const summary = useMemo(() => {
+    const totalEstimate = totalWorkerEstimate
+    const totalNamed = stats.namedWorkers
+    const totalMembers = stats.memberLikeCount
+    const totalLeaders = stats.leadershipTotal
+    const totalRated = stats.participationCount
 
-  const roleBreakdownData = [
-    { name: 'Contact', value: stats.contacts },
-    { name: 'Activist', value: stats.activists },
-    { name: 'Delegate', value: stats.delegates },
-    { name: 'Barg. rep', value: stats.bargainingReps },
-  ]
+    const mappingPct =
+      totalEstimate > 0 ? Math.round((totalNamed / totalEstimate) * 1000) / 10 : null
+    const membershipPct =
+      totalEstimate > 0 ? Math.round((totalMembers / totalEstimate) * 1000) / 10 : null
+    const participationPct =
+      totalEstimate > 0 ? Math.round((totalRated / totalEstimate) * 1000) / 10 : null
+    const leaderRatio =
+      totalLeaders > 0 && totalEstimate > 0
+        ? `1 : ${Math.round(totalEstimate / totalLeaders)}`
+        : totalLeaders > 0
+          ? `${totalLeaders}`
+          : '—'
 
-  const workerBreakdownData = [
-    { name: 'Named workers', value: stats.namedWorkers },
-    { name: 'Unmapped (est.)', value: unmappedWorkers },
-  ]
+    return {
+      totalEstimate,
+      totalNamed,
+      mappingPct,
+      membershipPct,
+      participationPct,
+      leaderRatio,
+      totalLeaders,
+    }
+  }, [stats, totalWorkerEstimate])
 
   const ambitionStageData = useMemo((): StageProgressDatum[] => {
     if (!ambitionsByStage) return []
@@ -107,148 +138,158 @@ export function CampaignOverviewMetrics({ campaignId }: { campaignId: number }) 
     })
   }, [ambitionsByStage])
 
-  const ambitionTotals = useMemo(() => {
-    return ambitionStageData.reduce(
-      (acc, row) => {
-        acc.total += row.ambitionCount
-        acc.met += row.metCount
-        return acc
-      },
-      { total: 0, met: 0 }
-    )
-  }, [ambitionStageData])
-
-  const leadershipTotal = stats.delegates + stats.activists + stats.contacts + stats.bargainingReps
+  const leadershipDensityPct =
+    summary.totalEstimate > 0 && summary.totalLeaders > 0
+      ? Math.min(100, (summary.totalLeaders / summary.totalEstimate) * 100)
+      : null
 
   return (
     <div className="space-y-6">
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-        <Card>
-          <CardHeader className="py-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Workers mapped</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <p className="text-2xl font-semibold">{stats.namedWorkers}</p>
-            <p className="text-xs text-muted-foreground">
-              {stats.totalWorkerEstimate > 0
-                ? `${stats.namedPctOfEstimate}% of ${stats.totalWorkerEstimate} estimated`
-                : 'No worker estimate set'}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="py-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Membership density</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <p className="text-2xl font-semibold">{stats.densityOfNamed}%</p>
-            <p className="text-xs text-muted-foreground">{stats.memberLikeCount} member-like of named workers</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="py-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Leadership total</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <p className="text-2xl font-semibold">{leadershipTotal}</p>
-            <p className="text-xs text-muted-foreground">Contact/Activist/Delegate via OA role, Bargaining rep via member role</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="py-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Ambitions met</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <p className="text-2xl font-semibold">
-              {ambitionTotals.met}/{ambitionTotals.total}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {ambitionStageData.length > 0 ? `Across ${ambitionStageData.length} stages` : 'No stage ambitions yet'}
-            </p>
-          </CardContent>
-        </Card>
+      <div className="flex flex-wrap gap-3">
+        {isLoading ? (
+          <>
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} className="h-[4.5rem] flex-1 min-w-[130px] rounded-lg" />
+            ))}
+          </>
+        ) : (
+          <>
+            <CampaignDashboardStatCard
+              icon={Users}
+              label="Total estimate"
+              value={summary.totalEstimate.toLocaleString()}
+              sub="this campaign"
+            />
+            <CampaignDashboardStatCard
+              icon={UserCheck}
+              label="Mapping"
+              value={summary.mappingPct != null ? `${summary.mappingPct}%` : '—'}
+              sub={`${summary.totalNamed.toLocaleString()} named workers`}
+            />
+            <CampaignDashboardStatCard
+              icon={Award}
+              label="Membership"
+              value={summary.membershipPct != null ? `${summary.membershipPct}%` : '—'}
+              sub="members of estimated workers"
+            />
+            <CampaignDashboardStatCard
+              icon={Network}
+              label="Leadership"
+              value={summary.leaderRatio}
+              sub={`${summary.totalLeaders} leaders`}
+            />
+            <CampaignDashboardStatCard
+              icon={BarChart3}
+              label="Participation"
+              value={summary.participationPct != null ? `${summary.participationPct}%` : '—'}
+              sub="workers with at least one rating"
+            />
+          </>
+        )}
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Worker breakdown</CardTitle>
-            <CardDescription>Named workers against estimate gap</CardDescription>
-          </CardHeader>
-          <CardContent className="h-64">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-              <BarChart data={workerBreakdownData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+      <Card>
+        <CardHeader className="pb-3 flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+          <div className="space-y-1">
+            <CardTitle className="text-base">Campaign plan progress</CardTitle>
+            <CardDescription>
+              Playing to Win steps by stage. Click a stage to open its planner.
+            </CardDescription>
+          </div>
+          <Link
+            href={`/campaigns/${campaignId}/plan`}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline shrink-0"
+          >
+            View campaign plan
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Link>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <CampaignPlanningVisual
+            campaignId={campaignId}
+            stagePlans={stagePlans}
+            p2wByPlanId={stats.p2wByPlanId}
+          />
+        </CardContent>
+      </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Role breakdown</CardTitle>
-            <CardDescription>Worker organising roles in this campaign</CardDescription>
-          </CardHeader>
-          <CardContent className="h-64">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-              <BarChart data={roleBreakdownData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="value" fill="hsl(142 70% 40%)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold text-foreground">Organising unit summaries</h3>
+        <CampaignUnitMetricsTable
+          campaignId={campaignId}
+          organisingUnits={organisingUnits}
+          members={members}
+          ratings={ratings}
+          ouAssign={ouAssign}
+          campaignOuCount={organisingUnits.length}
+          campaignEstimate={summary.totalEstimate}
+          emptyP2w={EMPTY_P2W}
+          isLoadingParent={isLoading}
+        />
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Ambition progress by stage</CardTitle>
-          <CardDescription>Current progress against stage ambition targets</CardDescription>
+          <CardTitle className="text-base">Campaign KPIs</CardTitle>
+          <CardDescription>Progress against worker estimate (target markers at full mapping / density).</CardDescription>
         </CardHeader>
-        <CardContent className="h-72">
-          {ambitionStageData.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-              No ambition progress data available yet.
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-              <BarChart data={ambitionStageData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="stage" tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} domain={[0, 100]} />
-                <Tooltip
-                  formatter={(value, key) => {
-                    const raw = Array.isArray(value) ? value[0] : value
-                    const numeric = typeof raw === 'number' ? raw : Number(raw)
-                    const displayPct = Number.isFinite(numeric) ? `${numeric}%` : '—'
-                    if (key === 'target') return [displayPct, 'Target']
-                    if (key === 'current') return [displayPct, 'Current']
-                    return [raw ?? '—', String(key)]
-                  }}
-                  labelFormatter={(label) => {
-                    const row = ambitionStageData.find((item) => item.stage === label)
-                    if (!row) return label
-                    return `${row.stageLabel} (${row.metCount}/${row.ambitionCount} met)`
-                  }}
-                />
-                <Legend />
-                <Bar dataKey="current" name="Current" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="target" name="Target" fill="hsl(210 16% 82%)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
+        <CardContent className="grid sm:grid-cols-2 gap-6">
+          <OverviewMetricBar
+            label="Mapping"
+            percent={summary.mappingPct}
+            fractionLabel={`${summary.totalNamed} / ${summary.totalEstimate > 0 ? summary.totalEstimate.toLocaleString() : '—'}`}
+            targetLabel="Target: 100%"
+            targetMarkerPercent={100}
+            variant="blue"
+          />
+          <OverviewMetricBar
+            label="Membership"
+            percent={summary.membershipPct}
+            fractionLabel={`${stats.memberLikeCount} / ${summary.totalEstimate > 0 ? summary.totalEstimate.toLocaleString() : '—'}`}
+            targetLabel="Target: 100%"
+            targetMarkerPercent={100}
+            variant="green"
+          />
+          <OverviewMetricBar
+            label="Participation"
+            percent={summary.participationPct}
+            fractionLabel={`${stats.participationCount} / ${summary.totalEstimate > 0 ? summary.totalEstimate.toLocaleString() : '—'}`}
+            targetLabel="Target: 100%"
+            targetMarkerPercent={100}
+            variant="blue"
+          />
+          <OverviewMetricBar
+            label="Leadership density"
+            percent={leadershipDensityPct}
+            fractionLabel={`${summary.totalLeaders} / ${summary.totalEstimate > 0 ? summary.totalEstimate.toLocaleString() : '—'}`}
+            targetLabel={`Ratio: ${summary.leaderRatio}`}
+            targetMarkerPercent={100}
+            variant="green"
+          />
         </CardContent>
       </Card>
+
+      {ambitionStageData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Ambition progress by stage</CardTitle>
+            <CardDescription>Weighted progress toward numeric ambition targets per stage.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid sm:grid-cols-2 gap-6">
+            {ambitionStageData.map((row, i) => (
+              <OverviewMetricBar
+                key={row.stage}
+                label={row.stageLabel}
+                percent={row.current}
+                fractionLabel={`${row.metCount} / ${row.ambitionCount} ambitions met`}
+                targetLabel="Target: 100%"
+                targetMarkerPercent={100}
+                variant={i % 2 === 0 ? 'blue' : 'green'}
+              />
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

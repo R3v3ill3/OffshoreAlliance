@@ -146,6 +146,40 @@ function clearSupabaseLocalStorage(): void {
   }
 }
 
+/**
+ * Explicitly clear all Supabase auth cookies from document.cookie.
+ *
+ * This is CRITICAL because supabase.auth.signOut() is the only other place
+ * that clears cookies, and it goes through the auth client — which may be in
+ * a broken/hung state (causing the 5-second timeout in performRobustSignOut
+ * to fire without actually clearing cookies). When that happens, the stale
+ * cookies persist, and any new Supabase client created after resetClient()
+ * reads them and re-enters the same broken state.
+ *
+ * We expire cookies for both the explicit domain (.uconstruct.app) and
+ * hostname-only variants to handle any domain mismatch scenarios.
+ */
+function clearSupabaseCookies(): void {
+  if (typeof document === "undefined") return;
+
+  try {
+    const cookies = document.cookie.split(";");
+    for (const cookie of cookies) {
+      const name = cookie.split("=")[0]?.trim();
+      if (!name || !name.startsWith("sb-")) continue;
+
+      const expiry = "expires=Thu, 01 Jan 1970 00:00:00 GMT";
+
+      // Clear with explicit domain (production)
+      document.cookie = `${name}=; ${expiry}; path=/; domain=.uconstruct.app`;
+      // Clear hostname-only (fallback / previews)
+      document.cookie = `${name}=; ${expiry}; path=/`;
+    }
+  } catch {
+    // best effort — cookie API shouldn't throw, but defensive
+  }
+}
+
 function goToLogin(reasonCode: string): void {
   logConnectionEvent({ type: "session_lost", detail: reasonCode });
   const nextUrl = `/login?reason=${encodeURIComponent(reasonCode)}`;
@@ -396,7 +430,60 @@ export async function performRobustSignOut({
     console.warn("[session-recovery] signOut exception", readErrorMessage(error));
   }
 
+  clearSupabaseCookies();
   clearSupabaseLocalStorage();
   resetClient();
   goToLogin("signed_out");
+}
+
+/**
+ * Nuclear reset: clears ALL Supabase state from the browser without going
+ * through the auth client (which may be in a broken/hung state).
+ *
+ * This is the fallback when normal logout fails. It:
+ * 1. Clears all sb-* cookies (both domain variants)
+ * 2. Clears all sb-* localStorage and sessionStorage entries
+ * 3. Resets the Supabase client singleton
+ * 4. Attempts to release any held navigator.locks
+ * 5. Navigates to /login
+ *
+ * This should always succeed because it does NOT call any Supabase client
+ * methods — it operates directly on browser APIs.
+ */
+export function nuclearReset(): void {
+  logConnectionEvent({ type: "session_lost", detail: "nuclear-reset" });
+
+  // 1. Clear cookies — the MOST critical step.
+  //    Stale cookies cause fresh clients to re-enter the broken state.
+  clearSupabaseCookies();
+
+  // 2. Clear web storage
+  clearSupabaseLocalStorage();
+
+  // 3. Reset the client singleton so the next createClient() starts fresh
+  resetClient();
+
+  // 4. Best-effort: release any held navigator.locks.
+  //    This uses the async query API but we don't await — fire and forget.
+  if (typeof navigator !== "undefined" && navigator.locks) {
+    try {
+      navigator.locks.query().then((state) => {
+        for (const lock of state.held ?? []) {
+          if (lock.name?.includes("supabase")) {
+            console.warn("[nuclear-reset] Found held Supabase lock:", lock.name);
+            // navigator.locks doesn't support forced release from outside the holder.
+            // Logging it is the best we can do; the page reload below will clear it.
+          }
+        }
+      }).catch(() => {
+        // best effort
+      });
+    } catch {
+      // best effort
+    }
+  }
+
+  // 5. Navigate to login. This also triggers a full page unload which
+  //    releases any navigator.locks held by callbacks in this page.
+  goToLogin("nuclear_reset");
 }

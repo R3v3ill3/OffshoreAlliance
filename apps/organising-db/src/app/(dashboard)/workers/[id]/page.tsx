@@ -31,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { WorkerRelationshipsTab } from "@/components/campaigns/wall-chart/worker-relationships-tab";
 
 const AU_STATES = ["WA", "NT", "QLD", "SA", "NSW", "VIC", "TAS", "ACT"];
 const NONE_VALUE = "__none__";
@@ -933,6 +934,7 @@ export default function WorkerDetailPage() {
           <TabsTrigger value="assignments">Assignments</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="communications">Communications</TabsTrigger>
+          <TabsTrigger value="relationships">Relationships</TabsTrigger>
         </TabsList>
 
         {/* ── Details tab ──────────────────────────────────────────────── */}
@@ -1783,6 +1785,17 @@ export default function WorkerDetailPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">Communication log will appear here.</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="relationships" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Leader ↔ worker relationships</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <WorkerRelationshipsTab workerId={workerId} canWrite={canWrite} />
             </CardContent>
           </Card>
         </TabsContent>

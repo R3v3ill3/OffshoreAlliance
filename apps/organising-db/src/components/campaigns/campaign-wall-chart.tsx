@@ -30,7 +30,16 @@ import {
   useDerivedOptions,
 } from "./wall-chart/wall-chart-filter-bar";
 import { WorkerDetailSheet } from "./wall-chart/worker-detail-sheet";
-import { CopyWorkerToUnitDialog } from "./wall-chart/copy-worker-to-unit-dialog";
+import {
+  CopyWorkerToUnitDialog,
+  MoveOrCopyWorkersDialog,
+  type MoveMode,
+} from "./wall-chart/copy-worker-to-unit-dialog";
+import { WallChartSelectionBar } from "./wall-chart/wall-chart-selection-bar";
+import { useWallChartSelection } from "./wall-chart/use-wall-chart-selection";
+import { useMoveWorkersMutation } from "./wall-chart/move-worker-mutation";
+import { LinkToLeaderDialog } from "./wall-chart/link-to-leader-dialog";
+import type { WorkerDragRef } from "./wall-chart/dnd";
 import { RelationshipOverlay } from "./wall-chart/relationship-overlay";
 import { useAllLeaderLinks } from "./wall-chart/use-leader-links";
 import {
@@ -58,6 +67,19 @@ export function CampaignWallChart({
   const supabase = createClient();
   const [selectedWorkerId, setSelectedWorkerId] = useState<number | null>(null);
   const [copyWorkerId, setCopyWorkerId] = useState<number | null>(null);
+
+  // Multi-select state for bulk Move/Copy/Link actions.
+  const selection = useWallChartSelection();
+  const [bulkDialog, setBulkDialog] = useState<{ mode: MoveMode } | null>(null);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const moveWorkers = useMoveWorkersMutation(campaignId);
+
+  // Esc clears selection.
+  const handleRootKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape" && selection.size > 0) {
+      selection.clear();
+    }
+  };
 
   // Relationship overlay state — persisted per-user per-campaign.
   const [overlayEnabled, setOverlayEnabled] = useState(() => {
@@ -376,16 +398,69 @@ export function CampaignWallChart({
           inMultipleUnits={inMultipleUnits}
           otherUnitNames={otherUnitNames}
           canWrite={canWrite}
-          onClick={(id) => setSelectedWorkerId(id)}
+          isSelected={selection.has(ouId, workerId)}
+          onClick={(id, tileOuId, kind) => {
+            if (kind === "toggle-select") {
+              selection.toggle(tileOuId, id);
+              return;
+            }
+            // Plain click: open the sheet. If a selection exists, clear it first
+            // so the user isn't left with a stale selection after drilling in.
+            if (selection.size > 0) selection.clear();
+            setSelectedWorkerId(id);
+          }}
           onCopy={(id) => setCopyWorkerId(id)}
+          onDragStartRefs={(id, tileOuId) => {
+            // If the dragged tile is in the current selection, carry the whole
+            // selection; otherwise, drag just this one tile. This matches the
+            // Finder/macOS convention for list drags.
+            if (selection.has(tileOuId, id)) {
+              return selection
+                .refs()
+                .map((r) => ({ workerId: r.workerId, fromOuId: r.ouId }));
+            }
+            return [{ workerId: id, fromOuId: tileOuId }];
+          }}
         />
       );
     },
-    [workerById, unitsByWorker, ouNameById, ratingByWorker, canWrite]
+    [workerById, unitsByWorker, ouNameById, ratingByWorker, canWrite, selection]
   );
 
   const copyWorker = copyWorkerId != null ? workerById.get(copyWorkerId) : undefined;
   const copyWorkerOuIds = copyWorkerId != null ? unitsByWorker.get(copyWorkerId) ?? [] : [];
+
+  const handleWorkerDrop = useCallback(
+    ({
+      targetOuId,
+      payload,
+      mode,
+    }: {
+      targetOuId: number | null;
+      payload: { refs: WorkerDragRef[] };
+      mode: "move" | "copy";
+    }) => {
+      if (!canWrite) return;
+      if (payload.refs.length === 0) return;
+      // Avoid pointless no-ops: dropping on the same unit with no cross-unit refs.
+      const allAlreadyThere = payload.refs.every((r) => r.fromOuId === targetOuId);
+      if (mode === "move" && allAlreadyThere) return;
+      moveWorkers.mutate(
+        {
+          refs: payload.refs,
+          toOuId: targetOuId,
+          mode,
+        },
+        {
+          onSuccess: () => {
+            // Clear selection after successful bulk action.
+            if (selection.size > 0) selection.clear();
+          },
+        }
+      );
+    },
+    [canWrite, moveWorkers, selection]
+  );
 
   return (
     <Card>
@@ -402,7 +477,19 @@ export function CampaignWallChart({
           Click a name to edit (staff only).
         </p>
       </CardHeader>
-      <CardContent className="space-y-4 print:space-y-2">
+      <CardContent
+        className="space-y-4 print:space-y-2"
+        tabIndex={-1}
+        onKeyDown={handleRootKeyDown}
+      >
+        <WallChartSelectionBar
+          count={selection.size}
+          canWrite={canWrite}
+          onMove={() => setBulkDialog({ mode: "move" })}
+          onCopy={() => setBulkDialog({ mode: "copy" })}
+          onLinkToLeader={() => setLinkDialogOpen(true)}
+          onClear={() => selection.clear()}
+        />
         <WallChartSummaryHeader
           campaignName={(campaign as { name?: string | null } | undefined)?.name ?? null}
           metrics={campaignMetrics}
@@ -467,6 +554,8 @@ export function CampaignWallChart({
               ou={null}
               fallbackTitle="Unassigned workers"
               workerCount={sorted.length}
+              onWorkerDrop={handleWorkerDrop}
+              dropDisabled={!canWrite}
               summary={
                 <UnitSummaryMetrics
                   metrics={unassignedMetrics}
@@ -516,6 +605,8 @@ export function CampaignWallChart({
                 workerCount={sorted.length}
                 estimate={est}
                 placeholders={placeholders}
+                onWorkerDrop={handleWorkerDrop}
+                dropDisabled={!canWrite}
                 summary={
                   unitMetrics && ids.length > 0 ? (
                     <UnitSummaryMetrics
@@ -608,6 +699,38 @@ export function CampaignWallChart({
         ous={ous}
         currentOuIds={copyWorkerOuIds}
       />
+
+      {linkDialogOpen && (
+        <LinkToLeaderDialog
+          key={`link-${selection.size}`}
+          open
+          onOpenChange={(v) => {
+            if (!v) setLinkDialogOpen(false);
+          }}
+          campaignId={campaignId}
+          followerWorkerIds={selection.workerIds()}
+          onCompleted={() => {
+            selection.clear();
+          }}
+        />
+      )}
+
+      {bulkDialog && (
+        <MoveOrCopyWorkersDialog
+          key={`${bulkDialog.mode}-${selection.size}`}
+          open
+          onOpenChange={(v) => {
+            if (!v) setBulkDialog(null);
+          }}
+          campaignId={campaignId}
+          refs={selection.refs().map((r) => ({ workerId: r.workerId, fromOuId: r.ouId }))}
+          mode={bulkDialog.mode}
+          ous={ous}
+          onCompleted={() => {
+            selection.clear();
+          }}
+        />
+      )}
     </Card>
   );
 }

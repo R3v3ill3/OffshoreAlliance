@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -45,6 +45,8 @@ interface DraftPreviewProps {
 
 export function DraftPreview({ draft, campaignId, onEdit }: DraftPreviewProps) {
   const router = useRouter()
+  const pathname = usePathname()
+  const returnTo = encodeURIComponent(pathname)
   const [isStructuring, setIsStructuring] = useState(false)
 
   const icon = PLATFORM_ICONS[draft.platform] || PLATFORM_ICONS.email
@@ -88,7 +90,7 @@ export function DraftPreview({ draft, campaignId, onEdit }: DraftPreviewProps) {
       }
       const newScript = await createRes.json()
       toast.success(`Script structured into ${sections?.length || 0} SOC sections`)
-      router.push(`/campaigns/${campaignId}/phone/scripts/${newScript.script_id}`)
+      router.push(`/campaigns/${campaignId}/phone/scripts/${newScript.script_id}?returnTo=${returnTo}`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to structure script')
     } finally {
@@ -153,7 +155,7 @@ export function DraftPreview({ draft, campaignId, onEdit }: DraftPreviewProps) {
             {draft.structured_script_id ? (
               <Button
                 variant="outline" size="sm" className="h-6 text-xs flex-1"
-                onClick={() => router.push(`/campaigns/${campaignId}/phone/scripts/${draft.structured_script_id}`)}
+                onClick={() => router.push(`/campaigns/${campaignId}/phone/scripts/${draft.structured_script_id}?returnTo=${returnTo}`)}
               >
                 <Pencil className="h-3 w-3 mr-1" />
                 Edit Script
@@ -174,7 +176,7 @@ export function DraftPreview({ draft, campaignId, onEdit }: DraftPreviewProps) {
             )}
             <Button
               variant="outline" size="sm" className="h-6 text-xs flex-1"
-              onClick={() => router.push(`/campaigns/${campaignId}/phone/lists/new`)}
+              onClick={() => router.push(`/campaigns/${campaignId}/phone/lists/new?returnTo=${returnTo}`)}
             >
               <Users className="h-3 w-3 mr-1" />
               Create Call List

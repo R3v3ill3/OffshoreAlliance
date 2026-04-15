@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useCallScript, useUpdateCallScriptSections, useUpdateCallScript, useStructureScript } from '@/lib/hooks/useCallScripts'
 import { CallScriptEditor, sectionsToEditable } from '@/components/phone/CallScriptEditor'
 import { Button } from '@/components/ui/button'
@@ -18,8 +18,12 @@ import type { ScriptStatus } from '@/types/planner-types'
 export default function ScriptEditorPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const campaignId = params.id as string
   const scriptId = params.scriptId as string
+  const backHref = searchParams.get('returnTo')
+    ? decodeURIComponent(searchParams.get('returnTo')!)
+    : `/campaigns/${campaignId}/phone`
 
   const { data: script, isLoading } = useCallScript(campaignId, scriptId)
   const updateSections = useUpdateCallScriptSections(campaignId, scriptId)
@@ -100,7 +104,7 @@ export default function ScriptEditorPage() {
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => router.push(`/campaigns/${campaignId}/phone`)}>
+        <Button variant="ghost" size="sm" onClick={() => router.push(backHref)}>
           <ArrowLeft className="h-4 w-4 mr-1" />
           Back
         </Button>

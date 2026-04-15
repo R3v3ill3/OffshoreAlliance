@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { useCallScripts } from '@/lib/hooks/useCallScripts'
 import { useCreateCallList } from '@/lib/hooks/useCallList'
@@ -39,9 +39,21 @@ const SUPPORT_LEVEL_CONFIG: Record<string, { label: string; className: string }>
   neutral: { label: 'Neutral', className: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
   unsupportive: { label: 'Unsupportive', className: 'bg-orange-100 text-orange-700 border-orange-200' },
   hostile: { label: 'Hostile', className: 'bg-red-100 text-red-700 border-red-200' },
+  unassessed: { label: 'Un-assessed', className: 'bg-slate-100 text-slate-600 border-slate-200' },
 }
 
 const ALL_SUPPORT_LEVELS = Object.keys(SUPPORT_LEVEL_CONFIG)
+
+const RATING_BUCKET_CONFIG: Record<string, { label: string; className: string }> = {
+  '1': { label: 'Rating 1', className: 'bg-red-100 text-red-700 border-red-200' },
+  '2': { label: 'Rating 2', className: 'bg-orange-100 text-orange-700 border-orange-200' },
+  '3': { label: 'Rating 3', className: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+  '4': { label: 'Rating 4', className: 'bg-blue-100 text-blue-700 border-blue-200' },
+  '5': { label: 'Rating 5', className: 'bg-green-100 text-green-700 border-green-200' },
+  unrated: { label: 'Unrated', className: 'bg-slate-100 text-slate-600 border-slate-200' },
+}
+
+const ALL_RATING_BUCKETS = ['1', '2', '3', '4', '5', 'unrated']
 
 interface FilterState {
   membership: string
@@ -52,11 +64,13 @@ interface FilterState {
   support_levels: string[]
   rating_min: string
   rating_max: string
+  include_unrated: boolean
 }
 
 interface PriorityOrderState {
   by: 'sequential' | 'support_level' | 'rating'
   supportLevelOrder: string[]
+  ratingOrder: string[]
 }
 
 const DEFAULT_FILTERS: FilterState = {
@@ -68,17 +82,23 @@ const DEFAULT_FILTERS: FilterState = {
   support_levels: [],
   rating_min: '',
   rating_max: '',
+  include_unrated: true,
 }
 
 const DEFAULT_PRIORITY: PriorityOrderState = {
   by: 'sequential',
   supportLevelOrder: [...ALL_SUPPORT_LEVELS],
+  ratingOrder: [...ALL_RATING_BUCKETS],
 }
 
 export default function NewCallListPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const campaignId = params.id as string
+  const backHref = searchParams.get('returnTo')
+    ? decodeURIComponent(searchParams.get('returnTo')!)
+    : `/campaigns/${campaignId}/phone`
 
   const [step, setStep] = useState<WizardStep>('details')
   const [name, setName] = useState('')
@@ -211,13 +231,21 @@ export default function NewCallListPage() {
     setPriority((prev) => ({ ...prev, supportLevelOrder: order }))
   }
 
+  function moveRatingBucket(index: number, direction: 'up' | 'down') {
+    const order = [...priority.ratingOrder]
+    const targetIndex = direction === 'up' ? index - 1 : index + 1
+    if (targetIndex < 0 || targetIndex >= order.length) return
+    ;[order[index], order[targetIndex]] = [order[targetIndex], order[index]]
+    setPriority((prev) => ({ ...prev, ratingOrder: order }))
+  }
+
   const handleCreate = async () => {
     try {
       // Store priority order in the list metadata via priority_strategy field
       const strategyValue = priority.by === 'support_level'
         ? `support_order:${priority.supportLevelOrder.join(',')}`
         : priority.by === 'rating'
-          ? 'rating_desc'
+          ? `rating_order:${priority.ratingOrder.join(',')}`
           : priorityStrategy
 
       const list = await createList.mutateAsync({
@@ -238,11 +266,12 @@ export default function NewCallListPage() {
           support_levels: filters.support_levels.length > 0 ? filters.support_levels : undefined,
           rating_min: filters.rating_min ? parseFloat(filters.rating_min) : undefined,
           rating_max: filters.rating_max ? parseFloat(filters.rating_max) : undefined,
+          include_unrated: filters.include_unrated,
         },
         priority_order: priority.by !== 'sequential'
           ? {
               by: priority.by,
-              order: priority.by === 'support_level' ? priority.supportLevelOrder : undefined,
+              order: priority.by === 'support_level' ? priority.supportLevelOrder : priority.ratingOrder,
             }
           : undefined,
       }
@@ -270,7 +299,7 @@ export default function NewCallListPage() {
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => router.push(`/campaigns/${campaignId}/phone`)}>
+        <Button variant="ghost" size="sm" onClick={() => router.push(backHref)}>
           <ArrowLeft className="h-4 w-4 mr-1" />
           Back
         </Button>
@@ -519,6 +548,18 @@ export default function NewCallListPage() {
                   />
                 </div>
               </div>
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  id="include-unrated"
+                  type="checkbox"
+                  checked={filters.include_unrated}
+                  onChange={(e) => setFilters((f) => ({ ...f, include_unrated: e.target.checked }))}
+                  className="h-3.5 w-3.5 rounded border-border accent-primary"
+                />
+                <label htmlFor="include-unrated" className="text-xs text-muted-foreground cursor-pointer">
+                  Include workers with no activity rating recorded
+                </label>
+              </div>
               {(filters.rating_min || filters.rating_max) && (
                 <p className="text-[10px] text-muted-foreground">
                   Note: rating filters are applied when the list is populated, not reflected in the preview count below.
@@ -576,7 +617,7 @@ export default function NewCallListPage() {
               {[
                 { value: 'sequential', label: 'Sequential', desc: 'Call workers in the order they appear in the campaign list' },
                 { value: 'support_level', label: 'By Support Level', desc: 'Prioritise specific support level groups — drag to set the call order' },
-                { value: 'rating', label: 'By Activity Rating', desc: 'Call workers with the highest cumulative rating first' },
+                { value: 'rating', label: 'By Activity Rating', desc: 'Set a custom call order by rating bucket — use the controls below to reorder' },
               ].map((option) => (
                 <button
                   key={option.value}
@@ -636,10 +677,47 @@ export default function NewCallListPage() {
               </div>
             )}
 
+            {/* Rating bucket ordering */}
             {priority.by === 'rating' && (
-              <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-800">
-                Workers will be ordered from highest to lowest cumulative activity rating.
-                Workers with no rating will appear at the end of the queue.
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-slate-700">Call order (top = called first)</p>
+                <div className="space-y-1.5">
+                  {priority.ratingOrder.map((bucket, index) => {
+                    const config = RATING_BUCKET_CONFIG[bucket]
+                    return (
+                      <div
+                        key={bucket}
+                        className="flex items-center gap-2 p-2.5 rounded-lg border bg-background"
+                      >
+                        <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span className="text-xs font-medium text-muted-foreground w-4">{index + 1}.</span>
+                        <Badge variant="secondary" className={`text-xs ${config.className} flex-1`}>
+                          {config.label}
+                        </Badge>
+                        <div className="flex flex-col gap-0.5">
+                          <button
+                            onClick={() => moveRatingBucket(index, 'up')}
+                            disabled={index === 0}
+                            className="h-4 w-4 flex items-center justify-center rounded hover:bg-muted disabled:opacity-30"
+                          >
+                            <ChevronUp className="h-3 w-3" />
+                          </button>
+                          <button
+                            onClick={() => moveRatingBucket(index, 'down')}
+                            disabled={index === priority.ratingOrder.length - 1}
+                            className="h-4 w-4 flex items-center justify-center rounded hover:bg-muted disabled:opacity-30"
+                          >
+                            <ChevronDown className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Workers are sorted into these rating buckets first, then by individual score within each bucket.
+                  Cumulative ratings are rounded to the nearest whole number for grouping.
+                </p>
               </div>
             )}
 
@@ -738,7 +816,7 @@ export default function NewCallListPage() {
                 priority.by === 'support_level'
                   ? `Support level order: ${priority.supportLevelOrder.map((l) => SUPPORT_LEVEL_CONFIG[l]?.label).join(' → ')}`
                   : priority.by === 'rating'
-                    ? 'Highest activity rating first'
+                    ? `Rating order: ${priority.ratingOrder.map((b) => RATING_BUCKET_CONFIG[b]?.label).join(' → ')}`
                     : PRIORITY_STRATEGIES.find((s) => s.value === priorityStrategy)?.label
               }</p>
               {populateResult && (

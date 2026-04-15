@@ -86,10 +86,14 @@ export function computePriorityScore(input: PriorityInput): number {
     const { by, order } = input.priority_order
     let groupKey: string | null = null
 
-    if (by === 'support_level' && input.support_level) {
-      groupKey = input.support_level
-    } else if (by === 'rating' && input.cumulative_rating != null) {
-      groupKey = String(Math.round(input.cumulative_rating))
+    if (by === 'support_level') {
+      // null/missing support_level maps to the 'unassessed' bucket
+      groupKey = input.support_level || 'unassessed'
+    } else if (by === 'rating') {
+      // null/missing rating maps to the 'unrated' bucket
+      groupKey = input.cumulative_rating != null
+        ? String(Math.round(input.cumulative_rating))
+        : 'unrated'
     }
 
     if (groupKey) {

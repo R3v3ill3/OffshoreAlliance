@@ -65,12 +65,15 @@ export async function POST(
     }
 
     // Filter by support_levels if specified
+    // 'unassessed' is a sentinel covering workers with no connection record or null support_level
     if (filters.support_levels && Array.isArray(filters.support_levels) && filters.support_levels.length > 0) {
-      const allowedSupportLevels = new Set<string>(filters.support_levels)
+      const hasUnassessed = filters.support_levels.includes('unassessed')
+      const concreteLevels = filters.support_levels.filter((s: string) => s !== 'unassessed')
       withPhone = withPhone.filter((w) => {
         const conn = connectionMap.get(w.worker_id)
         const level = conn?.support_level as string | null | undefined
-        return level && allowedSupportLevels.has(level)
+        if (!level) return hasUnassessed  // no connection record or null level = un-assessed
+        return concreteLevels.includes(level)
       })
     }
 
@@ -78,7 +81,10 @@ export async function POST(
     let ratingMap = new Map<number, { cumulative_rating: number | null; last_activity_rating: number | null }>()
     const currentWorkerIds = withPhone.map((w) => w.worker_id)
 
-    if (currentWorkerIds.length > 0 && (filters.rating_min != null || filters.rating_max != null || priorityOrder?.by === 'rating')) {
+    const needsRatings = filters.rating_min != null || filters.rating_max != null
+      || filters.include_unrated === false
+      || priorityOrder?.by === 'rating'
+    if (currentWorkerIds.length > 0 && needsRatings) {
       const { data: ratings } = await supabase
         .from('campaign_worker_rating_summary')
         .select('worker_id, cumulative_rating, last_activity_rating')
@@ -93,14 +99,15 @@ export async function POST(
       }
 
       // Apply rating range filters
-      if (filters.rating_min != null || filters.rating_max != null) {
+      // include_unrated (default true) controls whether workers with no rating pass through
+      const includeUnrated = filters.include_unrated !== false
+      if (filters.rating_min != null || filters.rating_max != null || !includeUnrated) {
         const ratingMin = filters.rating_min != null ? Number(filters.rating_min) : null
         const ratingMax = filters.rating_max != null ? Number(filters.rating_max) : null
 
         withPhone = withPhone.filter((w) => {
-          const rating = ratingMap.get(w.worker_id)
-          const score = rating?.cumulative_rating ?? null
-          if (score == null) return false
+          const score = ratingMap.get(w.worker_id)?.cumulative_rating ?? null
+          if (score == null) return includeUnrated  // no rating: include only if allowed
           if (ratingMin != null && score < ratingMin) return false
           if (ratingMax != null && score > ratingMax) return false
           return true

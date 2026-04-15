@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/supabase/auth-context";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Users, Building2, FileText, Megaphone, AlertTriangle, Star, BarChart2, ExternalLink } from "lucide-react";
+import { Users, Building2, FileText, Megaphone, AlertTriangle, Star, BarChart2, ExternalLink, ChevronDown, ChevronUp } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { differenceInDays, format } from "date-fns";
 import {
@@ -35,6 +35,7 @@ export default function DashboardPage() {
   const [filterOrganiser, setFilterOrganiser] = useState("team");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterTimePeriod, setFilterTimePeriod] = useState("all");
+  const [unplannedExpanded, setUnplannedExpanded] = useState(false);
 
   const { data: workerCount = 0, isLoading: loadingWorkers } = useQuery({
     queryKey: ["workers-count"],
@@ -310,53 +311,6 @@ export default function DashboardPage() {
       {/* WORKLOAD DASHBOARD - CENTRAL ELEMENT */}
       {/* ============================================================ */}
 
-      {/* Agreements expiring without an OAPlanner campaign plan */}
-      {unplannedExpiringAgreements.length > 0 && (
-        <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-amber-800 dark:text-amber-300">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              {unplannedExpiringAgreements.length} Agreement
-              {unplannedExpiringAgreements.length !== 1 ? "s" : ""} Expiring Without a Campaign Plan
-            </CardTitle>
-            <CardDescription className="text-amber-700 dark:text-amber-400">
-              The following agreements expire within 12 months and have no strategic campaign plan
-              in OA Planner. Consider creating a plan for each.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {unplannedExpiringAgreements.map((a) => {
-                if (!a.expiry_date) return null;
-                const days = differenceInDays(new Date(a.expiry_date), new Date());
-                return (
-                  <div
-                    key={a.agreement_id}
-                    className="flex items-center justify-between gap-4 rounded-md border border-amber-200 bg-white px-3 py-2 dark:border-amber-800 dark:bg-amber-950/40"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {a.short_name ?? a.agreement_name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Expires {format(new Date(a.expiry_date), "d MMM yyyy")} ({days} days)
-                      </p>
-                    </div>
-                    <Button variant="outline" size="sm" className="shrink-0" asChild>
-                      <a
-                        href={`/campaigns/new?agreement_id=${a.agreement_id}&expiry_date=${a.expiry_date}`}
-                      >
-                        Create Plan
-                      </a>
-                    </Button>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* WORKLOAD DASHBOARD SECTION */}
       <Card className="border-blue-200 dark:border-blue-900">
         <CardHeader>
@@ -624,6 +578,74 @@ export default function DashboardPage() {
           </p>
         </CardContent>
       </Card>
+
+      {/* Agreements expiring without an OAPlanner campaign plan — collapsible */}
+      {unplannedExpiringAgreements.length > 0 && (
+        <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20">
+          <button
+            type="button"
+            className="w-full text-left"
+            onClick={() => setUnplannedExpanded((prev) => !prev)}
+            aria-expanded={unplannedExpanded}
+          >
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center justify-between gap-2 text-amber-800 dark:text-amber-300">
+                <span className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  {unplannedExpiringAgreements.length} Agreement
+                  {unplannedExpiringAgreements.length !== 1 ? "s" : ""} Expiring Without a Campaign Plan
+                </span>
+                {unplannedExpanded ? (
+                  <ChevronUp className="h-4 w-4 shrink-0" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 shrink-0" />
+                )}
+              </CardTitle>
+              {!unplannedExpanded && (
+                <CardDescription className="text-amber-700 dark:text-amber-400">
+                  Click to see agreements expiring within 12 months with no campaign plan.
+                </CardDescription>
+              )}
+            </CardHeader>
+          </button>
+          {unplannedExpanded && (
+            <CardContent>
+              <p className="text-sm text-amber-700 dark:text-amber-400 mb-3">
+                The following agreements expire within 12 months and have no strategic campaign plan
+                in OA Planner. Consider creating a plan for each.
+              </p>
+              <div className="space-y-2">
+                {unplannedExpiringAgreements.map((a) => {
+                  if (!a.expiry_date) return null;
+                  const days = differenceInDays(new Date(a.expiry_date), new Date());
+                  return (
+                    <div
+                      key={a.agreement_id}
+                      className="flex items-center justify-between gap-4 rounded-md border border-amber-200 bg-white px-3 py-2 dark:border-amber-800 dark:bg-amber-950/40"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {a.short_name ?? a.agreement_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Expires {format(new Date(a.expiry_date), "d MMM yyyy")} ({days} days)
+                        </p>
+                      </div>
+                      <Button variant="outline" size="sm" className="shrink-0" asChild>
+                        <a
+                          href={`/campaigns/new?agreement_id=${a.agreement_id}&expiry_date=${a.expiry_date}`}
+                        >
+                          Create Plan
+                        </a>
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          )}
+        </Card>
+      )}
     </div>
   );
 }

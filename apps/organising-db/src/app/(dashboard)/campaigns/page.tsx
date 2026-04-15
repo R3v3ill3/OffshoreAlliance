@@ -41,10 +41,12 @@ import {
   CampaignDeleteDialog,
   type CampaignDeleteTarget,
 } from "@/components/campaigns/campaign-delete-dialog";
+import { CampaignsDashboard } from "@/components/campaigns/CampaignsDashboard";
 
 const TemplatesTab = dynamic(() => import("@/components/campaigns/templates-tab").then((m) => ({ default: m.TemplatesTab })), { ssr: false });
 
 interface StagePlanSummary {
+  plan_id: number;
   stage_number: number;
   stage_name: string;
   status: string;
@@ -57,6 +59,8 @@ interface CampaignRow {
   status: CampaignStatus;
   start_date: string | null;
   end_date: string | null;
+  total_worker_estimate: number | null;
+  organiser_id: number | null;
   organiser: { organiser_name: string } | null;
   campaign_stage_plans: StagePlanSummary[];
   [key: string]: unknown;
@@ -126,6 +130,7 @@ export default function CampaignsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [organiserDialogKey, setOrganiserDialogKey] = useState(0);
   const [form, setForm] = useState(INITIAL_FORM);
+  const [selectedOrganiserId, setSelectedOrganiserId] = useState<string>("all");
 
   const { data: campaigns = [], isLoading } = useQuery({
     queryKey: ["campaigns"],
@@ -134,8 +139,9 @@ export default function CampaignsPage() {
         .from("campaigns")
         .select(
           `campaign_id, name, campaign_type, status, start_date, end_date,
+           total_worker_estimate, organiser_id,
            organiser:organisers(organiser_name),
-           campaign_stage_plans(stage_number, stage_name, status)`
+           campaign_stage_plans(plan_id, stage_number, stage_name, status)`
         )
         .order("created_at", { ascending: false });
 
@@ -176,6 +182,11 @@ export default function CampaignsPage() {
       setForm(INITIAL_FORM);
     },
   });
+
+  const filteredCampaigns = useMemo(() => {
+    if (selectedOrganiserId === "all") return campaigns;
+    return campaigns.filter((c) => String(c.organiser_id) === selectedOrganiserId);
+  }, [campaigns, selectedOrganiserId]);
 
   const columns = useMemo<Column<CampaignRow>[]>(() => {
     const base: Column<CampaignRow>[] = [
@@ -269,7 +280,18 @@ export default function CampaignsPage() {
         </TabsList>
 
         <TabsContent value="campaigns" className="mt-0">
-          <div className="space-y-4">
+          <div className="space-y-6">
+            {/* Metrics dashboard — above the table */}
+            {!isLoading && campaigns.length > 0 && (
+              <CampaignsDashboard
+                campaigns={campaigns}
+                selectedOrganiserId={selectedOrganiserId}
+                onOrganiserChange={setSelectedOrganiserId}
+                onRowClick={(id) => router.push(`/campaigns/${id}`)}
+              />
+            )}
+
+            <div className="space-y-4">
             {canWrite && (
               <div className="flex items-center justify-end gap-2">
                 <Button variant="outline" asChild>
@@ -414,13 +436,14 @@ export default function CampaignsPage() {
             )}
 
             <DataTable<CampaignRow>
-              data={campaigns}
+              data={filteredCampaigns}
               columns={columns}
               searchPlaceholder="Search campaigns…"
               searchKeys={["name"]}
               onRowClick={(row) => router.push(`/campaigns/${row.campaign_id}`)}
               loading={isLoading}
             />
+            </div>
           </div>
         </TabsContent>
 

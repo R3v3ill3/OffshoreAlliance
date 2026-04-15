@@ -33,3 +33,6 @@ next-env.d.ts
 
 # turbo
 .turbo
+
+# Claude Code worktrees (local-only; never commit)
+.claude/worktrees/

@@ -1,12 +1,14 @@
 "use client";
 
 import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-query";
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { AuthProvider } from "@/lib/supabase/auth-context";
 import { DeviceProvider } from "@/contexts/device-context";
 import { createClient, coordinatedRefreshSession } from "@/lib/supabase/client";
-import { isLikelyAuthError } from "@/lib/supabase/session-recovery";
+import { isLikelyAuthError, nuclearReset } from "@/lib/supabase/session-recovery";
 import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
+import { logCookieDiagnostic } from "@/lib/supabase/cookie-diagnostics";
+import { installDiagnosticShims } from "@/lib/supabase/diagnostics-shim";
 import "../../../../sentry.client.config";
 
 const queryCacheRecoveryGuard = { inProgress: false };
@@ -75,6 +77,11 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
     return client;
   });
 
+  // Install diagnostic shims once on mount
+  useEffect(() => {
+    installDiagnosticShims();
+  }, []);
+
   useEffect(() => {
     const TOKEN_NEAR_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -86,13 +93,38 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
 
       if (document.visibilityState !== "visible") return;
 
+      // Diagnostic: log cookie state on every tab focus
+      logCookieDiagnostic("visibility-return");
+
       // Proactively refresh the session when the user returns to the tab.
       // The browser may have throttled the Supabase background refresh timer
       // while the tab was hidden, leaving the token expired or close to expiry.
       try {
         const supabase = createClient();
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
+
+        if (!session) {
+          // FIX: Previously this silently returned, leaving the user with an
+          // expired session and no recovery attempt. Now we trigger a refresh
+          // and, if that fails, a nuclear reset to clear corrupted state.
+          logConnectionEvent({ type: "session_lost", detail: "visibility-null-session" });
+          logCookieDiagnostic("visibility-null-session");
+
+          try {
+            const { data, error } = await coordinatedRefreshSession("visibility-null-session");
+            if (error || !data.session) {
+              logConnectionEvent({ type: "token_refresh_fail", detail: "visibility null session — refresh failed, nuclear reset" });
+              nuclearReset();
+            } else {
+              logConnectionEvent({ type: "token_refresh_ok", detail: "visibility null session recovered" });
+              queryClient.invalidateQueries();
+            }
+          } catch {
+            logConnectionEvent({ type: "token_refresh_fail", detail: "visibility null session — exception, nuclear reset" });
+            nuclearReset();
+          }
+          return;
+        }
 
         const expiresAtMs = (session.expires_at ?? 0) * 1000;
         const now = Date.now();
@@ -108,7 +140,59 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
 
     document.addEventListener("visibilitychange", visHandler);
     return () => document.removeEventListener("visibilitychange", visHandler);
-  }, []);
+  }, [queryClient]);
+
+  // Fix 7: Auth session heartbeat — periodic probe to detect silent auth failures.
+  // When the auth token expires but the Supabase client silently uses it, queries
+  // return empty results (RLS blocks access for the 'anon' role) with no errors.
+  // This heartbeat detects that condition by checking if the user_profiles query
+  // returns the expected row for the current user.
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    const HEARTBEAT_INTERVAL_MS = 60_000; // every 60 seconds
+
+    const heartbeat = async () => {
+      try {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) return; // Not logged in — nothing to check
+
+        const { data, error } = await supabase
+          .from("user_profiles")
+          .select("user_id")
+          .eq("user_id", session.user.id)
+          .maybeSingle();
+
+        if (!error && !data) {
+          // Query succeeded (no error) but returned 0 rows for our own profile.
+          // This means the token is expired/invalid and RLS is silently blocking.
+          logConnectionEvent({
+            type: "api_error",
+            detail: "heartbeat: profile query returned null — likely auth failure",
+          });
+          logCookieDiagnostic("heartbeat-null-profile");
+
+          // Attempt recovery
+          const { data: refreshData, error: refreshError } =
+            await coordinatedRefreshSession("heartbeat-auth-failure");
+          if (refreshError || !refreshData.session) {
+            logConnectionEvent({ type: "token_refresh_fail", detail: "heartbeat recovery failed — nuclear reset" });
+            nuclearReset();
+          } else {
+            logConnectionEvent({ type: "token_refresh_ok", detail: "heartbeat recovery succeeded" });
+            queryClient.invalidateQueries();
+          }
+        }
+      } catch {
+        // best effort — don't let heartbeat failures cascade
+      }
+    };
+
+    heartbeatRef.current = setInterval(heartbeat, HEARTBEAT_INTERVAL_MS);
+    return () => {
+      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+    };
+  }, [queryClient]);
 
   return (
     <DeviceProvider isMobile={isMobile}>

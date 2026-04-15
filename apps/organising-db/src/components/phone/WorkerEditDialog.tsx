@@ -51,7 +51,7 @@ interface WorkerEditDialogProps {
   onSaved: () => void
   onRemovedFromCampaign?: () => void
   workerId: number
-  campaignId: number | string
+  campaignId: number | string | null
   initialData: WorkerEditInitialData
   connectionId?: number | null
   connectionNotes?: string | null
@@ -71,7 +71,7 @@ export function WorkerEditDialog({
   connectionNotes,
 }: WorkerEditDialogProps) {
   const supabase = createClient()
-  const numericCampaignId = Number(campaignId)
+  const numericCampaignId = campaignId != null ? Number(campaignId) : null
 
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
@@ -141,6 +141,7 @@ export function WorkerEditDialog({
   })
 
   async function checkCampaignMembership(newEmployerId: number | null, newWorksiteId: number | null): Promise<boolean> {
+    if (numericCampaignId == null) return true
     const { data } = await supabase
       .from('campaign_worker_membership')
       .select('worker_id')
@@ -244,10 +245,9 @@ export function WorkerEditDialog({
       if (wError) throw wError
 
       // Remove from all call lists for this campaign
-      const { data: campaignLists } = await supabase
-        .from('call_lists')
-        .select('list_id')
-        .eq('campaign_id', numericCampaignId)
+      const { data: campaignLists } = numericCampaignId != null
+        ? await supabase.from('call_lists').select('list_id').eq('campaign_id', numericCampaignId)
+        : { data: null }
 
       if (campaignLists && campaignLists.length > 0) {
         const listIds = campaignLists.map((l) => l.list_id)

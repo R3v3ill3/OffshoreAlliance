@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { format } from "date-fns";
 import dynamic from "next/dynamic";
-import { Plus, Wand2, ExternalLink, Trash2, Megaphone, FileStack, Mail } from "lucide-react";
+import { Plus, Wand2, ExternalLink, Trash2, Megaphone, FileStack, Mail, Phone } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -304,6 +304,12 @@ export default function CampaignsPage() {
                   <Link href="/campaigns/email-wizard" className="flex items-center gap-2">
                     <Mail className="h-4 w-4" />
                     Email wizard
+                  </Link>
+                </Button>
+                <Button variant="outline" asChild>
+                  <Link href="/campaigns/phone-wizard" className="flex items-center gap-2">
+                    <Phone className="h-4 w-4" />
+                    Phone wizard
                   </Link>
                 </Button>
                 <Dialog

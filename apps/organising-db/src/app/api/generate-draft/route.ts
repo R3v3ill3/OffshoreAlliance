@@ -39,11 +39,15 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!body.campaign_context?.employer_name || !body.campaign_context?.agreement_name) {
+    if (!body.campaign_context?.employer_name) {
       return NextResponse.json(
-        { error: 'Missing required campaign context (employer_name, agreement_name)' },
+        { error: 'Missing required campaign context (employer_name)' },
         { status: 400 }
       )
+    }
+    // Ensure agreement_name always has a value so prompts render cleanly
+    if (!body.campaign_context.agreement_name) {
+      body.campaign_context.agreement_name = 'Independent Organising'
     }
 
     const { system, user: userMessage } = PROMPT_BUILDERS[body.platform](body)

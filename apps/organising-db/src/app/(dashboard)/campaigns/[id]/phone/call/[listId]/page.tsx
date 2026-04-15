@@ -1,7 +1,8 @@
 'use client'
 
-import { useReducer, useState, useCallback, useRef, useEffect } from 'react'
+import { useReducer, useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallList } from '@/lib/hooks/useCallList'
 import { usePhoneNext, useRecordCallAttempt } from '@/lib/hooks/useCallSession'
 import { callFlowReducer, getInitialCallFlowState, canAdvanceSection, canGoBack, isCallActive } from '@/lib/phone/call-flow-state'
@@ -10,6 +11,7 @@ import { DialOutcomeBar } from '@/components/phone/DialOutcomeBar'
 import { ConversationStepper } from '@/components/phone/ConversationStepper'
 import { ScriptSidePanel } from '@/components/phone/ScriptSidePanel'
 import { CallbackScheduler } from '@/components/phone/CallbackScheduler'
+import { WorkerEditDialog } from '@/components/phone/WorkerEditDialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
@@ -41,8 +43,10 @@ export default function CallWizardPage() {
   const [stepReached, setStepReached] = useState<Set<number>>(new Set())
   const [scriptPanelOpen, setScriptPanelOpen] = useState(false)
   const [shouldFetchNext, setShouldFetchNext] = useState(true)
+  const [showWorkerEdit, setShowWorkerEdit] = useState(false)
 
   const callStartTime = useRef<Date | null>(null)
+  const queryClient = useQueryClient()
 
   const { data: list } = useCallList(campaignId, listId)
   const { data: contact, isLoading: contactLoading, refetch: refetchNext } = usePhoneNext(
@@ -59,6 +63,20 @@ export default function CallWizardPage() {
 
   const sortedSections = [...sections].sort((a, b) => a.sort_order - b.sort_order)
   const currentSection = sortedSections[flowState.currentSectionIndex] || null
+
+  // Build worker variable context for script variable resolution
+  const workerContext = useMemo(() => {
+    const w = contact?.worker
+    return {
+      first_name: w?.first_name || undefined,
+      last_name: w?.last_name || undefined,
+      occupation: w?.occupation || undefined,
+      employer_name: w?.employer_name || undefined,
+      worksite_name: w?.worksite_name || undefined,
+      phone: w?.phone || undefined,
+      email: w?.email || undefined,
+    } as Record<string, string | undefined>
+  }, [contact?.worker])
 
   useEffect(() => {
     if (contact && flowState.phase === 'idle') {
@@ -205,6 +223,7 @@ export default function CallWizardPage() {
                   currentIndex={flowState.currentSectionIndex}
                   onGoToSection={(i) => { handleGoToSection(i); setScriptPanelOpen(false) }}
                   reachedSections={stepReached}
+                  workerContext={workerContext}
                 />
               </div>
             </SheetContent>
@@ -238,7 +257,7 @@ export default function CallWizardPage() {
           ) : (
             <>
               {/* Contact Card */}
-              <ContactCard contact={contact} />
+              <ContactCard contact={contact} onEdit={() => setShowWorkerEdit(true)} />
 
               {/* Pre-call: Dial outcome buttons */}
               {flowState.phase === 'pre_call' && (
@@ -257,6 +276,7 @@ export default function CallWizardPage() {
                   onGoBack={() => canGoBack(flowState) && dispatch({ type: 'GO_TO_SECTION', sectionIndex: flowState.currentSectionIndex - 1 })}
                   canAdvance={canAdvanceSection(flowState, sortedSections.length)}
                   canGoBack={canGoBack(flowState)}
+                  workerContext={workerContext}
                 />
               )}
 
@@ -372,6 +392,7 @@ export default function CallWizardPage() {
               currentIndex={flowState.currentSectionIndex}
               onGoToSection={handleGoToSection}
               reachedSections={stepReached}
+              workerContext={workerContext}
             />
           ) : (
             <div className="text-center py-12">
@@ -387,6 +408,27 @@ export default function CallWizardPage() {
         onClose={() => setShowCallbackDialog(false)}
         onSchedule={handleCallbackScheduled}
       />
+
+      {contact?.worker && (
+        <WorkerEditDialog
+          open={showWorkerEdit}
+          onClose={() => setShowWorkerEdit(false)}
+          onSaved={() => {
+            // Invalidate the current contact so updated info is reflected immediately
+            queryClient.invalidateQueries({ queryKey: ['phone-next', campaignId, listId] })
+          }}
+          workerId={contact.worker.worker_id}
+          initialData={{
+            first_name: contact.worker.first_name || '',
+            last_name: contact.worker.last_name || '',
+            phone: contact.worker.phone,
+            email: contact.worker.email,
+            occupation: contact.worker.occupation,
+          }}
+          connectionId={contact.connection?.connection_id ?? null}
+          connectionNotes={contact.connection?.notes ?? null}
+        />
+      )}
     </div>
   )
 }

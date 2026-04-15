@@ -94,12 +94,12 @@ async function enrichItem(
 
   let connection = null
   if (workerId) {
-    const { data } = await supabase
-      .from('worker_campaign_connections')
-      .select('connection_status, support_level, contact_count, last_contacted_at, notes')
-      .eq('worker_id', workerId)
-      .eq('campaign_id', parseInt(campaignId))
-      .maybeSingle()
+      const { data } = await supabase
+        .from('worker_campaign_connections')
+        .select('connection_id, connection_status, support_level, contact_count, last_contacted_at, notes')
+        .eq('worker_id', workerId)
+        .eq('campaign_id', parseInt(campaignId))
+        .maybeSingle()
 
     connection = data
   }

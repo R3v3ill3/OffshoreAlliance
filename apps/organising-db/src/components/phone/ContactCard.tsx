@@ -2,14 +2,16 @@
 
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Phone, Mail, Briefcase, MapPin, Clock, MessageCircle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Phone, Mail, Briefcase, MapPin, Clock, MessageCircle, Pencil } from 'lucide-react'
 import type { CallListItemWithWorker } from '@/types/planner-types'
 
 interface ContactCardProps {
   contact: CallListItemWithWorker
+  onEdit?: () => void
 }
 
-export function ContactCard({ contact }: ContactCardProps) {
+export function ContactCard({ contact, onEdit }: ContactCardProps) {
   const { worker, connection, recent_attempts } = contact
   if (!worker) return null
 
@@ -25,9 +27,22 @@ export function ContactCard({ contact }: ContactCardProps) {
             </span>
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-base">
-              {worker.first_name} {worker.last_name}
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-base">
+                {worker.first_name} {worker.last_name}
+              </h3>
+              {onEdit && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                  onClick={onEdit}
+                  title="Edit contact details"
+                >
+                  <Pencil className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-muted-foreground">
               {worker.phone && (
                 <span className="flex items-center gap-1">

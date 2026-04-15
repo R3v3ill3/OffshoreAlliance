@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils/cn'
 import { ChevronLeft, ChevronRight, CheckCircle, Circle, ArrowRight } from 'lucide-react'
+import { resolveScriptVariables } from '@/lib/comms/template-variables'
 import type { CallScriptSection } from '@/types/planner-types'
 
 interface ConversationStepperProps {
@@ -17,6 +18,7 @@ interface ConversationStepperProps {
   onGoBack: () => void
   canAdvance: boolean
   canGoBack: boolean
+  workerContext?: Record<string, string | undefined>
 }
 
 export function ConversationStepper({
@@ -29,9 +31,12 @@ export function ConversationStepper({
   onGoBack,
   canAdvance,
   canGoBack,
+  workerContext = {},
 }: ConversationStepperProps) {
   const current = sections[currentIndex]
   if (!current) return null
+
+  const resolve = (text: string) => resolveScriptVariables(text, workerContext)
 
   return (
     <div className="space-y-3">
@@ -75,7 +80,7 @@ export function ConversationStepper({
         {/* Prompt text - the key quick reference for the caller */}
         {current.prompt_text && (
           <p className="text-base font-medium text-primary mb-2">
-            {current.prompt_text}
+            {resolve(current.prompt_text)}
           </p>
         )}
 
@@ -83,7 +88,7 @@ export function ConversationStepper({
         {current.talking_points && current.talking_points.length > 0 && (
           <ul className="space-y-1 ml-4 text-sm text-muted-foreground list-disc">
             {current.talking_points.map((point, i) => (
-              <li key={i}>{point}</li>
+              <li key={i}>{resolve(point)}</li>
             ))}
           </ul>
         )}

@@ -4,6 +4,7 @@ import { useRef, useEffect } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils/cn'
 import { CheckCircle, Circle, ArrowRight, ChevronDown } from 'lucide-react'
+import { resolveScriptVariables } from '@/lib/comms/template-variables'
 import type { CallScriptSection } from '@/types/planner-types'
 import { SECTION_TYPES } from '@/lib/phone/disposition-types'
 
@@ -12,6 +13,7 @@ interface ScriptSidePanelProps {
   currentIndex: number
   onGoToSection: (index: number) => void
   reachedSections: Set<number>
+  workerContext?: Record<string, string | undefined>
 }
 
 export function ScriptSidePanel({
@@ -19,7 +21,9 @@ export function ScriptSidePanel({
   currentIndex,
   onGoToSection,
   reachedSections,
+  workerContext = {},
 }: ScriptSidePanelProps) {
+  const resolve = (text: string) => resolveScriptVariables(text, workerContext)
   const activeRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -76,7 +80,7 @@ export function ScriptSidePanel({
                   'text-xs text-muted-foreground whitespace-pre-wrap',
                   !isActive && 'line-clamp-2',
                 )}>
-                  {section.body_text}
+                  {resolve(section.body_text)}
                 </p>
 
                 {/* Show talking points for active section */}
@@ -85,7 +89,7 @@ export function ScriptSidePanel({
                     {section.talking_points.map((point, pi) => (
                       <li key={pi} className="flex items-start gap-1">
                         <ChevronDown className="h-3 w-3 mt-0.5 text-primary flex-shrink-0" />
-                        <span>{point}</span>
+                        <span>{resolve(point)}</span>
                       </li>
                     ))}
                   </ul>

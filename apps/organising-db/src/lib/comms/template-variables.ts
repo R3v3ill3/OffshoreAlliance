@@ -68,6 +68,21 @@ export function resolveTemplateVariables(
   })
 }
 
+/**
+ * Resolves ALL template variables including recipient variables (first_name, last_name, etc.).
+ * Use this for phone scripts where the caller sees the resolved text directly,
+ * as opposed to emails where Action Network resolves recipient variables at send time.
+ */
+export function resolveScriptVariables(
+  text: string,
+  context: Record<string, string | undefined>,
+): string {
+  return text.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+    const value = context[key]
+    return value ?? match
+  })
+}
+
 export function translateToActionNetwork(text: string): string {
   return text.replace(/\{\{(\w+)\}\}/g, (match, key) => {
     return AN_VARIABLE_MAP[key] || match

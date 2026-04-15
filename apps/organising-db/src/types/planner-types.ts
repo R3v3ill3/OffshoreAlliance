@@ -410,6 +410,7 @@ export interface CallListItemWithWorker extends CallListItem {
     worksite_name: string | null
   }
   connection?: {
+    connection_id: number
     connection_status: string
     support_level: string | null
     contact_count: number

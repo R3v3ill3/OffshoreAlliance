@@ -414,16 +414,30 @@ export default function CallWizardPage() {
           open={showWorkerEdit}
           onClose={() => setShowWorkerEdit(false)}
           onSaved={() => {
-            // Invalidate the current contact so updated info is reflected immediately
             queryClient.invalidateQueries({ queryKey: ['phone-next', campaignId, listId] })
           }}
+          onRemovedFromCampaign={() => {
+            setShowWorkerEdit(false)
+            dispatch({ type: 'RESET' })
+            dispatch({ type: 'LOAD_CONTACT' })
+            refetchNext()
+          }}
           workerId={contact.worker.worker_id}
+          campaignId={campaignId}
           initialData={{
             first_name: contact.worker.first_name || '',
             last_name: contact.worker.last_name || '',
             phone: contact.worker.phone,
             email: contact.worker.email,
             occupation: contact.worker.occupation,
+            address: contact.worker.address,
+            suburb: contact.worker.suburb,
+            state: contact.worker.state,
+            postcode: contact.worker.postcode,
+            employer_id: contact.worker.employer_id,
+            worksite_id: contact.worker.worksite_id,
+            employer_name: contact.worker.employer_name,
+            worksite_name: contact.worker.worksite_name,
           }}
           connectionId={contact.connection?.connection_id ?? null}
           connectionNotes={contact.connection?.notes ?? null}

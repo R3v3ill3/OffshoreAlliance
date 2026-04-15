@@ -21,17 +21,20 @@ export async function GET(
       return NextResponse.json({ error: 'List not found' }, { status: 404 })
     }
 
+    const workerSelect = `
+      *,
+      workers (
+        worker_id, first_name, last_name, email, phone,
+        occupation, address, suburb, state, postcode,
+        employer_id, worksite_id,
+        employers (employer_id, employer_name),
+        worksites (worksite_id, worksite_name)
+      )
+    `
+
     const { data: callbacksDue } = await supabase
       .from('call_list_items')
-      .select(`
-        *,
-        workers (
-          worker_id, first_name, last_name, email, phone,
-          occupation,
-          employers (employer_name),
-          worksites (worksite_name)
-        )
-      `)
+      .select(workerSelect)
       .eq('list_id', parseInt(listId))
       .eq('status', 'deferred')
       .lte('next_call_at', new Date().toISOString())
@@ -44,15 +47,7 @@ export async function GET(
 
     let query = supabase
       .from('call_list_items')
-      .select(`
-        *,
-        workers (
-          worker_id, first_name, last_name, email, phone,
-          occupation,
-          employers (employer_name),
-          worksites (worksite_name)
-        )
-      `)
+      .select(workerSelect)
       .eq('list_id', parseInt(listId))
       .eq('status', 'pending')
       .limit(1)
@@ -116,6 +111,9 @@ async function enrichItem(
     recentAttempts = data || []
   }
 
+  const employers = w?.employers as Record<string, unknown> | null
+  const worksites = w?.worksites as Record<string, unknown> | null
+
   return {
     ...item,
     worker: w ? {
@@ -125,8 +123,14 @@ async function enrichItem(
       email: w.email,
       phone: w.phone,
       occupation: w.occupation,
-      employer_name: (w.employers as Record<string, unknown> | null)?.employer_name || null,
-      worksite_name: (w.worksites as Record<string, unknown> | null)?.worksite_name || null,
+      address: w.address || null,
+      suburb: w.suburb || null,
+      state: w.state || null,
+      postcode: w.postcode || null,
+      employer_id: w.employer_id || null,
+      worksite_id: w.worksite_id || null,
+      employer_name: employers?.employer_name || null,
+      worksite_name: worksites?.worksite_name || null,
     } : null,
     workers: undefined,
     connection,

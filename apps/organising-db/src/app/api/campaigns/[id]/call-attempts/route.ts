@@ -31,7 +31,7 @@ export async function POST(
       p_follow_up_action: body.follow_up_action || null,
       p_cta_response: body.cta_response || null,
       p_duration_seconds: body.duration_seconds || null,
-      p_step_outcomes: JSON.stringify(body.step_outcomes || []),
+      p_step_outcomes: body.step_outcomes || [],
     })
 
     if (error) throw error

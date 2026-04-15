@@ -406,6 +406,12 @@ export interface CallListItemWithWorker extends CallListItem {
     email: string | null
     phone: string | null
     occupation: string | null
+    address: string | null
+    suburb: string | null
+    state: string | null
+    postcode: string | null
+    employer_id: number | null
+    worksite_id: number | null
     employer_name: string | null
     worksite_name: string | null
   }

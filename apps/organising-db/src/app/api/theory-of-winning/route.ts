@@ -142,9 +142,48 @@ Please generate the Theory of Winning for this stage.`
       }
     }
 
+    const out = JSON.stringify(parsed)
+    // #region agent log
+    fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a95cb3' },
+      body: JSON.stringify({
+        sessionId: 'a95cb3',
+        runId: 'pre-fix',
+        hypothesisId: 'H1-H3',
+        location: 'theory-of-winning/route.ts:POST',
+        message: 'Claude parsed; serializing response',
+        data: {
+          keys: parsed && typeof parsed === 'object' ? Object.keys(parsed as object) : [],
+          outLength: out.length,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {})
+    // #endregion
+
     return NextResponse.json(parsed)
   } catch (error) {
     console.error('Theory of Winning API error:', error)
+
+    // #region agent log
+    fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a95cb3' },
+      body: JSON.stringify({
+        sessionId: 'a95cb3',
+        runId: 'pre-fix',
+        hypothesisId: 'H1',
+        location: 'theory-of-winning/route.ts:POST:catch',
+        message: 'theory-of-winning handler error',
+        data: {
+          err: error instanceof Error ? error.message : String(error),
+          name: error instanceof Error ? error.name : 'unknown',
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {})
+    // #endregion
 
     if (error instanceof Error) {
       return NextResponse.json({ error: error.message }, { status: 500 })

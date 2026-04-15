@@ -72,8 +72,10 @@ export async function PATCH(
       );
     }
 
-    if (status && !VALID_STATUSES.includes(status)) {
-      return NextResponse.json({ error: "Invalid status value" }, { status: 400 });
+    if (status !== undefined && status !== null) {
+      if (!VALID_STATUSES.includes(status as AgreementStatus)) {
+        return NextResponse.json({ error: "Invalid status value" }, { status: 400 });
+      }
     }
 
     const payload: Record<string, unknown> = {
@@ -88,12 +90,15 @@ export async function PATCH(
       date_of_decision: date_of_decision || null,
       commencement_date: commencement_date || null,
       expiry_date: expiry_date || null,
-      status: status ?? "Current",
       is_greenfield: Boolean(is_greenfield),
       is_variation: Boolean(is_variation),
       fwc_link: fwc_link ? String(fwc_link).trim() || null : null,
       notes: notes ? String(notes).trim() || null : null,
     };
+
+    if (status !== undefined && status !== null) {
+      payload.status = status;
+    }
 
     const { data, error } = await serverClient
       .from("agreements")

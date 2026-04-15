@@ -91,6 +91,7 @@ export function WorkerDetailSheet({
         <WorkerRelationshipsTab
           workerId={workerId}
           campaignId={campaignId}
+          workerName={`${worker.first_name} ${worker.last_name}`}
           canWrite={canWrite}
         />
       </TabsContent>

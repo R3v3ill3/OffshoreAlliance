@@ -168,6 +168,44 @@ export function useCreateLeaderLink(campaignId: string | number) {
   });
 }
 
+export function useBulkCreateLeaderLinks(campaignId: string | number) {
+  const supabase = createClient();
+  const qc = useQueryClient();
+  return useAuthAwareMutation({
+    mutationFn: async (vars: {
+      leader_worker_id: number;
+      follower_worker_ids: number[];
+      notes?: string | null;
+    }) => {
+      const ids = vars.follower_worker_ids.filter((id) => id !== vars.leader_worker_id);
+      if (ids.length === 0) return { inserted: 0 };
+      // Skip followers already linked — avoids unique-constraint failures.
+      const { data: existing, error: exErr } = await supabase
+        .from("campaign_leader_worker_links")
+        .select("follower_worker_id")
+        .eq("campaign_id", Number(campaignId))
+        .eq("leader_worker_id", vars.leader_worker_id)
+        .in("follower_worker_id", ids);
+      if (exErr) throw exErr;
+      const already = new Set((existing ?? []).map((r) => r.follower_worker_id as number));
+      const toInsert = ids.filter((id) => !already.has(id));
+      if (toInsert.length === 0) return { inserted: 0 };
+      const rows = toInsert.map((id) => ({
+        campaign_id: Number(campaignId),
+        leader_worker_id: vars.leader_worker_id,
+        follower_worker_id: id,
+        notes: vars.notes ?? null,
+      }));
+      const { error } = await supabase.from("campaign_leader_worker_links").insert(rows);
+      if (error) throw error;
+      return { inserted: toInsert.length };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["leader-links"] });
+    },
+  });
+}
+
 export function useDeleteLeaderLink() {
   const supabase = createClient();
   const qc = useQueryClient();

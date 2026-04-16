@@ -8,6 +8,16 @@ import type {
   OutcomeSideEffect,
 } from '@/types/planner-types'
 
+/** Coerce to values allowed by `call_outcome_definitions_side_effect_check` (handles legacy AI/DB strings). */
+export function normalizeOutcomeSideEffectForDb(value: unknown): 'none' | 'set_membership_pending' {
+  const s = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  if (s === 'set_membership_pending' || s === 'set_membership_financial') {
+    return 'set_membership_pending'
+  }
+  if (s === 'none' || s === '') return 'none'
+  return 'none'
+}
+
 /** Script family rule: outcome definitions are stored on the base script (matches `resolve_outcomes_script_id` in SQL). */
 export async function resolveOutcomesScriptId(
   supabase: SupabaseClient,
@@ -163,7 +173,7 @@ export function useSaveCallOutcomes(campaignId: number | string | null, scriptId
           activity_id: activityId,
           response_type: o.response_type || 'checkbox',
           response_options: o.response_options || null,
-          side_effect: o.side_effect || 'none',
+          side_effect: normalizeOutcomeSideEffectForDb(o.side_effect),
           side_effect_payload: o.side_effect_payload || null,
         }))
 

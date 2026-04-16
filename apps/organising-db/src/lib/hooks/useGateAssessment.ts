@@ -21,7 +21,7 @@ export function useGateAssessment(campaignId: number, gateNumber: number) {
         .eq('campaign_id', campaignId)
         .eq('gate_number', gateNumber)
         .order('assessment_date', { referencedTable: 'gate_assessments', ascending: false })
-        .single()
+        .maybeSingle()
 
       if (error) throw error
       return gate
@@ -136,14 +136,19 @@ export function useUpdateGateCriterion() {
     }) => {
       const { campaign_id: _campaign_id, gate_number: _gate_number, criterion_id, current_value, evidence_notes } = params
 
-      // Get the criterion to evaluate it
+      // Get the criterion to evaluate it. Use maybeSingle so a missing row
+      // doesn't throw PGRST116 — we explicitly handle the null case below.
       const { data: criterion } = await supabase
         .from('gate_criteria')
         .select('*')
         .eq('criterion_id', criterion_id)
-        .single()
+        .maybeSingle()
 
-      const updatedCriterion = { ...criterion!, current_value: current_value || null }
+      if (!criterion) {
+        throw new Error(`Gate criterion ${criterion_id} not found`)
+      }
+
+      const updatedCriterion = { ...criterion, current_value: current_value || null }
       const is_met = evaluateCriterion(updatedCriterion as Parameters<typeof evaluateCriterion>[0])
 
       const { error } = await supabase

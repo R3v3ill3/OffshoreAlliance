@@ -52,6 +52,8 @@ export function useCampaign(id: number, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['campaign', id],
     queryFn: async () => {
+      // Use maybeSingle() so a missing campaign returns null instead of
+      // throwing PGRST116. Callers already handle `!campaign` cases.
       const { data, error } = await supabase
         .from('campaigns')
         .select(`
@@ -73,7 +75,7 @@ export function useCampaign(id: number, options?: { enabled?: boolean }) {
           )
         `)
         .eq('campaign_id', id)
-        .single()
+        .maybeSingle()
 
       if (error) throw error
       return data
@@ -303,9 +305,10 @@ export function useExistingCampaignForPlanning(campaignId: number | null) {
           campaign_stage_plans(plan_id)
         `)
         .eq('campaign_id', campaignId)
-        .single()
+        .maybeSingle()
 
       if (error) throw error
+      if (!campaign) return null
 
       const { data: timeline } = await supabase
         .from('campaign_timelines')
@@ -345,7 +348,7 @@ export function useAddPlanToCampaign() {
         .from('campaigns')
         .select('start_date')
         .eq('campaign_id', payload.campaign_id)
-        .single()
+        .maybeSingle()
 
       const updates: Record<string, unknown> = { status: 'active' }
       if (payload.organiser_id) updates.organiser_id = payload.organiser_id
@@ -380,7 +383,11 @@ export function useAddPlanToCampaign() {
         }
       })
 
-      const { error: plansError } = await supabase.from('campaign_stage_plans').insert(stagePlans)
+      // Use upsert with ignoreDuplicates so a retry after a partial failure
+      // (e.g., interrupted wizard) doesn't fail on the unique constraint.
+      const { error: plansError } = await supabase
+        .from('campaign_stage_plans')
+        .upsert(stagePlans, { onConflict: 'campaign_id,stage_number', ignoreDuplicates: true })
       if (plansError) throw plansError
 
       const { data: insertedPlans, error: plansSelectError } = await supabase
@@ -541,7 +548,11 @@ export function useCreateCampaign() {
         }
       })
 
-      const { error: plansError } = await supabase.from('campaign_stage_plans').insert(stagePlans)
+      // Use upsert with ignoreDuplicates so a retry after a partial failure
+      // (e.g., interrupted wizard) doesn't fail on the unique constraint.
+      const { error: plansError } = await supabase
+        .from('campaign_stage_plans')
+        .upsert(stagePlans, { onConflict: 'campaign_id,stage_number', ignoreDuplicates: true })
       if (plansError) throw plansError
 
       const { data: insertedPlans, error: plansSelectError } = await supabase

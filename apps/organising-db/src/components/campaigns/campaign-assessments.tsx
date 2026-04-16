@@ -13,6 +13,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,6 +43,8 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
 import { ACTIVITY_TEMPLATE_OPTIONS, VOTE_SUPPORTER_OPTIONS } from "@/lib/campaign/constants";
 import { formatWorkerLabel } from "@/lib/workers/format-worker-label";
 import type { CampaignActivity, CampaignActivityTemplateKey } from "@/types/database";
@@ -120,6 +132,7 @@ export function CampaignAssessmentsSection({
     supporter_outcome_value: "" as string,
   });
   const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null);
+  const [activityPendingDelete, setActivityPendingDelete] = useState<CampaignActivity | null>(null);
 
   const [tableSearch, setTableSearch] = useState("");
   const [sortField, setSortField] = useState(DEFAULT_SORT_FIELD);
@@ -236,6 +249,58 @@ export function CampaignAssessmentsSection({
         supporter_outcome_value: "",
       });
       setTemplateChoice("__custom__");
+    },
+  });
+
+  const pendingDeleteId = activityPendingDelete?.activity_id ?? null;
+
+  const {
+    data: deleteImpact,
+    isFetching: deleteImpactLoading,
+    isError: deleteImpactError,
+  } = useQuery({
+    queryKey: ["activity-delete-impact", pendingDeleteId],
+    queryFn: async () => {
+      const [ratingsRes, listsRes] = await Promise.all([
+        supabase
+          .from("campaign_activity_ratings")
+          .select("rating_id", { count: "exact", head: true })
+          .eq("activity_id", pendingDeleteId!),
+        supabase
+          .from("campaign_task_lists")
+          .select("task_list_id", { count: "exact", head: true })
+          .eq("activity_id", pendingDeleteId!),
+      ]);
+      if (ratingsRes.error) throw ratingsRes.error;
+      if (listsRes.error) throw listsRes.error;
+      return {
+        ratingCount: ratingsRes.count ?? 0,
+        taskListCount: listsRes.count ?? 0,
+      };
+    },
+    enabled: pendingDeleteId != null,
+  });
+
+  const deleteActivity = useAuthAwareMutation({
+    mutationFn: async (activityId: number) => {
+      const { error } = await supabase
+        .from("campaign_activities")
+        .delete()
+        .eq("activity_id", activityId)
+        .eq("campaign_id", Number(campaignId));
+      if (error) throw error;
+    },
+    onSuccess: (_data, activityId) => {
+      queryClient.invalidateQueries({ queryKey: ["campaign-activities", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-activity-ratings"] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
+      queryClient.removeQueries({ queryKey: ["activity-delete-impact", activityId] });
+      setSelectedActivityId((current) => (current === activityId ? null : current));
+      setActivityPendingDelete(null);
+      toast.success("Activity removed");
+    },
+    onError: (err: Error) => {
+      toast.error(err?.message || "Failed to remove activity");
     },
   });
 
@@ -585,21 +650,41 @@ export function CampaignAssessmentsSection({
           ) : (
             <div className="flex flex-wrap gap-2">
               {activities.map((activity) => (
-                <Button
+                <div
                   key={activity.activity_id}
-                  variant={activity.activity_id === activityForRates ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => {
-                    setSelectedActivityId(activity.activity_id);
-                  }}
+                  className="inline-flex items-stretch rounded-md border bg-background shadow-sm overflow-hidden"
                 >
-                  {activity.title}
-                  {activity.template_key && (
-                    <Badge variant="secondary" className="ml-1 text-[10px]">
-                      {activity.template_key}
-                    </Badge>
+                  <Button
+                    variant={activity.activity_id === activityForRates ? "default" : "ghost"}
+                    size="sm"
+                    className="rounded-none border-0 shadow-none px-3"
+                    onClick={() => {
+                      setSelectedActivityId(activity.activity_id);
+                    }}
+                  >
+                    {activity.title}
+                    {activity.template_key && (
+                      <Badge variant="secondary" className="ml-1 text-[10px]">
+                        {activity.template_key}
+                      </Badge>
+                    )}
+                  </Button>
+                  {canWrite && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="rounded-none border-l px-2 text-muted-foreground hover:text-destructive"
+                      title="Remove activity"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActivityPendingDelete(activity);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                   )}
-                </Button>
+                </div>
               ))}
             </div>
           )}
@@ -1109,6 +1194,88 @@ export function CampaignAssessmentsSection({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={activityPendingDelete != null}
+        onOpenChange={(open) => {
+          if (!open) setActivityPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove this activity?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                {deleteImpactLoading ? (
+                  <p>Checking linked ratings and task lists…</p>
+                ) : deleteImpactError ? (
+                  <>
+                    <p>
+                      <span className="font-medium text-foreground">
+                        {activityPendingDelete?.title}
+                      </span>{" "}
+                      ({activityPendingDelete?.activity_kind}) will be permanently removed.
+                    </p>
+                    <p>
+                      Could not load linked data. Removing still deletes any ratings and task lists
+                      tied to this activity.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>
+                      <span className="font-medium text-foreground">
+                        {activityPendingDelete?.title}
+                      </span>{" "}
+                      ({activityPendingDelete?.activity_kind}) will be permanently removed.
+                    </p>
+                    {(deleteImpact?.ratingCount ?? 0) > 0 && (
+                      <p>
+                        This activity has ratings for{" "}
+                        <span className="font-medium text-foreground">
+                          {deleteImpact?.ratingCount}
+                        </span>{" "}
+                        worker
+                        {deleteImpact?.ratingCount === 1 ? "" : "s"}. Those ratings will be deleted
+                        and campaign rating summaries (including the wall chart) will change.
+                      </p>
+                    )}
+                    {(deleteImpact?.taskListCount ?? 0) > 0 && (
+                      <p>
+                        <span className="font-medium text-foreground">
+                          {deleteImpact?.taskListCount}
+                        </span>{" "}
+                        linked leader task list
+                        {deleteImpact?.taskListCount === 1 ? "" : "s"} (and share links) will also
+                        be removed.
+                      </p>
+                    )}
+                    {(deleteImpact?.ratingCount ?? 0) === 0 &&
+                      (deleteImpact?.taskListCount ?? 0) === 0 && (
+                        <p>No ratings or task lists are linked to this activity.</p>
+                      )}
+                  </>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteActivity.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={
+                deleteActivity.isPending || (pendingDeleteId != null && deleteImpactLoading)
+              }
+              onClick={() => {
+                if (!activityPendingDelete) return;
+                void deleteActivity.mutateAsync(activityPendingDelete.activity_id);
+              }}
+            >
+              {deleteActivity.isPending ? "Removing…" : "Remove"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

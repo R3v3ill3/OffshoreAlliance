@@ -1,8 +1,8 @@
 'use client'
 
-import { use, useMemo, useState } from 'react'
+import { use, useMemo, useState, useEffect, useRef } from 'react'
 import { useCampaign } from '@/lib/hooks/usePlannerCampaigns'
-import { useStagePlan } from '@/lib/hooks/useStagePlan'
+import { useStagePlan, useInitializeCampaignStagePlans } from '@/lib/hooks/useStagePlan'
 import { useP2wStepOverrides } from '@/lib/hooks/useP2wStepOverrides'
 import {
   effectiveStepComplete,
@@ -74,6 +74,31 @@ export default function StageplanPage({ params }: PageProps) {
   const { data: campaign } = useCampaign(campaignId)
   const { data: stagePlanData, isLoading } = useStagePlan(campaignId, stageNumber)
 
+  // Auto-heal: if the stage plan is missing (e.g., wizard was interrupted and
+  // left the campaign half-provisioned), trigger a one-shot mutation that
+  // creates the 6 canonical stage plans + default ambitions + gates. After
+  // success, the useStagePlan query invalidates and the page re-renders with
+  // the newly-created data.
+  const initMutation = useInitializeCampaignStagePlans()
+  const initAttemptedRef = useRef(false)
+  const shouldInit =
+    !isLoading &&
+    !!campaign &&
+    stagePlanData !== undefined &&
+    stagePlanData.plan === null &&
+    !initAttemptedRef.current &&
+    !initMutation.isPending &&
+    !initMutation.isError
+
+  useEffect(() => {
+    if (!shouldInit) return
+    initAttemptedRef.current = true
+    initMutation.mutate({ campaign_id: campaignId })
+    // Intentionally omit initMutation from deps — mutation object changes every
+    // render and we only want to fire once per missing-plan detection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldInit, campaignId])
+
   const completionInput = useMemo((): P2wStepCompletionInput | null => {
     if (!stagePlanData) return null
     return {
@@ -144,6 +169,42 @@ export default function StageplanPage({ params }: PageProps) {
   }
 
   if (!plan) {
+    // Plan is null — useStagePlan returned { plan: null } because no row exists
+    // for this (campaign, stage). Show appropriate state based on init attempt.
+    if (initMutation.isPending || (shouldInit && !initMutation.isError)) {
+      return (
+        <div className="p-6">
+          <div className="max-w-xl mx-auto text-center space-y-3 pt-10">
+            <h1 className="text-lg font-semibold">Setting up planner…</h1>
+            <p className="text-sm text-muted-foreground">
+              Initialising the 6-stage plan for this campaign. This usually takes a moment.
+            </p>
+            <div className="animate-pulse pt-4">
+              <div className="h-2 bg-slate-200 rounded w-full" />
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    if (initMutation.isError) {
+      const errMsg = initMutation.error instanceof Error ? initMutation.error.message : String(initMutation.error)
+      return (
+        <div className="p-6 text-center">
+          <p className="text-slate-700 font-medium">Unable to initialise stage plans</p>
+          <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">{errMsg}</p>
+          <p className="text-xs text-muted-foreground mt-2">
+            This usually means your account doesn&apos;t have permission to create campaign plans.
+            Ask a campaign admin to open this campaign to complete setup.
+          </p>
+          <Button asChild variant="outline" className="mt-4">
+            <Link href={`/campaigns/${campaignId}`}>Back to Campaign</Link>
+          </Button>
+        </div>
+      )
+    }
+
+    // Fallback (e.g., campaign itself not yet loaded)
     return (
       <div className="p-6 text-center">
         <p className="text-slate-500">Stage plan not found</p>

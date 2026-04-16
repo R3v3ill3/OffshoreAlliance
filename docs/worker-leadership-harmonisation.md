@@ -421,9 +421,10 @@ Note: **HSR alone does not affect the default rating.** HSR is a formal safety a
 
 #### Auto-behaviours on task list creation/assignment:
 
-1. **Auto-rating:** When a worker is added to a task list (`campaign_task_list_items` INSERT), auto-insert a rating of 1 for the linked activity (if no rating exists for that worker+activity)
-2. **Auto-role-promotion:** When a worker is assigned as task list leader (`campaign_task_lists.leader_worker_id`), auto-promote to at least Activist
-3. **OU linkage:** Workers on a task list should form (or be assigned to) an organising unit
+1. **Leader auto-rating:** When a worker is assigned as task list leader (`campaign_task_lists.leader_worker_id`), auto-insert a rating of 1 (supportive leader) for the linked activity (if no rating exists for that leader+activity). This reflects that being assigned as a leader implies support.
+2. **Leader auto-role-promotion:** The same leader is auto-promoted to at least Activist (role_type_id 8) if their current role is NULL or Contact (3). Workers who are already Activist or Delegate are unaffected.
+3. **No auto-rating for list workers:** Workers added to a task list (`campaign_task_list_items`) are NOT automatically rated. They are added for assessment by the leader; the leader rates them via the external link.
+4. **OU linkage:** Workers on a task list should form (or be assigned to) an organising unit
 
 #### Enhanced task creation UI:
 
@@ -471,10 +472,10 @@ The task list creation dialog should:
    - Count OUs by worker's global role instead of campaign-specific role
 6. Update view `campaign_worker_rating_summary` (optional):
    - Could incorporate role-based defaults directly, or keep in frontend
-7. Add database trigger on `campaign_task_list_items` INSERT:
-   - Auto-insert rating of 1 for linked activity if none exists
-8. Add database trigger on `campaign_task_lists` INSERT/UPDATE:
+7. Add database trigger on `campaign_task_lists` INSERT/UPDATE of `leader_worker_id`:
    - Auto-promote `leader_worker_id` to at least Activist in `workers.member_role_type_id`
+   - Auto-insert rating of 1 (supportive leader) for the leader on the linked activity
+8. No trigger on `campaign_task_list_items` INSERT -- workers are added for assessment and should not be auto-rated
 
 **Affected files:**
 - New migration file in `supabase/migrations/`
@@ -545,8 +546,9 @@ The task list creation dialog should:
 - [ ] List builder filters work with global role instead of campaign role
 - [ ] Push list (AN sync) works with global role
 - [ ] Task list creation with OU picker works
-- [ ] Auto-rating on task list item insert works (DB trigger)
-- [ ] Auto-role-promotion on task list leader assignment works (DB trigger)
+- [ ] Workers added to task list are NOT auto-rated (trigger removed)
+- [ ] Leader assigned to task list is auto-rated 1 (supportive leader) for linked activity (DB trigger)
+- [ ] Leader auto-role-promotion to Activist works when currently NULL or Contact (DB trigger)
 - [ ] Worker import no longer requires engagement_level
 - [ ] Worker detail page no longer shows engagement_level
 

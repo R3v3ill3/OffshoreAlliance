@@ -300,8 +300,9 @@ export function CampaignTaskListsSection({
         </CardHeader>
         <CardContent>
           <p className="text-xs text-muted-foreground mb-3">
-            Workers added to a task list are automatically rated 1 (supportive) for the linked activity.
-            A worker assigned as leader is auto-promoted to at least Activist.
+            A worker assigned as leader is rated 1 (supportive leader) for the linked activity,
+            and promoted to Activist if not already Activist or Delegate.
+            Workers on the list are added for assessment and are not automatically rated.
           </p>
           {activities.length === 0 ? (
             <p className="text-sm text-muted-foreground">Create an activity under Assessments first.</p>

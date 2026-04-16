@@ -237,7 +237,11 @@ export default function ScriptEditorPage() {
       {/* Call Outcomes */}
       <CallOutcomeEditor
         campaignId={parseInt(campaignId)}
-        scriptId={parseInt(scriptId)}
+        scriptId={
+          script.base_script_id != null && script.base_script_id > 0
+            ? script.base_script_id
+            : script.script_id
+        }
         scriptTitle={script.title}
       />
 

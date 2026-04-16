@@ -401,7 +401,9 @@ export function CallOutcomeEditor({
       toast.success('Call outcomes saved')
       onSaved?.()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save outcomes')
+      console.error('Save call outcomes failed:', err)
+      const msg = err instanceof Error ? err.message : 'Failed to save outcomes'
+      toast.error(msg)
     }
   }
 

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   CallOutcomeDefinition,
   OutcomeCategory,
@@ -7,22 +8,28 @@ import type {
   OutcomeSideEffect,
 } from '@/types/planner-types'
 
+/** Script family rule: outcome definitions are stored on the base script (matches `resolve_outcomes_script_id` in SQL). */
+export async function resolveOutcomesScriptId(
+  supabase: SupabaseClient,
+  scriptId: number
+): Promise<number> {
+  const { data: scriptRow, error: scriptErr } = await supabase
+    .from('call_scripts')
+    .select('base_script_id')
+    .eq('script_id', scriptId)
+    .maybeSingle()
+
+  if (scriptErr) throw scriptErr
+  return scriptRow?.base_script_id != null ? scriptRow.base_script_id : scriptId
+}
+
 export function useCallOutcomeDefinitions(scriptId: number | string | null) {
   const supabase = createClient()
   return useQuery({
     queryKey: ['call-outcome-definitions', String(scriptId)],
     queryFn: async () => {
       const sid = parseInt(String(scriptId), 10)
-      const { data: scriptRow, error: scriptErr } = await supabase
-        .from('call_scripts')
-        .select('base_script_id')
-        .eq('script_id', sid)
-        .maybeSingle()
-
-      if (scriptErr) throw scriptErr
-
-      const effectiveId =
-        scriptRow?.base_script_id != null ? scriptRow.base_script_id : sid
+      const effectiveId = await resolveOutcomesScriptId(supabase, sid)
 
       const { data, error } = await supabase
         .from('call_outcome_definitions')
@@ -86,17 +93,18 @@ export function useSaveCallOutcomes(campaignId: number | string | null, scriptId
   const supabase = createClient()
   const queryClient = useQueryClient()
   const cid = campaignId != null && campaignId !== '' ? parseInt(String(campaignId), 10) : null
-  const sid = parseInt(String(scriptId), 10)
+  const contextScriptId = parseInt(String(scriptId), 10)
 
   return useMutation({
     mutationFn: async (input: SaveCallOutcomesInput) => {
+      const effectiveScriptId = await resolveOutcomesScriptId(supabase, contextScriptId)
       let activityId: number | null = null
 
       if (cid != null) {
         const { data: existingActivity } = await supabase
           .from('call_outcome_definitions')
           .select('activity_id')
-          .eq('script_id', sid)
+          .eq('script_id', effectiveScriptId)
           .eq('campaign_id', cid)
           .not('activity_id', 'is', null)
           .limit(1)
@@ -109,7 +117,7 @@ export function useSaveCallOutcomes(campaignId: number | string | null, scriptId
             .from('campaign_activities')
             .insert({
               campaign_id: cid,
-              title: `Phone Campaign — ${input.scriptTitle || `Script #${sid}`}`,
+              title: `Phone Campaign — ${input.scriptTitle || `Script #${effectiveScriptId}`}`,
               activity_kind: 'assessment',
               is_binary: false,
               is_custom: true,
@@ -117,7 +125,10 @@ export function useSaveCallOutcomes(campaignId: number | string | null, scriptId
             .select('activity_id')
             .single()
 
-          if (actErr) throw actErr
+          if (actErr) {
+            const parts = [actErr.message, actErr.details, actErr.hint].filter(Boolean)
+            throw new Error(parts.length ? parts.join(' — ') : 'Failed to create campaign activity for outcomes')
+          }
           activityId = newActivity.activity_id
         }
       }
@@ -127,19 +138,22 @@ export function useSaveCallOutcomes(campaignId: number | string | null, scriptId
           ? await supabase
               .from('call_outcome_definitions')
               .delete()
-              .eq('script_id', sid)
+              .eq('script_id', effectiveScriptId)
               .eq('campaign_id', cid)
           : await supabase
               .from('call_outcome_definitions')
               .delete()
-              .eq('script_id', sid)
+              .eq('script_id', effectiveScriptId)
               .is('campaign_id', null)
-      if (delErr) throw delErr
+      if (delErr) {
+        const parts = [delErr.message, delErr.details, delErr.hint].filter(Boolean)
+        throw new Error(parts.length ? parts.join(' — ') : 'Failed to clear existing outcomes')
+      }
 
       if (input.outcomes.length > 0) {
         const rows = input.outcomes.map((o, i) => ({
           campaign_id: cid,
-          script_id: sid,
+          script_id: effectiveScriptId,
           name: o.name,
           description: o.description || null,
           outcome_category: o.outcome_category,
@@ -155,7 +169,10 @@ export function useSaveCallOutcomes(campaignId: number | string | null, scriptId
 
         const { error: insertErr } = await supabase.from('call_outcome_definitions').insert(rows)
 
-        if (insertErr) throw insertErr
+        if (insertErr) {
+          const parts = [insertErr.message, insertErr.details, insertErr.hint].filter(Boolean)
+          throw new Error(parts.length ? parts.join(' — ') : 'Failed to save outcomes')
+        }
       }
 
       return { activityId }

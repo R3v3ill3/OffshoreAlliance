@@ -44,6 +44,13 @@ function createEmptySection(sortOrder: number): EditableSection {
   }
 }
 
+/** Exported for phone wizard and other flows that start from an empty section list. */
+export function createEmptyEditableSection(sortOrder: number): EditableSection {
+  return createEmptySection(sortOrder)
+}
+
+export type { EditableSection }
+
 export function CallScriptEditor({
   sections,
   onChange,

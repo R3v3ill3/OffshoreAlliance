@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
@@ -23,6 +23,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { CallOutcomeEditor } from '@/components/phone/CallOutcomeEditor'
+import { CallScriptEditor, createEmptyEditableSection } from '@/components/phone/CallScriptEditor'
+import type { EditableSection } from '@/components/phone/CallScriptEditor'
 import { cn } from '@/lib/utils/cn'
 import { toast } from 'sonner'
 import {
@@ -192,6 +194,18 @@ export function PhoneWizardSteps() {
   const [step, setStep] = useState(1)
   const [state, setState] = useState<PhoneWizardState>(INITIAL_STATE)
   const [isSavingScript, setIsSavingScript] = useState(false)
+  /** Segmented script for step 3; null until AI generate or “write from scratch”. */
+  const [wizardSections, setWizardSections] = useState<EditableSection[] | null>(null)
+
+  const handleWizardSectionsChange = useCallback((sections: EditableSection[]) => {
+    setWizardSections(sections)
+    const joined = sections.map((s) => s.body_text).join('\n\n')
+    setState((prev) => ({
+      ...prev,
+      scriptText: joined,
+      savedScriptId: null,
+    }))
+  }, [])
   const [isCreatingList, setIsCreatingList] = useState(false)
   const [workerSearch, setWorkerSearch] = useState('')
   const [selectedWorkerIds, setSelectedWorkerIds] = useState<Set<number>>(new Set())
@@ -624,8 +638,11 @@ export function PhoneWizardSteps() {
           platforms: ['Phone'],
           engagement_intensity: state.engagementIntensity || undefined,
         },
-        template_examples: state.scriptText.trim()
-          ? [{ title: state.scriptTitle || 'Base Script', body_text: state.scriptText }]
+        template_examples: wizardSections?.some((s) => s.body_text.trim())
+          ? wizardSections.map((s, i) => ({
+              title: s.title?.trim() || `Section ${i + 1}`,
+              body_text: s.body_text,
+            }))
           : undefined,
         custom_instructions: [
           state.callPurpose ? `Call purpose: ${state.callPurpose}` : '',
@@ -702,26 +719,21 @@ export function PhoneWizardSteps() {
         body: JSON.stringify({
           title: variation.scriptTitle || `${state.scriptTitle || 'Phone Script'} — ${variation.segmentLabel}`,
           call_objective: state.callPurpose || null,
-          sections: [],
+          sections: [{
+            sort_order: 0,
+            section_type: 'custom',
+            title: 'Script',
+            body_text: variation.scriptText,
+            talking_points: [],
+            prompt_text: null,
+            expected_outcomes: [],
+            is_optional: false,
+          }],
           base_script_id: state.savedScriptId || undefined,
         }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to save script')
-
-      // Insert the script text as a section
-      await supabase.from('call_script_sections').insert({
-        script_id: data.script_id,
-        sort_order: 0,
-        section_type: 'custom',
-        title: 'Script',
-        body_text: variation.scriptText,
-        talking_points: [],
-        expected_outcomes: [],
-        is_optional: false,
-      }).then(({ error }) => {
-        if (error) console.warn('Could not save variation section:', error.message)
-      })
 
       setVariations((prev) => prev.map((v) =>
         v.segmentKey === variation.segmentKey ? { ...v, savedScriptId: data.script_id } : v
@@ -1052,17 +1064,40 @@ export function PhoneWizardSteps() {
       : state.employerName
         ? `Phone Script — ${state.employerName}`
         : 'Phone Script'
+    setWizardSections([{
+      _key: `ai-${Date.now()}`,
+      sort_order: 0,
+      section_type: 'custom',
+      title: 'Script',
+      body_text: result.body_text,
+      talking_points: [],
+      prompt_text: null,
+      expected_outcomes: [],
+      is_optional: false,
+    }])
     setState((prev) => ({
       ...prev,
       scriptText: result.body_text,
       scriptTitle: prev.scriptTitle || defaultTitle,
+      savedScriptId: null,
     }))
   }
 
   async function handleSaveScript() {
-    if (!state.scriptText.trim()) return
+    if (!wizardSections?.some((s) => s.body_text.trim())) return
     setIsSavingScript(true)
     try {
+      const sectionPayload = wizardSections.map((s, i) => ({
+        sort_order: i,
+        section_type: s.section_type || 'custom',
+        title: s.title?.trim() || `Section ${i + 1}`,
+        body_text: s.body_text || '',
+        talking_points: s.talking_points || [],
+        prompt_text: s.prompt_text ?? null,
+        expected_outcomes: s.expected_outcomes || [],
+        is_optional: s.is_optional || false,
+      }))
+
       const url = state.campaignId
         ? `/api/campaigns/${state.campaignId}/call-scripts`
         : '/api/phone-wizard/scripts'
@@ -1073,48 +1108,11 @@ export function PhoneWizardSteps() {
         body: JSON.stringify({
           title: state.scriptTitle || 'Phone Script',
           call_objective: state.callPurpose || null,
-          sections: [],
+          sections: sectionPayload,
         }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to save script')
-
-      // Save raw script text as a single 'custom' section so it's accessible during calling
-      if (data.script_id && state.scriptText.trim()) {
-        await fetch(
-          state.campaignId
-            ? `/api/campaigns/${state.campaignId}/call-scripts/${data.script_id}/structure`
-            : '/api/phone-wizard/scripts',
-          state.campaignId
-            ? {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  script_id: data.script_id,
-                  raw_script: state.scriptText,
-                }),
-              }
-            : {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ script_id: data.script_id }),
-              }
-        ).catch(() => null)
-
-        // Insert the raw text as a single section directly
-        await supabase.from('call_script_sections').insert({
-          script_id: data.script_id,
-          sort_order: 0,
-          section_type: 'custom',
-          title: 'Script',
-          body_text: state.scriptText,
-          talking_points: [],
-          expected_outcomes: [],
-          is_optional: false,
-        }).then(({ error }) => {
-          if (error) console.warn('Could not save script section:', error.message)
-        })
-      }
 
       setState((prev) => ({ ...prev, savedScriptId: data.script_id }))
       toast.success('Script saved')
@@ -1188,7 +1186,7 @@ export function PhoneWizardSteps() {
   const canProceed: Record<number, boolean> = {
     1: true,
     2: state.tone.length > 0 && state.audience.length > 0,
-    3: state.scriptText.trim().length > 0,
+       3: wizardSections != null && wizardSections.some((s) => s.body_text.trim().length > 0),
     4: true,
     5: true,
   }
@@ -1483,7 +1481,7 @@ export function PhoneWizardSteps() {
             <CardTitle>Create Phone Script</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {!state.scriptText && (
+            {wizardSections == null && (
               <div className="grid grid-cols-2 gap-3">
                 <Button
                   variant="outline"
@@ -1501,7 +1499,15 @@ export function PhoneWizardSteps() {
                 <Button
                   variant="outline"
                   className="h-24 flex-col gap-2"
-                  onClick={() => setState((prev) => ({ ...prev, scriptText: ' ' }))}
+                  onClick={() => {
+                    const first = createEmptyEditableSection(0)
+                    setWizardSections([first])
+                    setState((prev) => ({
+                      ...prev,
+                      scriptText: '',
+                      savedScriptId: null,
+                    }))
+                  }}
                 >
                   <PenLine className="h-6 w-6" />
                   <span>Write from Scratch</span>
@@ -1509,13 +1515,16 @@ export function PhoneWizardSteps() {
               </div>
             )}
 
-            {state.scriptText && (
+            {wizardSections != null && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Label>Script Title</Label>
                   <Button
                     variant="ghost" size="sm" className="text-xs"
-                    onClick={() => setState((prev) => ({ ...prev, scriptText: '', savedScriptId: null }))}
+                    onClick={() => {
+                      setWizardSections(null)
+                      setState((prev) => ({ ...prev, scriptText: '', savedScriptId: null }))
+                    }}
                   >
                     Start Over
                   </Button>
@@ -1527,23 +1536,20 @@ export function PhoneWizardSteps() {
                 />
 
                 <div>
-                  <Label className="mb-1.5 block">Script</Label>
-                  <Textarea
-                    value={state.scriptText.trim() === '' ? '' : state.scriptText}
-                    onChange={(e) => setState((prev) => ({ ...prev, scriptText: e.target.value, savedScriptId: null }))}
-                    rows={16}
-                    className="font-mono text-sm"
-                    placeholder="Write your call script here. Use {{first_name}}, {{employer_name}}, {{agreement_name}} etc. for personalisation..."
-                  />
-                  <p className="text-xs text-muted-foreground text-right mt-1">
-                    {state.scriptText.trim().length} characters
+                  <Label className="mb-1.5 block">Script sections</Label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Add sections to match your call flow (opening, ask, close). Use {'{{first_name}}'}, {'{{employer_name}}'}, etc. for personalisation.
                   </p>
+                  <CallScriptEditor
+                    sections={wizardSections}
+                    onChange={handleWizardSectionsChange}
+                  />
                 </div>
 
                 <div className="flex items-center gap-2">
                   <Button
                     onClick={() => void handleSaveScript()}
-                    disabled={isSavingScript || !state.scriptText.trim()}
+                    disabled={isSavingScript || !wizardSections.some((s) => s.body_text.trim())}
                   >
                     {isSavingScript ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />

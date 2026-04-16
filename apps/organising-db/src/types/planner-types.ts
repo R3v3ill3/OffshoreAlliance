@@ -373,6 +373,8 @@ export interface CallStepOutcome {
   created_at: string
 }
 
+export type OutcomeResponseType = 'checkbox' | 'text' | 'select' | 'number'
+
 export interface CallOutcomeDefinition {
   outcome_id: number
   campaign_id: number
@@ -383,7 +385,14 @@ export interface CallOutcomeDefinition {
   maps_to_ambition_id: number | null
   is_positive: boolean
   sort_order: number
+  response_type: OutcomeResponseType
+  response_options: { value: string; label: string }[] | null
   created_at: string
+}
+
+export interface OutcomeEntry {
+  outcome_id: number
+  response_value?: string | null
 }
 
 export interface CallScriptWithSections extends CallScript {
@@ -446,6 +455,7 @@ export interface RecordCallAttemptRequest {
     sort_order: number
   }[]
   outcome_ids?: number[]
+  outcome_entries?: OutcomeEntry[]
 }
 
 export interface CallOutcomeSummary {

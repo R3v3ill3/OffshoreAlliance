@@ -33,6 +33,7 @@ export async function POST(
       p_duration_seconds: body.duration_seconds || null,
       p_step_outcomes: body.step_outcomes || [],
       p_outcome_ids: body.outcome_ids || [],
+      p_outcome_entries: body.outcome_entries || [],
     })
 
     if (error) throw error

@@ -66,6 +66,60 @@ export function CallCampaignReporting({ campaignId }: CallCampaignReportingProps
     enabled: !!campaignId,
   })
 
+  const ambitionIds = (outcomeSummary ?? [])
+    .map((o) => o.maps_to_ambition_id)
+    .filter((id): id is number => id != null)
+
+  const { data: linkedAmbitions } = useQuery({
+    queryKey: ['call-outcome-ambitions', ambitionIds.join(',')],
+    queryFn: async () => {
+      if (ambitionIds.length === 0) return []
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('plan_ambitions')
+        .select('ambition_id, target_value, metric_type, custom_text, ambition_option:ambition_options(option_text)')
+        .in('ambition_id', ambitionIds)
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: ambitionIds.length > 0,
+  })
+
+  const ambitionMap = new Map(
+    (linkedAmbitions ?? []).map((a: Record<string, unknown>) => [
+      a.ambition_id as number,
+      { target_value: a.target_value as string | null, metric_type: a.metric_type as string | null },
+    ])
+  )
+
+  const { data: textResponses } = useQuery({
+    queryKey: ['call-outcome-text-responses', String(campaignId)],
+    queryFn: async () => {
+      const supabase = createClient()
+      const outcomeIds = (outcomeSummary ?? []).map((o) => o.outcome_id)
+      if (outcomeIds.length === 0) return new Map<number, string[]>()
+
+      const { data, error } = await supabase
+        .from('call_attempt_outcomes')
+        .select('outcome_id, response_value')
+        .in('outcome_id', outcomeIds)
+        .not('response_value', 'is', null)
+        .limit(200)
+
+      if (error) throw error
+      const map = new Map<number, string[]>()
+      for (const row of data ?? []) {
+        const val = row.response_value as string
+        if (!val.trim()) continue
+        const arr = map.get(row.outcome_id) || []
+        arr.push(val)
+        map.set(row.outcome_id, arr)
+      }
+      return map
+    },
+    enabled: (outcomeSummary ?? []).length > 0,
+  })
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -248,11 +302,14 @@ export function CallCampaignReporting({ campaignId }: CallCampaignReportingProps
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {outcomeSummary.map((o) => {
                 const pct = totals.connected > 0
                   ? Math.round((o.times_recorded / totals.connected) * 100)
                   : 0
+                const ambition = o.maps_to_ambition_id ? ambitionMap.get(o.maps_to_ambition_id) : null
+                const targetVal = ambition?.target_value ? parseFloat(ambition.target_value) : null
+                const responses = textResponses?.get(o.outcome_id) || []
                 return (
                   <div key={o.outcome_id} className="space-y-1">
                     <div className="flex items-center justify-between gap-2">
@@ -272,10 +329,33 @@ export function CallCampaignReporting({ campaignId }: CallCampaignReportingProps
                       </div>
                     </div>
                     <Progress value={pct} className="h-1.5" />
-                    <p className="text-[10px] text-muted-foreground">
-                      {o.unique_contacts} unique contact{o.unique_contacts !== 1 ? 's' : ''}
-                      {o.maps_to_ambition_id && ' · linked to ambition'}
-                    </p>
+                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                      <span>{o.unique_contacts} unique contact{o.unique_contacts !== 1 ? 's' : ''}</span>
+                      {ambition && targetVal != null && !isNaN(targetVal) && (
+                        <span className="text-blue-600 font-medium">
+                          {ambition.metric_type === 'percentage'
+                            ? `${pct}% of ${targetVal}% target`
+                            : `${o.times_recorded} of ${targetVal} target`}
+                        </span>
+                      )}
+                    </div>
+                    {responses.length > 0 && (
+                      <div className="ml-2 space-y-0.5">
+                        <p className="text-[10px] text-muted-foreground font-medium">
+                          Responses ({responses.length}):
+                        </p>
+                        {responses.slice(0, 5).map((r, i) => (
+                          <p key={i} className="text-[10px] text-muted-foreground pl-2 border-l-2 border-muted">
+                            {r}
+                          </p>
+                        ))}
+                        {responses.length > 5 && (
+                          <p className="text-[10px] text-muted-foreground italic">
+                            …and {responses.length - 5} more
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )
               })}

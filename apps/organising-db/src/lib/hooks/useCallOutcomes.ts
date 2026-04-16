@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
-import type { CallOutcomeDefinition, OutcomeCategory } from '@/types/planner-types'
+import type { CallOutcomeDefinition, OutcomeCategory, OutcomeResponseType } from '@/types/planner-types'
 
 export function useCallOutcomeDefinitions(scriptId: number | string | null) {
   const supabase = createClient()
@@ -45,6 +45,8 @@ export interface SaveCallOutcomesInput {
     maps_to_ambition_id?: number | null
     is_positive: boolean
     sort_order: number
+    response_type?: OutcomeResponseType
+    response_options?: { value: string; label: string }[] | null
   }[]
   scriptTitle?: string
 }
@@ -106,6 +108,8 @@ export function useSaveCallOutcomes(campaignId: number | string, scriptId: numbe
           is_positive: o.is_positive,
           sort_order: i,
           activity_id: activityId,
+          response_type: o.response_type || 'checkbox',
+          response_options: o.response_options || null,
         }))
 
         const { error: insertErr } = await supabase

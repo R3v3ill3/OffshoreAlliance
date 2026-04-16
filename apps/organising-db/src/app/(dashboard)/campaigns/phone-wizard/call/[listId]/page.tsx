@@ -95,7 +95,7 @@ export default function PhoneWizardCallPage() {
   const [scriptPanelOpen, setScriptPanelOpen] = useState(false)
   const [shouldFetchNext, setShouldFetchNext] = useState(true)
   const [showWorkerEdit, setShowWorkerEdit] = useState(false)
-  const [checkedOutcomes, setCheckedOutcomes] = useState<Set<number>>(new Set())
+  const [checkedOutcomes, setCheckedOutcomes] = useState<Map<number, string | null>>(new Map())
 
   const callStartTime = useRef<Date | null>(null)
   const queryClient = useQueryClient()
@@ -191,7 +191,9 @@ export default function PhoneWizardCallPage() {
       cta_response: ctaResponse,
       duration_seconds: duration,
       step_outcomes: flowState.dialDisposition === 'connected' ? stepOutcomes : [],
-      outcome_ids: flowState.dialDisposition === 'connected' ? [...checkedOutcomes] : [],
+      outcome_entries: flowState.dialDisposition === 'connected'
+        ? [...checkedOutcomes.entries()].map(([id, val]) => ({ outcome_id: id, response_value: val }))
+        : [],
       ...overrides,
     }
 
@@ -202,7 +204,7 @@ export default function PhoneWizardCallPage() {
       setSupportLevel(null)
       setStepNotes({})
       setStepReached(new Set())
-      setCheckedOutcomes(new Set())
+      setCheckedOutcomes(new Map())
       callStartTime.current = null
       dispatch({ type: 'RESET' })
       dispatch({ type: 'LOAD_CONTACT' })
@@ -338,28 +340,62 @@ export default function PhoneWizardCallPage() {
                   {outcomeDefinitions.length > 0 && (
                     <div className="space-y-1.5 p-3 rounded border bg-background">
                       <label className="text-xs font-medium">Call Outcomes</label>
-                      <div className="space-y-1">
-                        {outcomeDefinitions.map((od) => (
-                          <label
-                            key={od.outcome_id}
-                            className="flex items-center gap-2 py-0.5 cursor-pointer text-xs"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checkedOutcomes.has(od.outcome_id)}
-                              onChange={() => setCheckedOutcomes((prev) => {
-                                const n = new Set(prev)
-                                if (n.has(od.outcome_id)) n.delete(od.outcome_id)
-                                else n.add(od.outcome_id)
-                                return n
-                              })}
-                            />
-                            <span className={od.is_positive ? 'text-green-700' : ''}>{od.name}</span>
-                            {od.is_positive && (
-                              <span className="text-[9px] text-green-500 font-medium">+</span>
-                            )}
-                          </label>
-                        ))}
+                      <div className="space-y-1.5">
+                        {outcomeDefinitions.map((od) => {
+                          const checked = checkedOutcomes.has(od.outcome_id)
+                          const responseType = od.response_type || 'checkbox'
+                          return (
+                            <div key={od.outcome_id} className="space-y-1">
+                              <label className="flex items-center gap-2 py-0.5 cursor-pointer text-xs">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => setCheckedOutcomes((prev) => {
+                                    const n = new Map(prev)
+                                    if (n.has(od.outcome_id)) n.delete(od.outcome_id)
+                                    else n.add(od.outcome_id, null)
+                                    return n
+                                  })}
+                                />
+                                <span className={od.is_positive ? 'text-green-700' : ''}>{od.name}</span>
+                                {od.is_positive && <span className="text-[9px] text-green-500 font-medium">+</span>}
+                                {responseType !== 'checkbox' && (
+                                  <span className="text-[9px] text-muted-foreground">({responseType})</span>
+                                )}
+                              </label>
+                              {checked && responseType === 'text' && (
+                                <input
+                                  type="text"
+                                  value={checkedOutcomes.get(od.outcome_id) || ''}
+                                  onChange={(e) => setCheckedOutcomes((prev) => new Map(prev).set(od.outcome_id, e.target.value))}
+                                  placeholder={od.description || 'Enter details…'}
+                                  className="ml-6 h-6 text-xs border rounded px-2 w-full max-w-xs"
+                                />
+                              )}
+                              {checked && responseType === 'number' && (
+                                <input
+                                  type="number"
+                                  value={checkedOutcomes.get(od.outcome_id) || ''}
+                                  onChange={(e) => setCheckedOutcomes((prev) => new Map(prev).set(od.outcome_id, e.target.value))}
+                                  placeholder="0"
+                                  className="ml-6 h-6 text-xs border rounded px-2 w-20"
+                                />
+                              )}
+                              {checked && responseType === 'select' && od.response_options && (
+                                <select
+                                  value={checkedOutcomes.get(od.outcome_id) || ''}
+                                  onChange={(e) => setCheckedOutcomes((prev) => new Map(prev).set(od.outcome_id, e.target.value))}
+                                  className="ml-6 h-6 text-xs border rounded px-1"
+                                >
+                                  <option value="">Select…</option>
+                                  {od.response_options.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
                   )}

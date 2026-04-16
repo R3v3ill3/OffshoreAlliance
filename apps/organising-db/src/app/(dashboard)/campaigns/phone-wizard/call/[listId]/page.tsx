@@ -353,7 +353,7 @@ export default function PhoneWizardCallPage() {
                                   onChange={() => setCheckedOutcomes((prev) => {
                                     const n = new Map(prev)
                                     if (n.has(od.outcome_id)) n.delete(od.outcome_id)
-                                    else n.add(od.outcome_id, null)
+                                    else n.set(od.outcome_id, null)
                                     return n
                                   })}
                                 />

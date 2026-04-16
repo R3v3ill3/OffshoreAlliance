@@ -1,7 +1,8 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useCallLists } from '@/lib/hooks/useCallList'
+import { useCallLists, useDeleteCallList } from '@/lib/hooks/useCallList'
 import { useCallScripts } from '@/lib/hooks/useCallScripts'
 import { CallCampaignReporting } from './CallCampaignReporting'
 import { Button } from '@/components/ui/button'
@@ -9,8 +10,19 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import {
-  Phone, Plus, Play, FileText, Users, Loader2, Edit, ExternalLink,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
+  Phone, Plus, Play, FileText, Users, Loader2, Edit, ExternalLink, Trash2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import type { CallListWithStats } from '@/types/planner-types'
 
 const STATUS_COLORS: Record<string, string> = {
@@ -31,6 +43,8 @@ export function InlinePhoneOpsPanel({ campaignId }: InlinePhoneOpsPanelProps) {
 
   const { data: scripts, isLoading: scriptsLoading } = useCallScripts(id)
   const { data: lists, isLoading: listsLoading } = useCallLists(id)
+  const deleteList = useDeleteCallList(id)
+  const [listPendingDelete, setListPendingDelete] = useState<CallListWithStats | null>(null)
 
   return (
     <div className="space-y-6">
@@ -122,7 +136,13 @@ export function InlinePhoneOpsPanel({ campaignId }: InlinePhoneOpsPanelProps) {
         ) : lists && lists.length > 0 ? (
           <div className="space-y-2">
             {lists.map((list) => (
-              <ListCard key={list.list_id} list={list} campaignId={id} router={router} />
+              <ListCard
+                key={list.list_id}
+                list={list}
+                campaignId={id}
+                router={router}
+                onRequestDelete={setListPendingDelete}
+              />
             ))}
           </div>
         ) : (
@@ -145,6 +165,41 @@ export function InlinePhoneOpsPanel({ campaignId }: InlinePhoneOpsPanelProps) {
 
       {/* Reporting — only shown when there is data */}
       <CallCampaignReporting campaignId={campaignId} />
+
+      <AlertDialog
+        open={listPendingDelete != null}
+        onOpenChange={(open) => {
+          if (!open) setListPendingDelete(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete call list?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes “{listPendingDelete?.name}”, all contacts on the list, and related call attempts.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteList.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteList.isPending}
+              onClick={() => {
+                if (!listPendingDelete) return
+                void deleteList
+                  .mutateAsync(listPendingDelete.list_id)
+                  .then(() => {
+                    toast.success('Call list deleted')
+                    setListPendingDelete(null)
+                  })
+                  .catch((err: Error) => toast.error(err.message))
+              }}
+            >
+              {deleteList.isPending ? 'Deleting…' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -153,10 +208,12 @@ function ListCard({
   list,
   campaignId,
   router,
+  onRequestDelete,
 }: {
   list: CallListWithStats
   campaignId: string
   router: ReturnType<typeof useRouter>
+  onRequestDelete: (list: CallListWithStats) => void
 }) {
   const totalItems = list.total_items || 0
   const completedItems = list.completed_items || 0
@@ -198,6 +255,16 @@ function ListCard({
               onClick={() => router.push(`/campaigns/${campaignId}/phone/lists/${list.list_id}`)}
             >
               <Edit className="h-3 w-3" />
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground hover:text-destructive"
+              title="Delete list"
+              onClick={() => onRequestDelete(list)}
+            >
+              <Trash2 className="h-3 w-3" />
             </Button>
           </div>
         </div>

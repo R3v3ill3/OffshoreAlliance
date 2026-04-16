@@ -1,17 +1,33 @@
 'use client'
 
+import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { useCallList, useCallListItems, useUpdateCallList } from '@/lib/hooks/useCallList'
+import {
+  useCallList,
+  useCallListItems,
+  useUpdateCallList,
+  useDeleteCallList,
+} from '@/lib/hooks/useCallList'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import {
   ArrowLeft, Phone, Play, Pause, Users, Loader2, CheckCircle,
-  SkipForward, Clock, AlertCircle,
+  SkipForward, Clock, AlertCircle, Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { CallListStatus } from '@/types/planner-types'
@@ -33,6 +49,8 @@ export default function CallListDetailPage() {
   const { data: list, isLoading: listLoading } = useCallList(campaignId, listId)
   const { data: items, isLoading: itemsLoading } = useCallListItems(campaignId, listId)
   const updateList = useUpdateCallList(campaignId)
+  const deleteList = useDeleteCallList(campaignId)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   const handleStatusChange = async (newStatus: CallListStatus) => {
     try {
@@ -72,9 +90,21 @@ export default function CallListDetailPage() {
             <p className="text-sm text-muted-foreground">{list.description}</p>
           )}
         </div>
-        <Badge variant={list.status === 'active' ? 'default' : 'secondary'}>
-          {list.status}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant={list.status === 'active' ? 'default' : 'secondary'}>
+            {list.status}
+          </Badge>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="text-destructive border-destructive/30 hover:bg-destructive/10"
+            onClick={() => setDeleteDialogOpen(true)}
+          >
+            <Trash2 className="h-4 w-4 mr-1" />
+            Delete
+          </Button>
+        </div>
       </div>
 
       {/* Stats and actions */}
@@ -192,6 +222,35 @@ export default function CallListDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this call list?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the list, all contacts on it, and related call attempts. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteList.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteList.isPending}
+              onClick={() => {
+                void deleteList
+                  .mutateAsync(parseInt(listId, 10))
+                  .then(() => {
+                    toast.success('Call list deleted')
+                    router.push(`/campaigns/${campaignId}/phone`)
+                  })
+                  .catch((err: Error) => toast.error(err.message))
+              }}
+            >
+              {deleteList.isPending ? 'Deleting…' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

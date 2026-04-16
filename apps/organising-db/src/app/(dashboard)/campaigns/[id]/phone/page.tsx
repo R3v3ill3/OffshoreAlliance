@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { useCallLists } from '@/lib/hooks/useCallList'
+import { useCallLists, useDeleteCallList } from '@/lib/hooks/useCallList'
 import { useCallScripts, useDeleteCallScript } from '@/lib/hooks/useCallScripts'
 import type { CallListWithStats, CallScriptWithSections } from '@/types/planner-types'
 import { Button } from '@/components/ui/button'
@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import {
   Phone, Plus, Play, Pause, FileText, Users, ArrowLeft,
-  Loader2, BarChart3, Edit, Trash2,
+  Loader2, Edit, Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -41,7 +41,9 @@ export default function PhoneOpsPage() {
   const { data: lists, isLoading: listsLoading } = useCallLists(campaignId)
   const { data: scripts, isLoading: scriptsLoading } = useCallScripts(campaignId)
   const deleteScript = useDeleteCallScript(campaignId)
+  const deleteList = useDeleteCallList(campaignId)
   const [scriptPendingDelete, setScriptPendingDelete] = useState<CallScriptWithSections | null>(null)
+  const [listPendingDelete, setListPendingDelete] = useState<CallListWithStats | null>(null)
 
   const activeLists = lists?.filter((l) => l.status === 'active') || []
   const otherLists = lists?.filter((l) => l.status !== 'active') || []
@@ -170,6 +172,43 @@ export default function PhoneOpsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      <AlertDialog
+        open={listPendingDelete != null}
+        onOpenChange={(open) => {
+          if (!open) setListPendingDelete(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete call list?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes “{listPendingDelete?.name}”, all contacts on the list, and related call attempts.
+              This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteList.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteList.isPending}
+              onClick={() => {
+                if (!listPendingDelete) return
+                const id = listPendingDelete.list_id
+                void deleteList
+                  .mutateAsync(id)
+                  .then(() => {
+                    toast.success('Call list deleted')
+                    setListPendingDelete(null)
+                  })
+                  .catch((err: Error) => toast.error(err.message))
+              }}
+            >
+              {deleteList.isPending ? 'Deleting…' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Active call lists */}
       {activeLists.length > 0 && (
         <div>
@@ -179,7 +218,13 @@ export default function PhoneOpsPage() {
           </h3>
           <div className="space-y-2">
             {activeLists.map((list) => (
-              <CallListCard key={list.list_id} list={list} campaignId={campaignId} router={router} />
+              <CallListCard
+                key={list.list_id}
+                list={list}
+                campaignId={campaignId}
+                router={router}
+                onRequestDelete={setListPendingDelete}
+              />
             ))}
           </div>
         </div>
@@ -199,7 +244,13 @@ export default function PhoneOpsPage() {
         ) : otherLists.length > 0 || activeLists.length > 0 ? (
           <div className="space-y-2">
             {[...activeLists, ...otherLists].map((list) => (
-              <CallListCard key={list.list_id} list={list} campaignId={campaignId} router={router} />
+              <CallListCard
+                key={list.list_id}
+                list={list}
+                campaignId={campaignId}
+                router={router}
+                onRequestDelete={setListPendingDelete}
+              />
             ))}
           </div>
         ) : (
@@ -226,10 +277,12 @@ function CallListCard({
   list,
   campaignId,
   router,
+  onRequestDelete,
 }: {
   list: CallListWithStats
   campaignId: string
   router: ReturnType<typeof useRouter>
+  onRequestDelete: (list: CallListWithStats) => void
 }) {
   const listId = list.list_id
   const name = list.name
@@ -273,6 +326,16 @@ function CallListCard({
               onClick={() => router.push(`/campaigns/${campaignId}/phone/lists/${listId}`)}
             >
               <Edit className="h-3 w-3" />
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground hover:text-destructive"
+              title="Delete list"
+              onClick={() => onRequestDelete(list)}
+            >
+              <Trash2 className="h-3 w-3" />
             </Button>
           </div>
         </div>

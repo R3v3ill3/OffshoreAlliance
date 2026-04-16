@@ -82,6 +82,25 @@ export function useUpdateCallList(campaignId: number | string) {
   })
 }
 
+export function useDeleteCallList(campaignId: number | string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (listId: number) => {
+      const res = await fetch(`/api/campaigns/${campaignId}/call-lists/${listId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed to delete list' }))
+        throw new Error(typeof err.error === 'string' ? err.error : 'Failed to delete list')
+      }
+      return res.json() as Promise<{ ok: boolean }>
+    },
+    onSuccess: (_, listId) => {
+      queryClient.invalidateQueries({ queryKey: ['call-lists', String(campaignId)] })
+      queryClient.removeQueries({ queryKey: ['call-list', String(campaignId), String(listId)] })
+      queryClient.removeQueries({ queryKey: ['call-list-items', String(campaignId), String(listId)] })
+    },
+  })
+}
+
 export function usePopulateCallList(campaignId: number | string, listId: number | string) {
   const queryClient = useQueryClient()
   return useMutation({

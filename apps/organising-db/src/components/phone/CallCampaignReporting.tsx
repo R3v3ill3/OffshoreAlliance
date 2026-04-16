@@ -4,13 +4,14 @@ import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Phone, PhoneCall, PhoneOff, CheckCircle, XCircle, Clock } from 'lucide-react'
+import { Progress } from '@/components/ui/progress'
+import { Loader2, Phone, PhoneCall, PhoneOff, CheckCircle, XCircle, Clock, Target } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from 'recharts'
 import type { PieLabelRenderProps } from 'recharts'
-import type { CallCampaignSummary } from '@/types/planner-types'
+import type { CallCampaignSummary, CallOutcomeSummary } from '@/types/planner-types'
 
 interface CallCampaignReportingProps {
   campaignId: number | string
@@ -46,6 +47,21 @@ export function CallCampaignReporting({ campaignId }: CallCampaignReportingProps
 
       if (error) throw error
       return data as { section_title: string; reach_rate_pct: number; reached_count: number; total_connected_calls: number }[]
+    },
+    enabled: !!campaignId,
+  })
+
+  const { data: outcomeSummary } = useQuery({
+    queryKey: ['call-outcome-summary', String(campaignId)],
+    queryFn: async () => {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('call_outcome_summary')
+        .select('*')
+        .eq('campaign_id', parseInt(String(campaignId)))
+
+      if (error) throw error
+      return data as unknown as CallOutcomeSummary[]
     },
     enabled: !!campaignId,
   })
@@ -218,6 +234,52 @@ export function CallCampaignReporting({ campaignId }: CallCampaignReportingProps
                 <Bar dataKey="reach_rate_pct" fill="#6366f1" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Call Outcomes */}
+      {outcomeSummary && outcomeSummary.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Target className="h-4 w-4 text-blue-500" />
+              Call Outcomes
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {outcomeSummary.map((o) => {
+                const pct = totals.connected > 0
+                  ? Math.round((o.times_recorded / totals.connected) * 100)
+                  : 0
+                return (
+                  <div key={o.outcome_id} className="space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`text-sm font-medium ${o.is_positive ? 'text-green-700' : ''}`}>
+                          {o.name}
+                        </span>
+                        <Badge variant="outline" className="text-[10px] shrink-0">
+                          {o.outcome_category}
+                        </Badge>
+                      </div>
+                      <div className="text-sm font-semibold tabular-nums shrink-0">
+                        {o.times_recorded}
+                        <span className="text-xs text-muted-foreground font-normal ml-1">
+                          ({pct}%)
+                        </span>
+                      </div>
+                    </div>
+                    <Progress value={pct} className="h-1.5" />
+                    <p className="text-[10px] text-muted-foreground">
+                      {o.unique_contacts} unique contact{o.unique_contacts !== 1 ? 's' : ''}
+                      {o.maps_to_ambition_id && ' · linked to ambition'}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
           </CardContent>
         </Card>
       )}

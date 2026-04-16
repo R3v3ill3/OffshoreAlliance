@@ -4,6 +4,7 @@ import { useReducer, useState, useCallback, useRef, useEffect, useMemo } from 'r
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { callFlowReducer, getInitialCallFlowState, canAdvanceSection, canGoBack, isCallActive } from '@/lib/phone/call-flow-state'
+import { useCallOutcomeDefinitions } from '@/lib/hooks/useCallOutcomes'
 import { ContactCard } from '@/components/phone/ContactCard'
 import { DialOutcomeBar } from '@/components/phone/DialOutcomeBar'
 import { ConversationStepper } from '@/components/phone/ConversationStepper'
@@ -94,6 +95,7 @@ export default function PhoneWizardCallPage() {
   const [scriptPanelOpen, setScriptPanelOpen] = useState(false)
   const [shouldFetchNext, setShouldFetchNext] = useState(true)
   const [showWorkerEdit, setShowWorkerEdit] = useState(false)
+  const [checkedOutcomes, setCheckedOutcomes] = useState<Set<number>>(new Set())
 
   const callStartTime = useRef<Date | null>(null)
   const queryClient = useQueryClient()
@@ -101,6 +103,8 @@ export default function PhoneWizardCallPage() {
   const { data: list } = useWizardCallList(listId)
   const { data: contact, isLoading: contactLoading, refetch: refetchNext } = useWizardPhoneNext(listId, shouldFetchNext)
   const recordAttempt = useWizardRecordAttempt(listId)
+
+  const { data: outcomeDefinitions = [] } = useCallOutcomeDefinitions(list?.script_id ?? null)
 
   const sections: CallScriptSection[] = (() => {
     if (!list) return []
@@ -187,6 +191,7 @@ export default function PhoneWizardCallPage() {
       cta_response: ctaResponse,
       duration_seconds: duration,
       step_outcomes: flowState.dialDisposition === 'connected' ? stepOutcomes : [],
+      outcome_ids: flowState.dialDisposition === 'connected' ? [...checkedOutcomes] : [],
       ...overrides,
     }
 
@@ -197,6 +202,7 @@ export default function PhoneWizardCallPage() {
       setSupportLevel(null)
       setStepNotes({})
       setStepReached(new Set())
+      setCheckedOutcomes(new Set())
       callStartTime.current = null
       dispatch({ type: 'RESET' })
       dispatch({ type: 'LOAD_CONTACT' })
@@ -204,7 +210,7 @@ export default function PhoneWizardCallPage() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to record attempt')
     }
-  }, [contact, list, flowState, notes, supportLevel, ctaResponse, sortedSections, stepReached, stepNotes, recordAttempt, refetchNext])
+  }, [contact, list, flowState, notes, supportLevel, ctaResponse, sortedSections, stepReached, stepNotes, checkedOutcomes, recordAttempt, refetchNext])
 
   const handleSkip = useCallback(async () => {
     if (!contact) return
@@ -327,6 +333,37 @@ export default function PhoneWizardCallPage() {
               {isConnected && (
                 <div className="space-y-3 p-4 rounded-lg border bg-muted/20">
                   <p className="text-sm font-medium">Complete Call</p>
+
+                  {/* Call outcomes */}
+                  {outcomeDefinitions.length > 0 && (
+                    <div className="space-y-1.5 p-3 rounded border bg-background">
+                      <label className="text-xs font-medium">Call Outcomes</label>
+                      <div className="space-y-1">
+                        {outcomeDefinitions.map((od) => (
+                          <label
+                            key={od.outcome_id}
+                            className="flex items-center gap-2 py-0.5 cursor-pointer text-xs"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checkedOutcomes.has(od.outcome_id)}
+                              onChange={() => setCheckedOutcomes((prev) => {
+                                const n = new Set(prev)
+                                if (n.has(od.outcome_id)) n.delete(od.outcome_id)
+                                else n.add(od.outcome_id)
+                                return n
+                              })}
+                            />
+                            <span className={od.is_positive ? 'text-green-700' : ''}>{od.name}</span>
+                            {od.is_positive && (
+                              <span className="text-[9px] text-green-500 font-medium">+</span>
+                            )}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <label className="text-xs font-medium">CTA Response</label>

@@ -11,8 +11,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, Wand2, Loader2, Phone } from 'lucide-react'
+import { ArrowLeft, Wand2, Loader2, Phone, Target } from 'lucide-react'
 import { toast } from 'sonner'
+import { CallOutcomeEditor } from '@/components/phone/CallOutcomeEditor'
 import type { ScriptStatus } from '@/types/planner-types'
 
 export default function ScriptEditorPage() {
@@ -196,6 +197,13 @@ export default function ScriptEditorPage() {
         onSave={handleSave}
         isSaving={updateSections.isPending}
         saved={saved}
+      />
+
+      {/* Call Outcomes */}
+      <CallOutcomeEditor
+        campaignId={parseInt(campaignId)}
+        scriptId={parseInt(scriptId)}
+        scriptTitle={script.title}
       />
 
       {/* Action footer */}

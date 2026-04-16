@@ -32,6 +32,7 @@ export async function POST(
       p_cta_response: body.cta_response || null,
       p_duration_seconds: body.duration_seconds || null,
       p_step_outcomes: body.step_outcomes || [],
+      p_outcome_ids: body.outcome_ids || [],
     })
 
     if (error) throw error

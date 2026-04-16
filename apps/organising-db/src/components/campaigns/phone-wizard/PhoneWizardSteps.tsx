@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { CallOutcomeEditor } from '@/components/phone/CallOutcomeEditor'
 import { cn } from '@/lib/utils/cn'
 import { toast } from 'sonner'
 import {
@@ -1527,6 +1528,17 @@ export function PhoneWizardSteps() {
                     </p>
                   )}
                 </div>
+
+                {/* Outcome editor — shown after script is saved, campaign mode only */}
+                {state.savedScriptId && state.campaignId && (
+                  <div className="mt-4 border-t pt-4">
+                    <CallOutcomeEditor
+                      campaignId={state.campaignId}
+                      scriptId={state.savedScriptId}
+                      scriptTitle={state.scriptTitle}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

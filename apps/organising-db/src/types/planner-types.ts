@@ -445,6 +445,20 @@ export interface RecordCallAttemptRequest {
     duration_seconds?: number | null
     sort_order: number
   }[]
+  outcome_ids?: number[]
+}
+
+export interface CallOutcomeSummary {
+  outcome_id: number
+  campaign_id: number
+  script_id: number | null
+  name: string
+  outcome_category: OutcomeCategory
+  maps_to_ambition_id: number | null
+  is_positive: boolean
+  times_recorded: number
+  unique_contacts: number
+  connected_attempts_with_outcome: number
 }
 
 export interface CallCampaignSummary {

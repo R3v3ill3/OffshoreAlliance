@@ -64,6 +64,17 @@ interface WorkerPreview {
 type SortCol = 'name' | 'phone' | 'occupation' | 'membership_status' | 'organising_role' | 'cumulative_rating' | 'last_activity_rating'
 type SortDir = 'asc' | 'desc'
 
+/** When a query is disabled, `data` is undefined; `?? []` in render would allocate a new array every render and break memo/effect deps (infinite updates — React #185). */
+const EMPTY_WORKER_LIST: WorkerPreview[] = []
+type WizardCampaignRow = { campaign_id: number; name: string; organiser_id: number | null }
+const EMPTY_WIZARD_CAMPAIGNS: WizardCampaignRow[] = []
+type EmployerRow = { employer_id: number; employer_name: string }
+const EMPTY_EMPLOYERS: EmployerRow[] = []
+type WorksiteRow = { worksite_id: number; worksite_name: string }
+const EMPTY_WORKSITES: WorksiteRow[] = []
+type WorkerRatingRow = { worker_id: number; cumulative_rating: number | null; last_activity_rating: number | null }
+const EMPTY_WORKER_RATINGS: WorkerRatingRow[] = []
+
 const RATING_BANDS = [
   { key: 'unrated', label: 'Unrated', test: (v: number | null | undefined) => v == null },
   { key: 'low',    label: '< 2',     test: (v: number | null | undefined) => v != null && v < 2 },
@@ -253,7 +264,7 @@ export function PhoneWizardSteps() {
   }, [state.campaignId, state.standaloneEmployerId, state.standaloneWorksiteId])
 
   // Campaign list
-  const { data: campaigns = [] } = useQuery({
+  const { data: campaignsData } = useQuery({
     queryKey: ['wizard-campaigns'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -261,10 +272,11 @@ export function PhoneWizardSteps() {
         .select('campaign_id, name, organiser_id')
         .order('created_at', { ascending: false })
       if (error) throw error
-      return data ?? []
+      return (data ?? []) as WizardCampaignRow[]
     },
     enabled: !!user,
   })
+  const campaigns = campaignsData ?? EMPTY_WIZARD_CAMPAIGNS
 
   // Campaign context enrichment
   useQuery({
@@ -333,7 +345,7 @@ export function PhoneWizardSteps() {
   })
 
   // Employers for standalone mode
-  const { data: allEmployers = [] } = useQuery({
+  const { data: allEmployersData } = useQuery({
     queryKey: ['wizard-employers'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -341,13 +353,14 @@ export function PhoneWizardSteps() {
         .select('employer_id, employer_name')
         .order('employer_name')
       if (error) throw error
-      return data ?? []
+      return (data ?? []) as EmployerRow[]
     },
     enabled: !!user && (!state.campaignId || step >= 4),
   })
+  const allEmployers = allEmployersData ?? EMPTY_EMPLOYERS
 
   // Worksites for standalone employer selection
-  const { data: allWorksites = [] } = useQuery({
+  const { data: allWorksitesData } = useQuery({
     queryKey: ['wizard-worksites', state.standaloneEmployerId],
     queryFn: async () => {
       let query = supabase
@@ -365,13 +378,14 @@ export function PhoneWizardSteps() {
       }
       const { data, error } = await query
       if (error) throw error
-      return data ?? []
+      return (data ?? []) as WorksiteRow[]
     },
     enabled: !!user && !state.campaignId,
   })
+  const allWorksites = allWorksitesData ?? EMPTY_WORKSITES
 
   // Worker list for step 4
-  const { data: workerList = [], isLoading: workersLoading } = useQuery({
+  const { data: workerListData, isLoading: workersLoading } = useQuery({
     queryKey: ['phone-wizard-worker-list', state.campaignId, state.standaloneEmployerId, state.standaloneWorksiteId],
     queryFn: async (): Promise<WorkerPreview[]> => {
       if (state.campaignId) {
@@ -414,20 +428,22 @@ export function PhoneWizardSteps() {
     },
     enabled: step >= 4 && (!!state.campaignId || !!state.standaloneEmployerId),
   })
+  const workerList = workerListData ?? EMPTY_WORKER_LIST
 
   // Supplementary ratings query — campaign mode only
-  const { data: workerRatings = [] } = useQuery({
+  const { data: workerRatingsData } = useQuery({
     queryKey: ['phone-wizard-ratings', state.campaignId],
     queryFn: async () => {
       const { data } = await supabase
         .from('campaign_worker_rating_summary')
         .select('worker_id, cumulative_rating, last_activity_rating')
         .eq('campaign_id', state.campaignId!)
-      return (data ?? []) as { worker_id: number; cumulative_rating: number | null; last_activity_rating: number | null }[]
+      return (data ?? []) as WorkerRatingRow[]
     },
     enabled: step >= 4 && !!state.campaignId,
     staleTime: 60_000,
   })
+  const workerRatings = workerRatingsData ?? EMPTY_WORKER_RATINGS
 
   const ratingsMap = useMemo(() => {
     const m = new Map<number, { cumulative_rating: number | null; last_activity_rating: number | null }>()
@@ -458,7 +474,7 @@ export function PhoneWizardSteps() {
     if (step !== 4) return
     if (workersLoading) return
     if (combinedWorkers.length === 0) {
-      setSelectedWorkerIds(new Set())
+      setSelectedWorkerIds((prev) => (prev.size === 0 ? prev : new Set()))
       return
     }
     if (!workersInitialized) {
@@ -559,8 +575,14 @@ export function PhoneWizardSteps() {
 
   // When available segments change, reset enabledSegments to all
   useEffect(() => {
-    setEnabledSegments(new Set(availableSegments.map((s) => s.key)))
-    setVariations([])
+    const keys = availableSegments.map((s) => s.key)
+    const sig = keys.slice().sort().join('|')
+    setEnabledSegments((prev) => {
+      const prevSig = [...prev].sort().join('|')
+      if (prevSig === sig) return prev
+      return new Set(keys)
+    })
+    setVariations((prev) => (prev.length === 0 ? prev : []))
   }, [availableSegments])
 
   const generatingCount = variations.filter((v) => v.isGenerating).length
@@ -795,7 +817,7 @@ export function PhoneWizardSteps() {
   }
 
   // Add worker search
-  const { data: addSearchResults = [], isFetching: addSearchLoading } = useQuery({
+  const { data: addSearchResultsData, isFetching: addSearchLoading } = useQuery({
     queryKey: ['phone-wizard-add-worker-search', addSearchDebounced, state.campaignId],
     queryFn: async (): Promise<WorkerPreview[]> => {
       const q = addSearchDebounced
@@ -823,9 +845,10 @@ export function PhoneWizardSteps() {
     },
     enabled: step === 5 && addSearchDebounced.length >= 3,
   })
+  const addSearchResults = addSearchResultsData ?? EMPTY_WORKER_LIST
 
   // Add filter worksites
-  const { data: addFilterWorksites = [] } = useQuery({
+  const { data: addFilterWorksitesData } = useQuery({
     queryKey: ['phone-wizard-add-filter-worksites', addFilterEmployerId],
     queryFn: async () => {
       if (!addFilterEmployerId) return []
@@ -845,6 +868,7 @@ export function PhoneWizardSteps() {
     },
     enabled: !!user && step === 5 && !!addFilterEmployerId,
   })
+  const addFilterWorksites = addFilterWorksitesData ?? EMPTY_WORKSITES
 
   const combinedIdsKey = combinedWorkers
     .map((w) => w.worker_id)

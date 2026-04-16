@@ -41,6 +41,8 @@ import {
   ChevronDown,
   ChevronsUpDown,
   PlayCircle,
+  GitBranch,
+  AlertCircle,
 } from 'lucide-react'
 
 interface WorkerPreview {
@@ -68,11 +70,25 @@ const RATING_BANDS = [
   { key: 'high',   label: '3+',      test: (v: number | null | undefined) => v != null && v >= 3 },
 ]
 
+type SegmentVariable = 'membership_status' | 'organising_role' | 'occupation' | 'rating_band'
+
+interface ScriptVariation {
+  segmentKey: string
+  segmentLabel: string
+  scriptText: string
+  scriptTitle: string
+  savedScriptId: number | null
+  isGenerating: boolean
+  error: string | null
+  listId: number | null
+}
+
 const STEPS = [
   { id: 1, title: 'Campaign Context', icon: Building2 },
   { id: 2, title: 'Tone & Audience', icon: Target },
   { id: 3, title: 'Create Script', icon: FileText },
-  { id: 4, title: 'Build List & Call', icon: Phone },
+  { id: 4, title: 'Script Variations', icon: GitBranch },
+  { id: 5, title: 'Build List & Call', icon: Phone },
 ]
 
 const TONE_OPTIONS = [
@@ -179,6 +195,15 @@ export function PhoneWizardSteps() {
   const [showBulkSelect, setShowBulkSelect] = useState(false)
   const [bulkSelectOccupation, setBulkSelectOccupation] = useState('')
   const [bulkSelectRole, setBulkSelectRole] = useState('')
+
+  // Script variations (step 4)
+  const [useVariations, setUseVariations] = useState(false)
+  const [segmentVariable, setSegmentVariable] = useState<SegmentVariable | null>(null)
+  const [enabledSegments, setEnabledSegments] = useState<Set<string>>(new Set())
+  const [variations, setVariations] = useState<ScriptVariation[]>([])
+  const [savingVariationKey, setSavingVariationKey] = useState<string | null>(null)
+  const [isCreatingSegmentLists, setIsCreatingSegmentLists] = useState(false)
+  const [createBaseListForUnmatched, setCreateBaseListForUnmatched] = useState(false)
 
   const generateDraft = useGenerateDraft()
 
@@ -317,7 +342,7 @@ export function PhoneWizardSteps() {
       if (error) throw error
       return data ?? []
     },
-    enabled: !!user && (!state.campaignId || step === 4),
+    enabled: !!user && (!state.campaignId || step >= 4),
   })
 
   // Worksites for standalone employer selection
@@ -386,7 +411,7 @@ export function PhoneWizardSteps() {
       }
       return []
     },
-    enabled: step === 4 && (!!state.campaignId || !!state.standaloneEmployerId),
+    enabled: step >= 4 && (!!state.campaignId || !!state.standaloneEmployerId),
   })
 
   // Supplementary ratings query — campaign mode only
@@ -399,7 +424,7 @@ export function PhoneWizardSteps() {
         .eq('campaign_id', state.campaignId!)
       return (data ?? []) as { worker_id: number; cumulative_rating: number | null; last_activity_rating: number | null }[]
     },
-    enabled: step === 4 && !!state.campaignId,
+    enabled: step >= 4 && !!state.campaignId,
     staleTime: 60_000,
   })
 
@@ -495,6 +520,279 @@ export function PhoneWizardSteps() {
       : <ChevronDown className="inline h-3 w-3 ml-0.5" />
   }
 
+  // ── Segment variation helpers ──────────────────────────────────────────
+
+  function getWorkersForSegment(
+    workers: WorkerPreview[],
+    variable: SegmentVariable,
+    segmentKey: string,
+  ): WorkerPreview[] {
+    switch (variable) {
+      case 'membership_status': return workers.filter((w) => w.membership_status === segmentKey)
+      case 'organising_role':   return workers.filter((w) => w.organising_role === segmentKey)
+      case 'occupation':        return workers.filter((w) => w.occupation === segmentKey)
+      case 'rating_band': {
+        const band = RATING_BANDS.find((b) => b.key === segmentKey)
+        return band ? workers.filter((w) => band.test(w.cumulative_rating)) : []
+      }
+    }
+  }
+
+  const availableSegments = useMemo((): { key: string; label: string }[] => {
+    if (!segmentVariable) return []
+    switch (segmentVariable) {
+      case 'membership_status':
+        return [{ key: 'member', label: 'Members' }, { key: 'non_member', label: 'Non-members' }]
+      case 'rating_band':
+        return RATING_BANDS.map((b) => ({ key: b.key, label: b.label }))
+      case 'organising_role': {
+        const roles = [...new Set(combinedWorkers.map((w) => w.organising_role).filter(Boolean))] as string[]
+        return roles.sort().map((r) => ({ key: r, label: r }))
+      }
+      case 'occupation': {
+        const occs = [...new Set(combinedWorkers.map((w) => w.occupation).filter(Boolean))] as string[]
+        return occs.sort().map((o) => ({ key: o, label: o }))
+      }
+    }
+  }, [segmentVariable, combinedWorkers])
+
+  // When available segments change, reset enabledSegments to all
+  useEffect(() => {
+    setEnabledSegments(new Set(availableSegments.map((s) => s.key)))
+    setVariations([])
+  }, [availableSegments])
+
+  const generatingCount = variations.filter((v) => v.isGenerating).length
+
+  async function handleGenerateVariation(variation: ScriptVariation) {
+    setVariations((prev) => prev.map((v) =>
+      v.segmentKey === variation.segmentKey ? { ...v, isGenerating: true, error: null } : v
+    ))
+    try {
+      const stageName = state.stageNumber
+        ? STAGE_NAMES[state.stageNumber as keyof typeof STAGE_NAMES] || `Stage ${state.stageNumber}`
+        : 'General'
+
+      const body = {
+        platform: 'phone_script' as const,
+        campaign_id: state.campaignId || 0,
+        plan_id: 0,
+        stage_number: state.stageNumber || 1,
+        stage_name: stageName,
+        campaign_context: {
+          employer_name: state.employerName || state.campaignName || 'Employer',
+          agreement_name: state.agreementName || '',
+          worksite_names: state.worksiteNames,
+          sector: '',
+        },
+        wtp_selections: {
+          tone: state.tone,
+          audience: state.audience,
+          platforms: ['Phone'],
+          engagement_intensity: state.engagementIntensity || undefined,
+        },
+        template_examples: state.scriptText.trim()
+          ? [{ title: state.scriptTitle || 'Base Script', body_text: state.scriptText }]
+          : undefined,
+        custom_instructions: [
+          state.callPurpose ? `Call purpose: ${state.callPurpose}` : '',
+          `Generate a TARGETED VARIATION for: ${variation.segmentLabel} workers.`,
+          `Keep the same overall structure and call purpose as the reference script (above). Adapt the opening, issues discussed, and ask to resonate specifically with ${variation.segmentLabel}. Do not produce a generic script — start from the reference template.`,
+        ].filter(Boolean).join('\n'),
+      }
+
+      const res = await fetch('/api/generate-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Generation failed')
+
+      setVariations((prev) => prev.map((v) =>
+        v.segmentKey === variation.segmentKey
+          ? { ...v, scriptText: data.body_text, isGenerating: false }
+          : v
+      ))
+    } catch (err) {
+      setVariations((prev) => prev.map((v) =>
+        v.segmentKey === variation.segmentKey
+          ? { ...v, isGenerating: false, error: err instanceof Error ? err.message : 'Generation failed' }
+          : v
+      ))
+    }
+  }
+
+  async function handleGenerateAllVariations() {
+    const enabled = availableSegments.filter((s) => enabledSegments.has(s.key))
+    // Build or refresh variation objects for each enabled segment
+    setVariations((prev) => {
+      const existingMap = new Map(prev.map((v) => [v.segmentKey, v]))
+      return enabled.map((seg) => existingMap.get(seg.key) ?? {
+        segmentKey: seg.key,
+        segmentLabel: seg.label,
+        scriptText: '',
+        scriptTitle: `${state.scriptTitle || 'Phone Script'} — ${seg.label}`,
+        savedScriptId: null,
+        isGenerating: false,
+        error: null,
+        listId: null,
+      })
+    })
+    // Fire all in parallel
+    await Promise.all(enabled.map((seg) => {
+      const variation: ScriptVariation = {
+        segmentKey: seg.key,
+        segmentLabel: seg.label,
+        scriptText: '',
+        scriptTitle: `${state.scriptTitle || 'Phone Script'} — ${seg.label}`,
+        savedScriptId: null,
+        isGenerating: false,
+        error: null,
+        listId: null,
+      }
+      return handleGenerateVariation(variation)
+    }))
+  }
+
+  async function handleSaveVariation(variation: ScriptVariation) {
+    if (!variation.scriptText.trim()) return
+    setSavingVariationKey(variation.segmentKey)
+    try {
+      const url = state.campaignId
+        ? `/api/campaigns/${state.campaignId}/call-scripts`
+        : '/api/phone-wizard/scripts'
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: variation.scriptTitle || `${state.scriptTitle || 'Phone Script'} — ${variation.segmentLabel}`,
+          call_objective: state.callPurpose || null,
+          sections: [],
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to save script')
+
+      // Insert the script text as a section
+      await supabase.from('call_script_sections').insert({
+        script_id: data.script_id,
+        sort_order: 0,
+        section_type: 'custom',
+        title: 'Script',
+        body_text: variation.scriptText,
+        talking_points: [],
+        expected_outcomes: [],
+        is_optional: false,
+      }).then(({ error }) => {
+        if (error) console.warn('Could not save variation section:', error.message)
+      })
+
+      setVariations((prev) => prev.map((v) =>
+        v.segmentKey === variation.segmentKey ? { ...v, savedScriptId: data.script_id } : v
+      ))
+      toast.success(`Saved: ${variation.segmentLabel}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save variation')
+    } finally {
+      setSavingVariationKey(null)
+    }
+  }
+
+  async function handleCreateSegmentLists() {
+    const dateStr = new Date().toLocaleDateString('en-AU')
+    const savedVariations = variations.filter((v) => v.savedScriptId != null && enabledSegments.has(v.segmentKey))
+    setIsCreatingSegmentLists(true)
+    try {
+      for (const variation of savedVariations) {
+        const segWorkers = getWorkersForSegment(combinedWorkers, segmentVariable!, variation.segmentKey).filter((w) => w.phone)
+        if (segWorkers.length === 0) continue
+
+        const listUrl = state.campaignId
+          ? `/api/campaigns/${state.campaignId}/call-lists`
+          : '/api/phone-wizard/call-lists'
+
+        const listRes = await fetch(listUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: `${variation.segmentLabel} — ${dateStr}`,
+            script_id: variation.savedScriptId,
+            priority_strategy: 'sequential',
+          }),
+        })
+        const listData = await listRes.json()
+        if (!listRes.ok) throw new Error(listData.error || `Failed to create list for ${variation.segmentLabel}`)
+
+        const listId = listData.list_id
+        const workerIds = segWorkers.map((w) => w.worker_id)
+
+        const populateUrl = state.campaignId
+          ? `/api/campaigns/${state.campaignId}/call-lists/${listId}/populate`
+          : `/api/phone-wizard/call-lists/${listId}/populate`
+
+        const populateRes = await fetch(populateUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: state.campaignId
+            ? JSON.stringify({ filters: {}, worker_ids: workerIds })
+            : JSON.stringify({ worker_ids: workerIds }),
+        })
+        const populateData = await populateRes.json()
+        if (!populateRes.ok) throw new Error(populateData.error || 'Failed to populate list')
+
+        setVariations((prev) => prev.map((v) =>
+          v.segmentKey === variation.segmentKey ? { ...v, listId } : v
+        ))
+        toast.success(`Created: ${variation.segmentLabel} (${populateData.added} contacts)`)
+      }
+
+      // Optionally create a base-script list for unmatched workers
+      if (createBaseListForUnmatched && segmentVariable) {
+        const matchedIds = new Set(
+          savedVariations.flatMap((v) =>
+            getWorkersForSegment(combinedWorkers, segmentVariable, v.segmentKey).map((w) => w.worker_id)
+          )
+        )
+        const unmatched = combinedWorkers.filter((w) => w.phone && !matchedIds.has(w.worker_id))
+        if (unmatched.length > 0) {
+          const listUrl = state.campaignId
+            ? `/api/campaigns/${state.campaignId}/call-lists`
+            : '/api/phone-wizard/call-lists'
+          const listRes = await fetch(listUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: `General — ${dateStr}`,
+              script_id: state.savedScriptId || null,
+              priority_strategy: 'sequential',
+            }),
+          })
+          const listData = await listRes.json()
+          if (listRes.ok) {
+            const populateUrl = state.campaignId
+              ? `/api/campaigns/${state.campaignId}/call-lists/${listData.list_id}/populate`
+              : `/api/phone-wizard/call-lists/${listData.list_id}/populate`
+            await fetch(populateUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: state.campaignId
+                ? JSON.stringify({ filters: {}, worker_ids: unmatched.map((w) => w.worker_id) })
+                : JSON.stringify({ worker_ids: unmatched.map((w) => w.worker_id) }),
+            })
+            setState((prev) => ({ ...prev, savedListId: listData.list_id }))
+            toast.success(`Created general list (${unmatched.length} contacts)`)
+          }
+        }
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create lists')
+    } finally {
+      setIsCreatingSegmentLists(false)
+    }
+  }
+
   // Add worker search
   const { data: addSearchResults = [], isFetching: addSearchLoading } = useQuery({
     queryKey: ['phone-wizard-add-worker-search', addSearchDebounced, state.campaignId],
@@ -522,7 +820,7 @@ export function PhoneWizardSteps() {
       const allowed = new Set((mem ?? []).map((m) => m.worker_id))
       return rows.filter((w) => allowed.has(w.worker_id))
     },
-    enabled: step === 4 && addSearchDebounced.length >= 3,
+    enabled: step === 5 && addSearchDebounced.length >= 3,
   })
 
   // Add filter worksites
@@ -544,7 +842,7 @@ export function PhoneWizardSteps() {
       if (error) throw error
       return data ?? []
     },
-    enabled: !!user && step === 4 && !!addFilterEmployerId,
+    enabled: !!user && step === 5 && !!addFilterEmployerId,
   })
 
   const combinedIdsKey = combinedWorkers
@@ -553,7 +851,7 @@ export function PhoneWizardSteps() {
     .join(',')
 
   const bulkAddFiltersEnabled =
-    step === 4 &&
+    step === 5 &&
     showBulkAdd &&
     (!!addFilterEmployerId || !!addFilterWorksiteId || addFilterOccupation.trim().length > 0)
 
@@ -856,6 +1154,7 @@ export function PhoneWizardSteps() {
     2: state.tone.length > 0 && state.audience.length > 0,
     3: state.scriptText.trim().length > 0,
     4: true,
+    5: true,
   }
 
   const stageName = state.stageNumber
@@ -1234,23 +1533,431 @@ export function PhoneWizardSteps() {
         </Card>
       )}
 
-      {/* ── Step 4: Build List & Call ── */}
+      {/* ── Step 4: Script Variations ── */}
       {step === 4 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <GitBranch className="h-5 w-5 text-blue-500" />
+              Script Variations
+              <Badge variant="secondary" className="text-xs font-normal">Optional</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {/* Base script status */}
+            {!state.savedScriptId ? (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>
+                  Go back to step 3 and click "Save Script" before generating variations. The base script must be saved first.
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 border border-green-200 text-sm text-green-800">
+                <CheckCircle className="h-4 w-4 shrink-0" />
+                <span>Base script: "{state.scriptTitle || 'Phone Script'}" (#{state.savedScriptId})</span>
+              </div>
+            )}
+
+            {/* Skip / generate toggle */}
+            <div className="space-y-2">
+              <button
+                type="button"
+                className={cn(
+                  'w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-colors',
+                  !useVariations ? 'border-blue-200 bg-blue-50' : 'border-border hover:bg-muted/30'
+                )}
+                onClick={() => setUseVariations(false)}
+              >
+                <div className={cn('mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0', !useVariations ? 'border-blue-600' : 'border-muted-foreground')}>
+                  {!useVariations && <div className="w-2 h-2 rounded-full bg-blue-600" />}
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Use the same base script for all workers</p>
+                  <p className="text-xs text-muted-foreground">One call list, one script — simpler workflow</p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                className={cn(
+                  'w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-colors',
+                  useVariations ? 'border-blue-200 bg-blue-50' : 'border-border hover:bg-muted/30'
+                )}
+                onClick={() => setUseVariations(true)}
+              >
+                <div className={cn('mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0', useVariations ? 'border-blue-600' : 'border-muted-foreground')}>
+                  {useVariations && <div className="w-2 h-2 rounded-full bg-blue-600" />}
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Generate targeted script variations by audience segment</p>
+                  <p className="text-xs text-muted-foreground">
+                    AI adapts the base script for each group — a separate call list is created per segment
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            {/* Variations config */}
+            {useVariations && (
+              <div className="space-y-5 border rounded-lg p-4 bg-muted/10">
+                {/* Segment variable picker */}
+                <div className="space-y-1.5">
+                  <Label>Segment workers by</Label>
+                  <Select
+                    value={segmentVariable ?? '__none__'}
+                    onValueChange={(v) => {
+                      setSegmentVariable(v === '__none__' ? null : v as SegmentVariable)
+                      setVariations([])
+                    }}
+                  >
+                    <SelectTrigger className="w-72">
+                      <SelectValue placeholder="Choose a variable…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="membership_status" disabled={!state.campaignId}>
+                        Membership Status{!state.campaignId ? ' (campaign only)' : ''}
+                      </SelectItem>
+                      <SelectItem value="organising_role" disabled={!state.campaignId}>
+                        Member Role{!state.campaignId ? ' (campaign only)' : ''}
+                      </SelectItem>
+                      <SelectItem value="occupation">Occupation</SelectItem>
+                      <SelectItem value="rating_band" disabled={!state.campaignId}>
+                        Activity Rating Band{!state.campaignId ? ' (campaign only)' : ''}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    One segmentation variable per run — the wizard adapts the script for each value found.
+                  </p>
+                </div>
+
+                {/* Segment checkboxes */}
+                {segmentVariable && (
+                  <div className="space-y-2">
+                    <Label>Segments to include</Label>
+                    {workersLoading && (segmentVariable === 'occupation' || segmentVariable === 'organising_role') ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Loading workers to derive segments…
+                      </div>
+                    ) : availableSegments.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        {segmentVariable === 'occupation'
+                          ? 'No occupation data found for these workers. Workers must be loaded first.'
+                          : segmentVariable === 'organising_role'
+                            ? 'No member roles found in this worker pool.'
+                            : 'No values found.'}
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {availableSegments.map((seg) => {
+                          const count = getWorkersForSegment(combinedWorkers, segmentVariable, seg.key).filter((w) => w.phone).length
+                          const enabled = enabledSegments.has(seg.key)
+                          return (
+                            <button
+                              key={seg.key}
+                              type="button"
+                              onClick={() => setEnabledSegments((prev) => {
+                                const n = new Set(prev)
+                                if (n.has(seg.key)) n.delete(seg.key)
+                                else n.add(seg.key)
+                                return n
+                              })}
+                              className={cn(
+                                'flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border transition-colors',
+                                enabled
+                                  ? 'bg-blue-100 border-blue-300 text-blue-800'
+                                  : 'bg-muted/30 border-muted text-muted-foreground line-through'
+                              )}
+                            >
+                              {enabled && <CheckCircle className="h-3 w-3 text-blue-600" />}
+                              {seg.label}
+                              <span className="text-[10px] opacity-70">({count})</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Unmatched workers note */}
+                {segmentVariable && enabledSegments.size > 0 && combinedWorkers.length > 0 && (() => {
+                  const matchedIds = new Set(
+                    [...enabledSegments].flatMap((k) =>
+                      getWorkersForSegment(combinedWorkers, segmentVariable, k).map((w) => w.worker_id)
+                    )
+                  )
+                  const unmatched = combinedWorkers.filter((w) => w.phone && !matchedIds.has(w.worker_id)).length
+                  if (unmatched === 0) return null
+                  return (
+                    <p className="text-xs text-muted-foreground p-2 rounded bg-amber-50 border border-amber-200 text-amber-700">
+                      {unmatched} worker{unmatched !== 1 ? 's' : ''} with phone do not match any selected segment.
+                      You can create a base-script list for them in step 5.
+                    </p>
+                  )
+                })()}
+
+                {/* Generate All button */}
+                {segmentVariable && enabledSegments.size > 0 && (
+                  <Button
+                    onClick={() => void handleGenerateAllVariations()}
+                    disabled={!state.savedScriptId || generatingCount > 0}
+                  >
+                    {generatingCount > 0 ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Generating {generatingCount} variation{generatingCount !== 1 ? 's' : ''}…
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Generate All Variations ({enabledSegments.size})
+                      </>
+                    )}
+                  </Button>
+                )}
+
+                {/* Per-variation cards */}
+                {variations.filter((v) => enabledSegments.has(v.segmentKey)).map((variation) => (
+                  <Card key={variation.segmentKey} className="border-l-4 border-l-blue-400">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <GitBranch className="h-4 w-4 text-blue-500 shrink-0" />
+                        {variation.segmentLabel}
+                        {variation.savedScriptId && (
+                          <Badge variant="outline" className="text-green-700 border-green-300 text-[10px]">
+                            Script #{variation.savedScriptId} ✓
+                          </Badge>
+                        )}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {variation.isGenerating ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground py-6 justify-center">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Generating script for {variation.segmentLabel}…
+                        </div>
+                      ) : variation.error ? (
+                        <div className="flex items-start gap-2 p-2 rounded bg-red-50 border border-red-200 text-xs text-red-700">
+                          <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                          <span className="flex-1">{variation.error}</span>
+                          <Button
+                            size="sm" variant="outline" className="h-6 text-xs shrink-0"
+                            onClick={() => void handleGenerateVariation(variation)}
+                          >
+                            Retry
+                          </Button>
+                        </div>
+                      ) : variation.scriptText ? (
+                        <div className="space-y-2">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Title</Label>
+                            <Input
+                              value={variation.scriptTitle}
+                              onChange={(e) => {
+                                const title = e.target.value
+                                setVariations((prev) => prev.map((v) =>
+                                  v.segmentKey === variation.segmentKey ? { ...v, scriptTitle: title, savedScriptId: null } : v
+                                ))
+                              }}
+                              className="h-7 text-xs"
+                            />
+                          </div>
+                          <Textarea
+                            value={variation.scriptText}
+                            onChange={(e) => {
+                              const text = e.target.value
+                              setVariations((prev) => prev.map((v) =>
+                                v.segmentKey === variation.segmentKey ? { ...v, scriptText: text, savedScriptId: null } : v
+                              ))
+                            }}
+                            rows={10}
+                            className="font-mono text-xs"
+                          />
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => void handleSaveVariation(variation)}
+                              disabled={!!variation.savedScriptId || savingVariationKey === variation.segmentKey || !variation.scriptText.trim()}
+                            >
+                              {savingVariationKey === variation.segmentKey ? (
+                                <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />Saving…</>
+                              ) : variation.savedScriptId ? (
+                                <><CheckCircle className="h-3.5 w-3.5 mr-1" />Saved</>
+                              ) : (
+                                'Save Script'
+                              )}
+                            </Button>
+                            <Button
+                              size="sm" variant="outline"
+                              onClick={() => void handleGenerateVariation(variation)}
+                              disabled={generatingCount > 0}
+                            >
+                              <Sparkles className="h-3.5 w-3.5 mr-1" />
+                              Regenerate
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-2">
+                          Not yet generated. Click "Generate All Variations" above.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Step 5: Build List & Call ── */}
+      {step === 5 && (
         <Card>
           <CardHeader>
             <CardTitle>Build Call List & Start Calling</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-1">
-              <Label>Call List Name</Label>
-              <Input
-                value={state.listName}
-                onChange={(e) => setState((prev) => ({ ...prev, listName: e.target.value }))}
-                placeholder={`Call list — ${new Date().toLocaleDateString('en-AU')}`}
-              />
-            </div>
 
-            {(state.campaignId || state.standaloneEmployerId) && (
+            {/* ── Variations mode: segment lists panel ── */}
+            {useVariations && segmentVariable && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <GitBranch className="h-4 w-4 text-blue-500" />
+                  <p className="text-sm font-medium">Create a separate call list for each script variation</p>
+                </div>
+
+                {/* Per-segment rows */}
+                <div className="space-y-2">
+                  {variations
+                    .filter((v) => enabledSegments.has(v.segmentKey))
+                    .map((variation) => {
+                      const segWorkers = getWorkersForSegment(combinedWorkers, segmentVariable, variation.segmentKey).filter((w) => w.phone)
+                      return (
+                        <div key={variation.segmentKey} className="flex items-center gap-3 p-3 rounded-lg border bg-muted/10">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium">{variation.segmentLabel}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {segWorkers.length} worker{segWorkers.length !== 1 ? 's' : ''} with phone
+                              {variation.savedScriptId
+                                ? ` · Script #${variation.savedScriptId}`
+                                : ' · No script saved — go back to step 4 and save this variation'}
+                            </p>
+                          </div>
+                          {variation.listId ? (
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                if (state.campaignId) {
+                                  router.push(`/campaigns/${state.campaignId}/phone/call/${variation.listId}`)
+                                } else {
+                                  router.push(`/campaigns/phone-wizard/call/${variation.listId}`)
+                                }
+                              }}
+                            >
+                              <PlayCircle className="h-3.5 w-3.5 mr-1" />
+                              Start Calling
+                            </Button>
+                          ) : (
+                            <Badge variant="secondary" className="text-xs shrink-0">
+                              {variation.savedScriptId ? `${segWorkers.length} ready` : 'No script'}
+                            </Badge>
+                          )}
+                        </div>
+                      )
+                    })}
+                </div>
+
+                {/* Unmatched workers toggle */}
+                {(() => {
+                  const matchedIds = new Set(
+                    variations
+                      .filter((v) => enabledSegments.has(v.segmentKey))
+                      .flatMap((v) => getWorkersForSegment(combinedWorkers, segmentVariable, v.segmentKey).map((w) => w.worker_id))
+                  )
+                  const unmatchedCount = combinedWorkers.filter((w) => w.phone && !matchedIds.has(w.worker_id)).length
+                  if (unmatchedCount === 0) return null
+                  return (
+                    <div className="space-y-2 p-3 rounded-lg border border-dashed">
+                      <p className="text-xs text-muted-foreground">
+                        {unmatchedCount} worker{unmatchedCount !== 1 ? 's' : ''} with phone do not match any segment.
+                      </p>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={createBaseListForUnmatched}
+                          onChange={(e) => setCreateBaseListForUnmatched(e.target.checked)}
+                        />
+                        <span className="text-sm">
+                          Create a general list for these {unmatchedCount} workers using the base script
+                          {state.savedScriptId ? ` (#${state.savedScriptId})` : ''}
+                        </span>
+                      </label>
+                      {createBaseListForUnmatched && state.savedListId && (
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            if (state.campaignId) {
+                              router.push(`/campaigns/${state.campaignId}/phone/call/${state.savedListId}`)
+                            } else {
+                              router.push(`/campaigns/phone-wizard/call/${state.savedListId}`)
+                            }
+                          }}
+                        >
+                          <PlayCircle className="h-3.5 w-3.5 mr-1" />
+                          Start Calling (General)
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                {/* Create All Lists button */}
+                {variations.some((v) => enabledSegments.has(v.segmentKey) && v.savedScriptId) && (
+                  <Button
+                    onClick={() => void handleCreateSegmentLists()}
+                    disabled={isCreatingSegmentLists}
+                    size="lg"
+                    className="w-full"
+                  >
+                    {isCreatingSegmentLists ? (
+                      <><Loader2 className="h-4 w-4 animate-spin mr-2" />Creating segment lists…</>
+                    ) : (
+                      <><GitBranch className="h-4 w-4 mr-2" />Create All Segment Lists</>
+                    )}
+                  </Button>
+                )}
+
+                {!variations.some((v) => enabledSegments.has(v.segmentKey) && v.savedScriptId) && (
+                  <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
+                    Go back to step 4 and save at least one variation script before creating lists.
+                  </div>
+                )}
+
+                <div className="border-t pt-4">
+                  <p className="text-xs text-muted-foreground font-medium mb-2">
+                    Or switch to a single call list (base script mode):
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* ── Single list mode (base script) or fallback within variations mode ── */}
+            {(!useVariations || !segmentVariable) && (
+              <div className="space-y-1">
+                <Label>Call List Name</Label>
+                <Input
+                  value={state.listName}
+                  onChange={(e) => setState((prev) => ({ ...prev, listName: e.target.value }))}
+                  placeholder={`Call list — ${new Date().toLocaleDateString('en-AU')}`}
+                />
+              </div>
+            )}
+
+            {(!useVariations || !segmentVariable) && (state.campaignId || state.standaloneEmployerId) && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <div className="relative flex-1">
@@ -1698,14 +2405,14 @@ export function PhoneWizardSteps() {
               </div>
             )}
 
-            {!state.campaignId && !state.standaloneEmployerId && (
+            {(!useVariations || !segmentVariable) && !state.campaignId && !state.standaloneEmployerId && (
               <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
                 Go back to Step 1 and select a campaign or employer to build the call list.
               </div>
             )}
 
-            {/* Create list & call button */}
-            {(state.campaignId || state.standaloneEmployerId) && (
+            {/* Create list & call button — single list mode only */}
+            {(!useVariations || !segmentVariable) && (state.campaignId || state.standaloneEmployerId) && (
               <Button
                 onClick={() => void handleCreateListAndCall()}
                 disabled={isCreatingList || selectedWorkerIds.size === 0}
@@ -1723,7 +2430,7 @@ export function PhoneWizardSteps() {
               </Button>
             )}
 
-            {state.savedScriptId && (
+            {(!useVariations || !segmentVariable) && state.savedScriptId && (
               <p className="text-xs text-muted-foreground text-center">
                 Script #{state.savedScriptId} will be attached to the call list.
               </p>
@@ -1742,7 +2449,7 @@ export function PhoneWizardSteps() {
           <ChevronLeft className="h-4 w-4 mr-1" />
           Back
         </Button>
-        {step < 4 && (
+        {step < 5 && (
           <Button
             onClick={() => setStep(step + 1)}
             disabled={!canProceed[step]}

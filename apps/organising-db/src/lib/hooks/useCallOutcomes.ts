@@ -177,11 +177,31 @@ export function useSaveCallOutcomes(campaignId: number | string | null, scriptId
           side_effect_payload: o.side_effect_payload || null,
         }))
 
+        const throwInsert = (err: { message: string; details?: string; hint?: string }) => {
+          const parts = [err.message, err.details, err.hint].filter(Boolean)
+          throw new Error(parts.length ? parts.join(' — ') : 'Failed to save outcomes')
+        }
+
         const { error: insertErr } = await supabase.from('call_outcome_definitions').insert(rows)
 
         if (insertErr) {
-          const parts = [insertErr.message, insertErr.details, insertErr.hint].filter(Boolean)
-          throw new Error(parts.length ? parts.join(' — ') : 'Failed to save outcomes')
+          const msg = `${insertErr.message ?? ''} ${insertErr.details ?? ''} ${insertErr.hint ?? ''}`
+          const isSideEffectCheckFailure =
+            msg.includes('call_outcome_definitions_side_effect_check') ||
+            (insertErr.code === '23514' && msg.includes('side_effect_check'))
+          const hasPending = rows.some((r) => r.side_effect === 'set_membership_pending')
+
+          if (isSideEffectCheckFailure && hasPending) {
+            const legacyRows = rows.map((r) =>
+              r.side_effect === 'set_membership_pending'
+                ? { ...r, side_effect: 'set_membership_financial' }
+                : r
+            )
+            const { error: retryErr } = await supabase.from('call_outcome_definitions').insert(legacyRows)
+            if (retryErr) throwInsert(retryErr)
+          } else {
+            throwInsert(insertErr)
+          }
         }
       }
 

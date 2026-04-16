@@ -49,7 +49,10 @@ import { CheckCircle2, XCircle, Pencil, Lightbulb, RefreshCw } from "lucide-reac
 import type { CampaignOuType, OuCandidateStatus } from "@/types/database";
 import { generateOuCandidatesFromWtp } from "@/lib/campaign/generate-ou-candidates";
 import { recomputeOuAssignments } from "@/lib/campaign/recompute-ou-assignments";
-import { isWorkerMemberLike } from "@/lib/campaign/constants";
+import {
+  getCampaignMembershipStatus,
+  type CampaignMembershipStatus,
+} from "@/lib/campaign/constants";
 
 const OU_TYPES: CampaignOuType[] = [
   "shift",
@@ -79,6 +82,7 @@ type MemberWorkerRow = {
   first_name: string | null;
   last_name: string | null;
   preferred_name?: string | null;
+  is_bargaining_rep?: boolean | null;
   employer?: { employer_name?: string | null } | { employer_name?: string | null }[] | null;
   worksite?: { worksite_name?: string | null } | { worksite_name?: string | null }[] | null;
   member_role_type?: { role_name?: string | null } | { role_name?: string | null }[] | null;
@@ -100,6 +104,7 @@ function normalizeMemberWorker(m: unknown): {
   worksite_name: string | null;
   member_role_name: string | null;
   union_membership_type_name: string | null;
+  is_bargaining_rep: boolean | null;
 } | null {
   const row = m as CampaignMemberRow;
   const wr = row.worker;
@@ -120,6 +125,7 @@ function normalizeMemberWorker(m: unknown): {
     worksite_name: worksite?.worksite_name ?? null,
     member_role_name: memberRole?.role_name ?? null,
     union_membership_type_name: unionMembershipType?.type_name ?? null,
+    is_bargaining_rep: w.is_bargaining_rep ?? null,
   };
 }
 
@@ -188,7 +194,7 @@ export function CampaignUnitsSection({
         .select(
           `membership_id, worker_id,
            worker:workers(
-             worker_id, first_name, last_name, preferred_name,
+             worker_id, first_name, last_name, preferred_name, is_bargaining_rep,
              employer:employers(employer_name),
              worksite:worksites(worksite_name),
              member_role_type:member_role_types(role_name),
@@ -315,12 +321,11 @@ export function CampaignUnitsSection({
       .map((member) => {
         const normalized = normalizeMemberWorker(member);
         if (!normalized) return null;
-        const membershipStatus = isWorkerMemberLike({
+        const membershipStatus = getCampaignMembershipStatus({
           memberRoleName: normalized.member_role_name ?? undefined,
           unionMembershipTypeName: normalized.union_membership_type_name ?? undefined,
-        })
-          ? "member"
-          : "non_member";
+          isBargainingRep: normalized.is_bargaining_rep,
+        });
         return {
           membership_id: member.membership_id,
           worker_id: normalized.worker_id,
@@ -344,7 +349,7 @@ export function CampaignUnitsSection({
           employer_name: string;
           worksite_name: string;
           organising_role: string;
-          membership_status: string;
+          membership_status: CampaignMembershipStatus;
           unit_count: number;
           is_multi_unit_member: boolean;
           is_already_assigned: boolean;
@@ -1187,6 +1192,7 @@ export function CampaignUnitsSection({
                 <SelectContent>
                   <SelectItem value="__all__">All membership</SelectItem>
                   <SelectItem value="member">Members</SelectItem>
+                  <SelectItem value="member_pending">Member – pending</SelectItem>
                   <SelectItem value="non_member">Non-members</SelectItem>
                 </SelectContent>
               </Select>

@@ -586,6 +586,10 @@ export function WorkerImportWizard({
   // Membership auto-match patterns (mirrors server MEMBERSHIP_PATTERNS)
   const MEMBERSHIP_AUTO_PATTERNS: { pattern: RegExp; key: string }[] = [
     { pattern: /financial\s+(awu|mua|cfmeu|amwu|amou|aimpe)\s+member/i, key: "non_oa_member" },
+    {
+      pattern: /member[\s_-]+pending|pending[\s_-]+member|member\s*[–-]\s*pending/i,
+      key: "member_pending",
+    },
     { pattern: /financial\s+member/i, key: "financial_member" },
     { pattern: /\bmember\b/i, key: "financial_member" },
     { pattern: /not\s+a\s+member/i, key: "non_member" },

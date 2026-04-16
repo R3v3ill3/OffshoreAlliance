@@ -41,7 +41,29 @@ export const EA_SUBTYPE_LABELS: Record<string, string> = {
 export const UNION_MEMBER_LIKE_TYPE_NAMES = new Set([
   "financial_member",
   "non_oa_member",
+  "member_pending",
 ]);
+
+/** Collapsed campaign list / filter bucket (list-builder, wizards, assign dialogs). */
+export type CampaignMembershipStatus =
+  | "member"
+  | "member_pending"
+  | "non_member";
+
+/**
+ * Distinct filter bucket for organisers: pending is its own slice even though
+ * `isWorkerMemberLike` is true for `member_pending` union type.
+ */
+export function getCampaignMembershipStatus(args: {
+  unionMembershipTypeName: string | null | undefined;
+  memberRoleName: string | null | undefined;
+  isBargainingRep?: boolean | null;
+}): CampaignMembershipStatus {
+  const u = args.unionMembershipTypeName;
+  if (u === "member_pending") return "member_pending";
+  if (isWorkerMemberLike(args)) return "member";
+  return "non_member";
+}
 
 /** Activism/leadership roles that imply member-like status for OA delegate eligibility. */
 export const MEMBER_LIKE_ROLE_NAMES = new Set(["delegate"]);

@@ -120,6 +120,20 @@ export function CallCampaignReporting({ campaignId }: CallCampaignReportingProps
     enabled: (outcomeSummary ?? []).length > 0,
   })
 
+  const { data: phoneAmbitionProgress = [] } = useQuery({
+    queryKey: ['ambition-progress-phone-calls', String(campaignId)],
+    queryFn: async () => {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('ambition_progress_phone_calls')
+        .select('ambition_id, event_count, unique_workers')
+        .eq('campaign_id', parseInt(String(campaignId)))
+      if (error) throw error
+      return (data ?? []) as { ambition_id: number; event_count: number; unique_workers: number }[]
+    },
+    enabled: !!campaignId,
+  })
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -288,6 +302,32 @@ export function CallCampaignReporting({ campaignId }: CallCampaignReportingProps
                 <Bar dataKey="reach_rate_pct" fill="#6366f1" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {phoneAmbitionProgress.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Target className="h-4 w-4 text-emerald-600" />
+              Membership joins from calls (ambition progress)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground mb-2">
+              Counts recorded when a call outcome with “financial member” side effect is completed. Ties to plan ambitions with matching IDs.
+            </p>
+            <ul className="text-sm space-y-1">
+              {phoneAmbitionProgress.map((row) => (
+                <li key={row.ambition_id} className="flex justify-between gap-2 border-b border-border/50 pb-1">
+                  <span className="text-muted-foreground">Ambition #{row.ambition_id}</span>
+                  <span>
+                    {Number(row.event_count)} events · {Number(row.unique_workers)} workers
+                  </span>
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
       )}

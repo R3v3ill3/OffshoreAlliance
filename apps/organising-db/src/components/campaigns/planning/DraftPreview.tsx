@@ -176,7 +176,13 @@ export function DraftPreview({ draft, campaignId, onEdit }: DraftPreviewProps) {
             )}
             <Button
               variant="outline" size="sm" className="h-6 text-xs flex-1"
-              onClick={() => router.push(`/campaigns/${campaignId}/phone/lists/new?returnTo=${returnTo}`)}
+              onClick={() => {
+                const sid = draft.structured_script_id
+                const q = sid
+                  ? `script_id=${sid}&returnTo=${returnTo}`
+                  : `returnTo=${returnTo}`
+                router.push(`/campaigns/${campaignId}/phone/lists/new?${q}`)
+              }}
             >
               <Users className="h-3 w-3 mr-1" />
               Create Call List

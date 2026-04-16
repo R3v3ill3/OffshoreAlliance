@@ -82,6 +82,13 @@ const RATING_BANDS = [
   { key: 'high',   label: '3+',      test: (v: number | null | undefined) => v != null && v >= 3 },
 ]
 
+/** Matches list-builder `membership_status` buckets for campaign workers. */
+const CAMPAIGN_MEMBERSHIP_BUCKETS = [
+  { key: 'member', label: 'Member' },
+  { key: 'member_pending', label: 'Member – pending' },
+  { key: 'non_member', label: 'Non-member' },
+] as const
+
 type SegmentVariable = 'membership_status' | 'organising_role' | 'occupation' | 'rating_band'
 
 interface ScriptVariation {
@@ -559,7 +566,10 @@ export function PhoneWizardSteps() {
     if (!segmentVariable) return []
     switch (segmentVariable) {
       case 'membership_status':
-        return [{ key: 'member', label: 'Members' }, { key: 'non_member', label: 'Non-members' }]
+        return CAMPAIGN_MEMBERSHIP_BUCKETS.map((b) => ({
+          key: b.key,
+          label: b.key === 'member' ? 'Members' : b.key === 'non_member' ? 'Non-members' : b.label,
+        }))
       case 'rating_band':
         return RATING_BANDS.map((b) => ({ key: b.key, label: b.label }))
       case 'organising_role': {
@@ -693,6 +703,7 @@ export function PhoneWizardSteps() {
           title: variation.scriptTitle || `${state.scriptTitle || 'Phone Script'} — ${variation.segmentLabel}`,
           call_objective: state.callPurpose || null,
           sections: [],
+          base_script_id: state.savedScriptId || undefined,
         }),
       })
       const data = await res.json()
@@ -1553,8 +1564,8 @@ export function PhoneWizardSteps() {
                   )}
                 </div>
 
-                {/* Outcome editor — shown after script is saved, campaign mode only */}
-                {state.savedScriptId && state.campaignId && (
+                {/* Outcome editor — after script save (campaign + standalone) */}
+                {state.savedScriptId && (
                   <div className="mt-4 border-t pt-4">
                     <CallOutcomeEditor
                       campaignId={state.campaignId}
@@ -2071,8 +2082,7 @@ export function PhoneWizardSteps() {
                     {state.campaignId && (
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs w-20 shrink-0 text-muted-foreground">Status</span>
-                        {['member', 'non_member'].map((val) => {
-                          const label = val === 'member' ? 'Member' : 'Non-member'
+                        {CAMPAIGN_MEMBERSHIP_BUCKETS.map(({ key: val, label }) => {
                           const count = filteredWorkers.filter((w) => w.membership_status === val).length
                           return (
                             <div key={val} className="flex items-center gap-1">
@@ -2261,6 +2271,8 @@ export function PhoneWizardSteps() {
                                   <td className="p-2 whitespace-nowrap">
                                     {w.membership_status === 'member' ? (
                                       <Badge variant="default" className="text-[10px] py-0">Member</Badge>
+                                    ) : w.membership_status === 'member_pending' ? (
+                                      <Badge variant="outline" className="text-[10px] py-0">Member – pending</Badge>
                                     ) : w.membership_status ? (
                                       <Badge variant="secondary" className="text-[10px] py-0">Non-member</Badge>
                                     ) : '—'}

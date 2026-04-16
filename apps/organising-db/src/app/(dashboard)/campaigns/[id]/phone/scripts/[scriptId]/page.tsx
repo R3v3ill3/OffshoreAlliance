@@ -1,7 +1,9 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
+import { createClient } from '@/lib/supabase/client'
 import { useCallScript, useUpdateCallScriptSections, useUpdateCallScript, useStructureScript } from '@/lib/hooks/useCallScripts'
 import { CallScriptEditor, sectionsToEditable } from '@/components/phone/CallScriptEditor'
 import { Button } from '@/components/ui/button'
@@ -14,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ArrowLeft, Wand2, Loader2, Phone, Target } from 'lucide-react'
 import { toast } from 'sonner'
 import { CallOutcomeEditor } from '@/components/phone/CallOutcomeEditor'
+import { ScriptVariationsPanel } from '@/components/phone/ScriptVariationsPanel'
 import type { ScriptStatus } from '@/types/planner-types'
 
 export default function ScriptEditorPage() {
@@ -27,6 +30,38 @@ export default function ScriptEditorPage() {
     : `/campaigns/${campaignId}/phone`
 
   const { data: script, isLoading } = useCallScript(campaignId, scriptId)
+
+  const { data: campaignRow } = useQuery({
+    queryKey: ['campaign-context-phone-script', campaignId],
+    queryFn: async () => {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('campaigns')
+        .select('name')
+        .eq('campaign_id', parseInt(campaignId, 10))
+        .single()
+      if (error) throw error
+      return data as { name: string }
+    },
+    enabled: !!campaignId,
+  })
+
+  const referenceScriptBody = useMemo(() => {
+    if (!script?.call_script_sections?.length) return ''
+    return [...script.call_script_sections]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((s) => s.body_text)
+      .join('\n\n')
+  }, [script?.call_script_sections])
+
+  const variationContext = useMemo(() => {
+    return {
+      employer_name: campaignRow?.name || 'Campaign',
+      agreement_name: '',
+      worksite_names: [] as string[],
+      sector: '',
+    }
+  }, [campaignRow])
   const updateSections = useUpdateCallScriptSections(campaignId, scriptId)
   const updateScript = useUpdateCallScript(campaignId)
   const structureScript = useStructureScript(campaignId)
@@ -204,6 +239,15 @@ export default function ScriptEditorPage() {
         campaignId={parseInt(campaignId)}
         scriptId={parseInt(scriptId)}
         scriptTitle={script.title}
+      />
+
+      <ScriptVariationsPanel
+        campaignId={campaignId}
+        baseScriptId={script.script_id}
+        baseTitle={script.title}
+        referenceScriptBody={referenceScriptBody}
+        callObjective={script.call_objective}
+        campaignContext={variationContext}
       />
 
       {/* Action footer */}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getCampaignMembershipStatus } from '@/lib/campaign/constants'
 import { ActionNetworkClient } from '@/lib/api/action-network'
 import { syncWorkerToActionNetwork } from '@/lib/api/action-network'
 
@@ -71,10 +72,11 @@ export async function POST(
         worker_id,
         workers!inner (
           worker_id, first_name, last_name, email, phone, occupation,
-          employer_id, worksite_id, member_role_type_id, action_network_id,
+          employer_id, worksite_id, member_role_type_id, is_bargaining_rep, action_network_id,
           employers ( employer_name ),
           worksites ( worksite_name ),
-          member_role_type:member_role_types ( role_name )
+          member_role_type:member_role_types ( role_name ),
+          union_membership_type:union_membership_types ( type_name )
         )
       `)
       .eq('campaign_id', campaignId)
@@ -87,12 +89,18 @@ export async function POST(
         worker_id: number; first_name: string; last_name: string
         email: string | null; phone: string | null; occupation: string | null
         employer_id: number | null; worksite_id: number | null
-        member_role_type_id: number | null; action_network_id: string | null
+        member_role_type_id: number | null
+        is_bargaining_rep: boolean | null
+        action_network_id: string | null
         employers: { employer_name: string } | null
         worksites: { worksite_name: string } | null
         member_role_type: { role_name: string } | { role_name: string }[] | null
+        union_membership_type: { type_name: string } | { type_name: string }[] | null
       }
       const mrt = Array.isArray(w.member_role_type) ? w.member_role_type[0] : w.member_role_type
+      const umt = Array.isArray(w.union_membership_type)
+        ? w.union_membership_type[0]
+        : w.union_membership_type
       return {
         worker_id: w.worker_id,
         first_name: w.first_name,
@@ -105,7 +113,11 @@ export async function POST(
         action_network_id: w.action_network_id,
         employer_id: w.employer_id,
         worksite_id: w.worksite_id,
-        membership_status: w.member_role_type_id ? 'member' : 'non_member',
+        membership_status: getCampaignMembershipStatus({
+          unionMembershipTypeName: umt?.type_name,
+          memberRoleName: mrt?.role_name,
+          isBargainingRep: w.is_bargaining_rep,
+        }),
         role_name: mrt?.role_name ?? null,
       }
     })

@@ -722,7 +722,11 @@ export function CampaignSendPanel({
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => router.push(`/campaigns/${numericId}/phone/lists/new`)}
+                              onClick={() => {
+                                const sid = selectedDraft.structured_script_id;
+                                const q = sid ? `?script_id=${sid}` : "";
+                                router.push(`/campaigns/${numericId}/phone/lists/new${q}`);
+                              }}
                             >
                               <Users className="h-3.5 w-3.5" />
                               Create Call List

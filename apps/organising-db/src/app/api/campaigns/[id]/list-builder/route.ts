@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getCampaignMembershipStatus } from "@/lib/campaign/constants";
 
 export async function GET(
   request: NextRequest,
@@ -54,7 +55,8 @@ export async function GET(
           action_network_id,
           employers ( employer_name ),
           worksites ( worksite_name ),
-          member_role_type:member_role_types ( role_name, display_name )
+          member_role_type:member_role_types ( role_name, display_name ),
+          union_membership_type:union_membership_types ( type_name )
         )
       `
       )
@@ -78,11 +80,22 @@ export async function GET(
         action_network_id: string | null;
         employers: { employer_name: string } | null;
         worksites: { worksite_name: string } | null;
-        member_role_type: { role_name: string; display_name: string } | null;
+        member_role_type:
+          | { role_name: string; display_name: string }
+          | { role_name: string; display_name: string }[]
+          | null;
+        union_membership_type: { type_name: string } | { type_name: string }[] | null;
       };
 
-      const membershipStatus = worker.member_role_type_id ? "member" : "non_member";
       const mrt = Array.isArray(worker.member_role_type) ? worker.member_role_type[0] : worker.member_role_type;
+      const umt = Array.isArray(worker.union_membership_type)
+        ? worker.union_membership_type[0]
+        : worker.union_membership_type;
+      const membershipStatus = getCampaignMembershipStatus({
+        unionMembershipTypeName: umt?.type_name,
+        memberRoleName: mrt?.role_name,
+        isBargainingRep: worker.is_bargaining_rep,
+      });
 
       return {
         worker_id: worker.worker_id,

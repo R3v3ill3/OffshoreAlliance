@@ -19,6 +19,8 @@ interface TranslatedOutcome {
   response_options: { value: string; label: string }[] | null
   is_positive: boolean
   progress_explanation: string
+  side_effect: 'none' | 'set_membership_pending'
+  side_effect_payload?: Record<string, unknown> | null
 }
 
 const SYSTEM_PROMPT = `You are a union organising expert who translates campaign-wide ambitions into per-call, per-worker recordable outcomes for phone call campaigns.
@@ -37,9 +39,10 @@ RULES:
 5. For COUNT ambitions (e.g. "identify 4 leaders"), the per-call outcome is usually a checkbox ("Worker identified as potential leader") or text ("Leader nomination details")
 6. For STRUCTURAL ambitions (e.g. "establish WOCs on 3 worksites"), use text input so callers can record specific information ("Suggested worksite for organising unit")
 7. For BOOLEAN ambitions (e.g. "brief all reps on process"), use a checkbox ("Worker confirms understanding of process")
-8. System-default membership ambitions (containing "member" or "density") should ALWAYS produce: name="Worker agrees to join/renew membership", response_type="checkbox", is_positive=true
+8. Membership / density ambitions (containing "member" or "density", or category membership_growth): produce ONE outcome with name="Worker agrees to join the union", response_type="checkbox", is_positive=true, side_effect="set_membership_pending". This applies to workers who are not yet member-like; the system will set them to member_pending (not financial member) when positively recorded on a campaign list.
 9. is_positive should be true when the outcome represents a favourable result for the organiser
 10. progress_explanation should be a SHORT sentence explaining how individual recordings aggregate toward the campaign ambition (e.g. "Each confirmed worker counts toward the 60% density target")
+11. side_effect: use "none" unless recording this outcome should set the worker to member_pending when positively completed on a campaign call (rule 8). For select response_type with membership side effect, include option values "joined" and "yes" in response_options.
 
 Respond with a JSON array of outcomes, one per ambition:
 [
@@ -50,7 +53,8 @@ Respond with a JSON array of outcomes, one per ambition:
     "response_type": "checkbox" | "text" | "select" | "number",
     "response_options": [{"value": "string", "label": "string"}] | null,
     "is_positive": boolean,
-    "progress_explanation": "string"
+    "progress_explanation": "string",
+    "side_effect": "none" | "set_membership_pending"
   }
 ]`
 
@@ -114,15 +118,41 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Validate response_type values
     const validTypes = new Set(['checkbox', 'text', 'select', 'number'])
+    const validSide = new Set(['none', 'set_membership_pending'])
     for (const o of parsed) {
       if (!validTypes.has(o.response_type)) {
         o.response_type = 'checkbox'
       }
+      const rawSide = o.side_effect as string
+      if (rawSide === 'set_membership_financial') {
+        o.side_effect = 'set_membership_pending'
+      }
+      if (!o.side_effect || !validSide.has(o.side_effect)) {
+        o.side_effect = 'none'
+      }
     }
 
-    return NextResponse.json({ outcomes: parsed })
+    const expanded: TranslatedOutcome[] = []
+    for (const o of parsed) {
+      expanded.push(o)
+      if (o.side_effect === 'set_membership_pending') {
+        expanded.push({
+          ambition_id: o.ambition_id,
+          name: 'Worker will ask others to join the union',
+          description:
+            'For workers who are already members (financial, pending, or other union). Records that they will recruit colleagues. No automatic membership change.',
+          response_type: 'checkbox',
+          response_options: null,
+          is_positive: true,
+          progress_explanation: o.progress_explanation,
+          side_effect: 'none',
+          side_effect_payload: { phone_ask: 'recruit_others' },
+        })
+      }
+    }
+
+    return NextResponse.json({ outcomes: expanded })
   } catch (error) {
     console.error('Translate ambitions error:', error)
     return NextResponse.json(

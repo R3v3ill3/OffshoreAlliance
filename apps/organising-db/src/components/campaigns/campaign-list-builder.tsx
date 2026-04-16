@@ -95,6 +95,7 @@ interface UnitOption {
 
 const MEMBERSHIP_OPTIONS = [
   { value: "member", label: "Members" },
+  { value: "member_pending", label: "Member – pending" },
   { value: "non_member", label: "Non-members" },
   { value: "lapsed", label: "Lapsed" },
 ];

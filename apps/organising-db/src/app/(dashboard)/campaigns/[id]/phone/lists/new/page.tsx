@@ -409,6 +409,7 @@ export default function NewCallListPage() {
                   <SelectContent>
                     <SelectItem value="all">All</SelectItem>
                     <SelectItem value="member">Members</SelectItem>
+                    <SelectItem value="member_pending">Member – pending</SelectItem>
                     <SelectItem value="non_member">Non-members</SelectItem>
                   </SelectContent>
                 </Select>

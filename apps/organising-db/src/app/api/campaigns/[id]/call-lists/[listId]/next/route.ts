@@ -27,6 +27,8 @@ export async function GET(
         worker_id, first_name, last_name, email, phone,
         occupation, address, suburb, state, postcode,
         employer_id, worksite_id,
+        union_membership_type_id,
+        union_membership_type:union_membership_types(type_name),
         employers (employer_id, employer_name),
         worksites (worksite_id, worksite_name)
       )
@@ -113,6 +115,8 @@ async function enrichItem(
 
   const employers = w?.employers as Record<string, unknown> | null
   const worksites = w?.worksites as Record<string, unknown> | null
+  const umt = w?.union_membership_type as { type_name: string } | { type_name: string }[] | null | undefined
+  const unionType = Array.isArray(umt) ? umt[0] : umt
 
   return {
     ...item,
@@ -129,6 +133,8 @@ async function enrichItem(
       postcode: w.postcode || null,
       employer_id: w.employer_id || null,
       worksite_id: w.worksite_id || null,
+      union_membership_type_id: (w.union_membership_type_id as number | null) ?? null,
+      union_membership_type_name: unionType?.type_name ?? null,
       employer_name: employers?.employer_name || null,
       worksite_name: worksites?.worksite_name || null,
     } : null,

@@ -22,7 +22,7 @@ import {
   Target, Plus, Loader2, CheckCircle, Trash2, Sparkles, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { OutcomeCategory, OutcomeResponseType } from '@/types/planner-types'
+import type { OutcomeCategory, OutcomeResponseType, OutcomeSideEffect } from '@/types/planner-types'
 
 interface AmbitionRow {
   ambition_id: number
@@ -47,10 +47,12 @@ interface OutcomeRow {
   response_type: OutcomeResponseType
   response_options: { value: string; label: string }[] | null
   progress_explanation: string
+  side_effect: OutcomeSideEffect
+  side_effect_payload: Record<string, unknown> | null
 }
 
 interface CallOutcomeEditorProps {
-  campaignId: number
+  campaignId: number | null
   scriptId: number
   scriptTitle?: string
   onSaved?: () => void
@@ -74,6 +76,22 @@ const RESPONSE_TYPE_LABELS: Record<OutcomeResponseType, string> = {
   select: 'Dropdown',
   number: 'Number',
 }
+
+/** UI value for membership behaviour (stored as side_effect + optional payload). */
+type MembershipEffectUi = 'none' | 'member_pending' | 'recruit_others'
+
+function membershipEffectUi(o: Pick<OutcomeRow, 'side_effect' | 'side_effect_payload'>): MembershipEffectUi {
+  const p = o.side_effect_payload
+  if (p && p.phone_ask === 'recruit_others') return 'recruit_others'
+  if (o.side_effect === 'set_membership_pending') return 'member_pending'
+  return 'none'
+}
+
+const MEMBERSHIP_EFFECT_OPTIONS: { value: MembershipEffectUi; label: string }[] = [
+  { value: 'none', label: 'No automatic membership update' },
+  { value: 'member_pending', label: 'Join yes → set member pending (campaign calls)' },
+  { value: 'recruit_others', label: 'Recruit others (existing members; no DB update)' },
+]
 
 export function CallOutcomeEditor({
   campaignId,
@@ -103,7 +121,7 @@ export function CallOutcomeEditor({
   })
 
   const { data: ambitions = [], isLoading: ambitionsLoading } = useQuery({
-    queryKey: ['ambitions-for-outcomes', activeStagePlan?.plan_id],
+    queryKey: ['ambitions-for-outcomes', activeStagePlan?.plan_id, campaignId],
     queryFn: async () => {
       if (!activeStagePlan) return []
       const { data, error } = await supabase
@@ -120,7 +138,7 @@ export function CallOutcomeEditor({
         } as AmbitionRow
       })
     },
-    enabled: !!activeStagePlan?.plan_id,
+    enabled: !!campaignId && !!activeStagePlan?.plan_id,
   })
 
   const [outcomes, setOutcomes] = useState<OutcomeRow[]>([])
@@ -151,8 +169,17 @@ export function CallOutcomeEditor({
 
       return (data.outcomes || []).map((o: Record<string, unknown>) => {
         const ambition = ambitionsToTranslate.find((a) => a.ambition_id === o.ambition_id)
+        const rawPayload = (o.side_effect_payload as Record<string, unknown> | null) ?? null
+        const isRecruit = rawPayload?.phone_ask === 'recruit_others'
+        const rawSe = o.side_effect as string
+        const se: OutcomeSideEffect =
+          isRecruit
+            ? 'none'
+            : rawSe === 'set_membership_financial' || rawSe === 'set_membership_pending'
+              ? 'set_membership_pending'
+              : 'none'
         return {
-          tempKey: `ambition-${o.ambition_id}`,
+          tempKey: isRecruit ? `ambition-${o.ambition_id}-recruit` : `ambition-${o.ambition_id}-join`,
           name: (o.name as string) || '',
           description: (o.description as string) || '',
           outcome_category: 'conversation' as OutcomeCategory,
@@ -165,23 +192,42 @@ export function CallOutcomeEditor({
             : 'checkbox') as OutcomeResponseType,
           response_options: (o.response_options as { value: string; label: string }[] | null) ?? null,
           progress_explanation: (o.progress_explanation as string) || '',
+          side_effect: se,
+          side_effect_payload: isRecruit ? { phone_ask: 'recruit_others' } : null,
         }
       })
     } catch (err) {
       console.error('AI translation failed, using fallback:', err)
-      return ambitionsToTranslate.map((a) => ({
-        tempKey: `ambition-${a.ambition_id}`,
-        name: fallbackOutcomeName(getAmbitionLabel(a)),
-        description: '',
-        outcome_category: 'conversation' as OutcomeCategory,
-        is_positive: true,
-        maps_to_ambition_id: a.ambition_id,
-        ambitionLabel: getAmbitionLabel(a),
-        addAsAmbition: false,
-        response_type: 'checkbox' as OutcomeResponseType,
-        response_options: null,
-        progress_explanation: '',
-      }))
+      return ambitionsToTranslate.flatMap((a) => {
+        const lower = getAmbitionLabel(a).toLowerCase()
+        const mem = lower.includes('member') || lower.includes('density')
+        const joinRow: OutcomeRow = {
+          tempKey: `ambition-${a.ambition_id}-join`,
+          name: fallbackOutcomeName(getAmbitionLabel(a)),
+          description: '',
+          outcome_category: 'conversation' as OutcomeCategory,
+          is_positive: true,
+          maps_to_ambition_id: a.ambition_id,
+          ambitionLabel: getAmbitionLabel(a),
+          addAsAmbition: false,
+          response_type: 'checkbox' as OutcomeResponseType,
+          response_options: null,
+          progress_explanation: '',
+          side_effect: mem ? 'set_membership_pending' : 'none',
+          side_effect_payload: null,
+        }
+        if (!mem) return [joinRow]
+        const recruitRow: OutcomeRow = {
+          ...joinRow,
+          tempKey: `ambition-${a.ambition_id}-recruit`,
+          name: 'Worker will ask others to join the union',
+          description:
+            'For workers who are already members. Records recruitment intent; no automatic membership change.',
+          side_effect: 'none',
+          side_effect_payload: { phone_ask: 'recruit_others' },
+        }
+        return [joinRow, recruitRow]
+      })
     } finally {
       setIsTranslating(false)
     }
@@ -190,7 +236,7 @@ export function CallOutcomeEditor({
   function fallbackOutcomeName(label: string): string {
     const lower = label.toLowerCase()
     if (lower.includes('member') && lower.includes('density')) return 'Worker agrees to join'
-    if (lower.includes('member')) return 'Worker agrees to join/renew membership'
+    if (lower.includes('member')) return 'Worker agrees to join the union'
     if (lower.includes('delegate')) return 'Worker volunteers as delegate'
     if (lower.includes('hsr') || lower.includes('health')) return 'Worker volunteers as HSR'
     if (lower.includes('bargain') && lower.includes('rep')) return 'Worker volunteers as bargaining rep'
@@ -210,6 +256,12 @@ export function CallOutcomeEditor({
         const ambition = eo.maps_to_ambition_id
           ? ambitions.find((a) => a.ambition_id === eo.maps_to_ambition_id)
           : null
+        const rawSe = eo.side_effect as string
+        const side_effect: OutcomeSideEffect =
+          rawSe === 'set_membership_financial' || rawSe === 'set_membership_pending'
+            ? 'set_membership_pending'
+            : 'none'
+        const p = (eo.side_effect_payload as Record<string, unknown> | null) ?? null
         return {
           tempKey: `existing-${eo.outcome_id}`,
           name: eo.name,
@@ -222,6 +274,8 @@ export function CallOutcomeEditor({
           response_type: eo.response_type || 'checkbox',
           response_options: eo.response_options ?? null,
           progress_explanation: '',
+          side_effect: p?.phone_ask === 'recruit_others' ? 'none' : side_effect,
+          side_effect_payload: p,
         }
       })
       setOutcomes(rows)
@@ -258,6 +312,8 @@ export function CallOutcomeEditor({
       response_type: 'checkbox',
       response_options: null,
       progress_explanation: '',
+      side_effect: 'none',
+      side_effect_payload: null,
     }
     setOutcomes((prev) => [...prev, row])
     setEnabledKeys((prev) => new Set([...prev, key]))
@@ -300,7 +356,7 @@ export function CallOutcomeEditor({
     const enabled = outcomes.filter((o) => enabledKeys.has(o.tempKey) && o.name.trim())
 
     for (const o of enabled) {
-      if (o.addAsAmbition && !o.maps_to_ambition_id && activeStagePlan) {
+      if (campaignId != null && o.addAsAmbition && !o.maps_to_ambition_id && activeStagePlan) {
         try {
           const result = await addAmbition.mutateAsync({
             plan_id: activeStagePlan.plan_id,
@@ -330,6 +386,15 @@ export function CallOutcomeEditor({
           sort_order: i,
           response_type: o.response_type,
           response_options: o.response_type === 'select' ? o.response_options : null,
+          side_effect: o.side_effect,
+          side_effect_payload: (() => {
+            const p = o.side_effect_payload
+            if (p && Object.keys(p).length > 0) return p
+            if (o.side_effect === 'set_membership_pending' && o.response_type === 'select') {
+              return { select_truthy_values: ['joined', 'yes', 'financial_member', 'member', 'member_pending', 'pending'] }
+            }
+            return null
+          })(),
         })),
         scriptTitle,
       })
@@ -340,7 +405,7 @@ export function CallOutcomeEditor({
     }
   }
 
-  if (outcomesLoading || ambitionsLoading) {
+  if (outcomesLoading || (!!campaignId && ambitionsLoading)) {
     return (
       <div className="flex items-center justify-center py-8">
         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -417,6 +482,36 @@ export function CallOutcomeEditor({
                 <SelectItem value="conversation">Conversation</SelectItem>
                 <SelectItem value="cta">CTA</SelectItem>
                 <SelectItem value="dial">Dial</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={membershipEffectUi(outcome)}
+              onValueChange={(v) => {
+                const ui = v as MembershipEffectUi
+                if (ui === 'none') {
+                  updateOutcome(outcome.tempKey, { side_effect: 'none', side_effect_payload: null })
+                } else if (ui === 'member_pending') {
+                  updateOutcome(outcome.tempKey, {
+                    side_effect: 'set_membership_pending',
+                    side_effect_payload: null,
+                  })
+                } else {
+                  updateOutcome(outcome.tempKey, {
+                    side_effect: 'none',
+                    side_effect_payload: { phone_ask: 'recruit_others' },
+                  })
+                }
+              }}
+              disabled={isAmbitionLinked && !enabled}
+            >
+              <SelectTrigger className="h-6 text-[10px] w-[260px] max-w-[90vw]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MEMBERSHIP_EFFECT_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
@@ -510,7 +605,10 @@ export function CallOutcomeEditor({
           )}
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Define what the caller should record during each call. Outcomes linked to campaign ambitions feed into the assessment system.
+          Define what the caller should record during each call.
+          {campaignId != null
+            ? ' Outcomes linked to campaign ambitions feed into the assessment system and can update membership when configured.'
+            : ' Standalone scripts: outcomes are stored for calling; membership side effects run only on campaign call lists.'}
         </p>
       </CardHeader>
       <CardContent className="space-y-4">

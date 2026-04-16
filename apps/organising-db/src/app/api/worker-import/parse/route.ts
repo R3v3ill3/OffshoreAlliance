@@ -6,7 +6,8 @@ export type UnionMembershipTypeKey =
   | "financial_member"
   | "non_oa_member"
   | "non_member"
-  | "resigned_member";
+  | "resigned_member"
+  | "member_pending";
 
 export interface ParsedWorkerRow {
   rowIndex: number;
@@ -60,6 +61,10 @@ const MEMBERSHIP_PATTERNS: {
   { pattern: /financial\s+amwu\s+member/i, membershipKey: "non_oa_member", unionCode: "AMWU" },
   { pattern: /financial\s+amou\s+member/i, membershipKey: "non_oa_member", unionCode: "AMOU" },
   { pattern: /financial\s+aimpe\s+member/i, membershipKey: "non_oa_member", unionCode: "AIMPE" },
+  {
+    pattern: /member[\s_-]+pending|pending[\s_-]+member|member\s*[–-]\s*pending/i,
+    membershipKey: "member_pending",
+  },
   { pattern: /financial\s+member/i, membershipKey: "financial_member" },
   { pattern: /\bmember\b/i, membershipKey: "financial_member" },
   { pattern: /not\s+a\s+member/i, membershipKey: "non_member" },

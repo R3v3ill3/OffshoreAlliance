@@ -25,8 +25,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type {
   DialDisposition, CallDisposition, CtaResponse, SupportLevel,
   CallScriptSection, RecordCallAttemptRequest, CallListWithStats,
-  CallListItemWithWorker,
+  CallListItemWithWorker, CallOutcomeDefinition,
 } from '@/types/planner-types'
+import { partitionCallOutcomeDefinitions } from '@/lib/phone/membership-outcomes'
 
 // Hooks that hit the standalone /api/phone-wizard/* routes
 
@@ -105,6 +106,70 @@ export default function PhoneWizardCallPage() {
   const recordAttempt = useWizardRecordAttempt(listId)
 
   const { data: outcomeDefinitions = [] } = useCallOutcomeDefinitions(list?.script_id ?? null)
+
+  const { membershipHeroOutcomes, otherOutcomes, showingRecruitPrompt } = useMemo(
+    () =>
+      partitionCallOutcomeDefinitions(outcomeDefinitions, {
+        unionMembershipTypeName: contact?.worker?.union_membership_type_name,
+      }),
+    [outcomeDefinitions, contact?.worker?.union_membership_type_name]
+  )
+
+  function renderOutcomeRow(od: CallOutcomeDefinition) {
+    const checked = checkedOutcomes.has(od.outcome_id)
+    const responseType = od.response_type || 'checkbox'
+    return (
+      <div key={od.outcome_id} className="space-y-1">
+        <label className="flex items-center gap-2 py-0.5 cursor-pointer text-xs">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={() => setCheckedOutcomes((prev) => {
+              const n = new Map(prev)
+              if (n.has(od.outcome_id)) n.delete(od.outcome_id)
+              else n.set(od.outcome_id, null)
+              return n
+            })}
+          />
+          <span className={od.is_positive ? 'text-green-700' : ''}>{od.name}</span>
+          {od.is_positive && <span className="text-[9px] text-green-500 font-medium">+</span>}
+          {responseType !== 'checkbox' && (
+            <span className="text-[9px] text-muted-foreground">({responseType})</span>
+          )}
+        </label>
+        {checked && responseType === 'text' && (
+          <input
+            type="text"
+            value={checkedOutcomes.get(od.outcome_id) || ''}
+            onChange={(e) => setCheckedOutcomes((prev) => new Map(prev).set(od.outcome_id, e.target.value))}
+            placeholder={od.description || 'Enter details…'}
+            className="ml-6 h-6 text-xs border rounded px-2 w-full max-w-xs"
+          />
+        )}
+        {checked && responseType === 'number' && (
+          <input
+            type="number"
+            value={checkedOutcomes.get(od.outcome_id) || ''}
+            onChange={(e) => setCheckedOutcomes((prev) => new Map(prev).set(od.outcome_id, e.target.value))}
+            placeholder="0"
+            className="ml-6 h-6 text-xs border rounded px-2 w-20"
+          />
+        )}
+        {checked && responseType === 'select' && od.response_options && (
+          <select
+            value={checkedOutcomes.get(od.outcome_id) || ''}
+            onChange={(e) => setCheckedOutcomes((prev) => new Map(prev).set(od.outcome_id, e.target.value))}
+            className="ml-6 h-6 text-xs border rounded px-1"
+          >
+            <option value="">Select…</option>
+            {od.response_options.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        )}
+      </div>
+    )
+  }
 
   const sections: CallScriptSection[] = (() => {
     if (!list) return []
@@ -336,73 +401,39 @@ export default function PhoneWizardCallPage() {
                 <div className="space-y-3 p-4 rounded-lg border bg-muted/20">
                   <p className="text-sm font-medium">Complete Call</p>
 
-                  {/* Call outcomes */}
-                  {outcomeDefinitions.length > 0 && (
-                    <div className="space-y-1.5 p-3 rounded border bg-background">
-                      <label className="text-xs font-medium">Call Outcomes</label>
+                  {membershipHeroOutcomes.length > 0 && (
+                    <div className="space-y-1.5 p-3 rounded border border-blue-200 bg-blue-50/40 dark:bg-blue-950/20">
+                      <label className="text-xs font-semibold text-blue-900 dark:text-blue-200">
+                        {showingRecruitPrompt ? 'Membership / recruitment' : 'Membership result'}
+                      </label>
+                      <p className="text-[10px] text-muted-foreground">
+                        {showingRecruitPrompt
+                          ? 'This worker already has member-like status. Record recruitment intent. Standalone lists save outcomes only (no worker update).'
+                          : 'Standalone lists record outcomes only; setting member pending on the worker requires a campaign call list.'}
+                      </p>
                       <div className="space-y-1.5">
-                        {outcomeDefinitions.map((od) => {
-                          const checked = checkedOutcomes.has(od.outcome_id)
-                          const responseType = od.response_type || 'checkbox'
-                          return (
-                            <div key={od.outcome_id} className="space-y-1">
-                              <label className="flex items-center gap-2 py-0.5 cursor-pointer text-xs">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => setCheckedOutcomes((prev) => {
-                                    const n = new Map(prev)
-                                    if (n.has(od.outcome_id)) n.delete(od.outcome_id)
-                                    else n.set(od.outcome_id, null)
-                                    return n
-                                  })}
-                                />
-                                <span className={od.is_positive ? 'text-green-700' : ''}>{od.name}</span>
-                                {od.is_positive && <span className="text-[9px] text-green-500 font-medium">+</span>}
-                                {responseType !== 'checkbox' && (
-                                  <span className="text-[9px] text-muted-foreground">({responseType})</span>
-                                )}
-                              </label>
-                              {checked && responseType === 'text' && (
-                                <input
-                                  type="text"
-                                  value={checkedOutcomes.get(od.outcome_id) || ''}
-                                  onChange={(e) => setCheckedOutcomes((prev) => new Map(prev).set(od.outcome_id, e.target.value))}
-                                  placeholder={od.description || 'Enter details…'}
-                                  className="ml-6 h-6 text-xs border rounded px-2 w-full max-w-xs"
-                                />
-                              )}
-                              {checked && responseType === 'number' && (
-                                <input
-                                  type="number"
-                                  value={checkedOutcomes.get(od.outcome_id) || ''}
-                                  onChange={(e) => setCheckedOutcomes((prev) => new Map(prev).set(od.outcome_id, e.target.value))}
-                                  placeholder="0"
-                                  className="ml-6 h-6 text-xs border rounded px-2 w-20"
-                                />
-                              )}
-                              {checked && responseType === 'select' && od.response_options && (
-                                <select
-                                  value={checkedOutcomes.get(od.outcome_id) || ''}
-                                  onChange={(e) => setCheckedOutcomes((prev) => new Map(prev).set(od.outcome_id, e.target.value))}
-                                  className="ml-6 h-6 text-xs border rounded px-1"
-                                >
-                                  <option value="">Select…</option>
-                                  {od.response_options.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                  ))}
-                                </select>
-                              )}
-                            </div>
-                          )
-                        })}
+                        {membershipHeroOutcomes.map((od) => renderOutcomeRow(od))}
+                      </div>
+                    </div>
+                  )}
+
+                  {otherOutcomes.length > 0 && (
+                    <div className="space-y-1.5 p-3 rounded border bg-background">
+                      <label className="text-xs font-medium">Other call outcomes</label>
+                      <div className="space-y-1.5">
+                        {otherOutcomes.map((od) => renderOutcomeRow(od))}
                       </div>
                     </div>
                   )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <label className="text-xs font-medium">CTA Response</label>
+                      <label className="text-xs font-medium">
+                        CTA Response
+                        {membershipHeroOutcomes.length > 0 && (
+                          <span className="text-[10px] font-normal text-muted-foreground ml-1">(optional if membership above)</span>
+                        )}
+                      </label>
                       <Select value={ctaResponse || ''} onValueChange={(v) => setCtaResponse(v as CtaResponse)}>
                         <SelectTrigger className="h-8 text-xs">
                           <SelectValue placeholder="Select..." />

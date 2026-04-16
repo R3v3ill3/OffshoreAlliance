@@ -1,19 +1,48 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
-import type { CallOutcomeDefinition, OutcomeCategory, OutcomeResponseType } from '@/types/planner-types'
+import type {
+  CallOutcomeDefinition,
+  OutcomeCategory,
+  OutcomeResponseType,
+  OutcomeSideEffect,
+} from '@/types/planner-types'
 
 export function useCallOutcomeDefinitions(scriptId: number | string | null) {
   const supabase = createClient()
   return useQuery({
     queryKey: ['call-outcome-definitions', String(scriptId)],
     queryFn: async () => {
+      const sid = parseInt(String(scriptId), 10)
+      const { data: scriptRow, error: scriptErr } = await supabase
+        .from('call_scripts')
+        .select('base_script_id')
+        .eq('script_id', sid)
+        .maybeSingle()
+
+      if (scriptErr) throw scriptErr
+
+      const effectiveId =
+        scriptRow?.base_script_id != null ? scriptRow.base_script_id : sid
+
       const { data, error } = await supabase
         .from('call_outcome_definitions')
         .select('*')
-        .eq('script_id', parseInt(String(scriptId)))
+        .eq('script_id', effectiveId)
         .order('sort_order')
+
       if (error) throw error
-      return (data ?? []) as CallOutcomeDefinition[]
+      return (data ?? []).map((row) => {
+        const raw = row.side_effect as string | null
+        const side_effect: OutcomeSideEffect =
+          raw === 'set_membership_financial' || raw === 'set_membership_pending'
+            ? 'set_membership_pending'
+            : 'none'
+        return {
+          ...row,
+          side_effect,
+          side_effect_payload: row.side_effect_payload as Record<string, unknown> | null,
+        }
+      }) as CallOutcomeDefinition[]
     },
     enabled: !!scriptId,
   })
@@ -47,55 +76,65 @@ export interface SaveCallOutcomesInput {
     sort_order: number
     response_type?: OutcomeResponseType
     response_options?: { value: string; label: string }[] | null
+    side_effect?: OutcomeSideEffect
+    side_effect_payload?: Record<string, unknown> | null
   }[]
   scriptTitle?: string
 }
 
-export function useSaveCallOutcomes(campaignId: number | string, scriptId: number | string) {
+export function useSaveCallOutcomes(campaignId: number | string | null, scriptId: number | string) {
   const supabase = createClient()
   const queryClient = useQueryClient()
-  const cid = parseInt(String(campaignId))
-  const sid = parseInt(String(scriptId))
+  const cid = campaignId != null && campaignId !== '' ? parseInt(String(campaignId), 10) : null
+  const sid = parseInt(String(scriptId), 10)
 
   return useMutation({
     mutationFn: async (input: SaveCallOutcomesInput) => {
-      // Ensure a campaign_activities row exists for this script
       let activityId: number | null = null
 
-      const { data: existingActivity } = await supabase
-        .from('call_outcome_definitions')
-        .select('activity_id')
-        .eq('script_id', sid)
-        .eq('campaign_id', cid)
-        .not('activity_id', 'is', null)
-        .limit(1)
-        .maybeSingle()
-
-      if (existingActivity?.activity_id) {
-        activityId = existingActivity.activity_id
-      } else {
-        const { data: newActivity, error: actErr } = await supabase
-          .from('campaign_activities')
-          .insert({
-            campaign_id: cid,
-            title: `Phone Campaign — ${input.scriptTitle || `Script #${sid}`}`,
-            activity_kind: 'assessment',
-            is_binary: false,
-            is_custom: true,
-          })
+      if (cid != null) {
+        const { data: existingActivity } = await supabase
+          .from('call_outcome_definitions')
           .select('activity_id')
-          .single()
+          .eq('script_id', sid)
+          .eq('campaign_id', cid)
+          .not('activity_id', 'is', null)
+          .limit(1)
+          .maybeSingle()
 
-        if (actErr) throw actErr
-        activityId = newActivity.activity_id
+        if (existingActivity?.activity_id) {
+          activityId = existingActivity.activity_id
+        } else {
+          const { data: newActivity, error: actErr } = await supabase
+            .from('campaign_activities')
+            .insert({
+              campaign_id: cid,
+              title: `Phone Campaign — ${input.scriptTitle || `Script #${sid}`}`,
+              activity_kind: 'assessment',
+              is_binary: false,
+              is_custom: true,
+            })
+            .select('activity_id')
+            .single()
+
+          if (actErr) throw actErr
+          activityId = newActivity.activity_id
+        }
       }
 
-      // Delete existing definitions for this script, then insert fresh
-      await supabase
-        .from('call_outcome_definitions')
-        .delete()
-        .eq('script_id', sid)
-        .eq('campaign_id', cid)
+      const { error: delErr } =
+        cid != null
+          ? await supabase
+              .from('call_outcome_definitions')
+              .delete()
+              .eq('script_id', sid)
+              .eq('campaign_id', cid)
+          : await supabase
+              .from('call_outcome_definitions')
+              .delete()
+              .eq('script_id', sid)
+              .is('campaign_id', null)
+      if (delErr) throw delErr
 
       if (input.outcomes.length > 0) {
         const rows = input.outcomes.map((o, i) => ({
@@ -110,11 +149,11 @@ export function useSaveCallOutcomes(campaignId: number | string, scriptId: numbe
           activity_id: activityId,
           response_type: o.response_type || 'checkbox',
           response_options: o.response_options || null,
+          side_effect: o.side_effect || 'none',
+          side_effect_payload: o.side_effect_payload || null,
         }))
 
-        const { error: insertErr } = await supabase
-          .from('call_outcome_definitions')
-          .insert(rows)
+        const { error: insertErr } = await supabase.from('call_outcome_definitions').insert(rows)
 
         if (insertErr) throw insertErr
       }
@@ -122,8 +161,10 @@ export function useSaveCallOutcomes(campaignId: number | string, scriptId: numbe
       return { activityId }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['call-outcome-definitions', String(sid)] })
-      queryClient.invalidateQueries({ queryKey: ['call-outcome-definitions-campaign', String(cid)] })
+      queryClient.invalidateQueries({ queryKey: ['call-outcome-definitions'] })
+      if (cid != null) {
+        queryClient.invalidateQueries({ queryKey: ['call-outcome-definitions-campaign', String(cid)] })
+      }
     },
   })
 }

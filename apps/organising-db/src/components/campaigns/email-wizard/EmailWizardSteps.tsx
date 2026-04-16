@@ -80,6 +80,7 @@ interface WorkerPreview {
 function formatCampaignListSource(w: WorkerPreview): string {
   const parts: string[] = []
   if (w.membership_status === 'member') parts.push('Member')
+  else if (w.membership_status === 'member_pending') parts.push('Member – pending')
   else if (w.membership_status === 'non_member') parts.push('Non-member')
   if (w.organising_role) {
     parts.push(w.organising_role)

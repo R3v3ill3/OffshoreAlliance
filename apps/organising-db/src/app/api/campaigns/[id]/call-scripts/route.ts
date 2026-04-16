@@ -39,7 +39,7 @@ export async function POST(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await req.json()
-    const { title, draft_id, call_objective, estimated_duration_minutes, sections } = body
+    const { title, draft_id, call_objective, estimated_duration_minutes, sections, base_script_id } = body
 
     if (!title) {
       return NextResponse.json({ error: 'Title is required' }, { status: 400 })
@@ -50,6 +50,7 @@ export async function POST(
       .insert({
         campaign_id: parseInt(campaignId),
         draft_id: draft_id || null,
+        base_script_id: base_script_id != null ? parseInt(String(base_script_id), 10) : null,
         title,
         call_objective: call_objective || null,
         estimated_duration_minutes: estimated_duration_minutes || null,

@@ -281,10 +281,13 @@ export type CtaResponse = 'accepted' | 'considering' | 'declined' | 'not_reached
 export type SupportLevel = 'strong_supporter' | 'supporter' | 'neutral' | 'unsupportive' | 'hostile'
 export type OutcomeCategory = 'dial' | 'conversation' | 'cta'
 
+export type OutcomeSideEffect = 'none' | 'set_membership_pending'
+
 export interface CallScript {
   script_id: number
-  campaign_id: number
+  campaign_id: number | null
   draft_id: number | null
+  base_script_id: number | null
   title: string
   version: number
   status: ScriptStatus
@@ -312,7 +315,7 @@ export interface CallScriptSection {
 
 export interface CallList {
   list_id: number
-  campaign_id: number
+  campaign_id: number | null
   script_id: number | null
   name: string
   description: string | null
@@ -377,7 +380,7 @@ export type OutcomeResponseType = 'checkbox' | 'text' | 'select' | 'number'
 
 export interface CallOutcomeDefinition {
   outcome_id: number
-  campaign_id: number
+  campaign_id: number | null
   script_id: number | null
   name: string
   description: string | null
@@ -387,6 +390,8 @@ export interface CallOutcomeDefinition {
   sort_order: number
   response_type: OutcomeResponseType
   response_options: { value: string; label: string }[] | null
+  side_effect: OutcomeSideEffect
+  side_effect_payload: Record<string, unknown> | null
   created_at: string
 }
 
@@ -421,6 +426,9 @@ export interface CallListItemWithWorker extends CallListItem {
     postcode: string | null
     employer_id: number | null
     worksite_id: number | null
+    union_membership_type_id?: number | null
+    /** Resolved from union_membership_types.type_name for call UI (membership ask routing). */
+    union_membership_type_name?: string | null
     employer_name: string | null
     worksite_name: string | null
   }

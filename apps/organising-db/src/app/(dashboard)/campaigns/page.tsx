@@ -120,6 +120,10 @@ const INITIAL_FORM = {
   notes: "",
 };
 
+/** Matches inactive `TabsTrigger` styling for outline-link actions in the tab bar. */
+const tabBarActionClassName =
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium text-muted-foreground ring-offset-background transition-all hover:bg-background/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+
 export default function CampaignsPage() {
   const router = useRouter();
   const { user, profile, canWrite, isAdmin } = useAuth();
@@ -275,79 +279,43 @@ export default function CampaignsPage() {
       </div>
 
       <Tabs defaultValue="campaigns" className="space-y-4">
-        <TabsList className="h-10">
-          <TabsTrigger value="campaigns" className="gap-2">
-            <Megaphone className="h-4 w-4" />
-            Campaigns
-          </TabsTrigger>
-          <TabsTrigger value="templates" className="gap-2">
-            <FileStack className="h-4 w-4" />
-            Templates
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="campaigns" className="mt-0">
-          <div className="space-y-6">
-            {/* Metrics dashboard — above the table */}
-            {!isLoading && user && (
-              <>
-                {profile?.organiser_id == null && (
-                  <p className="text-xs text-muted-foreground">
-                    Your account is not linked to an organiser record yet, so the list is not scoped to you by
-                    default. Use Administration to link your profile, or filter manually when campaigns exist.
-                  </p>
-                )}
-                <CampaignsDashboard
-                  campaigns={campaigns}
-                  selectedOrganiserId={selectedOrganiserId}
-                  onOrganiserChange={setOrganiserFilterOverride}
-                  onRowClick={(id) => router.push(`/campaigns/${id}`)}
-                  currentUserOrganiser={
-                    profile?.organiser_id != null
-                      ? {
-                          id: profile.organiser_id,
-                          label: profile.display_name?.trim() || "You",
-                        }
-                      : null
-                  }
-                  canWrite={canWrite}
-                />
-              </>
-            )}
-
-            <div className="space-y-4">
-            {canWrite && (
-              <div className="flex items-center justify-end gap-2">
-                <Button variant="outline" asChild>
-                  <Link href="/campaigns/new" className="flex items-center gap-2">
-                    <Wand2 className="h-4 w-4" />
-                    Campaign wizard
-                  </Link>
-                </Button>
-                <Button variant="outline" asChild>
-                  <Link href="/campaigns/email-wizard" className="flex items-center gap-2">
-                    <Mail className="h-4 w-4" />
-                    Email wizard
-                  </Link>
-                </Button>
-                <Button variant="outline" asChild>
-                  <Link href="/campaigns/phone-wizard" className="flex items-center gap-2">
-                    <Phone className="h-4 w-4" />
-                    Phone wizard
-                  </Link>
-                </Button>
-                <Dialog
-                  open={dialogOpen}
-                  onOpenChange={(open) => {
-                    setDialogOpen(open);
-                    if (open) setOrganiserDialogKey((k) => k + 1);
-                  }}
-                >
+        <div className="flex flex-wrap items-center gap-1">
+          <TabsList className="h-9">
+            <TabsTrigger value="campaigns" className="gap-2">
+              <Megaphone className="h-4 w-4" />
+              Campaigns
+            </TabsTrigger>
+            <TabsTrigger value="templates" className="gap-2">
+              <FileStack className="h-4 w-4" />
+              Templates
+            </TabsTrigger>
+          </TabsList>
+          {canWrite && (
+            <div className="inline-flex h-9 flex-wrap items-center justify-center gap-0 rounded-lg bg-muted p-1 text-muted-foreground sm:flex-nowrap">
+              <Link href="/campaigns/new" className={tabBarActionClassName}>
+                <Wand2 className="h-4 w-4 shrink-0" />
+                Campaign wizard
+              </Link>
+              <Link href="/campaigns/email-wizard" className={tabBarActionClassName}>
+                <Mail className="h-4 w-4 shrink-0" />
+                Email wizard
+              </Link>
+              <Link href="/campaigns/phone-wizard" className={tabBarActionClassName}>
+                <Phone className="h-4 w-4 shrink-0" />
+                Phone wizard
+              </Link>
+              <Dialog
+                open={dialogOpen}
+                onOpenChange={(open) => {
+                  setDialogOpen(open);
+                  if (open) setOrganiserDialogKey((k) => k + 1);
+                }}
+              >
                 <DialogTrigger asChild>
-                  <Button>
-                    <Plus className="h-4 w-4" />
+                  <button type="button" className={tabBarActionClassName}>
+                    <Plus className="h-4 w-4 shrink-0" />
                     Create Campaign
-                  </Button>
+                  </button>
                 </DialogTrigger>
                 <DialogContent className="max-w-lg w-full max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
@@ -462,9 +430,40 @@ export default function CampaignsPage() {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-              </div>
+            </div>
+          )}
+        </div>
+
+        <TabsContent value="campaigns" className="mt-0">
+          <div className="space-y-6">
+            {/* Metrics dashboard — above the table */}
+            {!isLoading && user && (
+              <>
+                {profile?.organiser_id == null && (
+                  <p className="text-xs text-muted-foreground">
+                    Your account is not linked to an organiser record yet, so the list is not scoped to you by
+                    default. Use Administration to link your profile, or filter manually when campaigns exist.
+                  </p>
+                )}
+                <CampaignsDashboard
+                  campaigns={campaigns}
+                  selectedOrganiserId={selectedOrganiserId}
+                  onOrganiserChange={setOrganiserFilterOverride}
+                  onRowClick={(id) => router.push(`/campaigns/${id}`)}
+                  currentUserOrganiser={
+                    profile?.organiser_id != null
+                      ? {
+                          id: profile.organiser_id,
+                          label: profile.display_name?.trim() || "You",
+                        }
+                      : null
+                  }
+                  canWrite={canWrite}
+                />
+              </>
             )}
 
+            <div className="space-y-4">
             <DataTable<CampaignRow>
               data={filteredCampaigns}
               columns={columns}

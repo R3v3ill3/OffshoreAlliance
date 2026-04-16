@@ -186,8 +186,8 @@ export function CampaignsDashboard({
               {canWrite ? (
                 <li>
                   <span className="text-foreground font-medium">Create Campaign</span> — use the{' '}
-                  <span className="text-foreground">Create Campaign</span> button above this summary area to
-                  add a campaign with the quick form.
+                  <span className="text-foreground">Create Campaign</span> tab next to Campaigns / Templates
+                  to add a campaign with the quick form.
                 </li>
               ) : (
                 <li>

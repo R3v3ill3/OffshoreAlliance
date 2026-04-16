@@ -599,12 +599,12 @@ campaign_worker_membership
 └── (role accessed via workers.member_role_type_id join)
 
 campaign_task_lists
-├── leader_worker_id  ──FK──>  workers   (auto-promotes to Activist on insert)
+on the Campaigns Page, I'd like to move the "Campaign Wizard", "Email Wizard" "Phone Wizard" and "+ Create Cam├── leader_worker_id  ──FK──>  workers   (auto-promotes to Activist + auto-rates leader as 1)
 ├── activity_id       ──FK──>  campaign_activities
 └── ou_id             ──FK──>  campaign_organising_units  (optional, links list to OU)
 
 campaign_task_list_items
-├── worker_id  ──FK──>  workers   (auto-inserts rating=1 on insert)
+├── worker_id  ──FK──>  workers   (no auto-rating; workers are added for assessment)
 └── (workers form/join an OU via campaign_worker_ou)
 
 campaign_organising_units

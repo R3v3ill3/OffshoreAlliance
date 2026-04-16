@@ -4,7 +4,13 @@ import { useState, useCallback, useMemo } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
-import { useCallScript, useUpdateCallScriptSections, useUpdateCallScript, useStructureScript } from '@/lib/hooks/useCallScripts'
+import {
+  useCallScript,
+  useUpdateCallScriptSections,
+  useUpdateCallScript,
+  useStructureScript,
+  useDeleteCallScript,
+} from '@/lib/hooks/useCallScripts'
 import { CallScriptEditor, sectionsToEditable } from '@/components/phone/CallScriptEditor'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,7 +19,17 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, Wand2, Loader2, Phone, Target } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { ArrowLeft, Wand2, Loader2, Phone, Target, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { CallOutcomeEditor } from '@/components/phone/CallOutcomeEditor'
 import { ScriptVariationsPanel } from '@/components/phone/ScriptVariationsPanel'
@@ -65,9 +81,11 @@ export default function ScriptEditorPage() {
   const updateSections = useUpdateCallScriptSections(campaignId, scriptId)
   const updateScript = useUpdateCallScript(campaignId)
   const structureScript = useStructureScript(campaignId)
+  const deleteScript = useDeleteCallScript(campaignId)
 
   const [sections, setSections] = useState<ReturnType<typeof sectionsToEditable> | null>(null)
   const [saved, setSaved] = useState(true)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   const editableSections = sections ?? (
     script?.call_script_sections
@@ -153,9 +171,21 @@ export default function ScriptEditorPage() {
             Edit script sections for the phone call wizard
           </p>
         </div>
-        <Badge variant={script.status === 'active' ? 'default' : 'secondary'}>
-          {script.status}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant={script.status === 'active' ? 'default' : 'secondary'}>
+            {script.status}
+          </Badge>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="text-destructive border-destructive/30 hover:bg-destructive/10"
+            onClick={() => setDeleteDialogOpen(true)}
+          >
+            <Trash2 className="h-4 w-4 mr-1" />
+            Delete
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -269,6 +299,36 @@ export default function ScriptEditorPage() {
           Phone Operations
         </Button>
       </div>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this call script?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the script, its sections, and call outcome definitions tied to this script. Call lists that
+              used it will no longer link to this script.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteScript.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteScript.isPending}
+              onClick={() => {
+                void deleteScript
+                  .mutateAsync(script.script_id)
+                  .then(() => {
+                    toast.success('Script deleted')
+                    router.push(`/campaigns/${campaignId}/phone`)
+                  })
+                  .catch((err: Error) => toast.error(err.message))
+              }}
+            >
+              {deleteScript.isPending ? 'Deleting…' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

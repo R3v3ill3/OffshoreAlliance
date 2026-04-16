@@ -139,3 +139,23 @@ export function useUpdateCallScript(campaignId: number | string) {
     },
   })
 }
+
+export function useDeleteCallScript(campaignId: number | string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (scriptId: number) => {
+      const res = await fetch(`/api/campaigns/${campaignId}/call-scripts/${scriptId}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed to delete script' }))
+        throw new Error(err.error || 'Failed to delete script')
+      }
+    },
+    onSuccess: (_data, scriptId) => {
+      queryClient.invalidateQueries({ queryKey: ['call-scripts', String(campaignId)] })
+      queryClient.removeQueries({ queryKey: ['call-script', String(campaignId), String(scriptId)] })
+    },
+  })
+}

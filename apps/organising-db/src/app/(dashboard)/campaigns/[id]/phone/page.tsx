@@ -1,17 +1,29 @@
 'use client'
 
+import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useCallLists } from '@/lib/hooks/useCallList'
-import { useCallScripts } from '@/lib/hooks/useCallScripts'
-import type { CallListWithStats } from '@/types/planner-types'
+import { useCallScripts, useDeleteCallScript } from '@/lib/hooks/useCallScripts'
+import type { CallListWithStats, CallScriptWithSections } from '@/types/planner-types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   Phone, Plus, Play, Pause, FileText, Users, ArrowLeft,
-  Loader2, BarChart3, Edit,
+  Loader2, BarChart3, Edit, Trash2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-700',
@@ -28,6 +40,8 @@ export default function PhoneOpsPage() {
 
   const { data: lists, isLoading: listsLoading } = useCallLists(campaignId)
   const { data: scripts, isLoading: scriptsLoading } = useCallScripts(campaignId)
+  const deleteScript = useDeleteCallScript(campaignId)
+  const [scriptPendingDelete, setScriptPendingDelete] = useState<CallScriptWithSections | null>(null)
 
   const activeLists = lists?.filter((l) => l.status === 'active') || []
   const otherLists = lists?.filter((l) => l.status !== 'active') || []
@@ -82,9 +96,25 @@ export default function PhoneOpsPage() {
                         {script.call_script_sections?.length || 0} sections
                       </p>
                     </div>
-                    <Badge className={STATUS_COLORS[script.status] || ''} variant="secondary">
-                      {script.status}
-                    </Badge>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Badge className={STATUS_COLORS[script.status] || ''} variant="secondary">
+                        {script.status}
+                      </Badge>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        title="Delete script"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setScriptPendingDelete(script)
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -101,6 +131,44 @@ export default function PhoneOpsPage() {
           </Card>
         )}
       </div>
+
+      <AlertDialog
+        open={scriptPendingDelete != null}
+        onOpenChange={(open) => {
+          if (!open) setScriptPendingDelete(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete call script?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes “{scriptPendingDelete?.title}”, its sections, and call outcome definitions for this script.
+              Call lists that used it will no longer be linked to this script (you can attach a different script from
+              list settings).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteScript.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteScript.isPending}
+              onClick={() => {
+                if (!scriptPendingDelete) return
+                const id = scriptPendingDelete.script_id
+                void deleteScript
+                  .mutateAsync(id)
+                  .then(() => {
+                    toast.success('Script deleted')
+                    setScriptPendingDelete(null)
+                  })
+                  .catch((err: Error) => toast.error(err.message))
+              }}
+            >
+              {deleteScript.isPending ? 'Deleting…' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Active call lists */}
       {activeLists.length > 0 && (

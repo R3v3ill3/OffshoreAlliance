@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -26,6 +27,13 @@ interface VariationRow {
   savedScriptId: number | null
   isGenerating: boolean
   error: string | null
+}
+
+interface BatchGenerateUi {
+  label: string
+  step: number
+  total: number
+  progress: number
 }
 
 export interface ScriptVariationsPanelProps {
@@ -62,6 +70,8 @@ export function ScriptVariationsPanel({
     () => new Set(PRESET_SEGMENTS.map((s) => s.key))
   )
   const [variations, setVariations] = useState<VariationRow[]>([])
+  const [batchGenerateUi, setBatchGenerateUi] = useState<BatchGenerateUi | null>(null)
+  const batchRunRef = useRef(false)
 
   useEffect(() => {
     setVariations((prev) => {
@@ -178,11 +188,35 @@ export function ScriptVariationsPanel({
     ]
   )
 
+  const anyGenerating = variations.some((v) => v.isGenerating)
+  const generationLocked = batchGenerateUi != null || anyGenerating
+
   async function handleGenerateEnabled() {
-    for (const seg of PRESET_SEGMENTS) {
-      if (enabledKeys.has(seg.key)) {
+    const enabled = PRESET_SEGMENTS.filter((seg) => enabledKeys.has(seg.key))
+    if (enabled.length === 0 || batchRunRef.current) return
+    if (variations.some((v) => v.isGenerating)) return
+    batchRunRef.current = true
+    try {
+      for (let i = 0; i < enabled.length; i++) {
+        const seg = enabled[i]
+        setBatchGenerateUi({
+          label: seg.label,
+          step: i + 1,
+          total: enabled.length,
+          progress: (i / enabled.length) * 100,
+        })
         await handleGenerateOne(seg.key, seg.label)
       }
+      setBatchGenerateUi({
+        label: '',
+        step: enabled.length,
+        total: enabled.length,
+        progress: 100,
+      })
+      await new Promise((r) => setTimeout(r, 400))
+    } finally {
+      batchRunRef.current = false
+      setBatchGenerateUi(null)
     }
   }
 
@@ -252,10 +286,14 @@ export function ScriptVariationsPanel({
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-3 items-center">
           {PRESET_SEGMENTS.map((seg) => (
-            <label key={seg.key} className="flex items-center gap-1.5 text-xs cursor-pointer">
+            <label
+              key={seg.key}
+              className={`flex items-center gap-1.5 text-xs ${generationLocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+            >
               <Checkbox
                 checked={enabledKeys.has(seg.key)}
                 onCheckedChange={() => toggleSegment(seg.key)}
+                disabled={generationLocked}
               />
               {seg.label}
             </label>
@@ -266,12 +304,58 @@ export function ScriptVariationsPanel({
             size="sm"
             className="h-7 text-xs"
             onClick={() => void handleGenerateEnabled()}
-            disabled={enabledKeys.size === 0}
+            disabled={enabledKeys.size === 0 || generationLocked}
           >
-            <Sparkles className="h-3 w-3 mr-1" />
-            Generate selected
+            {batchGenerateUi ? (
+              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+            ) : (
+              <Sparkles className="h-3 w-3 mr-1" />
+            )}
+            {batchGenerateUi ? 'Generating…' : 'Generate selected'}
           </Button>
         </div>
+
+        {batchGenerateUi && (
+          <div
+            className="rounded-lg border border-primary/25 bg-primary/[0.06] px-3 py-3 space-y-2.5 shadow-sm"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <div className="flex items-start gap-2.5">
+              <Loader2 className="h-4 w-4 text-primary animate-spin shrink-0 mt-0.5" aria-hidden />
+              <div className="flex-1 min-w-0 space-y-0.5">
+                <p className="text-xs font-medium text-foreground">
+                  Generating audience variation {batchGenerateUi.step} of {batchGenerateUi.total}
+                </p>
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  {batchGenerateUi.progress >= 100 ? (
+                    <span className="text-green-700 dark:text-green-400">All variations ready.</span>
+                  ) : (
+                    <>
+                      Tailoring script for{' '}
+                      <span className="font-medium text-foreground">{batchGenerateUi.label}</span>
+                      <span className="inline-block ml-1 animate-pulse">…</span>
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className="space-y-1.5 pl-0.5">
+              <Progress value={batchGenerateUi.progress} className="h-1.5" />
+              {batchGenerateUi.progress < 100 && (
+                <div className="h-1 rounded-full bg-primary/15 overflow-hidden">
+                  <div
+                    className="h-full w-[38%] rounded-full bg-primary/60"
+                    style={{
+                      animation: 'variation-batch-shimmer 1.35s ease-in-out infinite',
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="space-y-3">
           {variations.map((v) => (
@@ -285,7 +369,7 @@ export function ScriptVariationsPanel({
                       size="sm"
                       className="h-7 text-xs"
                       onClick={() => void handleGenerateOne(v.segmentKey, v.segmentLabel)}
-                      disabled={v.isGenerating}
+                      disabled={v.isGenerating || batchGenerateUi != null}
                     >
                       {v.isGenerating ? (
                         <Loader2 className="h-3 w-3 animate-spin" />

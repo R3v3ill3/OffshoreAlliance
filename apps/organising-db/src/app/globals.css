@@ -89,6 +89,16 @@
   --sidebar-accent-foreground: 210 40% 98%;
 }
 
+/* Script variation batch generation — indeterminate activity bar */
+@keyframes variation-batch-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
 @layer base {
   * {
     @apply border-border;

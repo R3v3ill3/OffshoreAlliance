@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,9 @@ import type {
   WallChartRoleType,
   WallChartWorker,
 } from "./wall-chart/types";
+import { WallChartUnitManager } from "./wall-chart/wall-chart-unit-manager";
+import { CreateOrganisingUnitDialog } from "./wall-chart/create-organising-unit-dialog";
+import { useWallChartUnitVisibility } from "./wall-chart/use-wall-chart-unit-visibility";
 
 export function CampaignWallChart({
   campaignId,
@@ -65,8 +69,11 @@ export function CampaignWallChart({
   canWrite: boolean;
 }) {
   const supabase = createClient();
+  const queryClient = useQueryClient();
   const [selectedWorkerId, setSelectedWorkerId] = useState<number | null>(null);
   const [copyWorkerId, setCopyWorkerId] = useState<number | null>(null);
+  const [createUnitOpen, setCreateUnitOpen] = useState(false);
+  const unitVisibility = useWallChartUnitVisibility(campaignId);
 
   // Multi-select state for bulk Move/Copy/Link actions.
   const selection = useWallChartSelection();
@@ -145,9 +152,35 @@ export function CampaignWallChart({
         .from("campaign_organising_units")
         .select("*")
         .eq("campaign_id", campaignId)
-        .order("name");
+        .order("display_order", { ascending: true })
+        .order("name", { ascending: true });
       if (error) throw error;
       return (data ?? []) as WallChartOU[];
+    },
+  });
+
+  const visibleOus = useMemo(
+    () => ous.filter((ou) => !unitVisibility.hiddenOuIds.has(ou.ou_id)),
+    [ous, unitVisibility.hiddenOuIds]
+  );
+
+  const nextDisplayOrder = useMemo(() => {
+    if (ous.length === 0) return 0;
+    return Math.max(...ous.map((o) => o.display_order ?? 0)) + 1;
+  }, [ous]);
+
+  const reorderOus = useAuthAwareMutation({
+    mutationFn: async (orderedOuIds: number[]) => {
+      for (let i = 0; i < orderedOuIds.length; i++) {
+        const { error } = await supabase
+          .from("campaign_organising_units")
+          .update({ display_order: i })
+          .eq("ou_id", orderedOuIds[i]);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignId] });
     },
   });
 
@@ -516,6 +549,17 @@ export function CampaignWallChart({
               Links{overlayEnabled ? ` (${allLinks.length})` : ""}
             </Button>
           }
+          rightSlot={
+            <WallChartUnitManager
+              ous={ous}
+              canWrite={canWrite}
+              hiddenOuIds={unitVisibility.hiddenOuIds}
+              onToggleHidden={unitVisibility.toggleOu}
+              onShowAllHidden={unitVisibility.showAll}
+              onReorder={(ids) => reorderOus.mutate(ids)}
+              onOpenCreateUnit={() => setCreateUnitOpen(true)}
+            />
+          }
         />
 
         {campaignGreySlots > 0 && (
@@ -587,10 +631,14 @@ export function CampaignWallChart({
         {ous.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Add organising units to group workers into frames on the wall chart. Until then, members
-            appear under unassigned above (if any).
+            appear under unassigned above (if any). Use New unit above when you have access.
+          </p>
+        ) : visibleOus.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            All organising units are hidden for this browser. Open Units and tick the units you want to see.
           </p>
         ) : (
-          ous.map((ou) => {
+          visibleOus.map((ou) => {
             const ids = workersByOu.get(ou.ou_id) ?? [];
             const est = ou.total_workers_estimated ?? 0;
             const filter = getFilter(ou.ou_id);
@@ -731,6 +779,13 @@ export function CampaignWallChart({
           }}
         />
       )}
+
+      <CreateOrganisingUnitDialog
+        open={createUnitOpen}
+        onOpenChange={setCreateUnitOpen}
+        campaignId={campaignId}
+        displayOrder={nextDisplayOrder}
+      />
     </Card>
   );
 }

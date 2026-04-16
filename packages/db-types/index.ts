@@ -1227,6 +1227,7 @@ export type Database = {
           campaign_id: number
           commonality_logic: string | null
           created_at: string
+          display_order: number
           name: string
           ou_id: number
           ou_type: string
@@ -1241,6 +1242,7 @@ export type Database = {
           campaign_id: number
           commonality_logic?: string | null
           created_at?: string
+          display_order?: number
           name: string
           ou_id?: number
           ou_type: string
@@ -1255,6 +1257,7 @@ export type Database = {
           campaign_id?: number
           commonality_logic?: string | null
           created_at?: string
+          display_order?: number
           name?: string
           ou_id?: number
           ou_type?: string

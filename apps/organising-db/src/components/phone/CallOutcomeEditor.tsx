@@ -220,6 +220,8 @@ export function CallOutcomeEditor({
         try {
           const result = await addAmbition.mutateAsync({
             plan_id: activeStagePlan.plan_id,
+            campaign_id: campaignId,
+            stage_number: activeStagePlan.stage_number,
             custom_text: o.name,
             metric_type: 'count',
           })

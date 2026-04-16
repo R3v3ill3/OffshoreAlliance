@@ -34,6 +34,7 @@ export type WallChartOU = {
   name: string | null;
   ou_type: string | null;
   total_workers_estimated: number | null;
+  display_order?: number;
 };
 
 export type WallChartOUAssignment = {

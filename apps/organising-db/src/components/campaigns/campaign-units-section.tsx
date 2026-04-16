@@ -208,7 +208,8 @@ export function CampaignUnitsSection({
         .from("campaign_organising_units")
         .select("*")
         .eq("campaign_id", campaignId)
-        .order("name");
+        .order("display_order", { ascending: true })
+        .order("name", { ascending: true });
       if (error) throw error;
       return data ?? [];
     },
@@ -402,6 +403,13 @@ export function CampaignUnitsSection({
       estimated_workers: number | null;
       commonality_logic: string | null;
     }) => {
+      const { data: maxRow } = await supabase
+        .from("campaign_organising_units")
+        .select("display_order")
+        .eq("campaign_id", Number(campaignId))
+        .order("display_order", { ascending: false })
+        .limit(1)
+        .maybeSingle();
       const { data: ou, error: ouErr } = await supabase
         .from("campaign_organising_units")
         .insert({
@@ -411,6 +419,7 @@ export function CampaignUnitsSection({
           total_workers_estimated: c.estimated_workers,
           commonality_logic: c.commonality_logic,
           source: "wtp_seeded",
+          display_order: (maxRow?.display_order != null ? Number(maxRow.display_order) : -1) + 1,
         })
         .select("ou_id")
         .single();
@@ -461,10 +470,19 @@ export function CampaignUnitsSection({
 
   const createOu = useAuthAwareMutation({
     mutationFn: async () => {
+      const { data: maxRow } = await supabase
+        .from("campaign_organising_units")
+        .select("display_order")
+        .eq("campaign_id", Number(campaignId))
+        .order("display_order", { ascending: false })
+        .limit(1)
+        .maybeSingle();
       const payload: Record<string, unknown> = {
         campaign_id: Number(campaignId),
         name: ouForm.name,
         ou_type: ouForm.ou_type,
+        display_order: (maxRow?.display_order != null ? Number(maxRow.display_order) : -1) + 1,
+        source: "manual",
       };
       if (ouForm.total_workers_estimated) {
         const n = Number(ouForm.total_workers_estimated);

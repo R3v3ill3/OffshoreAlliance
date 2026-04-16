@@ -40,6 +40,33 @@ export const AN_VARIABLE_MAP: Record<string, string> = {
   occupation: '[contact.custom_fields.occupation]',
 }
 
+/** Matches `{{key}}` or `{{ key }}` for template substitution. */
+const TEMPLATE_TOKEN_RE = /\{\{\s*(\w+)\s*\}\}/g
+
+/**
+ * Merge campaign template context with per-worker fields for live phone script display.
+ * Worker wins for contact fields when non-empty; employer/worksite fall back to campaign.
+ */
+export function mergePhoneScriptVariableContext(
+  campaign: Record<string, string | undefined>,
+  worker: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = { ...campaign }
+  for (const k of ['first_name', 'last_name', 'occupation', 'phone', 'email'] as const) {
+    const v = worker[k]
+    if (v != null && v !== '') out[k] = v
+  }
+  out.employer_name =
+    worker.employer_name != null && worker.employer_name !== ''
+      ? worker.employer_name
+      : campaign.employer_name
+  out.worksite_name =
+    worker.worksite_name != null && worker.worksite_name !== ''
+      ? worker.worksite_name
+      : campaign.worksite_name
+  return out
+}
+
 export const SAMPLE_DATA: Record<string, string> = {
   first_name: 'Alex',
   last_name: 'Mitchell',
@@ -61,7 +88,7 @@ export function resolveTemplateVariables(
   text: string,
   campaignContext: Record<string, string | undefined>,
 ): string {
-  return text.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+  return text.replace(TEMPLATE_TOKEN_RE, (match, key) => {
     if (key in AN_VARIABLE_MAP) return match
     const value = campaignContext[key]
     return value || match
@@ -77,14 +104,14 @@ export function resolveScriptVariables(
   text: string,
   context: Record<string, string | undefined>,
 ): string {
-  return text.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+  return text.replace(TEMPLATE_TOKEN_RE, (match, key) => {
     const value = context[key]
     return value ?? match
   })
 }
 
 export function translateToActionNetwork(text: string): string {
-  return text.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+  return text.replace(TEMPLATE_TOKEN_RE, (match, key) => {
     return AN_VARIABLE_MAP[key] || match
   })
 }

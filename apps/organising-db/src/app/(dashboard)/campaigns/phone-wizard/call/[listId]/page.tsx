@@ -5,6 +5,8 @@ import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { callFlowReducer, getInitialCallFlowState, canAdvanceSection, canGoBack, isCallActive } from '@/lib/phone/call-flow-state'
 import { useCallOutcomeDefinitions } from '@/lib/hooks/useCallOutcomes'
+import { useCampaignPhoneScriptContext } from '@/lib/hooks/useCampaignPhoneScriptContext'
+import { mergePhoneScriptVariableContext } from '@/lib/comms/template-variables'
 import { ContactCard } from '@/components/phone/ContactCard'
 import { DialOutcomeBar } from '@/components/phone/DialOutcomeBar'
 import { ConversationStepper } from '@/components/phone/ConversationStepper'
@@ -107,6 +109,17 @@ export default function PhoneWizardCallPage() {
 
   const { data: outcomeDefinitions = [] } = useCallOutcomeDefinitions(list?.script_id ?? null)
 
+  const scriptCampaignIdForContext = useMemo(() => {
+    if (!list) return null
+    if (list.campaign_id != null && list.campaign_id > 0) return list.campaign_id
+    const raw = list as unknown as Record<string, unknown>
+    const cs = raw.call_scripts as { campaign_id?: number | null } | null | undefined
+    const cid = cs?.campaign_id
+    return cid != null && cid > 0 ? cid : null
+  }, [list])
+
+  const { data: campaignScriptCtx } = useCampaignPhoneScriptContext(scriptCampaignIdForContext)
+
   const { membershipHeroOutcomes, otherOutcomes, showingRecruitPrompt } = useMemo(
     () =>
       partitionCallOutcomeDefinitions(outcomeDefinitions, {
@@ -181,9 +194,9 @@ export default function PhoneWizardCallPage() {
   const sortedSections = [...sections].sort((a, b) => a.sort_order - b.sort_order)
   const currentSection = sortedSections[flowState.currentSectionIndex] || null
 
-  const workerContext = useMemo(() => {
+  const scriptContext = useMemo(() => {
     const w = contact?.worker
-    return {
+    const workerFields = {
       first_name: w?.first_name || undefined,
       last_name: w?.last_name || undefined,
       occupation: w?.occupation || undefined,
@@ -192,7 +205,8 @@ export default function PhoneWizardCallPage() {
       phone: w?.phone || undefined,
       email: w?.email || undefined,
     } as Record<string, string | undefined>
-  }, [contact?.worker])
+    return mergePhoneScriptVariableContext(campaignScriptCtx ?? {}, workerFields)
+  }, [contact?.worker, campaignScriptCtx])
 
   useEffect(() => {
     if (contact && flowState.phase === 'idle') {
@@ -346,7 +360,7 @@ export default function PhoneWizardCallPage() {
                   currentIndex={flowState.currentSectionIndex}
                   onGoToSection={(i) => { handleGoToSection(i); setScriptPanelOpen(false) }}
                   reachedSections={stepReached}
-                  workerContext={workerContext}
+                  workerContext={scriptContext}
                 />
               </div>
             </SheetContent>
@@ -393,7 +407,7 @@ export default function PhoneWizardCallPage() {
                   onGoBack={() => canGoBack(flowState) && dispatch({ type: 'GO_TO_SECTION', sectionIndex: flowState.currentSectionIndex - 1 })}
                   canAdvance={canAdvanceSection(flowState, sortedSections.length)}
                   canGoBack={canGoBack(flowState)}
-                  workerContext={workerContext}
+                  workerContext={scriptContext}
                 />
               )}
 
@@ -533,7 +547,7 @@ export default function PhoneWizardCallPage() {
               currentIndex={flowState.currentSectionIndex}
               onGoToSection={handleGoToSection}
               reachedSections={stepReached}
-              workerContext={workerContext}
+              workerContext={scriptContext}
             />
           ) : (
             <div className="text-center py-12">

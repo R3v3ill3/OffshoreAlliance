@@ -33,7 +33,7 @@ import { format, parseISO, isValid } from 'date-fns'
 import { Trash2, Plus, CheckCircle, Calendar, Link2 } from 'lucide-react'
 import { formatCategoryLabel } from '@/lib/utils/option-sorting'
 import { isAmbitionMetricIncomplete } from '@/lib/planning/ambition-metric-status'
-import type { PlanAmbition } from '@/types/planner-types'
+import type { PlanAmbition, AmbitionScope } from '@/types/planner-types'
 import { toast } from 'sonner'
 
 type AmbitionRow = PlanAmbition & {
@@ -43,7 +43,19 @@ type AmbitionRow = PlanAmbition & {
     has_variable: boolean | null
     variable_label: string | null
     variable_type: string | null
+    default_scope?: string | null
   } | null
+}
+
+/**
+ * Infer a sensible default scope for a custom ambition based on its metric.
+ * Text / date metrics look like milestone or evidence gates (setup); numeric
+ * metrics default to worker_assessable so ratings can roll up.
+ */
+function defaultScopeForCustomMetric(
+  metric: 'count' | 'percentage' | 'range' | 'boolean' | 'text'
+): AmbitionScope {
+  return metric === 'text' ? 'campaign_setup' : 'worker_assessable'
 }
 
 interface AmbitionPanelProps {
@@ -188,6 +200,8 @@ export function AmbitionPanel({
     const fullOption = options?.find((o) => o.option_id === option.id)
     if (!fullOption) return
 
+    const optionScope = (fullOption.default_scope as AmbitionScope | undefined) ?? 'worker_assessable'
+
     try {
       await addAmbition.mutateAsync({
         plan_id: planId,
@@ -197,6 +211,7 @@ export function AmbitionPanel({
         target_date: defaultTargetDate || undefined,
         target_date_user_overridden: false,
         sort_order: ambitions.length,
+        ambition_scope: optionScope,
         campaign_id: campaignId,
         stage_number: stageNumber,
       })
@@ -245,6 +260,7 @@ export function AmbitionPanel({
         target_date: customTargetDate || defaultTargetDate || undefined,
         target_date_user_overridden: !!(customTargetDate && customTargetDate !== defaultTargetDate),
         sort_order: ambitions.length,
+        ambition_scope: defaultScopeForCustomMetric(customMetric),
         campaign_id: campaignId,
         stage_number: stageNumber,
       })
@@ -529,11 +545,40 @@ export function AmbitionPanel({
                           Membership
                         </Badge>
                       )}
+                      {ambition.ambition_scope === 'campaign_setup' ? (
+                        <Badge variant="outline" className="text-xs border-slate-300 text-slate-600">
+                          Setup (not per-worker)
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs border-sky-300 text-sky-700 bg-sky-50">
+                          Worker-assessable
+                        </Badge>
+                      )}
                       {metricIncomplete && (
                         <Badge className="text-xs bg-amber-100 text-amber-900 hover:bg-amber-100 border-amber-200">
                           Target not set
                         </Badge>
                       )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Label className="text-xs text-muted-foreground whitespace-nowrap">Scope:</Label>
+                      <Select
+                        value={ambition.ambition_scope}
+                        onValueChange={(v) =>
+                          void patchAmbition(ambition.ambition_id, {
+                            ambition_scope: v as AmbitionScope,
+                          })
+                        }
+                      >
+                        <SelectTrigger className="h-8 w-[220px] text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="worker_assessable">Worker-assessable (rolled up)</SelectItem>
+                          <SelectItem value="campaign_setup">Campaign setup (not per-worker)</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">

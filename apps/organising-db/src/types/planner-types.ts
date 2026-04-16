@@ -20,6 +20,10 @@ export type PlanTheoryOfWinning = Tables['plan_theory_of_winning']['Row']
 export type PlanCapacity = Tables['plan_capacities']['Row']
 export type PlanManagementSystem = Tables['plan_management_systems']['Row']
 
+// Assessment linkage
+export type ActivityAmbition = Tables['activity_ambitions']['Row']
+export type RatingLevelRow = Tables['rating_level']['Row']
+
 // Options tables
 export type AmbitionOption = Tables['ambition_options']['Row']
 export type WtpCategory = Tables['wtp_categories']['Row']
@@ -66,6 +70,119 @@ export type MetricType = 'percentage' | 'count' | 'boolean' | 'date' | 'range' |
 export type VariableType = 'number' | 'percentage' | 'text' | 'date'
 export type FrequencyType = 'daily' | 'weekly' | 'fortnightly' | 'monthly' | 'as_needed'
 export type SnapshotType = 'daily' | 'weekly' | 'gate_review' | 'manual'
+
+/**
+ * An ambition is either a campaign-setup item (not tracked per worker —
+ * e.g. "100% of names/emails/phones", "identify 10–30 worker units") or a
+ * worker-assessable item whose progress is aggregated from per-worker
+ * ratings via activity_ambitions. Only worker_assessable ambitions may
+ * be linked to campaign_activities.
+ */
+export type AmbitionScope = 'campaign_setup' | 'worker_assessable'
+
+export const AMBITION_SCOPE_LABELS: Record<AmbitionScope, string> = {
+  campaign_setup: 'Campaign setup (not per-worker)',
+  worker_assessable: 'Worker-assessable (tracked per worker)',
+}
+
+/** Ratings captured before vs after a scheduled event (meeting, vote, etc.). */
+export type RatingPhase = 'expected' | 'actual'
+
+/**
+ * Canonical 1..5 + unassessed (0) rating scale. Mirrors the seeded
+ * rating_level table so the UI has a synchronous source of truth
+ * without needing a query to render colours/labels.
+ */
+export type RatingLevelCode =
+  | 'unassessed'
+  | 'supportive_leader'
+  | 'supporter'
+  | 'neutral'
+  | 'opposed'
+  | 'oppositional_leader'
+
+export type RatingLevelValue = 0 | 1 | 2 | 3 | 4 | 5
+
+export interface RatingLevelDef {
+  value: RatingLevelValue
+  code: RatingLevelCode
+  label: string
+  shortLabel: string
+  description: string
+  isSupportive: boolean
+  tailwindBg: string
+  colourToken: 'zinc' | 'sky' | 'emerald' | 'amber' | 'red' | 'red-dark'
+}
+
+export const RATING_LEVELS: RatingLevelDef[] = [
+  {
+    value: 0,
+    code: 'unassessed',
+    label: 'Unassessed',
+    shortLabel: 'Unassessed',
+    description: 'No assessment recorded yet for this worker on this activity / ambition.',
+    isSupportive: false,
+    tailwindBg: 'bg-zinc-300/80 dark:bg-zinc-600/80',
+    colourToken: 'zinc',
+  },
+  {
+    value: 1,
+    code: 'supportive_leader',
+    label: 'Supportive leader',
+    shortLabel: 'Leader',
+    description: 'Actively encourages other workers to engage; takes on asks.',
+    isSupportive: true,
+    tailwindBg: 'bg-sky-600/35',
+    colourToken: 'sky',
+  },
+  {
+    value: 2,
+    code: 'supporter',
+    label: 'Supporter',
+    shortLabel: 'Supporter',
+    description: 'Supports the campaign / position but not actively organising others.',
+    isSupportive: true,
+    tailwindBg: 'bg-emerald-600/35',
+    colourToken: 'emerald',
+  },
+  {
+    value: 3,
+    code: 'neutral',
+    label: 'Neutral',
+    shortLabel: 'Neutral',
+    description: 'Undecided; not yet engaged with the campaign.',
+    isSupportive: false,
+    tailwindBg: 'bg-amber-600/35',
+    colourToken: 'amber',
+  },
+  {
+    value: 4,
+    code: 'opposed',
+    label: 'Opposed',
+    shortLabel: 'Opposed',
+    description: 'Individually opposes the campaign / position.',
+    isSupportive: false,
+    tailwindBg: 'bg-red-600/35',
+    colourToken: 'red',
+  },
+  {
+    value: 5,
+    code: 'oppositional_leader',
+    label: 'Oppositional leader',
+    shortLabel: 'Opp. leader',
+    description: 'Actively encourages other workers to oppose or disengage.',
+    isSupportive: false,
+    tailwindBg: 'bg-red-700/50',
+    colourToken: 'red-dark',
+  },
+]
+
+/** Map a numeric rating (1..5 or NULL → 0 unassessed) to its definition. */
+export function ratingLevelFor(value: number | null | undefined): RatingLevelDef {
+  if (value == null) return RATING_LEVELS[0]
+  const rounded = Math.round(value) as RatingLevelValue
+  return RATING_LEVELS.find((r) => r.value === rounded) ?? RATING_LEVELS[0]
+}
 
 // AI Theory of Winning types
 export interface GapAnalysisItem {

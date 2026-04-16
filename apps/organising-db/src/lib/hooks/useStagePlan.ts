@@ -265,6 +265,12 @@ export function useAddAmbition() {
       is_hard_gate?: boolean
       target_date_user_overridden?: boolean
       sort_order?: number
+      /**
+       * 'campaign_setup' = non-worker tracking (lists, unit id, timelines).
+       * 'worker_assessable' = rolled up from campaign_activity_ratings.
+       * Defaults server-side to 'worker_assessable' if omitted.
+       */
+      ambition_scope?: import('@/types/planner-types').AmbitionScope
       campaign_id: number
       stage_number: number
     }) => {
@@ -327,6 +333,7 @@ export function useUpdateAmbition() {
       metric_type?: string | null
       current_value?: string | null
       evidence_notes?: string | null
+      ambition_scope?: import('@/types/planner-types').AmbitionScope
       campaign_id: number
       stage_number: number
     }) => {

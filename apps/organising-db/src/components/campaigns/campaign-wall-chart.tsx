@@ -60,6 +60,7 @@ import type {
 import { WallChartUnitManager } from "./wall-chart/wall-chart-unit-manager";
 import { CreateOrganisingUnitDialog } from "./wall-chart/create-organising-unit-dialog";
 import { useWallChartUnitVisibility } from "./wall-chart/use-wall-chart-unit-visibility";
+import { CreateAssessmentDialog } from "./assessments/create-assessment-dialog";
 
 export function CampaignWallChart({
   campaignId,
@@ -73,6 +74,7 @@ export function CampaignWallChart({
   const [selectedWorkerId, setSelectedWorkerId] = useState<number | null>(null);
   const [copyWorkerId, setCopyWorkerId] = useState<number | null>(null);
   const [createUnitOpen, setCreateUnitOpen] = useState(false);
+  const [createAssessmentOpen, setCreateAssessmentOpen] = useState(false);
   const unitVisibility = useWallChartUnitVisibility(campaignId);
 
   // Multi-select state for bulk Move/Copy/Link actions.
@@ -550,15 +552,28 @@ export function CampaignWallChart({
             </Button>
           }
           rightSlot={
-            <WallChartUnitManager
-              ous={ous}
-              canWrite={canWrite}
-              hiddenOuIds={unitVisibility.hiddenOuIds}
-              onToggleHidden={unitVisibility.toggleOu}
-              onShowAllHidden={unitVisibility.showAll}
-              onReorder={(ids) => reorderOus.mutate(ids)}
-              onOpenCreateUnit={() => setCreateUnitOpen(true)}
-            />
+            <div className="flex items-center gap-2">
+              {canWrite && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs print:hidden"
+                  onClick={() => setCreateAssessmentOpen(true)}
+                >
+                  Add assessment
+                </Button>
+              )}
+              <WallChartUnitManager
+                ous={ous}
+                canWrite={canWrite}
+                hiddenOuIds={unitVisibility.hiddenOuIds}
+                onToggleHidden={unitVisibility.toggleOu}
+                onShowAllHidden={unitVisibility.showAll}
+                onReorder={(ids) => reorderOus.mutate(ids)}
+                onOpenCreateUnit={() => setCreateUnitOpen(true)}
+              />
+            </div>
           }
         />
 
@@ -785,6 +800,16 @@ export function CampaignWallChart({
         onOpenChange={setCreateUnitOpen}
         campaignId={campaignId}
         displayOrder={nextDisplayOrder}
+      />
+
+      <CreateAssessmentDialog
+        campaignId={campaignId}
+        open={createAssessmentOpen}
+        onOpenChange={setCreateAssessmentOpen}
+        lockKind="assessment"
+        onCreated={() => {
+          queryClient.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
+        }}
       />
     </Card>
   );

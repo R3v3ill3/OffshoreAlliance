@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
   useDeleteLeaderLink,
@@ -11,6 +13,12 @@ import {
 } from "./use-leader-links";
 import { BulkAddFollowersDialog } from "./bulk-add-followers-dialog";
 import { useLeaderUnitContext } from "./leader-unit-context";
+import { CreateTaskListDialog } from "../task-lists/create-task-list-dialog";
+import { RoleReassessPrompt } from "./role-reassess-prompt";
+import type { WallChartRoleType } from "./types";
+
+/** Roles that already imply leadership — skip the reassess prompt for these. */
+const LEADER_ROLE_TYPE_IDS = new Set<number>([7, 8]); // Delegate, Activist
 
 export type WorkerRelationshipsTabProps = {
   workerId: number;
@@ -21,6 +29,12 @@ export type WorkerRelationshipsTabProps = {
   canWrite: boolean;
   /** Optional: the viewing worker's enduring role — used to gate leader-side UI. */
   isLeader?: boolean;
+  /** Current member_role_type_id of the viewed worker — drives the post-task reassess prompt. */
+  currentRoleTypeId?: number | null;
+  /** Current role display name of the viewed worker — shown in the reassess prompt. */
+  currentRoleName?: string | null;
+  /** Available role types for the reassess prompt picker. */
+  roleTypes?: WallChartRoleType[];
 };
 
 export function WorkerRelationshipsTab({
@@ -29,14 +43,48 @@ export function WorkerRelationshipsTab({
   workerName,
   canWrite,
   isLeader = true,
+  currentRoleTypeId = null,
+  currentRoleName = null,
+  roleTypes = [],
 }: WorkerRelationshipsTabProps) {
+  const supabase = createClient();
   const asFollower = useLeaderLinksAsFollower({ campaignId, workerId });
   const asLeader = useLeaderLinksAsLeader({ campaignId, workerId });
   const deleteLink = useDeleteLeaderLink();
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [createTaskListOpen, setCreateTaskListOpen] = useState(false);
+  const [reassessOpen, setReassessOpen] = useState(false);
   // Unit context keyed to the viewer — used to chip each link row with whether
   // the counterparty shares an organising unit with them.
   const ctx = useLeaderUnitContext({ campaignId, leaderWorkerId: workerId });
+
+  const { data: ledTaskLists = [] } = useQuery({
+    queryKey: ["campaign-task-lists", campaignId, "for-leader", workerId],
+    enabled: !!campaignId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campaign_task_lists")
+        .select(
+          `task_list_id, title, status, activity_id,
+           activity:campaign_activities(title)`
+        )
+        .eq("campaign_id", campaignId!)
+        .eq("leader_worker_id", workerId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        task_list_id: number;
+        title: string | null;
+        status: string;
+        activity_id: number | null;
+        activity: { title: string } | { title: string }[] | null;
+      }>;
+    },
+  });
+
+  const displayWorkerName = workerName ?? "This worker";
+  const showReassessOnCreate =
+    currentRoleTypeId == null || !LEADER_ROLE_TYPE_IDS.has(currentRoleTypeId);
 
   return (
     <div className="space-y-5 py-3">
@@ -117,6 +165,50 @@ export function WorkerRelationshipsTab({
         </section>
       )}
 
+      {campaignId && (
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Tasks led by this worker
+            </h4>
+            {canWrite && (
+              <Button
+                type="button"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => setCreateTaskListOpen(true)}
+              >
+                New task list
+              </Button>
+            )}
+          </div>
+          {ledTaskLists.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No task lists led by this worker yet.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {ledTaskLists.map((tl) => {
+                const act = Array.isArray(tl.activity) ? tl.activity[0] : tl.activity;
+                return (
+                  <div
+                    key={tl.task_list_id}
+                    className="rounded border px-2 py-1.5 flex items-center justify-between text-xs"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{tl.title || "Untitled"}</p>
+                      <p className="text-muted-foreground">
+                        {act?.title ?? "Standalone"} · {tl.status}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
       {campaignId && bulkOpen && (
         <BulkAddFollowersDialog
           key={`bulk-${workerId}`}
@@ -127,6 +219,32 @@ export function WorkerRelationshipsTab({
           campaignId={campaignId}
           leaderWorkerId={workerId}
           leaderName={workerName}
+        />
+      )}
+
+      {campaignId && (
+        <CreateTaskListDialog
+          campaignId={campaignId}
+          open={createTaskListOpen}
+          onOpenChange={setCreateTaskListOpen}
+          leaderWorkerLock={{ workerId, workerName: displayWorkerName }}
+          onCreated={() => {
+            if (showReassessOnCreate && roleTypes.length > 0) {
+              setReassessOpen(true);
+            }
+          }}
+        />
+      )}
+
+      {campaignId && (
+        <RoleReassessPrompt
+          open={reassessOpen}
+          onOpenChange={setReassessOpen}
+          workerId={workerId}
+          workerName={displayWorkerName}
+          campaignId={campaignId}
+          currentRoleName={currentRoleName}
+          roleTypes={roleTypes}
         />
       )}
     </div>

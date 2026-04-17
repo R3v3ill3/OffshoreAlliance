@@ -211,8 +211,10 @@ export async function POST(
           source: "leader_form",
           rated_at: now,
           rated_by_user_id: null,
+          rating_phase: "actual",
+          event_id: null,
         },
-        { onConflict: "activity_id,worker_id" }
+        { onConflict: "activity_id,worker_id,rating_phase,event_id" }
       );
       if (upErr) throw upErr;
     }

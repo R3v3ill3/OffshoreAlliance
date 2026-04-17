@@ -93,17 +93,34 @@ export function useUpdatePlanAmbitionProgress() {
       ambition_id: number
       current_value?: string
       evidence_notes?: string
+      /** When true, the value is staff-set and ignores derived ambition_progress. */
+      current_value_overridden?: boolean
+      current_value_override_reason?: string | null
       campaign_id: number
       gate_number: number
     }) => {
-      const { ambition_id, current_value, evidence_notes, campaign_id: _c, gate_number: _g } = params
+      const {
+        ambition_id,
+        current_value,
+        evidence_notes,
+        current_value_overridden,
+        current_value_override_reason,
+      } = params
+
+      const updates: Record<string, unknown> = {
+        current_value: current_value ?? null,
+        evidence_notes: evidence_notes ?? null,
+      }
+      if (current_value_overridden != null) {
+        updates.current_value_overridden = current_value_overridden
+      }
+      if (current_value_override_reason !== undefined) {
+        updates.current_value_override_reason = current_value_override_reason
+      }
 
       const { error } = await supabase
         .from('plan_ambitions')
-        .update({
-          current_value: current_value ?? null,
-          evidence_notes: evidence_notes ?? null,
-        })
+        .update(updates)
         .eq('ambition_id', ambition_id)
 
       if (error) throw error
@@ -118,7 +135,33 @@ export function useUpdatePlanAmbitionProgress() {
       queryClient.invalidateQueries({
         queryKey: ['campaign-ambitions-by-stage', variables.campaign_id],
       })
+      queryClient.invalidateQueries({
+        queryKey: ['ambition-progress', variables.campaign_id],
+      })
     },
+  })
+}
+
+/**
+ * Fetch the derived `ambition_progress` rollup view for an entire
+ * campaign. Returns one row per worker_assessable ambition in the
+ * campaign; callers filter by plan_ambition_id as needed.
+ */
+export function useAmbitionProgress(campaignId: number) {
+  const supabase = createClient()
+
+  return useQuery({
+    queryKey: ['ambition-progress', campaignId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('ambition_progress')
+        .select('*')
+        .eq('campaign_id', campaignId)
+
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!campaignId,
   })
 }
 

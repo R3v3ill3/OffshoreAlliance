@@ -79,6 +79,9 @@ export function GateAmbitionAssessment({
         ambition_id: ambitionId,
         current_value: values[ambitionId],
         evidence_notes: notes[ambitionId],
+        // Any manual save from this UI is an explicit staff override of
+        // the derived ambition_progress value.
+        current_value_overridden: true,
         campaign_id: campaignId,
         gate_number: gate.gate_number,
       })

@@ -22,7 +22,27 @@ export type PlanManagementSystem = Tables['plan_management_systems']['Row']
 
 // Assessment linkage
 export type ActivityAmbition = Tables['activity_ambitions']['Row']
+export type ActivityEvent = Tables['activity_events']['Row']
 export type RatingLevelRow = Tables['rating_level']['Row']
+
+// Assessment capture sources
+export type SmsInteraction = Tables['sms_interactions']['Row']
+export type EmailCtaResponse = Tables['email_cta_responses']['Row']
+export type PetitionSignature = Tables['petition_signatures']['Row']
+export type MeetingAttendance = Tables['meeting_attendance']['Row']
+
+// Ambition rollup views
+export type WorkerAmbitionRating = Views['worker_ambition_rating']['Row']
+export type AmbitionProgress = Views['ambition_progress']['Row']
+export type AmbitionActivityContribution = Views['ambition_activity_contribution']['Row']
+
+export type MeetingAttendanceStatus =
+  | 'attending'
+  | 'not_attending'
+  | 'attended'
+  | 'did_not_attend'
+  | 'abstain'
+  | 'unknown'
 
 // Options tables
 export type AmbitionOption = Tables['ambition_options']['Row']
@@ -503,6 +523,10 @@ export interface CallOutcomeDefinition {
   description: string | null
   outcome_category: OutcomeCategory
   maps_to_ambition_id: number | null
+  /** Explicit rating (1..5) produced by this outcome. Overrides legacy composite. */
+  maps_to_rating_level: number | null
+  /** Optional binary value (e.g. yes/no/DNP) recorded alongside the rating. */
+  maps_to_binary_value: string | null
   is_positive: boolean
   sort_order: number
   response_type: OutcomeResponseType

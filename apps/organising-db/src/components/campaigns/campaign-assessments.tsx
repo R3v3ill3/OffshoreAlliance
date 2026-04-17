@@ -319,8 +319,10 @@ export function CampaignAssessmentsSection({
           binary_value: vars.binary_value ?? null,
           source: "staff",
           rated_at: new Date().toISOString(),
+          rating_phase: "actual",
+          event_id: null,
         },
-        { onConflict: "activity_id,worker_id" }
+        { onConflict: "activity_id,worker_id,rating_phase,event_id" }
       );
       if (error) throw error;
     },
@@ -357,12 +359,14 @@ export function CampaignAssessmentsSection({
           binary_value: nextBinary,
           source: "staff",
           rated_at: new Date().toISOString(),
+          rating_phase: "actual" as const,
+          event_id: null,
         };
       });
 
       const { error } = await supabase
         .from("campaign_activity_ratings")
-        .upsert(payload, { onConflict: "activity_id,worker_id" });
+        .upsert(payload, { onConflict: "activity_id,worker_id,rating_phase,event_id" });
       if (error) throw error;
     },
     onSuccess: () => {

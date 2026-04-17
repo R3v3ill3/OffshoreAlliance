@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { format, addDays, subDays } from 'date-fns'
 import { useAgreements, useLeadOrganisers, useCurrentUserProfile } from '@/lib/hooks/usePlannerOptions'
@@ -174,8 +173,7 @@ export function CampaignCreationWizard() {
 
   const isLinkedMode = !!linkedCampaignId
 
-  const queryClient = useQueryClient()
-  const { data: existingCampaign, isLoading: existingCampaignLoading, refetch: refetchExistingCampaign } =
+  const { data: existingCampaign, isLoading: existingCampaignLoading } =
     useExistingCampaignForPlanning(linkedCampaignId)
   const hasReplacementSubtypeOrExistingAgreementContext = Boolean(
     existingCampaign?.requires_replacement_agreement ||
@@ -495,12 +493,11 @@ export function CampaignCreationWizard() {
             <Button
               className="flex-1"
               onClick={() => {
+                // A held Web Lock survives resetClient() — only a full document
+                // unload reliably releases it. window.location.reload() forces
+                // the unload; the fresh page load gets a new client + new lock.
                 resetClient()
-                setLoadTimedOut(false)
-                queryClient.invalidateQueries({
-                  queryKey: ['existing-campaign-for-planning', linkedCampaignId],
-                })
-                refetchExistingCampaign()
+                window.location.reload()
               }}
             >
               Retry

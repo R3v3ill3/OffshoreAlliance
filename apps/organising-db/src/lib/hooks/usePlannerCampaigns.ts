@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Database } from '@/types/database'
 import { createClient } from '@/lib/supabase/client'
-import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
+import { useAuthAwareMutation, ensureValidSession } from '@/lib/hooks/useAuthAwareMutation'
 import { syncAmbitionTargetDatesForCampaign } from '@/lib/supabase/syncAmbitionTargetDates'
 import { logConnectionEvent, generateTraceId } from '@/lib/supabase/connection-monitor'
 
@@ -299,6 +299,11 @@ export function useExistingCampaignForPlanning(campaignId: number | null) {
       })
 
       try {
+        // Preemptively refresh the session before the query fires. Without this,
+        // a freshly-loaded page with a near-expiry token can hit an auth-client
+        // Web Lock deadlock that leaves the query hanging forever with no error.
+        await ensureValidSession()
+
         const campaignsStart = Date.now()
         const { data: campaign, error } = await supabase
           .from('campaigns')

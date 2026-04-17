@@ -352,7 +352,12 @@ export default function CampaignDetailPage() {
           </p>
         </div>
         {canWrite && (
-          <Button variant="outline">
+          <Button
+            variant="outline"
+            onClick={() =>
+              router.push(`/campaigns/new?cid=${campaignId}&edit=1`)
+            }
+          >
             <Pencil className="h-4 w-4" />
             Edit
           </Button>

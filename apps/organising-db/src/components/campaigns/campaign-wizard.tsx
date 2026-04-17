@@ -35,7 +35,10 @@ import type {
   EnterpriseAgreementSubtype,
 } from "@/types/database";
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
-import { resolveCampaignOrganiserId } from "@/lib/campaign/resolve-campaign-organiser";
+import {
+  campaignOrganiserPickerValueForUser,
+  resolveCampaignOrganiserId,
+} from "@/lib/campaign/resolve-campaign-organiser";
 import { CampaignOrganiserSelect } from "@/components/campaigns/campaign-organiser-select";
 import { StepEmployersWorksites } from "@/components/campaigns/step-employers-worksites";
 import { StepAllocateWorkers } from "@/components/campaigns/step-allocate-workers";
@@ -47,6 +50,12 @@ const SCOPES: CampaignScopeType[] = [
   "multi_employer_single_site",
   "multi_employer_multi_site",
 ];
+
+function formatDateForInput(d: string | null | undefined): string {
+  if (!d) return "";
+  const s = String(d);
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
 
 // ─── Replacement Agreement Picker ────────────────────────────────────────────
 
@@ -246,6 +255,8 @@ export function CampaignWizard() {
   const queryClient = useQueryClient();
   const { user, canWrite, isAdmin, profile, loading: authLoading } = useAuth();
   const permissionDeniedLoggedForUser = useRef<string | null>(null);
+  const basicsHydratedFor = useRef<number | null>(null);
+  const scopeHydratedFor = useRef<number | null>(null);
 
   useEffect(() => {
     if (authLoading || !user || canWrite) return;
@@ -259,10 +270,22 @@ export function CampaignWizard() {
   }, [user, canWrite, profile?.role, authLoading]);
 
   const initialCid = searchParams.get("cid");
-  const [step, setStep] = useState(initialCid ? 2 : 1);
+  const editMode = searchParams.get("edit") === "1";
+  const [basicsHydrated, setBasicsHydrated] = useState(() => !editMode);
+  const [step, setStep] = useState(() => {
+    if (!initialCid) return 1;
+    if (editMode) return 1;
+    return 2;
+  });
   const [campaignId, setCampaignId] = useState<number | null>(
     initialCid ? Number(initialCid) || null : null
   );
+
+  useEffect(() => {
+    scopeHydratedFor.current = null;
+    basicsHydratedFor.current = null;
+    setBasicsHydrated(!editMode);
+  }, [campaignId, editMode]);
 
   const [basics, setBasics] = useState({
     name: "",
@@ -287,7 +310,7 @@ export function CampaignWizard() {
 
   // ── Queries ───────────────────────────────────────────────────────────────
 
-  const { data: existingCampaign } = useQuery({
+  const { data: existingCampaign, isPending: existingCampaignLoading } = useQuery({
     queryKey: ["campaign-wizard", campaignId],
     queryFn: async () => {
       if (!campaignId) return null;
@@ -301,6 +324,87 @@ export function CampaignWizard() {
     },
     enabled: !!user && !!campaignId,
   });
+
+  const { data: wizardScope, isPending: wizardScopeLoading } = useQuery({
+    queryKey: ["campaign-wizard-scope", campaignId],
+    queryFn: async () => {
+      const cid = campaignId!;
+      const [ce, cw, cw2] = await Promise.all([
+        supabase.from("campaign_employers").select("employer_id").eq("campaign_id", cid),
+        supabase.from("campaign_worksites").select("worksite_id, sector_wide").eq("campaign_id", cid),
+        supabase.from("campaign_worker_membership").select("worker_id").eq("campaign_id", cid),
+      ]);
+      if (ce.error) throw ce.error;
+      if (cw.error) throw cw.error;
+      if (cw2.error) throw cw2.error;
+      const worksiteRows = cw.data ?? [];
+      const sectorWide = worksiteRows.some((w) => w.sector_wide && w.worksite_id == null);
+      return {
+        employers: (ce.data ?? []).map((r) => r.employer_id),
+        sectorWide,
+        worksites: worksiteRows.filter((w) => w.worksite_id != null).map((w) => w.worksite_id!),
+        workers: (cw2.data ?? []).map((r) => r.worker_id),
+      };
+    },
+    enabled: !!user && !!campaignId,
+  });
+
+  useEffect(() => {
+    if (!editMode || !campaignId || !existingCampaign) return;
+    if (basicsHydratedFor.current === campaignId) return;
+
+    let cancelled = false;
+    (async () => {
+      let organiser = "";
+      if (existingCampaign.organiser_id != null) {
+        const { data } = await supabase
+          .from("user_profiles")
+          .select("user_id")
+          .eq("organiser_id", existingCampaign.organiser_id)
+          .limit(1)
+          .maybeSingle();
+        if (cancelled) return;
+        organiser = data?.user_id
+          ? campaignOrganiserPickerValueForUser(data.user_id as string)
+          : String(existingCampaign.organiser_id);
+      }
+
+      const row = existingCampaign;
+      setBasics({
+        name: row.name ?? "",
+        description: row.description ?? "",
+        campaign_type: (row.campaign_type as CampaignType) ?? "organising",
+        enterprise_agreement_subtype:
+          (row.enterprise_agreement_subtype as EnterpriseAgreementSubtype | null) ?? "",
+        replaced_agreement_id: row.replaced_agreement_id ?? null,
+        status: (row.status as CampaignStatus) ?? "planning",
+        start_date: formatDateForInput(row.start_date),
+        end_date: formatDateForInput(row.end_date),
+        organiser_id: organiser,
+        notes: row.notes ?? "",
+        campaign_scope: (row.campaign_scope as CampaignScopeType | null) ?? "",
+        total_worker_estimate:
+          row.total_worker_estimate != null ? String(row.total_worker_estimate) : "",
+        sector_wide: row.sector_wide ?? false,
+      });
+      basicsHydratedFor.current = campaignId;
+      setBasicsHydrated(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editMode, campaignId, existingCampaign, supabase]);
+
+  useEffect(() => {
+    if (!campaignId || wizardScopeLoading || !wizardScope) return;
+    if (scopeHydratedFor.current === campaignId) return;
+    setSelectedEmployers(wizardScope.employers);
+    setWorksiteSectorWide(wizardScope.sectorWide);
+    setSelectedWorksites(wizardScope.worksites);
+    setSelectedWorkers(wizardScope.workers);
+    scopeHydratedFor.current = campaignId;
+  }, [campaignId, wizardScopeLoading, wizardScope]);
 
   // EA employers for the replaced agreement — used when auto-linking on save
   const { data: eaEmployerIds = [] } = useQuery<number[]>({
@@ -367,6 +471,57 @@ export function CampaignWizard() {
       queryClient.invalidateQueries({ queryKey: ["user-profiles-staff-organiser-picker"] });
       router.replace(`/campaigns/new?cid=${id}`);
       setStep(2);
+    },
+  });
+
+  const updateCampaignMutation = useAuthAwareMutation({
+    mutationFn: async () => {
+      if (!user || !campaignId) throw new Error("Not signed in or no campaign");
+
+      const resolvedOrganiserId = await resolveCampaignOrganiserId(supabase, basics.organiser_id, {
+        currentUserId: user.id,
+        isAdmin,
+      });
+
+      const payload: Record<string, unknown> = {
+        name: basics.name,
+        campaign_type: basics.campaign_type,
+        status: basics.status,
+        sector_wide: basics.sector_wide,
+        description: basics.description ?? null,
+        start_date: basics.start_date || null,
+        end_date: basics.end_date || null,
+        organiser_id: resolvedOrganiserId,
+        notes: basics.notes || null,
+        campaign_scope: basics.campaign_scope || null,
+        enterprise_agreement_subtype: basics.enterprise_agreement_subtype || null,
+        replaced_agreement_id:
+          basics.enterprise_agreement_subtype === "replacement" && basics.replaced_agreement_id
+            ? basics.replaced_agreement_id
+            : null,
+      };
+      if (basics.total_worker_estimate) {
+        const n = Number(basics.total_worker_estimate);
+        payload.total_worker_estimate = Number.isNaN(n) ? null : n;
+      } else {
+        payload.total_worker_estimate = null;
+      }
+
+      const { error } = await supabase.from("campaigns").update(payload).eq("campaign_id", campaignId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-wizard", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-wizard-scope", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["organisers"] });
+      queryClient.invalidateQueries({ queryKey: ["user-profiles-staff-organiser-picker"] });
+      if (editMode) {
+        router.push(`/campaigns/${campaignId}`);
+      } else {
+        setStep(2);
+      }
     },
   });
 
@@ -485,6 +640,19 @@ export function CampaignWizard() {
     return <p className="text-muted-foreground">You do not have permission to create campaigns.</p>;
   }
 
+  const step1EditBlocking =
+    step === 1 && editMode && (existingCampaignLoading || !basicsHydrated);
+
+  if (step1EditBlocking) {
+    return (
+      <div className="flex justify-center py-16">
+        <EurekaLoadingSpinner />
+      </div>
+    );
+  }
+
+  const step1Saving = campaignId ? updateCampaignMutation.isPending : createCampaignMutation.isPending;
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -497,7 +665,9 @@ export function CampaignWizard() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl font-bold">Campaign wizard</h1>
+          <h1 className="text-2xl font-bold">
+            {editMode && step === 1 ? "Edit campaign" : "Campaign wizard"}
+          </h1>
           <p className="text-sm text-muted-foreground">
             {step < 4
               ? `Step ${step} of ${basics.campaign_type === "bargaining" ? "4" : "3"} — ${stepTitle}`
@@ -511,7 +681,11 @@ export function CampaignWizard() {
         <Card>
           <CardHeader>
             <CardTitle>Campaign basics</CardTitle>
-            <CardDescription>Name, type, dates, and universe scope.</CardDescription>
+            <CardDescription>
+              {editMode
+                ? "Update name, organiser, worker estimate, and other core campaign fields."
+                : "Name, type, dates, and universe scope."}
+            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
             <div className="space-y-2">
@@ -614,7 +788,7 @@ export function CampaignWizard() {
                   setBasics({ ...basics, organiser_id: v === "__none__" ? "" : v })
                 }
                 allowNone
-                autoDefaultToCurrentUser
+                autoDefaultToCurrentUser={!campaignId && !editMode}
               />
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
@@ -690,10 +864,18 @@ export function CampaignWizard() {
             </div>
             <Button
               className="w-full sm:w-auto"
-              disabled={!step1Valid || createCampaignMutation.isPending}
-              onClick={() => createCampaignMutation.mutate()}
+              disabled={!step1Valid || step1Saving}
+              onClick={() =>
+                campaignId ? updateCampaignMutation.mutate() : createCampaignMutation.mutate()
+              }
             >
-              {createCampaignMutation.isPending ? "Saving…" : "Continue"}
+              {step1Saving
+                ? "Saving…"
+                : campaignId
+                  ? editMode
+                    ? "Save"
+                    : "Continue"
+                  : "Continue"}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </CardContent>

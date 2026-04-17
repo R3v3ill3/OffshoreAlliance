@@ -61,6 +61,7 @@ import { WallChartUnitManager } from "./wall-chart/wall-chart-unit-manager";
 import { CreateOrganisingUnitDialog } from "./wall-chart/create-organising-unit-dialog";
 import { useWallChartUnitVisibility } from "./wall-chart/use-wall-chart-unit-visibility";
 import { CreateAssessmentDialog } from "./assessments/create-assessment-dialog";
+import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 
 export function CampaignWallChart({
   campaignId,
@@ -75,6 +76,7 @@ export function CampaignWallChart({
   const [copyWorkerId, setCopyWorkerId] = useState<number | null>(null);
   const [createUnitOpen, setCreateUnitOpen] = useState(false);
   const [createAssessmentOpen, setCreateAssessmentOpen] = useState(false);
+  const [importWizardOpen, setImportWizardOpen] = useState(false);
   const unitVisibility = useWallChartUnitVisibility(campaignId);
 
   // Multi-select state for bulk Move/Copy/Link actions.
@@ -559,6 +561,17 @@ export function CampaignWallChart({
                   size="sm"
                   variant="outline"
                   className="h-7 px-2 text-xs print:hidden"
+                  onClick={() => setImportWizardOpen(true)}
+                >
+                  Import Workers
+                </Button>
+              )}
+              {canWrite && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs print:hidden"
                   onClick={() => setCreateAssessmentOpen(true)}
                 >
                   Add assessment
@@ -809,6 +822,15 @@ export function CampaignWallChart({
         lockKind="assessment"
         onCreated={() => {
           queryClient.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
+        }}
+      />
+
+      <WorkerImportWizard
+        open={importWizardOpen}
+        onOpenChange={setImportWizardOpen}
+        onComplete={() => {
+          queryClient.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
+          queryClient.invalidateQueries({ queryKey: ["workers"] });
         }}
       />
     </Card>

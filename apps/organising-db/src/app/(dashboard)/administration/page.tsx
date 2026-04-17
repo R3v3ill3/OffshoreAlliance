@@ -1262,16 +1262,59 @@ function SettingsTab() {
   const [actionNetworkKey, setActionNetworkKey] = useState("");
   const [yabbrKey, setYabbrKey] = useState("");
   const [yabbrUrl, setYabbrUrl] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  useEffect(() => {
+    fetch("/api/admin/settings")
+      .then((r) => r.json())
+      .then((data: Record<string, string>) => {
+        setActionNetworkKey(data.action_network_api_key ?? "");
+        setYabbrKey(data.yabbr_api_key ?? "");
+        setYabbrUrl(data.yabbr_api_url ?? "");
+      })
+      .catch(() => setLoadError("Failed to load settings"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action_network_api_key: actionNetworkKey,
+          yabbr_api_key: yabbrKey,
+          yabbr_api_url: yabbrUrl,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(err.error ?? "Save failed");
+      }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold">Settings</h2>
+
+      {loadError && (
+        <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {loadError}
+        </div>
+      )}
+
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
@@ -1290,7 +1333,8 @@ function SettingsTab() {
                 type="password"
                 value={actionNetworkKey}
                 onChange={(e) => setActionNetworkKey(e.target.value)}
-                placeholder="Enter API key..."
+                placeholder={loading ? "Loading…" : "Enter API key…"}
+                disabled={loading}
               />
             </div>
           </CardContent>
@@ -1313,7 +1357,8 @@ function SettingsTab() {
                 type="password"
                 value={yabbrKey}
                 onChange={(e) => setYabbrKey(e.target.value)}
-                placeholder="Enter API key..."
+                placeholder={loading ? "Loading…" : "Enter API key…"}
+                disabled={loading}
               />
             </div>
             <div className="space-y-1.5">
@@ -1323,15 +1368,16 @@ function SettingsTab() {
                 value={yabbrUrl}
                 onChange={(e) => setYabbrUrl(e.target.value)}
                 placeholder="https://api.yabbr.com.au"
+                disabled={loading}
               />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <Button onClick={handleSave}>
-        <Save className="h-4 w-4" />
-        {saved ? "Saved!" : "Save Settings"}
+      <Button onClick={handleSave} disabled={loading || saving}>
+        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+        {saved ? "Saved!" : saving ? "Saving…" : "Save Settings"}
       </Button>
     </div>
   );

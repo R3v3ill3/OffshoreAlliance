@@ -133,6 +133,7 @@ const INITIAL_FORM = {
   assigned_organiser_id: "" as string,
   assigned_ou_id: "" as string,
   due_date: "",
+  outcome_notes: "",
 };
 
 export function CampaignWorkplanSection({
@@ -313,6 +314,7 @@ export function CampaignWorkplanSection({
       assigned_organiser_id: task.assigned_organiser_id?.toString() || "",
       assigned_ou_id: task.assigned_ou_id?.toString() || "",
       due_date: task.due_date || "",
+      outcome_notes: task.outcome_notes || "",
     });
   }
 
@@ -327,6 +329,7 @@ export function CampaignWorkplanSection({
         plan_ambition_id: form.plan_ambition_id ? Number(form.plan_ambition_id) : null,
         assigned_organiser_id: form.assigned_organiser_id ? Number(form.assigned_organiser_id) : null,
         assigned_ou_id: form.assigned_ou_id ? Number(form.assigned_ou_id) : null,
+        outcome_notes: form.outcome_notes || null,
       };
       updateTask.mutate({ task_id: editTask.task_id, updates });
     } else {
@@ -703,22 +706,33 @@ export function CampaignWorkplanSection({
               />
             </div>
             {editTask && (
-              <div className="space-y-1.5">
-                <Label>Status</Label>
-                <Select
-                  value={editTask.status}
-                  onValueChange={(v) => {
-                    updateTaskStatus.mutate({ task_id: editTask.task_id, status: v });
-                  }}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {TASK_STATUSES.map((s) => (
-                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <>
+                <div className="space-y-1.5">
+                  <Label>Status</Label>
+                  <Select
+                    value={editTask.status}
+                    onValueChange={(v) => {
+                      updateTaskStatus.mutate({ task_id: editTask.task_id, status: v });
+                    }}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {TASK_STATUSES.map((s) => (
+                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Outcome notes</Label>
+                  <Textarea
+                    value={form.outcome_notes}
+                    onChange={(e) => setForm({ ...form, outcome_notes: e.target.value })}
+                    rows={2}
+                    placeholder="Record what happened or was achieved…"
+                  />
+                </div>
+              </>
             )}
           </div>
           <DialogFooter>

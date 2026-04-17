@@ -36,8 +36,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Building2, MapPin, Plus, Trash2, Users } from "lucide-react";
+import { Building2, MapPin, Plus, Trash2, Upload, Users } from "lucide-react";
 import { CampaignUnitsSection } from "@/components/campaigns/campaign-units-section";
+import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 
 const SCOPE_KEYS = {
   employers: (cid: string) => ["campaign-universe-employers", cid] as const,
@@ -64,6 +65,7 @@ export function CampaignUniverseSection({
   const [employerDialog, setEmployerDialog] = useState(false);
   const [worksiteDialog, setWorksiteDialog] = useState(false);
   const [workerDialog, setWorkerDialog] = useState(false);
+  const [importWizardOpen, setImportWizardOpen] = useState(false);
   const [sectorConfirmOpen, setSectorConfirmOpen] = useState(false);
   const [employerSearch, setEmployerSearch] = useState("");
   const [worksiteSearch, setWorksiteSearch] = useState("");
@@ -662,19 +664,29 @@ export function CampaignUniverseSection({
             </CardDescription>
           </div>
           {canWrite && (
-            <Button
-              size="sm"
-              onClick={() => setWorkerDialog(true)}
-              disabled={!workerPickerEnabled}
-              title={
-                !workerPickerEnabled
-                  ? "Add employers (and specific worksites if not sector-wide) first"
-                  : undefined
-              }
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              Add worker
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setImportWizardOpen(true)}
+              >
+                <Upload className="h-4 w-4 mr-1" />
+                Import Workers
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setWorkerDialog(true)}
+                disabled={!workerPickerEnabled}
+                title={
+                  !workerPickerEnabled
+                    ? "Add employers (and specific worksites if not sector-wide) first"
+                    : undefined
+                }
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Add worker
+              </Button>
+            </div>
           )}
         </CardHeader>
         <CardContent>
@@ -917,6 +929,15 @@ export function CampaignUniverseSection({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <WorkerImportWizard
+        open={importWizardOpen}
+        onOpenChange={setImportWizardOpen}
+        onComplete={() => {
+          queryClient.invalidateQueries({ queryKey: ["campaign-members", campaignId] });
+          queryClient.invalidateQueries({ queryKey: ["workers"] });
+        }}
+      />
     </div>
   );
 }

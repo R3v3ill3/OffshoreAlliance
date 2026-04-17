@@ -16,6 +16,7 @@ import { useAuth } from "@/lib/supabase/auth-context";
 import {
   useTemplateLibrary,
   useCreateTemplate,
+  useUpdateTemplate,
   useDeactivateTemplate,
   useAnalyseTemplate,
   type TemplateRow,
@@ -104,10 +105,12 @@ const INITIAL_FORM = {
 function TemplateCard({
   template,
   canWrite,
+  onEdit,
   onDeactivate,
 }: {
   template: TemplateRow;
   canWrite: boolean;
+  onEdit: (template: TemplateRow) => void;
   onDeactivate: (id: number) => void;
 }) {
   const meta = PLATFORM_META[template.platform];
@@ -155,7 +158,13 @@ function TemplateCard({
 
           {canWrite && (
             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-              <Button variant="ghost" size="icon" className="h-7 w-7" title="Edit template">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                title="Edit template"
+                onClick={() => onEdit(template)}
+              >
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
               <Button
@@ -172,6 +181,258 @@ function TemplateCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function EditTemplateDialog({
+  template,
+  onClose,
+}: {
+  template: TemplateRow;
+  onClose: () => void;
+}) {
+  const [form, setForm] = useState({
+    title: template.title,
+    subject_line: template.subject_line ?? "",
+    body_text: template.body_text,
+    platform: template.platform as "email" | "sms" | "phone_script",
+    stage_number: template.stage_number ? String(template.stage_number) : "",
+    tone_tags: template.tone_tags ?? ([] as string[]),
+    audience_segment: template.audience_segment ?? "",
+    activity_type: template.activity_type ?? "",
+  });
+  const [analysed, setAnalysed] = useState(false);
+
+  const updateMutation = useUpdateTemplate();
+  const analyseMutation = useAnalyseTemplate();
+
+  const handleAnalyse = async () => {
+    if (!form.body_text.trim()) return;
+    const result = await analyseMutation.mutateAsync({
+      content: form.body_text,
+      platform: form.platform,
+    });
+    setForm((prev) => ({
+      ...prev,
+      stage_number: result.stage_number ? String(result.stage_number) : "",
+      tone_tags: result.tone_tags ?? [],
+      audience_segment: result.audience_segment ?? "",
+      activity_type: result.activity_type ?? "",
+      platform: result.platform ?? prev.platform,
+    }));
+    setAnalysed(true);
+  };
+
+  const handleSave = async () => {
+    await updateMutation.mutateAsync({
+      template_id: template.template_id,
+      title: form.title,
+      subject_line: form.platform === "email" && form.subject_line ? form.subject_line : undefined,
+      body_text: form.body_text,
+      platform: form.platform,
+      stage_number: form.stage_number ? Number(form.stage_number) : undefined,
+      tone_tags: form.tone_tags.length > 0 ? form.tone_tags : undefined,
+      audience_segment: form.audience_segment || undefined,
+      activity_type: form.activity_type || undefined,
+      variables: extractVariables(form.body_text),
+    });
+    onClose();
+  };
+
+  const detectedVars = useMemo(() => {
+    const matches = form.body_text.match(/\{\{(\w+)\}\}/g);
+    if (!matches) return [];
+    return [...new Set(matches)];
+  }, [form.body_text]);
+
+  const toggleTone = (tone: string) => {
+    setForm((prev) => ({
+      ...prev,
+      tone_tags: prev.tone_tags.includes(tone)
+        ? prev.tone_tags.filter((t) => t !== tone)
+        : [...prev.tone_tags, tone],
+    }));
+  };
+
+  return (
+    <DialogContent className="max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>Edit Template</DialogTitle>
+      </DialogHeader>
+
+      <div className="grid gap-4 py-2">
+        <div className="space-y-2">
+          <Label htmlFor="edit-tmpl-title">Title *</Label>
+          <Input
+            id="edit-tmpl-title"
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Platform *</Label>
+          <Select
+            value={form.platform}
+            onValueChange={(v) =>
+              setForm({ ...form, platform: v as "email" | "sms" | "phone_script" })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="email">Email</SelectItem>
+              <SelectItem value="sms">SMS</SelectItem>
+              <SelectItem value="phone_script">Phone Script</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {form.platform === "email" && (
+          <div className="space-y-2">
+            <Label htmlFor="edit-tmpl-subject">Subject line</Label>
+            <Input
+              id="edit-tmpl-subject"
+              value={form.subject_line}
+              onChange={(e) => setForm({ ...form, subject_line: e.target.value })}
+            />
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <Label>Template content *</Label>
+          <TemplateEditor
+            value={form.body_text}
+            onChange={(v) => setForm({ ...form, body_text: v })}
+            platform={form.platform}
+          />
+        </div>
+
+        {detectedVars.length > 0 && (
+          <div>
+            <Label className="text-xs text-muted-foreground">Detected variables</Label>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {detectedVars.map((v) => (
+                <Badge key={v} variant="outline" className="font-mono text-xs">
+                  {v}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleAnalyse}
+            disabled={!form.body_text.trim() || analyseMutation.isPending}
+            className="gap-2"
+          >
+            {analyseMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
+            {analyseMutation.isPending ? "Analysing…" : "Analyse with AI"}
+          </Button>
+          {analysed && (
+            <span className="text-xs text-emerald-600 font-medium">
+              AI suggestions applied — adjust below if needed
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Stage</Label>
+            <Select
+              value={form.stage_number}
+              onValueChange={(v) => setForm({ ...form, stage_number: v })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select stage" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">Stage 1 — Contact ID & Mapping</SelectItem>
+                <SelectItem value="2">Stage 2 — Intro Comms & Education</SelectItem>
+                <SelectItem value="3">Stage 3 — Member Mobilisation</SelectItem>
+                <SelectItem value="4">Stage 4 — Develop Claims / MSD</SelectItem>
+                <SelectItem value="5">Stage 5 — Endorsement & Commence Bargaining</SelectItem>
+                <SelectItem value="6">Stage 6 — Bargaining to Win</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Audience</Label>
+            <Select
+              value={form.audience_segment}
+              onValueChange={(v) => setForm({ ...form, audience_segment: v })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select audience" />
+              </SelectTrigger>
+              <SelectContent>
+                {ALL_AUDIENCES.map((a) => (
+                  <SelectItem key={a} value={a}>
+                    {AUDIENCE_LABELS[a]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Activity type</Label>
+          <Select
+            value={form.activity_type}
+            onValueChange={(v) => setForm({ ...form, activity_type: v })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select activity type" />
+            </SelectTrigger>
+            <SelectContent>
+              {ALL_ACTIVITIES.map((a) => (
+                <SelectItem key={a} value={a}>
+                  {ACTIVITY_LABELS[a]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Tone tags</Label>
+          <div className="flex flex-wrap gap-1.5">
+            {ALL_TONES.map((tone) => (
+              <Badge
+                key={tone}
+                variant={form.tone_tags.includes(tone) ? "default" : "outline"}
+                className="cursor-pointer select-none"
+                onClick={() => toggleTone(tone)}
+              >
+                {TONE_LABELS[tone]}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          onClick={handleSave}
+          disabled={!form.title || !form.body_text.trim() || updateMutation.isPending}
+        >
+          {updateMutation.isPending ? "Saving…" : "Update Template"}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
   );
 }
 
@@ -427,6 +688,7 @@ export function TemplatesTab() {
   const [stageFilter, setStageFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<TemplateRow | null>(null);
 
   const filters = useMemo(
     () => ({
@@ -537,11 +799,25 @@ export function TemplatesTab() {
               key={template.template_id}
               template={template}
               canWrite={!!canWrite}
+              onEdit={(t) => setEditingTemplate(t)}
               onDeactivate={(id) => deactivateMutation.mutate(id)}
             />
           ))}
         </div>
       )}
+
+      {/* Edit template dialog */}
+      <Dialog
+        open={!!editingTemplate}
+        onOpenChange={(open) => { if (!open) setEditingTemplate(null); }}
+      >
+        {editingTemplate && (
+          <EditTemplateDialog
+            template={editingTemplate}
+            onClose={() => setEditingTemplate(null)}
+          />
+        )}
+      </Dialog>
     </div>
   );
 }

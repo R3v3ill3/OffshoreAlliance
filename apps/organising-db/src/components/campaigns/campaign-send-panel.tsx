@@ -158,6 +158,9 @@ export function CampaignSendPanel({
         .update({
           subject: editSubject || null,
           body: editBody,
+          // Clear the AI-generated HTML body so the send flow falls back to
+          // the edited plain-text body rather than serving stale HTML.
+          body_html: null,
         })
         .eq("draft_id", selectedDraft.draft_id);
       if (error) throw error;

@@ -158,6 +158,7 @@ export function CampaignUnitsSection({
   const supabase = createClient();
   const queryClient = useQueryClient();
   const [ouDialog, setOuDialog] = useState(false);
+  const [editingOuId, setEditingOuId] = useState<number | null>(null);
   const [ouForm, setOuForm] = useState({
     name: "",
     ou_type: "department" as CampaignOuType,
@@ -520,6 +521,53 @@ export function CampaignUnitsSection({
       queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
       setOuDialog(false);
+      setEditingOuId(null);
+      setOuForm({
+        name: "",
+        ou_type: "department",
+        total_workers_estimated: "",
+        anchor_worker_id: "",
+        commonality_logic: "",
+        target_size: "",
+      });
+    },
+  });
+
+  const updateOu = useAuthAwareMutation({
+    mutationFn: async (ouId: number) => {
+      const payload: Record<string, unknown> = {
+        name: ouForm.name,
+        ou_type: ouForm.ou_type,
+        commonality_logic: ouForm.commonality_logic || null,
+      };
+      if (ouForm.total_workers_estimated) {
+        const n = Number(ouForm.total_workers_estimated);
+        if (!Number.isNaN(n)) payload.total_workers_estimated = n;
+      } else {
+        payload.total_workers_estimated = null;
+      }
+      if (ouForm.anchor_worker_id) {
+        payload.anchor_worker_id = Number(ouForm.anchor_worker_id);
+      } else {
+        payload.anchor_worker_id = null;
+      }
+      if (ouForm.target_size) {
+        const n = Number(ouForm.target_size);
+        if (!Number.isNaN(n)) payload.target_size = n;
+      } else {
+        payload.target_size = null;
+      }
+      const { error } = await supabase
+        .from("campaign_organising_units")
+        .update(payload)
+        .eq("ou_id", ouId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
+      setOuDialog(false);
+      setEditingOuId(null);
       setOuForm({
         name: "",
         ou_type: "department",
@@ -786,6 +834,7 @@ export function CampaignUnitsSection({
                       size="sm"
                       className="h-7 w-7 p-0"
                       onClick={() => {
+                        setEditingOuId(null);
                         setOuForm({
                           name: c.suggested_name,
                           ou_type: c.suggested_ou_type as CampaignOuType,
@@ -796,7 +845,7 @@ export function CampaignUnitsSection({
                         });
                         setOuDialog(true);
                       }}
-                      title="Edit & accept"
+                      title="Customise & create"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
@@ -872,6 +921,27 @@ export function CampaignUnitsSection({
                     )}
                   </div>
                   {canWrite && (
+                    <div className="flex gap-2 flex-shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      title="Edit unit"
+                      onClick={() => {
+                        setOuForm({
+                          name: ou.name,
+                          ou_type: ou.ou_type as CampaignOuType,
+                          total_workers_estimated: ou.total_workers_estimated?.toString() || "",
+                          anchor_worker_id: "",
+                          commonality_logic: ou.commonality_logic || "",
+                          target_size: "",
+                        });
+                        setEditingOuId(ou.ou_id);
+                        setOuDialog(true);
+                      }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -883,6 +953,7 @@ export function CampaignUnitsSection({
                     >
                       Assign worker
                     </Button>
+                    </div>
                   )}
                 </div>
 
@@ -1038,10 +1109,16 @@ export function CampaignUnitsSection({
         </CardContent>
       </Card>
 
-      <Dialog open={ouDialog} onOpenChange={setOuDialog}>
+      <Dialog
+        open={ouDialog}
+        onOpenChange={(open) => {
+          setOuDialog(open);
+          if (!open) setEditingOuId(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Organising unit</DialogTitle>
+            <DialogTitle>{editingOuId != null ? "Edit organising unit" : "Organising unit"}</DialogTitle>
             <DialogDescription>
               Define the unit details and choose an optional anchor worker.
             </DialogDescription>
@@ -1124,14 +1201,22 @@ export function CampaignUnitsSection({
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOuDialog(false)}>
+            <Button variant="outline" onClick={() => { setOuDialog(false); setEditingOuId(null); }}>
               Cancel
             </Button>
             <Button
-              disabled={!ouForm.name || createOu.isPending}
-              onClick={() => createOu.mutate()}
+              disabled={!ouForm.name || createOu.isPending || updateOu.isPending}
+              onClick={() => {
+                if (editingOuId != null) {
+                  updateOu.mutate(editingOuId);
+                } else {
+                  createOu.mutate();
+                }
+              }}
             >
-              Save
+              {editingOuId != null
+                ? (updateOu.isPending ? "Saving…" : "Save changes")
+                : (createOu.isPending ? "Saving…" : "Save")}
             </Button>
           </DialogFooter>
         </DialogContent>

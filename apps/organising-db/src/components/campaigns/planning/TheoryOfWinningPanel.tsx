@@ -137,7 +137,10 @@ export function TheoryOfWinningPanel({
   }
 
   async function handleSaveEdit() {
-    if (!editedText.trim()) return
+    if (!editedText.trim()) {
+      toast.error('Theory text cannot be empty')
+      return
+    }
 
     try {
       await saveTheory.mutateAsync({
@@ -274,11 +277,11 @@ export function TheoryOfWinningPanel({
                     </Button>
                   ) : (
                     <div className="flex gap-1">
-                      <Button size="sm" onClick={handleSaveEdit}>
+                      <Button size="sm" onClick={handleSaveEdit} disabled={saveTheory.isPending}>
                         <Check className="h-4 w-4 mr-1" />
-                        Save
+                        {saveTheory.isPending ? 'Saving…' : 'Save'}
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setEditMode(false)}>
+                      <Button variant="ghost" size="sm" onClick={() => setEditMode(false)} disabled={saveTheory.isPending}>
                         Cancel
                       </Button>
                     </div>

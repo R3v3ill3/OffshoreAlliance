@@ -82,7 +82,9 @@ export function GateAssessmentComponent({ gate, campaignId, canAssess }: GateAss
 
   async function handlePass() {
     const snapshot = gate.gate_criteria.reduce<Record<string, string | null>>((acc, c) => {
-      acc[c.criterion_name] = c.current_value
+      // Use locally-edited value if the user has updated it but not yet saved,
+      // so the snapshot always reflects the most current state.
+      acc[c.criterion_name] = criterionValues[c.criterion_id] ?? c.current_value
       return acc
     }, {})
 
@@ -107,7 +109,7 @@ export function GateAssessmentComponent({ gate, campaignId, canAssess }: GateAss
     }
 
     const snapshot = gate.gate_criteria.reduce<Record<string, string | null>>((acc, c) => {
-      acc[c.criterion_name] = c.current_value
+      acc[c.criterion_name] = criterionValues[c.criterion_id] ?? c.current_value
       return acc
     }, {})
 

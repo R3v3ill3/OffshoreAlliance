@@ -96,6 +96,7 @@ interface WorkerDetail {
 type WorkerEditForm = {
   first_name: string;
   last_name: string;
+  preferred_name: string;
   email: string;
   phone: string;
   address: string;
@@ -334,6 +335,7 @@ function workerToEditForm(
   return {
     first_name: w.first_name,
     last_name: w.last_name,
+    preferred_name: w.preferred_name ?? "",
     email: w.email ?? "",
     phone: w.phone ?? "",
     address: w.address ?? "",
@@ -769,6 +771,7 @@ export default function WorkerDetailPage() {
     const payload = {
       first_name: fn,
       last_name: ln,
+      preferred_name: emptyToNull(editForm.preferred_name),
       email: emptyToNull(editForm.email),
       phone: emptyToNull(editForm.phone),
       address: emptyToNull(editForm.address),
@@ -964,6 +967,15 @@ export default function WorkerDetailPage() {
                         onChange={(e) => patchForm({ last_name: e.target.value })}
                       />
                     </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="worker-preferred-name">Preferred name</Label>
+                    <Input
+                      id="worker-preferred-name"
+                      value={f.preferred_name}
+                      onChange={(e) => patchForm({ preferred_name: e.target.value })}
+                      placeholder="e.g. nickname or goes-by name"
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="worker-email">Email</Label>

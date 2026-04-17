@@ -5,6 +5,7 @@ import type { Database } from '@/types/database'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
 import { syncAmbitionTargetDatesForCampaign } from '@/lib/supabase/syncAmbitionTargetDates'
+import { logConnectionEvent, generateTraceId } from '@/lib/supabase/connection-monitor'
 
 /** Stage row from the creation wizard → persisted on campaign_stage_plans */
 export type PlannerStageDateInput = {
@@ -289,42 +290,92 @@ export function useExistingCampaignForPlanning(campaignId: number | null) {
     queryFn: async () => {
       if (!campaignId) return null
 
-      const { data: campaign, error } = await supabase
-        .from('campaigns')
-        .select(`
-          campaign_id,
-          name,
-          description,
-          campaign_type,
-          status,
-          organiser_id,
-          start_date,
-          end_date,
-          enterprise_agreement_subtype,
-          replaced_agreement_id,
-          campaign_stage_plans(plan_id)
-        `)
-        .eq('campaign_id', campaignId)
-        .maybeSingle()
+      const traceId = generateTraceId()
+      const startedAt = Date.now()
+      logConnectionEvent({
+        type: 'api_ok',
+        detail: `planner-load-start campaign_id=${campaignId}`,
+        traceId,
+      })
 
-      if (error) throw error
-      if (!campaign) return null
+      try {
+        const campaignsStart = Date.now()
+        const { data: campaign, error } = await supabase
+          .from('campaigns')
+          .select(`
+            campaign_id,
+            name,
+            description,
+            campaign_type,
+            status,
+            organiser_id,
+            start_date,
+            end_date,
+            enterprise_agreement_subtype,
+            replaced_agreement_id,
+            campaign_stage_plans(plan_id)
+          `)
+          .eq('campaign_id', campaignId)
+          .maybeSingle()
+        logConnectionEvent({
+          type: 'api_ok',
+          detail: `planner-load-campaigns-end found=${!!campaign}`,
+          durationMs: Date.now() - campaignsStart,
+          traceId,
+        })
 
-      const { data: timeline } = await supabase
-        .from('campaign_timelines')
-        .select('timeline_id, agreement_id, agreement_expiry_date')
-        .eq('campaign_id', campaignId)
-        .maybeSingle()
+        if (error) throw error
+        if (!campaign) {
+          logConnectionEvent({
+            type: 'api_ok',
+            detail: 'planner-load-end: campaign not found',
+            durationMs: Date.now() - startedAt,
+            traceId,
+          })
+          return null
+        }
 
-      return {
-        ...campaign,
-        has_plan: (campaign.campaign_stage_plans?.length ?? 0) > 0,
-        requires_replacement_agreement:
-          campaign.enterprise_agreement_subtype === 'replacement',
-        has_linked_agreement_context:
-          !!campaign.replaced_agreement_id || !!timeline?.agreement_id,
-        timeline_agreement_id: timeline?.agreement_id ?? null,
-        timeline_expiry_date: timeline?.agreement_expiry_date ?? null,
+        const timelineStart = Date.now()
+        const { data: timeline } = await supabase
+          .from('campaign_timelines')
+          .select('timeline_id, agreement_id, agreement_expiry_date')
+          .eq('campaign_id', campaignId)
+          .maybeSingle()
+        logConnectionEvent({
+          type: 'api_ok',
+          detail: `planner-load-timelines-end found=${!!timeline}`,
+          durationMs: Date.now() - timelineStart,
+          traceId,
+        })
+
+        const result = {
+          ...campaign,
+          has_plan: (campaign.campaign_stage_plans?.length ?? 0) > 0,
+          requires_replacement_agreement:
+            campaign.enterprise_agreement_subtype === 'replacement',
+          has_linked_agreement_context:
+            !!campaign.replaced_agreement_id || !!timeline?.agreement_id,
+          timeline_agreement_id: timeline?.agreement_id ?? null,
+          timeline_expiry_date: timeline?.agreement_expiry_date ?? null,
+        }
+
+        logConnectionEvent({
+          type: 'api_ok',
+          detail: `planner-load-end has_plan=${result.has_plan}`,
+          durationMs: Date.now() - startedAt,
+          traceId,
+        })
+
+        return result
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        logConnectionEvent({
+          type: 'api_error',
+          detail: `planner-load-error: ${msg}`,
+          durationMs: Date.now() - startedAt,
+          traceId,
+        })
+        throw err
       }
     },
     enabled: !!campaignId && campaignId > 0,

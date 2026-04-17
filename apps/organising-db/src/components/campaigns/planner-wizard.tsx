@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { format, addDays, subDays } from 'date-fns'
 import { useAgreements, useLeadOrganisers, useCurrentUserProfile } from '@/lib/hooks/usePlannerOptions'
@@ -11,6 +12,7 @@ import {
   useExistingCampaignForPlanning,
   type PlannerStageDateInput,
 } from '@/lib/hooks/usePlannerCampaigns'
+import { resetClient } from '@/lib/supabase/client'
 import {
   buildInitialStageTimeline,
   calculateForwardsTimeline,
@@ -172,7 +174,8 @@ export function CampaignCreationWizard() {
 
   const isLinkedMode = !!linkedCampaignId
 
-  const { data: existingCampaign, isLoading: existingCampaignLoading } =
+  const queryClient = useQueryClient()
+  const { data: existingCampaign, isLoading: existingCampaignLoading, refetch: refetchExistingCampaign } =
     useExistingCampaignForPlanning(linkedCampaignId)
   const hasReplacementSubtypeOrExistingAgreementContext = Boolean(
     existingCampaign?.requires_replacement_agreement ||
@@ -180,6 +183,19 @@ export function CampaignCreationWizard() {
       autoAgreementId
   )
   const agreementRequired = !isLinkedMode || hasReplacementSubtypeOrExistingAgreementContext
+
+  // Fail-safe: if the "Loading campaign details…" state persists beyond 15s,
+  // surface an escape hatch so the user is never silently trapped by a hung
+  // Supabase auth lock or stuck query. See /Users/troyb/.claude/plans/the-campaign-wizard-is-warm-dolphin.md
+  const [loadTimedOut, setLoadTimedOut] = useState(false)
+  useEffect(() => {
+    if (!(isLinkedMode && existingCampaignLoading)) {
+      setLoadTimedOut(false)
+      return
+    }
+    const t = setTimeout(() => setLoadTimedOut(true), 15_000)
+    return () => clearTimeout(t)
+  }, [isLinkedMode, existingCampaignLoading])
 
   // Redirect to existing plan if one already exists for this campaign.
   // Only check on initial data load — once the wizard becomes active
@@ -451,10 +467,53 @@ export function CampaignCreationWizard() {
 
   const daysToPane = state.expiry_date ? (daysToExpiry || 0) - 30 : null
 
-  if (isLinkedMode && existingCampaignLoading) {
+  if (isLinkedMode && existingCampaignLoading && !loadTimedOut) {
     return (
       <div className="max-w-3xl mx-auto py-12 text-center text-muted-foreground text-sm">
         Loading campaign details...
+      </div>
+    )
+  }
+
+  if (isLinkedMode && existingCampaignLoading && loadTimedOut) {
+    return (
+      <div className="max-w-3xl mx-auto py-12">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-6 w-6 text-amber-600" />
+              <div>
+                <CardTitle>Still loading campaign #{linkedCampaignId}</CardTitle>
+                <CardDescription>
+                  This is usually a transient connection issue. Retry, or go back
+                  to the campaign and try again shortly.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="flex flex-col sm:flex-row gap-3">
+            <Button
+              className="flex-1"
+              onClick={() => {
+                resetClient()
+                setLoadTimedOut(false)
+                queryClient.invalidateQueries({
+                  queryKey: ['existing-campaign-for-planning', linkedCampaignId],
+                })
+                refetchExistingCampaign()
+              }}
+            >
+              Retry
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => router.push(`/campaigns/${linkedCampaignId}`)}
+            >
+              Back to campaign
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     )
   }

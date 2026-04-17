@@ -57,6 +57,7 @@ type WizardStep =
   | "value_mapping"
   | "employer_selection"
   | "worksite_matching"
+  | "occupation_matching"
   | "row_review"
   | "dedup_check"
   | "confirm"
@@ -73,6 +74,7 @@ type MappableField =
   | "email"
   | "phone"
   | "worksite"
+  | "occupation"
   | "membership_status"
   | "member_role_type"
   | "join_date"
@@ -119,6 +121,10 @@ interface ReviewRow extends ParsedWorkerRow {
   joinDate: string | null;
   /** Re-join date from mapped column (ISO date string or null) */
   rejoinDate: string | null;
+  /** Raw occupation / job title string from the import file */
+  rawOccupation: string | null;
+  /** Resolved FK into occupations table */
+  resolvedOccupationId: number | null;
   overrideFirstName?: string;
   overrideLastName?: string;
   overridePreferredName?: string;
@@ -152,6 +158,21 @@ interface UnionMembershipTypeRow {
   display_name: string;
 }
 
+interface OccupationRow {
+  occupation_id: number;
+  canonical_name: string;
+}
+
+interface OccupationResolution {
+  rawValue: string;
+  occurrences: number;
+  resolvedOccupationId: number | null;
+  resolvedCanonicalName: string | null;
+  candidates: { occupation_id: number; canonical_name: string; score: number }[];
+  confirmed: boolean;
+  search: string;
+}
+
 interface Employer {
   employer_id: number;
   employer_name: string;
@@ -166,6 +187,7 @@ const ALL_STEPS: { id: WizardStep; label: string }[] = [
   { id: "value_mapping", label: "Map Values" },
   { id: "employer_selection", label: "Employer" },
   { id: "worksite_matching", label: "Worksites" },
+  { id: "occupation_matching", label: "Occupations" },
   { id: "row_review", label: "Review Rows" },
   { id: "dedup_check", label: "Dedup" },
   { id: "confirm", label: "Confirm" },
@@ -181,6 +203,7 @@ const MAPPABLE_FIELDS: { value: MappableField; label: string }[] = [
   { value: "email", label: "Email" },
   { value: "phone", label: "Phone / Mobile" },
   { value: "worksite", label: "Worksite" },
+  { value: "occupation", label: "Occupation / Job Title" },
   { value: "membership_status", label: "Membership Status (map values)" },
   { value: "member_role_type", label: "Role Type (map values)" },
   { value: "join_date", label: "Join Date" },
@@ -218,6 +241,13 @@ function autoMapHeader(header: string): MappableField {
   )
     return "phone";
   if (["worksite", "site", "location", "worklocation"].includes(h)) return "worksite";
+  if (
+    [
+      "occupation", "jobtitle", "job", "trade", "position", "role",
+      "jobtitlename", "occupationname", "worktitle",
+    ].includes(h)
+  )
+    return "occupation";
   if (["membership", "membershipstatus", "status", "memberstatus", "membertype"].includes(h))
     return "membership_status";
   if (["roletype", "role", "memberroletype"].includes(h)) return "member_role_type";
@@ -350,6 +380,8 @@ export function WorkerImportWizard({
   const [employerSearch, setEmployerSearch] = useState("");
   const [reviewRows, setReviewRows] = useState<ReviewRow[]>([]);
   const [dedupMatches, setDedupMatches] = useState<DedupMatch[]>([]);
+  const [occupationResolutions, setOccupationResolutions] = useState<OccupationResolution[]>([]);
+  const [occupationSearch, setOccupationSearch] = useState<Record<string, string>>({});
   const [result, setResult] = useState<{
     created: number;
     updated: number;
@@ -442,12 +474,111 @@ export function WorkerImportWizard({
     enabled: open,
   });
 
+  const { data: occupations = [] } = useQuery<OccupationRow[]>({
+    queryKey: ["occupations-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("occupations")
+        .select("occupation_id, canonical_name")
+        .eq("is_active", true)
+        .order("canonical_name");
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: open,
+  });
+
+  const { data: occupationAliases = [] } = useQuery<{ occupation_id: number; alias_name: string }[]>({
+    queryKey: ["occupation-aliases-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("occupation_aliases")
+        .select("occupation_id, alias_name");
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: open,
+  });
+
   // ─── Helpers ──────────────────────────────────────────────────────────────
+
+  function hasOccupationColumn() {
+    return columnMappings.some((m) => m.field === "occupation");
+  }
+
+  function scoreOccupation(query: string, occs: OccupationRow[]) {
+    function normStr(s: string) {
+      return s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+    }
+    function tokenSet(s: string): Set<string> {
+      const stop = new Set(["the", "and", "of", "for", "in", "at", "by", "a", "an", "to"]);
+      return new Set(s.split(" ").filter((w) => w.length >= 2 && !stop.has(w)));
+    }
+    function jaccard(a: Set<string>, b: Set<string>): number {
+      if (a.size === 0 && b.size === 0) return 1;
+      const inter = new Set([...a].filter((x) => b.has(x)));
+      return inter.size / new Set([...a, ...b]).size;
+    }
+    const qNorm = normStr(query);
+    const qTokens = tokenSet(qNorm);
+    return occs
+      .map((o) => {
+        const cNorm = normStr(o.canonical_name);
+        const score = jaccard(qTokens, tokenSet(cNorm));
+        return { occupation_id: o.occupation_id, canonical_name: o.canonical_name, score };
+      })
+      .filter((c) => c.score > 0.1)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+  }
+
+  function buildOccupationResolutions(): OccupationResolution[] {
+    const occCol = columnMappings.find((m) => m.field === "occupation")?.header ?? "";
+    if (!occCol) return [];
+    const unique = [
+      ...new Set(
+        headerRows.map((r) => String(r[occCol] ?? "").trim()).filter(Boolean)
+      ),
+    ];
+    return unique.map((raw): OccupationResolution => {
+      const lc = raw.toLowerCase().trim();
+      const exactCanonical = occupations.find(
+        (o) => o.canonical_name.toLowerCase() === lc
+      );
+      const exactAlias = occupationAliases.find(
+        (a) => a.alias_name.toLowerCase() === lc
+      );
+      const exactOcc =
+        exactCanonical ??
+        (exactAlias
+          ? occupations.find((o) => o.occupation_id === exactAlias.occupation_id) ?? null
+          : null);
+      const candidates = exactOcc ? [] : scoreOccupation(raw, occupations);
+      const top = candidates[0];
+      const autoAccept = !!exactOcc || (top && top.score >= 0.7);
+      const resolved =
+        exactOcc ??
+        (autoAccept && top
+          ? occupations.find((o) => o.occupation_id === top.occupation_id) ?? null
+          : null);
+      return {
+        rawValue: raw,
+        occurrences: headerRows.filter((r) => String(r[occCol] ?? "").trim() === raw).length,
+        resolvedOccupationId: resolved?.occupation_id ?? null,
+        resolvedCanonicalName: resolved?.canonical_name ?? null,
+        candidates,
+        confirmed: !!autoAccept,
+        search: "",
+      };
+    });
+  }
 
   function getVisibleSteps() {
     const steps = fileFormat === "group"
-      ? ALL_STEPS.filter((s) => s.id !== "column_mapping")
-      : ALL_STEPS;
+      ? ALL_STEPS.filter((s) => s.id !== "column_mapping" && s.id !== "occupation_matching")
+      : ALL_STEPS.filter(
+          (s) => s.id !== "occupation_matching" || hasOccupationColumn()
+        );
     return steps.filter(
       (s) => s.id !== "value_mapping" || valueResolutions.length > 0
     );
@@ -506,6 +637,8 @@ export function WorkerImportWizard({
     setWorksiteResolutions([]);
     setValueResolutions([]);
     setWorksiteSearch({});
+    setOccupationResolutions([]);
+    setOccupationSearch({});
     setSelectedEmployerId(null);
     setSelectedEmployerName(null);
     setEmployerSearch("");
@@ -667,6 +800,10 @@ export function WorkerImportWizard({
       setWorksiteResolutions([]);
     }
 
+    // Eagerly build occupation resolutions so the step is ready when reached
+    setOccupationResolutions(buildOccupationResolutions());
+    setOccupationSearch({});
+
     const vr = buildValueResolutions();
     setValueResolutions(vr);
 
@@ -680,9 +817,23 @@ export function WorkerImportWizard({
   function proceedFromEmployerSelection() {
     if (worksiteResolutions.length > 0) {
       setStep("worksite_matching");
+    } else if (hasOccupationColumn()) {
+      setStep("occupation_matching");
     } else {
       proceedToRowReview();
     }
+  }
+
+  function proceedFromWorksiteMatching() {
+    if (hasOccupationColumn()) {
+      setStep("occupation_matching");
+    } else {
+      proceedToRowReview();
+    }
+  }
+
+  function proceedFromOccupationMatching() {
+    proceedToRowReview();
   }
 
   function resolveWorksite(groupName: string, worksite: Worksite | null) {
@@ -730,6 +881,7 @@ export function WorkerImportWizard({
 
   function proceedToRowReview() {
     const resolutionMap = new Map(worksiteResolutions.map((r) => [r.groupName, r]));
+    const occResMap = new Map(occupationResolutions.map((r) => [r.rawValue, r]));
 
     // Build lookup maps from value resolutions
     // key: "columnHeader|rawValue" → resolved id
@@ -753,6 +905,7 @@ export function WorkerImportWizard({
       const emailCol = columnMappings.find((m) => m.field === "email")?.header ?? "";
       const phoneCol = columnMappings.find((m) => m.field === "phone")?.header ?? "";
       const worksiteCol = columnMappings.find((m) => m.field === "worksite")?.header ?? "";
+      const occupationCol = columnMappings.find((m) => m.field === "occupation")?.header ?? "";
       const membershipCol = columnMappings.find((m) => m.field === "membership_status")?.header ?? "";
       const roleTypeCol = columnMappings.find((m) => m.field === "member_role_type")?.header ?? "";
       const joinDateCol = columnMappings.find((m) => m.field === "join_date")?.header ?? "";
@@ -811,6 +964,11 @@ export function WorkerImportWizard({
             }
           }
 
+          const rawOccupation = occupationCol
+            ? String(row[occupationCol] ?? "").trim() || null
+            : null;
+          const occRes = rawOccupation ? occResMap.get(rawOccupation) : undefined;
+
           return {
             rowIndex: i,
             referenceId: referenceIdCol ? String(row[referenceIdCol] ?? "").trim() || null : null,
@@ -838,6 +996,8 @@ export function WorkerImportWizard({
             groupName: rawWorksiteVal,
             resolvedWorksiteId: resolution?.worksiteId ?? null,
             resolvedWorksiteName: resolution?.worksiteName ?? null,
+            rawOccupation,
+            resolvedOccupationId: occRes?.confirmed ? (occRes.resolvedOccupationId ?? null) : null,
           } satisfies ReviewRow;
         })
         .filter((r) => r.firstName || r.lastName);
@@ -854,6 +1014,8 @@ export function WorkerImportWizard({
           groupName: g.groupName,
           resolvedWorksiteId: resolution?.worksiteId ?? null,
           resolvedWorksiteName: resolution?.worksiteName ?? null,
+          rawOccupation: null,
+          resolvedOccupationId: null,
         }));
       });
       setReviewRows(rows);
@@ -1017,6 +1179,8 @@ export function WorkerImportWizard({
         employerId: selectedEmployerId,
         rawMembershipStatus: row.rawMembershipStatus,
         notes: row.overrideNotes ?? row.notes ?? null,
+        canonicalOccupationId: row.resolvedOccupationId ?? null,
+        rawOccupation: row.rawOccupation ?? null,
         action,
         existingWorkerId,
       };
@@ -1836,8 +2000,12 @@ export function WorkerImportWizard({
           <Button variant="outline" onClick={() => setStep("employer_selection")}>
             <ArrowLeft className="h-4 w-4 mr-1" /> Back
           </Button>
-          <Button onClick={proceedToRowReview} disabled={!allConfirmed}>
-            Review Rows <ArrowRight className="h-4 w-4 ml-1" />
+          <Button onClick={proceedFromWorksiteMatching} disabled={!allConfirmed}>
+            {hasOccupationColumn() ? (
+              <>Match Occupations <ArrowRight className="h-4 w-4 ml-1" /></>
+            ) : (
+              <>Review Rows <ArrowRight className="h-4 w-4 ml-1" /></>
+            )}
           </Button>
         </DialogFooter>
       </div>
@@ -2106,6 +2274,178 @@ export function WorkerImportWizard({
           </Button>
           <Button onClick={proceedToDedupCheck}>
             Check for Duplicates <ArrowRight className="h-4 w-4 ml-1" />
+          </Button>
+        </DialogFooter>
+      </div>
+    );
+  }
+
+  function renderOccupationMatching() {
+    const allConfirmed = occupationResolutions.every((r) => r.confirmed);
+
+    const backStep: WizardStep =
+      worksiteResolutions.length > 0 ? "worksite_matching" : "employer_selection";
+
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          {occupationResolutions.length} unique occupation
+          {occupationResolutions.length !== 1 ? "s" : ""} detected. Confirm or
+          override the match for each.
+        </p>
+
+        <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+          {occupationResolutions.map((res) => {
+            const searchTerm = occupationSearch[res.rawValue] ?? "";
+            const filteredOccs = searchTerm
+              ? occupations.filter((o) =>
+                  o.canonical_name.toLowerCase().includes(searchTerm.toLowerCase())
+                )
+              : [];
+
+            return (
+              <div key={res.rawValue} className="border rounded-lg p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-medium text-sm">{res.rawValue}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {res.occurrences} worker{res.occurrences !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  {res.confirmed ? (
+                    <Badge variant="default" className="gap-1 shrink-0">
+                      <CheckCircle2 className="h-3 w-3" />
+                      {res.resolvedCanonicalName ?? "No Occupation"}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="shrink-0">Needs Review</Badge>
+                  )}
+                </div>
+
+                {res.candidates.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Suggested matches — click to select:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {res.candidates.map((c) => {
+                        const isSelected =
+                          res.confirmed && res.resolvedOccupationId === c.occupation_id;
+                        return (
+                          <Button
+                            key={c.occupation_id}
+                            variant={isSelected ? "default" : "outline"}
+                            size="sm"
+                            className="h-8 text-xs gap-1.5"
+                            onClick={() =>
+                              setOccupationResolutions((prev) =>
+                                prev.map((r) =>
+                                  r.rawValue === res.rawValue
+                                    ? {
+                                        ...r,
+                                        resolvedOccupationId: c.occupation_id,
+                                        resolvedCanonicalName: c.canonical_name,
+                                        confirmed: true,
+                                        search: "",
+                                      }
+                                    : r
+                                )
+                              )
+                            }
+                          >
+                            {isSelected && <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />}
+                            {c.canonical_name}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Search occupations..."
+                    value={searchTerm}
+                    onChange={(e) =>
+                      setOccupationSearch((prev) => ({
+                        ...prev,
+                        [res.rawValue]: e.target.value,
+                      }))
+                    }
+                    className="pl-8 h-8 text-sm"
+                  />
+                  {searchTerm && filteredOccs.length > 0 && (
+                    <div className="absolute z-10 top-full left-0 right-0 mt-1 border rounded-md bg-background shadow-md max-h-40 overflow-y-auto">
+                      {filteredOccs.map((o) => (
+                        <button
+                          key={o.occupation_id}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
+                          onClick={() => {
+                            setOccupationResolutions((prev) =>
+                              prev.map((r) =>
+                                r.rawValue === res.rawValue
+                                  ? {
+                                      ...r,
+                                      resolvedOccupationId: o.occupation_id,
+                                      resolvedCanonicalName: o.canonical_name,
+                                      confirmed: true,
+                                    }
+                                  : r
+                              )
+                            );
+                            setOccupationSearch((prev) => ({
+                              ...prev,
+                              [res.rawValue]: "",
+                            }));
+                          }}
+                        >
+                          {o.canonical_name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2 flex-wrap">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-7 gap-1"
+                    onClick={() =>
+                      setOccupationResolutions((prev) =>
+                        prev.map((r) =>
+                          r.rawValue === res.rawValue
+                            ? {
+                                ...r,
+                                resolvedOccupationId: null,
+                                resolvedCanonicalName: null,
+                                confirmed: true,
+                              }
+                            : r
+                        )
+                      )
+                    }
+                  >
+                    {res.confirmed && !res.resolvedOccupationId ? (
+                      <CheckCircle2 className="h-3 w-3" />
+                    ) : (
+                      <X className="h-3 w-3" />
+                    )}
+                    No Match
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setStep(backStep)}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back
+          </Button>
+          <Button onClick={proceedFromOccupationMatching} disabled={!allConfirmed}>
+            Review Rows <ArrowRight className="h-4 w-4 ml-1" />
           </Button>
         </DialogFooter>
       </div>
@@ -2430,6 +2770,7 @@ export function WorkerImportWizard({
             {step === "value_mapping" && renderValueMapping()}
             {step === "employer_selection" && renderEmployerSelection()}
             {step === "worksite_matching" && renderWorksiteMatching()}
+            {step === "occupation_matching" && renderOccupationMatching()}
             {step === "row_review" && renderRowReview()}
             {step === "dedup_check" && renderDedupCheck()}
             {step === "confirm" && renderConfirm()}

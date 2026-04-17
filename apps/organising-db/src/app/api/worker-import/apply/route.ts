@@ -25,6 +25,10 @@ export interface WorkerImportRow {
   employerId: number | null;
   rawMembershipStatus: string;
   notes: string | null;
+  /** Resolved FK into occupations table */
+  canonicalOccupationId: number | null;
+  /** Raw occupation string from the import file (used to create an alias) */
+  rawOccupation: string | null;
   // Dedup decision
   action: "create" | "update" | "skip";
   existingWorkerId?: number;
@@ -41,6 +45,39 @@ export interface WorkerImportApplyResponse {
   updated: number;
   skipped: number;
   errors: string[];
+}
+
+async function maybeInsertOccupationAlias(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  row: WorkerImportRow,
+  userId: string
+): Promise<void> {
+  if (!row.canonicalOccupationId || !row.rawOccupation) return;
+
+  // Fetch the canonical name to avoid storing it as its own alias
+  const { data: occ } = await supabase
+    .from("occupations")
+    .select("canonical_name")
+    .eq("occupation_id", row.canonicalOccupationId)
+    .single();
+
+  const canonicalName: string | null = occ?.canonical_name ?? null;
+  if (canonicalName && canonicalName.toLowerCase().trim() === row.rawOccupation.toLowerCase().trim()) {
+    return; // Raw text is already the canonical name — no alias needed
+  }
+
+  const { error } = await supabase.from("occupation_aliases").insert({
+    occupation_id: row.canonicalOccupationId,
+    alias_name: row.rawOccupation.trim(),
+    source: "import",
+    created_by: userId,
+  });
+
+  // Unique constraint violation (alias already exists) is safe to ignore
+  if (error && error.code !== "23505") {
+    console.error("Failed to insert occupation alias:", error.message);
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -115,6 +152,7 @@ export async function POST(request: NextRequest) {
       join_date: row.joinDate || null,
       worksite_id: row.worksiteId,
       employer_id: row.employerId ?? null,
+      canonical_occupation_id: row.canonicalOccupationId ?? null,
       notes: row.notes || null,
       is_active: !isResigned,
       updated_at: new Date().toISOString(),
@@ -145,6 +183,7 @@ export async function POST(request: NextRequest) {
         );
       } else {
         updated++;
+        await maybeInsertOccupationAlias(supabase, row, user.id);
       }
     } else if (row.action === "create") {
       // For creates, set rejoin_date directly with no guard needed
@@ -160,6 +199,7 @@ export async function POST(request: NextRequest) {
         );
       } else {
         created++;
+        await maybeInsertOccupationAlias(supabase, row, user.id);
       }
     }
   }

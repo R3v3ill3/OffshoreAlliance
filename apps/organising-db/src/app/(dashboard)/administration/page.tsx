@@ -62,6 +62,7 @@ import dynamic from "next/dynamic";
 import { EmployerWizard } from "@/components/administration/employer-wizard";
 import { ReferenceDataWizard } from "@/components/import/reference-data-wizard";
 import { MembershipImportWizard } from "@/components/import/membership-import-wizard";
+import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 
 const WorkloadTab = dynamic(() => import("@/components/administration/workload-tab").then((m) => ({ default: m.WorkloadTab })), { ssr: false });
 const OrganiserPatchesTab = dynamic(() => import("@/components/administration/organiser-patches-tab").then((m) => ({ default: m.OrganiserPatchesTab })), { ssr: false });
@@ -1403,48 +1404,71 @@ function ImportHistoryTab() {
 
 function MembershipImportTab() {
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [workerWizardOpen, setWorkerWizardOpen] = useState(false);
 
   return (
-    <div className="space-y-4 pt-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold">Monthly Membership Import</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Import the three monthly membership files: New Joins, Resignations, and Recommencing Members.
-            Each file is matched against existing workers by Reference ID, then email/phone.
-          </p>
+    <div className="space-y-6 pt-4">
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">Monthly Membership Import</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Import the three monthly membership files: New Joins, Resignations, and Recommencing Members.
+              Each file is matched against existing workers by Reference ID, then email/phone.
+            </p>
+          </div>
+          <Button onClick={() => setWizardOpen(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Start Import
+          </Button>
         </div>
-        <Button onClick={() => setWizardOpen(true)}>
-          <Upload className="h-4 w-4 mr-2" />
-          Start Import
-        </Button>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {[
+            {
+              title: "New Joins",
+              desc: "Creates new member records or updates existing ones by Reference ID. Sets join date, worksite, occupation, and employer.",
+            },
+            {
+              title: "Resignations",
+              desc: "Matches existing members by Reference ID and marks them as inactive, setting resignation date and reason.",
+            },
+            {
+              title: "Recommencing Members",
+              desc: "Re-activates resigned members, updating the rejoin date (only if more recent than the existing date).",
+            },
+          ].map((card) => (
+            <div key={card.title} className="rounded-lg border p-4 space-y-2">
+              <p className="font-medium text-sm">{card.title}</p>
+              <p className="text-xs text-muted-foreground">{card.desc}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {[
-          {
-            title: "New Joins",
-            desc: "Creates new member records or updates existing ones by Reference ID. Sets join date, worksite, occupation, and employer.",
-          },
-          {
-            title: "Resignations",
-            desc: "Matches existing members by Reference ID and marks them as inactive, setting resignation date and reason.",
-          },
-          {
-            title: "Recommencing Members",
-            desc: "Re-activates resigned members, updating the rejoin date (only if more recent than the existing date).",
-          },
-        ].map((card) => (
-          <div key={card.title} className="rounded-lg border p-4 space-y-2">
-            <p className="font-medium text-sm">{card.title}</p>
-            <p className="text-xs text-muted-foreground">{card.desc}</p>
+      <div className="border-t pt-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">Worker Import</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Import workers from a spreadsheet with column mapping, employer assignment,
+              worksite and occupation matching, and deduplication.
+            </p>
           </div>
-        ))}
+          <Button variant="outline" onClick={() => setWorkerWizardOpen(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Import Workers
+          </Button>
+        </div>
       </div>
 
       <MembershipImportWizard
         open={wizardOpen}
         onOpenChange={setWizardOpen}
+      />
+      <WorkerImportWizard
+        open={workerWizardOpen}
+        onOpenChange={setWorkerWizardOpen}
       />
     </div>
   );

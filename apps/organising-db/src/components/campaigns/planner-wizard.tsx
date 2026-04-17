@@ -246,6 +246,15 @@ export function CampaignCreationWizard() {
         linkedEnd: existingCampaign.end_date ?? null,
         agreementExpiry: null,
       })
+      // Seed initialTimelineRef so the "Stages already complete" selector can
+      // redistribute from the baseline timeline. Without this the onValueChange
+      // returns early and the user's selection is silently dropped.
+      initialTimelineRef.current = ranges.map((r) => ({
+        stage_number: r.stage_number,
+        planned_start: new Date(r.planned_start),
+        planned_end: new Date(r.planned_end),
+        duration_weeks: r.duration_weeks,
+      }))
       const mode = resolveTimelineMode(true, existingCampaign, null)
       hasAutoSelected.current = true
       setState((p) => ({

@@ -137,8 +137,25 @@ export async function GET(
     }
 
     if (occupation) {
-      const q = occupation.toLowerCase();
-      results = results.filter((w) => w.occupation?.toLowerCase().includes(q));
+      // Accept either a single substring (legacy) or a comma-separated list
+      // of exact occupation values produced by the new occupation dropdown.
+      const parts = occupation
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (parts.length > 1) {
+        const set = new Set(parts.map((p) => p.toLowerCase()));
+        results = results.filter(
+          (w) => !!w.occupation && set.has(w.occupation.toLowerCase())
+        );
+      } else if (parts.length === 1) {
+        // Preserve substring behaviour for single-value callers that still
+        // rely on "contains" matching.
+        const q = parts[0].toLowerCase();
+        results = results.filter((w) =>
+          w.occupation?.toLowerCase().includes(q)
+        );
+      }
     }
 
     if (ouId || ouType) {

@@ -33,6 +33,7 @@ import { ArrowLeft, Wand2, Loader2, Phone, Target, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { CallOutcomeEditor } from '@/components/phone/CallOutcomeEditor'
 import { ScriptVariationsPanel } from '@/components/phone/ScriptVariationsPanel'
+import { LinkScriptToListDialog } from '@/components/phone/LinkScriptToListDialog'
 import type { ScriptStatus } from '@/types/planner-types'
 
 export default function ScriptEditorPage() {
@@ -86,6 +87,7 @@ export default function ScriptEditorPage() {
   const [sections, setSections] = useState<ReturnType<typeof sectionsToEditable> | null>(null)
   const [saved, setSaved] = useState(true)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false)
 
   const editableSections = sections ?? (
     script?.call_script_sections
@@ -286,11 +288,9 @@ export default function ScriptEditorPage() {
 
       {/* Action footer */}
       <div className="flex items-center gap-3 pt-4 border-t">
-        <Button
-          onClick={() => router.push(`/campaigns/${campaignId}/phone/lists/new?script_id=${scriptId}`)}
-        >
+        <Button onClick={() => setLinkDialogOpen(true)}>
           <Phone className="h-4 w-4 mr-1" />
-          Create Call List with This Script
+          Use This Script on a Call List
         </Button>
         <Button
           variant="outline"
@@ -299,6 +299,14 @@ export default function ScriptEditorPage() {
           Phone Operations
         </Button>
       </div>
+
+      <LinkScriptToListDialog
+        open={linkDialogOpen}
+        onOpenChange={setLinkDialogOpen}
+        campaignId={campaignId}
+        scriptId={script.script_id}
+        scriptTitle={script.title}
+      />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>

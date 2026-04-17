@@ -1,13 +1,17 @@
-import type { SupportLevel } from '@/types/planner-types'
-
 export interface PriorityOrder {
-  by: 'support_level' | 'rating' | 'sequential'
-  /** Ordered array of support_level values or stringified rating integers, e.g. ['strong_supporter', 'neutral'] or ['1', '3', '2'] */
+  by: 'assessment_rating' | 'rating' | 'sequential'
+  /**
+   * Ordered bucket keys. For `assessment_rating`, valid keys are
+   * '1' | '2' | '3' | '4' | '5' | 'unassessed' for numeric assessments, or
+   * 'true' | 'false' | 'unassessed' for binary assessments. For `rating`,
+   * keys are '1' | '2' | '3' | '4' | '5' | 'unrated' (rounded cumulative).
+   */
   order?: string[]
+  /** Required when by='assessment_rating' — tells the scorer which assessment to consult per worker. */
+  assessment_id?: number
 }
 
 interface PriorityInput {
-  support_level?: SupportLevel | string | null
   connection_status?: string | null
   contact_count?: number
   membership_status?: string | null
@@ -15,15 +19,13 @@ interface PriorityInput {
   preferred_contact_method?: string | null
   manual_override?: number | null
   cumulative_rating?: number | null
+  /**
+   * When priority_order.by === 'assessment_rating', supply the bucket key the
+   * worker maps into for the selected assessment. '1'…'5', 'true', 'false',
+   * or 'unassessed'. When not relevant, leave undefined.
+   */
+  assessment_rating_bucket?: string | null
   priority_order?: PriorityOrder | null
-}
-
-const SUPPORT_SCORES: Record<string, number> = {
-  strong_supporter: 5,
-  supporter: 15,
-  neutral: 30,
-  unsupportive: 10,
-  hostile: 2,
 }
 
 const STATUS_SCORES: Record<string, number> = {
@@ -40,17 +42,13 @@ const STATUS_SCORES: Record<string, number> = {
  *
  * When `priority_order` is supplied, a group bonus of (order.length - groupIndex) * 300
  * is added to ensure the desired bucket ordering dominates over the individual score.
- * Workers whose support_level (or rating) is not in the specified order array get
- * a group bonus of 0 and are called last within their priority strategy.
+ * Workers whose rating is not in the specified order array get a group bonus of 0
+ * and are called last within their priority strategy.
  */
 export function computePriorityScore(input: PriorityInput): number {
   if (input.manual_override != null) return input.manual_override
 
   let score = 50
-
-  if (input.support_level && SUPPORT_SCORES[input.support_level] != null) {
-    score += SUPPORT_SCORES[input.support_level]
-  }
 
   if (input.connection_status && STATUS_SCORES[input.connection_status] != null) {
     score += STATUS_SCORES[input.connection_status]
@@ -82,18 +80,24 @@ export function computePriorityScore(input: PriorityInput): number {
   score = Math.max(0, Math.min(100, score))
 
   // Apply group ordering bonus — ensures bucket order dominates individual score
-  if (input.priority_order && input.priority_order.by !== 'sequential' && input.priority_order.order && input.priority_order.order.length > 0) {
+  if (
+    input.priority_order &&
+    input.priority_order.by !== 'sequential' &&
+    input.priority_order.order &&
+    input.priority_order.order.length > 0
+  ) {
     const { by, order } = input.priority_order
     let groupKey: string | null = null
 
-    if (by === 'support_level') {
-      // null/missing support_level maps to the 'unassessed' bucket
-      groupKey = input.support_level || 'unassessed'
+    if (by === 'assessment_rating') {
+      // null/missing assessment rating maps to 'unassessed'
+      groupKey = input.assessment_rating_bucket || 'unassessed'
     } else if (by === 'rating') {
-      // null/missing rating maps to the 'unrated' bucket
-      groupKey = input.cumulative_rating != null
-        ? String(Math.round(input.cumulative_rating))
-        : 'unrated'
+      // null/missing cumulative rating maps to 'unrated'
+      groupKey =
+        input.cumulative_rating != null
+          ? String(Math.round(input.cumulative_rating))
+          : 'unrated'
     }
 
     if (groupKey) {

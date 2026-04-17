@@ -238,6 +238,12 @@ export function PhoneWizardSteps() {
   const [isCreatingSegmentLists, setIsCreatingSegmentLists] = useState(false)
   const [createBaseListForUnmatched, setCreateBaseListForUnmatched] = useState(false)
 
+  // Step 5: choose between creating a new list or linking to an existing one.
+  const [listMode, setListMode] = useState<'new' | 'existing'>('new')
+  const [existingListId, setExistingListId] = useState<number | null>(null)
+  const [existingLists, setExistingLists] = useState<Array<{ list_id: number; name: string; total_items: number; previously_linked?: boolean; is_current_for_script?: boolean }>>([])
+  const [existingListsLoading, setExistingListsLoading] = useState(false)
+
   const generateDraft = useGenerateDraft()
 
   // Pre-fill from URL params: ?campaign_id=123
@@ -1128,30 +1134,58 @@ export function PhoneWizardSteps() {
       toast.error('Select at least one worker to call')
       return
     }
+
+    const linkingToExisting =
+      listMode === 'existing' && state.campaignId && existingListId != null
+
     setIsCreatingList(true)
     try {
-      const listName = state.listName.trim() || `Call list — ${new Date().toLocaleDateString('en-AU')}`
-      const url = state.campaignId
-        ? `/api/campaigns/${state.campaignId}/call-lists`
-        : '/api/phone-wizard/call-lists'
+      let listId: number
 
-      // Create the call list
-      const listRes = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: listName,
-          script_id: state.savedScriptId || null,
-          priority_strategy: 'sequential',
-        }),
-      })
-      const listData = await listRes.json()
-      if (!listRes.ok) throw new Error(listData.error || 'Failed to create call list')
+      if (linkingToExisting) {
+        listId = existingListId!
+        // Make sure the selected script is linked (as current wave) to the list.
+        if (state.savedScriptId) {
+          const linkRes = await fetch(
+            `/api/campaigns/${state.campaignId}/call-lists/${listId}/link-script`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                script_id: state.savedScriptId,
+                set_current: true,
+              }),
+            }
+          )
+          if (!linkRes.ok) {
+            const err = await linkRes.json().catch(() => ({ error: 'Failed' }))
+            throw new Error(err.error || 'Failed to link script to list')
+          }
+        }
+      } else {
+        const listName = state.listName.trim() || `Call list — ${new Date().toLocaleDateString('en-AU')}`
+        const url = state.campaignId
+          ? `/api/campaigns/${state.campaignId}/call-lists`
+          : '/api/phone-wizard/call-lists'
 
-      const listId = listData.list_id
+        // Create the call list
+        const listRes = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: listName,
+            script_id: state.savedScriptId || null,
+            priority_strategy: 'sequential',
+          }),
+        })
+        const listData = await listRes.json()
+        if (!listRes.ok) throw new Error(listData.error || 'Failed to create call list')
+        listId = listData.list_id
+      }
+
       setState((prev) => ({ ...prev, savedListId: listId }))
 
-      // Populate the list
+      // Populate the list (both modes — adds workers, skipping duplicates).
       const workerIds = [...selectedWorkerIds]
       const populateUrl = state.campaignId
         ? `/api/campaigns/${state.campaignId}/call-lists/${listId}/populate`
@@ -1168,7 +1202,11 @@ export function PhoneWizardSteps() {
       if (!populateRes.ok) throw new Error(populateData.error || 'Failed to populate list')
 
       setState((prev) => ({ ...prev, listPopulated: true }))
-      toast.success(`Call list created with ${populateData.added} contacts`)
+      toast.success(
+        linkingToExisting
+          ? `Script linked and ${populateData.added} contacts added`
+          : `Call list created with ${populateData.added} contacts`
+      )
 
       // Navigate to calling session
       if (state.campaignId) {
@@ -1182,6 +1220,32 @@ export function PhoneWizardSteps() {
       setIsCreatingList(false)
     }
   }
+
+  // Fetch existing call lists in the campaign when the user reaches step 5
+  // with a campaign selected. Include previously_linked flag for the active script.
+  useEffect(() => {
+    if (step !== 5) return
+    if (!state.campaignId) return
+    if (useVariations && segmentVariable) return
+    let cancelled = false
+    setExistingListsLoading(true)
+    const qs = state.savedScriptId ? `?script_id=${state.savedScriptId}` : ''
+    fetch(`/api/campaigns/${state.campaignId}/call-lists${qs}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (cancelled) return
+        setExistingLists(Array.isArray(data) ? data : [])
+      })
+      .catch(() => {
+        if (!cancelled) setExistingLists([])
+      })
+      .finally(() => {
+        if (!cancelled) setExistingListsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [step, state.campaignId, state.savedScriptId, useVariations, segmentVariable])
 
   const canProceed: Record<number, boolean> = {
     1: true,
@@ -1999,7 +2063,85 @@ export function PhoneWizardSteps() {
             )}
 
             {/* ── Single list mode (base script) or fallback within variations mode ── */}
-            {(!useVariations || !segmentVariable) && (
+            {(!useVariations || !segmentVariable) && state.campaignId && (
+              <div className="space-y-2">
+                <Label className="text-xs">Where should these calls go?</Label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setListMode('new')}
+                    className={cn(
+                      'flex-1 text-left p-2.5 rounded-lg border text-xs transition-colors',
+                      listMode === 'new'
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:bg-muted/50'
+                    )}
+                  >
+                    <p className="font-medium text-sm">Create new list</p>
+                    <p className="text-muted-foreground">A fresh call list populated with the selected workers.</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setListMode('existing')}
+                    className={cn(
+                      'flex-1 text-left p-2.5 rounded-lg border text-xs transition-colors',
+                      listMode === 'existing'
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:bg-muted/50'
+                    )}
+                  >
+                    <p className="font-medium text-sm">Link to existing list</p>
+                    <p className="text-muted-foreground">Attach this script to a list that already exists; the workers you&apos;ve selected will be added to it.</p>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {(!useVariations || !segmentVariable) && listMode === 'existing' && state.campaignId && (
+              <div className="space-y-1">
+                <Label>Existing Call List</Label>
+                {existingListsLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Loading existing lists…
+                  </div>
+                ) : existingLists.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No existing lists in this campaign yet. Create a new list instead.</p>
+                ) : (
+                  <Select
+                    value={existingListId != null ? String(existingListId) : ''}
+                    onValueChange={(v) => setExistingListId(Number(v))}
+                  >
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="Pick an existing list…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {existingLists.map((l) => (
+                        <SelectItem key={l.list_id} value={String(l.list_id)}>
+                          <span className="flex items-center gap-2">
+                            <span>{l.name}</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              ({l.total_items} contacts)
+                            </span>
+                            {l.is_current_for_script ? (
+                              <Badge variant="default" className="text-[9px] px-1 bg-primary/15 text-primary border-primary/30">
+                                Current script
+                              </Badge>
+                            ) : l.previously_linked ? (
+                              <Badge variant="secondary" className="text-[9px] px-1">
+                                Previously linked
+                              </Badge>
+                            ) : null}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
+
+            {(!useVariations || !segmentVariable) && (listMode === 'new' || !state.campaignId) && (
               <div className="space-y-1">
                 <Label>Call List Name</Label>
                 <Input
@@ -2469,7 +2611,11 @@ export function PhoneWizardSteps() {
             {(!useVariations || !segmentVariable) && (state.campaignId || state.standaloneEmployerId) && (
               <Button
                 onClick={() => void handleCreateListAndCall()}
-                disabled={isCreatingList || selectedWorkerIds.size === 0}
+                disabled={
+                  isCreatingList
+                  || selectedWorkerIds.size === 0
+                  || (listMode === 'existing' && state.campaignId != null && existingListId == null)
+                }
                 size="lg"
                 className="w-full"
               >
@@ -2479,8 +2625,10 @@ export function PhoneWizardSteps() {
                   <PlayCircle className="h-4 w-4 mr-2" />
                 )}
                 {isCreatingList
-                  ? 'Creating list...'
-                  : `Create List & Start Calling (${selectedWorkerIds.size} workers)`}
+                  ? (listMode === 'existing' ? 'Linking and populating list...' : 'Creating list...')
+                  : (listMode === 'existing' && state.campaignId != null
+                      ? `Link Script & Add ${selectedWorkerIds.size} Workers → Call`
+                      : `Create List & Start Calling (${selectedWorkerIds.size} workers)`)}
               </Button>
             )}
 

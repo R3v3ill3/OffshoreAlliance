@@ -13,7 +13,18 @@ export async function GET(
 
     const { data, error } = await supabase
       .from('call_lists')
-      .select('*, call_scripts!script_id(*, call_script_sections(*))')
+      .select(
+        `*,
+         call_scripts!script_id(*, call_script_sections(*)),
+         call_list_scripts(
+           script_id,
+           is_current,
+           wave_label,
+           linked_at,
+           notes,
+           call_scripts(script_id, title, status, call_objective, call_script_sections(*))
+         )`
+      )
       .eq('list_id', parseInt(listId))
       .single()
 

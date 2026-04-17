@@ -12,6 +12,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,10 +30,11 @@ import {
 } from '@/components/ui/table'
 import {
   ArrowLeft, Phone, Play, Pause, Users, Loader2, CheckCircle,
-  SkipForward, Clock, AlertCircle, Trash2,
+  SkipForward, Clock, AlertCircle, Trash2, Filter, Pencil,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { CallListStatus } from '@/types/planner-types'
+import { CallListLinkedScripts } from '@/components/phone/CallListLinkedScripts'
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
   pending: <Clock className="h-3 w-3 text-slate-500" />,
@@ -51,6 +55,25 @@ export default function CallListDetailPage() {
   const updateList = useUpdateCallList(campaignId)
   const deleteList = useDeleteCallList(campaignId)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [editingDetails, setEditingDetails] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+
+  type ListWithLinks = typeof list & {
+    call_list_scripts?: Array<{
+      script_id: number
+      is_current: boolean
+      wave_label: string | null
+      linked_at: string
+      call_scripts: {
+        script_id: number
+        title: string
+        status: string
+      } | null
+    }>
+  }
+  const listWithLinks = list as ListWithLinks | undefined
+  const linkedScripts = listWithLinks?.call_list_scripts ?? []
 
   const handleStatusChange = async (newStatus: CallListStatus) => {
     try {
@@ -58,6 +81,26 @@ export default function CallListDetailPage() {
       toast.success(`List ${newStatus}`)
     } catch {
       toast.error('Failed to update status')
+    }
+  }
+
+  const handleStartEditDetails = () => {
+    setEditName(list?.name ?? '')
+    setEditDescription(list?.description ?? '')
+    setEditingDetails(true)
+  }
+
+  const handleSaveDetails = async () => {
+    try {
+      await updateList.mutateAsync({
+        listId: parseInt(listId),
+        name: editName,
+        description: editDescription || null,
+      })
+      toast.success('List updated')
+      setEditingDetails(false)
+    } catch {
+      toast.error('Failed to update list')
     }
   }
 
@@ -98,6 +141,28 @@ export default function CallListDetailPage() {
             type="button"
             variant="outline"
             size="sm"
+            onClick={handleStartEditDetails}
+          >
+            <Pencil className="h-4 w-4 mr-1" />
+            Edit details
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              router.push(
+                `/campaigns/${campaignId}/phone/lists/new?edit_list_id=${listId}`
+              )
+            }
+          >
+            <Filter className="h-4 w-4 mr-1" />
+            Edit filters
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
             className="text-destructive border-destructive/30 hover:bg-destructive/10"
             onClick={() => setDeleteDialogOpen(true)}
           >
@@ -106,6 +171,53 @@ export default function CallListDetailPage() {
           </Button>
         </div>
       </div>
+
+      {editingDetails && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Edit list details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Name</Label>
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Description</Label>
+              <Textarea
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                rows={2}
+                className="text-sm"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setEditingDetails(false)}
+                disabled={updateList.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSaveDetails}
+                disabled={!editName.trim() || updateList.isPending}
+              >
+                {updateList.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : null}
+                Save
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats and actions */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -156,6 +268,13 @@ export default function CallListDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Scripts linked to this list */}
+      <CallListLinkedScripts
+        campaignId={campaignId}
+        listId={parseInt(listId)}
+        links={linkedScripts}
+      />
 
       {/* Contact list table */}
       <Card>

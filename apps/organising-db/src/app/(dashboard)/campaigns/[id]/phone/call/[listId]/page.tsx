@@ -49,6 +49,7 @@ export default function CallWizardPage() {
   const [shouldFetchNext, setShouldFetchNext] = useState(true)
   const [showWorkerEdit, setShowWorkerEdit] = useState(false)
   const [checkedOutcomes, setCheckedOutcomes] = useState<Map<number, string | null>>(new Map())
+  const [sessionScriptId, setSessionScriptId] = useState<number | null>(null)
 
   const callStartTime = useRef<Date | null>(null)
   const queryClient = useQueryClient()
@@ -59,7 +60,60 @@ export default function CallWizardPage() {
   )
   const recordAttempt = useRecordCallAttempt(campaignId)
 
-  const { data: outcomeDefinitions = [] } = useCallOutcomeDefinitions(list?.script_id ?? null)
+  type ListWithLinks = typeof list & {
+    call_list_scripts?: Array<{
+      script_id: number
+      is_current: boolean
+      wave_label: string | null
+      linked_at: string
+      call_scripts: {
+        script_id: number
+        title: string
+        status: string
+        call_objective?: string | null
+        call_script_sections?: CallScriptSection[]
+      } | null
+    }>
+    call_scripts?: {
+      script_id: number
+      title: string
+      status: string
+      call_script_sections?: CallScriptSection[]
+    } | null
+  }
+  const listWithLinks = list as ListWithLinks | undefined
+
+  const linkedScripts = useMemo(() => {
+    const links = listWithLinks?.call_list_scripts ?? []
+    return [...links]
+      .filter((l) => l.call_scripts)
+      .sort((a, b) => {
+        if (a.is_current !== b.is_current) return a.is_current ? -1 : 1
+        return (b.linked_at || '').localeCompare(a.linked_at || '')
+      })
+  }, [listWithLinks])
+
+  useEffect(() => {
+    if (sessionScriptId != null) return
+    const defaultScriptId =
+      linkedScripts.find((l) => l.is_current)?.script_id ??
+      listWithLinks?.script_id ??
+      linkedScripts[0]?.script_id ??
+      null
+    if (defaultScriptId != null) setSessionScriptId(defaultScriptId)
+  }, [linkedScripts, listWithLinks?.script_id, sessionScriptId])
+
+  const activeScript = useMemo(() => {
+    if (!sessionScriptId) {
+      return listWithLinks?.call_scripts ?? null
+    }
+    const linked = linkedScripts.find((l) => l.script_id === sessionScriptId)?.call_scripts
+    if (linked) return linked
+    return listWithLinks?.call_scripts ?? null
+  }, [sessionScriptId, linkedScripts, listWithLinks])
+
+  const outcomeScriptId = sessionScriptId ?? list?.script_id ?? null
+  const { data: outcomeDefinitions = [] } = useCallOutcomeDefinitions(outcomeScriptId)
 
   const numericCampaignId = Number.parseInt(campaignId, 10)
   const { data: campaignScriptCtx } = useCampaignPhoneScriptContext(
@@ -130,12 +184,9 @@ export default function CallWizardPage() {
     )
   }
 
-  const sections: CallScriptSection[] = (() => {
-    if (!list) return []
-    const raw = list as unknown as Record<string, unknown>
-    const scriptObj = raw.call_scripts as Record<string, unknown> | null | undefined
-    return (scriptObj?.call_script_sections as CallScriptSection[] | undefined) ?? []
-  })()
+  const sections: CallScriptSection[] = useMemo(() => {
+    return (activeScript?.call_script_sections as CallScriptSection[] | undefined) ?? []
+  }, [activeScript])
 
   const sortedSections = [...sections].sort((a, b) => a.sort_order - b.sort_order)
   const currentSection = sortedSections[flowState.currentSectionIndex] || null
@@ -209,7 +260,7 @@ export default function CallWizardPage() {
 
     const attempt: RecordCallAttemptRequest = {
       list_item_id: contact.item_id,
-      script_id: list?.script_id || null,
+      script_id: sessionScriptId ?? list?.script_id ?? null,
       dial_disposition: flowState.dialDisposition || 'no_answer',
       call_disposition: flowState.callDisposition || null,
       overall_notes: notes || null,
@@ -239,7 +290,7 @@ export default function CallWizardPage() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to record attempt')
     }
-  }, [contact, list, flowState, notes, supportLevel, ctaResponse, sortedSections, stepReached, stepNotes, checkedOutcomes, recordAttempt, refetchNext])
+  }, [contact, list, sessionScriptId, flowState, notes, supportLevel, ctaResponse, sortedSections, stepReached, stepNotes, checkedOutcomes, recordAttempt, refetchNext])
 
   const handleSkip = useCallback(async () => {
     if (!contact) return
@@ -277,15 +328,42 @@ export default function CallWizardPage() {
           <ArrowLeft className="h-4 w-4 mr-1" />
           Back
         </Button>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <h2 className="text-base font-semibold flex items-center gap-2">
             <Phone className="h-4 w-4" />
-            {list.name}
+            <span className="truncate">{list.name}</span>
           </h2>
           <p className="text-xs text-muted-foreground">
             {list.completed_items}/{list.total_items} completed
           </p>
         </div>
+
+        {linkedScripts.length > 1 && (
+          <div className="flex items-center gap-1.5 mr-2">
+            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+            <Select
+              value={sessionScriptId ? String(sessionScriptId) : ''}
+              onValueChange={(v) => setSessionScriptId(Number(v))}
+            >
+              <SelectTrigger className="h-8 text-xs min-w-[180px]">
+                <SelectValue placeholder="Select script…" />
+              </SelectTrigger>
+              <SelectContent>
+                {linkedScripts.map((l) => (
+                  <SelectItem key={l.script_id} value={String(l.script_id)}>
+                    <span className="flex items-center gap-2">
+                      <span className="truncate max-w-[220px]">{l.call_scripts?.title}</span>
+                      {l.is_current && (
+                        <span className="text-[9px] text-primary font-medium">CURRENT</span>
+                      )}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         <Badge variant="secondary">{flowState.phase.replace(/_/g, ' ')}</Badge>
 
         {/* Mobile script panel toggle */}

@@ -22,6 +22,7 @@ import {
 import { PRIORITY_STRATEGIES } from '@/lib/phone/disposition-types'
 import { toast } from 'sonner'
 import type { CallListPriorityStrategy } from '@/types/planner-types'
+import { OccupationMultiSelect } from '@/components/phone/OccupationMultiSelect'
 
 type WizardStep = 'details' | 'filters' | 'priority' | 'script' | 'confirm'
 
@@ -32,17 +33,6 @@ const STEPS: { key: WizardStep; label: string }[] = [
   { key: 'script', label: 'Attach Script' },
   { key: 'confirm', label: 'Confirm' },
 ]
-
-const SUPPORT_LEVEL_CONFIG: Record<string, { label: string; className: string }> = {
-  strong_supporter: { label: 'Strong Supporter', className: 'bg-green-100 text-green-700 border-green-200' },
-  supporter: { label: 'Supporter', className: 'bg-blue-100 text-blue-700 border-blue-200' },
-  neutral: { label: 'Neutral', className: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
-  unsupportive: { label: 'Unsupportive', className: 'bg-orange-100 text-orange-700 border-orange-200' },
-  hostile: { label: 'Hostile', className: 'bg-red-100 text-red-700 border-red-200' },
-  unassessed: { label: 'Un-assessed', className: 'bg-slate-100 text-slate-600 border-slate-200' },
-}
-
-const ALL_SUPPORT_LEVELS = Object.keys(SUPPORT_LEVEL_CONFIG)
 
 const RATING_BUCKET_CONFIG: Record<string, { label: string; className: string }> = {
   '1': { label: 'Rating 1', className: 'bg-red-100 text-red-700 border-red-200' },
@@ -55,21 +45,32 @@ const RATING_BUCKET_CONFIG: Record<string, { label: string; className: string }>
 
 const ALL_RATING_BUCKETS = ['1', '2', '3', '4', '5', 'unrated']
 
+const BINARY_RATING_BUCKET_CONFIG: Record<string, { label: string; className: string }> = {
+  true: { label: 'Yes', className: 'bg-green-100 text-green-700 border-green-200' },
+  false: { label: 'No', className: 'bg-red-100 text-red-700 border-red-200' },
+  unassessed: { label: 'Un-assessed', className: 'bg-slate-100 text-slate-600 border-slate-200' },
+}
+
+const ALL_BINARY_RATING_BUCKETS = ['true', 'false', 'unassessed']
+
+const ALL_ASSESSMENT_RATINGS = ['1', '2', '3', '4', '5', 'unassessed']
+
 interface FilterState {
   membership: string
   employer_id: string
   worksite_id: string
   roles: string[]
-  occupation: string
-  support_levels: string[]
+  occupations: string[]
+  assessment_id: string
+  assessment_ratings: string[]
   rating_min: string
   rating_max: string
   include_unrated: boolean
 }
 
 interface PriorityOrderState {
-  by: 'sequential' | 'support_level' | 'rating'
-  supportLevelOrder: string[]
+  by: 'sequential' | 'assessment_rating' | 'rating'
+  assessmentRatingOrder: string[]
   ratingOrder: string[]
 }
 
@@ -78,8 +79,9 @@ const DEFAULT_FILTERS: FilterState = {
   employer_id: '',
   worksite_id: '',
   roles: [],
-  occupation: '',
-  support_levels: [],
+  occupations: [],
+  assessment_id: '',
+  assessment_ratings: [],
   rating_min: '',
   rating_max: '',
   include_unrated: true,
@@ -87,7 +89,7 @@ const DEFAULT_FILTERS: FilterState = {
 
 const DEFAULT_PRIORITY: PriorityOrderState = {
   by: 'sequential',
-  supportLevelOrder: [...ALL_SUPPORT_LEVELS],
+  assessmentRatingOrder: [...ALL_ASSESSMENT_RATINGS],
   ratingOrder: [...ALL_RATING_BUCKETS],
 }
 
@@ -179,6 +181,36 @@ export default function NewCallListPage() {
     },
   })
 
+  // Fetch campaign assessments for the Specific Assessment filter
+  const { data: assessments = [] } = useQuery({
+    queryKey: ['campaign-assessments-for-list-builder', campaignId],
+    queryFn: async () => {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('campaign_activities')
+        .select('activity_id, title, is_binary')
+        .eq('campaign_id', parseInt(campaignId))
+        .eq('activity_kind', 'assessment')
+        .order('title')
+      return (data ?? []) as Array<{ activity_id: number; title: string; is_binary: boolean | null }>
+    },
+    enabled: !!campaignId,
+  })
+
+  const selectedAssessment = assessments.find(
+    (a) => String(a.activity_id) === filters.assessment_id
+  )
+  const assessmentRatingBuckets = selectedAssessment?.is_binary
+    ? ALL_BINARY_RATING_BUCKETS
+    : ALL_ASSESSMENT_RATINGS
+  const assessmentRatingConfig: Record<string, { label: string; className: string }> =
+    selectedAssessment?.is_binary
+      ? BINARY_RATING_BUCKET_CONFIG
+      : {
+          ...RATING_BUCKET_CONFIG,
+          unassessed: { label: 'Un-assessed', className: 'bg-slate-100 text-slate-600 border-slate-200' },
+        }
+
   // Live contact count preview (debounced on filter changes)
   const fetchPreview = useCallback(async () => {
     setPreviewLoading(true)
@@ -190,7 +222,7 @@ export default function NewCallListPage() {
       if (filters.employer_id) url.searchParams.set('employer_id', filters.employer_id)
       if (filters.worksite_id) url.searchParams.set('worksite_id', filters.worksite_id)
       if (filters.roles.length > 0) url.searchParams.set('roles', filters.roles.join(','))
-      if (filters.occupation) url.searchParams.set('occupation', filters.occupation)
+      if (filters.occupations.length > 0) url.searchParams.set('occupation', filters.occupations.join(','))
 
       const res = await fetch(url.toString())
       const json = await res.json()
@@ -206,7 +238,7 @@ export default function NewCallListPage() {
     } finally {
       setPreviewLoading(false)
     }
-  }, [campaignId, filters.membership, filters.employer_id, filters.worksite_id, filters.roles, filters.occupation])
+  }, [campaignId, filters.membership, filters.employer_id, filters.worksite_id, filters.roles, filters.occupations])
 
   useEffect(() => {
     if (step !== 'filters') return
@@ -226,12 +258,12 @@ export default function NewCallListPage() {
     if (idx >= 0) setStep(STEPS[idx].key)
   }
 
-  function moveSupportLevel(index: number, direction: 'up' | 'down') {
-    const order = [...priority.supportLevelOrder]
+  function moveAssessmentRating(index: number, direction: 'up' | 'down') {
+    const order = [...priority.assessmentRatingOrder]
     const targetIndex = direction === 'up' ? index - 1 : index + 1
     if (targetIndex < 0 || targetIndex >= order.length) return
     ;[order[index], order[targetIndex]] = [order[targetIndex], order[index]]
-    setPriority((prev) => ({ ...prev, supportLevelOrder: order }))
+    setPriority((prev) => ({ ...prev, assessmentRatingOrder: order }))
   }
 
   function moveRatingBucket(index: number, direction: 'up' | 'down') {
@@ -264,8 +296,12 @@ export default function NewCallListPage() {
           employer_id: filters.employer_id || undefined,
           worksite_id: filters.worksite_id || undefined,
           roles: filters.roles.length > 0 ? filters.roles.join(',') : undefined,
-          occupation: filters.occupation || undefined,
-          support_levels: filters.support_levels.length > 0 ? filters.support_levels : undefined,
+          occupation: filters.occupations.length > 0 ? filters.occupations : undefined,
+          assessment_id: filters.assessment_id ? Number(filters.assessment_id) : undefined,
+          assessment_ratings:
+            filters.assessment_id && filters.assessment_ratings.length > 0
+              ? filters.assessment_ratings
+              : undefined,
           rating_min: filters.rating_min ? parseFloat(filters.rating_min) : undefined,
           rating_max: filters.rating_max ? parseFloat(filters.rating_max) : undefined,
           include_unrated: filters.include_unrated,
@@ -273,7 +309,14 @@ export default function NewCallListPage() {
         priority_order: priority.by !== 'sequential'
           ? {
               by: priority.by,
-              order: priority.by === 'support_level' ? priority.supportLevelOrder : priority.ratingOrder,
+              order:
+                priority.by === 'assessment_rating'
+                  ? priority.assessmentRatingOrder
+                  : priority.ratingOrder,
+              assessment_id:
+                priority.by === 'assessment_rating' && filters.assessment_id
+                  ? Number(filters.assessment_id)
+                  : undefined,
             }
           : undefined,
       }
@@ -415,12 +458,13 @@ export default function NewCallListPage() {
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Occupation (contains)</Label>
-                <Input
-                  value={filters.occupation}
-                  onChange={(e) => setFilters((f) => ({ ...f, occupation: e.target.value }))}
-                  placeholder="e.g. electrician"
-                  className="h-8 text-xs"
+                <Label className="text-xs">Occupation</Label>
+                <OccupationMultiSelect
+                  campaignId={campaignId}
+                  selected={filters.occupations}
+                  onChange={(values) => setFilters((f) => ({ ...f, occupations: values }))}
+                  compact
+                  placeholder="Any occupation"
                 />
               </div>
               <div className="space-y-1">
@@ -490,35 +534,69 @@ export default function NewCallListPage() {
               </div>
             )}
 
-            {/* Support level filter */}
+            {/* Specific Assessment filter */}
             <div className="space-y-1.5">
-              <Label className="text-xs">Support Level (select one or more)</Label>
-              <div className="flex flex-wrap gap-1.5">
-                {ALL_SUPPORT_LEVELS.map((level) => {
-                  const config = SUPPORT_LEVEL_CONFIG[level]
-                  const selected = filters.support_levels.includes(level)
-                  return (
-                    <button
-                      key={level}
-                      onClick={() => setFilters((f) => ({
-                        ...f,
-                        support_levels: selected
-                          ? f.support_levels.filter((s) => s !== level)
-                          : [...f.support_levels, level],
-                      }))}
-                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors font-medium ${
-                        selected ? config.className : 'bg-background border-border hover:bg-muted text-foreground'
-                      }`}
-                    >
-                      {config.label}
-                    </button>
-                  )
-                })}
-              </div>
-              {filters.support_levels.length > 0 && (
-                <p className="text-[10px] text-muted-foreground">
-                  Note: support level filters are applied when the list is populated, not reflected in the preview count below.
-                </p>
+              <Label className="text-xs">Specific Assessment</Label>
+              <Select
+                value={filters.assessment_id || '__none__'}
+                onValueChange={(v) => setFilters((f) => ({
+                  ...f,
+                  assessment_id: v === '__none__' ? '' : v,
+                  assessment_ratings: [],
+                }))}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Choose an assessment…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None (skip assessment filter)</SelectItem>
+                  {assessments.map((a) => (
+                    <SelectItem key={a.activity_id} value={String(a.activity_id)}>
+                      {a.title}
+                      {a.is_binary ? ' (yes/no)' : ''}
+                    </SelectItem>
+                  ))}
+                  {assessments.length === 0 && (
+                    <div className="py-2 px-3 text-xs text-muted-foreground">
+                      No assessments defined for this campaign yet.
+                    </div>
+                  )}
+                </SelectContent>
+              </Select>
+
+              {filters.assessment_id && (
+                <div className="space-y-1.5 pt-1">
+                  <Label className="text-[10px] text-muted-foreground">
+                    Include workers with these ratings for &ldquo;{selectedAssessment?.title}&rdquo;
+                  </Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {assessmentRatingBuckets.map((r) => {
+                      const cfg = assessmentRatingConfig[r] || { label: r, className: '' }
+                      const selected = filters.assessment_ratings.includes(r)
+                      return (
+                        <button
+                          key={r}
+                          onClick={() => setFilters((f) => ({
+                            ...f,
+                            assessment_ratings: selected
+                              ? f.assessment_ratings.filter((x) => x !== r)
+                              : [...f.assessment_ratings, r],
+                          }))}
+                          className={`text-xs px-2.5 py-1 rounded-full border transition-colors font-medium ${
+                            selected ? cfg.className : 'bg-background border-border hover:bg-muted text-foreground'
+                          }`}
+                        >
+                          {cfg.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {filters.assessment_ratings.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Note: assessment filters are applied when the list is populated, not reflected in the preview count below.
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 
@@ -618,17 +696,30 @@ export default function NewCallListPage() {
 
             <div className="space-y-2">
               {[
-                { value: 'sequential', label: 'Sequential', desc: 'Call workers in the order they appear in the campaign list' },
-                { value: 'support_level', label: 'By Support Level', desc: 'Prioritise specific support level groups — drag to set the call order' },
-                { value: 'rating', label: 'By Activity Rating', desc: 'Set a custom call order by rating bucket — use the controls below to reorder' },
+                { value: 'sequential', label: 'Sequential', desc: 'Call workers in the order they appear in the campaign list', disabled: false },
+                {
+                  value: 'assessment_rating',
+                  label: 'By Specific Assessment Rating',
+                  desc: selectedAssessment
+                    ? `Order by rating on "${selectedAssessment.title}" — drag to set the call order`
+                    : 'Pick a Specific Assessment in the Build List step first to enable this option',
+                  disabled: !filters.assessment_id,
+                },
+                { value: 'rating', label: 'By Cumulative Activity Rating', desc: 'Set a custom call order by cumulative rating bucket — use the controls below to reorder', disabled: false },
               ].map((option) => (
                 <button
                   key={option.value}
-                  onClick={() => setPriority((prev) => ({ ...prev, by: option.value as PriorityOrderState['by'] }))}
+                  onClick={() => {
+                    if (option.disabled) return
+                    setPriority((prev) => ({ ...prev, by: option.value as PriorityOrderState['by'] }))
+                  }}
+                  disabled={option.disabled}
                   className={`w-full text-left p-3 rounded-lg border transition-colors ${
-                    priority.by === option.value
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border hover:bg-muted/50'
+                    option.disabled
+                      ? 'border-border bg-muted/20 opacity-60 cursor-not-allowed'
+                      : priority.by === option.value
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:bg-muted/50'
                   }`}
                 >
                   <p className="text-sm font-medium">{option.label}</p>
@@ -637,16 +728,21 @@ export default function NewCallListPage() {
               ))}
             </div>
 
-            {/* Support level ordering */}
-            {priority.by === 'support_level' && (
+            {/* Assessment rating ordering */}
+            {priority.by === 'assessment_rating' && selectedAssessment && (
               <div className="space-y-1.5">
-                <p className="text-xs font-medium text-slate-700">Drag order (top = called first)</p>
+                <p className="text-xs font-medium text-slate-700">
+                  Drag order for &ldquo;{selectedAssessment.title}&rdquo; ratings (top = called first)
+                </p>
                 <div className="space-y-1.5">
-                  {priority.supportLevelOrder.map((level, index) => {
-                    const config = SUPPORT_LEVEL_CONFIG[level]
+                  {(priority.assessmentRatingOrder.length === assessmentRatingBuckets.length
+                    ? priority.assessmentRatingOrder
+                    : assessmentRatingBuckets
+                  ).map((rating, index) => {
+                    const config = assessmentRatingConfig[rating] || { label: rating, className: '' }
                     return (
                       <div
-                        key={level}
+                        key={rating}
                         className="flex items-center gap-2 p-2.5 rounded-lg border bg-background"
                       >
                         <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -656,15 +752,15 @@ export default function NewCallListPage() {
                         </Badge>
                         <div className="flex flex-col gap-0.5">
                           <button
-                            onClick={() => moveSupportLevel(index, 'up')}
+                            onClick={() => moveAssessmentRating(index, 'up')}
                             disabled={index === 0}
                             className="h-4 w-4 flex items-center justify-center rounded hover:bg-muted disabled:opacity-30"
                           >
                             <ChevronUp className="h-3 w-3" />
                           </button>
                           <button
-                            onClick={() => moveSupportLevel(index, 'down')}
-                            disabled={index === priority.supportLevelOrder.length - 1}
+                            onClick={() => moveAssessmentRating(index, 'down')}
+                            disabled={index === priority.assessmentRatingOrder.length - 1}
                             className="h-4 w-4 flex items-center justify-center rounded hover:bg-muted disabled:opacity-30"
                           >
                             <ChevronDown className="h-3 w-3" />
@@ -675,7 +771,7 @@ export default function NewCallListPage() {
                   })}
                 </div>
                 <p className="text-[10px] text-muted-foreground">
-                  Workers are sorted into these groups first, then by individual score within each group.
+                  Workers are sorted into these rating buckets for the selected assessment first, then by individual score.
                 </p>
               </div>
             )}
@@ -822,10 +918,10 @@ export default function NewCallListPage() {
             <div className="space-y-2 text-sm">
               <p><strong>Name:</strong> {name}</p>
               <p><strong>Priority:</strong> {
-                priority.by === 'support_level'
-                  ? `Support level order: ${priority.supportLevelOrder.map((l) => SUPPORT_LEVEL_CONFIG[l]?.label).join(' → ')}`
+                priority.by === 'assessment_rating'
+                  ? `Assessment rating order${selectedAssessment ? ` (${selectedAssessment.title})` : ''}: ${priority.assessmentRatingOrder.map((r) => assessmentRatingConfig[r]?.label ?? r).join(' → ')}`
                   : priority.by === 'rating'
-                    ? `Rating order: ${priority.ratingOrder.map((b) => RATING_BUCKET_CONFIG[b]?.label).join(' → ')}`
+                    ? `Cumulative rating order: ${priority.ratingOrder.map((b) => RATING_BUCKET_CONFIG[b]?.label).join(' → ')}`
                     : PRIORITY_STRATEGIES.find((s) => s.value === priorityStrategy)?.label
               }</p>
               {populateResult && (

@@ -23,7 +23,12 @@ export async function POST(
     if (filters.roles) listBuilderUrl.searchParams.set('roles', filters.roles)
     if (filters.employer_id) listBuilderUrl.searchParams.set('employer_id', filters.employer_id)
     if (filters.worksite_id) listBuilderUrl.searchParams.set('worksite_id', filters.worksite_id)
-    if (filters.occupation) listBuilderUrl.searchParams.set('occupation', filters.occupation)
+    if (filters.occupation) {
+      const occVal = Array.isArray(filters.occupation)
+        ? filters.occupation.join(',')
+        : filters.occupation
+      if (occVal) listBuilderUrl.searchParams.set('occupation', occVal)
+    }
 
     const workerRes = await fetch(listBuilderUrl.toString(), {
       headers: { cookie: req.headers.get('cookie') || '' },
@@ -34,7 +39,7 @@ export async function POST(
     }
 
     const workerJson = await workerRes.json()
-    let workers: {
+    const workers: {
       worker_id: number
       phone: string | null
       membership_status: string | null
@@ -52,11 +57,11 @@ export async function POST(
       )
     }
 
-    // Fetch campaign connections for scoring
+    // Fetch campaign connections for scoring (connection_status, contact_count, etc.)
     let connectionMap = new Map<number, Record<string, unknown>>()
     const { data: connections } = await supabase
       .from('worker_campaign_connections')
-      .select('worker_id, support_level, connection_status, contact_count, preferred_contact_method')
+      .select('worker_id, connection_status, contact_count, preferred_contact_method')
       .eq('campaign_id', parseInt(campaignId))
       .in('worker_id', workerIds)
 
@@ -64,20 +69,56 @@ export async function POST(
       connectionMap = new Map(connections.map((c) => [c.worker_id, c]))
     }
 
-    // Filter by support_levels if specified
-    // 'unassessed' is a sentinel covering workers with no connection record or null support_level
-    if (filters.support_levels && Array.isArray(filters.support_levels) && filters.support_levels.length > 0) {
-      const hasUnassessed = filters.support_levels.includes('unassessed')
-      const concreteLevels = filters.support_levels.filter((s: string) => s !== 'unassessed')
-      withPhone = withPhone.filter((w) => {
-        const conn = connectionMap.get(w.worker_id)
-        const level = conn?.support_level as string | null | undefined
-        if (!level) return hasUnassessed  // no connection record or null level = un-assessed
-        return concreteLevels.includes(level)
-      })
+    // Specific Assessment filter — replaces the legacy support_levels filter.
+    // assessment_id: numeric campaign_activities.activity_id for activity_kind='assessment'
+    // assessment_ratings: array of bucket keys:
+    //   numeric: '1'..'5', 'unassessed'
+    //   binary:  'true', 'false', 'unassessed'
+    let assessmentRatingMap = new Map<number, string | null>()
+    const assessmentId: number | null = filters.assessment_id != null
+      ? Number(filters.assessment_id)
+      : null
+    const needsAssessmentFilter =
+      assessmentId != null &&
+      Array.isArray(filters.assessment_ratings) &&
+      filters.assessment_ratings.length > 0
+    const needsAssessmentForOrder =
+      assessmentId != null && priorityOrder?.by === 'assessment_rating'
+
+    if (assessmentId != null && (needsAssessmentFilter || needsAssessmentForOrder)) {
+      const { data: ratingRows } = await supabase
+        .from('campaign_activity_ratings')
+        .select('worker_id, rating, binary_value, rated_at')
+        .eq('activity_id', assessmentId)
+        .in('worker_id', workerIds)
+        .order('rated_at', { ascending: false })
+
+      // Keep only the most recent row per worker (rows already sorted desc by rated_at).
+      const seen = new Set<number>()
+      for (const row of ratingRows ?? []) {
+        if (seen.has(row.worker_id)) continue
+        seen.add(row.worker_id)
+        const bucket =
+          row.rating != null
+            ? String(row.rating)
+            : row.binary_value != null
+              ? String(row.binary_value)
+              : null
+        assessmentRatingMap.set(row.worker_id, bucket)
+      }
+
+      if (needsAssessmentFilter) {
+        const hasUnassessed = filters.assessment_ratings.includes('unassessed')
+        const concrete = filters.assessment_ratings.filter((r: string) => r !== 'unassessed')
+        withPhone = withPhone.filter((w) => {
+          const bucket = assessmentRatingMap.get(w.worker_id) ?? null
+          if (!bucket) return hasUnassessed
+          return concrete.includes(bucket)
+        })
+      }
     }
 
-    // Fetch activity ratings for rating filter and scoring
+    // Fetch cumulative ratings for rating filter and scoring
     let ratingMap = new Map<number, { cumulative_rating: number | null; last_activity_rating: number | null }>()
     const currentWorkerIds = withPhone.map((w) => w.worker_id)
 
@@ -137,13 +178,13 @@ export async function POST(
         const conn = connectionMap.get(w.worker_id) as Record<string, string | number | null | undefined> | undefined
         const rating = ratingMap.get(w.worker_id)
         const score = computePriorityScore({
-          support_level: (conn?.support_level as string) || null,
           connection_status: (conn?.connection_status as string) || null,
           contact_count: (conn?.contact_count as number) || 0,
           membership_status: w.membership_status,
           has_phone: true,
           preferred_contact_method: (conn?.preferred_contact_method as string) || null,
           cumulative_rating: rating?.cumulative_rating ?? null,
+          assessment_rating_bucket: assessmentRatingMap.get(w.worker_id) ?? null,
           priority_order: priorityOrder,
         })
 

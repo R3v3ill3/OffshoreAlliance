@@ -551,6 +551,15 @@ export interface CallListWithStats extends CallList {
   total_attempts?: number
   connect_rate_pct?: number
   positive_calls?: number
+  /** All script_ids ever linked to this list via call_list_scripts. */
+  linked_script_ids?: number[]
+  linked_script_count?: number
+  /** The script_id marked is_current = true in call_list_scripts (mirrored on call_lists.script_id). */
+  current_script_id?: number | null
+  /** When the list query includes ?script_id=X, whether this list has been linked to that script before. */
+  previously_linked?: boolean
+  /** When ?script_id=X is supplied, whether that script is currently the current wave for this list. */
+  is_current_for_script?: boolean
 }
 
 export interface CallListItemWithWorker extends CallListItem {

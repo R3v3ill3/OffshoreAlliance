@@ -5,7 +5,7 @@ import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
 
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000; // 5 minutes
 
-async function ensureValidSession(): Promise<boolean> {
+export async function ensureValidSession(): Promise<boolean> {
   const supabase = createClient();
   const { data: { session } } = await supabase.auth.getSession();
 

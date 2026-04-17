@@ -937,13 +937,16 @@ export function CampaignWizard() {
               five gate assessments. It will be pre-linked to this bargaining campaign.
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
-              <Button asChild className="flex-1">
-                <a
-                  href={`/campaigns/new?campaign_id=${campaignId}${existingCampaign?.organiser_id ? `&organiser_id=${existingCampaign.organiser_id}` : ""}`}
-                >
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Create Campaign Plan in OA Planner
-                </a>
+              <Button
+                className="flex-1"
+                onClick={() => {
+                  const url = `/campaigns/new?campaign_id=${campaignId}${existingCampaign?.organiser_id ? `&organiser_id=${existingCampaign.organiser_id}` : ""}`;
+                  router.push(url);
+                  router.refresh();
+                }}
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Create Campaign Plan in OA Planner
               </Button>
               <Button
                 variant="outline"

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -16,8 +17,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toast } from "sonner";
 import { isWorkerMemberLike } from "@/lib/campaign/constants";
 import { WorkerRelationshipsTab } from "./worker-relationships-tab";
+import { RatingPicker } from "../assessments/rating-picker";
 import type { WallChartOU, WallChartRoleType, WallChartWorker } from "./types";
 import { ouDisplayName } from "./types";
 
@@ -72,7 +75,7 @@ export function WorkerDetailSheet({
       </TabsContent>
 
       <TabsContent value="ratings">
-        <RatingsTab campaignId={campaignId} workerId={workerId} />
+        <RatingsTab campaignId={campaignId} workerId={workerId} canWrite={canWrite} />
       </TabsContent>
 
       <TabsContent value="units">
@@ -93,6 +96,13 @@ export function WorkerDetailSheet({
           campaignId={campaignId}
           workerName={`${worker.first_name} ${worker.last_name}`}
           canWrite={canWrite}
+          currentRoleTypeId={worker.member_role_type?.role_type_id ?? null}
+          currentRoleName={
+            worker.member_role_type?.display_name ??
+            worker.member_role_type?.role_name ??
+            null
+          }
+          roleTypes={roleTypes}
         />
       </TabsContent>
     </Tabs>
@@ -253,16 +263,53 @@ function CampaignTab({ worker }: { worker: WallChartWorker }) {
 // Ratings — activity-level rating history for this worker in this campaign.
 // ---------------------------------------------------------------------------
 
-function RatingsTab({ campaignId, workerId }: { campaignId: string; workerId: number }) {
+function RatingsTab({
+  campaignId,
+  workerId,
+  canWrite,
+}: {
+  campaignId: string;
+  workerId: number;
+  canWrite: boolean;
+}) {
   const supabase = createClient();
+  const queryClient = useQueryClient();
+
+  const [selectedActivityId, setSelectedActivityId] = useState<string>("");
+  const [pickerValue, setPickerValue] = useState<{
+    rating: number | null;
+    binary_value: string | null;
+  }>({ rating: null, binary_value: null });
+  const [notes, setNotes] = useState("");
+
+  const { data: assessments = [] } = useQuery({
+    queryKey: ["campaign-activities", campaignId, "assessment"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campaign_activities")
+        .select("activity_id, title, is_binary, supporter_outcome_value, activity_kind")
+        .eq("campaign_id", campaignId)
+        .eq("activity_kind", "assessment")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as {
+        activity_id: number;
+        title: string;
+        is_binary: boolean | null;
+        supporter_outcome_value: string | null;
+        activity_kind: string;
+      }[];
+    },
+  });
+
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["worker-activity-ratings", campaignId, workerId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaign_activity_ratings")
         .select(
-          `rating_id, rating, binary_value, rated_at, source,
-           activity:campaign_activities(activity_id, title, campaign_id)`
+          `rating_id, rating, binary_value, notes, rated_at, source,
+           activity:campaign_activities(activity_id, title, is_binary, campaign_id)`
         )
         .eq("worker_id", workerId)
         .order("rated_at", { ascending: false });
@@ -271,47 +318,187 @@ function RatingsTab({ campaignId, workerId }: { campaignId: string; workerId: nu
         .map((r) => {
           const aRaw = (r as { activity: unknown }).activity;
           const a = (Array.isArray(aRaw) ? aRaw[0] : aRaw) as
-            | { activity_id: number; title: string; campaign_id: number }
+            | { activity_id: number; title: string; is_binary: boolean | null; campaign_id: number }
             | null;
           return { ...(r as Record<string, unknown>), activity: a } as {
             rating_id: number;
             rating: number | null;
             binary_value: string | null;
+            notes: string | null;
             rated_at: string;
             source: string | null;
-            activity: { activity_id: number; title: string; campaign_id: number } | null;
+            activity: {
+              activity_id: number;
+              title: string;
+              is_binary: boolean | null;
+              campaign_id: number;
+            } | null;
           };
         })
         .filter((r) => r.activity?.campaign_id === Number(campaignId));
     },
   });
 
-  if (isLoading) return <p className="py-3 text-sm text-muted-foreground">Loading ratings…</p>;
-  if (rows.length === 0)
-    return (
-      <p className="py-3 text-sm text-muted-foreground">
-        No activity ratings recorded for this worker yet.
-      </p>
-    );
+  const selectedActivity = useMemo(
+    () => assessments.find((a) => String(a.activity_id) === selectedActivityId) ?? null,
+    [assessments, selectedActivityId]
+  );
+
+  const saveRating = useAuthAwareMutation({
+    mutationFn: async () => {
+      if (!selectedActivity) throw new Error("Pick an assessment first");
+      const payload = {
+        activity_id: selectedActivity.activity_id,
+        worker_id: workerId,
+        rating: pickerValue.rating,
+        binary_value: pickerValue.binary_value,
+        notes: notes.trim() || null,
+        source: "staff",
+        rated_at: new Date().toISOString(),
+        rating_phase: "actual",
+        event_id: null,
+      };
+      const { error } = await supabase
+        .from("campaign_activity_ratings")
+        .upsert(payload, {
+          onConflict: "activity_id,worker_id,rating_phase,event_id",
+        });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["worker-activity-ratings", campaignId, workerId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
+      if (selectedActivity) {
+        queryClient.invalidateQueries({
+          queryKey: ["campaign-activity-ratings", selectedActivity.activity_id],
+        });
+      }
+      toast.success("Rating saved");
+      setNotes("");
+    },
+    onError: (err) => {
+      toast.error(`Failed to save rating: ${(err as Error).message}`);
+    },
+  });
+
+  function loadRowIntoForm(r: (typeof rows)[number]) {
+    if (!r.activity) return;
+    setSelectedActivityId(String(r.activity.activity_id));
+    setPickerValue({ rating: r.rating, binary_value: r.binary_value });
+    setNotes(r.notes ?? "");
+  }
 
   return (
-    <div className="py-3 space-y-2">
-      {rows.map((r) => (
-        <div
-          key={r.rating_id}
-          className="rounded border px-2 py-1.5 flex items-center justify-between text-xs"
-        >
-          <div className="min-w-0">
-            <p className="font-medium truncate">{r.activity?.title ?? "(untitled activity)"}</p>
-            <p className="text-muted-foreground">
-              {new Date(r.rated_at).toLocaleDateString()} · {r.source ?? "—"}
+    <div className="py-3 space-y-4">
+      {canWrite && (
+        <div className="rounded border p-3 space-y-2 bg-muted/30">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Record rating
+          </p>
+          {assessments.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              No assessments exist for this campaign yet. Use &quot;Add assessment&quot; on the
+              wall chart header to create one.
             </p>
-          </div>
-          <div className="tabular-nums font-semibold">
-            {r.rating != null ? r.rating : r.binary_value ?? "—"}
-          </div>
+          ) : (
+            <>
+              <div className="space-y-1">
+                <Label className="text-xs">Assessment</Label>
+                <Select value={selectedActivityId} onValueChange={setSelectedActivityId}>
+                  <SelectTrigger className="h-8">
+                    <SelectValue placeholder="Pick an assessment…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {assessments.map((a) => (
+                      <SelectItem key={a.activity_id} value={String(a.activity_id)}>
+                        {a.title}
+                        {a.is_binary ? " (binary)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Rating</Label>
+                <RatingPicker
+                  value={pickerValue}
+                  onChange={setPickerValue}
+                  isBinary={Boolean(selectedActivity?.is_binary)}
+                  disabled={!selectedActivity}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Notes (optional)</Label>
+                <Textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  className="text-xs"
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  disabled={!selectedActivity || saveRating.isPending}
+                  onClick={() => saveRating.mutate()}
+                >
+                  {saveRating.isPending ? "Saving…" : "Save rating"}
+                </Button>
+              </div>
+            </>
+          )}
         </div>
-      ))}
+      )}
+
+      <div className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Rating history
+        </p>
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading ratings…</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No activity ratings recorded for this worker yet.
+          </p>
+        ) : (
+          <div className="space-y-1">
+            {rows.map((r) => (
+              <div
+                key={r.rating_id}
+                className="rounded border px-2 py-1.5 flex items-center justify-between text-xs"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium truncate">
+                    {r.activity?.title ?? "(untitled activity)"}
+                  </p>
+                  <p className="text-muted-foreground">
+                    {new Date(r.rated_at).toLocaleDateString()} · {r.source ?? "—"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="tabular-nums font-semibold">
+                    {r.rating != null
+                      ? r.rating
+                      : r.binary_value ?? <span className="text-muted-foreground">—</span>}
+                  </div>
+                  {canWrite && r.activity && (
+                    <button
+                      type="button"
+                      onClick={() => loadRowIntoForm(r)}
+                      className="text-[10px] text-muted-foreground underline hover:text-foreground"
+                      title="Load into form to edit"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

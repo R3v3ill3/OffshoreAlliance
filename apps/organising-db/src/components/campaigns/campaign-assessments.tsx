@@ -45,9 +45,10 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
-import { ACTIVITY_TEMPLATE_OPTIONS, VOTE_SUPPORTER_OPTIONS } from "@/lib/campaign/constants";
+import { VOTE_SUPPORTER_OPTIONS } from "@/lib/campaign/constants";
 import { formatWorkerLabel } from "@/lib/workers/format-worker-label";
-import type { CampaignActivity, CampaignActivityTemplateKey } from "@/types/database";
+import type { CampaignActivity } from "@/types/database";
+import { CreateAssessmentDialog } from "./assessments/create-assessment-dialog";
 
 type PrimitiveValue = string | number | boolean | null;
 
@@ -123,14 +124,6 @@ export function CampaignAssessmentsSection({
   const supabase = createClient();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [templateChoice, setTemplateChoice] = useState<string>("__custom__");
-  const [form, setForm] = useState({
-    title: "",
-    description: "",
-    activity_kind: "task" as "task" | "assessment",
-    is_binary: false,
-    supporter_outcome_value: "" as string,
-  });
   const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null);
   const [activityPendingDelete, setActivityPendingDelete] = useState<CampaignActivity | null>(null);
 
@@ -212,44 +205,6 @@ export function CampaignAssessmentsSection({
       return data ?? [];
     },
     enabled: !!activityForRates,
-  });
-
-  const createActivity = useAuthAwareMutation({
-    mutationFn: async () => {
-      const templateKey =
-        templateChoice !== "__custom__" ? (templateChoice as CampaignActivityTemplateKey) : null;
-      const fromTemplate = ACTIVITY_TEMPLATE_OPTIONS.find((t) => t.key === templateKey);
-      const is_binary =
-        fromTemplate?.defaultBinary ?? (templateKey === "vote" ? true : form.is_binary);
-      const payload: Record<string, unknown> = {
-        campaign_id: Number(campaignId),
-        title: form.title || fromTemplate?.label || "Activity",
-        activity_kind: form.activity_kind,
-        is_binary,
-        is_custom: templateChoice === "__custom__",
-        template_key: templateKey,
-      };
-      if (form.description) payload.description = form.description;
-      if (is_binary && form.supporter_outcome_value) {
-        payload.supporter_outcome_value = form.supporter_outcome_value;
-      } else if (is_binary && templateKey === "vote") {
-        payload.supporter_outcome_value = "yes";
-      }
-      const { error } = await supabase.from("campaign_activities").insert(payload);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["campaign-activities", campaignId] });
-      setDialogOpen(false);
-      setForm({
-        title: "",
-        description: "",
-        activity_kind: "task",
-        is_binary: false,
-        supporter_outcome_value: "",
-      });
-      setTemplateChoice("__custom__");
-    },
   });
 
   const pendingDeleteId = activityPendingDelete?.activity_id ?? null;
@@ -1095,109 +1050,11 @@ export function CampaignAssessmentsSection({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add activity</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-3">
-            <div className="space-y-2">
-              <Label>From template</Label>
-              <Select value={templateChoice} onValueChange={setTemplateChoice}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__custom__">Custom</SelectItem>
-                  {ACTIVITY_TEMPLATE_OPTIONS.map((template) => (
-                    <SelectItem key={template.key} value={template.key}>
-                      {template.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Title</Label>
-              <Input
-                value={form.title}
-                onChange={(event) => setForm({ ...form, title: event.target.value })}
-                placeholder="Overrides template label if set"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea
-                rows={2}
-                value={form.description}
-                onChange={(event) => setForm({ ...form, description: event.target.value })}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-2">
-                <Label>Kind</Label>
-                <Select
-                  value={form.activity_kind}
-                  onValueChange={(value) =>
-                    setForm({ ...form, activity_kind: value as "task" | "assessment" })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="task">Task</SelectItem>
-                    <SelectItem value="assessment">Assessment</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {templateChoice === "__custom__" && (
-                <div className="flex items-end pb-2">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={form.is_binary}
-                      onChange={(event) => setForm({ ...form, is_binary: event.target.checked })}
-                    />
-                    Binary / vote-style
-                  </label>
-                </div>
-              )}
-            </div>
-            {(form.is_binary || templateChoice === "vote") && (
-              <div className="space-y-2">
-                <Label>Supporter outcome (for binary)</Label>
-                <Select
-                  value={form.supporter_outcome_value || "yes"}
-                  onValueChange={(value) => setForm({ ...form, supporter_outcome_value: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {VOTE_SUPPORTER_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => createActivity.mutate()}
-              disabled={createActivity.isPending || (templateChoice === "__custom__" && !form.title.trim())}
-            >
-              Create
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CreateAssessmentDialog
+        campaignId={campaignId}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+      />
 
       <AlertDialog
         open={activityPendingDelete != null}

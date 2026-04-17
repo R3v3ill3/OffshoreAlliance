@@ -84,6 +84,7 @@ export function WorkerTile({
   const titleMultiUnit = inMultipleUnits && otherUnitNames?.length
     ? ` Also in: ${otherUnitNames.join(", ")}.`
     : "";
+  const titleHsr = worker.is_hsr ? " Health and Safety Representative." : "";
   const titleHints =
     canWrite ? " Click to open, \u2318/Ctrl-click to select, Shift-click to add, right-click to copy." : "";
 
@@ -138,7 +139,7 @@ export function WorkerTile({
       <button
         type="button"
         disabled={!canWrite}
-        title={`${displayName}. ${titleRatings}.${titleDefaultHint}${titleMultiUnit}${titleHints}`}
+        title={`${displayName}. ${titleRatings}.${titleDefaultHint}${titleMultiUnit}${titleHsr}${titleHints}`}
         aria-pressed={isSelected ? true : undefined}
         onClick={handleClick}
         className={`w-full text-left text-[11px] leading-tight p-1.5 rounded border min-h-[3.25rem] flex flex-col gap-0.5 justify-between ${ratingBgClass(
@@ -155,6 +156,14 @@ export function WorkerTile({
           {mt?.role_name && (
             <span className="text-[9px] uppercase bg-background/60 px-0.5 rounded leading-none py-px">
               {mt.display_name ?? mt.role_name}
+            </span>
+          )}
+          {worker.is_hsr && (
+            <span
+              aria-label="Health and Safety Representative"
+              className="text-[9px] uppercase bg-amber-600/80 text-white px-0.5 rounded leading-none py-px"
+            >
+              HSR
             </span>
           )}
           {isMemberLike && (

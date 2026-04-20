@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   buildCampaignAggStatsForWorkerSubset,
   type CampaignListMemberRow,
+  type CampaignListRatingRow,
   type CampaignOrganisingUnitRow,
 } from '@/lib/hooks/useCampaignListStats'
 import type { CampaignAggStats, P2wCompletion } from '@/lib/hooks/useCampaignsAllStats'
@@ -75,7 +76,7 @@ interface CampaignUnitMetricsTableProps {
   campaignId: number
   organisingUnits: CampaignOrganisingUnitRow[]
   members: CampaignListMemberRow[]
-  ratings: { worker_id: number; cumulative_rating: number | null }[]
+  ratings: CampaignListRatingRow[]
   ouAssign: { ou_id: number; worker_id: number }[]
   campaignOuCount: number
   campaignEstimate: number

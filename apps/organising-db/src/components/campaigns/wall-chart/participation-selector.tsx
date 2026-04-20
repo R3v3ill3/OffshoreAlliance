@@ -91,7 +91,7 @@ export function ParticipationSelector({ campaignId, value, onChange }: Participa
       <SelectContent>
         <SelectGroup>
           <SelectLabel>General</SelectLabel>
-          <SelectItem value={ANY_VALUE}>Any activity rating</SelectItem>
+          <SelectItem value={ANY_VALUE}>Any supportive rating</SelectItem>
           <SelectItem value={LATEST_VALUE}>Latest activity</SelectItem>
         </SelectGroup>
         {activities.length > 0 && (
@@ -135,7 +135,7 @@ function serializeSource(src: ParticipationSource): string {
 export function participationSourceLabel(src: ParticipationSource): string {
   switch (src.kind) {
     case "any":
-      return "Participation";
+      return "Participation (supportive)";
     case "latest":
       return "Latest activity";
     case "activity":

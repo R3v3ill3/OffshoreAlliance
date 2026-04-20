@@ -247,7 +247,7 @@ export function CampaignsMetricsTable({
                     <div className="flex flex-col gap-0.5">
                       <PctPill value={stats.participationCount} denominator={estimate} />
                       <span className="text-[10px] text-muted-foreground">
-                        {stats.participationCount} rated
+                        {stats.participationCount} supportive
                       </span>
                     </div>
                   )}

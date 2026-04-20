@@ -49,9 +49,15 @@ function normalizeRel<T>(rel: T | T[] | null | undefined): T | null {
   return Array.isArray(rel) ? (rel[0] ?? null) : rel
 }
 
+export type CampaignListRatingRow = {
+  worker_id: number
+  cumulative_rating: number | null
+  has_supportive_activity_rating: boolean | null
+}
+
 function buildCampaignAggStats(
   members: CampaignListMemberRow[],
-  ratings: { worker_id: number; cumulative_rating: number | null }[],
+  ratings: CampaignListRatingRow[],
   ouCount: number,
   workersInAnyOu: number,
   p2wByPlanId: Map<number, P2wCompletion>
@@ -97,7 +103,7 @@ function buildCampaignAggStats(
   }
 
   for (const r of ratings) {
-    s.participationCount++
+    if (r.has_supportive_activity_rating) s.participationCount++
     const cum = r.cumulative_rating
     if (cum == null) {
       s.ratings.noRating++
@@ -125,7 +131,7 @@ export function useCampaignListStats(campaignId: number): {
   stagePlans: CampaignStagePlanRow[]
   organisingUnits: CampaignOrganisingUnitRow[]
   members: CampaignListMemberRow[]
-  ratings: { worker_id: number; cumulative_rating: number | null }[]
+  ratings: CampaignListRatingRow[]
   ouAssign: { ou_id: number; worker_id: number }[]
   isLoading: boolean
 } {
@@ -192,10 +198,10 @@ export function useCampaignListStats(campaignId: number): {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('campaign_worker_rating_summary')
-        .select('worker_id, cumulative_rating')
+        .select('worker_id, cumulative_rating, has_supportive_activity_rating')
         .eq('campaign_id', cid)
       if (error) throw error
-      return data ?? []
+      return (data ?? []) as CampaignListRatingRow[]
     },
     enabled,
     staleTime: 60_000,
@@ -245,7 +251,7 @@ export function useCampaignListStats(campaignId: number): {
     () =>
       buildCampaignAggStats(
         members as unknown as CampaignListMemberRow[],
-        ratings as { worker_id: number; cumulative_rating: number | null }[],
+        ratings,
         organisingUnits.length,
         workersInAnyOu,
         p2wByPlanId
@@ -271,7 +277,7 @@ export function useCampaignListStats(campaignId: number): {
     stagePlans,
     organisingUnits,
     members: members as unknown as CampaignListMemberRow[],
-    ratings: ratings as { worker_id: number; cumulative_rating: number | null }[],
+    ratings,
     ouAssign,
     isLoading,
   }
@@ -281,7 +287,7 @@ export function useCampaignListStats(campaignId: number): {
 export function buildCampaignAggStatsForWorkerSubset(
   workerIds: Set<number>,
   members: CampaignListMemberRow[],
-  ratings: { worker_id: number; cumulative_rating: number | null }[],
+  ratings: CampaignListRatingRow[],
   ouCount: number,
   workersInAnyOuForSubset: number,
   p2wByPlanId: Map<number, P2wCompletion>

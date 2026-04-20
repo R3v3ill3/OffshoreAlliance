@@ -182,7 +182,7 @@ export function CampaignOverviewMetrics({ campaignId }: { campaignId: number }) 
               icon={BarChart3}
               label="Participation"
               value={summary.participationPct != null ? `${summary.participationPct}%` : '—'}
-              sub="workers with at least one rating"
+              sub="workers supportive on ≥ 1 activity"
             />
           </>
         )}

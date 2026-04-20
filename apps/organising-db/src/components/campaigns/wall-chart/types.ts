@@ -26,6 +26,10 @@ export type WallChartRatingSummary = {
   worker_id: number;
   cumulative_rating: number | null;
   last_activity_rating: number | null;
+  /** True when the worker has ≥1 supportive (numeric 1|2 or matching binary) rating in this campaign. */
+  has_supportive_activity_rating: boolean;
+  /** Distinct activities on which the worker has ≥1 supportive rating. */
+  supportive_activity_count: number;
 };
 
 /** Source of tile colouring + unit summary metrics on the wall chart. */

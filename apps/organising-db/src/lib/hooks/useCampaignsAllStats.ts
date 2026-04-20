@@ -114,7 +114,7 @@ export function useCampaignsAllStats(planIds: number[]): {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('campaign_worker_rating_summary')
-        .select('campaign_id, worker_id, cumulative_rating')
+        .select('campaign_id, worker_id, cumulative_rating, has_supportive_activity_rating')
       if (error) throw error
       return data ?? []
     },
@@ -233,8 +233,10 @@ export function useCampaignsAllStats(planIds: number[]): {
       }
       const s = map.get(cid)!
       const cum = (r as { cumulative_rating: number | null }).cumulative_rating
+      const supportive =
+        (r as { has_supportive_activity_rating: boolean | null }).has_supportive_activity_rating
 
-      s.participationCount++
+      if (supportive) s.participationCount++
 
       if (cum == null) {
         s.ratings.noRating++

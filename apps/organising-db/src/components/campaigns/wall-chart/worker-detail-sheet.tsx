@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
+import { useSaveActivityRating } from "@/lib/hooks/useSaveActivityRating";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -344,42 +345,14 @@ function RatingsTab({
     [assessments, selectedActivityId]
   );
 
-  const saveRating = useAuthAwareMutation({
-    mutationFn: async () => {
-      if (!selectedActivity) throw new Error("Pick an assessment first");
-      const payload = {
-        activity_id: selectedActivity.activity_id,
-        worker_id: workerId,
-        rating: pickerValue.rating,
-        binary_value: pickerValue.binary_value,
-        notes: notes.trim() || null,
-        source: "staff",
-        rated_at: new Date().toISOString(),
-        rating_phase: "actual",
-        event_id: null,
-      };
-      const { error } = await supabase
-        .from("campaign_activity_ratings")
-        .upsert(payload, {
-          onConflict: "activity_id,worker_id,rating_phase,event_id",
-        });
-      if (error) throw error;
-    },
+  const saveRating = useSaveActivityRating({
+    campaignId,
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["worker-activity-ratings", campaignId, workerId],
-      });
-      queryClient.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
-      if (selectedActivity) {
-        queryClient.invalidateQueries({
-          queryKey: ["campaign-activity-ratings", selectedActivity.activity_id],
-        });
-      }
       toast.success("Rating saved");
       setNotes("");
     },
     onError: (err) => {
-      toast.error(`Failed to save rating: ${(err as Error).message}`);
+      toast.error(`Failed to save rating: ${err.message}`);
     },
   });
 
@@ -442,7 +415,16 @@ function RatingsTab({
                 <Button
                   size="sm"
                   disabled={!selectedActivity || saveRating.isPending}
-                  onClick={() => saveRating.mutate()}
+                  onClick={() => {
+                    if (!selectedActivity) return;
+                    saveRating.mutate({
+                      activityId: selectedActivity.activity_id,
+                      workerId,
+                      rating: pickerValue.rating,
+                      binary_value: pickerValue.binary_value,
+                      notes,
+                    });
+                  }}
                 >
                   {saveRating.isPending ? "Saving…" : "Save rating"}
                 </Button>

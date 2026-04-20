@@ -10,6 +10,8 @@ export type UnitSummaryMetricsProps = {
   /** Compact layout for per-unit cards (single row chips). */
   compact?: boolean;
   participationLabel?: string;
+  /** Title of the selected assessment — when present, replaces the cumulative metrics. */
+  assessmentTitle?: string | null;
 };
 
 type MetricCell = {
@@ -24,16 +26,8 @@ export function UnitSummaryMetrics({
   mode,
   compact,
   participationLabel,
+  assessmentTitle,
 }: UnitSummaryMetricsProps) {
-  const cells: MetricCell[] = [
-    { label: "Members", value: metrics.members },
-    { label: "Delegates", value: metrics.delegates },
-    { label: "Activists", value: metrics.activists },
-    { label: "Contacts", value: metrics.contacts },
-    { label: "HSRs", value: metrics.hsrs },
-    { label: "Bargaining reps", value: metrics.bargainingReps },
-  ];
-
   const formatValue = (value: number, denom: number): string => {
     if (mode === "pct") return pctOrDash(value, denom);
     return String(value);
@@ -42,6 +36,87 @@ export function UnitSummaryMetrics({
   const containerClass = compact
     ? "flex flex-wrap gap-1.5"
     : "grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2";
+
+  // Assessment view: show assessment-scoped metrics in place of the
+  // membership/cumulative block.
+  if (assessmentTitle && metrics.assessment) {
+    const am = metrics.assessment;
+    return (
+      <div className="space-y-1.5">
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          Assessment: <span className="text-foreground font-medium">{assessmentTitle}</span>
+        </p>
+        <div className={compact ? "flex flex-wrap gap-1.5" : "grid grid-cols-2 sm:grid-cols-4 gap-2"}>
+          {am.isBinary ? (
+            <>
+              <MetricChip
+                label="Supportive"
+                value={
+                  am.binaryTotalRated > 0
+                    ? `${am.binarySupportiveCount}/${am.binaryTotalRated}`
+                    : "—"
+                }
+                raw={am.binarySupportiveCount}
+                compact={compact}
+                hint={`${am.binarySupportiveCount} of ${am.binaryTotalRated} rated`}
+              />
+              <MetricChip
+                label="Rated"
+                value={`${am.binaryTotalRated} / ${metrics.total}`}
+                raw={am.binaryTotalRated}
+                compact={compact}
+              />
+              <MetricChip
+                label="Unassessed"
+                value={formatValue(metrics.total - am.binaryTotalRated, metrics.total)}
+                raw={metrics.total - am.binaryTotalRated}
+                compact={compact}
+              />
+            </>
+          ) : (
+            <>
+              <MetricChip
+                label="Avg"
+                value={am.avgRating != null ? am.avgRating.toFixed(1) : "—"}
+                raw={am.ratedCount}
+                compact={compact}
+                hint={`${am.ratedCount} of ${metrics.total} rated`}
+              />
+              <MetricChip
+                label="Supportive"
+                value={formatValue(am.supportiveCount, am.ratedCount)}
+                raw={am.supportiveCount}
+                compact={compact}
+                hint={`${am.supportiveCount} of ${am.ratedCount} rated`}
+              />
+              <MetricChip
+                label="Opposed"
+                value={formatValue(am.opposedCount, am.ratedCount)}
+                raw={am.opposedCount}
+                compact={compact}
+                hint={`${am.opposedCount} of ${am.ratedCount} rated`}
+              />
+              <MetricChip
+                label="Rated"
+                value={`${am.ratedCount} / ${metrics.total}`}
+                raw={am.ratedCount}
+                compact={compact}
+              />
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const cells: MetricCell[] = [
+    { label: "Members", value: metrics.members },
+    { label: "Delegates", value: metrics.delegates },
+    { label: "Activists", value: metrics.activists },
+    { label: "Contacts", value: metrics.contacts },
+    { label: "HSRs", value: metrics.hsrs },
+    { label: "Bargaining reps", value: metrics.bargainingReps },
+  ];
 
   return (
     <div className="space-y-2">

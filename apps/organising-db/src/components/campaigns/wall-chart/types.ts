@@ -28,6 +28,39 @@ export type WallChartRatingSummary = {
   last_activity_rating: number | null;
 };
 
+/** Source of tile colouring + unit summary metrics on the wall chart. */
+export type AssessmentSelection =
+  | { kind: "cumulative" }
+  | {
+      kind: "assessment";
+      activityId: number;
+      title: string;
+      isBinary: boolean;
+    };
+
+/** A single worker's rating for a specific activity, collapsed to one row. */
+export type ActivityRating = {
+  rating_id: number;
+  worker_id: number;
+  activity_id: number;
+  rating: number | null;
+  binary_value: string | null;
+  rating_phase: string | null;
+  rated_at: string | null;
+  source: string | null;
+  notes: string | null;
+};
+
+/** Assessment activity shown in the selector dropdown. */
+export type WallChartAssessmentOption = {
+  activity_id: number;
+  title: string;
+  is_binary: boolean;
+  supporter_outcome_value: string | null;
+  last_rated_at: string | null;
+  created_at: string | null;
+};
+
 export type WallChartOU = {
   ou_id: number;
   campaign_id: number;

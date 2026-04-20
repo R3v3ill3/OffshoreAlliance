@@ -1,26 +1,37 @@
 "use client";
 
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import type { ParticipationSource } from "./participation-selector";
+import type { WallChartRatingSummary } from "./types";
 
 export type ParticipationResult = {
-  /** True when the default metric logic (any rating recorded) should apply. */
+  /**
+   * Deprecated — retained for API compatibility but always false now.
+   * The "any" source previously meant "any rating recorded"; it now means
+   * "supportive on ≥1 activity" and is backed by the campaign rating summary.
+   */
   useAnyRatingFallback: boolean;
-  /** Worker ids that participated in the resolved source. Empty when still loading. */
+  /** Worker ids that count as participating for the resolved source. */
   participatedIds: Set<number>;
 };
 
 /**
  * Resolves participation membership for the selected source.
- * - kind "any" → returns `useAnyRatingFallback: true`; callers omit the predicate
- *   so the default "any rating recorded" metric logic applies.
- * - otherwise → fetches rating rows for the resolved activity and returns the
- *   set of worker_ids that participated.
+ *
+ * - kind "any" → ids come from the already-loaded campaign rating summary
+ *   (`has_supportive_activity_rating = true`). This means the "Any supportive
+ *   rating" view consistently reflects real observed support, not just any
+ *   rating row.
+ * - kind "latest" → resolves the most recent activity and fetches that
+ *   activity's raters (any rating counts, unchanged).
+ * - kind "activity" / "task_list" → fetches that activity's raters (unchanged).
  */
 export function useParticipationPredicate(
   campaignId: string,
-  source: ParticipationSource
+  source: ParticipationSource,
+  ratingSummary?: WallChartRatingSummary[]
 ): ParticipationResult {
   const supabase = createClient();
 
@@ -62,8 +73,19 @@ export function useParticipationPredicate(
     enabled: resolvedActivityId != null,
   });
 
+  // "any" → derive from the campaign rating summary. Empty until the
+  // summary loads; computeMetrics tolerates an empty predicate.
+  const supportiveIds = useMemo(() => {
+    if (source.kind !== "any") return new Set<number>();
+    const set = new Set<number>();
+    for (const r of ratingSummary ?? []) {
+      if (r.has_supportive_activity_rating) set.add(r.worker_id);
+    }
+    return set;
+  }, [source.kind, ratingSummary]);
+
   return {
-    useAnyRatingFallback: source.kind === "any",
-    participatedIds: ratedIds ?? new Set<number>(),
+    useAnyRatingFallback: false,
+    participatedIds: source.kind === "any" ? supportiveIds : ratedIds ?? new Set<number>(),
   };
 }

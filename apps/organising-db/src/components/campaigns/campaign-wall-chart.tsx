@@ -404,7 +404,7 @@ export function CampaignWallChart({
   const [participationSource, setParticipationSource] = useState<ParticipationSource>({
     kind: "any",
   });
-  const participation = useParticipationPredicate(campaignId, participationSource);
+  const participation = useParticipationPredicate(campaignId, participationSource, ratingSummary);
   const participationPredicate = useMemo(() => {
     if (participation.useAnyRatingFallback) return undefined;
     const ids = participation.participatedIds;

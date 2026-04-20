@@ -117,7 +117,7 @@ export function computeMetrics(
 
     if (isParticipating) {
       if (isParticipating(id)) out.participationCount += 1;
-    } else if (r?.cumulative_rating != null || r?.last_activity_rating != null) {
+    } else if (r?.has_supportive_activity_rating) {
       out.participationCount += 1;
     }
   }

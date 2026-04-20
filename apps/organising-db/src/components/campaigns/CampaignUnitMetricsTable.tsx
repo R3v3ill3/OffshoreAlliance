@@ -338,7 +338,7 @@ export function CampaignUnitMetricsTable({
                     <div className="flex flex-col gap-0.5">
                       <PctPill value={subStats.participationCount} denominator={denom} />
                       <span className="text-[10px] text-muted-foreground">
-                        {subStats.participationCount} rated
+                        {subStats.participationCount} supportive
                       </span>
                     </div>
                   )}

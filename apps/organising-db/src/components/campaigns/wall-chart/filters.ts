@@ -1,4 +1,4 @@
-import type { WallChartRatingSummary, WallChartWorker } from "./types";
+import type { ActivityRating, WallChartRatingSummary, WallChartWorker } from "./types";
 
 export type SortKey =
   | "last_name"
@@ -67,7 +67,9 @@ export function applyFilters(
   ids: number[],
   workerById: Map<number, WallChartWorker>,
   ratingByWorker: Map<number, WallChartRatingSummary>,
-  state: WallChartFilterState
+  state: WallChartFilterState,
+  /** When provided, the Rating filter is applied against these per-activity ratings instead of cumulative. */
+  activityRatings?: Map<number, ActivityRating>
 ): number[] {
   if (!hasActiveFilter(state)) return ids;
 
@@ -89,10 +91,15 @@ export function applyFilters(
       if (!rk.some((k) => state.roles.has(k))) return false;
     }
 
-    // Ratings
+    // Ratings — sources from per-activity ratings when in assessment view, else cumulative.
     if (state.ratings.size > 0) {
-      const r = ratingByWorker.get(id);
-      const bucket = ratingBucket(r?.cumulative_rating);
+      let ratingValue: number | null | undefined;
+      if (activityRatings) {
+        ratingValue = activityRatings.get(id)?.rating ?? null;
+      } else {
+        ratingValue = ratingByWorker.get(id)?.cumulative_rating;
+      }
+      const bucket = ratingBucket(ratingValue);
       if (!state.ratings.has(bucket)) return false;
     }
 

@@ -16,6 +16,7 @@ import { CampaignUnitCard } from "./wall-chart/campaign-unit-card";
 import { WorkerTile } from "./wall-chart/worker-tile";
 import { WALL_CHART_GRID_CLASS } from "./wall-chart/rating-colour";
 import { ouDisplayName } from "./wall-chart/types";
+import { AssessmentSelector } from "./wall-chart/assessment-selector";
 import { computeMetrics } from "./wall-chart/metrics";
 import {
   ParticipationSelector,
@@ -50,6 +51,8 @@ import {
   type WallChartFilterState,
 } from "./wall-chart/filters";
 import type {
+  ActivityRating,
+  AssessmentSelection,
   WallChartMemberRow,
   WallChartOU,
   WallChartOUAssignment,
@@ -146,6 +149,55 @@ export function CampaignWallChart({
         .eq("campaign_id", campaignId);
       if (error) throw error;
       return (data ?? []) as WallChartRatingSummary[];
+    },
+  });
+
+  // Assessment selector state. Default is cumulative; AssessmentSelector
+  // auto-upgrades to the latest rated assessment once its options load.
+  const [assessmentSelection, setAssessmentSelection] = useState<AssessmentSelection>(
+    { kind: "cumulative" }
+  );
+
+  const selectedActivityId =
+    assessmentSelection.kind === "assessment" ? assessmentSelection.activityId : null;
+
+  const { data: activityRatingsByWorker = new Map<number, ActivityRating>() } = useQuery<
+    Map<number, ActivityRating>
+  >({
+    queryKey: ["campaign-activity-ratings", campaignId, selectedActivityId],
+    enabled: selectedActivityId != null,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campaign_activity_ratings")
+        .select(
+          "rating_id, worker_id, activity_id, rating, binary_value, rating_phase, rated_at, source, notes"
+        )
+        .eq("activity_id", selectedActivityId as number);
+      if (error) throw error;
+
+      // Collapse to one row per worker. Prefer rating_phase='actual' over
+      // 'expected'; within the same phase, take the most recent rated_at.
+      const phaseRank = (phase: string | null | undefined) =>
+        phase === "actual" ? 2 : phase === "expected" ? 1 : 0;
+      const best = new Map<number, ActivityRating>();
+      for (const row of (data ?? []) as ActivityRating[]) {
+        const cur = best.get(row.worker_id);
+        if (!cur) {
+          best.set(row.worker_id, row);
+          continue;
+        }
+        const curPhase = phaseRank(cur.rating_phase);
+        const newPhase = phaseRank(row.rating_phase);
+        if (newPhase > curPhase) {
+          best.set(row.worker_id, row);
+          continue;
+        }
+        if (newPhase < curPhase) continue;
+        const curAt = cur.rated_at ?? "";
+        const newAt = row.rated_at ?? "";
+        if (newAt > curAt) best.set(row.worker_id, row);
+      }
+      return best;
     },
   });
 
@@ -399,23 +451,59 @@ export function CampaignWallChart({
 
   const allWorkerIds = useMemo(() => memberRows.map((r) => r.worker_id), [memberRows]);
 
+  const assessmentMetricsInput = useMemo(() => {
+    if (assessmentSelection.kind !== "assessment") return undefined;
+    return {
+      ratings: activityRatingsByWorker,
+      isBinary: assessmentSelection.isBinary,
+    };
+  }, [assessmentSelection, activityRatingsByWorker]);
+
   const campaignMetrics = useMemo(
-    () => computeMetrics(allWorkerIds, workerById, ratingByWorker, participationPredicate),
-    [allWorkerIds, workerById, ratingByWorker, participationPredicate]
+    () =>
+      computeMetrics(
+        allWorkerIds,
+        workerById,
+        ratingByWorker,
+        participationPredicate,
+        assessmentMetricsInput
+      ),
+    [allWorkerIds, workerById, ratingByWorker, participationPredicate, assessmentMetricsInput]
   );
 
   const metricsByOu = useMemo(() => {
     const m = new Map<number, ReturnType<typeof computeMetrics>>();
     for (const [ouId, ids] of workersByOu.entries()) {
-      m.set(ouId, computeMetrics(ids, workerById, ratingByWorker, participationPredicate));
+      m.set(
+        ouId,
+        computeMetrics(
+          ids,
+          workerById,
+          ratingByWorker,
+          participationPredicate,
+          assessmentMetricsInput
+        )
+      );
     }
     return m;
-  }, [workersByOu, workerById, ratingByWorker, participationPredicate]);
+  }, [workersByOu, workerById, ratingByWorker, participationPredicate, assessmentMetricsInput]);
 
   const unassignedMetrics = useMemo(
-    () => computeMetrics(unassignedWorkerIds, workerById, ratingByWorker, participationPredicate),
-    [unassignedWorkerIds, workerById, ratingByWorker, participationPredicate]
+    () =>
+      computeMetrics(
+        unassignedWorkerIds,
+        workerById,
+        ratingByWorker,
+        participationPredicate,
+        assessmentMetricsInput
+      ),
+    [unassignedWorkerIds, workerById, ratingByWorker, participationPredicate, assessmentMetricsInput]
   );
+
+  const assessmentTitle =
+    assessmentSelection.kind === "assessment" ? assessmentSelection.title : null;
+  const activityRatingsForFilter =
+    assessmentSelection.kind === "assessment" ? activityRatingsByWorker : undefined;
 
   const renderTile = useCallback(
     (workerId: number, ouId: number | null) => {
@@ -435,6 +523,9 @@ export function CampaignWallChart({
           inMultipleUnits={inMultipleUnits}
           otherUnitNames={otherUnitNames}
           canWrite={canWrite}
+          selection={assessmentSelection}
+          campaignId={campaignId}
+          activityRating={activityRatingsByWorker.get(workerId) ?? null}
           isSelected={selection.has(ouId, workerId)}
           onClick={(id, tileOuId, kind) => {
             if (kind === "toggle-select") {
@@ -461,7 +552,17 @@ export function CampaignWallChart({
         />
       );
     },
-    [workerById, unitsByWorker, ouNameById, ratingByWorker, canWrite, selection]
+    [
+      workerById,
+      unitsByWorker,
+      ouNameById,
+      ratingByWorker,
+      canWrite,
+      selection,
+      assessmentSelection,
+      activityRatingsByWorker,
+      campaignId,
+    ]
   );
 
   const copyWorker = copyWorkerId != null ? workerById.get(copyWorkerId) : undefined;
@@ -527,6 +628,23 @@ export function CampaignWallChart({
           onLinkToLeader={() => setLinkDialogOpen(true)}
           onClear={() => selection.clear()}
         />
+        <div className="rounded border bg-muted/30 px-3 py-2 print:hidden">
+          <AssessmentSelector
+            campaignId={campaignId}
+            value={assessmentSelection}
+            onChange={setAssessmentSelection}
+          />
+          {assessmentSelection.kind === "assessment" && (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Tile colour shows each worker&apos;s rating for{" "}
+              <span className="font-medium text-foreground">
+                {assessmentSelection.title}
+              </span>
+              . Click the rating number on a tile to change it. The small badge in
+              the corner is the cumulative rating.
+            </p>
+          )}
+        </div>
         <WallChartSummaryHeader
           campaignName={(campaign as { name?: string | null } | undefined)?.name ?? null}
           metrics={campaignMetrics}
@@ -619,13 +737,20 @@ export function CampaignWallChart({
         <div ref={unitsContainerRef} className="relative space-y-4 print:space-y-2">
         {unassignedWorkerIds.length > 0 && (() => {
           const filter = getFilter(UNASSIGNED_KEY);
-          const filtered = applyFilters(unassignedWorkerIds, workerById, ratingByWorker, filter);
+          const filtered = applyFilters(
+            unassignedWorkerIds,
+            workerById,
+            ratingByWorker,
+            filter,
+            activityRatingsForFilter
+          );
           const sorted = applySort(filtered, workerById, ratingByWorker, filter.sort);
           return (
             <CampaignUnitCard
               ou={null}
               fallbackTitle="Unassigned workers"
               workerCount={sorted.length}
+              assessmentLabel={assessmentTitle}
               onWorkerDrop={handleWorkerDrop}
               dropDisabled={!canWrite}
               summary={
@@ -634,6 +759,7 @@ export function CampaignWallChart({
                   mode={displayMode}
                   compact
                   participationLabel={participationSourceLabel(participationSource)}
+                  assessmentTitle={assessmentTitle}
                 />
               }
               toolbar={
@@ -670,7 +796,13 @@ export function CampaignWallChart({
             const ids = workersByOu.get(ou.ou_id) ?? [];
             const est = ou.total_workers_estimated ?? 0;
             const filter = getFilter(ou.ou_id);
-            const filtered = applyFilters(ids, workerById, ratingByWorker, filter);
+            const filtered = applyFilters(
+              ids,
+              workerById,
+              ratingByWorker,
+              filter,
+              activityRatingsForFilter
+            );
             const sorted = applySort(filtered, workerById, ratingByWorker, filter.sort);
             const placeholders = Math.max(0, est - ids.length);
             const unitMetrics = metricsByOu.get(ou.ou_id);
@@ -681,6 +813,7 @@ export function CampaignWallChart({
                 workerCount={sorted.length}
                 estimate={est}
                 placeholders={placeholders}
+                assessmentLabel={assessmentTitle}
                 onWorkerDrop={handleWorkerDrop}
                 dropDisabled={!canWrite}
                 summary={
@@ -689,6 +822,7 @@ export function CampaignWallChart({
                       metrics={unitMetrics}
                       mode={displayMode}
                       compact
+                      assessmentTitle={assessmentTitle}
                       participationLabel={participationSourceLabel(participationSource)}
                     />
                   ) : null

@@ -1,5 +1,5 @@
 import { isWorkerMemberLike } from "@/lib/campaign/constants";
-import type { WallChartRatingSummary, WallChartWorker } from "./types";
+import type { ActivityRating, WallChartRatingSummary, WallChartWorker } from "./types";
 
 // Role-type ids confirmed active in member_role_types:
 // Contact=3, Delegate=7, Activist=8. Bargaining Rep (4) is deprecated as a role
@@ -23,6 +23,29 @@ export type WallChartMetrics = {
   /** Numerator & denominator for participation. */
   participationCount: number;
   participationTotal: number;
+  /**
+   * Metrics for the currently-selected assessment. Null when the wall chart is
+   * in cumulative view (no assessment picked).
+   */
+  assessment: AssessmentMetrics | null;
+};
+
+export type AssessmentMetrics = {
+  ratedCount: number;
+  avgRating: number | null;
+  supportiveCount: number;
+  opposedCount: number;
+  /** For binary assessments: count of workers whose binary_value is the "supportive" outcome. */
+  binarySupportiveCount: number;
+  binaryTotalRated: number;
+  isBinary: boolean;
+};
+
+export type AssessmentMetricsInput = {
+  ratings: Map<number, ActivityRating>;
+  isBinary: boolean;
+  /** Value of `binary_value` that counts as a supportive outcome (e.g. 'attended', 'yes'). */
+  supportiveBinaryValue?: string | null;
 };
 
 export type ParticipationPredicate = (workerId: number) => boolean;
@@ -38,7 +61,8 @@ export function computeMetrics(
   workerIds: number[],
   workerById: Map<number, WallChartWorker>,
   ratingByWorker: Map<number, WallChartRatingSummary>,
-  isParticipating?: ParticipationPredicate
+  isParticipating?: ParticipationPredicate,
+  assessmentInput?: AssessmentMetricsInput
 ): WallChartMetrics {
   const out: WallChartMetrics = {
     total: workerIds.length,
@@ -52,6 +76,7 @@ export function computeMetrics(
     avgCumulative: null,
     participationCount: 0,
     participationTotal: workerIds.length,
+    assessment: null,
   };
 
   let cumSum = 0;
@@ -98,6 +123,44 @@ export function computeMetrics(
   }
 
   out.avgCumulative = out.ratedCount > 0 ? Math.round((cumSum / out.ratedCount) * 10) / 10 : null;
+
+  if (assessmentInput) {
+    const am: AssessmentMetrics = {
+      ratedCount: 0,
+      avgRating: null,
+      supportiveCount: 0,
+      opposedCount: 0,
+      binarySupportiveCount: 0,
+      binaryTotalRated: 0,
+      isBinary: assessmentInput.isBinary,
+    };
+    let sum = 0;
+    for (const id of workerIds) {
+      const r = assessmentInput.ratings.get(id);
+      if (!r) continue;
+      if (assessmentInput.isBinary) {
+        if (r.binary_value != null) {
+          am.binaryTotalRated += 1;
+          if (
+            assessmentInput.supportiveBinaryValue &&
+            r.binary_value === assessmentInput.supportiveBinaryValue
+          ) {
+            am.binarySupportiveCount += 1;
+          }
+        }
+      } else if (r.rating != null) {
+        am.ratedCount += 1;
+        sum += r.rating;
+        // 1 = supportive_leader, 2 = supporter (rating_level seed).
+        if (r.rating <= 2) am.supportiveCount += 1;
+        // 4 = opposed, 5 = oppositional_leader.
+        if (r.rating >= 4) am.opposedCount += 1;
+      }
+    }
+    am.avgRating = am.ratedCount > 0 ? Math.round((sum / am.ratedCount) * 10) / 10 : null;
+    out.assessment = am;
+  }
+
   return out;
 }
 

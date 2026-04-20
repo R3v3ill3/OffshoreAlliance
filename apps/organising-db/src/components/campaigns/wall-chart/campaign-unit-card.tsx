@@ -26,6 +26,8 @@ export type CampaignUnitCardProps = {
   children: ReactNode;
   /** Placeholder cells (greyed out) for unfilled estimate slots. */
   placeholders?: number;
+  /** When present, renders a small "Assessing: {title}" chip under the unit name. */
+  assessmentLabel?: string | null;
   /**
    * DnD drop handler. Called with the target ou id (the card's own ou),
    * the payload parsed from dataTransfer, and the resolved mode (copy if
@@ -51,6 +53,7 @@ export function CampaignUnitCard({
   toolbar,
   children,
   placeholders = 0,
+  assessmentLabel,
   onWorkerDrop,
   dropDisabled,
 }: CampaignUnitCardProps) {
@@ -114,6 +117,12 @@ export function CampaignUnitCard({
             <p className="text-xs text-muted-foreground mt-0.5">
               {workerCount} named{est > 0 && ` / ${est} est.`}
             </p>
+            {assessmentLabel && (
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Assessing:{" "}
+                <span className="text-foreground font-medium">{assessmentLabel}</span>
+              </p>
+            )}
           </div>
           {toolbar && <div className="flex items-center gap-1 print:hidden">{toolbar}</div>}
         </div>

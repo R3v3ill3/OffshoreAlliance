@@ -10,6 +10,8 @@ function posthogKeyFromEnv(): string {
   if (b) return b;
   const c = process.env.NEXT_PUBLIC_POSTHOG_API_KEY?.trim();
   if (c) return c;
+  const d = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN?.trim();
+  if (d) return d;
   return "";
 }
 const posthogPublicKey = posthogKeyFromEnv();

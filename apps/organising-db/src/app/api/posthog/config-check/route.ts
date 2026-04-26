@@ -7,10 +7,14 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 export function GET() {
-  const key =
-    process.env.NEXT_PUBLIC_POSTHOG_KEY ??
-    process.env.NEXT_PUBLIC_POSTHOG_TOKEN ??
-    process.env.NEXT_PUBLIC_POSTHOG_API_KEY;
+  const key = [
+    process.env.NEXT_PUBLIC_POSTHOG_KEY,
+    process.env.NEXT_PUBLIC_POSTHOG_TOKEN,
+    process.env.NEXT_PUBLIC_POSTHOG_API_KEY,
+    process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN,
+  ]
+    .map((v) => v?.trim())
+    .find((v) => v);
   const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
 
   let hostLooksLikeIngest = false;

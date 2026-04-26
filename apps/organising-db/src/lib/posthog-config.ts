@@ -1,7 +1,7 @@
 /**
  * PostHog project key (from Project settings). Supports common env names.
- * Vercel: set one of NEXT_PUBLIC_POSTHOG_KEY, NEXT_PUBLIC_POSTHOG_TOKEN, or
- * NEXT_PUBLIC_POSTHOG_API_KEY (docs / Product sometimes use different labels).
+ * Vercel: set one of the PostHog manual-setup names, e.g.
+ * NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN (wizard), or KEY / TOKEN / API_KEY.
  */
 function firstNonEmpty(...vals: (string | undefined)[]): string | undefined {
   for (const val of vals) {
@@ -15,7 +15,8 @@ export function getPostHogKey(): string | undefined {
   return firstNonEmpty(
     process.env.NEXT_PUBLIC_POSTHOG_KEY,
     process.env.NEXT_PUBLIC_POSTHOG_TOKEN,
-    process.env.NEXT_PUBLIC_POSTHOG_API_KEY
+    process.env.NEXT_PUBLIC_POSTHOG_API_KEY,
+    process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN
   );
 }
 

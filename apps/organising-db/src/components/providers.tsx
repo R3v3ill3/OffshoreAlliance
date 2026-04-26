@@ -1,7 +1,7 @@
 "use client";
 
 import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-query";
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useState, useEffect, useRef, Suspense, type ReactNode } from "react";
 import { AuthProvider } from "@/lib/supabase/auth-context";
 import { DeviceProvider } from "@/contexts/device-context";
 import { createClient, coordinatedRefreshSession } from "@/lib/supabase/client";
@@ -9,6 +9,7 @@ import { isLikelyAuthError, nuclearReset } from "@/lib/supabase/session-recovery
 import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
 import { logCookieDiagnostic } from "@/lib/supabase/cookie-diagnostics";
 import { installDiagnosticShims } from "@/lib/supabase/diagnostics-shim";
+import { PostHogPageView } from "@/components/posthog-page-view";
 import "../../../../sentry.client.config";
 
 const queryCacheRecoveryGuard = { inProgress: false };
@@ -197,6 +198,9 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
   return (
     <DeviceProvider isMobile={isMobile}>
       <QueryClientProvider client={queryClient}>
+        <Suspense fallback={null}>
+          <PostHogPageView />
+        </Suspense>
         <AuthProvider>{children}</AuthProvider>
       </QueryClientProvider>
     </DeviceProvider>

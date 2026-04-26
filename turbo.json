@@ -11,7 +11,10 @@
         "ACTION_NETWORK_API_KEY",
         "YABBR_API_KEY",
         "RESEND_API_KEY",
-        "RESEND_WEBHOOK_SECRET"
+        "RESEND_WEBHOOK_SECRET",
+        "NEXT_PUBLIC_POSTHOG_KEY",
+        "NEXT_PUBLIC_POSTHOG_TOKEN",
+        "NEXT_PUBLIC_POSTHOG_HOST"
       ],
       "outputs": [".next/**", "!.next/cache/**"]
     },

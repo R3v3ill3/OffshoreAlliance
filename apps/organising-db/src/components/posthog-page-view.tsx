@@ -4,10 +4,12 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import posthog from "posthog-js";
 import { isPostHogEnabled } from "@/lib/posthog-config";
+import { initPostHogIfNeeded } from "@/lib/posthog-client";
 
 /**
- * Sends a $pageview on App Router client navigations. Initial view is included
- * (capture_pageview is disabled in init so this is the single source of pageviews).
+ * Initializes PostHog in the client (so we are not dependent on
+ * `instrumentation-client` running in every deployment).
+ * Sends a $pageview on App Router client navigations; first paint is included.
  */
 export function PostHogPageView() {
   const pathname = usePathname();
@@ -15,6 +17,7 @@ export function PostHogPageView() {
 
   useEffect(() => {
     if (!isPostHogEnabled()) return;
+    initPostHogIfNeeded();
     const url = `${window.location.origin}${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
     posthog.capture("$pageview", { $current_url: url });
   }, [pathname, searchParams]);

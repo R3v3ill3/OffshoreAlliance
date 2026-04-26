@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { WifiOff, RefreshCw, LogIn, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getHealthSummary } from "@/lib/supabase/connection-monitor";
-import { nuclearReset } from "@/lib/supabase/session-recovery";
+import { forceLogoutToLogin, nuclearReset } from "@/lib/supabase/session-recovery";
 import { useAuth } from "@/lib/supabase/auth-context";
 
 const PUBLIC_PATHS = ["/login", "/auth"];
@@ -50,7 +50,7 @@ export function ConnectionStatusBanner() {
                 size="sm"
                 variant="outline"
                 className="text-xs h-7 gap-1 border-red-300"
-                onClick={() => { window.location.href = "/login?reason=session_expired"; }}
+                onClick={() => forceLogoutToLogin("session_expired")}
               >
                 <LogIn className="h-3 w-3" />
                 Sign in
@@ -95,7 +95,7 @@ export function ConnectionStatusBanner() {
                 onClick={() => void hardRefreshConnection()}
               >
                 <RefreshCw className={`h-3 w-3 ${connectionRecoveryInProgress ? "animate-spin" : ""}`} />
-                Retry
+                Refresh connection
               </Button>
               <Button
                 size="sm"

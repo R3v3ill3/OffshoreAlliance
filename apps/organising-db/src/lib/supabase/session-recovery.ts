@@ -146,6 +146,12 @@ function clearSupabaseLocalStorage(): void {
   }
 }
 
+function clearSupabaseBrowserState(): void {
+  clearSupabaseCookies();
+  clearSupabaseLocalStorage();
+  resetClient();
+}
+
 /**
  * Explicitly clear all Supabase auth cookies from document.cookie.
  *
@@ -186,9 +192,15 @@ function goToLogin(reasonCode: string): void {
   window.location.href = nextUrl;
 }
 
+export function forceLogoutToLogin(reasonCode: string): void {
+  logConnectionEvent({ type: "session_lost", detail: `force-logout: ${reasonCode}` });
+  clearSupabaseBrowserState();
+  goToLogin(reasonCode);
+}
+
 /**
- * Terminal failure: session is confirmed gone. Only clears queries,
- * does NOT clear storage (storage clearing is reserved for explicit sign-out).
+ * Terminal failure: session is confirmed gone. Clear cached data and, when
+ * redirecting, clear browser auth state before sending the user to login.
  */
 async function hardFailRecovery(
   queryClient: QueryClient,
@@ -207,7 +219,7 @@ async function hardFailRecovery(
   queryClient.clear();
 
   if (redirectOnFailure) {
-    goToLogin(reason);
+    forceLogoutToLogin(reason);
     return { ok: false, message, reasonCode: reason, redirectedToLogin: true };
   }
 
@@ -258,7 +270,7 @@ export async function recoverSessionConnection({
     // when the circuit breaker fires — being stuck on a blank page is worse than
     // an extra redirect.
     if (redirectOnFailure) {
-      goToLogin("circuit_breaker");
+      forceLogoutToLogin("circuit_breaker");
       return { ok: false, message: "Circuit breaker active — redirecting to login.", reasonCode: "circuit_breaker", redirectedToLogin: true };
     }
     return {
@@ -430,9 +442,7 @@ export async function performRobustSignOut({
     console.warn("[session-recovery] signOut exception", readErrorMessage(error));
   }
 
-  clearSupabaseCookies();
-  clearSupabaseLocalStorage();
-  resetClient();
+  clearSupabaseBrowserState();
   goToLogin("signed_out");
 }
 
@@ -453,15 +463,8 @@ export async function performRobustSignOut({
 export function nuclearReset(): void {
   logConnectionEvent({ type: "session_lost", detail: "nuclear-reset" });
 
-  // 1. Clear cookies — the MOST critical step.
-  //    Stale cookies cause fresh clients to re-enter the broken state.
-  clearSupabaseCookies();
-
-  // 2. Clear web storage
-  clearSupabaseLocalStorage();
-
-  // 3. Reset the client singleton so the next createClient() starts fresh
-  resetClient();
+  // Clear cookies, web storage, and the client singleton before redirecting.
+  clearSupabaseBrowserState();
 
   // 4. Best-effort: release any held navigator.locks.
   //    This uses the async query API but we don't await — fire and forget.

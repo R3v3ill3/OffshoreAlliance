@@ -8,6 +8,7 @@ import {
   performRobustSignOut,
   recoverSessionConnection,
   isIntentionalSignOut,
+  forceLogoutToLogin,
   type SessionRecoveryResult,
 } from "@/lib/supabase/session-recovery";
 import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
@@ -81,10 +82,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const redirectToLogin = useCallback(() => {
+  const redirectToLogin = useCallback((reasonCode = "session_expired") => {
     if (typeof window !== "undefined" && isProtectedRoute) {
-      logConnectionEvent({ type: "session_lost", detail: "client-side null session redirect" });
-      window.location.href = `/login?reason=session_expired`;
+      forceLogoutToLogin(reasonCode);
     }
   }, [isProtectedRoute]);
 
@@ -132,7 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           logConnectionEvent({ type: "token_refresh_fail", detail: error.message });
           setUser(null);
           setProfile(null);
-          redirectToLogin();
+          redirectToLogin("session_check_error");
           return;
         }
         const currentUser = session?.user ?? null;
@@ -143,7 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setProfile(profileData);
         } else {
           setProfile(null);
-          redirectToLogin();
+          redirectToLogin("session_expired");
         }
       } catch (error: unknown) {
         logConnectionEvent({
@@ -152,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         setUser(null);
         setProfile(null);
-        redirectToLogin();
+        redirectToLogin("session_check_error");
       } finally {
         setLoading(false);
       }
@@ -226,7 +226,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           setProfile(null);
           if (event !== "INITIAL_SESSION") {
-            redirectToLogin();
+            redirectToLogin("session_expired");
           }
         }
         setLoading(false);

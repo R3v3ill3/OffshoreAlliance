@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, Suspense, type ReactNode } from "react";
 import { AuthProvider } from "@/lib/supabase/auth-context";
 import { DeviceProvider } from "@/contexts/device-context";
 import { createClient, coordinatedRefreshSession } from "@/lib/supabase/client";
-import { isLikelyAuthError, nuclearReset } from "@/lib/supabase/session-recovery";
+import { forceLogoutToLogin, isLikelyAuthError } from "@/lib/supabase/session-recovery";
 import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
 import { logCookieDiagnostic } from "@/lib/supabase/cookie-diagnostics";
 import { installDiagnosticShims } from "@/lib/supabase/diagnostics-shim";
@@ -50,6 +50,7 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
                   type: "token_refresh_fail",
                   detail: `query-cache refresh failed: ${refreshError?.message ?? "no session"}`,
                 });
+                forceLogoutToLogin("refresh_failed");
               })
               .catch(() => {
                 logConnectionEvent({ type: "token_refresh_fail", detail: "query-cache refresh exception" });
@@ -107,22 +108,22 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
         if (!session) {
           // FIX: Previously this silently returned, leaving the user with an
           // expired session and no recovery attempt. Now we trigger a refresh
-          // and, if that fails, a nuclear reset to clear corrupted state.
+          // and, if that fails, force a clean login to clear corrupted state.
           logConnectionEvent({ type: "session_lost", detail: "visibility-null-session" });
           logCookieDiagnostic("visibility-null-session");
 
           try {
             const { data, error } = await coordinatedRefreshSession("visibility-null-session");
             if (error || !data.session) {
-              logConnectionEvent({ type: "token_refresh_fail", detail: "visibility null session — refresh failed, nuclear reset" });
-              nuclearReset();
+              logConnectionEvent({ type: "token_refresh_fail", detail: "visibility null session — refresh failed, force logout" });
+              forceLogoutToLogin("session_expired");
             } else {
               logConnectionEvent({ type: "token_refresh_ok", detail: "visibility null session recovered" });
               queryClient.invalidateQueries();
             }
           } catch {
-            logConnectionEvent({ type: "token_refresh_fail", detail: "visibility null session — exception, nuclear reset" });
-            nuclearReset();
+            logConnectionEvent({ type: "token_refresh_fail", detail: "visibility null session — exception, force logout" });
+            forceLogoutToLogin("session_check_error");
           }
           return;
         }
@@ -177,8 +178,8 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
           const { data: refreshData, error: refreshError } =
             await coordinatedRefreshSession("heartbeat-auth-failure");
           if (refreshError || !refreshData.session) {
-            logConnectionEvent({ type: "token_refresh_fail", detail: "heartbeat recovery failed — nuclear reset" });
-            nuclearReset();
+            logConnectionEvent({ type: "token_refresh_fail", detail: "heartbeat recovery failed — force logout" });
+            forceLogoutToLogin("refresh_failed");
           } else {
             logConnectionEvent({ type: "token_refresh_ok", detail: "heartbeat recovery succeeded" });
             queryClient.invalidateQueries();

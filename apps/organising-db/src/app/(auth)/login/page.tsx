@@ -1,16 +1,30 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-export default function LoginPage() {
+const LOGIN_REASON_MESSAGES: Record<string, string> = {
+  session_expired: "Your session expired. Please sign in again.",
+  session_check_error: "We could not verify your session. Please sign in again.",
+  missing_session: "Your session is no longer active. Please sign in again.",
+  refresh_failed: "We could not refresh your session. Please sign in again.",
+  probe_error: "Your session could not be validated. Please sign in again.",
+  circuit_breaker: "We reset your session after repeated connection issues. Please sign in again.",
+  nuclear_reset: "Your browser session was reset. Please sign in again.",
+  signed_out: "You have been signed out.",
+};
+
+function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
+  const reason = searchParams.get("reason");
+  const reasonMessage = reason ? LOGIN_REASON_MESSAGES[reason] : null;
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,6 +114,12 @@ export default function LoginPage() {
               <p className="text-sm text-red-400">{error}</p>
             )}
 
+            {reasonMessage && !error && (
+              <p className="border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                {reasonMessage}
+              </p>
+            )}
+
             <button
               type="submit"
               disabled={loading}
@@ -112,5 +132,13 @@ export default function LoginPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

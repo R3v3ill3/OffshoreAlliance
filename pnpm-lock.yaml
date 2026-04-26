@@ -120,7 +120,7 @@ importers:
         specifier: ^2.4.5
         version: 2.4.5
       posthog-js:
-        specifier: ^1.359.1
+        specifier: ^1.230.0
         version: 1.359.1
       react:
         specifier: 19.2.3

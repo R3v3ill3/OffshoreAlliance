@@ -962,6 +962,7 @@ export function CampaignWallChart({
       <WorkerImportWizard
         open={importWizardOpen}
         onOpenChange={setImportWizardOpen}
+        campaignId={campaignId}
         onComplete={() => {
           queryClient.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
           queryClient.invalidateQueries({ queryKey: ["workers"] });

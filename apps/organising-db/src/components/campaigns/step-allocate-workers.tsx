@@ -207,6 +207,7 @@ export function StepAllocateWorkers({
       <WorkerImportWizard
         open={importOpen}
         onOpenChange={setImportOpen}
+        campaignId={campaignId}
         onComplete={() => {
           queryClient.invalidateQueries({
             queryKey: ["wizard-workers", selectedEmployers, selectedWorksites, worksiteSectorWide],

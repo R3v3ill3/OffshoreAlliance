@@ -933,6 +933,7 @@ export function CampaignUniverseSection({
       <WorkerImportWizard
         open={importWizardOpen}
         onOpenChange={setImportWizardOpen}
+        campaignId={campaignId}
         onComplete={() => {
           queryClient.invalidateQueries({ queryKey: ["campaign-members", campaignId] });
           queryClient.invalidateQueries({ queryKey: ["workers"] });

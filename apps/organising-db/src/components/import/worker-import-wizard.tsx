@@ -1,16 +1,22 @@
 "use client";
 
 import { useState, useCallback, useRef, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { matchWorksiteCandidates } from "@/lib/utils/worksite-fuzzy";
 import type { WorksiteCandidate } from "@/lib/utils/worksite-fuzzy";
 import type { ParsedWorkerRow, ParsedWorkerGroup } from "@/app/api/worker-import/parse/route";
-import type { WorkerImportRow } from "@/app/api/worker-import/apply/route";
+import type {
+  WorkerImportAssessmentColumn,
+  WorkerImportRow,
+  WorkerImportRowResult,
+} from "@/app/api/worker-import/apply/route";
 import type { Worksite, WorksiteType } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -55,6 +61,7 @@ type WizardStep =
   | "upload"
   | "column_mapping"
   | "value_mapping"
+  | "assessment_mapping"
   | "employer_selection"
   | "worksite_matching"
   | "occupation_matching"
@@ -75,6 +82,7 @@ type MappableField =
   | "phone"
   | "worksite"
   | "occupation"
+  | "assessment"
   | "membership_status"
   | "member_role_type"
   | "join_date"
@@ -93,6 +101,7 @@ interface WorksiteResolution {
   worksiteName: string | null;
   candidates: WorksiteCandidate[];
   confirmed: boolean;
+  createdDuringImport?: boolean;
 }
 
 interface ValueResolution {
@@ -125,6 +134,11 @@ interface ReviewRow extends ParsedWorkerRow {
   rawOccupation: string | null;
   /** Resolved FK into occupations table */
   resolvedOccupationId: number | null;
+  createOccupationName?: string | null;
+  additionalOccupationIds?: number[];
+  specialisationIds?: number[];
+  createSpecialisationNames?: string[];
+  assessmentEvents?: WorkerImportRow["assessmentEvents"];
   overrideFirstName?: string;
   overrideLastName?: string;
   overridePreferredName?: string;
@@ -163,11 +177,60 @@ interface OccupationRow {
   canonical_name: string;
 }
 
+interface SpecialisationRow {
+  specialisation_id: number;
+  name: string;
+}
+
+interface CampaignAssessment {
+  activity_id: number;
+  title: string;
+  is_binary: boolean;
+  template_key: string | null;
+}
+
+interface RatingLevel {
+  value: number;
+  label: string;
+  short_label: string;
+  code: string;
+}
+
+interface EmployerWorksiteRole {
+  employer_id: number;
+  worksite_id: number;
+  role_type: string;
+  is_current: boolean;
+}
+
+interface AssessmentValueResolution {
+  rawValue: string;
+  occurrences: number;
+  rating: number | null;
+  binaryValue: string | null;
+  skip: boolean;
+  confirmed: boolean;
+}
+
+interface AssessmentColumnResolution {
+  columnHeader: string;
+  activityId: number | null;
+  title: string;
+  isBinary: boolean;
+  createNew: boolean;
+  values: AssessmentValueResolution[];
+}
+
 interface OccupationResolution {
   rawValue: string;
   occurrences: number;
   resolvedOccupationId: number | null;
   resolvedCanonicalName: string | null;
+  createOccupationName: string | null;
+  additionalOccupationIds: number[];
+  specialisationIds: number[];
+  createSpecialisationNames: string[];
+  newSpecialisationName: string;
   candidates: { occupation_id: number; canonical_name: string; score: number }[];
   confirmed: boolean;
   search: string;
@@ -185,6 +248,7 @@ const ALL_STEPS: { id: WizardStep; label: string }[] = [
   { id: "upload", label: "Upload" },
   { id: "column_mapping", label: "Map Columns" },
   { id: "value_mapping", label: "Map Values" },
+  { id: "assessment_mapping", label: "Assessments" },
   { id: "employer_selection", label: "Employer" },
   { id: "worksite_matching", label: "Worksites" },
   { id: "occupation_matching", label: "Occupations" },
@@ -204,6 +268,7 @@ const MAPPABLE_FIELDS: { value: MappableField; label: string }[] = [
   { value: "phone", label: "Phone / Mobile" },
   { value: "worksite", label: "Worksite" },
   { value: "occupation", label: "Occupation / Job Title" },
+  { value: "assessment", label: "Assessment Column (map values)" },
   { value: "membership_status", label: "Membership Status (map values)" },
   { value: "member_role_type", label: "Role Type (map values)" },
   { value: "join_date", label: "Join Date" },
@@ -338,15 +403,20 @@ interface WorkerImportWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onComplete?: () => void;
+  campaignId?: string | number | null;
 }
 
 export function WorkerImportWizard({
   open,
   onOpenChange,
   onComplete,
+  campaignId,
 }: WorkerImportWizardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastParsedFileRef = useRef<File | null>(null);
+  const queryClient = useQueryClient();
+  const numericCampaignId =
+    campaignId != null && Number.isFinite(Number(campaignId)) ? Number(campaignId) : null;
 
   // ── Step / format state ───────────────────────────────────────────────────
   const [step, setStep] = useState<WizardStep>("upload");
@@ -368,10 +438,12 @@ export function WorkerImportWizard({
   // ── Shared state ──────────────────────────────────────────────────────────
   const [worksiteResolutions, setWorksiteResolutions] = useState<WorksiteResolution[]>([]);
   const [valueResolutions, setValueResolutions] = useState<ValueResolution[]>([]);
+  const [assessmentResolutions, setAssessmentResolutions] = useState<AssessmentColumnResolution[]>([]);
   const [worksiteSearch, setWorksiteSearch] = useState<Record<string, string>>({}); 
   const [createWorksiteFor, setCreateWorksiteFor] = useState<string | null>(null);
   const [newWorksiteName, setNewWorksiteName] = useState("");
   const [newWorksiteType, setNewWorksiteType] = useState<WorksiteType | "">("");
+  const [newWorksiteRoleType, setNewWorksiteRoleType] = useState("Other");
   const [isCreatingWorksite, setIsCreatingWorksite] = useState(false);
   const [createWorksiteError, setCreateWorksiteError] = useState<string | null>(null);
   const [bulkUnionMembershipId, setBulkUnionMembershipId] = useState("");
@@ -387,12 +459,13 @@ export function WorkerImportWizard({
     updated: number;
     skipped: number;
     errors: string[];
+    rowResults: WorkerImportRowResult[];
   } | null>(null);
 
   // ── Data queries ──────────────────────────────────────────────────────────
   const supabase = createClient();
 
-  const { data: worksites = [] } = useQuery<Worksite[]>({
+  const { data: worksites = [], refetch: refetchWorksites } = useQuery<Worksite[]>({
     queryKey: ["worksites-all"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -401,6 +474,19 @@ export function WorkerImportWizard({
         .order("worksite_name");
       if (error) throw error;
       return data ?? [];
+    },
+    enabled: open,
+  });
+
+  const { data: employerWorksiteRoles = [] } = useQuery<EmployerWorksiteRole[]>({
+    queryKey: ["employer-worksite-roles-current"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employer_worksite_roles")
+        .select("employer_id, worksite_id, role_type, is_current")
+        .eq("is_current", true);
+      if (error) throw error;
+      return (data ?? []) as EmployerWorksiteRole[];
     },
     enabled: open,
   });
@@ -488,6 +574,49 @@ export function WorkerImportWizard({
     enabled: open,
   });
 
+  const { data: specialisations = [] } = useQuery<SpecialisationRow[]>({
+    queryKey: ["specialisations-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("specialisations")
+        .select("specialisation_id, name")
+        .eq("is_active", true)
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: open,
+  });
+
+  const { data: campaignAssessments = [] } = useQuery<CampaignAssessment[]>({
+    queryKey: ["worker-import-assessments", numericCampaignId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campaign_activities")
+        .select("activity_id, title, is_binary, template_key")
+        .eq("campaign_id", numericCampaignId)
+        .eq("activity_kind", "assessment")
+        .order("title");
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: open && numericCampaignId != null,
+  });
+
+  const { data: ratingLevels = [] } = useQuery<RatingLevel[]>({
+    queryKey: ["rating-levels"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("rating_level")
+        .select("value, label, short_label, code")
+        .gt("value", 0)
+        .order("sort_order");
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: open,
+  });
+
   const { data: occupationAliases = [] } = useQuery<{ occupation_id: number; alias_name: string }[]>({
     queryKey: ["occupation-aliases-all"],
     queryFn: async () => {
@@ -504,6 +633,77 @@ export function WorkerImportWizard({
 
   function hasOccupationColumn() {
     return columnMappings.some((m) => m.field === "occupation");
+  }
+
+  function hasAssessmentColumn() {
+    return columnMappings.some((m) => m.field === "assessment");
+  }
+
+  function worksitePrincipalEmployerId(worksite: Worksite): number | null {
+    return (worksite as Worksite & { principal_employer_id?: number | null }).principal_employer_id ?? null;
+  }
+
+  function worksiteEmployerContext(worksite: Worksite): "linked" | "principal" | "other" {
+    if (!selectedEmployerId) return "other";
+    if (
+      employerWorksiteRoles.some(
+        (role) =>
+          role.worksite_id === worksite.worksite_id &&
+          role.employer_id === selectedEmployerId &&
+          role.is_current
+      )
+    ) {
+      return "linked";
+    }
+    if (worksitePrincipalEmployerId(worksite) === selectedEmployerId) return "principal";
+    return "other";
+  }
+
+  function worksiteContextLabel(worksite: Worksite) {
+    const context = worksiteEmployerContext(worksite);
+    if (context === "linked") return "Employer linked";
+    if (context === "principal") return "Principal employer";
+    return selectedEmployerId ? "Other employer" : worksite.worksite_type;
+  }
+
+  function sortWorksiteCandidatesForEmployer(candidates: WorksiteCandidate[]) {
+    const order = { linked: 0, principal: 1, other: 2 };
+    return [...candidates].sort((a, b) => {
+      const contextDelta =
+        order[worksiteEmployerContext(a.worksite)] - order[worksiteEmployerContext(b.worksite)];
+      if (contextDelta !== 0) return contextDelta;
+      return b.score - a.score;
+    });
+  }
+
+  function assessmentValueForRaw(raw: string, isBinary: boolean): AssessmentValueResolution {
+    const lower = raw.trim().toLowerCase();
+    const truthy = new Set(["yes", "y", "true", "t", "1", "support", "supporter"]);
+    const falsy = new Set(["no", "n", "false", "f", "0", "oppose", "opposed"]);
+    const numeric = Number(lower);
+
+    if (isBinary) {
+      if (truthy.has(lower)) {
+        return { rawValue: raw, occurrences: 0, rating: null, binaryValue: "yes", skip: false, confirmed: true };
+      }
+      if (falsy.has(lower)) {
+        return { rawValue: raw, occurrences: 0, rating: null, binaryValue: "no", skip: false, confirmed: true };
+      }
+    } else if (Number.isInteger(numeric) && numeric >= 1 && numeric <= 5) {
+      return { rawValue: raw, occurrences: 0, rating: numeric, binaryValue: null, skip: false, confirmed: true };
+    } else {
+      const rating = ratingLevels.find(
+        (level) =>
+          level.label.toLowerCase() === lower ||
+          level.short_label.toLowerCase() === lower ||
+          level.code.toLowerCase() === lower
+      );
+      if (rating) {
+        return { rawValue: raw, occurrences: 0, rating: rating.value, binaryValue: null, skip: false, confirmed: true };
+      }
+    }
+
+    return { rawValue: raw, occurrences: 0, rating: null, binaryValue: null, skip: false, confirmed: false };
   }
 
   function scoreOccupation(query: string, occs: OccupationRow[]) {
@@ -566,6 +766,11 @@ export function WorkerImportWizard({
         occurrences: headerRows.filter((r) => String(r[occCol] ?? "").trim() === raw).length,
         resolvedOccupationId: resolved?.occupation_id ?? null,
         resolvedCanonicalName: resolved?.canonical_name ?? null,
+        createOccupationName: null,
+        additionalOccupationIds: [],
+        specialisationIds: [],
+        createSpecialisationNames: [],
+        newSpecialisationName: "",
         candidates,
         confirmed: !!autoAccept,
         search: "",
@@ -573,14 +778,54 @@ export function WorkerImportWizard({
     });
   }
 
+  function buildAssessmentResolutions(): AssessmentColumnResolution[] {
+    const assessmentColumns = columnMappings.filter((m) => m.field === "assessment");
+    return assessmentColumns.map((mapping) => {
+      const rawValues = headerRows
+        .map((r) => String(r[mapping.header] ?? "").trim())
+        .filter(Boolean);
+      const uniqueValues = [...new Set(rawValues)];
+      const binaryTokens = new Set(["yes", "y", "true", "t", "1", "no", "n", "false", "f", "0"]);
+      const isBinary =
+        uniqueValues.length > 0 &&
+        uniqueValues.every((value) => binaryTokens.has(value.toLowerCase()));
+      const exactAssessment = campaignAssessments.find(
+        (assessment) => assessment.title.toLowerCase() === mapping.header.toLowerCase()
+      );
+      return {
+        columnHeader: mapping.header,
+        activityId: exactAssessment?.activity_id ?? null,
+        title: exactAssessment?.title ?? mapping.header,
+        isBinary: exactAssessment?.is_binary ?? isBinary,
+        createNew: !exactAssessment,
+        values: uniqueValues.map((raw) => {
+          const auto = assessmentValueForRaw(raw, exactAssessment?.is_binary ?? isBinary);
+          return {
+            ...auto,
+            occurrences: rawValues.filter((value) => value === raw).length,
+          };
+        }),
+      };
+    });
+  }
+
   function getVisibleSteps() {
     const steps = fileFormat === "group"
-      ? ALL_STEPS.filter((s) => s.id !== "column_mapping" && s.id !== "occupation_matching")
+      ? ALL_STEPS.filter(
+          (s) =>
+            s.id !== "column_mapping" &&
+            s.id !== "occupation_matching" &&
+            s.id !== "assessment_mapping"
+        )
       : ALL_STEPS.filter(
-          (s) => s.id !== "occupation_matching" || hasOccupationColumn()
+          (s) =>
+            (s.id !== "occupation_matching" || hasOccupationColumn()) &&
+            (s.id !== "assessment_mapping" || hasAssessmentColumn())
         );
     return steps.filter(
-      (s) => s.id !== "value_mapping" || valueResolutions.length > 0
+      (s) =>
+        (s.id !== "value_mapping" || valueResolutions.length > 0) &&
+        (s.id !== "assessment_mapping" || assessmentResolutions.length > 0)
     );
   }
 
@@ -636,7 +881,9 @@ export function WorkerImportWizard({
     setColumnMappings([]);
     setWorksiteResolutions([]);
     setValueResolutions([]);
+    setAssessmentResolutions([]);
     setWorksiteSearch({});
+    setNewWorksiteRoleType("Other");
     setOccupationResolutions([]);
     setOccupationSearch({});
     setSelectedEmployerId(null);
@@ -806,9 +1053,21 @@ export function WorkerImportWizard({
 
     const vr = buildValueResolutions();
     setValueResolutions(vr);
+    const ar = buildAssessmentResolutions();
+    setAssessmentResolutions(ar);
 
     if (vr.length > 0) {
       setStep("value_mapping");
+    } else if (ar.length > 0) {
+      setStep("assessment_mapping");
+    } else {
+      setStep("employer_selection");
+    }
+  }
+
+  function proceedFromValueMapping() {
+    if (assessmentResolutions.length > 0) {
+      setStep("assessment_mapping");
     } else {
       setStep("employer_selection");
     }
@@ -816,6 +1075,37 @@ export function WorkerImportWizard({
 
   function proceedFromEmployerSelection() {
     if (worksiteResolutions.length > 0) {
+      setWorksiteResolutions((prev) =>
+        prev.map((resolution) => {
+          const candidates = sortWorksiteCandidatesForEmployer(
+            matchWorksiteCandidates(resolution.groupName, worksites, 8)
+          );
+          const currentWorksite = worksites.find(
+            (worksite) => worksite.worksite_id === resolution.worksiteId
+          );
+          const currentIsCrossEmployer =
+            currentWorksite != null && worksiteEmployerContext(currentWorksite) === "other";
+          const top = candidates[0];
+          const shouldAutoAccept =
+            !resolution.confirmed &&
+            top?.confidence === "high" &&
+            worksiteEmployerContext(top.worksite) !== "other";
+          return {
+            ...resolution,
+            candidates,
+            ...(currentIsCrossEmployer
+              ? { worksiteId: null, worksiteName: null, confirmed: false }
+              : {}),
+            ...(shouldAutoAccept
+              ? {
+                  worksiteId: top.worksite.worksite_id,
+                  worksiteName: top.worksite.worksite_name,
+                  confirmed: true,
+                }
+              : {}),
+          };
+        })
+      );
       setStep("worksite_matching");
     } else if (hasOccupationColumn()) {
       setStep("occupation_matching");
@@ -856,20 +1146,27 @@ export function WorkerImportWizard({
     setIsCreatingWorksite(true);
     setCreateWorksiteError(null);
     try {
-      const { data, error } = await supabase
-        .from("worksites")
-        .insert({
-          worksite_name: newWorksiteName.trim(),
-          worksite_type: newWorksiteType,
-          ...(selectedEmployerId ? { principal_employer_id: selectedEmployerId } : {}),
-        })
-        .select()
-        .single();
-      if (error) throw error;
-      resolveWorksite(groupName, data as Worksite);
+      const response = await fetch("/api/worker-import/worksites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          worksiteName: newWorksiteName.trim(),
+          worksiteType: newWorksiteType,
+          employerId: selectedEmployerId,
+          employerRoleType: newWorksiteRoleType,
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok || !json.success) {
+        throw new Error(json.error ?? "Failed to create worksite");
+      }
+      resolveWorksite(groupName, json.worksite as Worksite);
+      await refetchWorksites();
+      await queryClient.invalidateQueries({ queryKey: ["employer-worksite-roles-current"] });
       setCreateWorksiteFor(null);
       setNewWorksiteName("");
       setNewWorksiteType("");
+      setNewWorksiteRoleType("Other");
     } catch (err) {
       setCreateWorksiteError(
         err instanceof Error ? err.message : "Failed to create worksite"
@@ -882,6 +1179,7 @@ export function WorkerImportWizard({
   function proceedToRowReview() {
     const resolutionMap = new Map(worksiteResolutions.map((r) => [r.groupName, r]));
     const occResMap = new Map(occupationResolutions.map((r) => [r.rawValue, r]));
+    const assessmentCols = assessmentResolutions.map((assessment) => assessment.columnHeader);
 
     // Build lookup maps from value resolutions
     // key: "columnHeader|rawValue" → resolved id
@@ -968,6 +1266,23 @@ export function WorkerImportWizard({
             ? String(row[occupationCol] ?? "").trim() || null
             : null;
           const occRes = rawOccupation ? occResMap.get(rawOccupation) : undefined;
+          const assessmentEvents = assessmentCols.flatMap((columnHeader) => {
+            const rawValue = String(row[columnHeader] ?? "").trim();
+            if (!rawValue) return [];
+            const column = assessmentResolutions.find(
+              (item) => item.columnHeader === columnHeader
+            );
+            const mapping = column?.values.find((value) => value.rawValue === rawValue);
+            if (!mapping || mapping.skip || !mapping.confirmed) return [];
+            return [
+              {
+                columnHeader,
+                rawValue,
+                rating: mapping.rating,
+                binaryValue: mapping.binaryValue,
+              },
+            ];
+          });
 
           return {
             rowIndex: i,
@@ -998,6 +1313,11 @@ export function WorkerImportWizard({
             resolvedWorksiteName: resolution?.worksiteName ?? null,
             rawOccupation,
             resolvedOccupationId: occRes?.confirmed ? (occRes.resolvedOccupationId ?? null) : null,
+            createOccupationName: occRes?.confirmed ? occRes.createOccupationName : null,
+            additionalOccupationIds: occRes?.confirmed ? occRes.additionalOccupationIds : [],
+            specialisationIds: occRes?.confirmed ? occRes.specialisationIds : [],
+            createSpecialisationNames: occRes?.confirmed ? occRes.createSpecialisationNames : [],
+            assessmentEvents,
           } satisfies ReviewRow;
         })
         .filter((r) => r.firstName || r.lastName);
@@ -1016,6 +1336,11 @@ export function WorkerImportWizard({
           resolvedWorksiteName: resolution?.worksiteName ?? null,
           rawOccupation: null,
           resolvedOccupationId: null,
+          createOccupationName: null,
+          additionalOccupationIds: [],
+          specialisationIds: [],
+          createSpecialisationNames: [],
+          assessmentEvents: [],
         }));
       });
       setReviewRows(rows);
@@ -1181,16 +1506,27 @@ export function WorkerImportWizard({
         notes: row.overrideNotes ?? row.notes ?? null,
         canonicalOccupationId: row.resolvedOccupationId ?? null,
         rawOccupation: row.rawOccupation ?? null,
+        createOccupationName: row.createOccupationName ?? null,
+        additionalOccupationIds: row.additionalOccupationIds ?? [],
+        specialisationIds: row.specialisationIds ?? [],
+        createSpecialisationNames: row.createSpecialisationNames ?? [],
+        assessmentEvents: row.assessmentEvents ?? [],
         action,
         existingWorkerId,
       };
     });
+    const assessmentColumns: WorkerImportAssessmentColumn[] = assessmentResolutions.map((column) => ({
+      columnHeader: column.columnHeader,
+      activityId: column.createNew ? null : column.activityId,
+      title: column.title,
+      isBinary: column.isBinary,
+    }));
 
     try {
       const res = await fetch("/api/worker-import/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName, rows }),
+        body: JSON.stringify({ fileName, campaignId: numericCampaignId, assessmentColumns, rows }),
       });
       const json = await res.json();
       setResult({
@@ -1198,6 +1534,7 @@ export function WorkerImportWizard({
         updated: json.updated ?? 0,
         skipped: json.skipped ?? 0,
         errors: json.errors ?? [],
+        rowResults: json.rowResults ?? [],
       });
       setStep("done");
     } catch (e) {
@@ -1206,6 +1543,7 @@ export function WorkerImportWizard({
         updated: 0,
         skipped: 0,
         errors: [e instanceof Error ? e.message : "Unknown error"],
+        rowResults: [],
       });
       setStep("done");
     } finally {
@@ -1457,7 +1795,7 @@ export function WorkerImportWizard({
             <ArrowLeft className="h-4 w-4 mr-1" /> Back
           </Button>
           <Button onClick={proceedFromColumnMapping} disabled={!canProceed}>
-            Select Employer <ArrowRight className="h-4 w-4 ml-1" />
+            Continue <ArrowRight className="h-4 w-4 ml-1" />
           </Button>
         </DialogFooter>
       </div>
@@ -1611,6 +1949,245 @@ export function WorkerImportWizard({
           <Button variant="outline" onClick={() => setStep("column_mapping")}>
             <ArrowLeft className="h-4 w-4 mr-1" /> Back
           </Button>
+          <Button onClick={proceedFromValueMapping} disabled={!allConfirmed}>
+            {assessmentResolutions.length > 0 ? "Map Assessments" : "Select Employer"}{" "}
+            <ArrowRight className="h-4 w-4 ml-1" />
+          </Button>
+        </DialogFooter>
+      </div>
+    );
+  }
+
+  function renderAssessmentMapping() {
+    const canUseAssessments = numericCampaignId != null;
+    const allConfirmed =
+      canUseAssessments &&
+      assessmentResolutions.every(
+        (column) =>
+          (column.activityId != null || (column.createNew && column.title.trim().length > 0)) &&
+          column.values.every((value) => value.confirmed)
+      );
+    const backStep: WizardStep = valueResolutions.length > 0 ? "value_mapping" : "column_mapping";
+
+    function updateColumn(columnHeader: string, patch: Partial<AssessmentColumnResolution>) {
+      setAssessmentResolutions((prev) =>
+        prev.map((column) =>
+          column.columnHeader === columnHeader ? { ...column, ...patch } : column
+        )
+      );
+    }
+
+    function updateAssessmentValue(
+      columnHeader: string,
+      rawValue: string,
+      patch: Partial<AssessmentValueResolution>
+    ) {
+      setAssessmentResolutions((prev) =>
+        prev.map((column) =>
+          column.columnHeader === columnHeader
+            ? {
+                ...column,
+                values: column.values.map((value) =>
+                  value.rawValue === rawValue ? { ...value, ...patch } : value
+                ),
+              }
+            : column
+        )
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {!canUseAssessments && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            Assessment columns need a campaign context. Reopen this import from a campaign
+            page, or remap these columns to Ignore.
+          </div>
+        )}
+
+        <p className="text-sm text-muted-foreground">
+          Match each assessment column to an existing campaign assessment or create a new
+          one, then map each spreadsheet value to a rating or binary result.
+        </p>
+
+        <div className="space-y-4 max-h-[430px] overflow-y-auto pr-1">
+          {assessmentResolutions.map((column) => (
+            <div key={column.columnHeader} className="rounded-lg border">
+              <div className="space-y-3 border-b bg-muted/40 p-3">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium">{column.columnHeader}</p>
+                  <Badge variant="outline" className="text-[10px]">
+                    {column.isBinary ? "Yes/No" : "Rating 1-5"}
+                  </Badge>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <Select
+                    value={column.createNew ? "__new__" : String(column.activityId ?? "__unset__")}
+                    onValueChange={(value) => {
+                      if (value === "__new__") {
+                        updateColumn(column.columnHeader, {
+                          createNew: true,
+                          activityId: null,
+                          title: column.title || column.columnHeader,
+                        });
+                        return;
+                      }
+                      const assessment = campaignAssessments.find(
+                        (item) => item.activity_id === Number(value)
+                      );
+                      updateColumn(column.columnHeader, {
+                        createNew: false,
+                        activityId: assessment?.activity_id ?? null,
+                        title: assessment?.title ?? column.title,
+                        isBinary: assessment?.is_binary ?? column.isBinary,
+                        values: column.values.map((raw) => ({
+                          ...assessmentValueForRaw(raw.rawValue, assessment?.is_binary ?? column.isBinary),
+                          occurrences: raw.occurrences,
+                        })),
+                      });
+                    }}
+                    disabled={!canUseAssessments}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Choose assessment..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__new__" className="text-xs">
+                        Create new assessment
+                      </SelectItem>
+                      {campaignAssessments.map((assessment) => (
+                        <SelectItem
+                          key={assessment.activity_id}
+                          value={String(assessment.activity_id)}
+                          className="text-xs"
+                        >
+                          {assessment.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id={`binary-${column.columnHeader}`}
+                      checked={column.isBinary}
+                      onCheckedChange={(checked) => {
+                        const isBinary = checked === true;
+                        updateColumn(column.columnHeader, {
+                          isBinary,
+                          values: column.values.map((raw) => ({
+                            ...assessmentValueForRaw(raw.rawValue, isBinary),
+                            occurrences: raw.occurrences,
+                          })),
+                        });
+                      }}
+                      disabled={!column.createNew}
+                    />
+                    <Label htmlFor={`binary-${column.columnHeader}`} className="text-xs">
+                      Yes/No
+                    </Label>
+                  </div>
+                </div>
+                {column.createNew && (
+                  <Input
+                    value={column.title}
+                    onChange={(event) =>
+                      updateColumn(column.columnHeader, { title: event.target.value })
+                    }
+                    placeholder="New assessment title"
+                    className="h-8 text-xs"
+                  />
+                )}
+              </div>
+
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">Spreadsheet value</TableHead>
+                    <TableHead className="text-xs w-12 text-right">Rows</TableHead>
+                    <TableHead className="text-xs">Maps to</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {column.values.map((value) => (
+                    <TableRow key={value.rawValue} className={!value.confirmed ? "bg-amber-50" : ""}>
+                      <TableCell className="p-2 text-xs font-mono">
+                        &ldquo;{value.rawValue}&rdquo;
+                      </TableCell>
+                      <TableCell className="p-2 text-right text-xs text-muted-foreground">
+                        {value.occurrences}
+                      </TableCell>
+                      <TableCell className="p-1.5">
+                        <Select
+                          value={
+                            value.skip
+                              ? "__skip__"
+                              : column.isBinary
+                                ? value.binaryValue ?? "__unset__"
+                                : value.rating != null
+                                  ? String(value.rating)
+                                  : "__unset__"
+                          }
+                          onValueChange={(selected) => {
+                            if (selected === "__skip__") {
+                              updateAssessmentValue(column.columnHeader, value.rawValue, {
+                                skip: true,
+                                rating: null,
+                                binaryValue: null,
+                                confirmed: true,
+                              });
+                              return;
+                            }
+                            updateAssessmentValue(column.columnHeader, value.rawValue, {
+                              skip: false,
+                              rating: column.isBinary ? null : Number(selected),
+                              binaryValue: column.isBinary ? selected : null,
+                              confirmed: true,
+                            });
+                          }}
+                        >
+                          <SelectTrigger className="h-7 text-xs">
+                            <SelectValue placeholder="Select..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__skip__" className="text-xs text-muted-foreground">
+                              Skip this value
+                            </SelectItem>
+                            {column.isBinary ? (
+                              <>
+                                <SelectItem value="yes" className="text-xs">
+                                  Yes / true
+                                </SelectItem>
+                                <SelectItem value="no" className="text-xs">
+                                  No / false
+                                </SelectItem>
+                              </>
+                            ) : (
+                              ratingLevels.map((level) => (
+                                <SelectItem
+                                  key={level.value}
+                                  value={String(level.value)}
+                                  className="text-xs"
+                                >
+                                  {level.value} - {level.label}
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ))}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setStep(backStep)}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back
+          </Button>
           <Button onClick={() => setStep("employer_selection")} disabled={!allConfirmed}>
             Select Employer <ArrowRight className="h-4 w-4 ml-1" />
           </Button>
@@ -1757,9 +2334,14 @@ export function WorkerImportWizard({
 
             const searchTerm = worksiteSearch[resolution.groupName] ?? "";
             const filteredWorksites = searchTerm
-              ? worksites.filter((ws) =>
-                  ws.worksite_name.toLowerCase().includes(searchTerm.toLowerCase())
-                )
+              ? worksites
+                  .filter((ws) =>
+                    ws.worksite_name.toLowerCase().includes(searchTerm.toLowerCase())
+                  )
+                  .sort((a, b) => {
+                    const order = { linked: 0, principal: 1, other: 2 };
+                    return order[worksiteEmployerContext(a)] - order[worksiteEmployerContext(b)];
+                  })
               : [];
 
             return (
@@ -1854,7 +2436,7 @@ export function WorkerImportWizard({
                         >
                           {ws.worksite_name}
                           <span className="ml-2 text-xs text-muted-foreground">
-                            {ws.worksite_type}
+                            {worksiteContextLabel(ws)}
                           </span>
                         </button>
                       ))}
@@ -1872,6 +2454,11 @@ export function WorkerImportWizard({
                       className="h-8 text-sm"
                       autoFocus
                     />
+                    {selectedEmployerName && (
+                      <p className="text-xs text-muted-foreground">
+                        Will link this worksite to {selectedEmployerName}.
+                      </p>
+                    )}
                     <Select
                       value={newWorksiteType}
                       onValueChange={(v) => setNewWorksiteType(v as WorksiteType)}
@@ -1905,6 +2492,30 @@ export function WorkerImportWizard({
                         ))}
                       </SelectContent>
                     </Select>
+                    {selectedEmployerId && (
+                      <Select value={newWorksiteRoleType} onValueChange={setNewWorksiteRoleType}>
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue placeholder="Employer role..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[
+                            "Owner",
+                            "Operator",
+                            "Principal_Contractor",
+                            "Subcontractor",
+                            "Labour_Hire",
+                            "Maintenance",
+                            "Drilling",
+                            "Aviation",
+                            "Other",
+                          ].map((role) => (
+                            <SelectItem key={role} value={role}>
+                              {role.replace(/_/g, " ")}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                     {createWorksiteError && (
                       <p className="text-xs text-destructive">{createWorksiteError}</p>
                     )}
@@ -1934,6 +2545,7 @@ export function WorkerImportWizard({
                           setCreateWorksiteFor(null);
                           setNewWorksiteName("");
                           setNewWorksiteType("");
+                          setNewWorksiteRoleType("Other");
                           setCreateWorksiteError(null);
                         }}
                       >
@@ -2017,6 +2629,10 @@ export function WorkerImportWizard({
     const noMembershipTypeCount = reviewRows.filter(
       (r) => resolvedUnionMembershipIdForApply(r) == null
     ).length;
+    const assessmentEventCount = reviewRows.reduce(
+      (sum, row) => sum + (row.assessmentEvents?.length ?? 0),
+      0
+    );
     const backStep: WizardStep =
       worksiteResolutions.length > 0 ? "worksite_matching" : "employer_selection";
 
@@ -2033,6 +2649,11 @@ export function WorkerImportWizard({
             {noMembershipTypeCount > 0 && (
               <span className="ml-2 text-muted-foreground">
                 {noMembershipTypeCount} with no member type.
+              </span>
+            )}
+            {assessmentEventCount > 0 && (
+              <span className="ml-2 text-muted-foreground">
+                {assessmentEventCount} assessment value{assessmentEventCount !== 1 ? "s" : ""}.
               </span>
             )}
           </p>
@@ -2302,6 +2923,14 @@ export function WorkerImportWizard({
                   o.canonical_name.toLowerCase().includes(searchTerm.toLowerCase())
                 )
               : [];
+            const additionalOptions = occupations.filter(
+              (o) =>
+                o.occupation_id !== res.resolvedOccupationId &&
+                !res.additionalOccupationIds.includes(o.occupation_id)
+            );
+            const specialisationOptions = specialisations.filter(
+              (s) => !res.specialisationIds.includes(s.specialisation_id)
+            );
 
             return (
               <div key={res.rawValue} className="border rounded-lg p-4 space-y-3">
@@ -2345,6 +2974,7 @@ export function WorkerImportWizard({
                                         ...r,
                                         resolvedOccupationId: c.occupation_id,
                                         resolvedCanonicalName: c.canonical_name,
+                                        createOccupationName: null,
                                         confirmed: true,
                                         search: "",
                                       }
@@ -2389,6 +3019,7 @@ export function WorkerImportWizard({
                                       ...r,
                                       resolvedOccupationId: o.occupation_id,
                                       resolvedCanonicalName: o.canonical_name,
+                                      createOccupationName: null,
                                       confirmed: true,
                                     }
                                   : r
@@ -2407,7 +3038,225 @@ export function WorkerImportWizard({
                   )}
                 </div>
 
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Select
+                    value=""
+                    onValueChange={(value) => {
+                      const occupationId = Number(value);
+                      const occupation = occupations.find((o) => o.occupation_id === occupationId);
+                      if (!occupation) return;
+                      setOccupationResolutions((prev) =>
+                        prev.map((r) =>
+                          r.rawValue === res.rawValue
+                            ? {
+                                ...r,
+                                additionalOccupationIds: [
+                                  ...r.additionalOccupationIds,
+                                  occupation.occupation_id,
+                                ],
+                              }
+                            : r
+                        )
+                      );
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Add secondary occupation..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {additionalOptions.map((o) => (
+                        <SelectItem key={o.occupation_id} value={String(o.occupation_id)}>
+                          {o.canonical_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select
+                    value=""
+                    onValueChange={(value) => {
+                      const specialisationId = Number(value);
+                      const specialisation = specialisations.find(
+                        (s) => s.specialisation_id === specialisationId
+                      );
+                      if (!specialisation) return;
+                      setOccupationResolutions((prev) =>
+                        prev.map((r) =>
+                          r.rawValue === res.rawValue
+                            ? {
+                                ...r,
+                                specialisationIds: [
+                                  ...r.specialisationIds,
+                                  specialisation.specialisation_id,
+                                ],
+                              }
+                            : r
+                        )
+                      );
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Add specialisation..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {specialisationOptions.map((s) => (
+                        <SelectItem key={s.specialisation_id} value={String(s.specialisation_id)}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {(res.additionalOccupationIds.length > 0 ||
+                  res.specialisationIds.length > 0 ||
+                  res.createSpecialisationNames.length > 0) && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {res.additionalOccupationIds.map((id) => {
+                      const occupation = occupations.find((o) => o.occupation_id === id);
+                      return (
+                        <Badge key={`occ-${id}`} variant="secondary" className="gap-1 pr-1">
+                          {occupation?.canonical_name ?? `Occupation #${id}`}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setOccupationResolutions((prev) =>
+                                prev.map((r) =>
+                                  r.rawValue === res.rawValue
+                                    ? {
+                                        ...r,
+                                        additionalOccupationIds: r.additionalOccupationIds.filter(
+                                          (x) => x !== id
+                                        ),
+                                      }
+                                    : r
+                                )
+                              )
+                            }
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      );
+                    })}
+                    {res.specialisationIds.map((id) => {
+                      const specialisation = specialisations.find((s) => s.specialisation_id === id);
+                      return (
+                        <Badge key={`spec-${id}`} variant="outline" className="gap-1 pr-1">
+                          {specialisation?.name ?? `Specialisation #${id}`}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setOccupationResolutions((prev) =>
+                                prev.map((r) =>
+                                  r.rawValue === res.rawValue
+                                    ? {
+                                        ...r,
+                                        specialisationIds: r.specialisationIds.filter((x) => x !== id),
+                                      }
+                                    : r
+                                )
+                              )
+                            }
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      );
+                    })}
+                    {res.createSpecialisationNames.map((name) => (
+                      <Badge key={`new-spec-${name}`} variant="outline" className="gap-1 pr-1">
+                        New: {name}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setOccupationResolutions((prev) =>
+                              prev.map((r) =>
+                                r.rawValue === res.rawValue
+                                  ? {
+                                      ...r,
+                                      createSpecialisationNames: r.createSpecialisationNames.filter(
+                                        (x) => x !== name
+                                      ),
+                                    }
+                                  : r
+                              )
+                            )
+                          }
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <Input
+                    value={res.newSpecialisationName}
+                    onChange={(event) =>
+                      setOccupationResolutions((prev) =>
+                        prev.map((r) =>
+                          r.rawValue === res.rawValue
+                            ? { ...r, newSpecialisationName: event.target.value }
+                            : r
+                        )
+                      )
+                    }
+                    placeholder="New specialisation, e.g. Rope Access"
+                    className="h-8 text-xs"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    disabled={!res.newSpecialisationName.trim()}
+                    onClick={() =>
+                      setOccupationResolutions((prev) =>
+                        prev.map((r) =>
+                          r.rawValue === res.rawValue
+                            ? {
+                                ...r,
+                                createSpecialisationNames: [
+                                  ...r.createSpecialisationNames,
+                                  r.newSpecialisationName.trim(),
+                                ],
+                                newSpecialisationName: "",
+                              }
+                            : r
+                        )
+                      )
+                    }
+                  >
+                    Add skill
+                  </Button>
+                </div>
+
                 <div className="flex gap-2 flex-wrap">
+                  <Button
+                    variant={res.createOccupationName ? "default" : "outline"}
+                    size="sm"
+                    className="text-xs h-7 gap-1"
+                    onClick={() =>
+                      setOccupationResolutions((prev) =>
+                        prev.map((r) =>
+                          r.rawValue === res.rawValue
+                            ? {
+                                ...r,
+                                resolvedOccupationId: null,
+                                resolvedCanonicalName: null,
+                                createOccupationName: res.rawValue,
+                                confirmed: true,
+                              }
+                            : r
+                        )
+                      )
+                    }
+                  >
+                    <Plus className="h-3 w-3" />
+                    Create occupation
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -2420,6 +3269,7 @@ export function WorkerImportWizard({
                                 ...r,
                                 resolvedOccupationId: null,
                                 resolvedCanonicalName: null,
+                                createOccupationName: null,
                                 confirmed: true,
                               }
                             : r
@@ -2603,6 +3453,18 @@ export function WorkerImportWizard({
     }
 
     const worksiteSummary = worksiteResolutions.filter((r) => r.worksiteId);
+    const assessmentEventCount = reviewRows.reduce(
+      (sum, row) => sum + (row.assessmentEvents?.length ?? 0),
+      0
+    );
+    const extraRoleCount = reviewRows.reduce(
+      (sum, row) =>
+        sum +
+        (row.additionalOccupationIds?.length ?? 0) +
+        (row.specialisationIds?.length ?? 0) +
+        (row.createSpecialisationNames?.length ?? 0),
+      0
+    );
 
     return (
       <div className="space-y-4">
@@ -2654,6 +3516,19 @@ export function WorkerImportWizard({
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {(assessmentEventCount > 0 || extraRoleCount > 0) && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-lg border p-3">
+              <p className="text-xs font-medium text-muted-foreground">Assessment Values</p>
+              <p className="text-lg font-semibold">{assessmentEventCount}</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs font-medium text-muted-foreground">Extra Roles/Skills</p>
+              <p className="text-lg font-semibold">{extraRoleCount}</p>
+            </div>
           </div>
         )}
 
@@ -2716,6 +3591,23 @@ export function WorkerImportWizard({
           </div>
         )}
 
+        {result.rowResults.length > 0 && (
+          <div className="border rounded-lg p-3 space-y-1 max-h-48 overflow-y-auto">
+            <p className="text-xs font-medium text-muted-foreground">Row results:</p>
+            {result.rowResults.slice(0, 20).map((row) => (
+              <p key={row.rowIndex} className="text-xs text-muted-foreground">
+                Row {row.rowIndex + 1}: {row.status}
+                {row.workerId ? ` (#${row.workerId})` : ""}
+              </p>
+            ))}
+            {result.rowResults.length > 20 && (
+              <p className="text-xs text-muted-foreground">
+                {result.rowResults.length - 20} more rows not shown.
+              </p>
+            )}
+          </div>
+        )}
+
         <DialogFooter>
           <Button variant="outline" onClick={reset}>
             Import Another File
@@ -2768,6 +3660,7 @@ export function WorkerImportWizard({
             {step === "upload" && renderUpload()}
             {step === "column_mapping" && renderColumnMapping()}
             {step === "value_mapping" && renderValueMapping()}
+            {step === "assessment_mapping" && renderAssessmentMapping()}
             {step === "employer_selection" && renderEmployerSelection()}
             {step === "worksite_matching" && renderWorksiteMatching()}
             {step === "occupation_matching" && renderOccupationMatching()}

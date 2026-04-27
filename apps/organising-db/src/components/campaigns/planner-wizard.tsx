@@ -536,13 +536,71 @@ export function CampaignCreationWizard() {
     <div className="max-w-3xl mx-auto">
       {/* Linked campaign banner */}
       {isLinkedMode && existingCampaign && (
-        <div className="mb-6 rounded-lg bg-blue-50 border border-blue-200 p-4">
+        <div className="mb-6 rounded-lg bg-blue-50 border border-blue-200 p-4 space-y-2">
           <p className="text-sm font-semibold text-blue-900">
             Adding campaign plan to: {existingCampaign.name}
           </p>
-          <p className="text-xs text-blue-700 mt-1">
+          <p className="text-xs text-blue-700">
             The campaign was created in the Organising DB. This wizard will add stage plans, gates, and timelines.
           </p>
+          {Array.isArray(
+            (existingCampaign as { attached_agreements?: Array<unknown> }).attached_agreements
+          ) &&
+            (
+              (existingCampaign as {
+                attached_agreements?: Array<{
+                  agreement_id: number
+                  relationship_type: 'replaced' | 'new' | 'related'
+                  is_primary: boolean
+                  agreement_name: string | null
+                  short_name: string | null
+                  status: string | null
+                  expiry_date: string | null
+                }>
+              }).attached_agreements ?? []
+            ).length > 0 && (
+              <div className="pt-2 border-t border-blue-200/60 space-y-1">
+                <p className="text-xs font-semibold text-blue-900">
+                  Attached agreements
+                </p>
+                <ul className="space-y-0.5">
+                  {(
+                    (existingCampaign as {
+                      attached_agreements: Array<{
+                        agreement_id: number
+                        relationship_type: 'replaced' | 'new' | 'related'
+                        is_primary: boolean
+                        agreement_name: string | null
+                        short_name: string | null
+                        status: string | null
+                        expiry_date: string | null
+                      }>
+                    }).attached_agreements
+                  ).map((a) => (
+                    <li
+                      key={a.agreement_id}
+                      className="text-xs text-blue-800 flex items-center gap-2"
+                    >
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] h-4 px-1 border-blue-400 text-blue-800"
+                      >
+                        {a.relationship_type}
+                        {a.is_primary ? ' · primary' : ''}
+                      </Badge>
+                      <span className="truncate">
+                        {a.agreement_name ?? `Agreement #${a.agreement_id}`}
+                      </span>
+                      {a.expiry_date && (
+                        <span className="text-blue-700/70">
+                          · expires {a.expiry_date.slice(0, 10)}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
         </div>
       )}
 

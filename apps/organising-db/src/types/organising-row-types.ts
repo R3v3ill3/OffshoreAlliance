@@ -75,6 +75,25 @@ export type CampaignScopeType =
   | "multi_employer_single_site"
   | "multi_employer_multi_site";
 
+/**
+ * Role an attached agreement plays for a campaign (campaign_agreements.relationship_type).
+ * - replaced: existing EA being superseded by this campaign
+ * - new: fresh EA being created/negotiated
+ * - related: in scope but not central
+ */
+export type CampaignAgreementRelationshipType = "replaced" | "new" | "related";
+
+export interface CampaignAgreementRow {
+  id: number;
+  campaign_id: number;
+  agreement_id: number;
+  relationship_type: CampaignAgreementRelationshipType;
+  is_primary: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export type CampaignActivityKind = "task" | "assessment";
 
 export type ActivityRatingSource = "staff" | "leader_form";
@@ -85,11 +104,21 @@ export type CampaignOuType =
   | "network"
   | "job_type"
   | "worksite"
+  | "employer"
   | "ethnic_community"
   | "crew_rotation"
   | "accommodation"
   | "work_area"
   | "custom";
+
+/** Optional JSONB on campaign_organising_units recording the filter that built the unit. */
+export interface CampaignOuUnitBasis {
+  employer_id?: number;
+  worksite_id?: number;
+  canonical_occupation_id?: number;
+  occupation_group_id?: number;
+  custom?: boolean;
+}
 
 export type WorkplanTaskType = "discovery" | "outreach" | "mapping" | "engagement" | "admin" | "other";
 
@@ -345,6 +374,8 @@ export interface Campaign {
   campaign_scope: CampaignScopeType | null;
   total_worker_estimate: number | null;
   sector_wide: boolean;
+  msd_required?: boolean;
+  plan_timeframe_weeks?: number | null;
   created_by?: string;
   created_at: string;
   updated_at: string;

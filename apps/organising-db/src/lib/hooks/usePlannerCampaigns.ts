@@ -353,15 +353,53 @@ export function useExistingCampaignForPlanning(campaignId: number | null) {
           traceId,
         })
 
+        // Pull all agreements attached via the M:N junction so the planner can
+        // present full context (Phase 1 of campaigns review plan).
+        const { data: attached } = await supabase
+          .from('campaign_agreements')
+          .select(
+            `agreement_id, relationship_type, is_primary, sort_order,
+             agreement:agreements(agreement_name, short_name, status, expiry_date)`
+          )
+          .eq('campaign_id', campaignId)
+          .order('sort_order', { ascending: true })
+
+        const attachedAgreements = (
+          (attached ?? []) as unknown as Array<{
+            agreement_id: number
+            relationship_type: string
+            is_primary: boolean
+            sort_order: number
+            agreement: {
+              agreement_name: string
+              short_name: string | null
+              status: string | null
+              expiry_date: string | null
+            } | null
+          }>
+        ).map((a) => ({
+          agreement_id: a.agreement_id,
+          relationship_type: a.relationship_type as 'replaced' | 'new' | 'related',
+          is_primary: a.is_primary,
+          sort_order: a.sort_order,
+          agreement_name: a.agreement?.agreement_name ?? null,
+          short_name: a.agreement?.short_name ?? null,
+          status: a.agreement?.status ?? null,
+          expiry_date: a.agreement?.expiry_date ?? null,
+        }))
+
         const result = {
           ...campaign,
           has_plan: (campaign.campaign_stage_plans?.length ?? 0) > 0,
           requires_replacement_agreement:
             campaign.enterprise_agreement_subtype === 'replacement',
           has_linked_agreement_context:
-            !!campaign.replaced_agreement_id || !!timeline?.agreement_id,
+            !!campaign.replaced_agreement_id ||
+            !!timeline?.agreement_id ||
+            attachedAgreements.length > 0,
           timeline_agreement_id: timeline?.agreement_id ?? null,
           timeline_expiry_date: timeline?.agreement_expiry_date ?? null,
+          attached_agreements: attachedAgreements,
         }
 
         logConnectionEvent({

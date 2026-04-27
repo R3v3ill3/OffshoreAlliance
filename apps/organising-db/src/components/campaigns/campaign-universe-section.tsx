@@ -665,6 +665,12 @@ export function CampaignUniverseSection({
           </div>
           {canWrite && (
             <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" asChild>
+                <Link href={`/campaigns/${campaignId}/add-workers`}>
+                  <Users className="h-4 w-4 mr-1" />
+                  Add workers (bulk)
+                </Link>
+              </Button>
               <Button
                 size="sm"
                 variant="outline"
@@ -918,11 +924,6 @@ export function CampaignUniverseSection({
             </>
           )}
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" asChild>
-              <Link href="/workers" target="_blank">
-                Open Workers
-              </Link>
-            </Button>
             <Button variant="outline" onClick={() => setWorkerDialog(false)}>
               Close
             </Button>

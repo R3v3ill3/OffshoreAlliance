@@ -126,15 +126,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const initSession = async () => {
+      // Retry once on transient errors so cross-tab cookie-sync races
+      // (new tab opens before cookies fully propagate) don't trigger a
+      // destructive forceLogoutToLogin that wipes shared cookies and takes
+      // down the parent tab. After retry exhaustion the existing destructive
+      // path runs, preserving 48c3c1c's intent for genuinely corrupt cookies.
+      let getSessionResult: Awaited<ReturnType<typeof supabase.auth.getSession>> | null = null;
+      let getSessionError: unknown = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          getSessionResult = await supabase.auth.getSession();
+          getSessionError = getSessionResult.error ?? null;
+        } catch (err) {
+          getSessionError = err;
+          getSessionResult = null;
+        }
+        if (!getSessionError) break;
+        if (attempt === 0) {
+          await wait(350);
+        }
+      }
+
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) {
-          logConnectionEvent({ type: "token_refresh_fail", detail: error.message });
+        if (getSessionError) {
+          const message = getSessionError instanceof Error ? getSessionError.message : String(getSessionError);
+          logConnectionEvent({ type: "token_refresh_fail", detail: message });
           setUser(null);
           setProfile(null);
           redirectToLogin("session_check_error");
           return;
         }
+
+        const session = getSessionResult?.data.session ?? null;
         const currentUser = session?.user ?? null;
         setUser(currentUser);
 
@@ -145,14 +168,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setProfile(null);
           redirectToLogin("session_expired");
         }
-      } catch (error: unknown) {
-        logConnectionEvent({
-          type: "token_refresh_fail",
-          detail: error instanceof Error ? error.message : String(error),
-        });
-        setUser(null);
-        setProfile(null);
-        redirectToLogin("session_check_error");
       } finally {
         setLoading(false);
       }

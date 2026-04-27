@@ -87,6 +87,7 @@ const OU_TYPE_LABELS: Record<CampaignOuType, string> = {
   network: "Network",
   job_type: "Job type",
   worksite: "Worksite",
+  employer: "Employer",
   ethnic_community: "Ethnic community",
   crew_rotation: "Crew rotation",
   accommodation: "Accommodation",

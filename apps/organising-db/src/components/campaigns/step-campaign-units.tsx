@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -40,7 +40,6 @@ export interface CampaignUnitDraft {
 }
 
 interface StepCampaignUnitsProps {
-  campaignId: number;
   selectedEmployers: number[];
   selectedWorksites: number[];
   worksiteSectorWide: boolean;
@@ -78,7 +77,6 @@ function newDraftId(): string {
 }
 
 export function StepCampaignUnits({
-  campaignId: _campaignId,
   selectedEmployers,
   selectedWorksites,
   worksiteSectorWide,
@@ -319,11 +317,6 @@ export function StepCampaignUnits({
     );
   }
 
-  // Reset pendingPick when kind changes so stale ids aren't carried over.
-  useEffect(() => {
-    setPendingPick("");
-  }, [pendingKind]);
-
   // ── Estimate sum + unallocated remainder ──────────────────────────────────
 
   const sumOfUnitEstimates = useMemo(
@@ -405,9 +398,10 @@ export function StepCampaignUnits({
           <div className="grid sm:grid-cols-[170px_1fr_auto] gap-2 items-start">
             <Select
               value={pendingKind}
-              onValueChange={(v) =>
-                setPendingKind(v as "occupation_group" | "occupation" | "custom")
-              }
+              onValueChange={(v) => {
+                setPendingKind(v as "occupation_group" | "occupation" | "custom");
+                setPendingPick("");
+              }}
             >
               <SelectTrigger>
                 <SelectValue />

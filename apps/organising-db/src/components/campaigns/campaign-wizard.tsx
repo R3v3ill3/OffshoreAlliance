@@ -33,12 +33,20 @@ import {
 } from "@/lib/campaign/resolve-campaign-organiser";
 import { CampaignOrganiserSelect } from "@/components/campaigns/campaign-organiser-select";
 import { StepEmployersWorksites } from "@/components/campaigns/step-employers-worksites";
-import { StepAllocateWorkers } from "@/components/campaigns/step-allocate-workers";
+import {
+  StepAllocateWorkers,
+  type WorkerUnitAllocation,
+} from "@/components/campaigns/step-allocate-workers";
 import {
   StepAgreements,
   type CampaignAgreementSelection,
 } from "@/components/campaigns/step-agreements";
 import { StepWorkerEstimate } from "@/components/campaigns/step-worker-estimate";
+import {
+  StepCampaignUnits,
+  type CampaignUnitDraft,
+} from "@/components/campaigns/step-campaign-units";
+import type { CampaignOuType, CampaignOuUnitBasis } from "@/types/database";
 import Link from "next/link";
 
 const SCOPES: CampaignScopeType[] = [
@@ -153,7 +161,10 @@ export function CampaignWizard() {
   const [agreementSelections, setAgreementSelections] = useState<
     CampaignAgreementSelection[]
   >([]);
+  const [units, setUnits] = useState<CampaignUnitDraft[]>([]);
   const [selectedWorkers, setSelectedWorkers] = useState<number[]>([]);
+  const [workerUnitAllocations, setWorkerUnitAllocations] =
+    useState<WorkerUnitAllocation>({});
 
   // ── Queries ───────────────────────────────────────────────────────────────
 
@@ -176,7 +187,7 @@ export function CampaignWizard() {
     queryKey: ["campaign-wizard-scope", campaignId],
     queryFn: async () => {
       const cid = campaignId!;
-      const [ce, cw, cw2, ca] = await Promise.all([
+      const [ce, cw, cw2, ca, cou, cwo] = await Promise.all([
         supabase.from("campaign_employers").select("employer_id").eq("campaign_id", cid),
         supabase.from("campaign_worksites").select("worksite_id, sector_wide").eq("campaign_id", cid),
         supabase.from("campaign_worker_membership").select("worker_id").eq("campaign_id", cid),
@@ -185,13 +196,24 @@ export function CampaignWizard() {
           .select("agreement_id, relationship_type, is_primary, sort_order")
           .eq("campaign_id", cid)
           .order("sort_order", { ascending: true }),
+        supabase
+          .from("campaign_organising_units")
+          .select("ou_id, ou_type, name, total_workers_estimated, unit_basis")
+          .eq("campaign_id", cid)
+          .order("display_order", { ascending: true }),
+        supabase
+          .from("campaign_worker_ou")
+          .select("ou_id, worker_id, campaign_organising_units!inner(campaign_id)")
+          .eq("campaign_organising_units.campaign_id", cid),
       ]);
       if (ce.error) throw ce.error;
       if (cw.error) throw cw.error;
       if (cw2.error) throw cw2.error;
-      // campaign_agreements may not exist on environments where the migration
-      // hasn't been applied yet — degrade gracefully rather than failing.
+      // The Phase 1 + 2 tables may not exist on environments where the migrations
+      // haven't been applied yet — degrade gracefully rather than failing.
       const agreementRows = ca.error ? [] : (ca.data ?? []);
+      const ouRows = cou.error ? [] : (cou.data ?? []);
+      const cwoRows = cwo.error ? [] : (cwo.data ?? []);
       const worksiteRows = cw.data ?? [];
       const sectorWide = worksiteRows.some((w) => w.sector_wide && w.worksite_id == null);
       return {
@@ -209,6 +231,29 @@ export function CampaignWizard() {
           relationship_type: r.relationship_type as CampaignAgreementSelection["relationship_type"],
           is_primary: r.is_primary,
         })),
+        units: (ouRows as Array<{
+          ou_id: number;
+          ou_type: string;
+          name: string;
+          total_workers_estimated: number | null;
+          unit_basis: CampaignOuUnitBasis | null;
+        }>).map((r) => ({
+          draft_id: `srv_${r.ou_id}`,
+          ou_id: r.ou_id,
+          ou_type: r.ou_type as CampaignOuType,
+          name: r.name,
+          total_workers_estimated: r.total_workers_estimated,
+          unit_basis: r.unit_basis,
+        })) satisfies CampaignUnitDraft[],
+        workerUnitAllocations: (() => {
+          const out: WorkerUnitAllocation = {};
+          for (const row of cwoRows as Array<{ ou_id: number; worker_id: number }>) {
+            const set = out[row.worker_id] ?? new Set<number>();
+            set.add(row.ou_id);
+            out[row.worker_id] = set;
+          }
+          return out;
+        })(),
       };
     },
     enabled: !!user && !!campaignId,
@@ -287,6 +332,8 @@ export function CampaignWizard() {
     setSelectedWorksites(wizardScope.worksites);
     setSelectedWorkers(wizardScope.workers);
     setAgreementSelections(wizardScope.agreements);
+    setUnits(wizardScope.units);
+    setWorkerUnitAllocations(wizardScope.workerUnitAllocations);
     scopeHydratedFor.current = campaignId;
   }, [campaignId, wizardScopeLoading, wizardScope]);
 
@@ -500,24 +547,132 @@ export function CampaignWizard() {
     },
   });
 
+  const saveUnitsMutation = useAuthAwareMutation({
+    mutationFn: async () => {
+      if (!campaignId) throw new Error("No campaign");
+
+      await withSessionGuard("saveUnitsMutation", async () => {
+        // Existing rows currently in DB.
+        const { data: existing } = await supabase
+          .from("campaign_organising_units")
+          .select("ou_id")
+          .eq("campaign_id", campaignId);
+        const existingIds = new Set((existing ?? []).map((r) => r.ou_id as number));
+        const keepIds = new Set(
+          units.filter((u) => u.ou_id != null).map((u) => u.ou_id as number)
+        );
+        const toDelete = Array.from(existingIds).filter((id) => !keepIds.has(id));
+
+        if (toDelete.length > 0) {
+          const { error } = await supabase
+            .from("campaign_organising_units")
+            .delete()
+            .in("ou_id", toDelete);
+          if (error) throw error;
+        }
+
+        // Update existing units that are still present.
+        for (const u of units) {
+          if (u.ou_id == null) continue;
+          const { error } = await supabase
+            .from("campaign_organising_units")
+            .update({
+              ou_type: u.ou_type,
+              name: u.name,
+              total_workers_estimated: u.total_workers_estimated,
+              unit_basis: u.unit_basis,
+            })
+            .eq("ou_id", u.ou_id);
+          if (error) throw error;
+        }
+
+        // Insert brand-new units, then map draft_id → server ou_id.
+        const drafts = units.filter((u) => u.ou_id == null);
+        if (drafts.length > 0) {
+          const { data: inserted, error } = await supabase
+            .from("campaign_organising_units")
+            .insert(
+              drafts.map((u, i) => ({
+                campaign_id: campaignId,
+                ou_type: u.ou_type,
+                name: u.name,
+                total_workers_estimated: u.total_workers_estimated,
+                unit_basis: u.unit_basis,
+                display_order: (existingIds.size + i) as number,
+              }))
+            )
+            .select("ou_id");
+          if (error) throw error;
+          // Splice the returned ou_ids back into local state by index.
+          const insertedIds = (inserted ?? []).map((r) => r.ou_id as number);
+          const draftIdToOuId = new Map<string, number>();
+          drafts.forEach((d, i) => {
+            const id = insertedIds[i];
+            if (id != null) draftIdToOuId.set(d.draft_id, id);
+          });
+          setUnits(
+            units.map((u) =>
+              u.ou_id == null && draftIdToOuId.has(u.draft_id)
+                ? { ...u, ou_id: draftIdToOuId.get(u.draft_id)! }
+                : u
+            )
+          );
+        }
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-wizard-scope", campaignId] });
+      setStep(6);
+    },
+  });
+
   const saveWorkersMutation = useAuthAwareMutation({
     mutationFn: async () => {
       if (!campaignId) throw new Error("No campaign");
 
       await withSessionGuard("saveWorkersMutation", async () => {
         await supabase.from("campaign_worker_membership").delete().eq("campaign_id", campaignId);
-        if (selectedWorkers.length === 0) return;
-        const { error } = await supabase.from("campaign_worker_membership").insert(
-          selectedWorkers.map((worker_id) => ({ campaign_id: campaignId, worker_id }))
-        );
-        if (error) throw error;
+        if (selectedWorkers.length > 0) {
+          const { error } = await supabase.from("campaign_worker_membership").insert(
+            selectedWorkers.map((worker_id) => ({ campaign_id: campaignId, worker_id }))
+          );
+          if (error) throw error;
+        }
+
+        // Wipe campaign_worker_ou for this campaign and re-insert from state.
+        // Cleanest path with FK ON DELETE CASCADE is to query existing ou_ids
+        // for this campaign and delete by them.
+        const ouIds = units.map((u) => u.ou_id).filter((x): x is number => x != null);
+        if (ouIds.length > 0) {
+          const { error: delErr } = await supabase
+            .from("campaign_worker_ou")
+            .delete()
+            .in("ou_id", ouIds);
+          if (delErr) throw delErr;
+        }
+
+        const allocationRows: { ou_id: number; worker_id: number }[] = [];
+        for (const wid of selectedWorkers) {
+          const set = workerUnitAllocations[wid];
+          if (!set) continue;
+          for (const ouId of set) {
+            allocationRows.push({ ou_id: ouId, worker_id: wid });
+          }
+        }
+        if (allocationRows.length > 0) {
+          const { error } = await supabase
+            .from("campaign_worker_ou")
+            .insert(allocationRows);
+          if (error) throw error;
+        }
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });
       queryClient.invalidateQueries({ queryKey: ["campaign-members", campaignId] });
       if (basics.campaign_type === "bargaining") {
-        setStep(6);
+        setStep(7);
       } else {
         router.push(`/campaigns/${campaignId}`);
       }
@@ -532,11 +687,12 @@ export function CampaignWizard() {
     if (step === 2) return "Employers & worksites";
     if (step === 3) return "Agreements";
     if (step === 4) return "Worker estimate";
-    if (step === 5) return "Allocate workers";
+    if (step === 5) return "Campaign units";
+    if (step === 6) return "Allocate workers";
     return "Create campaign plan";
   }, [step]);
 
-  const totalSteps = basics.campaign_type === "bargaining" ? 6 : 5;
+  const totalSteps = basics.campaign_type === "bargaining" ? 7 : 6;
 
   const step1Valid =
     !!basics.name &&
@@ -904,8 +1060,27 @@ export function CampaignWizard() {
         />
       )}
 
-      {/* ── Step 5: Allocate workers ────────────────────────────────────── */}
+      {/* ── Step 5: Campaign units ──────────────────────────────────────── */}
       {step === 5 && campaignId && (
+        <StepCampaignUnits
+          selectedEmployers={selectedEmployers}
+          selectedWorksites={selectedWorksites}
+          worksiteSectorWide={worksiteSectorWide}
+          totalWorkerEstimate={
+            basics.total_worker_estimate
+              ? Number(basics.total_worker_estimate)
+              : null
+          }
+          units={units}
+          setUnits={setUnits}
+          isPending={saveUnitsMutation.isPending}
+          onBack={() => setStep(4)}
+          onContinue={() => saveUnitsMutation.mutate()}
+        />
+      )}
+
+      {/* ── Step 6: Allocate workers ────────────────────────────────────── */}
+      {step === 6 && campaignId && (
         <StepAllocateWorkers
           campaignId={campaignId}
           selectedEmployers={selectedEmployers}
@@ -913,14 +1088,24 @@ export function CampaignWizard() {
           worksiteSectorWide={worksiteSectorWide}
           selectedWorkers={selectedWorkers}
           setSelectedWorkers={setSelectedWorkers}
+          workerUnitAllocations={workerUnitAllocations}
+          setWorkerUnitAllocations={setWorkerUnitAllocations}
+          units={units
+            .filter((u) => u.ou_id != null)
+            .map((u) => ({
+              ou_id: u.ou_id as number,
+              name: u.name,
+              ou_type: u.ou_type,
+              total_workers_estimated: u.total_workers_estimated,
+            }))}
           isPending={saveWorkersMutation.isPending}
-          onBack={() => setStep(4)}
+          onBack={() => setStep(5)}
           onContinue={() => saveWorkersMutation.mutate()}
         />
       )}
 
-      {/* ── Step 6: Create campaign plan (bargaining only) ──────────────── */}
-      {step === 6 && campaignId && (
+      {/* ── Step 7: Create campaign plan (bargaining only) ──────────────── */}
+      {step === 7 && campaignId && (
         <Card>
           <CardHeader>
             <div className="flex items-center gap-3">
@@ -965,7 +1150,7 @@ export function CampaignWizard() {
         </Card>
       )}
 
-      {existingCampaign && step > 1 && step < 6 && (
+      {existingCampaign && step > 1 && step < 7 && (
         <p className="text-xs text-muted-foreground">
           Editing campaign #{campaignId}: {existingCampaign.name as string}
         </p>

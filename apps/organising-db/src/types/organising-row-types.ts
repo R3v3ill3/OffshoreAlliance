@@ -120,6 +120,58 @@ export interface CampaignOuUnitBasis {
   custom?: boolean;
 }
 
+/**
+ * The four canonical campaign-wide goal categories. Stage-level
+ * plan_ambitions can opt-in to roll up to one of these via
+ * plan_ambitions.parent_campaign_ambition_id.
+ */
+export type CampaignAmbitionCategory =
+  | "membership"
+  | "member_leaders"
+  | "activism"
+  | "industrial_outcomes";
+
+/** Phase 6: kinds of plan revisions we capture in plan_revision_notes. */
+export type PlanRevisionType =
+  | "schedule_change"
+  | "scope_change"
+  | "ambition_change"
+  | "capacity_change"
+  | "management_change"
+  | "where_to_play_change"
+  | "theory_change"
+  | "other";
+
+export interface PlanRevisionNoteRow {
+  revision_id: number;
+  campaign_id: number;
+  stage_number_affected: number;
+  revision_type: PlanRevisionType;
+  notes: string;
+  triggers_downstream_shift: boolean;
+  revised_by: string | null;
+  revised_at: string;
+}
+
+export interface CampaignAmbitionRow {
+  campaign_ambition_id: number;
+  campaign_id: number;
+  category: CampaignAmbitionCategory;
+  subcategory: string | null;
+  label: string;
+  target_value: string | null;
+  target_value_max: string | null;
+  target_unit: string | null;
+  target_date: string | null;
+  current_value: string | null;
+  current_value_overridden: boolean;
+  current_value_override_reason: string | null;
+  notes: string | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export type WorkplanTaskType = "discovery" | "outreach" | "mapping" | "engagement" | "admin" | "other";
 
 export type WorkplanTaskStatus = "planned" | "in_progress" | "completed" | "blocked" | "cancelled";

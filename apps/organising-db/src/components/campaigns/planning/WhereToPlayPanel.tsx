@@ -1,9 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useWtpCategories, useAddCustomWtpOption, useWorksites, useSectors, useCampaignOrganisingUnits } from '@/lib/hooks/usePlannerOptions'
 import { useAddWhereToPlay, useUpdateWhereToPlay, useDeleteWhereToPlay } from '@/lib/hooks/useStagePlan'
 import { OptionSelector, type SelectableOption } from './OptionSelector'
+import { WhereToPlayLandingDialog } from './WhereToPlayLandingDialog'
+import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
@@ -13,22 +15,60 @@ import { cn } from '@/lib/utils/cn'
 import {
   ChevronDown,
   ChevronUp,
+  Compass,
   X,
   Ban,
+  Link2,
   Target,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { PlanWhereToPlay } from '@/types/planner-types'
+import type { PlanAmbition, PlanWhereToPlay } from '@/types/planner-types'
+
+type WhereToPlayRow = PlanWhereToPlay & {
+  wtp_categories?: { category_name: string } | null
+  wtp_options?: { option_text: string } | null
+  /** Phase 8 column — guarded as optional until db-types is regenerated. */
+  linked_ambition_id?: number | null
+}
 
 interface WhereToPlayPanelProps {
   planId: number
   stageNumber: number
   campaignId: number
   agreementId?: number
-  whereToPlay: (PlanWhereToPlay & {
-    wtp_categories?: { category_name: string } | null
-    wtp_options?: { option_text: string } | null
-  })[]
+  whereToPlay: WhereToPlayRow[]
+  /**
+   * Phase 8: stage ambitions surfaced in the landing dialog and the per-row
+   * "Linked ambition" picker so each W2P choice can point at the ambition it
+   * serves.
+   */
+  ambitions?: Array<
+    PlanAmbition & {
+      ambition_options?: { option_text?: string } | null
+    }
+  >
+}
+
+/**
+ * Phase 8: split the WTP categories into two presentation groups so
+ * "who/where" decisions stay separate from "how-to-engage" decisions in the
+ * panel UI. Pure presentational mapping — the categories themselves don't
+ * carry a group column.
+ */
+function wtpCategoryGroup(categoryName: string): 'focus' | 'approach' {
+  const n = categoryName.toLowerCase()
+  if (
+    n.includes('contact') ||
+    n.includes('worksite') ||
+    n.includes('geographic') ||
+    n.includes('employer') ||
+    n.includes('sector') ||
+    n.includes('work group') ||
+    n.includes('organising unit')
+  ) {
+    return 'focus'
+  }
+  return 'approach'
 }
 
 const PRIORITY_LABELS: Record<number, { label: string; color: string }> = {
@@ -43,9 +83,14 @@ export function WhereToPlayPanel({
   campaignId,
   agreementId,
   whereToPlay,
+  ambitions = [],
 }: WhereToPlayPanelProps) {
   const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set())
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [landingOpen, setLandingOpen] = useState(false)
+  /** When the landing dialog routes the user to a category, optionally
+      pre-link the next add to a stage ambition. Cleared after the next add. */
+  const pendingAmbitionForCategory = useRef<Map<number, number>>(new Map())
 
   const { data: categories } = useWtpCategories(stageNumber)
   const { data: worksites } = useWorksites(agreementId)
@@ -55,6 +100,50 @@ export function WhereToPlayPanel({
   const updateWtp = useUpdateWhereToPlay()
   const deleteWtp = useDeleteWhereToPlay()
   const addCustomOption = useAddCustomWtpOption()
+
+  // Phase 8: open the landing dialog automatically the first time this panel
+  // renders for a stage that has ambitions but no W2P rows yet — that's the
+  // moment the prompt is most useful. After dismissal the user can re-open
+  // it with the toolbar button. The auto-open is gated by a ref so the
+  // setState fires at most once per mount.
+  const autoOpenedRef = useRef(false)
+  useEffect(() => {
+    if (autoOpenedRef.current) return
+    if (ambitions.length > 0 && whereToPlay.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLandingOpen(true)
+      autoOpenedRef.current = true
+    }
+  }, [ambitions.length, whereToPlay.length])
+
+  const ambitionsAlreadyLinked = useMemo(() => {
+    const ids = new Set<number>()
+    for (const w of whereToPlay) {
+      if (w.linked_ambition_id != null) ids.add(w.linked_ambition_id)
+    }
+    return ids
+  }, [whereToPlay])
+
+  const groupedCategories = useMemo(() => {
+    return (categories || []).map((c) => ({
+      category_id: c.category_id,
+      category_name: c.category_name,
+      description: c.description,
+      group: wtpCategoryGroup(c.category_name) as 'focus' | 'approach',
+    }))
+  }, [categories])
+
+  function ambitionLabel(a: {
+    ambition_id: number
+    custom_text?: string | null
+    ambition_options?: { option_text?: string } | null
+  }): string {
+    const t =
+      a.ambition_options?.option_text ||
+      a.custom_text ||
+      `Ambition #${a.ambition_id}`
+    return t.length > 60 ? t.slice(0, 60) + '…' : t
+  }
 
   function toggleCategory(categoryId: number) {
     setExpandedCategories((prev) => {
@@ -128,6 +217,7 @@ export function WhereToPlayPanel({
   }
 
   async function handleSelect(categoryId: number, option: SelectableOption) {
+    const pendingAmbitionId = pendingAmbitionForCategory.current.get(categoryId)
     try {
       await addWtp.mutateAsync({
         plan_id: planId,
@@ -136,9 +226,12 @@ export function WhereToPlayPanel({
         custom_text: option.id < 0 ? option.text : undefined,
         priority: 2,
         is_exclusion: false,
+        linked_ambition_id: pendingAmbitionId ?? null,
         campaign_id: campaignId,
         stage_number: stageNumber,
       })
+      // Consume the pending link — only the first add inherits it.
+      pendingAmbitionForCategory.current.delete(categoryId)
     } catch {
       toast.error('Failed to add where to play choice')
     }
@@ -162,6 +255,7 @@ export function WhereToPlayPanel({
   }
 
   async function handleAddCustom(categoryId: number, text: string) {
+    const pendingAmbitionId = pendingAmbitionForCategory.current.get(categoryId)
     try {
       const customOption = await addCustomOption.mutateAsync({
         category_id: categoryId,
@@ -173,9 +267,11 @@ export function WhereToPlayPanel({
         wtp_category_id: categoryId,
         wtp_option_id: customOption.option_id,
         priority: 2,
+        linked_ambition_id: pendingAmbitionId ?? null,
         campaign_id: campaignId,
         stage_number: stageNumber,
       })
+      pendingAmbitionForCategory.current.delete(categoryId)
     } catch {
       toast.error('Failed to add custom option')
     }
@@ -183,7 +279,12 @@ export function WhereToPlayPanel({
 
   async function handleUpdateItem(
     wtpId: number,
-    updates: Partial<{ rationale: string; is_exclusion: boolean; priority: number }>
+    updates: Partial<{
+      rationale: string
+      is_exclusion: boolean
+      priority: number
+      linked_ambition_id: number | null
+    }>
   ) {
     try {
       await updateWtp.mutateAsync({
@@ -203,33 +304,90 @@ export function WhereToPlayPanel({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="font-semibold text-slate-900">Step 2: Where to Play</h3>
-        <p className="text-sm text-muted-foreground mt-1">
-          Choose where to concentrate effort — and where not to. Select options by category.
-        </p>
-        {totalSelections > 0 && (
-          <div className="flex items-center gap-2 mt-2">
-            <Badge variant="secondary">{inclusions.length} focus areas</Badge>
-            {exclusions.length > 0 && (
-              <Badge className="bg-red-100 text-red-700" variant="secondary">
-                {exclusions.length} exclusions
-              </Badge>
-            )}
-          </div>
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-slate-900">Step 2: Where to Play</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Choose activities to pursue specific ambitions and define
+            assessments. Select focus areas, exclude what isn&apos;t worth the
+            effort, and link each choice back to the stage ambition it serves.
+          </p>
+          {totalSelections > 0 && (
+            <div className="flex items-center gap-2 mt-2">
+              <Badge variant="secondary">{inclusions.length} focus areas</Badge>
+              {exclusions.length > 0 && (
+                <Badge className="bg-red-100 text-red-700" variant="secondary">
+                  {exclusions.length} exclusions
+                </Badge>
+              )}
+            </div>
+          )}
+        </div>
+        {ambitions.length > 0 && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setLandingOpen(true)}
+            className="self-start"
+          >
+            <Compass className="h-3.5 w-3.5 mr-1" />
+            Pursue an ambition
+          </Button>
         )}
       </div>
 
-      {/* Category accordions */}
-      <div className="space-y-3">
-        {(categories || []).map((category) => {
+      <WhereToPlayLandingDialog
+        open={landingOpen}
+        onOpenChange={setLandingOpen}
+        ambitions={ambitions.map((a) => ({
+          ambition_id: a.ambition_id,
+          is_achieved: a.is_achieved ?? null,
+          custom_text: a.custom_text ?? null,
+          ambition_options: a.ambition_options ?? null,
+        }))}
+        categories={groupedCategories}
+        ambitionsAlreadyLinked={ambitionsAlreadyLinked}
+        onJumpToCategory={(categoryId, ambitionId) => {
+          if (ambitionId != null) {
+            pendingAmbitionForCategory.current.set(categoryId, ambitionId)
+          }
+          setExpandedCategories((prev) => new Set(prev).add(categoryId))
+          setLandingOpen(false)
+          // Scroll the user toward the expanded category. This is best-effort —
+          // we use a transient frame so the DOM has time to expand.
+          requestAnimationFrame(() => {
+            const el = document.getElementById(`wtp-category-${categoryId}`)
+            el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          })
+        }}
+      />
+
+      {/* Category accordions, grouped Focus / Approach */}
+      {(['focus', 'approach'] as const).map((group) => {
+        const groupCats = groupedCategories.filter((c) => c.group === group)
+        if (groupCats.length === 0) return null
+        const sourceCategoryRows = (categories || []).filter((c) =>
+          groupCats.some((g) => g.category_id === c.category_id)
+        )
+        return (
+          <div key={group} className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              {group === 'focus' ? 'Focus — who and where' : 'Approach — how to engage'}
+            </p>
+            <div className="space-y-3">
+              {sourceCategoryRows.map((category) => {
           const isExpanded = expandedCategories.has(category.category_id)
           const options = getWtpOptionsForCategory(category)
           const categorySelections = whereToPlay.filter((w) => w.wtp_category_id === category.category_id)
           const selectedOptionIds = categorySelections.map((w) => w.wtp_option_id).filter(Boolean) as number[]
 
           return (
-            <Card key={category.category_id} className={cn(categorySelections.length > 0 && 'border-blue-200')}>
+            <Card
+              key={category.category_id}
+              id={`wtp-category-${category.category_id}`}
+              className={cn(categorySelections.length > 0 && 'border-blue-200')}
+            >
               <button
                 className="w-full text-left"
                 onClick={() => toggleCategory(category.category_id)}
@@ -352,6 +510,46 @@ export function WhereToPlayPanel({
                             {!isEditing && item.rationale && (
                               <p className="text-xs text-muted-foreground mt-1.5 italic">&ldquo;{item.rationale}&rdquo;</p>
                             )}
+
+                            {ambitions.length > 0 && (
+                              <div className="mt-2 flex items-center gap-2">
+                                <Link2 className="h-3 w-3 text-muted-foreground" />
+                                <Label className="text-[11px] text-muted-foreground whitespace-nowrap">
+                                  Pursues
+                                </Label>
+                                <Select
+                                  value={
+                                    item.linked_ambition_id != null
+                                      ? String(item.linked_ambition_id)
+                                      : '__none__'
+                                  }
+                                  onValueChange={(v) =>
+                                    handleUpdateItem(item.wtp_id, {
+                                      linked_ambition_id:
+                                        v === '__none__' ? null : Number(v),
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger className="h-7 flex-1 min-w-[180px] text-[11px]">
+                                    <SelectValue placeholder="Not linked" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="__none__" className="text-xs">
+                                      Not linked to an ambition
+                                    </SelectItem>
+                                    {ambitions.map((a) => (
+                                      <SelectItem
+                                        key={a.ambition_id}
+                                        value={String(a.ambition_id)}
+                                        className="text-xs"
+                                      >
+                                        {ambitionLabel(a)}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
                           </div>
                         )
                       })}
@@ -361,8 +559,11 @@ export function WhereToPlayPanel({
               )}
             </Card>
           )
-        })}
-      </div>
+              })}
+            </div>
+          </div>
+        )
+      })}
 
       {totalSelections === 0 && (
         <div className="text-center py-8 rounded-lg border-2 border-dashed border-slate-200">

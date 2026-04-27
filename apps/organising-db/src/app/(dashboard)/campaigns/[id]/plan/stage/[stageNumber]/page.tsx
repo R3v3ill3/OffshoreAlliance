@@ -3,6 +3,7 @@
 import { use, useMemo, useState, useEffect, useRef } from 'react'
 import { useCampaign } from '@/lib/hooks/usePlannerCampaigns'
 import { useStagePlan, useInitializeCampaignStagePlans } from '@/lib/hooks/useStagePlan'
+import { useAllGates } from '@/lib/hooks/useGateAssessment'
 import { useP2wStepOverrides } from '@/lib/hooks/useP2wStepOverrides'
 import {
   effectiveStepComplete,
@@ -18,8 +19,8 @@ import { WhereToPlayPanel } from '@/components/campaigns/planning/WhereToPlayPan
 import { TheoryOfWinningPanel } from '@/components/campaigns/planning/TheoryOfWinningPanel'
 import { CapacitiesPanel } from '@/components/campaigns/planning/CapacitiesPanel'
 import { ManagementSystemsPanel } from '@/components/campaigns/planning/ManagementSystemsPanel'
+import { P2WVerticalNav } from '@/components/campaigns/planning/P2WVerticalNav'
 import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import {
@@ -38,7 +39,6 @@ import {
   Sparkles,
   CheckCircle,
   CalendarDays,
-  Check,
   Info,
   BookOpen,
   X,
@@ -73,6 +73,7 @@ export default function StageplanPage({ params }: PageProps) {
 
   const { data: campaign } = useCampaign(campaignId)
   const { data: stagePlanData, isLoading } = useStagePlan(campaignId, stageNumber)
+  const { data: gates } = useAllGates(campaignId)
 
   // Auto-heal: if the stage plan is missing (e.g., wizard was interrupted and
   // left the campaign half-provisioned), trigger a one-shot mutation that
@@ -136,6 +137,54 @@ export default function StageplanPage({ params }: PageProps) {
 
   const prevStage = stageNumber > 1 ? stageNumber - 1 : null
   const nextStage = stageNumber < 6 ? stageNumber + 1 : null
+
+  // Phase 6: detect overlap with adjacent stages and surface whether the
+  // boundary is locked by a hard active gate or just a soft overlap that
+  // the DB will currently allow.
+  const overlapStatus = useMemo(() => {
+    if (!stagePlanData?.plan?.planned_start_date || !stagePlanData?.plan?.planned_end_date) {
+      return { hasOverlap: false, hardLocked: false, message: null as string | null }
+    }
+    const curStart = stagePlanData.plan.planned_start_date
+    const curEnd = stagePlanData.plan.planned_end_date
+    const prevStagePlan = sortedStagePlans.find(
+      (s: { stage_number: number; planned_end_date?: string | null }) =>
+        s.stage_number === stageNumber - 1
+    ) as { planned_end_date?: string | null } | undefined
+    const overlapsPrev = !!(
+      prevStagePlan?.planned_end_date &&
+      curStart < prevStagePlan.planned_end_date
+    )
+    const overlapsNext = !!(
+      nextStagePlannedStartDate && nextStagePlannedStartDate < curEnd
+    )
+    const gateBefore = gates?.find(
+      (g: { gate_number: number }) => g.gate_number === stageNumber - 1
+    ) as { enforcement_type?: string; is_active?: boolean } | undefined
+    const gateAfter = gates?.find(
+      (g: { gate_number: number }) => g.gate_number === stageNumber
+    ) as { enforcement_type?: string; is_active?: boolean } | undefined
+    const prevHard =
+      overlapsPrev &&
+      gateBefore?.enforcement_type === 'hard' &&
+      gateBefore?.is_active === true
+    const nextHard =
+      overlapsNext &&
+      gateAfter?.enforcement_type === 'hard' &&
+      gateAfter?.is_active === true
+    const hasOverlap = overlapsPrev || overlapsNext
+    const hardLocked = prevHard || nextHard
+    const parts: string[] = []
+    if (overlapsPrev)
+      parts.push(`overlaps with stage ${stageNumber - 1}${prevHard ? ' (hard gate locked)' : ''}`)
+    if (overlapsNext)
+      parts.push(`overlaps with stage ${stageNumber + 1}${nextHard ? ' (hard gate locked)' : ''}`)
+    return {
+      hasOverlap,
+      hardLocked,
+      message: parts.length > 0 ? `This stage ${parts.join(' and ')}.` : null,
+    }
+  }, [stagePlanData?.plan, sortedStagePlans, nextStagePlannedStartDate, gates, stageNumber])
 
   // Build campaign context for Theory of Winning
   const timeline = (campaign as any)?.campaign_timelines
@@ -328,177 +377,172 @@ export default function StageplanPage({ params }: PageProps) {
         </div>
       </div>
 
+      {overlapStatus.hasOverlap && overlapStatus.message && (
+        <div
+          className={cn(
+            'border-b px-6 py-2 text-xs flex items-center gap-2',
+            overlapStatus.hardLocked
+              ? 'bg-blue-50 text-blue-900 border-blue-200'
+              : 'bg-amber-50 text-amber-900 border-amber-200'
+          )}
+        >
+          {overlapStatus.hardLocked ? (
+            <Info className="h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <Info className="h-3.5 w-3.5 shrink-0" />
+          )}
+          <span>
+            {overlapStatus.message}{' '}
+            {overlapStatus.hardLocked
+              ? 'Hard active gate prevents further overlap on the locked side; resolve dates before changing.'
+              : 'Soft / inactive gate — overlap is permitted while the gate stays soft.'}
+          </span>
+        </div>
+      )}
+
       <StageProgressBar
         campaignId={campaignId}
         currentStageNumber={stageNumber}
         stages={sortedStagePlans}
       />
 
-      {/* Tabs: Playing to Win steps for this stage */}
-      <div className="flex-1 overflow-hidden min-h-0">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-          <div className="border-b bg-white px-6 flex-shrink-0 pt-1 pb-0">
-            <TabsList className="h-auto bg-transparent p-0 gap-0 w-full justify-start flex-wrap">
-              {P2W_TABS.map((tab, i) => {
-                const Icon = tab.icon
-                const stepNum = i + 1
-                const tabId = tab.id as P2wTabId
-                const done = stepDone(tabId)
-                return (
-                  <TabsTrigger
-                    key={tab.id}
-                    value={tab.id}
-                    className={cn(
-                      'flex items-center gap-2 px-3 py-2 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-600 text-sm',
-                      done && 'text-green-700 data-[state=active]:text-blue-600'
-                    )}
+      {/* Vertical Playing-to-Win navigation + active step content */}
+      <div className="flex-1 flex flex-col sm:flex-row overflow-hidden min-h-0">
+        <P2WVerticalNav
+          steps={P2W_TABS}
+          activeId={activeTab}
+          onChange={setActiveTab}
+          isComplete={(id) => stepDone(id as P2wTabId)}
+        />
+
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-4xl mx-auto px-6 py-6 pb-10">
+            {activeTab === 'ambitions' && (
+              <AmbitionPanel
+                planId={plan.plan_id}
+                stageNumber={stageNumber}
+                campaignId={campaignId}
+                plannedEndDate={plan.planned_end_date}
+                nextStagePlannedStartDate={nextStagePlannedStartDate}
+                ambitions={(stagePlanData?.ambitions || []) as any}
+              />
+            )}
+
+            {activeTab === 'where-to-play' && (
+              <WhereToPlayPanel
+                planId={plan.plan_id}
+                stageNumber={stageNumber}
+                campaignId={campaignId}
+                agreementId={agreementId}
+                whereToPlay={(stagePlanData?.whereToPlay || []) as any}
+                ambitions={(stagePlanData?.ambitions || []) as any}
+              />
+            )}
+
+            {activeTab === 'theory' && (
+              <TheoryOfWinningPanel
+                planId={plan.plan_id}
+                stageNumber={stageNumber}
+                campaignId={campaignId}
+                ambitions={(stagePlanData?.ambitions || []) as any}
+                whereToPlay={(stagePlanData?.whereToPlay || []) as any}
+                capacities={(stagePlanData?.capacities || []) as any}
+                theories={stagePlanData?.theories || []}
+                currentTheory={stagePlanData?.currentTheory || null}
+                campaignContext={campaignContext}
+              />
+            )}
+
+            {activeTab === 'capacities' && (
+              <CapacitiesPanel
+                planId={plan.plan_id}
+                stageNumber={stageNumber}
+                campaignId={campaignId}
+                capacities={(stagePlanData?.capacities || []) as any}
+                whereToPlay={(stagePlanData?.whereToPlay || []) as any}
+                campaignContext={{
+                  agreement_name: campaignContext.agreement_name,
+                  employer_name: campaignContext.employer_name,
+                  worksite_names: campaignContext.worksite_names,
+                  sector: campaignContext.sector,
+                  campaign_type: campaignContext.campaign_type,
+                  agreement_expiry: campaignContext.agreement_expiry,
+                }}
+              />
+            )}
+
+            {activeTab === 'management' && (
+              <ManagementSystemsPanel
+                planId={plan.plan_id}
+                stageNumber={stageNumber}
+                campaignId={campaignId}
+                managementSystems={(stagePlanData?.managementSystems || []) as any}
+              />
+            )}
+
+            <footer className="mt-10 pt-6 border-t border-slate-200 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!prevStepTab}
+                    onClick={() => prevStepTab && setActiveTab(prevStepTab)}
                   >
-                    <span
-                      className={cn(
-                        'w-5 h-5 rounded-full flex items-center justify-center text-xs font-semibold hidden sm:flex',
-                        done
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-slate-100 text-slate-500 data-[state=active]:bg-blue-100 data-[state=active]:text-blue-600'
-                      )}
-                    >
-                      {done ? <Check className="h-3 w-3" strokeWidth={2.5} /> : stepNum}
-                    </span>
-                    <Icon className="h-4 w-4 sm:hidden" />
-                    <span className="hidden sm:inline">{tab.label}</span>
-                  </TabsTrigger>
-                )
-              })}
-            </TabsList>
-          </div>
-
-          <div className="flex-1 overflow-y-auto">
-            <div className="max-w-3xl mx-auto px-6 py-6 pb-10">
-              <TabsContent value="ambitions" className="mt-0">
-                <AmbitionPanel
-                  planId={plan.plan_id}
-                  stageNumber={stageNumber}
-                  campaignId={campaignId}
-                  plannedEndDate={plan.planned_end_date}
-                  nextStagePlannedStartDate={nextStagePlannedStartDate}
-                  ambitions={(stagePlanData?.ambitions || []) as any}
-                />
-              </TabsContent>
-
-              <TabsContent value="where-to-play" className="mt-0">
-                <WhereToPlayPanel
-                  planId={plan.plan_id}
-                  stageNumber={stageNumber}
-                  campaignId={campaignId}
-                  agreementId={agreementId}
-                  whereToPlay={(stagePlanData?.whereToPlay || []) as any}
-                />
-              </TabsContent>
-
-              <TabsContent value="theory" className="mt-0">
-                <TheoryOfWinningPanel
-                  planId={plan.plan_id}
-                  stageNumber={stageNumber}
-                  campaignId={campaignId}
-                  ambitions={(stagePlanData?.ambitions || []) as any}
-                  whereToPlay={(stagePlanData?.whereToPlay || []) as any}
-                  capacities={(stagePlanData?.capacities || []) as any}
-                  theories={stagePlanData?.theories || []}
-                  currentTheory={stagePlanData?.currentTheory || null}
-                  campaignContext={campaignContext}
-                />
-              </TabsContent>
-
-              <TabsContent value="capacities" className="mt-0">
-                <CapacitiesPanel
-                  planId={plan.plan_id}
-                  stageNumber={stageNumber}
-                  campaignId={campaignId}
-                  capacities={(stagePlanData?.capacities || []) as any}
-                  whereToPlay={(stagePlanData?.whereToPlay || []) as any}
-                  campaignContext={{
-                    agreement_name: campaignContext.agreement_name,
-                    employer_name: campaignContext.employer_name,
-                    worksite_names: campaignContext.worksite_names,
-                    sector: campaignContext.sector,
-                    campaign_type: campaignContext.campaign_type,
-                    agreement_expiry: campaignContext.agreement_expiry,
-                  }}
-                />
-              </TabsContent>
-
-              <TabsContent value="management" className="mt-0">
-                <ManagementSystemsPanel
-                  planId={plan.plan_id}
-                  stageNumber={stageNumber}
-                  campaignId={campaignId}
-                  managementSystems={(stagePlanData?.managementSystems || []) as any}
-                />
-              </TabsContent>
-
-              <footer className="mt-10 pt-6 border-t border-slate-200 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={!prevStepTab}
-                      onClick={() => prevStepTab && setActiveTab(prevStepTab)}
-                    >
-                      <ChevronLeft className="h-4 w-4 mr-1" />
-                      Previous step
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={!nextStepTab}
-                      onClick={() => nextStepTab && setActiveTab(nextStepTab)}
-                    >
-                      Next step
-                      <ChevronRight className="h-4 w-4 ml-1" />
-                    </Button>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Label htmlFor="p2w-step-status" className="text-xs text-muted-foreground whitespace-nowrap">
-                      Step status (this browser)
-                    </Label>
-                    <Select
-                      value={activeOverride}
-                      onValueChange={(v) => setOverride(activeTab as P2wTabId, v as P2wStepOverride)}
-                    >
-                      <SelectTrigger id="p2w-step-status" className="h-9 w-[200px] text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="auto">Automatic (from data)</SelectItem>
-                        <SelectItem value="force-complete">Mark complete</SelectItem>
-                        <SelectItem value="force-incomplete">Still in progress</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    Previous step
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!nextStepTab}
+                    onClick={() => nextStepTab && setActiveTab(nextStepTab)}
+                  >
+                    Next step
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
                 </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Label htmlFor="p2w-step-status" className="text-xs text-muted-foreground whitespace-nowrap">
+                    Step status
+                  </Label>
+                  <Select
+                    value={activeOverride}
+                    onValueChange={(v) => setOverride(activeTab as P2wTabId, v as P2wStepOverride)}
+                  >
+                    <SelectTrigger id="p2w-step-status" className="h-9 w-[200px] text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Automatic (from data)</SelectItem>
+                      <SelectItem value="force-complete">Mark complete</SelectItem>
+                      <SelectItem value="force-incomplete">Still in progress</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
-                {activeTab === 'management' && (
-                  <div className="flex flex-col sm:flex-row gap-2 pt-2">
-                    {nextStage ? (
-                      <Button asChild className="w-full sm:w-auto">
-                        <Link href={`/campaigns/${campaignId}/plan/stage/${nextStage}`}>
-                          Continue to Stage {nextStage}
-                          <ChevronRight className="h-4 w-4 ml-1" />
-                        </Link>
-                      </Button>
-                    ) : (
-                      <Button asChild variant="secondary" className="w-full sm:w-auto">
-                        <Link href={`/campaigns/${campaignId}`}>Back to campaign overview</Link>
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </footer>
-            </div>
+              {activeTab === 'management' && (
+                <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                  {nextStage ? (
+                    <Button asChild className="w-full sm:w-auto">
+                      <Link href={`/campaigns/${campaignId}/plan/stage/${nextStage}`}>
+                        Continue to Stage {nextStage}
+                        <ChevronRight className="h-4 w-4 ml-1" />
+                      </Link>
+                    </Button>
+                  ) : (
+                    <Button asChild variant="secondary" className="w-full sm:w-auto">
+                      <Link href={`/campaigns/${campaignId}`}>Back to campaign overview</Link>
+                    </Button>
+                  )}
+                </div>
+              )}
+            </footer>
           </div>
-        </Tabs>
+        </div>
       </div>
 
       <OverviewDialog open={overviewOpen} onOpenChange={setOverviewOpen} />

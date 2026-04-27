@@ -334,6 +334,8 @@ export function useUpdateAmbition() {
       current_value?: string | null
       evidence_notes?: string | null
       ambition_scope?: import('@/types/planner-types').AmbitionScope
+      /** Phase 3: optional FK to a campaign-level ambition for rollup. */
+      parent_campaign_ambition_id?: number | null
       campaign_id: number
       stage_number: number
     }) => {
@@ -354,6 +356,29 @@ export function useUpdateAmbition() {
         queryKey: ['campaign-ambitions-by-stage', variables.campaign_id],
       })
     },
+  })
+}
+
+/** Phase 3: list a campaign's campaign-level ambitions for the parent picker in AmbitionPanel. */
+export function useCampaignAmbitions(campaignId: number) {
+  const supabase = createClient()
+  return useQuery({
+    queryKey: ['campaign-level-ambitions', campaignId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('campaign_ambitions')
+        .select('campaign_ambition_id, category, subcategory, label')
+        .eq('campaign_id', campaignId)
+        .order('sort_order', { ascending: true })
+      if (error) throw error
+      return (data ?? []) as Array<{
+        campaign_ambition_id: number
+        category: 'membership' | 'member_leaders' | 'activism' | 'industrial_outcomes'
+        subcategory: string | null
+        label: string
+      }>
+    },
+    enabled: !!campaignId,
   })
 }
 
@@ -395,6 +420,8 @@ export function useAddWhereToPlay() {
       rationale?: string
       is_exclusion?: boolean
       priority?: number
+      /** Phase 8: optional FK linking this W2P choice to a stage ambition. */
+      linked_ambition_id?: number | null
       campaign_id: number
       stage_number: number
     }) => {
@@ -424,6 +451,8 @@ export function useUpdateWhereToPlay() {
       rationale?: string
       is_exclusion?: boolean
       priority?: number
+      /** Phase 8: optional FK linking this W2P choice to a stage ambition. */
+      linked_ambition_id?: number | null
       campaign_id: number
       stage_number: number
     }) => {

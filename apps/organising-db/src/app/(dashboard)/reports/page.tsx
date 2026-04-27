@@ -63,6 +63,7 @@ type ReportType =
   | "membership_density"
   | "organiser_patches"
   | "campaign_activity"
+  | "campaign_progress"
   | "dues_schedule"
   | "bargaining_calendar";
 
@@ -72,6 +73,8 @@ interface ReportOption {
   description: string;
   icon: React.ReactNode;
   isNew?: boolean;
+  /** When set, the card routes to this href instead of rendering inline. */
+  href?: string;
 }
 
 const reportOptions: ReportOption[] = [
@@ -122,6 +125,15 @@ const reportOptions: ReportOption[] = [
     title: "Campaign Activity",
     description: "Summarise campaign actions, outcomes, and worker engagement metrics.",
     icon: <Megaphone className="h-8 w-8 text-orange-500" />,
+  },
+  {
+    type: "campaign_progress",
+    title: "Campaign Progress",
+    description:
+      "Per-campaign dashboard: stage timelines (planned vs actual), gate outcomes, campaign-level ambition rollups, plan-revision history.",
+    icon: <Megaphone className="h-8 w-8 text-blue-600" />,
+    isNew: true,
+    href: "/reports/campaign-progress",
   },
   {
     type: "dues_schedule",
@@ -561,31 +573,51 @@ export default function ReportsPage() {
           </CardHeader>
         </Card>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {reportOptions.map((report) => (
-            <Card
-              key={report.type}
-              className="cursor-pointer transition-shadow hover:shadow-lg"
-              onClick={() => setSelectedReport(report.type)}
-            >
-              <CardHeader className="flex flex-row items-start gap-4 space-y-0">
-                <div className="rounded-lg bg-muted p-2">{report.icon}</div>
-                <div className="space-y-1 flex-1">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    {report.title}
-                    {report.isNew && (
-                      <Badge variant="success" className="text-xs">New</Badge>
-                    )}
-                  </CardTitle>
-                  <CardDescription>{report.description}</CardDescription>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <Button size="sm" className="w-full">
-                  Run Report
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+          {reportOptions.map((report) => {
+            const cardBody = (
+              <>
+                <CardHeader className="flex flex-row items-start gap-4 space-y-0">
+                  <div className="rounded-lg bg-muted p-2">{report.icon}</div>
+                  <div className="space-y-1 flex-1">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      {report.title}
+                      {report.isNew && (
+                        <Badge variant="success" className="text-xs">New</Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription>{report.description}</CardDescription>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <Button size="sm" className="w-full">
+                    Run Report
+                  </Button>
+                </CardContent>
+              </>
+            );
+            if (report.href) {
+              return (
+                <Link
+                  key={report.type}
+                  href={report.href}
+                  className="block"
+                >
+                  <Card className="cursor-pointer transition-shadow hover:shadow-lg h-full">
+                    {cardBody}
+                  </Card>
+                </Link>
+              );
+            }
+            return (
+              <Card
+                key={report.type}
+                className="cursor-pointer transition-shadow hover:shadow-lg"
+                onClick={() => setSelectedReport(report.type)}
+              >
+                {cardBody}
+              </Card>
+            );
+          })}
         </div>
       </div>
     );

@@ -2,17 +2,22 @@
 
 import { useState, useCallback, useRef } from 'react'
 import { useAmbitionOptions } from '@/lib/hooks/usePlannerOptions'
-import { useAddAmbition, useUpdateAmbition, useDeleteAmbition } from '@/lib/hooks/useStagePlan'
+import {
+  useAddAmbition,
+  useUpdateAmbition,
+  useDeleteAmbition,
+  useCampaignAmbitions,
+} from '@/lib/hooks/useStagePlan'
 import { useCampaignCurrentStats, type CampaignCurrentStats } from '@/lib/hooks/useCampaignCurrentStats'
 import { CurrentSituationBanner } from './CurrentSituationBanner'
 import { OptionSelector, type SelectableOption } from './OptionSelector'
+import { AmbitionCard } from './AmbitionCard'
+import { AmbitionStageSummary } from './AmbitionStageSummary'
 import { Button } from '@/components/ui/button'
 import { DateInput } from '@/components/ui/date-input'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -22,17 +27,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils/cn'
-import { format, parseISO, isValid } from 'date-fns'
-import { Trash2, Plus, CheckCircle, Calendar, Link2 } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { formatCategoryLabel } from '@/lib/utils/option-sorting'
-import { isAmbitionMetricIncomplete } from '@/lib/planning/ambition-metric-status'
 import type { PlanAmbition, AmbitionScope } from '@/types/planner-types'
 import { toast } from 'sonner'
 
@@ -45,6 +41,12 @@ type AmbitionRow = PlanAmbition & {
     variable_type: string | null
     default_scope?: string | null
   } | null
+  /**
+   * Phase 3: optional FK to a campaign-level ambition. Tagged optional so the
+   * file still compiles before `pnpm gen:types` regenerates db-types from the
+   * 20260504100000 migration.
+   */
+  parent_campaign_ambition_id?: number | null
 }
 
 /**
@@ -158,6 +160,7 @@ export function AmbitionPanel({
   const [customTargetDate, setCustomTargetDate] = useState(plannedEndDate || '')
 
   const { data: options } = useAmbitionOptions(stageNumber)
+  const { data: campaignAmbitionOptions = [] } = useCampaignAmbitions(campaignId)
   const addAmbition = useAddAmbition()
   const updateAmbition = useUpdateAmbition()
   const deleteAmbition = useDeleteAmbition()
@@ -293,7 +296,7 @@ export function AmbitionPanel({
   const patchAmbition = useCallback(
     async (
       ambitionId: number,
-      patch: Record<string, string | boolean | null | undefined>
+      patch: Record<string, string | number | boolean | null | undefined>
     ) => {
       try {
         await updateAmbition.mutateAsync({
@@ -465,276 +468,53 @@ export function AmbitionPanel({
           No ambitions on your plan yet — choose from the list above or use <span className="font-medium">Custom ambition</span>.
         </p>
       ) : (
-        <div className="space-y-3">
-          {ambitions.map((ambition) => {
-            const option = ambition.ambition_options
-            const optionText = option?.option_text || ambition.custom_text || 'Ambition'
-            const hasVariable = option?.has_variable || false
-            const variableLabel = option?.variable_label
-            const variableType = option?.variable_type
-            const rowMetric = ambition.metric_type || mapVariableTypeToMetric(variableType)
-
-            const displayText = hasVariable
-              ? optionText.replace('{target_value}', ambition.target_value ? `[${ambition.target_value}]` : '[set target]')
-              : optionText
-
-            const showNumericTargets =
-              hasVariable ||
-              rowMetric === 'count' ||
-              rowMetric === 'percentage' ||
-              rowMetric === 'range' ||
-              rowMetric === 'text'
-
-            const metricIncomplete =
-              !ambition.is_achieved && isAmbitionMetricIncomplete(ambition)
-            const fromCatalog = ambition.ambition_option_id != null
-
-            return (
-              <div
-                key={ambition.ambition_id}
-                className={cn(
-                  'p-4 rounded-lg border',
-                  ambition.is_achieved && 'bg-green-50 border-green-200',
-                  !ambition.is_achieved &&
-                    metricIncomplete &&
-                    'border-amber-400 bg-amber-50/60 border-l-4 border-l-amber-500',
-                  !ambition.is_achieved &&
-                    !metricIncomplete &&
-                    fromCatalog &&
-                    'bg-blue-50/50 border-slate-200 border-l-4 border-l-blue-200',
-                  !ambition.is_achieved &&
-                    !metricIncomplete &&
-                    !fromCatalog &&
-                    'bg-white border-slate-200 border-l-4 border-l-slate-300'
-                )}
-              >
-                <div className="flex items-start gap-3">
-                  <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
-                    <Checkbox
-                      checked={ambition.is_achieved ?? false}
-                      onCheckedChange={(checked) =>
-                        void patchAmbition(ambition.ambition_id, { is_achieved: !!checked })
-                      }
-                      className="border-slate-300"
-                    />
-                  </div>
-
-                  <div className="flex-1 min-w-0 space-y-2">
-                    <p
-                      className={cn(
-                        'text-sm font-medium',
-                        ambition.is_achieved ? 'line-through text-muted-foreground' : 'text-slate-900'
-                      )}
-                    >
-                      {displayText}
-                    </p>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      {option?.category && (
-                        <Badge variant="secondary" className="text-xs">
-                          {formatCategoryLabel(option.category)}
-                        </Badge>
-                      )}
-                      {!option?.category && ambition.custom_text && (
-                        <Badge variant="secondary" className="text-xs">
-                          Custom
-                        </Badge>
-                      )}
-                      {ambition.is_system_default && (
-                        <Badge variant="outline" className="text-xs">
-                          Membership
-                        </Badge>
-                      )}
-                      {ambition.ambition_scope === 'campaign_setup' ? (
-                        <Badge variant="outline" className="text-xs border-slate-300 text-slate-600">
-                          Setup (not per-worker)
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-xs border-sky-300 text-sky-700 bg-sky-50">
-                          Worker-assessable
-                        </Badge>
-                      )}
-                      {metricIncomplete && (
-                        <Badge className="text-xs bg-amber-100 text-amber-900 hover:bg-amber-100 border-amber-200">
-                          Target not set
-                        </Badge>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Label className="text-xs text-muted-foreground whitespace-nowrap">Scope:</Label>
-                      <Select
-                        value={ambition.ambition_scope}
-                        onValueChange={(v) =>
-                          void patchAmbition(ambition.ambition_id, {
-                            ambition_scope: v as AmbitionScope,
-                          })
-                        }
-                      >
-                        <SelectTrigger className="h-8 w-[220px] text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="worker_assessable">Worker-assessable (rolled up)</SelectItem>
-                          <SelectItem value="campaign_setup">Campaign setup (not per-worker)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Label className="text-xs text-muted-foreground whitespace-nowrap">Gate:</Label>
-                      <Select
-                        value={ambition.is_hard_gate ? 'hard' : 'soft'}
-                        onValueChange={(v) => {
-                          if (v === 'hard' && nextStagePlannedStartDate && ambition.target_date) {
-                            const targetD = parseISO(ambition.target_date)
-                            const nextStart = parseISO(nextStagePlannedStartDate)
-                            if (isValid(targetD) && isValid(nextStart) && targetD > nextStart) {
-                              toast.error(
-                                `Cannot set as hard gate — ambition target date ` +
-                                `(${format(targetD, 'dd/MM/yyyy')}) is after Stage ${stageNumber + 1}'s ` +
-                                `planned start (${format(nextStart, 'dd/MM/yyyy')}). ` +
-                                `Only ambitions completing within this stage can be hard gates.`
-                              )
-                              return
-                            }
-                          }
-                          void patchAmbition(ambition.ambition_id, { is_hard_gate: v === 'hard' })
-                        }}
-                      >
-                        <SelectTrigger className="h-8 w-[140px] text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="soft">Soft (override ok)</SelectItem>
-                          <SelectItem value="hard">Hard (must meet)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {showNumericTargets && (() => {
-                      const hint = currentValueHint(ambition, stats)
-                      const isLinkedAmbition =
-                        canAutoLink &&
-                        (ambition.ambition_id === memberCountAmbition?.ambition_id ||
-                         ambition.ambition_id === memberDensityAmbition?.ambition_id)
-
-                      return (
-                        <div className="space-y-1">
-                          {rowMetric === 'range' ? (
-                            <div className="flex gap-2 items-end">
-                              <div>
-                                <Label className="text-xs text-muted-foreground">Min</Label>
-                                <Input
-                                  className="h-7 w-20 text-sm"
-                                  value={ambition.target_value || ''}
-                                  onChange={(e) => void patchAmbition(ambition.ambition_id, { target_value: e.target.value })}
-                                />
-                              </div>
-                              <div>
-                                <Label className="text-xs text-muted-foreground">Max</Label>
-                                <Input
-                                  className="h-7 w-20 text-sm"
-                                  value={ambition.target_value_max || ''}
-                                  onChange={(e) =>
-                                    void patchAmbition(ambition.ambition_id, { target_value_max: e.target.value || null })
-                                  }
-                                />
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <Label className="text-xs text-muted-foreground whitespace-nowrap">
-                                {variableLabel || (rowMetric === 'percentage' ? 'Target %' : rowMetric === 'count' ? 'Target #' : 'Target')}:
-                              </Label>
-                              <div className="flex items-center gap-1">
-                                <Input
-                                  type={variableType === 'date' ? 'date' : 'text'}
-                                  value={ambition.target_value || ''}
-                                  onChange={(e) =>
-                                    void patchAmbition(ambition.ambition_id, { target_value: e.target.value })
-                                  }
-                                  placeholder={
-                                    variableType === 'percentage' || rowMetric === 'percentage'
-                                      ? '0-100'
-                                      : rowMetric === 'count'
-                                        ? '0'
-                                        : ''
-                                  }
-                                  className="w-24 h-7 text-sm"
-                                />
-                                {(variableType === 'percentage' || rowMetric === 'percentage') && (
-                                  <span className="text-xs text-muted-foreground">%</span>
-                                )}
-                                {isLinkedAmbition && (
-                                  <TooltipProvider>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Link2 className="h-3.5 w-3.5 text-blue-400" />
-                                      </TooltipTrigger>
-                                      <TooltipContent side="right" className="max-w-xs text-xs">
-                                        Linked to {ambition.ambition_id === memberCountAmbition?.ambition_id
-                                          ? 'density' : 'member count'} ambition.
-                                        Editing this target auto-updates the other based on
-                                        {' '}{stats.totalWorkerEstimate} estimated workers and
-                                        {' '}{stats.memberLikeCount} current members.
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                          {hint && (
-                            <p className="text-[11px] text-blue-600/80 pl-0.5">{hint}</p>
-                          )}
-                        </div>
-                      )
-                    })()}
-
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-3 w-3 text-muted-foreground" />
-                      <Label className="text-xs text-muted-foreground">Target date:</Label>
-                      <DateInput
-                        value={ambition.target_date || ''}
-                        onChange={(iso) =>
-                          void patchAmbition(ambition.ambition_id, {
-                            target_date: iso || null,
-                            target_date_user_overridden: true,
-                          })
-                        }
-                        className="w-36 h-7 text-xs"
-                      />
-                    </div>
-
-                    {ambition.is_achieved && (
-                      <div className="flex items-center gap-1 text-green-700">
-                        <CheckCircle className="h-3.5 w-3.5" />
-                        <span className="text-xs font-medium">Achieved</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {!ambition.is_system_default && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void deleteAmbition.mutateAsync({
-                          ambition_id: ambition.ambition_id,
-                          campaign_id: campaignId,
-                          stage_number: stageNumber,
-                        })
-                      }
-                      className="flex-shrink-0 text-muted-foreground hover:text-red-500 transition-colors"
-                      title="Remove ambition"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            )
-          })}
+        <div className="grid lg:grid-cols-3 gap-4">
+          <div className="space-y-3 lg:col-span-2">
+            {ambitions.map((ambition) => {
+              const linkedTo: 'density' | 'member-count' | undefined =
+                canAutoLink && ambition.ambition_id === memberCountAmbition?.ambition_id
+                  ? 'density'
+                  : canAutoLink && ambition.ambition_id === memberDensityAmbition?.ambition_id
+                  ? 'member-count'
+                  : undefined
+              const linkedTotals = canAutoLink
+                ? {
+                    totalWorkerEstimate: stats.totalWorkerEstimate,
+                    memberLikeCount: stats.memberLikeCount,
+                  }
+                : undefined
+              const hint = currentValueHint(ambition, stats)
+              return (
+                <AmbitionCard
+                  key={ambition.ambition_id}
+                  ambition={ambition}
+                  stageNumber={stageNumber}
+                  nextStagePlannedStartDate={nextStagePlannedStartDate}
+                  hint={hint}
+                  linkedTo={linkedTo}
+                  linkedTotals={linkedTotals}
+                  campaignAmbitionOptions={campaignAmbitionOptions}
+                  onPatch={patchAmbition}
+                  onDelete={(a) => {
+                    if (a.is_system_default) {
+                      toast.error('This ambition cannot be removed')
+                      return
+                    }
+                    return deleteAmbition.mutateAsync({
+                      ambition_id: a.ambition_id,
+                      campaign_id: campaignId,
+                      stage_number: stageNumber,
+                    })
+                  }}
+                />
+              )
+            })}
+          </div>
+          <AmbitionStageSummary
+            campaignId={campaignId}
+            stageNumber={stageNumber}
+            ambitions={ambitions}
+          />
         </div>
       )}
     </div>

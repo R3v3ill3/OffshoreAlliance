@@ -16,6 +16,8 @@ import { CampaignStageDatesEditor } from '@/components/campaigns/planning/Campai
 import { useAllGates, useCampaignAmbitionsByStage } from '@/lib/hooks/useGateAssessment'
 import { evaluateAmbitions } from '@/lib/utils/ambition-gate-logic'
 import { CampaignTimeline } from '@/components/campaigns/planning/CampaignTimeline'
+import { StageTimelineGantt } from '@/components/campaigns/planning/StageTimelineGantt'
+import { CampaignRevisionHistory } from '@/components/campaigns/planning/CampaignRevisionHistory'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -303,6 +305,25 @@ export default function CampaignPlanPage({ params }: PageProps) {
 
       <Card>
         <CardHeader>
+          <CardTitle className="text-base">Stage Gantt</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Date-aligned bars surface stage overlaps. Hard active gates lock the
+            adjoining boundary at the database level — overlap there is
+            rejected. Soft / inactive gates allow overlap for non-linear
+            planning.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <StageTimelineGantt
+            campaignId={campaignId}
+            stages={sortedStages}
+            gates={(gates ?? []) as { gate_number: number; enforcement_type: string | null; is_active: boolean | null }[]}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle className="text-base">Stage planned dates</CardTitle>
           <p className="text-sm text-muted-foreground">
             Changing dates updates ambition target dates automatically when those
@@ -317,10 +338,13 @@ export default function CampaignPlanPage({ params }: PageProps) {
               stage_number: number
               planned_start_date: string | null
               planned_end_date: string | null
+              status?: string | null
             }>}
           />
         </CardContent>
       </Card>
+
+      <CampaignRevisionHistory campaignId={campaignId} />
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">

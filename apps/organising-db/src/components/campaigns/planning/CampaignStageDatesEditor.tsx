@@ -21,6 +21,7 @@ import {
   useSyncAmbitionTargetDatesForCampaign,
   useUpdateCampaignStagePlans,
 } from '@/lib/hooks/usePlannerCampaigns'
+import { PlanRefinementDialog } from '@/components/campaigns/planning/PlanRefinementDialog'
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,12 @@ type StageRow = {
   stage_number: number
   planned_start_date: string | null
   planned_end_date: string | null
+  /**
+   * Optional. When provided, edits to dates of `active` / `completed` stages
+   * surface the PlanRefinementDialog (Phase 6) before saving so the
+   * organiser captures *why* the in-flight plan is changing.
+   */
+  status?: string | null
 }
 
 type DraftRow = {
@@ -110,9 +117,36 @@ export function CampaignStageDatesEditor({
   const [pending, setPending] = useState<PendingEdit | null>(null)
   // Track week input strings separately to allow decimal editing
   const [weekInputs, setWeekInputs] = useState<Record<number, string>>({})
+  // Phase 6: when a save would touch an active / completed stage, this is the
+  // stage_number whose status triggered the refinement prompt. The dialog
+  // fires before the actual mutation runs.
+  const [refinementStageNumber, setRefinementStageNumber] = useState<number | null>(null)
 
   const updateMutation = useUpdateCampaignStagePlans()
   const syncMutation = useSyncAmbitionTargetDatesForCampaign()
+
+  /**
+   * Returns the lowest-numbered stage whose dates changed AND whose original
+   * status is `active` or `completed`. Used to decide whether to prompt for a
+   * plan refinement note before saving.
+   */
+  function detectActiveCompletedEdit(): number | null {
+    let earliest: number | null = null
+    for (const row of draft) {
+      const original = stages.find((s) => s.plan_id === row.plan_id)
+      if (!original) continue
+      if (original.status !== 'active' && original.status !== 'completed') continue
+      const changed =
+        (row.start || null) !== (original.planned_start_date || null) ||
+        (row.end || null) !== (original.planned_end_date || null)
+      if (changed) {
+        if (earliest == null || row.stage_number < earliest) {
+          earliest = row.stage_number
+        }
+      }
+    }
+    return earliest
+  }
 
   // Initialise from props
   useEffect(() => {
@@ -295,7 +329,7 @@ export function CampaignStageDatesEditor({
 
   // ── save ─────────────────────────────────────────────────────────────────
 
-  async function handleSave() {
+  async function persistDates() {
     try {
       await updateMutation.mutateAsync({
         campaign_id: campaignId,
@@ -308,9 +342,22 @@ export function CampaignStageDatesEditor({
       toast.success(
         'Stage dates saved. Ambition target dates synced where not manually overridden.'
       )
-    } catch {
-      toast.error('Could not save stage dates')
+    } catch (err) {
+      // The hard-gate overlap trigger raises a check_violation when the user
+      // tries to overlap stages that have a hard active gate between them.
+      // Surface that as an actionable toast instead of a silent failure.
+      const message = err instanceof Error ? err.message : 'Could not save stage dates'
+      toast.error(message)
     }
+  }
+
+  async function handleSave() {
+    const stageToRefine = detectActiveCompletedEdit()
+    if (stageToRefine != null) {
+      setRefinementStageNumber(stageToRefine)
+      return
+    }
+    await persistDates()
   }
 
   async function handleSyncOnly() {
@@ -457,6 +504,22 @@ export function CampaignStageDatesEditor({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {refinementStageNumber != null && (
+        <PlanRefinementDialog
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) setRefinementStageNumber(null)
+          }}
+          campaignId={campaignId}
+          stageNumber={refinementStageNumber}
+          defaultRevisionType="schedule_change"
+          onConfirmed={async () => {
+            setRefinementStageNumber(null)
+            await persistDates()
+          }}
+        />
+      )}
     </div>
   )
 }

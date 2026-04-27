@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useCallback, useState } from "react";
+import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { format } from "date-fns";
-import { ArrowLeft, Pencil, Plus } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, Settings as SettingsIcon } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -53,6 +53,7 @@ import type { Database } from "@oa/db-types";
 import { CampaignAssessmentsSection } from "@/components/campaigns/campaign-assessments";
 import { CampaignStructureSection } from "@/components/campaigns/campaign-structure";
 import { CampaignReportingCharts } from "@/components/campaigns/campaign-reporting";
+import { CampaignProgressReport } from "@/components/reports/CampaignProgressReport";
 import { CampaignWallChart } from "@/components/campaigns/campaign-wall-chart";
 import { CampaignTaskListsSection } from "@/components/campaigns/campaign-task-lists";
 import { CampaignPlanPanel } from "@/components/campaigns/campaign-plan-panel";
@@ -172,6 +173,45 @@ const INITIAL_ACTION_FORM = {
 export default function CampaignDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+
+  // Phase 5: persist the selected tab in the URL so back/forward + reload land
+  // on the same view, and direct links can deep-link into a tab.
+  const validTabs = [
+    "overview",
+    "campaign-plan",
+    "workplan",
+    "universe",
+    "assessments",
+    "structure",
+    "reporting",
+    "insights",
+    "wall",
+    "tasklists",
+    "comms",
+    "phone",
+    "actions",
+    "results",
+  ] as const;
+  const tabFromUrl = searchParams.get("tab");
+  const activeTab = (validTabs as readonly string[]).includes(tabFromUrl ?? "")
+    ? (tabFromUrl as (typeof validTabs)[number])
+    : "overview";
+
+  const handleTabChange = useCallback(
+    (next: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next === "overview") {
+        params.delete("tab");
+      } else {
+        params.set("tab", next);
+      }
+      const qs = params.toString();
+      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
   const { user, canWrite } = useAuth();
   const supabase = createClient();
   const queryClient = useQueryClient();
@@ -352,19 +392,28 @@ export default function CampaignDetailPage() {
           </p>
         </div>
         {canWrite && (
-          <Button
-            variant="outline"
-            onClick={() =>
-              router.push(`/campaigns/new?cid=${campaignId}&edit=1`)
-            }
-          >
-            <Pencil className="h-4 w-4" />
-            Edit
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/campaigns/${campaignId}/settings`)}
+            >
+              <SettingsIcon className="h-4 w-4" />
+              All settings
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() =>
+                router.push(`/campaigns/new?cid=${campaignId}&edit=1`)
+              }
+            >
+              <Pencil className="h-4 w-4" />
+              Re-run wizard
+            </Button>
+          </div>
         )}
       </div>
 
-      <Tabs defaultValue="overview">
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="campaign-plan">Campaign Plan</TabsTrigger>
@@ -373,6 +422,7 @@ export default function CampaignDetailPage() {
           <TabsTrigger value="assessments">Assessments</TabsTrigger>
           <TabsTrigger value="structure">Structure</TabsTrigger>
           <TabsTrigger value="reporting">Reporting</TabsTrigger>
+          <TabsTrigger value="insights">Insights</TabsTrigger>
           <TabsTrigger value="wall">Wall chart</TabsTrigger>
           <TabsTrigger value="tasklists">Task lists</TabsTrigger>
           <TabsTrigger value="comms">Comms</TabsTrigger>
@@ -474,6 +524,10 @@ export default function CampaignDetailPage() {
 
         <TabsContent value="reporting">
           <CampaignReportingCharts campaignId={id} />
+        </TabsContent>
+
+        <TabsContent value="insights">
+          <CampaignProgressReport campaignId={campaignId} embedded />
         </TabsContent>
 
         <TabsContent value="wall">

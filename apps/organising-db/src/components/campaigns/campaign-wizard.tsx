@@ -46,7 +46,15 @@ import {
   StepCampaignUnits,
   type CampaignUnitDraft,
 } from "@/components/campaigns/step-campaign-units";
-import type { CampaignOuType, CampaignOuUnitBasis } from "@/types/database";
+import {
+  StepCampaignAmbitions,
+  type CampaignAmbitionDraft,
+} from "@/components/campaigns/step-campaign-ambitions";
+import type {
+  CampaignAmbitionCategory,
+  CampaignOuType,
+  CampaignOuUnitBasis,
+} from "@/types/database";
 import Link from "next/link";
 
 const SCOPES: CampaignScopeType[] = [
@@ -165,6 +173,9 @@ export function CampaignWizard() {
   const [selectedWorkers, setSelectedWorkers] = useState<number[]>([]);
   const [workerUnitAllocations, setWorkerUnitAllocations] =
     useState<WorkerUnitAllocation>({});
+  const [campaignAmbitions, setCampaignAmbitions] = useState<
+    CampaignAmbitionDraft[]
+  >([]);
 
   // ── Queries ───────────────────────────────────────────────────────────────
 
@@ -187,7 +198,7 @@ export function CampaignWizard() {
     queryKey: ["campaign-wizard-scope", campaignId],
     queryFn: async () => {
       const cid = campaignId!;
-      const [ce, cw, cw2, ca, cou, cwo] = await Promise.all([
+      const [ce, cw, cw2, ca, cou, cwo, cam] = await Promise.all([
         supabase.from("campaign_employers").select("employer_id").eq("campaign_id", cid),
         supabase.from("campaign_worksites").select("worksite_id, sector_wide").eq("campaign_id", cid),
         supabase.from("campaign_worker_membership").select("worker_id").eq("campaign_id", cid),
@@ -205,15 +216,23 @@ export function CampaignWizard() {
           .from("campaign_worker_ou")
           .select("ou_id, worker_id, campaign_organising_units!inner(campaign_id)")
           .eq("campaign_organising_units.campaign_id", cid),
+        supabase
+          .from("campaign_ambitions")
+          .select(
+            "campaign_ambition_id, category, subcategory, label, target_value, target_value_max, target_unit, target_date, notes, sort_order"
+          )
+          .eq("campaign_id", cid)
+          .order("sort_order", { ascending: true }),
       ]);
       if (ce.error) throw ce.error;
       if (cw.error) throw cw.error;
       if (cw2.error) throw cw2.error;
-      // The Phase 1 + 2 tables may not exist on environments where the migrations
+      // The Phase 1–3 tables may not exist on environments where the migrations
       // haven't been applied yet — degrade gracefully rather than failing.
       const agreementRows = ca.error ? [] : (ca.data ?? []);
       const ouRows = cou.error ? [] : (cou.data ?? []);
       const cwoRows = cwo.error ? [] : (cwo.data ?? []);
+      const camRows = cam.error ? [] : (cam.data ?? []);
       const worksiteRows = cw.data ?? [];
       const sectorWide = worksiteRows.some((w) => w.sector_wide && w.worksite_id == null);
       return {
@@ -254,6 +273,29 @@ export function CampaignWizard() {
           }
           return out;
         })(),
+        campaignAmbitions: (camRows as Array<{
+          campaign_ambition_id: number;
+          category: string;
+          subcategory: string | null;
+          label: string;
+          target_value: string | null;
+          target_value_max: string | null;
+          target_unit: string | null;
+          target_date: string | null;
+          notes: string | null;
+          sort_order: number;
+        }>).map((r) => ({
+          draft_id: `srv_${r.campaign_ambition_id}`,
+          campaign_ambition_id: r.campaign_ambition_id,
+          category: r.category as CampaignAmbitionCategory,
+          subcategory: r.subcategory,
+          label: r.label,
+          target_value: r.target_value ?? "",
+          target_value_max: r.target_value_max ?? "",
+          target_unit: r.target_unit ?? "",
+          target_date: r.target_date ?? "",
+          notes: r.notes ?? "",
+        })) satisfies CampaignAmbitionDraft[],
       };
     },
     enabled: !!user && !!campaignId,
@@ -334,6 +376,7 @@ export function CampaignWizard() {
     setAgreementSelections(wizardScope.agreements);
     setUnits(wizardScope.units);
     setWorkerUnitAllocations(wizardScope.workerUnitAllocations);
+    setCampaignAmbitions(wizardScope.campaignAmbitions);
     scopeHydratedFor.current = campaignId;
   }, [campaignId, wizardScopeLoading, wizardScope]);
 
@@ -671,8 +714,104 @@ export function CampaignWizard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });
       queryClient.invalidateQueries({ queryKey: ["campaign-members", campaignId] });
+      // After workers, go to campaign ambitions (step 7) for every campaign
+      // type — campaign-level membership / leader / activism / outcome goals
+      // apply to organising and mobilisation campaigns too, not just bargaining.
+      setStep(7);
+    },
+  });
+
+  const saveCampaignAmbitionsMutation = useAuthAwareMutation({
+    mutationFn: async () => {
+      if (!campaignId) throw new Error("No campaign");
+
+      await withSessionGuard("saveCampaignAmbitionsMutation", async () => {
+        const { data: existing } = await supabase
+          .from("campaign_ambitions")
+          .select("campaign_ambition_id")
+          .eq("campaign_id", campaignId);
+        const existingIds = new Set(
+          (existing ?? []).map((r) => r.campaign_ambition_id as number)
+        );
+        const keepIds = new Set(
+          campaignAmbitions
+            .filter((a) => a.campaign_ambition_id != null)
+            .map((a) => a.campaign_ambition_id as number)
+        );
+        const toDelete = Array.from(existingIds).filter((id) => !keepIds.has(id));
+
+        if (toDelete.length > 0) {
+          const { error } = await supabase
+            .from("campaign_ambitions")
+            .delete()
+            .in("campaign_ambition_id", toDelete);
+          if (error) throw error;
+        }
+
+        for (const a of campaignAmbitions) {
+          if (a.campaign_ambition_id == null) continue;
+          const { error } = await supabase
+            .from("campaign_ambitions")
+            .update({
+              category: a.category,
+              subcategory: a.subcategory,
+              label: a.label,
+              target_value: a.target_value || null,
+              target_value_max: a.target_value_max || null,
+              target_unit: a.target_unit || null,
+              target_date: a.target_date || null,
+              notes: a.notes || null,
+            })
+            .eq("campaign_ambition_id", a.campaign_ambition_id);
+          if (error) throw error;
+        }
+
+        const drafts = campaignAmbitions.filter(
+          (a) => a.campaign_ambition_id == null
+        );
+        if (drafts.length > 0) {
+          const { data: inserted, error } = await supabase
+            .from("campaign_ambitions")
+            .insert(
+              drafts.map((a, i) => ({
+                campaign_id: campaignId,
+                category: a.category,
+                subcategory: a.subcategory,
+                label: a.label || a.subcategory || a.category,
+                target_value: a.target_value || null,
+                target_value_max: a.target_value_max || null,
+                target_unit: a.target_unit || null,
+                target_date: a.target_date || null,
+                notes: a.notes || null,
+                sort_order: existingIds.size + i,
+              }))
+            )
+            .select("campaign_ambition_id");
+          if (error) throw error;
+
+          const newIds = (inserted ?? []).map(
+            (r) => r.campaign_ambition_id as number
+          );
+          const draftIdToServerId = new Map<string, number>();
+          drafts.forEach((d, i) => {
+            const id = newIds[i];
+            if (id != null) draftIdToServerId.set(d.draft_id, id);
+          });
+          setCampaignAmbitions(
+            campaignAmbitions.map((a) =>
+              a.campaign_ambition_id == null && draftIdToServerId.has(a.draft_id)
+                ? { ...a, campaign_ambition_id: draftIdToServerId.get(a.draft_id)! }
+                : a
+            )
+          );
+        }
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-wizard-scope", campaignId] });
       if (basics.campaign_type === "bargaining") {
-        setStep(7);
+        setStep(8);
       } else {
         router.push(`/campaigns/${campaignId}`);
       }
@@ -689,10 +828,11 @@ export function CampaignWizard() {
     if (step === 4) return "Worker estimate";
     if (step === 5) return "Campaign units";
     if (step === 6) return "Allocate workers";
+    if (step === 7) return "Campaign ambitions";
     return "Create campaign plan";
   }, [step]);
 
-  const totalSteps = basics.campaign_type === "bargaining" ? 7 : 6;
+  const totalSteps = basics.campaign_type === "bargaining" ? 8 : 7;
 
   const step1Valid =
     !!basics.name &&
@@ -1104,8 +1244,26 @@ export function CampaignWizard() {
         />
       )}
 
-      {/* ── Step 7: Create campaign plan (bargaining only) ──────────────── */}
+      {/* ── Step 7: Campaign-level ambitions ────────────────────────────── */}
       {step === 7 && campaignId && (
+        <StepCampaignAmbitions
+          ambitions={campaignAmbitions}
+          setAmbitions={setCampaignAmbitions}
+          isPending={saveCampaignAmbitionsMutation.isPending}
+          onBack={() => setStep(6)}
+          onContinue={() => saveCampaignAmbitionsMutation.mutate()}
+          onSkip={() => {
+            if (basics.campaign_type === "bargaining") {
+              setStep(8);
+            } else {
+              router.push(`/campaigns/${campaignId}`);
+            }
+          }}
+        />
+      )}
+
+      {/* ── Step 8: Create campaign plan (bargaining only) ──────────────── */}
+      {step === 8 && campaignId && (
         <Card>
           <CardHeader>
             <div className="flex items-center gap-3">
@@ -1150,7 +1308,7 @@ export function CampaignWizard() {
         </Card>
       )}
 
-      {existingCampaign && step > 1 && step < 7 && (
+      {existingCampaign && step > 1 && step < 8 && (
         <p className="text-xs text-muted-foreground">
           Editing campaign #{campaignId}: {existingCampaign.name as string}
         </p>

@@ -173,6 +173,17 @@ export function CampaignUnitMetricsTable({
 
   const isLoading = isLoadingParent || summaryLoading || tasksLoading
 
+  // Group units by ou_type so each dimension gets a header and sub-total row.
+  const groupedUnits = useMemo(() => {
+    const distinctTypes = [...new Set(organisingUnits.map((u) => u.ou_type))]
+    return distinctTypes.map((ouType) => ({
+      ouType,
+      units: organisingUnits.filter((u) => u.ou_type === ouType),
+    }))
+  }, [organisingUnits])
+
+  const showDimensionGroups = groupedUnits.length > 1
+
   if (organisingUnits.length === 0) {
     return (
       <div className="rounded-md border py-8 text-center text-sm text-muted-foreground">
@@ -213,165 +224,246 @@ export function CampaignUnitMetricsTable({
           </tr>
         </thead>
         <tbody>
-          {organisingUnits.map((ou) => {
-            const workerSet = workersByOu.get(ou.ou_id) ?? new Set<number>()
-            const namedInUnit = workerSet.size
-            const denom =
-              ou.total_workers_estimated && ou.total_workers_estimated > 0
-                ? ou.total_workers_estimated
-                : campaignEstimate > 0
-                  ? campaignEstimate
-                  : namedInUnit > 0
-                    ? namedInUnit
-                    : null
-
-            const inAnyOu = workerSet.size
-            const subStats: CampaignAggStats = buildCampaignAggStatsForWorkerSubset(
-              workerSet,
+          {groupedUnits.map(({ ouType, units: dimUnits }) => {
+            // Distinct workers across all units in this dimension — the correct
+            // denominator for "what fraction of the dimension is mapped".
+            const dimWorkerSet = new Set<number>()
+            for (const ou of dimUnits) {
+              for (const wid of workersByOu.get(ou.ou_id) ?? new Set<number>()) {
+                dimWorkerSet.add(wid)
+              }
+            }
+            const dimWorkerCount = dimWorkerSet.size
+            const dimStats: CampaignAggStats = buildCampaignAggStatsForWorkerSubset(
+              dimWorkerSet,
               members,
               ratings,
               campaignOuCount,
-              inAnyOu,
+              dimWorkerCount,
               emptyP2w
             )
 
-            let multiInUnit = 0
-            for (const wid of workerSet) {
-              if (multiByWorker.get(wid)) multiInUnit++
-            }
-
-            const ambList = ambitionsByOu.get(ou.ou_id) ?? []
-            const showAmb = ambList.slice(0, 3)
-            const rest = ambList.length - showAmb.length
-
             return (
-              <tr key={ou.ou_id} className="border-b transition-colors hover:bg-muted/30">
-                <MetricCell>
-                  <div className="flex flex-col gap-1">
-                    <span className="font-medium leading-tight">
-                      {ouDisplayName(ou)}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                      {humanizeOuType(ou.ou_type)}
-                    </span>
-                    {ou.total_workers_estimated != null && ou.total_workers_estimated > 0 && (
-                      <span className="text-[10px] text-muted-foreground">
-                        Est. {ou.total_workers_estimated.toLocaleString()} workers
+              <>
+                {/* Dimension group header — only shown when multiple ou_types exist */}
+                {showDimensionGroups && (
+                  <tr key={`header-${ouType}`} className="border-b bg-muted/60">
+                    <td colSpan={8} className="px-3 py-1.5">
+                      <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                        {humanizeOuType(ouType)} dimension
                       </span>
-                    )}
-                  </div>
-                </MetricCell>
-                <MetricCell>
-                  {isLoading ? (
-                    <Skeleton className="h-4 w-16" />
-                  ) : (
-                    <div className="flex flex-col gap-0.5 text-xs">
-                      <span>
-                        <span className="font-medium">{subStats.namedWorkers}</span>
-                        <span className="text-muted-foreground"> named</span>
-                        {denom != null && denom > 0 && (
-                          <span className="text-muted-foreground">
-                            {' '}
-                            ({formatPct(subStats.namedWorkers, denom)})
+                      <span className="ml-2 text-[10px] text-muted-foreground">
+                        · {dimUnits.length} unit{dimUnits.length !== 1 ? 's' : ''}
+                        · {dimWorkerCount} unique workers
+                      </span>
+                    </td>
+                  </tr>
+                )}
+
+                {/* Per-unit rows */}
+                {dimUnits.map((ou) => {
+                  const workerSet = workersByOu.get(ou.ou_id) ?? new Set<number>()
+                  const namedInUnit = workerSet.size
+                  const denom =
+                    ou.total_workers_estimated && ou.total_workers_estimated > 0
+                      ? ou.total_workers_estimated
+                      : campaignEstimate > 0
+                        ? campaignEstimate
+                        : namedInUnit > 0
+                          ? namedInUnit
+                          : null
+
+                  const inAnyOu = workerSet.size
+                  const subStats: CampaignAggStats = buildCampaignAggStatsForWorkerSubset(
+                    workerSet,
+                    members,
+                    ratings,
+                    campaignOuCount,
+                    inAnyOu,
+                    emptyP2w
+                  )
+
+                  let multiInUnit = 0
+                  for (const wid of workerSet) {
+                    if (multiByWorker.get(wid)) multiInUnit++
+                  }
+
+                  const ambList = ambitionsByOu.get(ou.ou_id) ?? []
+                  const showAmb = ambList.slice(0, 3)
+                  const rest = ambList.length - showAmb.length
+
+                  return (
+                    <tr key={ou.ou_id} className="border-b transition-colors hover:bg-muted/30">
+                      <MetricCell>
+                        <div className="flex flex-col gap-1">
+                          <span className="font-medium leading-tight">
+                            {ouDisplayName(ou)}
                           </span>
+                          {!showDimensionGroups && (
+                            <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                              {humanizeOuType(ou.ou_type)}
+                            </span>
+                          )}
+                          {ou.total_workers_estimated != null && ou.total_workers_estimated > 0 && (
+                            <span className="text-[10px] text-muted-foreground">
+                              Est. {ou.total_workers_estimated.toLocaleString()} workers
+                            </span>
+                          )}
+                        </div>
+                      </MetricCell>
+                      <MetricCell>
+                        {isLoading ? (
+                          <Skeleton className="h-4 w-16" />
+                        ) : (
+                          <div className="flex flex-col gap-0.5 text-xs">
+                            <span>
+                              <span className="font-medium">{subStats.namedWorkers}</span>
+                              <span className="text-muted-foreground"> named</span>
+                              {denom != null && denom > 0 && (
+                                <span className="text-muted-foreground">
+                                  {' '}
+                                  ({formatPct(subStats.namedWorkers, denom)})
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-muted-foreground">
+                              {formatPct(subStats.phoneCount, denom)} phone •{' '}
+                              {formatPct(subStats.emailCount, denom)} email
+                            </span>
+                          </div>
                         )}
-                      </span>
-                      <span className="text-muted-foreground">
-                        {formatPct(subStats.phoneCount, denom)} phone •{' '}
-                        {formatPct(subStats.emailCount, denom)} email
-                      </span>
-                    </div>
-                  )}
-                </MetricCell>
-                <MetricCell>
-                  {isLoading ? (
-                    <Skeleton className="h-4 w-12" />
-                  ) : (
-                    <div className="flex flex-col gap-0.5">
-                      <PctPill value={subStats.memberLikeCount} denominator={denom} />
-                      <span className="text-[10px] text-muted-foreground">
-                        {subStats.memberLikeCount} members
-                      </span>
-                    </div>
-                  )}
-                </MetricCell>
-                <MetricCell>
-                  {isLoading ? (
-                    <Skeleton className="h-4 w-12" />
-                  ) : (
-                    <div className="flex flex-col gap-0.5" title="Share of workers in this unit assigned to more than one organising unit">
-                      <PctPill value={multiInUnit} denominator={subStats.namedWorkers || null} />
-                      <span className="text-[10px] text-muted-foreground">
-                        {multiInUnit}/{subStats.namedWorkers || 0} multi-unit
-                      </span>
-                    </div>
-                  )}
-                </MetricCell>
-                <MetricCell>
-                  {isLoading ? (
-                    <Skeleton className="h-4 w-12" />
-                  ) : (
-                    <div className="flex flex-col gap-0.5">
-                      <span className="font-medium text-xs">
-                        {formatLeadershipRatio(subStats.leadershipTotal, denom)}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {subStats.leadershipTotal} leaders
-                      </span>
-                    </div>
-                  )}
-                </MetricCell>
-                <MetricCell>
-                  {isLoading ? (
-                    <Skeleton className="h-4 w-24" />
-                  ) : (
-                    <CampaignRatingsBar
-                      ratings={subStats.ratings}
-                      namedWorkers={subStats.namedWorkers}
-                      height={14}
-                    />
-                  )}
-                </MetricCell>
-                <MetricCell>
-                  {isLoading ? (
-                    <Skeleton className="h-4 w-12" />
-                  ) : (
-                    <div className="flex flex-col gap-0.5">
-                      <PctPill value={subStats.participationCount} denominator={denom} />
-                      <span className="text-[10px] text-muted-foreground">
-                        {subStats.participationCount} supportive
-                      </span>
-                    </div>
-                  )}
-                </MetricCell>
-                <MetricCell>
-                  <div className="flex flex-col gap-1 max-w-[220px]" onClick={(e) => e.stopPropagation()}>
-                    {ambList.length === 0 ? (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    ) : (
-                      <>
-                        {showAmb.map((a) => (
-                          <Link
-                            key={a.key}
-                            href={`/campaigns/${campaignId}/plan/stage/${a.stage}`}
-                            className="text-xs text-primary hover:underline leading-snug line-clamp-2"
-                          >
-                            {a.label}
-                          </Link>
-                        ))}
-                        {rest > 0 && (
-                          <Link
-                            href={`/campaigns/${campaignId}/plan`}
-                            className="text-[10px] text-muted-foreground hover:text-foreground"
-                          >
-                            +{rest} more
-                          </Link>
+                      </MetricCell>
+                      <MetricCell>
+                        {isLoading ? (
+                          <Skeleton className="h-4 w-12" />
+                        ) : (
+                          <div className="flex flex-col gap-0.5">
+                            <PctPill value={subStats.memberLikeCount} denominator={denom} />
+                            <span className="text-[10px] text-muted-foreground">
+                              {subStats.memberLikeCount} members
+                            </span>
+                          </div>
                         )}
-                      </>
-                    )}
-                  </div>
-                </MetricCell>
-              </tr>
+                      </MetricCell>
+                      <MetricCell>
+                        {isLoading ? (
+                          <Skeleton className="h-4 w-12" />
+                        ) : (
+                          <div className="flex flex-col gap-0.5" title="Share of workers in this unit assigned to more than one organising unit">
+                            <PctPill value={multiInUnit} denominator={subStats.namedWorkers || null} />
+                            <span className="text-[10px] text-muted-foreground">
+                              {multiInUnit}/{subStats.namedWorkers || 0} multi-unit
+                            </span>
+                          </div>
+                        )}
+                      </MetricCell>
+                      <MetricCell>
+                        {isLoading ? (
+                          <Skeleton className="h-4 w-12" />
+                        ) : (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-medium text-xs">
+                              {formatLeadershipRatio(subStats.leadershipTotal, denom)}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {subStats.leadershipTotal} leaders
+                            </span>
+                          </div>
+                        )}
+                      </MetricCell>
+                      <MetricCell>
+                        {isLoading ? (
+                          <Skeleton className="h-4 w-24" />
+                        ) : (
+                          <CampaignRatingsBar
+                            ratings={subStats.ratings}
+                            namedWorkers={subStats.namedWorkers}
+                            height={14}
+                          />
+                        )}
+                      </MetricCell>
+                      <MetricCell>
+                        {isLoading ? (
+                          <Skeleton className="h-4 w-12" />
+                        ) : (
+                          <div className="flex flex-col gap-0.5">
+                            <PctPill value={subStats.participationCount} denominator={denom} />
+                            <span className="text-[10px] text-muted-foreground">
+                              {subStats.participationCount} supportive
+                            </span>
+                          </div>
+                        )}
+                      </MetricCell>
+                      <MetricCell>
+                        <div className="flex flex-col gap-1 max-w-[220px]" onClick={(e) => e.stopPropagation()}>
+                          {ambList.length === 0 ? (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          ) : (
+                            <>
+                              {showAmb.map((a) => (
+                                <Link
+                                  key={a.key}
+                                  href={`/campaigns/${campaignId}/plan/stage/${a.stage}`}
+                                  className="text-xs text-primary hover:underline leading-snug line-clamp-2"
+                                >
+                                  {a.label}
+                                </Link>
+                              ))}
+                              {rest > 0 && (
+                                <Link
+                                  href={`/campaigns/${campaignId}/plan`}
+                                  className="text-[10px] text-muted-foreground hover:text-foreground"
+                                >
+                                  +{rest} more
+                                </Link>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </MetricCell>
+                    </tr>
+                  )
+                })}
+
+                {/* Dimension sub-total — only shown when multiple ou_types exist */}
+                {showDimensionGroups && (
+                  <tr key={`subtotal-${ouType}`} className="border-b bg-muted/20">
+                    <MetricCell>
+                      <span className="text-xs font-semibold text-muted-foreground italic">
+                        {humanizeOuType(ouType)} total
+                      </span>
+                      <div className="text-[10px] text-muted-foreground">
+                        unique workers in dimension
+                      </div>
+                    </MetricCell>
+                    <MetricCell>
+                      {isLoading ? (
+                        <Skeleton className="h-4 w-16" />
+                      ) : (
+                        <div className="flex flex-col gap-0.5 text-xs">
+                          <span>
+                            <span className="font-semibold">{dimStats.namedWorkers}</span>
+                            <span className="text-muted-foreground"> unique</span>
+                            {campaignEstimate > 0 && (
+                              <span className="text-muted-foreground">
+                                {' '}({formatPct(dimStats.namedWorkers, campaignEstimate)})
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                    </MetricCell>
+                    <MetricCell>
+                      {isLoading ? <Skeleton className="h-4 w-12" /> : (
+                        <PctPill value={dimStats.memberLikeCount} denominator={dimWorkerCount || null} />
+                      )}
+                    </MetricCell>
+                    <td className="px-3 py-2 text-xs text-muted-foreground italic" colSpan={5}>
+                      — per-unit breakdown above
+                    </td>
+                  </tr>
+                )}
+              </>
             )
           })}
         </tbody>

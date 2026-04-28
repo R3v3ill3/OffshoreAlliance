@@ -20,7 +20,11 @@ export interface CampaignCurrentStats {
   ousWithContact: number
   ousWithActivist: number
   ousWithDelegate: number
-  unitAssignments: number
+  /** Total rows in campaign_worker_ou — one per worker-unit pair. A worker
+   *  in N units contributes N. Use uniqueWorkersInUnits for a headcount. */
+  unitMemberships: number
+  /** Distinct workers assigned to at least one unit. */
+  uniqueWorkersInUnits: number
   multiUnitMembers: number
   phoneCount: number
   emailCount: number
@@ -43,7 +47,8 @@ const EMPTY_STATS: CampaignCurrentStats = {
   ousWithContact: 0,
   ousWithActivist: 0,
   ousWithDelegate: 0,
-  unitAssignments: 0,
+  unitMemberships: 0,
+  uniqueWorkersInUnits: 0,
   multiUnitMembers: 0,
   phoneCount: 0,
   emailCount: 0,
@@ -241,7 +246,12 @@ export function useCampaignCurrentStats(campaignId: number | string) {
       ousWithContact: ouCoverage?.ous_with_contact ?? 0,
       ousWithActivist: ouCoverage?.ous_with_activist ?? 0,
       ousWithDelegate: ouCoverage?.ous_with_delegate ?? ouWithDelegate.size,
-      unitAssignments: ouAssign.length,
+      // unitMemberships: total rows in campaign_worker_ou (one per worker-unit pair).
+      // A worker in N units contributes N to this count.
+      unitMemberships: ouAssign.length,
+      // uniqueWorkersInUnits: distinct workers assigned to at least one unit.
+      // Use this when you need a worker headcount, not an assignment row count.
+      uniqueWorkersInUnits: new Set(ouAssign.map((r) => r.worker_id)).size,
       multiUnitMembers: unitSummary.filter((r) => r.is_multi_unit_member).length,
       phoneCount,
       emailCount,

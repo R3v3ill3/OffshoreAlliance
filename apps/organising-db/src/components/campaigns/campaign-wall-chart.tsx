@@ -15,7 +15,7 @@ import {
 import { CampaignUnitCard } from "./wall-chart/campaign-unit-card";
 import { WorkerTile } from "./wall-chart/worker-tile";
 import { WALL_CHART_GRID_CLASS } from "./wall-chart/rating-colour";
-import { ouDisplayName } from "./wall-chart/types";
+import { humanizeOuType, ouDisplayName } from "./wall-chart/types";
 import { AssessmentSelector } from "./wall-chart/assessment-selector";
 import { computeMetrics } from "./wall-chart/metrics";
 import {
@@ -326,6 +326,14 @@ export function CampaignWallChart({
     return m;
   }, [ous]);
 
+  const ouTypeById = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const ou of ous) {
+      if (ou.ou_type) m.set(ou.ou_id, ou.ou_type);
+    }
+    return m;
+  }, [ous]);
+
   const unitsByWorker = useMemo(() => {
     const m = new Map<number, number[]>();
     for (const a of ouAssign) {
@@ -545,9 +553,17 @@ export function CampaignWallChart({
             if (selection.has(tileOuId, id)) {
               return selection
                 .refs()
-                .map((r) => ({ workerId: r.workerId, fromOuId: r.ouId }));
+                .map((r) => ({
+                  workerId: r.workerId,
+                  fromOuId: r.ouId,
+                  fromOuType: r.ouId != null ? (ouTypeById.get(r.ouId) ?? null) : null,
+                }));
             }
-            return [{ workerId: id, fromOuId: tileOuId }];
+            return [{
+              workerId: id,
+              fromOuId: tileOuId,
+              fromOuType: tileOuId != null ? (ouTypeById.get(tileOuId) ?? null) : null,
+            }];
           }}
         />
       );
@@ -556,6 +572,7 @@ export function CampaignWallChart({
       workerById,
       unitsByWorker,
       ouNameById,
+      ouTypeById,
       ratingByWorker,
       canWrite,
       selection,
@@ -583,6 +600,31 @@ export function CampaignWallChart({
       // Avoid pointless no-ops: dropping on the same unit with no cross-unit refs.
       const allAlreadyThere = payload.refs.every((r) => r.fromOuId === targetOuId);
       if (mode === "move" && allAlreadyThere) return;
+
+      // Cross-dimension move guard: units of the same ou_type form a "dimension"
+      // (e.g. all worksite units). Moving a worker between units of different
+      // ou_types is semantically wrong — a worker's worksite can't be changed by
+      // dropping them into an employer column. Block the move; allow copy
+      // (Shift+drag) so a user can still add the worker to another dimension.
+      // "custom" units are unconstrained — they're not part of a structured dimension.
+      if (mode === "move" && targetOuId != null) {
+        const targetType = ouTypeById.get(targetOuId);
+        const nonCustomSourceTypes = payload.refs
+          .map((r) => r.fromOuType)
+          .filter((t): t is string => !!t && t !== "custom");
+        if (
+          targetType &&
+          targetType !== "custom" &&
+          nonCustomSourceTypes.length > 0 &&
+          nonCustomSourceTypes.some((t) => t !== targetType)
+        ) {
+          // Silently block — the drag visual already constrains this via the
+          // wallchart grouping (units are shown in ou_type bands). A toast would
+          // be intrusive for accidental mis-drops.
+          return;
+        }
+      }
+
       moveWorkers.mutate(
         {
           refs: payload.refs,
@@ -597,7 +639,7 @@ export function CampaignWallChart({
         }
       );
     },
-    [canWrite, moveWorkers, selection]
+    [canWrite, moveWorkers, ouTypeById, selection]
   );
 
   return (
@@ -791,62 +833,86 @@ export function CampaignWallChart({
           <p className="text-sm text-muted-foreground">
             All organising units are hidden for this browser. Open Units and tick the units you want to see.
           </p>
-        ) : (
-          visibleOus.map((ou) => {
-            const ids = workersByOu.get(ou.ou_id) ?? [];
-            const est = ou.total_workers_estimated ?? 0;
-            const filter = getFilter(ou.ou_id);
-            const filtered = applyFilters(
-              ids,
-              workerById,
-              ratingByWorker,
-              filter,
-              activityRatingsForFilter
-            );
-            const sorted = applySort(filtered, workerById, ratingByWorker, filter.sort);
-            const placeholders = Math.max(0, est - ids.length);
-            const unitMetrics = metricsByOu.get(ou.ou_id);
+        ) : (() => {
+          // Group visible units by ou_type so each "dimension" is visually
+          // distinct. This also reinforces the cross-dimension DnD restriction:
+          // workers can only be moved within a group.
+          const distinctTypes = [...new Set(visibleOus.map((o) => o.ou_type))];
+          const showGroupHeaders = distinctTypes.length > 1;
+
+          return distinctTypes.map((ouType) => {
+            const groupOus = visibleOus.filter((o) => o.ou_type === ouType);
             return (
-              <CampaignUnitCard
-                key={ou.ou_id}
-                ou={ou}
-                workerCount={sorted.length}
-                estimate={est}
-                placeholders={placeholders}
-                assessmentLabel={assessmentTitle}
-                onWorkerDrop={handleWorkerDrop}
-                dropDisabled={!canWrite}
-                summary={
-                  unitMetrics && ids.length > 0 ? (
-                    <UnitSummaryMetrics
-                      metrics={unitMetrics}
-                      mode={displayMode}
-                      compact
-                      assessmentTitle={assessmentTitle}
-                      participationLabel={participationSourceLabel(participationSource)}
-                    />
-                  ) : null
-                }
-                toolbar={
-                  <WallChartFilterBar
-                    state={filter}
-                    onChange={(next) => setFilter(ou.ou_id, next)}
-                    membershipTypes={derivedOptions.membershipTypes}
-                    occupations={derivedOptions.occupations}
-                    onApplyToAll={() => {
-                      const next = new Map<number, WallChartFilterState>();
-                      next.set(UNASSIGNED_KEY, { ...filter });
-                      for (const o of ous) next.set(o.ou_id, { ...filter });
-                      setFilterByScope(next);
-                    }}
-                  />
-                }
-              >
-                {sorted.map((wid) => renderTile(wid, ou.ou_id))}
-              </CampaignUnitCard>
+              <div key={ouType} className="space-y-4">
+                {showGroupHeaders && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                      {humanizeOuType(ouType)}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      · {groupOus.length} unit{groupOus.length !== 1 ? "s" : ""}
+                    </span>
+                    <div className="flex-1 border-t border-muted-foreground/20" />
+                  </div>
+                )}
+                {groupOus.map((ou) => {
+                  const ids = workersByOu.get(ou.ou_id) ?? [];
+                  const est = ou.total_workers_estimated ?? 0;
+                  const filter = getFilter(ou.ou_id);
+                  const filtered = applyFilters(
+                    ids,
+                    workerById,
+                    ratingByWorker,
+                    filter,
+                    activityRatingsForFilter
+                  );
+                  const sorted = applySort(filtered, workerById, ratingByWorker, filter.sort);
+                  const placeholders = Math.max(0, est - ids.length);
+                  const unitMetrics = metricsByOu.get(ou.ou_id);
+                  return (
+                    <CampaignUnitCard
+                      key={ou.ou_id}
+                      ou={ou}
+                      workerCount={sorted.length}
+                      estimate={est}
+                      placeholders={placeholders}
+                      assessmentLabel={assessmentTitle}
+                      onWorkerDrop={handleWorkerDrop}
+                      dropDisabled={!canWrite}
+                      summary={
+                        unitMetrics && ids.length > 0 ? (
+                          <UnitSummaryMetrics
+                            metrics={unitMetrics}
+                            mode={displayMode}
+                            compact
+                            assessmentTitle={assessmentTitle}
+                            participationLabel={participationSourceLabel(participationSource)}
+                          />
+                        ) : null
+                      }
+                      toolbar={
+                        <WallChartFilterBar
+                          state={filter}
+                          onChange={(next) => setFilter(ou.ou_id, next)}
+                          membershipTypes={derivedOptions.membershipTypes}
+                          occupations={derivedOptions.occupations}
+                          onApplyToAll={() => {
+                            const next = new Map<number, WallChartFilterState>();
+                            next.set(UNASSIGNED_KEY, { ...filter });
+                            for (const o of ous) next.set(o.ou_id, { ...filter });
+                            setFilterByScope(next);
+                          }}
+                        />
+                      }
+                    >
+                      {sorted.map((wid) => renderTile(wid, ou.ou_id))}
+                    </CampaignUnitCard>
+                  );
+                })}
+              </div>
             );
-          })
-        )}
+          });
+        })()}
 
         <RelationshipOverlay
             containerRef={unitsContainerRef}
@@ -933,7 +999,11 @@ export function CampaignWallChart({
             if (!v) setBulkDialog(null);
           }}
           campaignId={campaignId}
-          refs={selection.refs().map((r) => ({ workerId: r.workerId, fromOuId: r.ouId }))}
+          refs={selection.refs().map((r) => ({
+            workerId: r.workerId,
+            fromOuId: r.ouId,
+            fromOuType: r.ouId != null ? (ouTypeById.get(r.ouId) ?? null) : null,
+          }))}
           mode={bulkDialog.mode}
           ous={ous}
           onCompleted={() => {

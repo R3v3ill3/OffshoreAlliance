@@ -13,6 +13,11 @@ export type WorkerDragRef = {
   workerId: number;
   /** null when the drag originated from the Unassigned pseudo-unit. */
   fromOuId: number | null;
+  /**
+   * The ou_type of the source unit — used to enforce same-dimension-only moves.
+   * null when dragging from Unassigned or when the source type is unknown.
+   */
+  fromOuType: string | null;
 };
 
 export type WorkerDragPayload = {
@@ -34,6 +39,7 @@ export function parseDragPayload(raw: string): WorkerDragPayload | null {
         clean.push({
           workerId: r.workerId,
           fromOuId: typeof r.fromOuId === "number" ? r.fromOuId : null,
+          fromOuType: typeof r.fromOuType === "string" ? r.fromOuType : null,
         });
       }
     }

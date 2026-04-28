@@ -327,24 +327,60 @@ export function StepCampaignUnits({
     );
   }
 
-  // ── Estimate sum + unallocated remainder ──────────────────────────────────
+  // ── Estimate sum + unallocated remainder (per-dimension) ─────────────────
+  //
+  // Units of the same ou_type form a "dimension" — e.g. all worksite units are
+  // one dimension, all employer units are another. Each dimension independently
+  // covers the full worker population, so their estimates each sum to ~total.
+  // Summing across dimensions would naturally exceed the campaign total and
+  // must NOT be used for validation.
 
-  const sumOfUnitEstimates = useMemo(
-    () =>
-      units.reduce(
-        (acc, u) =>
-          acc + (typeof u.total_workers_estimated === "number" ? u.total_workers_estimated : 0),
-        0
-      ),
+  const OU_TYPE_LABELS: Record<string, string> = {
+    worksite: "Worksite",
+    employer: "Employer",
+    job_type: "Job type",
+    shift: "Shift",
+    department: "Department",
+    network: "Network",
+    work_area: "Work area",
+    ethnic_community: "Ethnic community",
+    crew_rotation: "Crew rotation",
+    accommodation: "Accommodation",
+    custom: "Custom",
+  };
+
+  // Distinct ou_types present in the current unit list.
+  const dimensions = useMemo(
+    () => [...new Set(units.map((u) => u.ou_type))],
     [units]
   );
 
-  const unallocatedRemainder =
-    totalWorkerEstimate != null
-      ? Math.max(0, totalWorkerEstimate - sumOfUnitEstimates)
-      : null;
+  // Sum of estimates per ou_type dimension.
+  const dimensionEstimates = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const u of units) {
+      if (typeof u.total_workers_estimated !== "number") continue;
+      map.set(u.ou_type, (map.get(u.ou_type) ?? 0) + u.total_workers_estimated);
+    }
+    return map;
+  }, [units]);
 
-  const sumOver = totalWorkerEstimate != null && sumOfUnitEstimates > totalWorkerEstimate;
+  // A dimension is "over" only if its OWN sum exceeds the campaign total.
+  const overDimensions = useMemo(() => {
+    if (totalWorkerEstimate == null) return [] as string[];
+    return Array.from(dimensionEstimates.entries())
+      .filter(([, sum]) => sum > totalWorkerEstimate)
+      .map(([type]) => type);
+  }, [dimensionEstimates, totalWorkerEstimate]);
+
+  // Single-dimension helpers (used when only one ou_type is present).
+  const singleDimensionSum =
+    dimensions.length === 1 ? (dimensionEstimates.get(dimensions[0]) ?? 0) : null;
+
+  const unallocatedRemainder =
+    totalWorkerEstimate != null && singleDimensionSum != null
+      ? Math.max(0, totalWorkerEstimate - singleDimensionSum)
+      : null;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -479,21 +515,34 @@ export function StepCampaignUnits({
 
         {/* Existing units */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
+          <div className="flex items-start justify-between gap-2">
             <Label className="text-sm font-semibold">
               Units ({units.length})
             </Label>
-            {totalWorkerEstimate != null && (
-              <p className="text-xs text-muted-foreground">
-                Estimate sum: <strong>{sumOfUnitEstimates}</strong> /{" "}
-                {totalWorkerEstimate}
-                {unallocatedRemainder != null && (
-                  <>
-                    {" · "}Unallocated remainder:{" "}
-                    <strong>{unallocatedRemainder}</strong>
-                  </>
+            {totalWorkerEstimate != null && dimensionEstimates.size > 0 && (
+              <div className="text-xs text-muted-foreground text-right space-y-0.5">
+                {dimensions.length === 1 ? (
+                  <p>
+                    Estimate sum: <strong>{singleDimensionSum ?? 0}</strong> /{" "}
+                    {totalWorkerEstimate}
+                    {unallocatedRemainder != null && (
+                      <>
+                        {" · "}Unallocated remainder:{" "}
+                        <strong>{unallocatedRemainder}</strong>
+                      </>
+                    )}
+                  </p>
+                ) : (
+                  Array.from(dimensionEstimates.entries()).map(([type, sum]) => (
+                    <p key={type}>
+                      {OU_TYPE_LABELS[type] ?? type} units:{" "}
+                      <strong>{sum}</strong> / {totalWorkerEstimate}
+                      {" · "}rem.{" "}
+                      <strong>{Math.max(0, totalWorkerEstimate - sum)}</strong>
+                    </p>
+                  ))
                 )}
-              </p>
+              </div>
             )}
           </div>
 
@@ -571,8 +620,9 @@ export function StepCampaignUnits({
             </div>
           ))}
 
-          {/* Synthetic unallocated row */}
-          {totalWorkerEstimate != null && (
+          {/* Synthetic unallocated row — only shown for single-dimension campaigns.
+              In multi-dimension campaigns each dimension has its own remainder. */}
+          {totalWorkerEstimate != null && dimensions.length <= 1 && (
             <div className="flex items-center gap-2 rounded-md border-2 border-dashed border-muted-foreground/20 bg-muted/30 p-3">
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium">Unallocated</p>
@@ -588,15 +638,26 @@ export function StepCampaignUnits({
           )}
         </div>
 
-        {sumOver && (
-          <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-            <span>
-              Your unit estimates total {sumOfUnitEstimates}, which is{" "}
-              {sumOfUnitEstimates - (totalWorkerEstimate ?? 0)} above the
-              campaign-level worker estimate ({totalWorkerEstimate}). Either raise the
-              campaign estimate or trim a unit.
-            </span>
+        {overDimensions.length > 0 && (
+          <div className="space-y-2">
+            {overDimensions.map((type) => {
+              const sum = dimensionEstimates.get(type) ?? 0;
+              return (
+                <div
+                  key={type}
+                  className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900"
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span>
+                    Your{" "}
+                    <strong>{OU_TYPE_LABELS[type] ?? type}</strong> unit estimates
+                    total {sum}, which is {sum - (totalWorkerEstimate ?? 0)} above the
+                    campaign estimate ({totalWorkerEstimate}). Adjust the individual
+                    unit estimates in that dimension to match.
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
 

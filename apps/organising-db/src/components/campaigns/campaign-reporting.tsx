@@ -69,13 +69,16 @@ export function CampaignReportingCharts({ campaignId }: { campaignId: string }) 
             <CardTitle className="text-sm font-medium text-muted-foreground">Unit assignment</CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
-            <p className="text-2xl font-semibold">{stats.unitAssignments}</p>
+            <p className="text-2xl font-semibold">{stats.uniqueWorkersInUnits}</p>
             <p className="text-xs text-muted-foreground">
-              assignment rows across {stats.ouCount} units
+              workers in at least one unit ({stats.ouCount} units total)
             </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {stats.multiUnitMembers} workers are multi-unit (campaign totals are distinct workers)
-            </p>
+            {stats.multiUnitMembers > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {stats.multiUnitMembers} in multiple units —{" "}
+                {stats.unitMemberships} unit memberships total
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ouDisplayName, type WallChartOU } from "./types";
+import { humanizeOuType, ouDisplayName, type WallChartOU } from "./types";
 import { useMoveWorkersMutation } from "./move-worker-mutation";
 
 export type MoveMode = "move" | "copy";
@@ -30,8 +30,9 @@ export type MoveOrCopyWorkersDialogProps = {
    * One ref per (ouId, workerId) assignment to act on. For a single-worker
    * right-click, pass one ref. For a multi-select bulk move, pass the whole
    * selection. `fromOuId: null` means the assignment came from Unassigned.
+   * `fromOuType` is used to restrict move targets to same-dimension units.
    */
-  refs: { workerId: number; fromOuId: number | null }[];
+  refs: { workerId: number; fromOuId: number | null; fromOuType?: string | null }[];
   /** Initial mode; the user can still toggle inside the dialog. */
   mode?: MoveMode;
   /** When true, lock to this mode and hide the toggle (used by the right-click Copy flow). */
@@ -62,10 +63,32 @@ export function MoveOrCopyWorkersDialog({
   const [mode, setMode] = useState<MoveMode>(initialMode);
   const [selectedOuId, setSelectedOuId] = useState<string>("");
 
+  // In move mode, restrict targets to the same ou_type dimension as the source
+  // units, so users can't accidentally move workers across incompatible dimensions
+  // (e.g. from a worksite unit into an employer unit).
+  // "custom" units are unconstrained. Copy mode is always unrestricted.
+  const sourceDimensionType = useMemo(() => {
+    const nonCustomTypes = refs
+      .map((r) => r.fromOuType)
+      .filter((t): t is string => !!t && t !== "custom");
+    if (nonCustomTypes.length === 0) return null;
+    const unique = [...new Set(nonCustomTypes)];
+    return unique.length === 1 ? unique[0] : null; // null = mixed source types
+  }, [refs]);
+
   const available = useMemo(() => {
     const excl = new Set(excludeOuIds);
-    return ous.filter((o) => !excl.has(o.ou_id));
-  }, [ous, excludeOuIds]);
+    const candidates = ous.filter((o) => !excl.has(o.ou_id));
+    // When moving within a structured dimension, only offer same-type targets.
+    if (
+      mode === "move" &&
+      sourceDimensionType !== null &&
+      sourceDimensionType !== "custom"
+    ) {
+      return candidates.filter((o) => o.ou_type === sourceDimensionType);
+    }
+    return candidates;
+  }, [ous, excludeOuIds, mode, sourceDimensionType]);
 
   const moveMutation = useMoveWorkersMutation(campaignId);
 
@@ -131,9 +154,29 @@ export function MoveOrCopyWorkersDialog({
             </div>
           )}
 
+          {sourceDimensionType && mode === "move" && (
+            <p className="text-xs text-muted-foreground">
+              Showing{" "}
+              <strong>{humanizeOuType(sourceDimensionType)}</strong> units only —
+              moves are restricted to within the same dimension. Switch to{" "}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => setMode("copy")}
+              >
+                Copy
+              </button>{" "}
+              to add workers to a different dimension.
+            </p>
+          )}
           {available.length === 0 && mode === "copy" ? (
             <p className="text-sm text-muted-foreground">
               These workers are already in every organising unit for this campaign.
+            </p>
+          ) : available.length === 0 && mode === "move" ? (
+            <p className="text-sm text-muted-foreground">
+              No other {sourceDimensionType ? humanizeOuType(sourceDimensionType) + " " : ""}units
+              are available to move to.
             </p>
           ) : (
             <Select value={selectedOuId} onValueChange={setSelectedOuId}>
@@ -163,6 +206,7 @@ export function MoveOrCopyWorkersDialog({
             disabled={
               !selectedOuId ||
               (mode === "copy" && available.length === 0) ||
+              (mode === "move" && available.length === 0) ||
               moveMutation.isPending
             }
           >

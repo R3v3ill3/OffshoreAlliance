@@ -344,6 +344,12 @@ export interface CommsDraftRequest {
     agreement_expiry?: string
     sector: string
     campaign_type?: string
+    organiser_name?: string
+    organiser_phone?: string
+    staff_name?: string
+    staff_email?: string
+    staff_phone?: string
+    staff_role?: string
   }
   wtp_selections: {
     tone: string[]

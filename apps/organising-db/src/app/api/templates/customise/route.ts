@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { VARIABLE_GLOSSARY } from '@/lib/prompts/draft-prompts'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -25,8 +26,10 @@ Your job is to suggest specific edits that adapt the template to the campaign co
 - "tone_applied": string. Which tone(s) guided the adaptation.
 - "audience_targeted": string. Which audience segment the adaptation targets.
 
-CRITICAL RULES:
-- Preserve template variables in {{variable_name}} format
+${VARIABLE_GLOSSARY}
+
+ADDITIONAL ADAPTATION RULES:
+- Whatever {{variables}} appear in the original template, the adapted version MUST use the SAME variables in the same semantic slots. Do not replace one variable with a different variable.
 - Keep the email's core message intact — make targeted edits, don't rewrite everything
 - Keep changes_summary entries SHORT (snippets max 50 chars each)
 - Do NOT include any HTML in the response — only plain text
@@ -59,6 +62,7 @@ export async function POST(req: NextRequest) {
       stage_name,
       wtp_selections,
       custom_instructions,
+      campaign_context,
     } = body as {
       template_id?: number
       subject_line?: string
@@ -73,11 +77,37 @@ export async function POST(req: NextRequest) {
         engagement_intensity?: string
       }
       custom_instructions?: string
+      campaign_context?: {
+        employer_name?: string
+        agreement_name?: string
+        worksite_names?: string[]
+        organiser_name?: string
+        organiser_phone?: string
+        staff_name?: string
+        staff_email?: string
+        staff_phone?: string
+        staff_role?: string
+      }
     }
 
     if (!body_text) {
       return NextResponse.json({ error: 'body_text is required' }, { status: 400 })
     }
+
+    const ctxLines: string[] = []
+    if (campaign_context?.agreement_name) ctxLines.push(`Agreement Name (the {{agreement_name}}): ${campaign_context.agreement_name}`)
+    if (campaign_context?.employer_name) ctxLines.push(`Employer (the {{employer_name}}): ${campaign_context.employer_name}`)
+    if (campaign_context?.worksite_names?.length) ctxLines.push(`Worksites (the {{worksite_name}}): ${campaign_context.worksite_names.join(', ')}`)
+    if (campaign_context?.organiser_name) ctxLines.push(`Lead Organiser (the {{organiser_name}}): ${campaign_context.organiser_name}`)
+    if (campaign_context?.organiser_phone) ctxLines.push(`Lead Organiser Phone (the {{organiser_phone}}): ${campaign_context.organiser_phone}`)
+    if (campaign_context?.staff_name) ctxLines.push(`Sending Staff Member (the {{staff_name}}): ${campaign_context.staff_name}`)
+    if (campaign_context?.staff_email) ctxLines.push(`Sending Staff Email (the {{staff_email}}): ${campaign_context.staff_email}`)
+    if (campaign_context?.staff_phone) ctxLines.push(`Sending Staff Phone (the {{staff_phone}}): ${campaign_context.staff_phone}`)
+    if (campaign_context?.staff_role) ctxLines.push(`Sending Staff Role (the {{staff_role}}): ${campaign_context.staff_role}`)
+
+    const campaignContextBlock = ctxLines.length
+      ? `CAMPAIGN CONTEXT (real values for the {{variables}} in the template — these will be substituted at send time, do NOT inline them, and do NOT swap one variable for another):\n${ctxLines.join('\n')}\n\n`
+      : ''
 
     const userMessage = `Campaign Stage: ${stage_number} — ${stage_name}
 
@@ -87,7 +117,7 @@ Target Audience: ${wtp_selections.audience.length > 0 ? wtp_selections.audience.
 Engagement Intensity: ${wtp_selections.engagement_intensity || 'Not specified'}
 Platforms: ${wtp_selections.platforms.join(', ') || 'Email'}
 
-ORIGINAL TEMPLATE:
+${campaignContextBlock}ORIGINAL TEMPLATE:
 ${subject_line ? `Subject: ${subject_line}\n` : ''}
 --- Body Text ---
 ${body_text.slice(0, 6000)}

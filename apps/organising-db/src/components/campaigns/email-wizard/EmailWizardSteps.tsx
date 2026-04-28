@@ -703,12 +703,15 @@ export function EmailWizardSteps() {
   const [manualVarOverrides, setManualVarOverrides] = useState<Record<string, string>>({})
   const [manualVarConfirmed, setManualVarConfirmed] = useState<Record<string, boolean>>({})
 
+  // organiser_name = lead organiser of the campaign; staff_name = logged-in sender.
+  // Never fall back organiser_name to the logged-in user — they are distinct people,
+  // and a silent fallback caused {{agreement_name}} swaps by Claude to render as the sender's name.
   const campaignVarContext = useMemo<Record<string, string | undefined>>(() => ({
     employer_name: state.employerName || undefined,
     agreement_name: state.agreementName || undefined,
     worksite_name: state.worksiteNames[0] || undefined,
     campaign_name: state.campaignName || undefined,
-    organiser_name: state.organiserName || profile?.display_name || user?.email || undefined,
+    organiser_name: state.organiserName || undefined,
     organiser_phone: state.organiserPhone || undefined,
     staff_name: profile?.display_name || user?.email || undefined,
     staff_email: user?.email || undefined,
@@ -723,7 +726,7 @@ export function EmailWizardSteps() {
     agreement_name: state.agreementName || undefined,
     worksite_name: state.worksiteNames[0] || undefined,
     campaign_name: state.campaignName || undefined,
-    organiser_name: state.organiserName || profile?.display_name || user?.email || undefined,
+    organiser_name: state.organiserName || undefined,
     organiser_phone: state.organiserPhone || undefined,
     staff_name: profile?.display_name || user?.email || undefined,
     staff_email: user?.email || undefined,
@@ -825,6 +828,15 @@ export function EmailWizardSteps() {
           stage_number: state.stageNumber || 1,
           stage_name: stageName,
           wtp_selections: wtpSelections,
+          campaign_context: {
+            employer_name: state.employerName || undefined,
+            agreement_name: state.agreementName || undefined,
+            worksite_names: state.worksiteNames,
+            organiser_name: state.organiserName || undefined,
+            organiser_phone: state.organiserPhone || undefined,
+            staff_name: profile?.display_name || user?.email || undefined,
+            staff_email: user?.email || undefined,
+          },
         }),
       })
       if (!response.ok) throw new Error('Customisation failed')
@@ -859,6 +871,10 @@ export function EmailWizardSteps() {
         agreement_name: state.agreementName,
         worksite_names: state.worksiteNames,
         sector: '',
+        organiser_name: state.organiserName || undefined,
+        organiser_phone: state.organiserPhone || undefined,
+        staff_name: profile?.display_name || user?.email || undefined,
+        staff_email: user?.email || undefined,
       },
       wtp_selections: wtpSelections,
       custom_instructions: state.emailPurpose || undefined,

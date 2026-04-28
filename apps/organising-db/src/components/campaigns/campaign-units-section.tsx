@@ -218,9 +218,6 @@ export function CampaignUnitsSection({
         .order("display_order", { ascending: true })
         .order("name", { ascending: true });
       if (error) throw error;
-      // #region agent log
-      fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'18154f'},body:JSON.stringify({sessionId:'18154f',hypothesisId:'D',location:'campaign-units-section.tsx:ous-queryFn',message:'ous loaded',data:{count:(data??[]).length,ouIds:(data??[]).map((o: {ou_id:number})=>o.ou_id)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       return data ?? [];
     },
   });
@@ -231,9 +228,6 @@ export function CampaignUnitsSection({
     queryKey: ["campaign-worker-ou", campaignId, ouIdsKey],
     queryFn: async () => {
       const ouIds = ous.map((o: { ou_id: number }) => o.ou_id);
-      // #region agent log
-      fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'18154f'},body:JSON.stringify({sessionId:'18154f',hypothesisId:'B+D',location:'campaign-units-section.tsx:ouAssignments-queryFn',message:'queryFn fired',data:{ouIds,ouIdsKey,ouCount:ous.length},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       if (ouIds.length === 0) return [];
       const { data, error } = await supabase
         .from("campaign_worker_ou")
@@ -243,10 +237,6 @@ export function CampaignUnitsSection({
         )
         .in("ou_id", ouIds);
       if (error) throw error;
-      // #region agent log
-      const sample = (data ?? []).slice(0, 3).map((r: Record<string, unknown>) => ({ id: r.id, worker_id: r.worker_id, worker: r.worker }));
-      fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'18154f'},body:JSON.stringify({sessionId:'18154f',hypothesisId:'A',location:'campaign-units-section.tsx:ouAssignments-result',message:'ouAssignments data received',data:{totalRows:(data??[]).length,sample},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       return data ?? [];
     },
     enabled: ous.length > 0,
@@ -973,9 +963,6 @@ export function CampaignUnitsSection({
                         first_name: string;
                         last_name: string;
                       } | null;
-                      // #region agent log
-                      if (!w) { fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'18154f'},body:JSON.stringify({sessionId:'18154f',hypothesisId:'A+E',location:'campaign-units-section.tsx:bullet-render',message:'worker null/falsy at render',data:{rowId:row.id,worker_id:row.worker_id,wr,wrIsArray:Array.isArray(wr)},timestamp:Date.now()})}).catch(()=>{}); }
-                      // #endregion
                       return (
                         <li key={row.id}>
                           {w ? `${w.first_name} ${w.last_name}` : "—"}

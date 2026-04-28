@@ -111,7 +111,7 @@ export function StageProgressBar({ campaignId, currentStageNumber, stages }: Sta
       </div>
 
       <Dialog open={infoStage !== null} onOpenChange={(open) => !open && setInfoStage(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
           {infoStage !== null && (
             <>
               <DialogHeader>

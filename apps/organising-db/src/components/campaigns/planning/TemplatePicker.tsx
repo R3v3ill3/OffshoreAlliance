@@ -83,7 +83,7 @@ export function TemplatePicker({
 
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-5xl min-w-[800px] max-h-[80vh] overflow-y-auto resize-x">
+      <DialogContent className="max-w-5xl min-w-[800px] max-h-[80vh] overflow-y-auto resize-x" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />

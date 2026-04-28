@@ -45,7 +45,8 @@ export function useParticipationPredicate(
         .order("created_at", { ascending: false })
         .limit(1);
       if (error) throw error;
-      return (data ?? [])[0] as { activity_id: number } | undefined;
+      const first = (data ?? [])[0] as { activity_id: number } | undefined;
+      return first ?? null;
     },
     enabled: source.kind === "latest",
   });

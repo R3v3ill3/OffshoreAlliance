@@ -708,7 +708,7 @@ export function StepAllocateWorkers({
             Back
           </Button>
           <Button onClick={onContinue} disabled={isPending}>
-            {isPending ? "Saving…" : "Finish"}
+            {isPending ? "Saving…" : "Next step"}
           </Button>
         </div>
       </CardContent>

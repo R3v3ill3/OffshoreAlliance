@@ -1153,6 +1153,7 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
           </AccordionTrigger>
           <AccordionContent>
             <StepCampaignAmbitions
+              campaignId={campaignId}
               ambitions={campaignAmbitions}
               setAmbitions={setCampaignAmbitions}
               isPending={saveAmbitionsMutation.isPending}

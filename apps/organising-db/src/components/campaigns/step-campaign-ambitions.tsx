@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -22,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { ArrowLeft, Plus, Trash2, Target } from "lucide-react";
 import type { CampaignAmbitionCategory } from "@/types/database";
+import { isWorkerMemberLike } from "@/lib/campaign/constants";
 
 export interface CampaignAmbitionDraft {
   draft_id: string;
@@ -38,6 +41,7 @@ export interface CampaignAmbitionDraft {
 }
 
 interface StepCampaignAmbitionsProps {
+  campaignId: number;
   ambitions: CampaignAmbitionDraft[];
   setAmbitions: (next: CampaignAmbitionDraft[]) => void;
   isPending: boolean;
@@ -159,7 +163,18 @@ function newDraftId(): string {
   return `draft_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function normalizeWorkerRel<T>(rel: T | T[] | null | undefined): T | null {
+  if (rel == null) return null;
+  return Array.isArray(rel) ? (rel[0] ?? null) : rel;
+}
+
+function pctOf(n: number, total: number): string {
+  if (total === 0) return "0%";
+  return `${Math.round((n / total) * 100)}%`;
+}
+
 export function StepCampaignAmbitions({
+  campaignId,
   ambitions,
   setAmbitions,
   isPending,
@@ -167,6 +182,8 @@ export function StepCampaignAmbitions({
   onContinue,
   onSkip,
 }: StepCampaignAmbitionsProps) {
+  const supabase = createClient();
+
   const [pendingByCategory, setPendingByCategory] = useState<
     Record<CampaignAmbitionCategory, string>
   >({
@@ -175,6 +192,88 @@ export function StepCampaignAmbitions({
     activism: "",
     industrial_outcomes: "",
   });
+
+  // ── Current situation baseline ─────────────────────────────────────────────
+  // Fetch membership & leadership data for workers already on this campaign.
+  const { data: memberRows = [] } = useQuery({
+    queryKey: ["step-ambitions-members", campaignId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campaign_worker_membership")
+        .select(
+          `worker_id, worker:workers(
+            worker_id, is_hsr, is_bargaining_rep,
+            member_role_type:member_role_types(role_name),
+            union_membership_type:union_membership_types(type_name)
+          )`
+        )
+        .eq("campaign_id", campaignId);
+      if (error) throw error;
+      return (data ?? []) as unknown as Array<{
+        worker_id: number;
+        worker: {
+          worker_id: number;
+          is_hsr: boolean | null;
+          is_bargaining_rep: boolean | null;
+          member_role_type: { role_name: string } | { role_name: string }[] | null;
+          union_membership_type: { type_name: string } | { type_name: string }[] | null;
+        } | null;
+      }>;
+    },
+    enabled: !!campaignId,
+    staleTime: 30_000,
+  });
+
+  // Fetch assessment ratings to compute activism baseline.
+  const { data: ratingRows = [] } = useQuery({
+    queryKey: ["step-ambitions-ratings", campaignId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campaign_worker_rating_summary")
+        .select("worker_id, has_supportive_activity_rating")
+        .eq("campaign_id", campaignId);
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        worker_id: number;
+        has_supportive_activity_rating: boolean | null;
+      }>;
+    },
+    enabled: !!campaignId,
+    staleTime: 30_000,
+  });
+
+  const baseline = useMemo(() => {
+    const total = memberRows.length;
+    let members = 0;
+    let delegates = 0;
+    let activists = 0;
+    let contacts = 0;
+    let hsrs = 0;
+    let bargainingReps = 0;
+
+    for (const row of memberRows) {
+      const w = normalizeWorkerRel(row.worker);
+      if (!w) continue;
+      const mt = normalizeWorkerRel(w.member_role_type);
+      const um = normalizeWorkerRel(w.union_membership_type);
+      const roleName = (mt as { role_name?: string } | null)?.role_name ?? null;
+      const typeName = (um as { type_name?: string } | null)?.type_name ?? null;
+
+      if (isWorkerMemberLike({ unionMembershipTypeName: typeName, memberRoleName: roleName, isBargainingRep: w.is_bargaining_rep })) {
+        members++;
+      }
+      if (roleName === "delegate") delegates++;
+      else if (roleName === "activist" || roleName === "Activist") activists++;
+      else if (roleName === "contact") contacts++;
+      if (w.is_hsr) hsrs++;
+      if (w.is_bargaining_rep) bargainingReps++;
+    }
+
+    const leadersTotal = delegates + activists + contacts + hsrs + bargainingReps;
+    const supportiveRatings = ratingRows.filter((r) => r.has_supportive_activity_rating).length;
+
+    return { total, members, delegates, activists, contacts, hsrs, bargainingReps, leadersTotal, supportiveRatings };
+  }, [memberRows, ratingRows]);
 
   const grouped = useMemo(() => {
     const map: Record<CampaignAmbitionCategory, CampaignAmbitionDraft[]> = {
@@ -266,6 +365,54 @@ export function StepCampaignAmbitions({
               <p className="text-xs text-muted-foreground">
                 {CATEGORY_DESCRIPTIONS[category]}
               </p>
+
+              {/* Current situation baseline — shown for categories with measurable data */}
+              {category === "membership" && baseline.total > 0 && (
+                <div className="rounded-md bg-muted/50 border px-3 py-2 text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">Starting point: </span>
+                  <span>
+                    {baseline.members} member{baseline.members !== 1 ? "s" : ""}{" "}
+                    ({pctOf(baseline.members, baseline.total)} of {baseline.total} named workers)
+                  </span>
+                </div>
+              )}
+              {category === "member_leaders" && baseline.total > 0 && (
+                <div className="rounded-md bg-muted/50 border px-3 py-2 text-xs text-muted-foreground space-y-0.5">
+                  <div>
+                    <span className="font-semibold text-foreground">Starting point: </span>
+                    <span>
+                      {baseline.leadersTotal} leader{baseline.leadersTotal !== 1 ? "s" : ""}{" "}
+                      ({pctOf(baseline.leadersTotal, baseline.total)} of {baseline.total})
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 pl-1">
+                    {[
+                      { label: "Delegates", value: baseline.delegates },
+                      { label: "Activists", value: baseline.activists },
+                      { label: "Contacts", value: baseline.contacts },
+                      { label: "HSRs", value: baseline.hsrs },
+                      { label: "Bargaining reps", value: baseline.bargainingReps },
+                    ].map(({ label, value }) => (
+                      <span key={label}>
+                        <span className="text-foreground font-medium">{value}</span> {label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {category === "activism" && (
+                <div className="rounded-md bg-muted/50 border px-3 py-2 text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">Starting point: </span>
+                  <span>
+                    {baseline.supportiveRatings} worker{baseline.supportiveRatings !== 1 ? "s" : ""} with supportive activity ratings
+                    {baseline.supportiveRatings === 0 && baseline.total > 0 && (
+                      <span className="ml-1 italic">
+                        — assessments are recorded during the campaign as organisers make contact.
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )}
 
               {items.length > 0 && (
                 <div className="space-y-2">

@@ -1368,6 +1368,7 @@ export function CampaignWizard() {
       {/* ── Step 7: Campaign-level ambitions ────────────────────────────── */}
       {step === 7 && campaignId && (
         <StepCampaignAmbitions
+          campaignId={campaignId}
           ambitions={campaignAmbitions}
           setAmbitions={setCampaignAmbitions}
           isPending={saveCampaignAmbitionsMutation.isPending}

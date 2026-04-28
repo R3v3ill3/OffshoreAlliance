@@ -29,6 +29,7 @@ import {
   Users,
   CheckSquare,
   Square,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -601,31 +602,57 @@ export function StepAllocateWorkers({
                           )}
                         </td>
                         <td className="p-2">
-                          <div className="flex flex-wrap gap-1">
+                          <div className="flex flex-wrap gap-1 items-center">
                             {units.length === 0 && (
                               <span className="text-xs text-muted-foreground">
                                 No units defined
                               </span>
                             )}
-                            {units.map((u) => {
-                              const isOn = allocated.has(u.ou_id);
-                              return (
+                            {/* Show only allocated units as removable chips */}
+                            {units
+                              .filter((u) => allocated.has(u.ou_id))
+                              .map((u) => (
                                 <button
                                   key={u.ou_id}
                                   type="button"
+                                  title="Remove from this unit"
                                   onClick={() =>
-                                    toggleWorkerUnit(w.worker_id, u.ou_id, !isOn)
+                                    toggleWorkerUnit(w.worker_id, u.ou_id, false)
                                   }
-                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs border transition-colors ${
-                                    isOn
-                                      ? "bg-blue-100 border-blue-300 text-blue-900"
-                                      : "bg-transparent border-muted-foreground/20 text-muted-foreground hover:bg-muted"
-                                  }`}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border bg-primary/10 border-primary/20 text-primary hover:bg-primary/20 transition-colors"
                                 >
                                   {u.name}
+                                  <X className="h-2.5 w-2.5 opacity-60" />
                                 </button>
-                              );
-                            })}
+                              ))}
+                            {/* Compact picker to add worker to an additional unit */}
+                            {units.length > 0 &&
+                              units.some((u) => !allocated.has(u.ou_id)) && (
+                                <Select
+                                  value=""
+                                  onValueChange={(v) => {
+                                    if (!v) return;
+                                    toggleWorkerUnit(w.worker_id, Number(v), true);
+                                  }}
+                                >
+                                  <SelectTrigger className="h-5 w-auto px-1.5 text-xs rounded-full border-dashed border-muted-foreground/40 gap-0 [&>svg]:hidden">
+                                    <span className="text-muted-foreground">+ add</span>
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {units
+                                      .filter((u) => !allocated.has(u.ou_id))
+                                      .map((u) => (
+                                        <SelectItem
+                                          key={u.ou_id}
+                                          value={String(u.ou_id)}
+                                          className="text-xs"
+                                        >
+                                          {u.name}
+                                        </SelectItem>
+                                      ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
                           </div>
                         </td>
                       </tr>

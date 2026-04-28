@@ -703,15 +703,75 @@ export function CampaignWizard() {
         const { data: workerRows } = await wq;
 
         for (const w of workerRows ?? []) {
-          // Prefer worksite-matched unit; fall back to employer-matched.
-          const matchedUnit =
-            worksiteUnits.find((u) => u.unit_basis?.worksite_id === w.worksite_id) ??
-            employerUnits.find((u) => u.unit_basis?.employer_id === w.employer_id);
-          if (!matchedUnit?.ou_id) continue;
+          // Allocate to ALL matching units — a worker can be in both their
+          // worksite unit and their employer unit simultaneously.
+          const wsUnit = worksiteUnits.find(
+            (u) => u.unit_basis?.worksite_id === w.worksite_id
+          );
+          const empUnit = employerUnits.find(
+            (u) => u.unit_basis?.employer_id === w.employer_id
+          );
+          const matchedOuIds: number[] = [];
+          if (wsUnit?.ou_id != null) matchedOuIds.push(wsUnit.ou_id);
+          if (empUnit?.ou_id != null) matchedOuIds.push(empUnit.ou_id);
+          if (matchedOuIds.length === 0) continue;
           allWorkerIds.add(w.worker_id);
           const set = autoAllocations[w.worker_id] ?? new Set<number>();
-          set.add(matchedUnit.ou_id as number);
+          for (const ouId of matchedOuIds) set.add(ouId);
           autoAllocations[w.worker_id] = set;
+        }
+
+        // Compute proportional estimates: each scope unit's share of the total
+        // campaign estimate, based on actual worker counts. This refines the
+        // even distribution set in step 5 when the toggles were clicked.
+        const totalCampaignEstimate = basics.total_worker_estimate
+          ? Number(basics.total_worker_estimate)
+          : null;
+
+        if (totalCampaignEstimate != null && totalCampaignEstimate > 0) {
+          // Count unique workers per unit.
+          const workerCountPerUnit = new Map<number, number>();
+          for (const set of Object.values(autoAllocations)) {
+            for (const ouId of set) {
+              workerCountPerUnit.set(ouId, (workerCountPerUnit.get(ouId) ?? 0) + 1);
+            }
+          }
+          const totalUniqueWorkers = allWorkerIds.size;
+
+          if (totalUniqueWorkers > 0) {
+            const scopeUnitIds = [
+              ...worksiteUnits.map((u) => u.ou_id!),
+              ...employerUnits.map((u) => u.ou_id!),
+            ].filter((id) => id != null);
+
+            // Sort descending by worker count so the last (smallest) unit
+            // absorbs any rounding remainder.
+            scopeUnitIds.sort(
+              (a, b) => (workerCountPerUnit.get(b) ?? 0) - (workerCountPerUnit.get(a) ?? 0)
+            );
+
+            const unitEstimates = new Map<number, number>();
+            let remainingEstimate = totalCampaignEstimate;
+            for (let i = 0; i < scopeUnitIds.length; i++) {
+              const ouId = scopeUnitIds[i];
+              if (i === scopeUnitIds.length - 1) {
+                unitEstimates.set(ouId, Math.max(0, remainingEstimate));
+              } else {
+                const unitWorkers = workerCountPerUnit.get(ouId) ?? 0;
+                const est = Math.round(
+                  (unitWorkers / totalUniqueWorkers) * totalCampaignEstimate
+                );
+                unitEstimates.set(ouId, est);
+                remainingEstimate -= est;
+              }
+            }
+
+            updatedUnits = updatedUnits.map((u) =>
+              u.ou_id != null && unitEstimates.has(u.ou_id)
+                ? { ...u, total_workers_estimated: unitEstimates.get(u.ou_id)! }
+                : u
+            );
+          }
         }
       }
 
@@ -897,6 +957,7 @@ export function CampaignWizard() {
 
   const step1Valid =
     !!basics.name &&
+    !!basics.campaign_scope &&
     (basics.enterprise_agreement_subtype !== "replacement" || !!basics.replaced_agreement_id);
 
   // ── Guards ────────────────────────────────────────────────────────────────
@@ -1139,21 +1200,20 @@ export function CampaignWizard() {
                 )}
             </div>
             <div className="space-y-2">
-              <Label>Campaign scope</Label>
+              <Label>Campaign scope *</Label>
               <Select
-                value={basics.campaign_scope || "__none__"}
+                value={basics.campaign_scope || ""}
                 onValueChange={(v) =>
                   setBasics({
                     ...basics,
-                    campaign_scope: v === "__none__" ? "" : (v as CampaignScopeType),
+                    campaign_scope: v as CampaignScopeType,
                   })
                 }
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select scope" />
+                  <SelectValue placeholder="Select scope…" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">Not set</SelectItem>
                   {SCOPES.map((s) => (
                     <SelectItem key={s} value={s}>
                       {CAMPAIGN_SCOPE_LABELS[s]}

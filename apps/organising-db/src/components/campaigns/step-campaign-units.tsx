@@ -185,16 +185,21 @@ export function StepCampaignUnits({
           .map((u) => u.unit_basis?.employer_id)
           .filter(Boolean)
       );
-      const additions: CampaignUnitDraft[] = employers
-        .filter((e) => !existingEmployerIds.has(e.employer_id))
-        .map((e) => ({
-          draft_id: newDraftId(),
-          ou_id: null,
-          ou_type: "employer",
-          name: e.employer_name,
-          total_workers_estimated: null,
-          unit_basis: { employer_id: e.employer_id },
-        }));
+      const newEmployers = employers.filter((e) => !existingEmployerIds.has(e.employer_id));
+      // Distribute estimate evenly across all employer units as a starting point;
+      // saveUnitsMutation refines this to proportional actuals on save.
+      const estimateEach =
+        totalWorkerEstimate != null && employers.length > 0
+          ? Math.round(totalWorkerEstimate / employers.length)
+          : null;
+      const additions: CampaignUnitDraft[] = newEmployers.map((e) => ({
+        draft_id: newDraftId(),
+        ou_id: null,
+        ou_type: "employer",
+        name: e.employer_name,
+        total_workers_estimated: estimateEach,
+        unit_basis: { employer_id: e.employer_id },
+      }));
       setUnits([...units, ...additions]);
     } else {
       setUnits(units.filter((u) => u.ou_type !== "employer"));
@@ -209,16 +214,21 @@ export function StepCampaignUnits({
           .map((u) => u.unit_basis?.worksite_id)
           .filter(Boolean)
       );
-      const additions: CampaignUnitDraft[] = worksites
-        .filter((w) => !existingWorksiteIds.has(w.worksite_id))
-        .map((w) => ({
-          draft_id: newDraftId(),
-          ou_id: null,
-          ou_type: "worksite",
-          name: w.worksite_name,
-          total_workers_estimated: null,
-          unit_basis: { worksite_id: w.worksite_id },
-        }));
+      const newWorksites = worksites.filter((w) => !existingWorksiteIds.has(w.worksite_id));
+      // Distribute estimate evenly across all worksite units as a starting point;
+      // saveUnitsMutation refines this to proportional actuals on save.
+      const estimateEach =
+        totalWorkerEstimate != null && worksites.length > 0
+          ? Math.round(totalWorkerEstimate / worksites.length)
+          : null;
+      const additions: CampaignUnitDraft[] = newWorksites.map((w) => ({
+        draft_id: newDraftId(),
+        ou_id: null,
+        ou_type: "worksite",
+        name: w.worksite_name,
+        total_workers_estimated: estimateEach,
+        unit_basis: { worksite_id: w.worksite_id },
+      }));
       setUnits([...units, ...additions]);
     } else {
       setUnits(units.filter((u) => u.ou_type !== "worksite"));

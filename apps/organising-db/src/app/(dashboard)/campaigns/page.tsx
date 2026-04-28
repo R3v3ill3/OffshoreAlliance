@@ -2,8 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
+import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import dynamic from "next/dynamic";
 import { Plus, Wand2, ExternalLink, Trash2, Megaphone, FileStack, Mail, Phone, Settings as SettingsIcon } from "lucide-react";
@@ -13,30 +12,15 @@ import { useAuth } from "@/lib/supabase/auth-context";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { CampaignType, CampaignStatus } from "@/types/database";
-import type { Database } from "@oa/db-types";
-import { resolveCampaignOrganiserId } from "@/lib/campaign/resolve-campaign-organiser";
-import { CampaignOrganiserSelect } from "@/components/campaigns/campaign-organiser-select";
 import {
   CampaignDeleteDialog,
   type CampaignDeleteTarget,
@@ -109,32 +93,18 @@ function formatDate(d: string | null) {
   }
 }
 
-const INITIAL_FORM = {
-  name: "",
-  description: "",
-  campaign_type: "organising" as CampaignType,
-  status: "planning" as CampaignStatus,
-  start_date: "",
-  end_date: "",
-  organiser_id: "",
-  notes: "",
-};
-
 /** Matches inactive `TabsTrigger` styling for outline-link actions in the tab bar. */
 const tabBarActionClassName =
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium text-muted-foreground ring-offset-background transition-all hover:bg-background/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 export default function CampaignsPage() {
   const router = useRouter();
-  const { user, profile, canWrite, isAdmin } = useAuth();
+  const { user, profile, canWrite } = useAuth();
   const supabase = createClient();
-  const queryClient = useQueryClient();
 
   const [deleteTarget, setDeleteTarget] = useState<CampaignDeleteTarget | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [organiserDialogKey, setOrganiserDialogKey] = useState(0);
-  const [form, setForm] = useState(INITIAL_FORM);
-  /** When null, filter defaults to the signed-in user’s organiser (if any), else "all". */
+  const [createSelectorOpen, setCreateSelectorOpen] = useState(false);
+  /** When null, filter defaults to the signed-in user's organiser (if any), else "all". */
   const [organiserFilterOverride, setOrganiserFilterOverride] = useState<string | null>(null);
 
   const selectedOrganiserId = useMemo(() => {
@@ -160,38 +130,6 @@ export default function CampaignsPage() {
       return (data ?? []) as unknown as CampaignRow[];
     },
     enabled: !!user,
-  });
-
-  const createMutation = useAuthAwareMutation({
-    mutationFn: async () => {
-      if (!user) throw new Error("Not signed in");
-
-      const resolvedOrganiserId = await resolveCampaignOrganiserId(supabase, form.organiser_id, {
-        currentUserId: user.id,
-        isAdmin,
-      });
-
-      const payload: Database["public"]["Tables"]["campaigns"]["Insert"] = {
-        name: form.name,
-        campaign_type: form.campaign_type,
-        status: form.status,
-      };
-      if (form.description) payload.description = form.description;
-      if (form.start_date) payload.start_date = form.start_date;
-      if (form.end_date) payload.end_date = form.end_date;
-      if (resolvedOrganiserId != null) payload.organiser_id = resolvedOrganiserId;
-      if (form.notes) payload.notes = form.notes;
-
-      const { error } = await supabase.from("campaigns").insert(payload);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
-      queryClient.invalidateQueries({ queryKey: ["organisers"] });
-      queryClient.invalidateQueries({ queryKey: ["user-profiles-staff-organiser-picker"] });
-      setDialogOpen(false);
-      setForm(INITIAL_FORM);
-    },
   });
 
   const filteredCampaigns = useMemo(() => {
@@ -274,6 +212,56 @@ export default function CampaignsPage() {
   return (
     <div className="space-y-6">
       <CampaignDeleteDialog campaign={deleteTarget} onClose={() => setDeleteTarget(null)} />
+
+      {/* Campaign creation selector dialog */}
+      <Dialog open={createSelectorOpen} onOpenChange={setCreateSelectorOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create a new campaign</DialogTitle>
+            <DialogDescription>
+              Choose how you&apos;d like to set up the campaign.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <button
+              type="button"
+              onClick={() => { setCreateSelectorOpen(false); router.push("/campaigns/new"); }}
+              className="flex items-start gap-4 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <div className="mt-0.5 shrink-0 rounded-md bg-primary/10 p-2 text-primary">
+                <Wand2 className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="font-semibold leading-tight">Campaign wizard</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Guided step-by-step setup. Walk through employers, worksites,
+                  agreements, worker estimates, units, ambitions, and hand off to
+                  the planner — all in one flow.
+                </p>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setCreateSelectorOpen(false); router.push("/campaigns/new/manual"); }}
+              className="flex items-start gap-4 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <div className="mt-0.5 shrink-0 rounded-md bg-muted p-2 text-muted-foreground">
+                <SettingsIcon className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="font-semibold leading-tight">Manual create</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Enter just the campaign name, type, and status to create the
+                  record instantly, then configure every section — employers,
+                  agreements, units, ambitions — from one settings page at your
+                  own pace. Best for power users who already know what they want.
+                </p>
+              </div>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Campaigns</h1>
       </div>
@@ -292,14 +280,14 @@ export default function CampaignsPage() {
           </TabsList>
           {canWrite && (
             <div className="inline-flex h-9 flex-wrap items-center justify-center gap-0 rounded-lg bg-muted p-1 text-muted-foreground sm:flex-nowrap">
-              <Link href="/campaigns/new" className={tabBarActionClassName}>
-                <Wand2 className="h-4 w-4 shrink-0" />
-                Campaign wizard
-              </Link>
-              <Link href="/campaigns/new/manual" className={tabBarActionClassName}>
-                <SettingsIcon className="h-4 w-4 shrink-0" />
-                Manual create
-              </Link>
+              <button
+                type="button"
+                onClick={() => setCreateSelectorOpen(true)}
+                className={tabBarActionClassName}
+              >
+                <Plus className="h-4 w-4 shrink-0" />
+                Create campaign
+              </button>
               <Link href="/campaigns/email-wizard" className={tabBarActionClassName}>
                 <Mail className="h-4 w-4 shrink-0" />
                 Email wizard
@@ -308,132 +296,6 @@ export default function CampaignsPage() {
                 <Phone className="h-4 w-4 shrink-0" />
                 Phone wizard
               </Link>
-              <Dialog
-                open={dialogOpen}
-                onOpenChange={(open) => {
-                  setDialogOpen(open);
-                  if (open) setOrganiserDialogKey((k) => k + 1);
-                }}
-              >
-                <DialogTrigger asChild>
-                  <button type="button" className={tabBarActionClassName}>
-                    <Plus className="h-4 w-4 shrink-0" />
-                    Create Campaign
-                  </button>
-                </DialogTrigger>
-                <DialogContent className="max-w-lg w-full max-h-[90vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>Create Campaign</DialogTitle>
-                    <DialogDescription>
-                      Set up a new organising or bargaining campaign.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="grid gap-4 py-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Name *</Label>
-                      <Input
-                        id="name"
-                        value={form.name}
-                        onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="description">Description</Label>
-                      <Textarea
-                        id="description"
-                        value={form.description}
-                        onChange={(e) => setForm({ ...form, description: e.target.value })}
-                        rows={3}
-                      />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Type *</Label>
-                        <Select
-                          value={form.campaign_type}
-                          onValueChange={(v) => setForm({ ...form, campaign_type: v as CampaignType })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="bargaining">Bargaining</SelectItem>
-                            <SelectItem value="organising">Organising</SelectItem>
-                            <SelectItem value="mobilisation">Mobilisation</SelectItem>
-                            <SelectItem value="political">Political</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Status *</Label>
-                        <Select
-                          value={form.status}
-                          onValueChange={(v) => setForm({ ...form, status: v as CampaignStatus })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="planning">Planning</SelectItem>
-                            <SelectItem value="active">Active</SelectItem>
-                            <SelectItem value="completed">Completed</SelectItem>
-                            <SelectItem value="suspended">Suspended</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="start_date">Start Date</Label>
-                        <Input
-                          id="start_date"
-                          type="date"
-                          value={form.start_date}
-                          onChange={(e) => setForm({ ...form, start_date: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="end_date">End Date</Label>
-                        <Input
-                          id="end_date"
-                          type="date"
-                          value={form.end_date}
-                          onChange={(e) => setForm({ ...form, end_date: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                    <CampaignOrganiserSelect
-                      key={organiserDialogKey}
-                      resetKey={organiserDialogKey}
-                      label="Organiser"
-                      value={form.organiser_id}
-                      onChange={(v) => setForm({ ...form, organiser_id: v === "__none__" ? "" : v })}
-                      allowNone
-                      autoDefaultToCurrentUser
-                    />
-                    <div className="space-y-2">
-                      <Label htmlFor="notes">Notes</Label>
-                      <Textarea
-                        id="notes"
-                        value={form.notes}
-                        onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                        rows={3}
-                      />
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={() => createMutation.mutate()}
-                      disabled={!form.name || createMutation.isPending}
-                    >
-                      {createMutation.isPending ? "Creating…" : "Create Campaign"}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
             </div>
           )}
         </div>

@@ -361,7 +361,22 @@ export function StepAgreements({
 
         {/* Picker */}
         <div className="space-y-2">
-          <Label className="text-sm font-medium">Add an agreement</Label>
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-medium">Add an agreement</Label>
+            {!isLoading && filtered.length > 0 && (
+              <span className="text-xs text-muted-foreground">
+                {filtered.length} agreement{filtered.length !== 1 ? "s" : ""}
+                {search
+                  ? " matching"
+                  : filtered.some((a) =>
+                      a.linked_employer_ids.some((id) => selectedEmployers.includes(id)) ||
+                      a.linked_worksite_ids.some((id) => selectedWorksites.includes(id))
+                    )
+                  ? " — linked shown first"
+                  : ""}
+              </span>
+            )}
+          </div>
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
             <Input
@@ -382,7 +397,7 @@ export function StepAgreements({
                 No matching agreements.
               </p>
             )}
-            {filtered.slice(0, 50).map((a) => {
+            {filtered.map((a) => {
               const empMatch = a.linked_employer_ids.some((id) =>
                 selectedEmployers.includes(id)
               );

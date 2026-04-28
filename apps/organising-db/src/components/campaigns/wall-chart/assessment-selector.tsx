@@ -133,6 +133,7 @@ export function AssessmentSelector({
         activityId: firstWithRating.activity_id,
         title: firstWithRating.title,
         isBinary: firstWithRating.is_binary,
+        supporterOutcomeValue: firstWithRating.supporter_outcome_value,
       });
     }
     // We intentionally omit `value` from deps — only run on options load.
@@ -155,6 +156,7 @@ export function AssessmentSelector({
       activityId: opt.activity_id,
       title: opt.title,
       isBinary: opt.is_binary,
+      supporterOutcomeValue: opt.supporter_outcome_value,
     });
   };
 

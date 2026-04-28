@@ -92,7 +92,7 @@ export function getWallChartDefaultCumulative(args: {
   isBargainingRep?: boolean | null;
 }): 1 | 2 | null {
   const r = args.memberRoleName;
-  if (r === "contact" || r === "Activist" || r === "delegate") return 1;
+  if (r === "contact" || r === "activist" || r === "delegate") return 1;
   if (args.isBargainingRep) return 1;
 
   const u = args.unionMembershipTypeName;

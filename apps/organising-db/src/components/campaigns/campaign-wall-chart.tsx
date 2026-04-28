@@ -464,6 +464,7 @@ export function CampaignWallChart({
     return {
       ratings: activityRatingsByWorker,
       isBinary: assessmentSelection.isBinary,
+      supportiveBinaryValue: assessmentSelection.supporterOutcomeValue,
     };
   }, [assessmentSelection, activityRatingsByWorker]);
 
@@ -651,8 +652,8 @@ export function CampaignWallChart({
           cumulative and L = last activity (hover for full labels). Unrated cells may use membership
           or leadership defaults for background colour only (see hover text).{" "}
           <span className="text-foreground/90">
-            Campaign-level unmapped slots are unnamed gaps from the worker estimate; unassigned are
-            named members not placed in an organising unit yet.
+            Campaign-level unmapped slots are unnamed gaps from the worker estimate (up to 40
+            displayed); unassigned are named members not placed in an organising unit yet.
           </span>{" "}
           Click a name to edit (staff only).
         </p>
@@ -769,7 +770,7 @@ export function CampaignWallChart({
               </div>
               {campaignGreySlots > 40 && (
                 <p className="text-xs text-muted-foreground mt-2">
-                  +{campaignGreySlots - 40} more unmapped slots
+                  +{campaignGreySlots - 40} more slots not shown (display capped at 40)
                 </p>
               )}
             </CardContent>

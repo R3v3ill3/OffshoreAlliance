@@ -40,6 +40,8 @@ export type AssessmentSelection =
       activityId: number;
       title: string;
       isBinary: boolean;
+      /** The binary_value that counts as a supportive outcome (e.g. 'attended', 'yes'). */
+      supporterOutcomeValue: string | null;
     };
 
 /** A single worker's rating for a specific activity, collapsed to one row. */
@@ -95,6 +97,7 @@ export function humanizeOuType(ouType: string | null | undefined): string {
     network: "Network",
     job_type: "Job type",
     worksite: "Worksite",
+    employer: "Employer",
     ethnic_community: "Community",
     crew_rotation: "Crew rotation",
     accommodation: "Accommodation",

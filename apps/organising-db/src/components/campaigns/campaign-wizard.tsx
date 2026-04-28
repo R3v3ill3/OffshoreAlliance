@@ -591,8 +591,18 @@ export function CampaignWizard() {
   });
 
   const saveUnitsMutation = useAuthAwareMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<{
+      updatedUnits: CampaignUnitDraft[];
+      autoAllocations: WorkerUnitAllocation;
+      autoWorkerIds: number[];
+    }> => {
       if (!campaignId) throw new Error("No campaign");
+
+      // Capture the final unit list (with server ou_ids) outside withSessionGuard
+      // so we can return it to onSuccess, which applies all state updates in one
+      // React batch alongside setStep(6). This prevents step 6 from rendering
+      // with stale ou_ids (causing "No units defined").
+      let updatedUnits: CampaignUnitDraft[] = units;
 
       await withSessionGuard("saveUnitsMutation", async () => {
         // Existing rows currently in DB.
@@ -653,17 +663,68 @@ export function CampaignWizard() {
             const id = insertedIds[i];
             if (id != null) draftIdToOuId.set(d.draft_id, id);
           });
-          setUnits(
-            units.map((u) =>
-              u.ou_id == null && draftIdToOuId.has(u.draft_id)
-                ? { ...u, ou_id: draftIdToOuId.get(u.draft_id)! }
-                : u
-            )
+          // Build the updated array but do NOT call setUnits here — defer to
+          // onSuccess so this update is batched with setStep(6).
+          updatedUnits = units.map((u) =>
+            u.ou_id == null && draftIdToOuId.has(u.draft_id)
+              ? { ...u, ou_id: draftIdToOuId.get(u.draft_id)! }
+              : u
           );
         }
       });
+
+      // Auto-allocate workers to units that were created from the campaign
+      // scope (worksites or employers). Workers are matched by their
+      // worksite_id (preferred) or employer_id and placed into the
+      // corresponding unit automatically so step 6 starts pre-populated.
+      const worksiteUnits = updatedUnits.filter(
+        (u) => u.unit_basis?.worksite_id != null && u.ou_id != null
+      );
+      const employerUnits = updatedUnits.filter(
+        (u) => u.unit_basis?.employer_id != null && u.ou_id != null
+      );
+
+      const autoAllocations: WorkerUnitAllocation = {};
+      const allWorkerIds = new Set<number>(selectedWorkers);
+
+      if (worksiteUnits.length > 0 || employerUnits.length > 0) {
+        // Fetch active workers scoped to this campaign's employers / worksites.
+        let wq = supabase
+          .from("workers")
+          .select("worker_id, employer_id, worksite_id")
+          .eq("is_active", true)
+          .limit(10000);
+        if (selectedEmployers.length > 0) {
+          wq = wq.in("employer_id", selectedEmployers);
+        }
+        if (selectedWorksites.length > 0 && !worksiteSectorWide) {
+          wq = wq.in("worksite_id", selectedWorksites);
+        }
+        const { data: workerRows } = await wq;
+
+        for (const w of workerRows ?? []) {
+          // Prefer worksite-matched unit; fall back to employer-matched.
+          const matchedUnit =
+            worksiteUnits.find((u) => u.unit_basis?.worksite_id === w.worksite_id) ??
+            employerUnits.find((u) => u.unit_basis?.employer_id === w.employer_id);
+          if (!matchedUnit?.ou_id) continue;
+          allWorkerIds.add(w.worker_id);
+          const set = autoAllocations[w.worker_id] ?? new Set<number>();
+          set.add(matchedUnit.ou_id as number);
+          autoAllocations[w.worker_id] = set;
+        }
+      }
+
+      return { updatedUnits, autoAllocations, autoWorkerIds: Array.from(allWorkerIds) };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      // Apply all state updates together so step 6 renders with the correct
+      // units (ou_ids resolved), allocations, and worker list in one pass.
+      setUnits(result.updatedUnits);
+      if (Object.keys(result.autoAllocations).length > 0) {
+        setWorkerUnitAllocations(result.autoAllocations);
+        setSelectedWorkers(result.autoWorkerIds);
+      }
       queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });
       queryClient.invalidateQueries({ queryKey: ["campaign-wizard-scope", campaignId] });
       setStep(6);

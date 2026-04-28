@@ -162,7 +162,10 @@ function DetailsTab({
       if (error) throw error;
     },
     onSuccess: () => {
+      // Invalidate both queries: members for the new role label on tiles, and
+      // rating-summary because cumulative_rating is VIEW-computed from the role.
       qc.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
+      qc.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
     },
   });
 

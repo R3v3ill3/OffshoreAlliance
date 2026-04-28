@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import type { TheoryOfWinningRequest } from '@/types/planner-types'
+import { loadSituationContextString } from '@/lib/situation-analysis/serialise'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -82,6 +83,19 @@ export async function POST(req: NextRequest) {
     const body: TheoryOfWinningRequest = await req.json()
     const ctx = body.campaign_context
 
+    // Auto-load the campaign's saved situation analysis (employer state,
+    // top issues, predicted playbook, populations, leverage maths) when
+    // the caller hasn't already supplied one. The block grounds the
+    // theory in the organiser-confirmed situation rather than generic
+    // patterns the model might otherwise default to.
+    if (!body.situation_analysis_context && body.campaign_id) {
+      const situationCtx = await loadSituationContextString(
+        supabase,
+        body.campaign_id
+      )
+      if (situationCtx) body.situation_analysis_context = situationCtx
+    }
+
     // Build the user message
     const userMessage = `
 Campaign: ${ctx.agreement_name}
@@ -103,6 +117,8 @@ ${body.where_to_play.map((w) => `- [${w.category}] ${w.is_exclusion ? 'NOT playi
 
 CAPACITIES (Resources we have/need):
 ${body.capacities.length > 0 ? body.capacities.map((c) => `- [${c.category}] ${c.option_text}: ${c.status}`).join('\n') : 'Not yet assessed'}
+
+${body.situation_analysis_context ? `${body.situation_analysis_context}\n\nGround your theory of winning in this organiser-confirmed situation. Predicted employer moves should inform employer_response_considerations and risk_assessment; top issues with heat should inform member_agency_assessment and the if/then's framing; information_gaps may surface as recommendations rather than fabricated specifics.` : ''}
 
 ${body.previous_stage_theory ? `PREVIOUS STAGE THEORY:\n${body.previous_stage_theory}\n\nPlease ensure continuity and logical progression from the previous stage's theory.` : ''}
 

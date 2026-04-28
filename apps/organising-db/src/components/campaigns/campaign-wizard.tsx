@@ -50,6 +50,11 @@ import {
   StepCampaignAmbitions,
   type CampaignAmbitionDraft,
 } from "@/components/campaigns/step-campaign-ambitions";
+import { StepSituationAnalysis } from "@/components/campaigns/step-situation-analysis";
+import {
+  emptySituationAnalysisDraft,
+  type SituationAnalysisDraft,
+} from "@/lib/situation-analysis/types";
 import type {
   CampaignAmbitionCategory,
   CampaignOuType,
@@ -134,10 +139,13 @@ export function CampaignWizard() {
     if (!initialCid) return 1;
     if (editMode) return 1;
     // Restore the step the user was on when they last left the wizard.
+    // Step 7 (Situation Analysis) was inserted between step 6 (workers) and
+    // the former step 7 (ambitions); ambitions is now step 8 and the
+    // bargaining plan handoff is step 9.
     const stepParam = searchParams.get("step");
     if (stepParam) {
       const n = Number(stepParam);
-      if (Number.isInteger(n) && n >= 2 && n <= 8) return n;
+      if (Number.isInteger(n) && n >= 2 && n <= 9) return n;
     }
     return 2;
   });
@@ -198,6 +206,9 @@ export function CampaignWizard() {
   const [campaignAmbitions, setCampaignAmbitions] = useState<
     CampaignAmbitionDraft[]
   >([]);
+  const [situationDraft, setSituationDraft] = useState<SituationAnalysisDraft>(
+    () => emptySituationAnalysisDraft()
+  );
 
   // ── Queries ───────────────────────────────────────────────────────────────
 
@@ -220,7 +231,7 @@ export function CampaignWizard() {
     queryKey: ["campaign-wizard-scope", campaignId],
     queryFn: async () => {
       const cid = campaignId!;
-      const [ce, cw, cw2, ca, cou, cwo, cam] = await Promise.all([
+      const [ce, cw, cw2, ca, cou, cwo, cam, csa] = await Promise.all([
         supabase.from("campaign_employers").select("employer_id").eq("campaign_id", cid),
         supabase.from("campaign_worksites").select("worksite_id, sector_wide").eq("campaign_id", cid),
         supabase.from("campaign_worker_membership").select("worker_id").eq("campaign_id", cid),
@@ -245,6 +256,17 @@ export function CampaignWizard() {
           )
           .eq("campaign_id", cid)
           .order("sort_order", { ascending: true }),
+        // Situation analysis — current row only. Falls through silently if
+        // the table doesn't exist (older environments without the migration).
+        supabase
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .from("campaign_situation_analyses" as any)
+          .select(
+            "situation_id, employer_interaction_state, employer_state_notes, balloted_count, top_issues, upcoming_workforce_changes, employer_relationships, hr_posture, union_history, strategic_context_summary, company_playbook, workforce_populations, leverage_and_maths, information_gaps"
+          )
+          .eq("campaign_id", cid)
+          .eq("is_current", true)
+          .maybeSingle(),
       ]);
       if (ce.error) throw ce.error;
       if (cw.error) throw cw.error;
@@ -255,6 +277,12 @@ export function CampaignWizard() {
       const ouRows = cou.error ? [] : (cou.data ?? []);
       const cwoRows = cwo.error ? [] : (cwo.data ?? []);
       const camRows = cam.error ? [] : (cam.data ?? []);
+      // Returns null when the campaign has no situation analysis yet, or
+      // when the table is missing on older environments.
+      const situationRow =
+        csa.error || !csa.data
+          ? null
+          : (csa.data as Record<string, unknown>);
       const worksiteRows = cw.data ?? [];
       const sectorWide = worksiteRows.some((w) => w.sector_wide && w.worksite_id == null);
       return {
@@ -318,6 +346,48 @@ export function CampaignWizard() {
           target_date: r.target_date ?? "",
           notes: r.notes ?? "",
         })) satisfies CampaignAmbitionDraft[],
+        situationDraft: situationRow
+          ? ({
+              situation_id: (situationRow.situation_id as number) ?? null,
+              employer_interaction_state:
+                (situationRow.employer_interaction_state as
+                  | SituationAnalysisDraft["employer_interaction_state"]
+                  | null) ?? null,
+              employer_state_notes:
+                (situationRow.employer_state_notes as string | null) ?? "",
+              balloted_count:
+                (situationRow.balloted_count as number | null) ?? null,
+              top_issues:
+                (situationRow.top_issues as SituationAnalysisDraft["top_issues"]) ??
+                [],
+              upcoming_workforce_changes:
+                (situationRow.upcoming_workforce_changes as SituationAnalysisDraft["upcoming_workforce_changes"]) ??
+                [],
+              employer_relationships:
+                (situationRow.employer_relationships as SituationAnalysisDraft["employer_relationships"]) ??
+                [],
+              hr_posture:
+                (situationRow.hr_posture as SituationAnalysisDraft["hr_posture"]) ??
+                {},
+              union_history:
+                (situationRow.union_history as SituationAnalysisDraft["union_history"]) ??
+                {},
+              strategic_context_summary:
+                (situationRow.strategic_context_summary as string | null) ?? "",
+              company_playbook:
+                (situationRow.company_playbook as SituationAnalysisDraft["company_playbook"]) ??
+                [],
+              workforce_populations:
+                (situationRow.workforce_populations as SituationAnalysisDraft["workforce_populations"]) ??
+                [],
+              leverage_and_maths:
+                (situationRow.leverage_and_maths as SituationAnalysisDraft["leverage_and_maths"]) ??
+                {},
+              information_gaps:
+                (situationRow.information_gaps as SituationAnalysisDraft["information_gaps"]) ??
+                [],
+            } satisfies SituationAnalysisDraft)
+          : null,
       };
     },
     enabled: !!user && !!campaignId,
@@ -399,6 +469,9 @@ export function CampaignWizard() {
     setUnits(wizardScope.units);
     setWorkerUnitAllocations(wizardScope.workerUnitAllocations);
     setCampaignAmbitions(wizardScope.campaignAmbitions);
+    if (wizardScope.situationDraft) {
+      setSituationDraft(wizardScope.situationDraft);
+    }
     scopeHydratedFor.current = campaignId;
   }, [campaignId, wizardScopeLoading, wizardScope]);
 
@@ -856,10 +929,78 @@ export function CampaignWizard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });
       queryClient.invalidateQueries({ queryKey: ["campaign-members", campaignId] });
-      // After workers, go to campaign ambitions (step 7) for every campaign
-      // type — campaign-level membership / leader / activism / outcome goals
-      // apply to organising and mobilisation campaigns too, not just bargaining.
+      // After workers, go to situation analysis (step 7). Ambitions are
+      // step 8 once the campaign-level context is captured; the situation
+      // analysis runs for every campaign type because predicted employer
+      // moves / top issues / populations feed downstream comms drafting
+      // for organising and mobilisation campaigns too.
       setStep(7);
+    },
+  });
+
+  const saveSituationAnalysisMutation = useAuthAwareMutation({
+    mutationFn: async () => {
+      if (!campaignId) throw new Error("No campaign");
+
+      await withSessionGuard("saveSituationAnalysisMutation", async () => {
+        // Upsert the current situation analysis row for this campaign.
+        // The unique partial index (campaign_id where is_current) means
+        // there is at most one per campaign — we update when present and
+        // insert when not.
+        const payload = {
+          campaign_id: campaignId,
+          version: 1,
+          is_current: true,
+          employer_interaction_state: situationDraft.employer_interaction_state,
+          employer_state_notes: situationDraft.employer_state_notes || null,
+          balloted_count: situationDraft.balloted_count,
+          top_issues: situationDraft.top_issues,
+          upcoming_workforce_changes: situationDraft.upcoming_workforce_changes,
+          employer_relationships: situationDraft.employer_relationships,
+          hr_posture: situationDraft.hr_posture,
+          union_history: situationDraft.union_history,
+          strategic_context_summary:
+            situationDraft.strategic_context_summary || null,
+          company_playbook: situationDraft.company_playbook,
+          workforce_populations: situationDraft.workforce_populations,
+          leverage_and_maths: situationDraft.leverage_and_maths,
+          information_gaps: situationDraft.information_gaps,
+        };
+
+        if (situationDraft.situation_id != null) {
+          const { error } = await supabase
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .from("campaign_situation_analyses" as any)
+            .update(payload)
+            .eq("situation_id", situationDraft.situation_id);
+          if (error) throw error;
+        } else {
+          const { data, error } = await supabase
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .from("campaign_situation_analyses" as any)
+            .insert(payload)
+            .select("situation_id")
+            .single();
+          if (error) throw error;
+          const inserted = data as { situation_id: number } | null;
+          if (inserted?.situation_id != null) {
+            setSituationDraft({
+              ...situationDraft,
+              situation_id: inserted.situation_id,
+            });
+          }
+        }
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });
+      queryClient.invalidateQueries({
+        queryKey: ["campaign-wizard-scope", campaignId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["campaign-situation-analysis", campaignId],
+      });
+      setStep(8);
     },
   });
 
@@ -952,8 +1093,10 @@ export function CampaignWizard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });
       queryClient.invalidateQueries({ queryKey: ["campaign-wizard-scope", campaignId] });
+      // Bargaining campaigns get the OA Planner handoff (step 9 since
+      // situation analysis added step 7); other types finish at ambitions.
       if (basics.campaign_type === "bargaining") {
-        setStep(8);
+        setStep(9);
       } else {
         router.push(`/campaigns/${campaignId}`);
       }
@@ -977,6 +1120,7 @@ export function CampaignWizard() {
     saveEstimateMutation,
     saveUnitsMutation,
     saveWorkersMutation,
+    saveSituationAnalysisMutation,
     saveCampaignAmbitionsMutation,
   });
   stepSaveMutationsRef.current = {
@@ -985,13 +1129,16 @@ export function CampaignWizard() {
     saveEstimateMutation,
     saveUnitsMutation,
     saveWorkersMutation,
+    saveSituationAnalysisMutation,
     saveCampaignAmbitionsMutation,
   };
 
   // Warn on tab close / reload when a wizard session is in progress.
+  // The wizard now has 9 steps (8 if non-bargaining); the handoff at step 9
+  // is read-only so we still skip the warning past step 8.
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
-      if (!campaignIdRef.current || stepRef.current <= 1 || stepRef.current >= 8) return;
+      if (!campaignIdRef.current || stepRef.current <= 1 || stepRef.current >= 9) return;
       e.preventDefault();
       e.returnValue = "";
     };
@@ -1020,7 +1167,7 @@ export function CampaignWizard() {
       const isLeavingWizard =
         cid != null &&
         s > 1 &&
-        s < 8 &&
+        s < 9 &&
         !!targetUrl &&
         !targetUrl.startsWith(WIZARD_PATH);
 
@@ -1036,7 +1183,8 @@ export function CampaignWizard() {
             case 4: m.saveEstimateMutation.mutate(); break;
             case 5: m.saveUnitsMutation.mutate(); break;
             case 6: m.saveWorkersMutation.mutate(); break;
-            case 7: m.saveCampaignAmbitionsMutation.mutate(); break;
+            case 7: m.saveSituationAnalysisMutation.mutate(); break;
+            case 8: m.saveCampaignAmbitionsMutation.mutate(); break;
           }
         }
       }
@@ -1059,11 +1207,12 @@ export function CampaignWizard() {
     if (step === 4) return "Worker estimate";
     if (step === 5) return "Campaign units";
     if (step === 6) return "Allocate workers";
-    if (step === 7) return "Campaign ambitions";
+    if (step === 7) return "Situation analysis";
+    if (step === 8) return "Campaign ambitions";
     return "Create campaign plan";
   }, [step]);
 
-  const totalSteps = basics.campaign_type === "bargaining" ? 8 : 7;
+  const totalSteps = basics.campaign_type === "bargaining" ? 9 : 8;
 
   const step1Valid =
     !!basics.name &&
@@ -1475,18 +1624,31 @@ export function CampaignWizard() {
         />
       )}
 
-      {/* ── Step 7: Campaign-level ambitions ────────────────────────────── */}
+      {/* ── Step 7: Situation analysis ───────────────────────────────────── */}
       {step === 7 && campaignId && (
+        <StepSituationAnalysis
+          campaignId={campaignId}
+          campaignEmployerIds={selectedEmployers}
+          draft={situationDraft}
+          setDraft={setSituationDraft}
+          isPending={saveSituationAnalysisMutation.isPending}
+          onBack={() => setStep(6)}
+          onContinue={() => saveSituationAnalysisMutation.mutate()}
+        />
+      )}
+
+      {/* ── Step 8: Campaign-level ambitions ────────────────────────────── */}
+      {step === 8 && campaignId && (
         <StepCampaignAmbitions
           campaignId={campaignId}
           ambitions={campaignAmbitions}
           setAmbitions={setCampaignAmbitions}
           isPending={saveCampaignAmbitionsMutation.isPending}
-          onBack={() => setStep(6)}
+          onBack={() => setStep(7)}
           onContinue={() => saveCampaignAmbitionsMutation.mutate()}
           onSkip={() => {
             if (basics.campaign_type === "bargaining") {
-              setStep(8);
+              setStep(9);
             } else {
               router.push(`/campaigns/${campaignId}`);
             }
@@ -1494,8 +1656,8 @@ export function CampaignWizard() {
         />
       )}
 
-      {/* ── Step 8: Create campaign plan (bargaining only) ──────────────── */}
-      {step === 8 && campaignId && (
+      {/* ── Step 9: Create campaign plan (bargaining only) ──────────────── */}
+      {step === 9 && campaignId && (
         <Card>
           <CardHeader>
             <div className="flex items-center gap-3">
@@ -1540,7 +1702,7 @@ export function CampaignWizard() {
         </Card>
       )}
 
-      {existingCampaign && step > 1 && step < 8 && (
+      {existingCampaign && step > 1 && step < 9 && (
         <p className="text-xs text-muted-foreground">
           Editing campaign #{campaignId}: {existingCampaign.name as string}
         </p>

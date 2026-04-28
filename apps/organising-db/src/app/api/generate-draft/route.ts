@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import type { CommsDraftRequest, CommsPlatform } from '@/types/planner-types'
 import { buildEmailPrompt, buildSmsPrompt, buildPhoneScriptPrompt } from '@/lib/prompts/draft-prompts'
+import { loadSituationContextString } from '@/lib/situation-analysis/serialise'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -48,6 +49,16 @@ export async function POST(req: NextRequest) {
     // Ensure agreement_name always has a value so prompts render cleanly
     if (!body.campaign_context.agreement_name) {
       body.campaign_context.agreement_name = 'Independent Organising'
+    }
+
+    // Auto-load the campaign's saved situation analysis as additional
+    // context unless the caller has already supplied one. Predicted
+    // employer playbook moves become inoculation lines in the draft;
+    // top issues become agitation hooks; populations drive audience
+    // pacing — the explicit SOC pay-off of the wizard step.
+    if (!body.situation_analysis_context && body.campaign_id) {
+      const ctx = await loadSituationContextString(supabase, body.campaign_id)
+      if (ctx) body.situation_analysis_context = ctx
     }
 
     const { system, user: userMessage } = PROMPT_BUILDERS[body.platform](body)

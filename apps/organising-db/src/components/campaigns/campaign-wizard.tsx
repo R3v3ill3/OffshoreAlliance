@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
@@ -130,13 +130,35 @@ export function CampaignWizard() {
   const initialCid = searchParams.get("cid");
   const editMode = searchParams.get("edit") === "1";
   const [basicsHydrated, setBasicsHydrated] = useState(() => !editMode);
-  const [step, setStep] = useState(() => {
+  const [step, _setStepRaw] = useState(() => {
     if (!initialCid) return 1;
     if (editMode) return 1;
+    // Restore the step the user was on when they last left the wizard.
+    const stepParam = searchParams.get("step");
+    if (stepParam) {
+      const n = Number(stepParam);
+      if (Number.isInteger(n) && n >= 2 && n <= 8) return n;
+    }
     return 2;
   });
   const [campaignId, setCampaignId] = useState<number | null>(
     initialCid ? Number(initialCid) || null : null
+  );
+
+  // Syncs the step to the URL so returning to the wizard lands at the right
+  // step. Pass `newCid` on step 1 → 2 transitions where `campaignId` state
+  // hasn't been committed yet.
+  const setStep = useCallback(
+    (n: number, newCid?: number) => {
+      _setStepRaw(n);
+      const effectiveCid = newCid ?? campaignId;
+      if (effectiveCid != null && !editMode) {
+        router.replace(`/campaigns/new?cid=${effectiveCid}&step=${n}`, {
+          scroll: false,
+        });
+      }
+    },
+    [campaignId, editMode, router]
   );
 
   useEffect(() => {
@@ -441,8 +463,7 @@ export function CampaignWizard() {
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       queryClient.invalidateQueries({ queryKey: ["organisers"] });
       queryClient.invalidateQueries({ queryKey: ["user-profiles-staff-organiser-picker"] });
-      router.replace(`/campaigns/new?cid=${id}`);
-      setStep(2);
+      setStep(2, id); // pass id explicitly — campaignId state isn't committed yet
     },
   });
 
@@ -938,6 +959,95 @@ export function CampaignWizard() {
       }
     },
   });
+
+  // ── Navigation guard ──────────────────────────────────────────────────────
+  //
+  // Refs updated every render so effects can read current values without
+  // stale closures or triggering re-runs.
+  const stepRef = useRef(step);
+  const campaignIdRef = useRef(campaignId);
+  stepRef.current = step;
+  campaignIdRef.current = campaignId;
+
+  // Refs to the step-save mutations — each step's save function differs.
+  // Updated every render so the pushState intercept always calls the latest.
+  const stepSaveMutationsRef = useRef({
+    saveScopeMutation,
+    saveAgreementsMutation,
+    saveEstimateMutation,
+    saveUnitsMutation,
+    saveWorkersMutation,
+    saveCampaignAmbitionsMutation,
+  });
+  stepSaveMutationsRef.current = {
+    saveScopeMutation,
+    saveAgreementsMutation,
+    saveEstimateMutation,
+    saveUnitsMutation,
+    saveWorkersMutation,
+    saveCampaignAmbitionsMutation,
+  };
+
+  // Warn on tab close / reload when a wizard session is in progress.
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (!campaignIdRef.current || stepRef.current <= 1 || stepRef.current >= 8) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
+
+  // Intercept internal SPA navigation (sidebar links, browser back, etc.) and
+  // offer to save the current step's progress before leaving.
+  // Uses pushState (not replaceState) because:
+  //  - setStep uses router.replace → replaceState → not intercepted (correct)
+  //  - app links use router.push → pushState → intercepted (desired)
+  useEffect(() => {
+    const WIZARD_PATH = "/campaigns/new";
+    const original = window.history.pushState;
+
+    window.history.pushState = function (
+      state: unknown,
+      title: string,
+      url?: string | URL | null
+    ) {
+      const targetUrl = typeof url === "string" ? url : (url?.toString() ?? "");
+      const cid = campaignIdRef.current;
+      const s = stepRef.current;
+      // Only prompt when the wizard is mid-flow and navigating outside the wizard.
+      const isLeavingWizard =
+        cid != null &&
+        s > 1 &&
+        s < 8 &&
+        !!targetUrl &&
+        !targetUrl.startsWith(WIZARD_PATH);
+
+      if (isLeavingWizard) {
+        const save = window.confirm(
+          "Save your current step's progress before leaving the wizard?"
+        );
+        if (save) {
+          const m = stepSaveMutationsRef.current;
+          switch (s) {
+            case 2: m.saveScopeMutation.mutate(); break;
+            case 3: m.saveAgreementsMutation.mutate(); break;
+            case 4: m.saveEstimateMutation.mutate(); break;
+            case 5: m.saveUnitsMutation.mutate(); break;
+            case 6: m.saveWorkersMutation.mutate(); break;
+            case 7: m.saveCampaignAmbitionsMutation.mutate(); break;
+          }
+        }
+      }
+
+      return original.call(this, state, title, url);
+    };
+
+    return () => {
+      window.history.pushState = original;
+    };
+  }, []); // intentionally empty — reads state via refs, only registers once
 
   // ── Derived state ─────────────────────────────────────────────────────────
 

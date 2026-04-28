@@ -240,22 +240,44 @@ export function CampaignCreationWizard() {
         }
       }
 
-      // Even without an agreement, pre-fill name/description from the existing campaign
-      const ranges = buildInitialStageTimeline({
-        linkedStart: existingCampaign.start_date ?? null,
-        linkedEnd: existingCampaign.end_date ?? null,
-        agreementExpiry: null,
-      })
+      // Check for agreements already attached via the campaign wizard
+      // (stored in campaign_agreements junction table, returned as attached_agreements).
+      // If found, use the primary replaced agreement's expiry to seed the timeline
+      // and skip straight to step 2 — the user has already made their agreement choice.
+      const attachedList = (existingCampaign as {
+        attached_agreements?: Array<{
+          agreement_id: number
+          relationship_type: string
+          is_primary: boolean
+          expiry_date: string | null
+        }>
+      }).attached_agreements ?? []
+
+      const attachedExpiry = (() => {
+        if (attachedList.length === 0) return null
+        const primary =
+          attachedList.find((a) => a.relationship_type === 'replaced' && a.is_primary) ??
+          attachedList.find((a) => a.relationship_type === 'replaced') ??
+          attachedList[0]
+        return primary?.expiry_date ?? null
+      })()
+
+      // Pre-fill name/description and build the initial timeline.
       // Seed initialTimelineRef so the "Stages already complete" selector can
       // redistribute from the baseline timeline. Without this the onValueChange
       // returns early and the user's selection is silently dropped.
+      const ranges = buildInitialStageTimeline({
+        linkedStart: existingCampaign.start_date ?? null,
+        linkedEnd: existingCampaign.end_date ?? null,
+        agreementExpiry: attachedExpiry,
+      })
       initialTimelineRef.current = ranges.map((r) => ({
         stage_number: r.stage_number,
         planned_start: new Date(r.planned_start),
         planned_end: new Date(r.planned_end),
         duration_weeks: r.duration_weeks,
       }))
-      const mode = resolveTimelineMode(true, existingCampaign, null)
+      const mode = resolveTimelineMode(true, existingCampaign, attachedExpiry)
       hasAutoSelected.current = true
       setState((p) => ({
         ...p,
@@ -263,8 +285,15 @@ export function CampaignCreationWizard() {
         description: (existingCampaign.description as string) || p.description,
         stage_dates: mapRangesToWizardStages(ranges),
         timeline_mode: mode,
+        expiry_date: attachedExpiry ?? undefined,
         org_campaign_end_ymd: existingCampaign.end_date ? String(existingCampaign.end_date) : null,
       }))
+
+      // If agreements are already attached from the wizard, skip step 1.
+      // Otherwise stay at step 1 so the user can select one.
+      if (attachedList.length > 0) {
+        setStep(2)
+      }
       return
     }
 
@@ -414,6 +443,19 @@ export function CampaignCreationWizard() {
   const isLinkedOrganisingActive =
     isLinkedMode && existingCampaign?.status?.toLowerCase() === 'active'
   const canContinueFromStep1 = state.agreement_id || !agreementRequired
+
+  // Typed view of agreements already attached to the campaign (from the wizard).
+  const plannerAttachedAgreements = (existingCampaign as {
+    attached_agreements?: Array<{
+      agreement_id: number
+      relationship_type: 'replaced' | 'new' | 'related'
+      is_primary: boolean
+      agreement_name: string | null
+      short_name: string | null
+      status: string | null
+      expiry_date: string | null
+    }>
+  })?.attached_agreements ?? []
 
   const isSubmitting = createCampaign.isPending || addPlan.isPending
 
@@ -777,6 +819,55 @@ export function CampaignCreationWizard() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* Agreement summary — in linked mode, show what was set in the wizard
+                instead of a full step-1 picker. The user can tap "Add / change"
+                to go back to step 1 if they need to pick a different agreement. */}
+            {isLinkedMode && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Enterprise agreement</Label>
+                  <button
+                    type="button"
+                    className="text-xs text-primary hover:underline"
+                    onClick={() => { markWizardActive(); setStep(1) }}
+                  >
+                    {plannerAttachedAgreements.length > 0 ? 'Add / change' : 'Select agreement'}
+                  </button>
+                </div>
+                {plannerAttachedAgreements.length > 0 ? (
+                  <div className="rounded-lg border p-3 space-y-1.5">
+                    {plannerAttachedAgreements.map((a) => (
+                      <div key={a.agreement_id} className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0">
+                          {a.relationship_type}{a.is_primary ? ' · primary' : ''}
+                        </Badge>
+                        <span className="text-sm truncate">
+                          {a.agreement_name ?? `Agreement #${a.agreement_id}`}
+                        </span>
+                        {a.expiry_date && (
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            · expires {a.expiry_date.slice(0, 10)}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+                    No agreement selected.{' '}
+                    <button
+                      type="button"
+                      className="text-primary hover:underline"
+                      onClick={() => { markWizardActive(); setStep(1) }}
+                    >
+                      Select one now
+                    </button>
+                    {' '}if this campaign requires one.
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="campaign-name">Campaign Name</Label>
               <Input
@@ -790,7 +881,14 @@ export function CampaignCreationWizard() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">Description (optional)</Label>
+              <Label htmlFor="description">
+                {isLinkedMode ? 'Description' : 'Description (optional)'}
+              </Label>
+              {isLinkedMode && (
+                <p className="text-xs text-muted-foreground">
+                  Pre-filled from the campaign — edit in campaign settings if you need to change it.
+                </p>
+              )}
               <Textarea
                 id="description"
                 value={state.description}

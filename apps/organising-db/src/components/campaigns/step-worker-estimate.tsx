@@ -62,8 +62,7 @@ export function StepWorkerEstimate({
         .select(
           `worker_id, employer_id, worksite_id,
            employers:employer_id(employer_name),
-           worksites:worksite_id(worksite_name),
-           union_membership_status_types:member_role_type_id(membership_type_name)`
+           worksites:worksite_id(worksite_name)`
         )
         .eq("is_active", true)
         .limit(10000);

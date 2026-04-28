@@ -253,6 +253,7 @@ export function DraftGeneratorCard({
           stage_name: stageName,
           wtp_selections: wtpSelections,
           custom_instructions: customInstructions || undefined,
+          campaign_context: campaignContext,
         }),
       })
 

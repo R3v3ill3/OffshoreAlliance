@@ -637,6 +637,10 @@ export function PhoneWizardSteps() {
           agreement_name: state.agreementName || '',
           worksite_names: state.worksiteNames,
           sector: '',
+          organiser_name: state.organiserName || undefined,
+          organiser_phone: state.organiserPhone || undefined,
+          staff_name: profile?.display_name || user?.email || undefined,
+          staff_email: user?.email || undefined,
         },
         wtp_selections: {
           tone: state.tone,
@@ -1055,6 +1059,10 @@ export function PhoneWizardSteps() {
         agreement_name: state.agreementName || '',
         worksite_names: state.worksiteNames,
         sector: '',
+        organiser_name: state.organiserName || undefined,
+        organiser_phone: state.organiserPhone || undefined,
+        staff_name: profile?.display_name || user?.email || undefined,
+        staff_email: user?.email || undefined,
       },
       wtp_selections: {
         tone: state.tone,

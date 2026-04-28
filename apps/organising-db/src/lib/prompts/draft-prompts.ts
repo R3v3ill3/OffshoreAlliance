@@ -5,6 +5,7 @@ import {
   SOC_FRAMEWORK_PREAMBLE_SMS,
   SOC_FRAMEWORK_PREAMBLE_PHONE,
 } from './soc-framework'
+import { CAMPAIGN_CONTEXT_VARIABLES, RECIPIENT_VARIABLES } from '@/lib/comms/template-variables'
 
 const OA_CONTEXT = `You are a communications specialist for the Offshore Alliance (OA), a joint union initiative between the AWU (Australian Workers' Union) and the MUA (Maritime Union of Australia) operating in Australia's offshore oil and gas sector.
 
@@ -14,6 +15,25 @@ The OA uses a structured, high-intensity organising model based on:
 - Stage-and-gate progression: 6 stages from Contact ID through to Bargaining to Win
 - Enterprise bargaining campaigns for offshore workers (FIFO, marine, catering, maintenance)
 - Key themes: fair pay, job security, no blacklists, expanded delegate rights, same job same pay`
+
+/**
+ * Authoritative glossary of template variables, built from the same source as the
+ * resolver (`CAMPAIGN_CONTEXT_VARIABLES` / `RECIPIENT_VARIABLES`). Injected into every
+ * system prompt so Claude treats `{{agreement_name}}`, `{{organiser_name}}`,
+ * `{{staff_name}}` etc. as distinct entities and does not swap one for another.
+ */
+export const VARIABLE_GLOSSARY = `VARIABLE GLOSSARY — each placeholder refers to a distinct entity. NEVER substitute one for another:
+${[...CAMPAIGN_CONTEXT_VARIABLES, ...RECIPIENT_VARIABLES]
+  .map((v) => `- {{${v.key}}} = ${v.description}`)
+  .join('\n')}
+
+CRITICAL VARIABLE RULES:
+- Preserve the EXACT placeholder text. Do NOT inline real values — they are substituted at send time.
+- {{agreement_name}} is the ENTERPRISE AGREEMENT (a document/instrument) — it is NEVER a person's name.
+- {{organiser_name}} is the LEAD ORGANISER for the campaign (a person, distinct from the sender).
+- {{staff_name}} is the SENDING STAFF MEMBER (the person whose name signs off the comm).
+- These three are independent — do not swap {{agreement_name}} ↔ {{organiser_name}} ↔ {{staff_name}} under any circumstance.
+- If you cannot find a sensible home for a variable, omit it rather than substitute a different one.`
 
 export function buildEmailPrompt(request: CommsDraftRequest): { system: string; user: string } {
   const system = `${OA_CONTEXT}
@@ -26,7 +46,7 @@ You are generating a campaign email draft. The email should:
 - Include a clear call to action appropriate to the stage
 - Be formatted in both HTML and plain text
 
-Standard variables available: {{first_name}}, {{last_name}}, {{agreement_name}}, {{employer_name}}, {{worksite_name}}, {{organiser_name}}, {{organiser_phone}}, {{staff_name}}, {{staff_email}}, {{staff_phone}}, {{staff_role}}
+${VARIABLE_GLOSSARY}
 ${SOC_FRAMEWORK_PREAMBLE_EMAIL}
 ${SOC_FRAMEWORK}
 Respond in JSON format:
@@ -55,7 +75,7 @@ You are generating an SMS message for a campaign communication via the Yabbr SMS
 - Sign off with "- Offshore Alliance" or "- OA"
 - NOT include HTML or rich formatting
 
-Standard variables: {{first_name}}, {{agreement_name}}, {{organiser_name}}, {{staff_name}}, {{staff_email}}, {{staff_phone}}, {{staff_role}}
+${VARIABLE_GLOSSARY}
 ${SOC_FRAMEWORK_PREAMBLE_SMS}
 ${SOC_FRAMEWORK}
 Respond in JSON format:
@@ -86,7 +106,8 @@ The script should:
 - Be appropriate for the campaign stage and selected tone
 - Include notes/tips in [square brackets] for the organiser
 - Use {{variable_name}} for personalisation
-- Standard variables include: {{first_name}}, {{last_name}}, {{agreement_name}}, {{employer_name}}, {{worksite_name}}, {{organiser_name}}, {{organiser_phone}}, {{staff_name}}, {{staff_email}}, {{staff_phone}}, {{staff_role}}
+
+${VARIABLE_GLOSSARY}
 
 Respond in JSON format:
 {
@@ -105,13 +126,23 @@ function buildUserMessage(request: CommsDraftRequest): string {
   const ctx = request.campaign_context
   const wtp = request.wtp_selections
 
-  let msg = `Campaign: ${ctx.agreement_name}
-Employer: ${ctx.employer_name}
-Sector: ${ctx.sector}
-Worksites: ${ctx.worksite_names.join(', ') || 'Not specified'}
-Stage: ${request.stage_number} — ${request.stage_name}
-${ctx.campaign_type ? `Campaign type: ${ctx.campaign_type}` : ''}
-${ctx.agreement_expiry ? `Agreement Expiry: ${ctx.agreement_expiry}` : ''}
+  const contextLines: string[] = [
+    `Agreement Name: ${ctx.agreement_name}`,
+    `Employer: ${ctx.employer_name}`,
+    `Sector: ${ctx.sector}`,
+    `Worksites: ${ctx.worksite_names.join(', ') || 'Not specified'}`,
+    `Stage: ${request.stage_number} — ${request.stage_name}`,
+  ]
+  if (ctx.campaign_type) contextLines.push(`Campaign type: ${ctx.campaign_type}`)
+  if (ctx.agreement_expiry) contextLines.push(`Agreement Expiry: ${ctx.agreement_expiry}`)
+  if (ctx.organiser_name) contextLines.push(`Lead Organiser (the {{organiser_name}}): ${ctx.organiser_name}`)
+  if (ctx.organiser_phone) contextLines.push(`Lead Organiser Phone (the {{organiser_phone}}): ${ctx.organiser_phone}`)
+  if (ctx.staff_name) contextLines.push(`Sending Staff Member (the {{staff_name}}): ${ctx.staff_name}`)
+  if (ctx.staff_email) contextLines.push(`Sending Staff Email (the {{staff_email}}): ${ctx.staff_email}`)
+  if (ctx.staff_phone) contextLines.push(`Sending Staff Phone (the {{staff_phone}}): ${ctx.staff_phone}`)
+  if (ctx.staff_role) contextLines.push(`Sending Staff Role (the {{staff_role}}): ${ctx.staff_role}`)
+
+  let msg = `${contextLines.join('\n')}
 
 NARRATIVE TONE (from Where to Play selections):
 ${wtp.tone.length > 0 ? wtp.tone.map(t => `- ${t}`).join('\n') : 'Not specified — use a balanced, informative tone'}

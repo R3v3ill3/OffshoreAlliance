@@ -63,7 +63,7 @@ interface WorksiteLookup {
 
 interface OccupationGroupLookup {
   group_id: number;
-  group_name: string;
+  name: string;
 }
 
 interface OccupationLookup {
@@ -127,8 +127,8 @@ export function StepCampaignUnits({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("occupation_groups")
-        .select("group_id, group_name")
-        .order("group_name");
+        .select("group_id, name")
+        .order("name");
       if (error) throw error;
       return data ?? [];
     },
@@ -269,7 +269,7 @@ export function StepCampaignUnits({
           draft_id: newDraftId(),
           ou_id: null,
           ou_type: "job_type",
-          name: group.group_name,
+          name: group.name,
           total_workers_estimated: null,
           unit_basis: { occupation_group_id: groupId },
         },
@@ -427,7 +427,7 @@ export function StepCampaignUnits({
                 <SelectContent>
                   {occupationGroups.map((g) => (
                     <SelectItem key={g.group_id} value={String(g.group_id)}>
-                      {g.group_name}
+                      {g.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

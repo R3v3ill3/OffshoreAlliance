@@ -115,7 +115,7 @@ export function StepAllocateWorkers({
            canonical_occupation_id,
            employers:employer_id(employer_name),
            worksites:worksite_id(worksite_name),
-           occupations:canonical_occupation_id(canonical_name, occupation_groups(group_name))`
+           occupations:canonical_occupation_id(canonical_name, occupation_groups(name))`
         )
         .eq("is_active", true);
 
@@ -140,7 +140,7 @@ export function StepAllocateWorkers({
         worksites: { worksite_name: string } | null;
         occupations: {
           canonical_name: string;
-          occupation_groups: { group_name: string } | null;
+          occupation_groups: { name: string } | null;
         } | null;
       }>;
 
@@ -154,7 +154,7 @@ export function StepAllocateWorkers({
         employer_name: r.employers?.employer_name ?? null,
         worksite_name: r.worksites?.worksite_name ?? null,
         occupation_name: r.occupations?.canonical_name ?? null,
-        occupation_group_name: r.occupations?.occupation_groups?.group_name ?? null,
+        occupation_group_name: r.occupations?.occupation_groups?.name ?? null,
       }));
     },
     enabled:

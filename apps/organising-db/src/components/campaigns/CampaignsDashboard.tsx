@@ -213,6 +213,17 @@ export function CampaignsDashboard({
                 </Link>{' '}
                 — calling lists and scripts.
               </li>
+              {process.env.NEXT_PUBLIC_FEATURE_SOC_WIZARD === 'true' && (
+                <li>
+                  <Link
+                    href="/campaigns/soc-wizard"
+                    className="text-foreground underline-offset-4 hover:underline"
+                  >
+                    SOC wizard
+                  </Link>{' '}
+                  — coach-guided 8-stage Structured Organising Conversations.
+                </li>
+              )}
               <li>
                 Use <span className="text-foreground font-medium">Filter by organiser</span> to include all
                 organisers or pick someone else.

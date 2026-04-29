@@ -84,6 +84,61 @@ export function CoachChatPanel({
     setDraftLocked(initialLockedContent ?? '')
   }, [initialLockedContent, session_id, stage_number, hope_frame])
 
+  // ----- Last draft + coach-flagged phrases -----
+  // After the coach responds, find the user's most recent draft (the turn
+  // it was critiquing) and the phrases the coach quoted from it. We use
+  // these to render a read-only "Your last draft" preview above the
+  // composer with the flagged phrases highlighted, and to pre-fill the
+  // composer with the previous draft so the user can edit rather than
+  // retype.
+  const { lastUserDraft, lastCoachReply, lastAssistantTurnIndex } = useMemo(() => {
+    const turns = stream.turns
+    let lastUser = ''
+    let lastCoach = ''
+    let lastIdx = -1
+    for (let i = turns.length - 1; i >= 0; i--) {
+      if (turns[i].role === 'assistant' && !lastCoach) {
+        lastCoach = turns[i].content
+        lastIdx = turns[i].turn_index
+        for (let j = i - 1; j >= 0; j--) {
+          if (turns[j].role === 'user') {
+            lastUser = turns[j].content
+            break
+          }
+        }
+        break
+      }
+    }
+    return { lastUserDraft: lastUser, lastCoachReply: lastCoach, lastAssistantTurnIndex: lastIdx }
+  }, [stream.turns])
+
+  const flaggedPhrases = useMemo(
+    () => extractCoachQuotes(lastCoachReply),
+    [lastCoachReply]
+  )
+
+  // Pre-fill the composer with the previous draft once a new coach turn
+  // arrives, but ONLY when the composer is empty and the streaming has
+  // finished (don't yank text out from under the user mid-type or
+  // mid-stream). Tracked by ref so we only pre-fill once per coach turn.
+  const prefilledForTurnRef = useRef<number>(-1)
+  useEffect(() => {
+    if (stream.isStreaming) return
+    if (lastAssistantTurnIndex < 0) return
+    if (prefilledForTurnRef.current === lastAssistantTurnIndex) return
+    if (composerText.trim().length > 0) {
+      // User is already editing — don't overwrite. Mark as handled so we
+      // don't try again next render.
+      prefilledForTurnRef.current = lastAssistantTurnIndex
+      return
+    }
+    if (!lastUserDraft) return
+    setComposerText(lastUserDraft)
+    prefilledForTurnRef.current = lastAssistantTurnIndex
+    // setComposerText is stable per render via a ref-like pattern; safe to omit
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stream.isStreaming, lastAssistantTurnIndex, lastUserDraft])
+
   async function handleSend() {
     const text = composerText.trim()
     if (!text || stream.isStreaming) return
@@ -172,6 +227,28 @@ export function CoachChatPanel({
           )}
         </div>
 
+        {lastUserDraft && !alreadyLocked && (
+          <div className="px-4 py-3 border-t bg-amber-50/60">
+            <div className="text-[10px] uppercase tracking-wide font-semibold text-amber-800 mb-1.5 flex items-center justify-between">
+              <span>Your last draft{flaggedPhrases.length > 0 ? ' — phrases the coach flagged are highlighted' : ''}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setComposerText(lastUserDraft)
+                  prefilledForTurnRef.current = lastAssistantTurnIndex
+                }}
+                className="text-[10px] font-medium text-amber-700 hover:text-amber-900 underline-offset-2 hover:underline"
+                title="Copy this draft into the composer below for editing"
+              >
+                Edit this draft ↓
+              </button>
+            </div>
+            <div className="text-xs text-slate-800 leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto bg-white border border-amber-200 rounded p-2">
+              {renderHighlightedDraft(lastUserDraft, flaggedPhrases)}
+            </div>
+          </div>
+        )}
+
         <div className="px-4 py-3 border-t bg-slate-50">
           <Textarea
             value={composerText}
@@ -254,4 +331,84 @@ export function CoachChatPanel({
       </CardContent>
     </Card>
   )
+}
+
+// ----- Quote extraction + highlight rendering -----
+
+/**
+ * Pull quoted phrases out of the coach's reply. The coach naturally quotes
+ * back phrases from the user's draft when calling something out — those
+ * are exactly the spans we want to highlight in the user's previous draft
+ * preview. Matches both straight ("..." / '...') and curly quotes
+ * (“...” / ‘...’). Filters out very short matches (likely false positives
+ * like single words wrapped in scare quotes) and very long matches
+ * (likely whole-sentence paraphrases).
+ */
+export function extractCoachQuotes(text: string): string[] {
+  if (!text) return []
+  const patterns = [
+    /"([^"\n]{4,200})"/g,
+    /'([^'\n]{4,200})'/g,
+    /“([^“”\n]{4,200})”/g,
+    /‘([^‘’\n]{4,200})’/g,
+  ]
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const re of patterns) {
+    let m: RegExpExecArray | null
+    while ((m = re.exec(text)) !== null) {
+      const phrase = m[1].trim()
+      if (phrase.length < 4) continue
+      const key = phrase.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(phrase)
+    }
+  }
+  return out
+}
+
+/**
+ * Render the user's draft with the coach-quoted phrases wrapped in
+ * <mark>. Matching is case-insensitive but exact otherwise — when the
+ * coach paraphrases without quoting, no highlights appear (and that's
+ * fine, the draft still renders cleanly).
+ */
+function renderHighlightedDraft(
+  draft: string,
+  phrases: string[]
+): React.ReactNode {
+  if (!phrases.length) return draft
+  // Sort phrases longest-first so a longer phrase wins over a shorter
+  // overlapping one (e.g. "leave it to us, mate" before "leave it").
+  const sorted = [...phrases].sort((a, b) => b.length - a.length)
+  // Build a single regex with all phrases as alternates, escaped.
+  const escaped = sorted.map(escapeRegExp).join('|')
+  const re = new RegExp(`(${escaped})`, 'gi')
+  const parts: React.ReactNode[] = []
+  let lastIdx = 0
+  let m: RegExpExecArray | null
+  let key = 0
+  while ((m = re.exec(draft)) !== null) {
+    if (m.index > lastIdx) {
+      parts.push(draft.slice(lastIdx, m.index))
+    }
+    parts.push(
+      <mark
+        key={key++}
+        className="bg-amber-200/70 text-slate-900 rounded px-0.5"
+      >
+        {m[0]}
+      </mark>
+    )
+    lastIdx = m.index + m[0].length
+    // Avoid infinite loop on zero-length matches (defensive)
+    if (m[0].length === 0) re.lastIndex++
+  }
+  if (lastIdx < draft.length) parts.push(draft.slice(lastIdx))
+  return parts
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

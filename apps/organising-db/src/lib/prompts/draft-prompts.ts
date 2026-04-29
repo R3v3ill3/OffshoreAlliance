@@ -7,7 +7,7 @@ import {
 } from './soc-framework'
 import { CAMPAIGN_CONTEXT_VARIABLES, RECIPIENT_VARIABLES } from '@/lib/comms/template-variables'
 
-const OA_CONTEXT = `You are a communications specialist for the Offshore Alliance (OA), a joint union initiative between the AWU (Australian Workers' Union) and the MUA (Maritime Union of Australia) operating in Australia's offshore oil and gas sector.
+export const OA_CONTEXT = `You are a communications specialist for the Offshore Alliance (OA), a joint union initiative between the AWU (Australian Workers' Union) and the MUA (Maritime Union of Australia) operating in Australia's offshore oil and gas sector.
 
 The OA uses a structured, high-intensity organising model based on:
 - Structured contact networks with monitorable 2-way communication
@@ -99,10 +99,10 @@ ${SOC_FRAMEWORK_PREAMBLE_PHONE}
 ${SOC_FRAMEWORK}
 The script should:
 - Feel natural and conversational, not robotic
-- Structure sections around the SOC steps (Introduction & Rapport, Issues, Educate, Ask, Close) — using clear section headings
-- Use the AHA framework (Agitate, Hope, Action) within the Educate section to build momentum
+- Structure sections around the 8 SOC stages (Introduction, Build Rapport, Identify Issues, Agitate, Hope, Action, Inoculation, Close) — using clear section headings. Collapse stages where appropriate to suit a phone call's pace, but keep the order.
+- Within the Hope stage, draw on whichever of the three Hope frames fit (Opportunity of a Lifetime, The Plan, Don't Take the Lolly).
 - Include suggested responses to common objections using the EAR framework (Explore, Acknowledge, Redirect)
-- Include Inoculation guidance in the Close section where appropriate
+- Treat Inoculation as a full stage in its own right — walk through what the company will say next and prompt the worker to rehearse their response
 - Be appropriate for the campaign stage and selected tone
 - Include notes/tips in [square brackets] for the organiser
 - Use {{variable_name}} for personalisation

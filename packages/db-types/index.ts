@@ -3448,6 +3448,238 @@ export type Database = {
           },
         ]
       }
+      campaign_situation_analyses: {
+        Row: {
+          ai_generated: boolean
+          ai_model: string | null
+          ai_prompt_snapshot: Json | null
+          balloted_count: number | null
+          campaign_id: number
+          company_playbook: Json
+          created_at: string
+          created_by: string | null
+          employer_interaction_state: string | null
+          employer_relationships: Json
+          employer_state_notes: string | null
+          hr_posture: Json
+          information_gaps: Json
+          is_current: boolean
+          leverage_and_maths: Json
+          situation_id: number
+          strategic_context_summary: string | null
+          top_issues: Json
+          union_history: Json
+          upcoming_workforce_changes: Json
+          updated_at: string
+          version: number
+          workforce_populations: Json
+        }
+        Insert: {
+          ai_generated?: boolean
+          ai_model?: string | null
+          ai_prompt_snapshot?: Json | null
+          balloted_count?: number | null
+          campaign_id: number
+          company_playbook?: Json
+          created_at?: string
+          created_by?: string | null
+          employer_interaction_state?: string | null
+          employer_relationships?: Json
+          employer_state_notes?: string | null
+          hr_posture?: Json
+          information_gaps?: Json
+          is_current?: boolean
+          leverage_and_maths?: Json
+          situation_id?: number
+          strategic_context_summary?: string | null
+          top_issues?: Json
+          union_history?: Json
+          upcoming_workforce_changes?: Json
+          updated_at?: string
+          version?: number
+          workforce_populations?: Json
+        }
+        Update: {
+          ai_generated?: boolean
+          ai_model?: string | null
+          ai_prompt_snapshot?: Json | null
+          balloted_count?: number | null
+          campaign_id?: number
+          company_playbook?: Json
+          created_at?: string
+          created_by?: string | null
+          employer_interaction_state?: string | null
+          employer_relationships?: Json
+          employer_state_notes?: string | null
+          hr_posture?: Json
+          information_gaps?: Json
+          is_current?: boolean
+          leverage_and_maths?: Json
+          situation_id?: number
+          strategic_context_summary?: string | null
+          top_issues?: Json
+          union_history?: Json
+          upcoming_workforce_changes?: Json
+          updated_at?: string
+          version?: number
+          workforce_populations?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_situation_analyses_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_situation_analyses_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_situation_analyses_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_situation_analyses_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_situation_analyses_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_situation_analyses_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_situation_analyses_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_situation_analyses_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
+          },
+        ]
+      }
+      campaign_situation_revisions: {
+        Row: {
+          campaign_id: number
+          changed_at: string
+          changed_by: string | null
+          diff: Json | null
+          notes: string | null
+          revision_id: number
+          revision_type: string
+          situation_id: number
+        }
+        Insert: {
+          campaign_id: number
+          changed_at?: string
+          changed_by?: string | null
+          diff?: Json | null
+          notes?: string | null
+          revision_id?: number
+          revision_type: string
+          situation_id: number
+        }
+        Update: {
+          campaign_id?: number
+          changed_at?: string
+          changed_by?: string | null
+          diff?: Json | null
+          notes?: string | null
+          revision_id?: number
+          revision_type?: string
+          situation_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_situation_revisions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_situation_revisions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_situation_revisions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_situation_revisions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_situation_revisions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_situation_revisions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_situation_revisions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_situation_revisions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_situation_revisions_situation_id_fkey"
+            columns: ["situation_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_situation_analyses"
+            referencedColumns: ["situation_id"]
+          },
+        ]
+      }
       campaign_stage_plans: {
         Row: {
           actual_end_date: string | null
@@ -7435,6 +7667,267 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "workers_view"
             referencedColumns: ["worker_id"]
+          },
+        ]
+      }
+      soc_chat_turns: {
+        Row: {
+          ai_metadata: Json | null
+          content: string
+          created_at: string
+          hope_frame: string | null
+          role: string
+          session_id: number
+          stage_number: number
+          turn_id: number
+          turn_index: number
+        }
+        Insert: {
+          ai_metadata?: Json | null
+          content: string
+          created_at?: string
+          hope_frame?: string | null
+          role: string
+          session_id: number
+          stage_number: number
+          turn_id?: number
+          turn_index: number
+        }
+        Update: {
+          ai_metadata?: Json | null
+          content?: string
+          created_at?: string
+          hope_frame?: string | null
+          role?: string
+          session_id?: number
+          stage_number?: number
+          turn_id?: number
+          turn_index?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "soc_chat_turns_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "soc_sessions"
+            referencedColumns: ["session_id"]
+          },
+        ]
+      }
+      soc_derived_artifacts: {
+        Row: {
+          artifact_id: number
+          artifact_kind: string
+          created_at: string
+          created_by: string | null
+          draft_id: number | null
+          hope_frame: string | null
+          inline_body: string | null
+          session_id: number
+          stage_number: number | null
+        }
+        Insert: {
+          artifact_id?: number
+          artifact_kind: string
+          created_at?: string
+          created_by?: string | null
+          draft_id?: number | null
+          hope_frame?: string | null
+          inline_body?: string | null
+          session_id: number
+          stage_number?: number | null
+        }
+        Update: {
+          artifact_id?: number
+          artifact_kind?: string
+          created_at?: string
+          created_by?: string | null
+          draft_id?: number | null
+          hope_frame?: string | null
+          inline_body?: string | null
+          session_id?: number
+          stage_number?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "soc_derived_artifacts_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_comms_drafts"
+            referencedColumns: ["draft_id"]
+          },
+          {
+            foreignKeyName: "soc_derived_artifacts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "soc_sessions"
+            referencedColumns: ["session_id"]
+          },
+        ]
+      }
+      soc_sessions: {
+        Row: {
+          campaign_id: number | null
+          capacity_id: number | null
+          context_snapshot: Json
+          created_at: string
+          created_by: string | null
+          custom_situation: string | null
+          plan_id: number | null
+          session_id: number
+          stage_number: number | null
+          status: string
+          target_populations: Json
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          campaign_id?: number | null
+          capacity_id?: number | null
+          context_snapshot?: Json
+          created_at?: string
+          created_by?: string | null
+          custom_situation?: string | null
+          plan_id?: number | null
+          session_id?: number
+          stage_number?: number | null
+          status?: string
+          target_populations?: Json
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          campaign_id?: number | null
+          capacity_id?: number | null
+          context_snapshot?: Json
+          created_at?: string
+          created_by?: string | null
+          custom_situation?: string | null
+          plan_id?: number | null
+          session_id?: number
+          stage_number?: number | null
+          status?: string
+          target_populations?: Json
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "soc_sessions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "soc_sessions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "soc_sessions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "soc_sessions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "soc_sessions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "soc_sessions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "soc_sessions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "soc_sessions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "soc_sessions_capacity_id_fkey"
+            columns: ["capacity_id"]
+            isOneToOne: false
+            referencedRelation: "plan_capacities"
+            referencedColumns: ["capacity_id"]
+          },
+          {
+            foreignKeyName: "soc_sessions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_stage_plans"
+            referencedColumns: ["plan_id"]
+          },
+        ]
+      }
+      soc_stage_content: {
+        Row: {
+          content_id: number
+          hope_frame: string | null
+          locked_at: string
+          locked_by: string | null
+          locked_content: string
+          organiser_notes: string | null
+          populations_targeted: Json
+          session_id: number
+          stage_name: string
+          stage_number: number
+        }
+        Insert: {
+          content_id?: number
+          hope_frame?: string | null
+          locked_at?: string
+          locked_by?: string | null
+          locked_content: string
+          organiser_notes?: string | null
+          populations_targeted?: Json
+          session_id: number
+          stage_name: string
+          stage_number: number
+        }
+        Update: {
+          content_id?: number
+          hope_frame?: string | null
+          locked_at?: string
+          locked_by?: string | null
+          locked_content?: string
+          organiser_notes?: string | null
+          populations_targeted?: Json
+          session_id?: number
+          stage_name?: string
+          stage_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "soc_stage_content_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "soc_sessions"
+            referencedColumns: ["session_id"]
           },
         ]
       }
@@ -11647,3 +12140,4 @@ export const Constants = {
     Enums: {},
   },
 } as const
+

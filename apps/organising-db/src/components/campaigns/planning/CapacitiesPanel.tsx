@@ -6,6 +6,7 @@ import { useAddCapacity, useUpdateCapacity } from '@/lib/hooks/useStagePlan'
 import { OptionSelector, type SelectableOption } from './OptionSelector'
 import { DraftGeneratorCard, type InitialDraft } from './DraftGeneratorCard'
 import { DraftPreview } from './DraftPreview'
+import { SocWizardLaunchCard } from './SocWizardLaunchCard'
 import { Button } from '@/components/ui/button'
 import { DateInput } from '@/components/ui/date-input'
 import { Label } from '@/components/ui/label'
@@ -189,6 +190,20 @@ export function CapacitiesPanel({
 
   const gapCount = capacities.filter((c) => c.status === 'gap').length
   const availableCount = capacities.filter((c) => c.status === 'available').length
+
+  // --- SOC capacity detection ---
+  const socCapacityNeeds = useMemo(() => {
+    if (process.env.NEXT_PUBLIC_FEATURE_SOC_WIZARD !== 'true') return []
+    return capacities.filter((c) => {
+      const optText = (c.capacity_options?.option_text || '').toLowerCase()
+      const customText = (c.custom_text || '').toLowerCase()
+      return (
+        optText === 'structured organising conversation' ||
+        customText.includes('structured organising conversation') ||
+        / soc(\b|$)/i.test(c.custom_text || '')
+      )
+    })
+  }, [capacities])
 
   // --- Communication Drafts detection ---
   const commsPlatforms = useMemo(() => {
@@ -447,6 +462,31 @@ export function CapacitiesPanel({
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* SOC Wizard section */}
+      {socCapacityNeeds.length > 0 && (
+        <div className="space-y-3 pt-4 border-t border-slate-200">
+          <div className="flex items-center gap-2">
+            <MessageCircle className="h-5 w-5 text-slate-500" />
+            <h4 className="font-semibold text-slate-900 text-sm">Structured Organising Conversation</h4>
+            <Badge variant="secondary" className="text-xs">
+              {socCapacityNeeds.length} need{socCapacityNeeds.length !== 1 ? 's' : ''}
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Build a coach-guided SOC for this stage. The wizard walks through all 8 stages with AI coaching.
+          </p>
+          {socCapacityNeeds.map((cap) => (
+            <SocWizardLaunchCard
+              key={cap.capacity_id}
+              capacity={cap}
+              campaignId={campaignId}
+              planId={planId}
+              stageNumber={stageNumber}
+            />
+          ))}
         </div>
       )}
 

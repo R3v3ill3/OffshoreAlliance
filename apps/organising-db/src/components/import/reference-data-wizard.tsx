@@ -3,6 +3,11 @@
 import { useState, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import {
+  fetchApi,
+  API_FETCH_TIMEOUT_UPLOAD_MS,
+  API_FETCH_TIMEOUT_LLM_MS,
+} from "@/lib/api/fetch-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -329,7 +334,11 @@ export function ReferenceDataWizard({
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const parseRes = await fetch("/api/reference-import/parse", { method: "POST", body: formData });
+      const parseRes = await fetchApi("/api/reference-import/parse", {
+        method: "POST",
+        body: formData,
+        timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
+      });
       const parseJson = await parseRes.json();
       if (!parseJson.success) { setParseError(parseJson.error ?? "Parse failed"); return; }
 
@@ -337,10 +346,11 @@ export function ReferenceDataWizard({
       setTotalRows(parseJson.totalRows);
       setParsedRows(parseJson.rows);
 
-      const clusterRes = await fetch("/api/reference-import/cluster", {
+      const clusterRes = await fetchApi("/api/reference-import/cluster", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rows: parseJson.rows }),
+        timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
       });
       const clusterJson = await clusterRes.json();
       if (!clusterJson.success) { setParseError(clusterJson.error ?? "Clustering failed"); return; }
@@ -364,13 +374,14 @@ export function ReferenceDataWizard({
   async function runAnalyseForEmployers() {
     setIsLoading(true);
     try {
-      const res = await fetch("/api/reference-import/analyse", {
+      const res = await fetchApi("/api/reference-import/analyse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           employerClusters: empClusters.map((c) => ({ canonicalName: c.canonicalName, variants: c.variants })),
-          worksiteClusters: [], occupationClusters: [], rows: parsedRows,
+          worksiteClusters: [], occupationClusters: [],           rows: parsedRows,
         }),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
@@ -390,14 +401,15 @@ export function ReferenceDataWizard({
   async function runAnalyseForWorksites() {
     setIsLoading(true);
     try {
-      const res = await fetch("/api/reference-import/analyse", {
+      const res = await fetchApi("/api/reference-import/analyse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           employerClusters: [],
           worksiteClusters: wsClusters.map((c) => ({ canonicalName: c.canonicalName, variants: c.variants })),
-          occupationClusters: [], rows: parsedRows,
+          occupationClusters: [],           rows: parsedRows,
         }),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
@@ -417,7 +429,7 @@ export function ReferenceDataWizard({
   async function runAnalyseForOccupations() {
     setIsLoading(true);
     try {
-      const res = await fetch("/api/reference-import/analyse", {
+      const res = await fetchApi("/api/reference-import/analyse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -426,6 +438,7 @@ export function ReferenceDataWizard({
           occupationClusters: occClusters.map((c) => ({ canonicalName: c.canonicalName, variants: c.variants, suggestedCategory: c.suggestedCategory })),
           rows: parsedRows,
         }),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
@@ -513,7 +526,12 @@ export function ReferenceDataWizard({
           .map((c) => ({ employerName: c.employerName, worksiteName: c.worksiteName, employerId: c.employerId!, worksiteId: c.worksiteId!, roleType: c.roleType, add: true })),
       };
 
-      const res = await fetch("/api/reference-import/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const res = await fetchApi("/api/reference-import/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
+      });
       const json = await res.json();
       setApplyResult(json.success ? json.stats : {
         employersCreated: 0, employerAliasesCreated: 0, worksitesCreated: 0, worksiteAliasesCreated: 0,

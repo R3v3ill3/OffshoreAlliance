@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { fetchApi } from "@/lib/api/fetch-api";
 import { useRouter } from "next/navigation";
 
 interface RequestCampaignAccessModalProps {
@@ -39,7 +40,7 @@ export function RequestCampaignAccessModal({
         return;
       }
 
-      const response = await fetch("/api/permissions/request", {
+      const response = await fetchApi("/api/permissions/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

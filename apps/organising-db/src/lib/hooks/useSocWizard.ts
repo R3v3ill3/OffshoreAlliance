@@ -7,6 +7,11 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
+import {
+  fetchApi,
+  API_FETCH_TIMEOUT_LLM_MS,
+  API_FETCH_TIMEOUT_STREAM_MS,
+} from '@/lib/api/fetch-api'
 import type { HopeFrame, SocStage } from '@/lib/prompts/soc-framework'
 import type { SocSessionPopulation } from '@/lib/prompts/soc/populations'
 
@@ -209,10 +214,11 @@ export function useLockStage() {
       organiser_notes?: string
       populations_targeted?: SocSessionPopulation[]
     }) => {
-      const res = await fetch('/api/soc-wizard/lock-stage', {
+      const res = await fetchApi('/api/soc-wizard/lock-stage', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -235,10 +241,11 @@ export function useRegenerateStage() {
       stage_number: SocStage
       hope_frame?: HopeFrame
     }) => {
-      const res = await fetch('/api/soc-wizard/regenerate-stage', {
+      const res = await fetchApi('/api/soc-wizard/regenerate-stage', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -349,7 +356,7 @@ export function useCoachStream(args: {
     abortRef.current = ac
 
     try {
-      const res = await fetch('/api/soc-wizard/coach', {
+      const res = await fetchApi('/api/soc-wizard/coach', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -359,6 +366,7 @@ export function useCoachStream(args: {
           user_message,
         }),
         signal: ac.signal,
+        timeoutMs: API_FETCH_TIMEOUT_STREAM_MS,
       })
 
       if (!res.ok || !res.body) {
@@ -460,10 +468,11 @@ export function useDeriveArtifact() {
       tone?: string
       audience?: string
     }) => {
-      const res = await fetch('/api/soc-wizard/derive-artifact', {
+      const res = await fetchApi('/api/soc-wizard/derive-artifact', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -505,10 +514,11 @@ export function useSuggestDraft() {
       stage_number: SocStage
       hope_frame?: HopeFrame
     }): Promise<SuggestDraftResult> => {
-      const res = await fetch('/api/soc-wizard/suggest-draft', {
+      const res = await fetchApi('/api/soc-wizard/suggest-draft', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))

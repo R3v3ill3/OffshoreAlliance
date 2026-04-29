@@ -7,6 +7,7 @@ import { callFlowReducer, getInitialCallFlowState, canAdvanceSection, canGoBack,
 import { useCallOutcomeDefinitions } from '@/lib/hooks/useCallOutcomes'
 import { useCampaignPhoneScriptContext } from '@/lib/hooks/useCampaignPhoneScriptContext'
 import { mergePhoneScriptVariableContext } from '@/lib/comms/template-variables'
+import { fetchApi } from '@/lib/api/fetch-api'
 import { ContactCard } from '@/components/phone/ContactCard'
 import { DialOutcomeBar } from '@/components/phone/DialOutcomeBar'
 import { ConversationStepper } from '@/components/phone/ConversationStepper'
@@ -37,7 +38,7 @@ function useWizardCallList(listId: string) {
   return useQuery({
     queryKey: ['phone-wizard-call-list', listId],
     queryFn: async () => {
-      const res = await fetch(`/api/phone-wizard/call-lists/${listId}`)
+      const res = await fetchApi(`/api/phone-wizard/call-lists/${listId}`)
       if (!res.ok) throw new Error('Failed to fetch call list')
       return res.json() as Promise<CallListWithStats>
     },
@@ -49,7 +50,7 @@ function useWizardPhoneNext(listId: string, enabled = true) {
   return useQuery({
     queryKey: ['phone-wizard-next', listId],
     queryFn: async () => {
-      const res = await fetch(`/api/phone-wizard/call-lists/${listId}/next`)
+      const res = await fetchApi(`/api/phone-wizard/call-lists/${listId}/next`)
       if (!res.ok) throw new Error('Failed to get next contact')
       const data = await res.json()
       if (data.done) return null
@@ -65,7 +66,7 @@ function useWizardRecordAttempt(listId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (attempt: RecordCallAttemptRequest) => {
-      const res = await fetch('/api/phone-wizard/call-attempts', {
+      const res = await fetchApi('/api/phone-wizard/call-attempts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(attempt),

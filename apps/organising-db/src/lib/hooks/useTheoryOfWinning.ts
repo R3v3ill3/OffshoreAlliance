@@ -1,15 +1,20 @@
 'use client'
 
 import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
+import {
+  fetchApi,
+  API_FETCH_TIMEOUT_LLM_MS,
+} from '@/lib/api/fetch-api'
 import type { TheoryOfWinningRequest, TheoryOfWinningResponse } from '@/types/planner-types'
 
 export function useGenerateTheory() {
   return useAuthAwareMutation({
     mutationFn: async (request: TheoryOfWinningRequest): Promise<TheoryOfWinningResponse> => {
-      const response = await fetch('/api/theory-of-winning', {
+      const response = await fetchApi('/api/theory-of-winning', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       })
 
       const text = await response.text()

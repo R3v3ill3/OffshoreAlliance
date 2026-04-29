@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { fetchApi } from "@/lib/api/fetch-api";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
 
@@ -39,7 +40,7 @@ function useBatchCampaignStatus() {
   return useQuery<BatchResult>({
     queryKey: ["campaign-status-batch"],
     queryFn: async () => {
-      const res = await fetch("/api/campaign-status-batch");
+      const res = await fetchApi("/api/campaign-status-batch");
       if (!res.ok) throw new Error("Failed to fetch campaign statuses");
       return res.json();
     },

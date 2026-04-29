@@ -5,6 +5,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import {
+  fetchApi,
+  API_FETCH_TIMEOUT_LLM_MS,
+} from "@/lib/api/fetch-api";
+import {
   Card,
   CardHeader,
   CardTitle,
@@ -426,7 +430,7 @@ function EmployerWizardInner() {
         abortRef.current = new AbortController();
         const timeoutId = setTimeout(() => abortRef.current?.abort(), 60000);
 
-        const res = await fetch("/api/employer-wizard/analyse", {
+        const res = await fetchApi("/api/employer-wizard/analyse", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           signal: abortRef.current.signal,
@@ -455,6 +459,7 @@ function EmployerWizardInner() {
               name: p.employer_name,
             })),
           }),
+          timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
         });
 
         clearTimeout(timeoutId);
@@ -834,7 +839,7 @@ function EmployerWizardInner() {
       if (victimIds.length === 0) continue;
 
       try {
-        const res = await fetch("/api/employers/merge", {
+        const res = await fetchApi("/api/employers/merge", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -922,7 +927,7 @@ function EmployerWizardInner() {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-        const res = await fetch("/api/employer-wizard/apply", {
+        const res = await fetchApi("/api/employer-wizard/apply", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           signal: controller.signal,
@@ -931,6 +936,7 @@ function EmployerWizardInner() {
             category_updates,
             worksite_updates,
           }),
+          timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
         });
 
         clearTimeout(timeoutId);

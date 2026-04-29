@@ -12,6 +12,10 @@ import {
   X,
   AlertTriangle,
 } from "lucide-react";
+import {
+  fetchApi,
+  API_FETCH_TIMEOUT_LLM_MS,
+} from "@/lib/api/fetch-api";
 import type {
   CompanyPlaybookMove,
   InformationGap,
@@ -52,10 +56,11 @@ export function AiAssistPanel({ campaignId, draft, onApply }: AiAssistPanelProps
     setError(null);
     setSuggestion(null);
     try {
-      const res = await fetch("/api/situation-analysis/suggest", {
+      const res = await fetchApi("/api/situation-analysis/suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ campaign_id: campaignId, draft }),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       });
       if (!res.ok) {
         const payload = (await res.json().catch(() => ({}))) as {

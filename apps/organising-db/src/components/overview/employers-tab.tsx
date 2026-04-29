@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
+import { fetchApi } from "@/lib/api/fetch-api";
 import type { Employer, EmployerCategory } from "@/types/database";
 import type { Database } from "@oa/db-types";
 import {
@@ -242,7 +243,7 @@ export function EmployersTab() {
     setMergeSubmitting(true);
     setMergeError(null);
     try {
-      const res = await fetch("/api/employers/merge", {
+      const res = await fetchApi("/api/employers/merge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

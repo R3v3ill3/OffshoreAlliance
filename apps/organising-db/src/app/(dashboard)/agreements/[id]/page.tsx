@@ -9,6 +9,7 @@ import { ArrowLeft, ExternalLink, Pencil, Plus, Trash2, Star, Loader2, Users, Sa
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
+import { fetchApi } from "@/lib/api/fetch-api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -350,7 +351,7 @@ export default function AgreementDetailPage() {
   const { data: agreementOrganisers = [], isLoading: orgLoading } = useQuery({
     queryKey: ["agreement-organisers", id],
     queryFn: async () => {
-      const res = await fetch(`/api/agreements/${id}/organisers`);
+      const res = await fetchApi(`/api/agreements/${id}/organisers`);
       if (!res.ok) throw new Error("Failed to load organisers");
       return res.json() as Promise<AgreementOrganiserRow[]>;
     },
@@ -428,7 +429,7 @@ export default function AgreementDetailPage() {
   const updateMutation = useAuthAwareMutation({
     mutationFn: async () => {
       setSaveError(null);
-      const res = await fetch(`/api/agreements/${id}`, {
+      const res = await fetchApi(`/api/agreements/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editForm),
@@ -450,7 +451,7 @@ export default function AgreementDetailPage() {
   const addOrgMutation = useAuthAwareMutation({
     mutationFn: async () => {
       setAddOrgError(null);
-      const res = await fetch(`/api/agreements/${id}/organisers`, {
+      const res = await fetchApi(`/api/agreements/${id}/organisers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -504,7 +505,7 @@ export default function AgreementDetailPage() {
 
   const setPrimaryMutation = useAuthAwareMutation({
     mutationFn: async (assignmentId: number) => {
-      const res = await fetch(`/api/agreements/${id}/organisers`, {
+      const res = await fetchApi(`/api/agreements/${id}/organisers`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ assignmentId, isPrimary: true }),
@@ -518,7 +519,7 @@ export default function AgreementDetailPage() {
 
   const removeOrgMutation = useAuthAwareMutation({
     mutationFn: async (assignmentId: number) => {
-      const res = await fetch(
+      const res = await fetchApi(
         `/api/agreements/${id}/organisers?assignmentId=${assignmentId}`,
         { method: "DELETE" }
       );
@@ -531,7 +532,7 @@ export default function AgreementDetailPage() {
 
   const addSuggestedLeadMutation = useAuthAwareMutation({
     mutationFn: async (organiserId: number) => {
-      const res = await fetch(`/api/agreements/${id}/organisers`, {
+      const res = await fetchApi(`/api/agreements/${id}/organisers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

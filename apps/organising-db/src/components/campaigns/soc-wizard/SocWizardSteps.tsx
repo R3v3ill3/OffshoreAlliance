@@ -29,6 +29,7 @@ import {
   FileText, Users, Target, Sparkles, RotateCcw,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { fetchApi, API_FETCH_TIMEOUT_LLM_MS } from '@/lib/api/fetch-api'
 import { CoachChatPanel } from './CoachChatPanel'
 import { ExportArtifactDialog } from './ExportArtifactDialog'
 import { StageSeedPanel } from './StageSeedPanel'
@@ -101,13 +102,14 @@ export function SocWizardSteps() {
   useEffect(() => {
     if (!initialCampaignId || sessionId) return
     setSnapshotLoading(true)
-    fetch('/api/soc-wizard/context-snapshot', {
+    fetchApi('/api/soc-wizard/context-snapshot', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         campaign_id: Number(initialCampaignId),
         stage_number: initialStageNumber ? Number(initialStageNumber) : undefined,
       }),
+      timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
     })
       .then(async (r) => {
         if (!r.ok) throw new Error((await r.json()).error || 'Failed to load context')
@@ -708,10 +710,11 @@ function StaleSituationAnalysisBanner({
     if (!sessionId || !campaignId) return
     setRefreshing(true)
     try {
-      const res = await fetch('/api/soc-wizard/context-snapshot', {
+      const res = await fetchApi('/api/soc-wizard/context-snapshot', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ campaign_id: campaignId }),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       })
       if (!res.ok) throw new Error((await res.json()).error || 'Failed to refresh')
       const { snapshot } = await res.json()

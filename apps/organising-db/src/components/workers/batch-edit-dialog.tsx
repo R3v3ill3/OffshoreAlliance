@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { fetchApi } from "@/lib/api/fetch-api";
 import { useAuth } from "@/lib/supabase/auth-context";
 import {
   Dialog,
@@ -168,7 +169,7 @@ export function BatchEditDialog({
     setError(null);
 
     try {
-      const res = await fetch("/api/workers/batch-update", {
+      const res = await fetchApi("/api/workers/batch-update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
-import { ALL_VARIABLE_KEYS } from '@/lib/comms/template-variables'
+
+/** Align with client `API_FETCH_TIMEOUT_LLM_MS` so Vercel does not exit first. */
+export const maxDuration = 120
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -66,12 +68,33 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const t0 = Date.now()
+  const requestId = req.headers.get('x-request-id') ?? 'none'
+  const log = (
+    stage: string,
+    importId: number | null = null,
+    extra?: Record<string, unknown>,
+  ) => {
+    console.log(
+      JSON.stringify({
+        route: 'email-import/analyse',
+        requestId,
+        stage,
+        importId,
+        ms: Date.now() - t0,
+        ...extra,
+      }),
+    )
+  }
+
   try {
+    log('start', null)
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    log('auth_ok', null)
 
     if (!process.env.ANTHROPIC_API_KEY) {
       return NextResponse.json(
@@ -96,6 +119,8 @@ export async function POST(
       return NextResponse.json({ error: 'Import not found' }, { status: 404 })
     }
 
+    log('db_ok', importId)
+
     const content = emailImport.body_html || emailImport.body_text || ''
     if (!content.trim()) {
       return NextResponse.json({ error: 'No email content to analyse' }, { status: 400 })
@@ -113,6 +138,7 @@ ${content.slice(0, 12000)}
 Stage names for reference:
 ${Object.entries(STAGE_NAMES).map(([n, name]) => `${n}. ${name}`).join('\n')}`
 
+    log('anthropic_start', importId)
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4000,
@@ -120,6 +146,7 @@ ${Object.entries(STAGE_NAMES).map(([n, name]) => `${n}. ${name}`).join('\n')}`
       messages: [{ role: 'user', content: userMessage }],
     })
 
+    log('anthropic_end', importId)
     const responseContent = response.content[0]
     if (responseContent.type !== 'text') {
       throw new Error('Unexpected response type from Claude')
@@ -155,8 +182,10 @@ ${Object.entries(STAGE_NAMES).map(([n, name]) => `${n}. ${name}`).join('\n')}`
       console.error('Failed to update email import with analysis:', updateError)
     }
 
+    log('done', importId)
     return NextResponse.json({ analysis: parsed, import_id: importId })
   } catch (error) {
+    log('error', null, { message: error instanceof Error ? error.message : String(error) })
     console.error('Email import analysis error:', error)
     if (error instanceof Error) {
       return NextResponse.json({ error: error.message }, { status: 500 })

@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { FileText, Search, Loader2, CheckCircle } from 'lucide-react'
 import { useCallScripts } from '@/lib/hooks/useCallScripts'
+import { fetchApi } from '@/lib/api/fetch-api'
 import { toast } from 'sonner'
 
 interface Props {
@@ -56,7 +57,7 @@ export function LinkListToScriptDialog({
       scriptId: number
       setCurrent: boolean
     }) => {
-      const res = await fetch(
+      const res = await fetchApi(
         `/api/campaigns/${campaignId}/call-lists/${listId}/link-script`,
         {
           method: 'POST',

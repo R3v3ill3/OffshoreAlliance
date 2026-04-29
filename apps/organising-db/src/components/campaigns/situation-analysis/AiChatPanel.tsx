@@ -20,6 +20,10 @@ import {
   X,
   Sparkles,
 } from "lucide-react";
+import {
+  fetchApi,
+  API_FETCH_TIMEOUT_STREAM_MS,
+} from "@/lib/api/fetch-api";
 import type {
   CompanyPlaybookMove,
   InformationGap,
@@ -78,7 +82,7 @@ export function AiChatPanel({ campaignId, draft, onApply }: AiChatPanelProps) {
     const ac = new AbortController();
     abortRef.current = ac;
     try {
-      const res = await fetch("/api/situation-analysis/chat", {
+      const res = await fetchApi("/api/situation-analysis/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -87,6 +91,7 @@ export function AiChatPanel({ campaignId, draft, onApply }: AiChatPanelProps) {
           messages: nextTurns,
         }),
         signal: ac.signal,
+        timeoutMs: API_FETCH_TIMEOUT_STREAM_MS,
       });
       if (!res.ok || !res.body) {
         const payload = (await res.json().catch(() => ({}))) as {

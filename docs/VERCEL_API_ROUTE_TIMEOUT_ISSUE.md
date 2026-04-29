@@ -121,3 +121,9 @@ The app's middleware (`src/middleware.ts` + `src/lib/supabase/middleware.ts`) ru
 3. Page routes work correctly on both URLs
 4. The app's in-browser functionality is unaffected because it uses direct Supabase client queries
 5. It is unknown whether external API route access ever worked on this deployment, as Vercel Authentication was enabled before this session
+
+## Current understanding (2026-04-30)
+
+- **`/api/*` is not matched by Next.js middleware** in this repo (see `apps/organising-db/src/middleware.ts` matcher — excludes `api/`). Historical API-only timeouts should not be attributed to middleware *unless* the matcher changes again.
+- **Lane split still applies:** browser features that use the Supabase client hit `*.supabase.co` directly; features that use `fetch('/api/...')` depend on Vercel serverless + server-side `getUser()` + providers. Silent hangs on API calls are a separate failure mode from “Supabase REST looks fine.”
+- **Investigation runbook:** [SUPABASE_DROPOUT_INVESTIGATION.md](SUPABASE_DROPOUT_INVESTIGATION.md)

@@ -3,6 +3,10 @@
 import { useState, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import {
+  fetchApi,
+  API_FETCH_TIMEOUT_UPLOAD_MS,
+} from "@/lib/api/fetch-api";
 import { matchWorksiteCandidates } from "@/lib/utils/worksite-fuzzy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -395,9 +399,10 @@ export function MembershipImportWizard({
       try {
         const formData = new FormData();
         formData.append("file", file);
-        const res = await fetch(`/api/membership-import/parse?type=${importType}`, {
+        const res = await fetchApi(`/api/membership-import/parse?type=${importType}`, {
           method: "POST",
           body: formData,
+          timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
         });
         const json = await res.json();
         if (!json.success) {
@@ -778,10 +783,11 @@ export function MembershipImportWizard({
     });
 
     try {
-      const res = await fetch(`/api/membership-import/apply?type=${importType}`, {
+      const res = await fetchApi(`/api/membership-import/apply?type=${importType}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rows: applyRows }),
+        timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
       });
       const json = await res.json();
       setResult({

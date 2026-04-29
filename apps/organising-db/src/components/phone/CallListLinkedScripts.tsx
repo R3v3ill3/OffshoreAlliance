@@ -14,6 +14,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { fetchApi } from '@/lib/api/fetch-api'
 import { LinkListToScriptDialog } from './LinkListToScriptDialog'
 
 interface LinkedScript {
@@ -41,7 +42,7 @@ export function CallListLinkedScripts({ campaignId, listId, links }: Props) {
 
   const setCurrent = useMutation({
     mutationFn: async (scriptId: number) => {
-      const res = await fetch(
+      const res = await fetchApi(
         `/api/campaigns/${campaignId}/call-lists/${listId}/link-script`,
         {
           method: 'POST',
@@ -65,7 +66,7 @@ export function CallListLinkedScripts({ campaignId, listId, links }: Props) {
 
   const unlink = useMutation({
     mutationFn: async (scriptId: number) => {
-      const res = await fetch(
+      const res = await fetchApi(
         `/api/campaigns/${campaignId}/call-lists/${listId}/link-script?script_id=${scriptId}`,
         { method: 'DELETE' }
       )

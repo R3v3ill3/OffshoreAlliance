@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuthAwareMutation, ensureValidSession } from '@/lib/hooks/useAuthAwareMutation'
 import { syncAmbitionTargetDatesForCampaign } from '@/lib/supabase/syncAmbitionTargetDates'
 import { logConnectionEvent, generateTraceId } from '@/lib/supabase/connection-monitor'
+import { fetchApi } from '@/lib/api/fetch-api'
 
 /** Stage row from the creation wizard → persisted on campaign_stage_plans */
 export type PlannerStageDateInput = {
@@ -195,7 +196,7 @@ export function useCampaignOrganisers(campaignId: number) {
   return useQuery({
     queryKey: ['campaign-organisers', campaignId],
     queryFn: async (): Promise<CampaignOrganiserMember[]> => {
-      const res = await fetch(`/api/campaign-organisers/${campaignId}`)
+      const res = await fetchApi(`/api/campaign-organisers/${campaignId}`)
       if (!res.ok) throw new Error('Failed to load campaign team')
       return res.json()
     },
@@ -213,7 +214,7 @@ export function useAddCampaignOrganiser() {
       campaign_role: string
       reports_to_organiser_id?: number | null
     }) => {
-      const res = await fetch(`/api/campaign-organisers/${payload.campaign_id}`, {
+      const res = await fetchApi(`/api/campaign-organisers/${payload.campaign_id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -244,7 +245,7 @@ export function useUpdateCampaignTeamMember() {
       campaign_role?: string
       reports_to_organiser_id?: number | null
     }) => {
-      const res = await fetch(`/api/campaign-organisers/${payload.campaign_id}`, {
+      const res = await fetchApi(`/api/campaign-organisers/${payload.campaign_id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -270,7 +271,7 @@ export function useRemoveCampaignOrganiser() {
 
   return useAuthAwareMutation({
     mutationFn: async ({ campaign_id, row_id }: { campaign_id: number; row_id: number }) => {
-      const res = await fetch(`/api/campaign-organisers/${campaign_id}?rowId=${row_id}`, {
+      const res = await fetchApi(`/api/campaign-organisers/${campaign_id}?rowId=${row_id}`, {
         method: 'DELETE',
       })
       if (!res.ok) {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { fetchApi } from "@/lib/api/fetch-api";
 
 interface PendingRequest {
   request_id: number;
@@ -23,7 +24,7 @@ export function PendingRequestsPanel() {
 
   async function fetchPendingRequests() {
     try {
-      const response = await fetch("/api/permissions/pending");
+      const response = await fetchApi("/api/permissions/pending");
       const data = await response.json();
 
       if (!response.ok) {
@@ -46,7 +47,7 @@ export function PendingRequestsPanel() {
   async function handleApprove(requestId: number) {
     setProcessing(requestId);
     try {
-      const response = await fetch("/api/permissions/approve", {
+      const response = await fetchApi("/api/permissions/approve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ request_id: requestId }),
@@ -70,7 +71,7 @@ export function PendingRequestsPanel() {
   async function handleDeny(requestId: number) {
     setProcessing(requestId);
     try {
-      const response = await fetch("/api/permissions/deny", {
+      const response = await fetchApi("/api/permissions/deny", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ request_id: requestId }),

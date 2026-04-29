@@ -37,6 +37,7 @@ import {
   ArrowRight,
   ArrowLeft,
 } from "lucide-react";
+import { fetchApi, API_FETCH_TIMEOUT_UPLOAD_MS } from "@/lib/api/fetch-api";
 
 type ImportType = "workers" | "employers" | "agreements" | "worksites";
 
@@ -154,7 +155,11 @@ export function ImportDialog({
     try {
       const formData = new FormData();
       formData.append("file", selected);
-      const res = await fetch("/api/import", { method: "POST", body: formData });
+      const res = await fetchApi("/api/import", {
+        method: "POST",
+        body: formData,
+        timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
+      });
       const json = await res.json();
 
       if (!json.success) {

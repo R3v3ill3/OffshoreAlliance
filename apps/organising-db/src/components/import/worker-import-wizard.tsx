@@ -3,6 +3,11 @@
 import { useState, useCallback, useRef, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import {
+  fetchApi,
+  API_FETCH_TIMEOUT_UPLOAD_MS,
+  API_FETCH_TIMEOUT_LLM_MS,
+} from "@/lib/api/fetch-api";
 import { matchWorksiteCandidates } from "@/lib/utils/worksite-fuzzy";
 import type { WorksiteCandidate } from "@/lib/utils/worksite-fuzzy";
 import type { ParsedWorkerRow, ParsedWorkerGroup } from "@/app/api/worker-import/parse/route";
@@ -916,7 +921,11 @@ export function WorkerImportWizard({
         const url = effectiveFormat
           ? `/api/worker-import/parse?forceFormat=${effectiveFormat}`
           : "/api/worker-import/parse";
-        const res = await fetch(url, { method: "POST", body: formData });
+        const res = await fetchApi(url, {
+          method: "POST",
+          body: formData,
+          timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
+        });
         const json = await res.json();
         if (!json.success) {
           setParseError(json.error ?? "Parse failed");
@@ -1146,7 +1155,7 @@ export function WorkerImportWizard({
     setIsCreatingWorksite(true);
     setCreateWorksiteError(null);
     try {
-      const response = await fetch("/api/worker-import/worksites", {
+      const response = await fetchApi("/api/worker-import/worksites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1523,10 +1532,11 @@ export function WorkerImportWizard({
     }));
 
     try {
-      const res = await fetch("/api/worker-import/apply", {
+      const res = await fetchApi("/api/worker-import/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fileName, campaignId: numericCampaignId, assessmentColumns, rows }),
+        timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
       });
       const json = await res.json();
       setResult({

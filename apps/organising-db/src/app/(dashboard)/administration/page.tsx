@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
+import { fetchApi } from "@/lib/api/fetch-api";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
 import { Button } from "@/components/ui/button";
@@ -118,7 +119,7 @@ function UsersTab() {
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["admin-users"],
     queryFn: async () => {
-      const res = await fetch("/api/admin/users");
+      const res = await fetchApi("/api/admin/users");
       const json = (await res.json()) as { users?: UserRow[]; error?: string };
       if (!res.ok) throw new Error(json.error ?? "Failed to load users");
       return json.users ?? [];
@@ -127,7 +128,7 @@ function UsersTab() {
 
   const deleteMutation = useAuthAwareMutation({
     mutationFn: async (userId: string) => {
-      const res = await fetch(`/api/admin/delete-user?userId=${userId}`, {
+      const res = await fetchApi(`/api/admin/delete-user?userId=${userId}`, {
         method: "DELETE",
       });
       const json = await res.json();
@@ -148,7 +149,7 @@ function UsersTab() {
       password: string;
     }) => {
       setSetPasswordError(null);
-      const res = await fetch("/api/admin/set-user-password", {
+      const res = await fetchApi("/api/admin/set-user-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId, password }),
@@ -192,7 +193,7 @@ function UsersTab() {
       phone: string | null;
     }) => {
       setEditError(null);
-      const res = await fetch("/api/admin/update-user", {
+      const res = await fetchApi("/api/admin/update-user", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -334,7 +335,7 @@ function UsersTab() {
   const inviteMutation = useAuthAwareMutation({
     mutationFn: async () => {
       setInviteError(null);
-      const res = await fetch("/api/admin/invite-user", {
+      const res = await fetchApi("/api/admin/invite-user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, displayName, role, workRole: inviteWorkRole || null }),
@@ -1268,7 +1269,7 @@ function SettingsTab() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/admin/settings")
+    fetchApi("/api/admin/settings")
       .then((r) => r.json())
       .then((data: Record<string, string>) => {
         setActionNetworkKey(data.action_network_api_key ?? "");
@@ -1282,7 +1283,7 @@ function SettingsTab() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res = await fetch("/api/admin/settings", {
+      const res = await fetchApi("/api/admin/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1701,7 +1702,7 @@ function MonitoringTab() {
         .select("user_id");
 
       // Get retention status
-      const { data: retention } = await fetch("/api/admin/retention-status")
+      const { data: retention } = await fetchApi("/api/admin/retention-status")
         .then(r => r.json())
         .catch(() => ({ status: {} }));
 

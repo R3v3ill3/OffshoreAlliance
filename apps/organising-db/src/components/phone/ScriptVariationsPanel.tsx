@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { fetchApi, API_FETCH_TIMEOUT_LLM_MS } from '@/lib/api/fetch-api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -149,10 +150,11 @@ export function ScriptVariationsPanel({
             .join('\n'),
         }
 
-        const res = await fetch('/api/generate-draft', {
+        const res = await fetchApi('/api/generate-draft', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
+          timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error || 'Generation failed')
@@ -226,7 +228,7 @@ export function ScriptVariationsPanel({
       return
     }
     try {
-      const res = await fetch(`/api/campaigns/${campaignId}/call-scripts`, {
+      const res = await fetchApi(`/api/campaigns/${campaignId}/call-scripts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

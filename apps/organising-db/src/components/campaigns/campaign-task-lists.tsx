@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
+import { fetchApi } from "@/lib/api/fetch-api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -66,7 +67,7 @@ export function CampaignTaskListsSection({
   });
 
   async function issueToken(taskListId: number) {
-    const res = await fetch(`/api/campaigns/${campaignId}/task-lists/${taskListId}/token`, {
+    const res = await fetchApi(`/api/campaigns/${campaignId}/task-lists/${taskListId}/token`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ expiresInDays: 30 }),

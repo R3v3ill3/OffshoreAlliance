@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/command'
 import { Check, ChevronsUpDown, X, Briefcase } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
+import { fetchApi } from '@/lib/api/fetch-api'
 
 interface OccupationOption {
   occupation: string
@@ -43,7 +44,7 @@ export function OccupationMultiSelect({
   const { data: options = [], isLoading } = useQuery<OccupationOption[]>({
     queryKey: ['campaign-occupations', String(campaignId)],
     queryFn: async () => {
-      const res = await fetch(`/api/campaigns/${campaignId}/occupations`)
+      const res = await fetchApi(`/api/campaigns/${campaignId}/occupations`)
       if (!res.ok) return []
       return (await res.json()) as OccupationOption[]
     },

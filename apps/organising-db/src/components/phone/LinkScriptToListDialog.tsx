@@ -26,6 +26,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { fetchApi } from '@/lib/api/fetch-api'
 import type { CallListWithStats } from '@/types/planner-types'
 
 interface Props {
@@ -53,7 +54,7 @@ export function LinkScriptToListDialog({
   const { data: lists, isLoading } = useQuery({
     queryKey: ['call-lists-for-script', String(campaignId), String(scriptId)],
     queryFn: async () => {
-      const res = await fetch(
+      const res = await fetchApi(
         `/api/campaigns/${campaignId}/call-lists?script_id=${scriptId}`
       )
       if (!res.ok) throw new Error('Failed to fetch call lists')
@@ -70,7 +71,7 @@ export function LinkScriptToListDialog({
       listId: number
       setCurrent: boolean
     }) => {
-      const res = await fetch(
+      const res = await fetchApi(
         `/api/campaigns/${campaignId}/call-lists/${listId}/link-script`,
         {
           method: 'POST',

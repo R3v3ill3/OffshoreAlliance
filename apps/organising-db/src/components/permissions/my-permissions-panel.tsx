@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { fetchApi } from "@/lib/api/fetch-api";
 
 interface MyPermission {
   permission_id: number;
@@ -20,7 +21,7 @@ export function MyPermissionsPanel() {
 
   async function fetchMyPermissions() {
     try {
-      const response = await fetch("/api/permissions/my-permissions");
+      const response = await fetchApi("/api/permissions/my-permissions");
       const data = await response.json();
 
       if (!response.ok) {
@@ -47,7 +48,7 @@ export function MyPermissionsPanel() {
 
     setRevoking(permissionId);
     try {
-      const response = await fetch("/api/permissions/revoke", {
+      const response = await fetchApi("/api/permissions/revoke", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ permission_id: permissionId }),

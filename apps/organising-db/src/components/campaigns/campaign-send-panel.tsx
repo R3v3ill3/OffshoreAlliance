@@ -7,6 +7,10 @@ import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { useCampaignPhoneScriptContext } from "@/lib/hooks/useCampaignPhoneScriptContext";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
+import {
+  fetchApi,
+  API_FETCH_TIMEOUT_LLM_MS,
+} from "@/lib/api/fetch-api";
 import { format } from "date-fns";
 import { resolveTemplateVariables, translateToActionNetwork } from "@/lib/comms/template-variables";
 import { toast } from "sonner";
@@ -212,13 +216,14 @@ export function CampaignSendPanel({
       if (preparedTag?.tag_href) {
         messagePayload.targets = [{ href: preparedTag.tag_href }];
       }
-      const createRes = await fetch("/api/action-network", {
+      const createRes = await fetchApi("/api/action-network", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create_message",
           message: messagePayload,
         }),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       });
       const createData = await createRes.json();
       if (!createData.success) throw new Error(createData.error);
@@ -249,7 +254,7 @@ export function CampaignSendPanel({
   const sendSmsMutation = useAuthAwareMutation({
     mutationFn: async (recipients: { to: string; message: string }[]) => {
       if (!selectedDraft) throw new Error("No draft selected");
-      const res = await fetch("/api/yabbr", {
+      const res = await fetchApi("/api/yabbr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -257,6 +262,7 @@ export function CampaignSendPanel({
           recipients,
           from: "OffshoreAlliance",
         }),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
@@ -283,7 +289,7 @@ export function CampaignSendPanel({
 
   const pollStatsMutation = useAuthAwareMutation({
     mutationFn: async (draftId: number) => {
-      const res = await fetch(`/api/campaigns/${numericId}/sync-an`, {
+      const res = await fetchApi(`/api/campaigns/${numericId}/sync-an`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "poll_stats", draft_id: draftId }),
@@ -303,10 +309,11 @@ export function CampaignSendPanel({
     if (!selectedDraft) return;
     setIsStructuring(true);
     try {
-      const structureRes = await fetch(`/api/campaigns/${numericId}/call-scripts/structure`, {
+      const structureRes = await fetchApi(`/api/campaigns/${numericId}/call-scripts/structure`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ draft_id: selectedDraft.draft_id }),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       });
       if (!structureRes.ok) {
         const err = await structureRes.json().catch(() => ({ error: "Structure failed" }));
@@ -314,7 +321,7 @@ export function CampaignSendPanel({
       }
       const { sections } = await structureRes.json();
 
-      const createRes = await fetch(`/api/campaigns/${numericId}/call-scripts`, {
+      const createRes = await fetchApi(`/api/campaigns/${numericId}/call-scripts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

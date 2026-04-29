@@ -13,6 +13,10 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils/cn'
 import {
+  fetchApi,
+  API_FETCH_TIMEOUT_LLM_MS,
+} from '@/lib/api/fetch-api'
+import {
   Mail,
   MessageSquare,
   Phone,
@@ -241,7 +245,7 @@ export function DraftGeneratorCard({
     setIsCustomising(template.template_id)
     setSourceTemplateId(template.template_id)
     try {
-      const response = await fetch('/api/templates/customise', {
+      const response = await fetchApi('/api/templates/customise', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -255,6 +259,7 @@ export function DraftGeneratorCard({
           custom_instructions: customInstructions || undefined,
           campaign_context: campaignContext,
         }),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       })
 
       if (!response.ok) {

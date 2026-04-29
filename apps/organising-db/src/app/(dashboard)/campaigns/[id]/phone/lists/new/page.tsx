@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useCallScripts } from '@/lib/hooks/useCallScripts'
 import { useCreateCallList } from '@/lib/hooks/useCallList'
 import { createClient } from '@/lib/supabase/client'
+import { fetchApi } from '@/lib/api/fetch-api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -224,7 +225,7 @@ export default function NewCallListPage() {
       if (filters.roles.length > 0) url.searchParams.set('roles', filters.roles.join(','))
       if (filters.occupations.length > 0) url.searchParams.set('occupation', filters.occupations.join(','))
 
-      const res = await fetch(url.toString())
+      const res = await fetchApi(url.toString())
       const json = await res.json()
       if (json.success) {
         const workers = json.data as Array<{ phone: string | null }>
@@ -321,7 +322,7 @@ export default function NewCallListPage() {
           : undefined,
       }
 
-      const populateRes = await fetch(`/api/campaigns/${campaignId}/call-lists/${list.list_id}/populate`, {
+      const populateRes = await fetchApi(`/api/campaigns/${campaignId}/call-lists/${list.list_id}/populate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(populateBody),

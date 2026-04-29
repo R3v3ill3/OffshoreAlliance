@@ -1,3 +1,5 @@
+import { fetchApi } from "@/lib/api/fetch-api";
+
 export interface WorkloadDashboardData {
   /** RPC row shape; kept loose until shared workload row type exists. */
   campaigns: any[];
@@ -35,7 +37,7 @@ export async function fetchWorkloadDashboard(
     params.set("filterTimePeriod", filters.filterTimePeriod);
   }
 
-  const response = await fetch(`/api/workload?${params.toString()}`, {
+  const response = await fetchApi(`/api/workload?${params.toString()}`, {
     headers: { "X-Client-Request-Id": clientRequestId },
   });
 

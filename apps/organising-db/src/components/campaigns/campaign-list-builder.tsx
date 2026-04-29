@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
+import { fetchApi, API_FETCH_TIMEOUT_UPLOAD_MS } from "@/lib/api/fetch-api";
 import {
   Mail,
   Phone,
@@ -198,7 +199,7 @@ export function CampaignListBuilder({
   } = useQuery({
     queryKey: ["campaign-an-tags", numericId],
     queryFn: async () => {
-      const res = await fetch(`/api/campaigns/${numericId}/sync-an`);
+      const res = await fetchApi(`/api/campaigns/${numericId}/sync-an`);
       if (!res.ok) throw new Error("Failed to fetch AN tags");
       const json = await res.json();
       return (json.data ?? []).map(
@@ -215,7 +216,7 @@ export function CampaignListBuilder({
     setSyncingTags(true);
     setSyncResult(null);
     try {
-      const res = await fetch(`/api/campaigns/${numericId}/sync-an`, {
+      const res = await fetchApi(`/api/campaigns/${numericId}/sync-an`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "sync_tags" }),
@@ -279,7 +280,7 @@ export function CampaignListBuilder({
       if (excludeAnTags.length)
         params.set("exclude_an_tags", excludeAnTags.join(","));
 
-      const res = await fetch(
+      const res = await fetchApi(
         `/api/campaigns/${numericId}/list-builder?${params.toString()}`
       );
       if (!res.ok) throw new Error("Failed to fetch workers");
@@ -680,7 +681,7 @@ export function CampaignListBuilder({
                   setPushingList(true);
                   setPushResult(null);
                   try {
-                    const res = await fetch(`/api/campaigns/${numericId}/push-list`, {
+                    const res = await fetchApi(`/api/campaigns/${numericId}/push-list`, {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({
@@ -697,6 +698,7 @@ export function CampaignListBuilder({
                           exclude_an_tags: excludeAnTags.length > 0 ? excludeAnTags : undefined,
                         },
                       }),
+                      timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
                     });
                     const data = await res.json();
                     if (!res.ok || !data.success) {

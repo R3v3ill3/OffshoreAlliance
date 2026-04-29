@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils/cn'
+import { fetchApi, API_FETCH_TIMEOUT_LLM_MS } from '@/lib/api/fetch-api'
 import { Mail, MessageSquare, Phone, Pencil, Wand2, Users, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { CommsPlatform, DraftStatus } from '@/types/planner-types'
@@ -63,10 +64,11 @@ export function DraftPreview({ draft, campaignId, onEdit }: DraftPreviewProps) {
     setIsStructuring(true)
     try {
       // Step 1: parse the draft into SOC sections via AI
-      const structureRes = await fetch(`/api/campaigns/${campaignId}/call-scripts/structure`, {
+      const structureRes = await fetchApi(`/api/campaigns/${campaignId}/call-scripts/structure`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ draft_id: draft.draft_id }),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       })
       if (!structureRes.ok) {
         const err = await structureRes.json().catch(() => ({ error: 'Structure failed' }))
@@ -75,7 +77,7 @@ export function DraftPreview({ draft, campaignId, onEdit }: DraftPreviewProps) {
       const { sections } = await structureRes.json()
 
       // Step 2: create the call_script record with the parsed sections and link the draft
-      const createRes = await fetch(`/api/campaigns/${campaignId}/call-scripts`, {
+      const createRes = await fetchApi(`/api/campaigns/${campaignId}/call-scripts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

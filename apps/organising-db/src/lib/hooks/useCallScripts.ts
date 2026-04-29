@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { fetchApi, API_FETCH_TIMEOUT_LLM_MS } from '@/lib/api/fetch-api'
 import { createClient } from '@/lib/supabase/client'
 import type {
   CallScript,
@@ -11,7 +12,7 @@ export function useCallScripts(campaignId: number | string) {
   return useQuery({
     queryKey: ['call-scripts', String(campaignId)],
     queryFn: async () => {
-      const res = await fetch(`/api/campaigns/${campaignId}/call-scripts`)
+      const res = await fetchApi(`/api/campaigns/${campaignId}/call-scripts`)
       if (!res.ok) throw new Error('Failed to fetch call scripts')
       return res.json() as Promise<CallScriptWithSections[]>
     },
@@ -48,7 +49,7 @@ export function useCreateCallScript(campaignId: number | string) {
       estimated_duration_minutes?: number
       sections?: Record<string, unknown>[]
     }) => {
-      const res = await fetch(`/api/campaigns/${campaignId}/call-scripts`, {
+      const res = await fetchApi(`/api/campaigns/${campaignId}/call-scripts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -107,10 +108,11 @@ export function useUpdateCallScriptSections(campaignId: number | string, scriptI
 export function useStructureScript(campaignId: number | string) {
   return useMutation({
     mutationFn: async (request: StructureScriptRequest) => {
-      const res = await fetch(`/api/campaigns/${campaignId}/call-scripts/structure`, {
+      const res = await fetchApi(`/api/campaigns/${campaignId}/call-scripts/structure`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Failed' }))
@@ -145,7 +147,7 @@ export function useDeleteCallScript(campaignId: number | string) {
 
   return useMutation({
     mutationFn: async (scriptId: number) => {
-      const res = await fetch(`/api/campaigns/${campaignId}/call-scripts/${scriptId}`, {
+      const res = await fetchApi(`/api/campaigns/${campaignId}/call-scripts/${scriptId}`, {
         method: 'DELETE',
       })
       if (!res.ok) {

@@ -3,6 +3,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
+import { fetchApi, API_FETCH_TIMEOUT_LLM_MS } from '@/lib/api/fetch-api'
 
 export interface EmailImportRow {
   import_id: number
@@ -59,7 +60,7 @@ export function useEmailImports(status?: string) {
       const url = status
         ? `/api/email-import?status=${status}`
         : '/api/email-import'
-      const response = await fetch(url)
+      const response = await fetchApi(url)
       if (!response.ok) {
         const err = await response.json().catch(() => ({ error: 'Unknown error' }))
         throw new Error(err.error || 'Failed to fetch imports')
@@ -74,7 +75,7 @@ export function useEmailImportDetail(importId: number | null) {
     queryKey: ['email-import', importId],
     queryFn: async () => {
       if (!importId) return null
-      const response = await fetch(`/api/email-import/${importId}`)
+      const response = await fetchApi(`/api/email-import/${importId}`)
       if (!response.ok) {
         const err = await response.json().catch(() => ({ error: 'Unknown error' }))
         throw new Error(err.error || 'Failed to fetch import')
@@ -90,8 +91,9 @@ export function useAnalyseEmailImport() {
 
   return useAuthAwareMutation({
     mutationFn: async (importId: number) => {
-      const response = await fetch(`/api/email-import/${importId}/analyse`, {
+      const response = await fetchApi(`/api/email-import/${importId}/analyse`, {
         method: 'POST',
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       })
       if (!response.ok) {
         const err = await response.json().catch(() => ({ error: 'Unknown error' }))
@@ -115,7 +117,7 @@ export function useUpdateEmailImport() {
 
   return useAuthAwareMutation({
     mutationFn: async (params: { importId: number; updates: Partial<EmailImportRow> }) => {
-      const response = await fetch(`/api/email-import/${params.importId}`, {
+      const response = await fetchApi(`/api/email-import/${params.importId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params.updates),
@@ -141,7 +143,7 @@ export function useDeleteEmailImport() {
 
   return useAuthAwareMutation({
     mutationFn: async (importId: number) => {
-      const response = await fetch(`/api/email-import/${importId}`, {
+      const response = await fetchApi(`/api/email-import/${importId}`, {
         method: 'DELETE',
       })
       if (!response.ok) {
@@ -175,14 +177,18 @@ export function useImportAsTemplate() {
       }
       variable_replacements?: VariableReplacement[]
     }) => {
-      const response = await fetch(`/api/email-import/${params.importId}/import-template`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...params.overrides,
-          variable_replacements: params.variable_replacements,
-        }),
-      })
+      const response = await fetchApi(
+        `/api/email-import/${params.importId}/import-template`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...params.overrides,
+            variable_replacements: params.variable_replacements,
+          }),
+          timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
+        },
+      )
       if (!response.ok) {
         const err = await response.json().catch(() => ({ error: 'Unknown error' }))
         throw new Error(err.error || 'Import failed')

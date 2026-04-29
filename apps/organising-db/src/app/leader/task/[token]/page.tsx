@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
+import { fetchApi } from "@/lib/api/fetch-api";
 import { VOTE_SUPPORTER_OPTIONS } from "@/lib/campaign/constants";
 
 type WorkerRow = {
@@ -59,7 +60,7 @@ export default function LeaderTaskPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/campaign-leader/${token}`);
+        const res = await fetchApi(`/api/campaign-leader/${token}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || "Failed to load");
         if (cancelled) return;
@@ -110,7 +111,7 @@ export default function LeaderTaskPage() {
           rating: p.rating ? Number(p.rating) : null,
           notes: p.notes.trim() || null,
         }));
-      const res = await fetch(`/api/campaign-leader/${token}`, {
+      const res = await fetchApi(`/api/campaign-leader/${token}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ratings: ratingsPayload, prospective: prospectivePayload }),

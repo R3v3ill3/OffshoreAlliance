@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/lib/supabase/auth-context'
 import { useGenerateDraft } from '@/lib/hooks/useGenerateDraft'
+import { fetchApi, API_FETCH_TIMEOUT_LLM_MS, API_FETCH_TIMEOUT_UPLOAD_MS } from '@/lib/api/fetch-api'
 import { useWtpCategories } from '@/lib/hooks/usePlannerOptions'
 import { TemplatePicker } from '@/components/campaigns/planning/TemplatePicker'
 import type { TemplateRow } from '@/lib/hooks/useTemplateLibrary'
@@ -291,7 +292,7 @@ export function EmailWizardSteps() {
     queryKey: ['wizard-worker-list', state.campaignId, state.standaloneEmployerId, state.standaloneWorksiteId],
     queryFn: async (): Promise<WorkerPreview[]> => {
       if (state.campaignId) {
-        const res = await fetch(`/api/campaigns/${state.campaignId}/list-builder?`)
+        const res = await fetchApi(`/api/campaigns/${state.campaignId}/list-builder?`)
         const json = await res.json()
         if (!json.success) throw new Error(json.error)
         return (json.data as WorkerPreview[]).map((row) => ({
@@ -818,7 +819,7 @@ export function EmailWizardSteps() {
   async function handleCustomiseTemplate(template: TemplateRow) {
     setIsCustomising(template.template_id)
     try {
-      const response = await fetch('/api/templates/customise', {
+      const response = await fetchApi('/api/templates/customise', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -838,6 +839,7 @@ export function EmailWizardSteps() {
             staff_email: user?.email || undefined,
           },
         }),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       })
       if (!response.ok) throw new Error('Customisation failed')
       const result = await response.json()
@@ -951,10 +953,11 @@ export function EmailWizardSteps() {
         }
       }
 
-      const res = await fetch(url, {
+      const res = await fetchApi(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
       })
       const data = await res.json()
       if (!res.ok || !data.success) throw new Error(data.error || 'Push failed')
@@ -997,10 +1000,11 @@ export function EmailWizardSteps() {
         messagePayload.targets = [{ href: state.preparedTag.tag_href }]
       }
 
-      const createRes = await fetch('/api/action-network', {
+      const createRes = await fetchApi('/api/action-network', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'create_message', message: messagePayload }),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       })
       const createData = await createRes.json()
       if (!createData.success) throw new Error(createData.error)

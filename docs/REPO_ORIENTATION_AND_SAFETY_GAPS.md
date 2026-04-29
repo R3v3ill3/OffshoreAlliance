@@ -188,4 +188,6 @@ Heaviest recent work areas:
 
 **Most fragile area for bug-chasing:** the auth/session layer — heavily patched, multiple overlapping refresh mechanisms.
 
+**Operational investigations:** For session “dropouts”, hung API flows (e.g. email import Analyse), and silent spinners, use **[SUPABASE_DROPOUT_INVESTIGATION.md](SUPABASE_DROPOUT_INVESTIGATION.md)** (intake checklist, repro matrix, hypothesis labels, two-lane architecture).
+
 **Second most fragile:** phone banking call flow — new FSM, multiple recent outcome-recording fixes.

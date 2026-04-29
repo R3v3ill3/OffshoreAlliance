@@ -3,6 +3,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
+import {
+  fetchApi,
+  API_FETCH_TIMEOUT_LLM_MS,
+} from '@/lib/api/fetch-api'
 import { toast } from 'sonner'
 
 interface TemplateFilters {
@@ -153,10 +157,11 @@ export function useDeactivateTemplate() {
 export function useAnalyseTemplate() {
   return useAuthAwareMutation({
     mutationFn: async (params: { content: string; platform?: string }) => {
-      const response = await fetch('/api/templates/analyse', {
+      const response = await fetchApi('/api/templates/analyse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       })
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Unknown error' }))

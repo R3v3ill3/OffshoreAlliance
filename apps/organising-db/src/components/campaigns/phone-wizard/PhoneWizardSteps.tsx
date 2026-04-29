@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/lib/supabase/auth-context'
 import { useGenerateDraft } from '@/lib/hooks/useGenerateDraft'
+import { fetchApi, API_FETCH_TIMEOUT_LLM_MS } from '@/lib/api/fetch-api'
 import { STAGE_NAMES } from '@/types/planner-types'
 import type { CommsDraftRequest } from '@/types/planner-types'
 import { Button } from '@/components/ui/button'
@@ -416,7 +417,7 @@ export function PhoneWizardSteps() {
     queryKey: ['phone-wizard-worker-list', state.campaignId, state.standaloneEmployerId, state.standaloneWorksiteId],
     queryFn: async (): Promise<WorkerPreview[]> => {
       if (state.campaignId) {
-        const res = await fetch(`/api/campaigns/${state.campaignId}/list-builder`)
+        const res = await fetchApi(`/api/campaigns/${state.campaignId}/list-builder`)
         const json = await res.json()
         if (!json.success) throw new Error(json.error)
         return (json.data as WorkerPreview[]).map((row) => ({
@@ -661,10 +662,11 @@ export function PhoneWizardSteps() {
         ].filter(Boolean).join('\n'),
       }
 
-      const res = await fetch('/api/generate-draft', {
+      const res = await fetchApi('/api/generate-draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Generation failed')
@@ -723,7 +725,7 @@ export function PhoneWizardSteps() {
         ? `/api/campaigns/${state.campaignId}/call-scripts`
         : '/api/phone-wizard/scripts'
 
-      const res = await fetch(url, {
+      const res = await fetchApi(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -769,7 +771,7 @@ export function PhoneWizardSteps() {
           ? `/api/campaigns/${state.campaignId}/call-lists`
           : '/api/phone-wizard/call-lists'
 
-        const listRes = await fetch(listUrl, {
+        const listRes = await fetchApi(listUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -788,7 +790,7 @@ export function PhoneWizardSteps() {
           ? `/api/campaigns/${state.campaignId}/call-lists/${listId}/populate`
           : `/api/phone-wizard/call-lists/${listId}/populate`
 
-        const populateRes = await fetch(populateUrl, {
+        const populateRes = await fetchApi(populateUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: state.campaignId
@@ -816,7 +818,7 @@ export function PhoneWizardSteps() {
           const listUrl = state.campaignId
             ? `/api/campaigns/${state.campaignId}/call-lists`
             : '/api/phone-wizard/call-lists'
-          const listRes = await fetch(listUrl, {
+          const listRes = await fetchApi(listUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -830,7 +832,7 @@ export function PhoneWizardSteps() {
             const populateUrl = state.campaignId
               ? `/api/campaigns/${state.campaignId}/call-lists/${listData.list_id}/populate`
               : `/api/phone-wizard/call-lists/${listData.list_id}/populate`
-            await fetch(populateUrl, {
+            await fetchApi(populateUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: state.campaignId
@@ -1116,7 +1118,7 @@ export function PhoneWizardSteps() {
         ? `/api/campaigns/${state.campaignId}/call-scripts`
         : '/api/phone-wizard/scripts'
 
-      const res = await fetch(url, {
+      const res = await fetchApi(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1154,7 +1156,7 @@ export function PhoneWizardSteps() {
         listId = existingListId!
         // Make sure the selected script is linked (as current wave) to the list.
         if (state.savedScriptId) {
-          const linkRes = await fetch(
+          const linkRes = await fetchApi(
             `/api/campaigns/${state.campaignId}/call-lists/${listId}/link-script`,
             {
               method: 'POST',
@@ -1177,7 +1179,7 @@ export function PhoneWizardSteps() {
           : '/api/phone-wizard/call-lists'
 
         // Create the call list
-        const listRes = await fetch(url, {
+        const listRes = await fetchApi(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1199,7 +1201,7 @@ export function PhoneWizardSteps() {
         ? `/api/campaigns/${state.campaignId}/call-lists/${listId}/populate`
         : `/api/phone-wizard/call-lists/${listId}/populate`
 
-      const populateRes = await fetch(populateUrl, {
+      const populateRes = await fetchApi(populateUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: state.campaignId
@@ -1238,7 +1240,7 @@ export function PhoneWizardSteps() {
     let cancelled = false
     setExistingListsLoading(true)
     const qs = state.savedScriptId ? `?script_id=${state.savedScriptId}` : ''
-    fetch(`/api/campaigns/${state.campaignId}/call-lists${qs}`)
+    fetchApi(`/api/campaigns/${state.campaignId}/call-lists${qs}`)
       .then((r) => (r.ok ? r.json() : []))
       .then((data) => {
         if (cancelled) return

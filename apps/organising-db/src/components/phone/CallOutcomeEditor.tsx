@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { fetchApi, API_FETCH_TIMEOUT_LLM_MS } from '@/lib/api/fetch-api'
 import { useCallOutcomeDefinitions, useSaveCallOutcomes } from '@/lib/hooks/useCallOutcomes'
 import { useAddAmbition } from '@/lib/hooks/useStagePlan'
 import { Button } from '@/components/ui/button'
@@ -159,10 +160,11 @@ export function CallOutcomeEditor({
         category: a.ambition_option?.category ?? null,
       }))
 
-      const res = await fetch('/api/phone-wizard/translate-ambitions', {
+      const res = await fetchApi('/api/phone-wizard/translate-ambitions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ambitions: payload }),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Translation failed')

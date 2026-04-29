@@ -13,6 +13,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { renderSituationContext } from '@/lib/situation-analysis/serialise'
+import type { CampaignSituationAnalysis } from '@/lib/situation-analysis/types'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -69,6 +71,34 @@ export interface SocContextSnapshot {
     status: string
     gap_description: string | null
   }>
+  /**
+   * Frozen snapshot of the campaign's current situation analysis row. Null
+   * when the campaign has no situation analysis on file or when the wizard
+   * is launched standalone (no campaign_id). The wizard's coach prompt
+   * derives a STRATEGIC SITUATION block from this via renderSituationContext.
+   */
+  situation_analysis: (Pick<
+    CampaignSituationAnalysis,
+    | 'situation_id'
+    | 'version'
+    | 'employer_interaction_state'
+    | 'employer_state_notes'
+    | 'balloted_count'
+    | 'top_issues'
+    | 'upcoming_workforce_changes'
+    | 'employer_relationships'
+    | 'hr_posture'
+    | 'union_history'
+    | 'strategic_context_summary'
+    | 'company_playbook'
+    | 'workforce_populations'
+    | 'leverage_and_maths'
+    | 'information_gaps'
+    | 'updated_at'
+  > & {
+    /** Pre-rendered prompt-ready text block. Convenience field. */
+    rendered_context: string | null
+  }) | null
 }
 
 export async function POST(req: NextRequest) {
@@ -161,6 +191,42 @@ export async function POST(req: NextRequest) {
       }))
     }
 
+    // Fetch the campaign's current situation analysis (per-campaign, versioned)
+    let situationAnalysis: SocContextSnapshot['situation_analysis'] = null
+    {
+      const { data: saRow } = await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .from('campaign_situation_analyses' as any)
+        .select(
+          'situation_id, version, employer_interaction_state, employer_state_notes, balloted_count, top_issues, upcoming_workforce_changes, employer_relationships, hr_posture, union_history, strategic_context_summary, company_playbook, workforce_populations, leverage_and_maths, information_gaps, updated_at'
+        )
+        .eq('campaign_id', campaign_id)
+        .eq('is_current', true)
+        .maybeSingle()
+      if (saRow) {
+        const row = saRow as unknown as Partial<CampaignSituationAnalysis>
+        situationAnalysis = {
+          situation_id: row.situation_id ?? 0,
+          version: row.version ?? 1,
+          employer_interaction_state: row.employer_interaction_state ?? null,
+          employer_state_notes: row.employer_state_notes ?? null,
+          balloted_count: row.balloted_count ?? null,
+          top_issues: row.top_issues ?? [],
+          upcoming_workforce_changes: row.upcoming_workforce_changes ?? [],
+          employer_relationships: row.employer_relationships ?? [],
+          hr_posture: row.hr_posture ?? {},
+          union_history: row.union_history ?? {},
+          strategic_context_summary: row.strategic_context_summary ?? null,
+          company_playbook: row.company_playbook ?? [],
+          workforce_populations: row.workforce_populations ?? [],
+          leverage_and_maths: row.leverage_and_maths ?? {},
+          information_gaps: row.information_gaps ?? [],
+          updated_at: row.updated_at ?? new Date().toISOString(),
+          rendered_context: renderSituationContext(row),
+        }
+      }
+    }
+
     // Normalise the agreement (one campaign timeline → one agreement, by convention)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const timelines = (campaign as any).campaign_timelines || []
@@ -211,6 +277,7 @@ export async function POST(req: NextRequest) {
       ambitions,
       where_to_play: whereToPlay,
       capacities,
+      situation_analysis: situationAnalysis,
     }
 
     return NextResponse.json({ snapshot })

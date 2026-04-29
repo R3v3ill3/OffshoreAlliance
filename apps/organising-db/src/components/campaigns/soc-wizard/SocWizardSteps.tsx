@@ -31,6 +31,8 @@ import {
 import { toast } from 'sonner'
 import { CoachChatPanel } from './CoachChatPanel'
 import { ExportArtifactDialog } from './ExportArtifactDialog'
+import { StageSeedPanel } from './StageSeedPanel'
+import { useSituationAnalysis } from '@/lib/hooks/useSituationAnalysis'
 import {
   useSocSession,
   useCreateSocSession,
@@ -131,11 +133,32 @@ export function SocWizardSteps() {
 
   // ---------------- Step 2: Populations ----------------
   const [populations, setPopulations] = useState<SocSessionPopulation[]>([])
+  const [populationsPrefilledFromSA, setPopulationsPrefilledFromSA] = useState(false)
   useEffect(() => {
     if (session.data?.target_populations && session.data.target_populations.length > 0 && populations.length === 0) {
       setPopulations(session.data.target_populations)
     }
   }, [session.data, populations.length])
+
+  // Pre-fill from situation analysis ONLY when no session exists yet AND
+  // no populations have been entered. Once the session is created, the
+  // saved target_populations are authoritative — no auto-overwrite.
+  useEffect(() => {
+    if (sessionId) return
+    if (populations.length > 0) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const saPops = (contextSnapshot?.situation_analysis as any)?.workforce_populations
+    if (!Array.isArray(saPops) || saPops.length === 0) return
+    setPopulations(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (saPops as any[]).map((p) => ({
+        name: p.name ?? '',
+        description: p.approx_size ? `~${p.approx_size} workers` : (p.source_of_evidence ?? undefined),
+        characteristics: p.soc_emphasis ?? undefined,
+      }))
+    )
+    setPopulationsPrefilledFromSA(true)
+  }, [contextSnapshot, sessionId, populations.length])
 
   function addPopulation() {
     setPopulations((p) => [...p, { name: '', description: '', characteristics: '' }])
@@ -250,6 +273,14 @@ export function SocWizardSteps() {
         )}
       </div>
 
+      <StaleSituationAnalysisBanner
+        sessionId={sessionId}
+        campaignId={session.data?.campaign_id ?? null}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        snapshotVersion={(session.data?.context_snapshot as any)?.situation_analysis?.version ?? null}
+        onRefreshed={(snap) => setContextSnapshot(snap)}
+      />
+
       {/* Step 1: Context */}
       {step === 1 && (
         <Card>
@@ -301,6 +332,11 @@ export function SocWizardSteps() {
             <p className="text-xs text-slate-600">
               Identify the discrete worker populations relevant to THIS SOC. Different populations carry different leverage, surface different issues, and respond to different language. Add as many as are relevant — there is no fixed list.
             </p>
+            {populationsPrefilledFromSA && (
+              <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded p-2">
+                Pre-filled from this campaign&apos;s situation analysis. Edit, add, or remove freely — the SOC&apos;s populations are independent of the analysis.
+              </div>
+            )}
             <div className="space-y-3">
               {populations.length === 0 && (
                 <p className="text-xs text-slate-500 italic">
@@ -349,6 +385,12 @@ export function SocWizardSteps() {
           session_id={sessionId}
           stage={currentStep.socStage as SocStage}
           stageContent={stageContent.data || []}
+          situation={
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ((session.data?.context_snapshot as any)?.situation_analysis ?? null) ||
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ((contextSnapshot as any)?.situation_analysis ?? null)
+          }
           onScrollToTop={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
         />
       )}
@@ -433,14 +475,31 @@ function SocStageStep({
   session_id,
   stage,
   stageContent,
+  situation,
   onScrollToTop,
 }: {
   session_id: number
   stage: SocStage
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   stageContent: any[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  situation: any | null
   onScrollToTop: () => void
 }) {
+  // Composer state lifted to this component so StageSeedPanel can drop
+  // text into it. One slot per (stage, hope_frame) keyed string.
+  const [composers, setComposers] = useState<Record<string, string>>({})
+  const composerKey = (frame?: HopeFrame) => `${stage}:${frame ?? 'none'}`
+  const setComposerFor = (frame: HopeFrame | undefined, next: string) =>
+    setComposers((prev) => ({ ...prev, [composerKey(frame)]: next }))
+  const composerFor = (frame?: HopeFrame) => composers[composerKey(frame)] ?? ''
+
+  function appendSeed(frame: HopeFrame | undefined, body: string) {
+    const current = composerFor(frame)
+    const next = current.trim().length > 0 ? `${current}\n\n${body}` : body
+    setComposerFor(frame, next)
+  }
+
   if (stage === 5) {
     return (
       <Card>
@@ -471,7 +530,13 @@ function SocStageStep({
                 (c) => c.stage_number === 5 && c.hope_frame === f
               )
               return (
-                <TabsContent key={f} value={f} className="mt-3">
+                <TabsContent key={f} value={f} className="mt-3 space-y-3">
+                  <StageSeedPanel
+                    stage={5}
+                    hopeFrame={f}
+                    situation={situation}
+                    onSeed={(body) => appendSeed(f, body)}
+                  />
                   <CoachChatPanel
                     session_id={session_id}
                     stage_number={5}
@@ -480,6 +545,8 @@ function SocStageStep({
                     alreadyLocked={!!locked}
                     initialLockedContent={locked?.locked_content ?? ''}
                     onLocked={onScrollToTop}
+                    composerText={composerFor(f)}
+                    onComposerTextChange={(next) => setComposerFor(f, next)}
                   />
                 </TabsContent>
               )
@@ -505,6 +572,11 @@ function SocStageStep({
           {locked && <Badge className="bg-emerald-100 text-emerald-700" variant="secondary">Locked</Badge>}
         </div>
         <p className="text-xs text-slate-600">{STAGE_COACHING[stage].short_purpose}</p>
+        <StageSeedPanel
+          stage={stage}
+          situation={situation}
+          onSeed={(body) => appendSeed(undefined, body)}
+        />
         <CoachChatPanel
           session_id={session_id}
           stage_number={stage}
@@ -512,6 +584,8 @@ function SocStageStep({
           alreadyLocked={!!locked}
           initialLockedContent={locked?.locked_content ?? ''}
           onLocked={onScrollToTop}
+          composerText={composerFor()}
+          onComposerTextChange={(next) => setComposerFor(undefined, next)}
         />
       </CardContent>
     </Card>
@@ -605,6 +679,77 @@ function ReviewStep({
   )
 }
 
+// ---------------- Stale situation-analysis banner ----------------
+
+function StaleSituationAnalysisBanner({
+  sessionId,
+  campaignId,
+  snapshotVersion,
+  onRefreshed,
+}: {
+  sessionId: number | null
+  campaignId: number | null
+  snapshotVersion: number | null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onRefreshed: (snapshot: any) => void
+}) {
+  const { data } = useSituationAnalysis(campaignId)
+  const updateSession = useUpdateSocSession()
+  const [dismissed, setDismissed] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+
+  if (!sessionId || !campaignId) return null
+  if (dismissed) return null
+  const currentVersion = data?.row?.version ?? null
+  if (currentVersion === null || snapshotVersion === null) return null
+  if (currentVersion <= snapshotVersion) return null
+
+  async function handleRefresh() {
+    if (!sessionId || !campaignId) return
+    setRefreshing(true)
+    try {
+      const res = await fetch('/api/soc-wizard/context-snapshot', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ campaign_id: campaignId }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error || 'Failed to refresh')
+      const { snapshot } = await res.json()
+      await updateSession.mutateAsync({
+        session_id: sessionId,
+        patch: { context_snapshot: snapshot },
+      })
+      onRefreshed(snapshot)
+      toast.success('Situation analysis refreshed')
+      setDismissed(true)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Refresh failed')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  return (
+    <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 flex items-start justify-between gap-3">
+      <div className="text-xs text-amber-900">
+        <div className="font-medium">Situation analysis updated</div>
+        <div className="text-amber-800/80">
+          This campaign&apos;s situation analysis has been updated (v{snapshotVersion} → v{currentVersion}) since this SOC was started. Refresh to bring the new context into the coach prompt and the seed panels. Locked stages and chat history are preserved.
+        </div>
+      </div>
+      <div className="flex gap-1 shrink-0">
+        <Button size="sm" variant="ghost" onClick={() => setDismissed(true)}>
+          Dismiss
+        </Button>
+        <Button size="sm" onClick={handleRefresh} disabled={refreshing}>
+          {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+          Refresh context
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // ---------------- Context preview ----------------
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -652,6 +797,77 @@ function ContextPreview({ snapshot }: { snapshot: any }) {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+      {snapshot.situation_analysis && <StrategicSituationPreview sa={snapshot.situation_analysis} />}
+    </div>
+  )
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function StrategicSituationPreview({ sa }: { sa: any }) {
+  const topIssues: { label: string; heat: number }[] = (sa.top_issues || [])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .filter((i: any) => i.label?.trim().length > 0)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .sort((a: any, b: any) => (b.heat ?? 0) - (a.heat ?? 0))
+    .slice(0, 3)
+  const playbookCount = (sa.company_playbook || []).length
+  const populationCount = (sa.workforce_populations || []).length
+  const gaps: { question: string }[] = (sa.information_gaps || []).slice(0, 3)
+  const stateMap: Record<string, string> = {
+    no_engagement: 'No engagement',
+    preemptive_setup: 'Pre-emptive setup',
+    bargaining_underway: 'Bargaining underway',
+    agreement_balloted: 'Agreement balloted',
+    employer_delaying: 'Employer delaying',
+    industrial_action_phase: 'Industrial action phase',
+    post_settlement: 'Post-settlement',
+    other: 'Other',
+  }
+
+  return (
+    <div className="mt-3 pt-3 border-t border-slate-200">
+      <div className="text-[10px] uppercase tracking-wide font-semibold text-amber-700 mb-1.5">
+        Strategic situation (v{sa.version ?? 1})
+      </div>
+      {sa.employer_interaction_state && (
+        <div className="text-xs">
+          <span className="text-slate-500">Employer state:</span>{' '}
+          <span className="text-slate-800 font-medium">{stateMap[sa.employer_interaction_state] ?? sa.employer_interaction_state}</span>
+        </div>
+      )}
+      {topIssues.length > 0 && (
+        <div className="text-xs mt-1.5">
+          <div className="text-slate-500">Top issues by heat:</div>
+          <ul className="list-disc list-inside text-slate-800">
+            {topIssues.map((it, i) => (
+              <li key={i}>
+                {it.label}{' '}
+                <span className="text-slate-500">({it.heat}/5)</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {(playbookCount > 0 || populationCount > 0) && (
+        <div className="text-[11px] text-slate-600 mt-1.5">
+          {playbookCount > 0 && <>{playbookCount} predicted playbook move{playbookCount !== 1 ? 's' : ''}</>}
+          {playbookCount > 0 && populationCount > 0 && ' · '}
+          {populationCount > 0 && <>{populationCount} workforce population{populationCount !== 1 ? 's' : ''}</>}
+        </div>
+      )}
+      {gaps.length > 0 && (
+        <div className="mt-2 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded p-2">
+          <div className="font-medium mb-0.5">Open questions in the situation analysis</div>
+          <ul className="list-disc list-inside">
+            {gaps.map((g, i) => (
+              <li key={i}>{g.question}</li>
+            ))}
+          </ul>
+          <div className="mt-1 text-amber-800/70">
+            Closing these out before the SOC will give the coach more grounded context.
+          </div>
         </div>
       )}
     </div>

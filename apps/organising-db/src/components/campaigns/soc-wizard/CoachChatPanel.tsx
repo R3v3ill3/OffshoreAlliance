@@ -29,6 +29,13 @@ interface CoachChatPanelProps {
   alreadyLocked: boolean
   initialLockedContent?: string
   onLocked?: () => void
+  /**
+   * Optional controlled composer text. Pass when a sibling component
+   * (e.g. StageSeedPanel) needs to drop text into the composer. When
+   * omitted, the panel manages its own composer state.
+   */
+  composerText?: string
+  onComposerTextChange?: (next: string) => void
 }
 
 export function CoachChatPanel({
@@ -39,8 +46,15 @@ export function CoachChatPanel({
   alreadyLocked,
   initialLockedContent,
   onLocked,
+  composerText: composerTextProp,
+  onComposerTextChange,
 }: CoachChatPanelProps) {
-  const [composerText, setComposerText] = useState('')
+  const [internalComposerText, setInternalComposerText] = useState('')
+  const composerText = composerTextProp ?? internalComposerText
+  const setComposerText = (next: string) => {
+    if (onComposerTextChange) onComposerTextChange(next)
+    else setInternalComposerText(next)
+  }
   const [draftLocked, setDraftLocked] = useState(initialLockedContent ?? '')
   const scrollRef = useRef<HTMLDivElement>(null)
 

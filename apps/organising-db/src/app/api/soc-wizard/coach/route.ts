@@ -31,6 +31,7 @@ import { OA_CONTEXT, VARIABLE_GLOSSARY } from '@/lib/prompts/draft-prompts'
 import { SOC_FRAMEWORK, SOC_STAGE_NAMES, type HopeFrame, type SocStage } from '@/lib/prompts/soc-framework'
 import { STAGE_COACHING, HOPE_FRAME_COACHING, COACH_BEHAVIOUR_BLOCK } from '@/lib/prompts/soc/coaching'
 import { buildPopulationContext, type SocSessionPopulation } from '@/lib/prompts/soc/populations'
+import { renderSituationContext } from '@/lib/situation-analysis/serialise'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -75,6 +76,28 @@ function buildContextSummary(snapshot: Record<string, unknown> | null, customSit
     })
   }
   if (s.campaign?.notes) lines.push(`Campaign notes: ${s.campaign.notes}`)
+
+  // Strategic situation block — drawn from the campaign's situation analysis
+  // snapshot. Frozen at session creation; the wizard surfaces a refresh
+  // banner if the source row's `version` has bumped since. We prefer the
+  // pre-rendered string (already capped + label-translated by
+  // renderSituationContext) but fall back to recomputing if absent.
+  if (s.situation_analysis) {
+    const sa = s.situation_analysis as Record<string, unknown>
+    const rendered =
+      (typeof sa.rendered_context === 'string' && sa.rendered_context) ||
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      renderSituationContext(sa as any)
+    if (rendered) {
+      const versionTag = sa.version ? ` (v${sa.version})` : ''
+      lines.push('')
+      lines.push(
+        `STRATEGIC SITUATION${versionTag} — these are organiser-confirmed facts about the campaign. When critiquing the user's draft, reference specific issues, populations, and predicted employer moves rather than speaking in generalities.`
+      )
+      lines.push(rendered)
+    }
+  }
+
   return lines.join('\n')
 }
 

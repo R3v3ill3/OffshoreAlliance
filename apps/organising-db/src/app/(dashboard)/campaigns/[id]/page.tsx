@@ -62,6 +62,8 @@ import { CampaignUniverseSection } from "@/components/campaigns/campaign-univers
 import { CampaignCommsSection } from "@/components/campaigns/campaign-comms-section";
 import { CampaignOverviewMetrics } from "@/components/campaigns/CampaignOverviewMetrics";
 import { InlinePhoneOpsPanel } from "@/components/phone/InlinePhoneOpsPanel";
+import { SituationAnalysisCard } from "@/components/campaigns/planning/SituationAnalysisCard";
+import { SituationAnalysisEditSheet } from "@/components/campaigns/situation-analysis/SituationAnalysisEditSheet";
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
 
 interface CampaignDetail {
@@ -223,6 +225,7 @@ export default function CampaignDetailPage() {
   const [universeForm, setUniverseForm] = useState(INITIAL_UNIVERSE_FORM);
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [actionForm, setActionForm] = useState(INITIAL_ACTION_FORM);
+  const [situationSheetOpen, setSituationSheetOpen] = useState(false);
 
   const { data: campaign, isLoading } = useQuery({
     queryKey: ["campaign", id],
@@ -436,6 +439,7 @@ export default function CampaignDetailPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-4 text-sm">
+
                 <div>
                   <span className="text-muted-foreground">Type</span>
                   <p className="font-medium capitalize">{campaign.campaign_type}</p>
@@ -504,6 +508,12 @@ export default function CampaignDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          <SituationAnalysisCard
+            campaignId={campaignId}
+            canWrite={!!canWrite}
+            onEdit={canWrite ? () => setSituationSheetOpen(true) : undefined}
+          />
         </TabsContent>
 
         <TabsContent value="campaign-plan">
@@ -886,6 +896,14 @@ export default function CampaignDetailPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {campaignIdValid && (
+        <SituationAnalysisEditSheet
+          campaignId={campaignId}
+          open={situationSheetOpen}
+          onOpenChange={setSituationSheetOpen}
+        />
+      )}
     </div>
   );
 }

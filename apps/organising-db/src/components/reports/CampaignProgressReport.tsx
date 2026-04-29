@@ -61,7 +61,7 @@ interface GateRow {
   gate_assessments: Array<{
     assessment_id: number
     outcome: string
-    assessed_at: string
+    assessment_date: string
     notes: string | null
   }>
 }
@@ -166,7 +166,7 @@ export function CampaignProgressReport({
         .from("gate_definitions")
         .select(
           `gate_id, gate_number, gate_name, enforcement_type, is_active,
-           gate_assessments(assessment_id, outcome, assessed_at, notes)`
+           gate_assessments(assessment_id, outcome, assessment_date, notes)`
         )
         .eq("campaign_id", campaignId)
         .order("gate_number", { ascending: true })
@@ -438,8 +438,8 @@ export function CampaignProgressReport({
               {gates.map((g) => {
                 const sortedAssessments = [...(g.gate_assessments ?? [])].sort(
                   (a, b) =>
-                    parseISO(b.assessed_at).getTime() -
-                    parseISO(a.assessed_at).getTime()
+                    parseISO(b.assessment_date).getTime() -
+                    parseISO(a.assessment_date).getTime()
                 )
                 const latest = sortedAssessments[0]
                 return (
@@ -485,7 +485,7 @@ export function CampaignProgressReport({
                       )}
                       {latest && (
                         <p className="text-[10px] text-muted-foreground">
-                          {format(parseISO(latest.assessed_at), "dd MMM yyyy")}
+                          {format(parseISO(latest.assessment_date), "dd MMM yyyy")}
                         </p>
                       )}
                     </TableCell>

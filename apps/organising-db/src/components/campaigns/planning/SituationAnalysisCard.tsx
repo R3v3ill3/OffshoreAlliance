@@ -15,17 +15,56 @@ import {
 
 interface SituationAnalysisCardProps {
   campaignId: number;
+  /**
+   * When provided, clicking the Edit / Add button calls this callback
+   * instead of navigating to the campaign wizard. Use this from surfaces
+   * (e.g. the campaign overview tab) that want to open an inline editor
+   * rather than bounce the user to a separate page.
+   */
+  onEdit?: () => void;
+  /**
+   * When false the Edit / Add button is hidden. Defaults to true so the
+   * existing plan-hub usage continues to show the button to all viewers
+   * (the wizard itself enforces write permission).
+   */
+  canWrite?: boolean;
 }
 
 /**
  * Read-only summary of the campaign's saved situation analysis. Surfaced
- * on the plan hub so organisers can see at a glance what context the AI
- * features are being grounded in. The "Edit" link re-opens the wizard at
- * step 7 in edit mode.
+ * on the plan hub and campaign overview tab.
+ *
+ * - When `onEdit` is provided the button fires the callback (inline sheet).
+ * - When `onEdit` is absent the button navigates to the campaign wizard
+ *   at step 7 (the original behaviour, preserved for the plan hub page).
+ * - When `canWrite` is false the button is not rendered.
  */
-export function SituationAnalysisCard({ campaignId }: SituationAnalysisCardProps) {
+export function SituationAnalysisCard({
+  campaignId,
+  onEdit,
+  canWrite = true,
+}: SituationAnalysisCardProps) {
   const { data, isLoading } = useSituationAnalysis(campaignId);
   const row = data?.row ?? null;
+
+  const editButton = canWrite ? (
+    onEdit ? (
+      <Button variant="outline" size="sm" onClick={onEdit}>
+        <Pencil className="h-4 w-4 mr-2" />
+        {row ? "Edit" : "Add"}
+      </Button>
+    ) : (
+      <Button asChild variant="outline" size="sm">
+        <Link
+          href={`/campaigns/new?cid=${campaignId}&step=7&edit=1`}
+          prefetch={false}
+        >
+          <Pencil className="h-4 w-4 mr-2" />
+          {row ? "Edit" : "Add"}
+        </Link>
+      </Button>
+    )
+  ) : null;
 
   return (
     <Card>
@@ -34,15 +73,7 @@ export function SituationAnalysisCard({ campaignId }: SituationAnalysisCardProps
           <Sparkles className="h-4 w-4 text-sky-500" />
           <CardTitle className="text-base">Situation analysis</CardTitle>
         </div>
-        <Button asChild variant="outline" size="sm">
-          <Link
-            href={`/campaigns/new?cid=${campaignId}&step=7&edit=1`}
-            prefetch={false}
-          >
-            <Pencil className="h-4 w-4 mr-2" />
-            {row ? "Edit" : "Add"}
-          </Link>
-        </Button>
+        {editButton}
       </CardHeader>
       <CardContent>
         {isLoading ? (

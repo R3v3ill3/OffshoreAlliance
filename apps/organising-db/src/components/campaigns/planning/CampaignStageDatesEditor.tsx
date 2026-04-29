@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { addDays, differenceInDays, format, isValid, parseISO } from 'date-fns'
 import { AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
@@ -78,6 +78,27 @@ function buildDraft(rows: StageRow[]): DraftRow[] {
   })
 }
 
+function buildWeekInputs(rows: DraftRow[]): Record<number, string> {
+  const inputs: Record<number, string> = {}
+  rows.forEach((r) => {
+    inputs[r.plan_id] = String(r.durationWeeks)
+  })
+  return inputs
+}
+
+function buildStageResetKey(rows: StageRow[]): string {
+  return [...rows]
+    .sort((a, b) => a.stage_number - b.stage_number)
+    .map((s) => [
+      s.plan_id,
+      s.stage_number,
+      s.planned_start_date ?? '',
+      s.planned_end_date ?? '',
+      s.status ?? '',
+    ].join(':'))
+    .join('|')
+}
+
 /** Cascade from stageIndex forward using each stage's stored durationDays */
 function cascadeFrom(draft: DraftRow[], fromIdx: number): DraftRow[] {
   const next = [...draft]
@@ -112,18 +133,56 @@ export function CampaignStageDatesEditor({
   campaignId: number
   stages: StageRow[]
 }) {
-  const [draft, setDraft] = useState<DraftRow[]>([])
+  const resetKey = useMemo(() => buildStageResetKey(stages), [stages])
+
+  return <CampaignStageDatesEditorInner key={resetKey} campaignId={campaignId} stages={stages} />
+}
+
+function CampaignStageDatesEditorInner({
+  campaignId,
+  stages,
+}: {
+  campaignId: number
+  stages: StageRow[]
+}) {
+  const sortedStages = useMemo(
+    () => [...stages].sort((a, b) => a.stage_number - b.stage_number),
+    [stages]
+  )
+  const initialDraft = useMemo(() => buildDraft(sortedStages), [sortedStages])
+
+  const [draft, setDraft] = useState<DraftRow[]>(initialDraft)
   const [overlaps, setOverlaps] = useState<Set<number>>(new Set())
   const [pending, setPending] = useState<PendingEdit | null>(null)
   // Track week input strings separately to allow decimal editing
-  const [weekInputs, setWeekInputs] = useState<Record<number, string>>({})
+  const [weekInputs, setWeekInputs] = useState<Record<number, string>>(() => buildWeekInputs(initialDraft))
   // Phase 6: when a save would touch an active / completed stage, this is the
   // stage_number whose status triggered the refinement prompt. The dialog
   // fires before the actual mutation runs.
   const [refinementStageNumber, setRefinementStageNumber] = useState<number | null>(null)
+  const [dismissedDateChangeSignature, setDismissedDateChangeSignature] = useState<string | null>(null)
 
   const updateMutation = useUpdateCampaignStagePlans()
   const syncMutation = useSyncAmbitionTargetDatesForCampaign()
+
+  const dateChangesSignature = useMemo(() => {
+    const changes = draft
+      .map((row) => {
+        const original = stages.find((s) => s.plan_id === row.plan_id)
+        if (!original) return null
+        const originalStart = original.planned_start_date || ''
+        const originalEnd = original.planned_end_date || ''
+        if (row.start === originalStart && row.end === originalEnd) return null
+        return `${row.plan_id}:${row.start || '-'}:${row.end || '-'}`
+      })
+      .filter((change): change is string => change != null)
+
+    return changes.join('|')
+  }, [draft, stages])
+
+  const hasDateChanges = dateChangesSignature.length > 0
+  const shouldShowDateChangePrompt =
+    hasDateChanges && dismissedDateChangeSignature !== dateChangesSignature
 
   /**
    * Returns the lowest-numbered stage whose dates changed AND whose original
@@ -147,18 +206,6 @@ export function CampaignStageDatesEditor({
     }
     return earliest
   }
-
-  // Initialise from props
-  useEffect(() => {
-    const d = buildDraft(
-      [...stages].sort((a, b) => a.stage_number - b.stage_number)
-    )
-    setDraft(d)
-    const init: Record<number, string> = {}
-    d.forEach((r) => { init[r.plan_id] = String(r.durationWeeks) })
-    setWeekInputs(init)
-    setOverlaps(new Set())
-  }, [stages])
 
   // ── campaign start date ───────────────────────────────────────────────────
 
@@ -384,6 +431,34 @@ export function CampaignStageDatesEditor({
           Save dates
         </Button>
       </div>
+
+      {shouldShowDateChangePrompt && (
+        <div className="flex flex-col gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <div>
+              <p className="font-medium">Stage date changes are not saved yet.</p>
+              <p className="text-amber-800">
+                Save now to update the campaign plan, or continue editing dates before applying them.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-amber-300 bg-white/70 text-amber-900 hover:bg-white"
+              onClick={() => setDismissedDateChangeSignature(dateChangesSignature)}
+            >
+              Continue editing dates
+            </Button>
+            <Button type="button" size="sm" onClick={handleSave} disabled={updateMutation.isPending}>
+              Save dates
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Campaign start date */}
       <div className="space-y-1 pb-3 border-b">

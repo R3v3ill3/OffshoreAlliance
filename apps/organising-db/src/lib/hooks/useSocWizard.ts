@@ -288,6 +288,8 @@ interface CoachLocalTurn {
   content: string
   streaming?: boolean
   error?: string
+  /** Persisted-only. Streaming turns don't carry metadata. */
+  ai_metadata?: Record<string, unknown> | null
 }
 
 export function useCoachStream(args: {
@@ -318,6 +320,7 @@ export function useCoachStream(args: {
       turn_index: t.turn_index,
       role: t.role as 'user' | 'assistant',
       content: t.content,
+      ai_metadata: t.ai_metadata,
     }))
     if (localTurns.length === 0) return fromDb
     // Local turns are higher-indexed than anything in DB; merge.
@@ -471,6 +474,57 @@ export function useDeriveArtifact() {
     },
     onSuccess: (_d, variables) => {
       queryClient.invalidateQueries({ queryKey: ['soc-session', variables.session_id] })
+    },
+  })
+}
+
+// ---------------------------------------------------------------
+// useSuggestDraft — ask the coach to generate a starting draft for
+// one (session, stage, hope_frame). Persists as an assistant turn
+// in soc_chat_turns with ai_metadata.kind === 'draft_suggestion'.
+// ---------------------------------------------------------------
+
+export interface SuggestDraftFocusPhrase {
+  phrase: string
+  reason: 'tone' | 'sector_language' | 'judgment'
+  note: string
+}
+
+export interface SuggestDraftResult {
+  turn_index: number
+  commentary: string
+  draft_text: string
+  focus_phrases: SuggestDraftFocusPhrase[]
+}
+
+export function useSuggestDraft() {
+  const queryClient = useQueryClient()
+  return useAuthAwareMutation({
+    mutationFn: async (payload: {
+      session_id: number
+      stage_number: SocStage
+      hope_frame?: HopeFrame
+    }): Promise<SuggestDraftResult> => {
+      const res = await fetch('/api/soc-wizard/suggest-draft', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || 'Failed to generate suggestion')
+      }
+      return (await res.json()) as SuggestDraftResult
+    },
+    onSuccess: (_d, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: [
+          'soc-chat-turns',
+          variables.session_id,
+          variables.stage_number,
+          variables.hope_frame ?? null,
+        ],
+      })
     },
   })
 }

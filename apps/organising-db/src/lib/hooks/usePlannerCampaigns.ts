@@ -118,7 +118,8 @@ export function useUpdateCampaignStagePlans() {
       const id = variables.campaign_id
       queryClient.invalidateQueries({ queryKey: ['campaign', id] })
       queryClient.invalidateQueries({ queryKey: ['campaigns'] })
-      queryClient.invalidateQueries({ queryKey: ['stage-plan', id] })
+      queryClient.invalidateQueries({ queryKey: ['stage-plan-core', id] })
+      queryClient.invalidateQueries({ queryKey: ['stage-plan-ambitions'] })
       queryClient.invalidateQueries({ queryKey: ['campaign-ambitions-by-stage', id] })
       queryClient.invalidateQueries({ queryKey: ['gates', id] })
       for (let g = 1; g <= 5; g++) {
@@ -140,7 +141,8 @@ export function useSyncAmbitionTargetDatesForCampaign() {
     onSuccess: (_, campaign_id) => {
       queryClient.invalidateQueries({ queryKey: ['campaign', campaign_id] })
       queryClient.invalidateQueries({ queryKey: ['campaigns'] })
-      queryClient.invalidateQueries({ queryKey: ['stage-plan', campaign_id] })
+      queryClient.invalidateQueries({ queryKey: ['stage-plan-core', campaign_id] })
+      queryClient.invalidateQueries({ queryKey: ['stage-plan-ambitions'] })
       queryClient.invalidateQueries({ queryKey: ['campaign-ambitions-by-stage', campaign_id] })
       for (let g = 1; g <= 5; g++) {
         queryClient.invalidateQueries({ queryKey: ['gate-ambitions', campaign_id, g] })

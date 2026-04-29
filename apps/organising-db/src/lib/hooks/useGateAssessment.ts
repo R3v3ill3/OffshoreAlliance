@@ -129,7 +129,7 @@ export function useUpdatePlanAmbitionProgress() {
       queryClient.invalidateQueries({
         queryKey: ['gate-ambitions', variables.campaign_id, variables.gate_number],
       })
-      queryClient.invalidateQueries({ queryKey: ['stage-plan', variables.campaign_id, variables.gate_number] })
+      queryClient.invalidateQueries({ queryKey: ['stage-plan-ambitions'] })
       queryClient.invalidateQueries({ queryKey: ['gates', variables.campaign_id] })
       queryClient.invalidateQueries({ queryKey: ['campaign', variables.campaign_id] })
       queryClient.invalidateQueries({

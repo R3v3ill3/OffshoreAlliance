@@ -94,7 +94,7 @@ export function ManagementSystemsPanel({
       .update(updates)
       .eq('system_id', systemId)
 
-    queryClient.invalidateQueries({ queryKey: ['stage-plan', campaignId, stageNumber] })
+    queryClient.invalidateQueries({ queryKey: ['stage-plan-management-systems'] })
   }
 
   // Group by category for summary view

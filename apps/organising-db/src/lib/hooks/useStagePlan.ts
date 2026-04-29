@@ -1,15 +1,54 @@
 'use client'
 
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
 import type { CapacityStatus } from '@/types/planner-types'
 
+const EMPTY_STAGE_PLAN_DATA = {
+  plan: null,
+  ambitions: [],
+  whereToPlay: [],
+  theories: [],
+  capacities: [],
+  managementSystems: [],
+  currentTheory: null,
+}
+
+type StagePlanChild =
+  | 'ambitions'
+  | 'where-to-play'
+  | 'theory'
+  | 'capacities'
+  | 'management-systems'
+
+function invalidateStagePlanCore(
+  queryClient: QueryClient,
+  campaignId: number,
+  stageNumber?: number,
+) {
+  queryClient.invalidateQueries({
+    queryKey: stageNumber
+      ? ['stage-plan-core', campaignId, stageNumber]
+      : ['stage-plan-core', campaignId],
+  })
+}
+
+function invalidateStagePlanChild(queryClient: QueryClient, child: StagePlanChild) {
+  queryClient.invalidateQueries({ queryKey: [`stage-plan-${child}`] })
+}
+
+function invalidateP2wCompletion(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: ['p2w-completion'] })
+}
+
 export function useStagePlan(campaignId: number, stageNumber: number) {
   const supabase = createClient()
+  const enabled = !!campaignId && !!stageNumber
 
-  return useQuery({
-    queryKey: ['stage-plan', campaignId, stageNumber],
+  const planQuery = useQuery({
+    queryKey: ['stage-plan-core', campaignId, stageNumber],
     queryFn: async () => {
       // Use maybeSingle() so a missing stage plan (PGRST116) is returned as
       // null rather than thrown. The page component is responsible for
@@ -24,65 +63,122 @@ export function useStagePlan(campaignId: number, stageNumber: number) {
 
       if (error) throw error
 
-      if (!plan) {
-        // No stage plan exists yet for this (campaign, stage). Return an
-        // empty shape so the page can show an initializing state and trigger
-        // the auto-heal mutation without tripping downstream queries that
-        // depend on plan.plan_id.
-        return {
-          plan: null,
-          ambitions: [],
-          whereToPlay: [],
-          theories: [],
-          capacities: [],
-          managementSystems: [],
-          currentTheory: null,
-        }
-      }
-
-      const [ambitions, whereToPlay, theories, capacities, mgmtSystems] = await Promise.all([
-        supabase
-          .from('plan_ambitions')
-          .select('*, ambition_options(option_text, category, has_variable, variable_label, variable_type)')
-          .eq('plan_id', plan.plan_id)
-          .order('sort_order'),
-        supabase
-          .from('plan_where_to_play')
-          .select('*, wtp_categories(category_name), wtp_options(option_text)')
-          .eq('plan_id', plan.plan_id)
-          .order('sort_order'),
-        supabase
-          .from('plan_theory_of_winning')
-          .select('*')
-          .eq('plan_id', plan.plan_id)
-          .order('version', { ascending: false }),
-        supabase
-          .from('plan_capacities')
-          .select('*, capacity_options(option_text, category), organisers(organiser_name)')
-          .eq('plan_id', plan.plan_id)
-          .order('sort_order'),
-        supabase
-          .from('plan_management_systems')
-          .select('*, management_system_options(option_text, category, default_frequency), organisers(organiser_name)')
-          .eq('plan_id', plan.plan_id)
-          .order('sort_order'),
-      ])
-
-      const firstError = ambitions.error || whereToPlay.error || theories.error || capacities.error || mgmtSystems.error
-      if (firstError) throw firstError
-
-      return {
-        plan,
-        ambitions: ambitions.data ?? [],
-        whereToPlay: whereToPlay.data ?? [],
-        theories: theories.data ?? [],
-        capacities: capacities.data ?? [],
-        managementSystems: mgmtSystems.data ?? [],
-        currentTheory: theories.data?.find((t) => t.is_current) ?? null,
-      }
+      return plan
     },
-    enabled: !!campaignId && !!stageNumber,
+    enabled,
   })
+
+  const plan = planQuery.data
+  const planId = plan?.plan_id
+
+  const ambitionsQuery = useQuery({
+    queryKey: ['stage-plan-ambitions', planId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('plan_ambitions')
+        .select('*, ambition_options(option_text, category, has_variable, variable_label, variable_type)')
+        .eq('plan_id', planId as number)
+        .order('sort_order')
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!planId,
+  })
+
+  const whereToPlayQuery = useQuery({
+    queryKey: ['stage-plan-where-to-play', planId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('plan_where_to_play')
+        .select('*, wtp_categories(category_name), wtp_options(option_text)')
+        .eq('plan_id', planId as number)
+        .order('sort_order')
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!planId,
+  })
+
+  const theoriesQuery = useQuery({
+    queryKey: ['stage-plan-theory', planId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('plan_theory_of_winning')
+        .select('*')
+        .eq('plan_id', planId as number)
+        .order('version', { ascending: false })
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!planId,
+  })
+
+  const capacitiesQuery = useQuery({
+    queryKey: ['stage-plan-capacities', planId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('plan_capacities')
+        .select('*, capacity_options(option_text, category), organisers(organiser_name)')
+        .eq('plan_id', planId as number)
+        .order('sort_order')
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!planId,
+  })
+
+  const managementSystemsQuery = useQuery({
+    queryKey: ['stage-plan-management-systems', planId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('plan_management_systems')
+        .select('*, management_system_options(option_text, category, default_frequency), organisers(organiser_name)')
+        .eq('plan_id', planId as number)
+        .order('sort_order')
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!planId,
+  })
+
+  const childQueries = [
+    ambitionsQuery,
+    whereToPlayQuery,
+    theoriesQuery,
+    capacitiesQuery,
+    managementSystemsQuery,
+  ]
+
+  const data = useMemo(() => {
+    if (plan === undefined) return undefined
+    if (plan === null) return EMPTY_STAGE_PLAN_DATA
+
+    const theories = theoriesQuery.data ?? []
+    return {
+      plan,
+      ambitions: ambitionsQuery.data ?? [],
+      whereToPlay: whereToPlayQuery.data ?? [],
+      theories,
+      capacities: capacitiesQuery.data ?? [],
+      managementSystems: managementSystemsQuery.data ?? [],
+      currentTheory: theories.find((t) => t.is_current) ?? null,
+    }
+  }, [
+    plan,
+    ambitionsQuery.data,
+    whereToPlayQuery.data,
+    theoriesQuery.data,
+    capacitiesQuery.data,
+    managementSystemsQuery.data,
+  ])
+
+  return {
+    data,
+    isLoading: planQuery.isLoading || (!!planId && childQueries.some((q) => q.isLoading)),
+    isFetching: planQuery.isFetching || childQueries.some((q) => q.isFetching),
+    error: planQuery.error ?? childQueries.find((q) => q.error)?.error ?? null,
+    refetch: planQuery.refetch,
+  }
 }
 
 /**
@@ -237,7 +333,9 @@ export function useInitializeCampaignStagePlans() {
     },
     onSuccess: (_, variables) => {
       // Invalidate everything that could reflect the newly-created plans/gates.
-      queryClient.invalidateQueries({ queryKey: ['stage-plan', variables.campaign_id] })
+      invalidateStagePlanCore(queryClient, variables.campaign_id)
+      invalidateStagePlanChild(queryClient, 'ambitions')
+      invalidateP2wCompletion(queryClient)
       queryClient.invalidateQueries({ queryKey: ['campaign', variables.campaign_id] })
       queryClient.invalidateQueries({ queryKey: ['campaigns'] })
       queryClient.invalidateQueries({ queryKey: ['gates', variables.campaign_id] })
@@ -304,7 +402,8 @@ export function useAddAmbition() {
       return data
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['stage-plan', variables.campaign_id, variables.stage_number] })
+      invalidateStagePlanChild(queryClient, 'ambitions')
+      invalidateP2wCompletion(queryClient)
       queryClient.invalidateQueries({
         queryKey: ['gate-ambitions', variables.campaign_id, variables.stage_number],
       })
@@ -348,7 +447,8 @@ export function useUpdateAmbition() {
       if (error) throw error
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['stage-plan', variables.campaign_id, variables.stage_number] })
+      invalidateStagePlanChild(queryClient, 'ambitions')
+      invalidateP2wCompletion(queryClient)
       queryClient.invalidateQueries({
         queryKey: ['gate-ambitions', variables.campaign_id, variables.stage_number],
       })
@@ -396,7 +496,8 @@ export function useDeleteAmbition() {
       if (error) throw error
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['stage-plan', variables.campaign_id, variables.stage_number] })
+      invalidateStagePlanChild(queryClient, 'ambitions')
+      invalidateP2wCompletion(queryClient)
       queryClient.invalidateQueries({
         queryKey: ['gate-ambitions', variables.campaign_id, variables.stage_number],
       })
@@ -435,8 +536,9 @@ export function useAddWhereToPlay() {
       if (error) throw error
       return data
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['stage-plan', variables.campaign_id, variables.stage_number] })
+    onSuccess: () => {
+      invalidateStagePlanChild(queryClient, 'where-to-play')
+      invalidateP2wCompletion(queryClient)
     },
   })
 }
@@ -464,8 +566,9 @@ export function useUpdateWhereToPlay() {
 
       if (error) throw error
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['stage-plan', variables.campaign_id, variables.stage_number] })
+    onSuccess: () => {
+      invalidateStagePlanChild(queryClient, 'where-to-play')
+      invalidateP2wCompletion(queryClient)
     },
   })
 }
@@ -483,8 +586,9 @@ export function useDeleteWhereToPlay() {
 
       if (error) throw error
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['stage-plan', variables.campaign_id, variables.stage_number] })
+    onSuccess: () => {
+      invalidateStagePlanChild(queryClient, 'where-to-play')
+      invalidateP2wCompletion(queryClient)
     },
   })
 }
@@ -516,8 +620,9 @@ export function useAddCapacity() {
       if (error) throw error
       return data
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['stage-plan', variables.campaign_id, variables.stage_number] })
+    onSuccess: () => {
+      invalidateStagePlanChild(queryClient, 'capacities')
+      invalidateP2wCompletion(queryClient)
     },
   })
 }
@@ -545,8 +650,9 @@ export function useUpdateCapacity() {
 
       if (error) throw error
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['stage-plan', variables.campaign_id, variables.stage_number] })
+    onSuccess: () => {
+      invalidateStagePlanChild(queryClient, 'capacities')
+      invalidateP2wCompletion(queryClient)
     },
   })
 }
@@ -576,8 +682,9 @@ export function useAddManagementSystem() {
       if (error) throw error
       return data
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['stage-plan', variables.campaign_id, variables.stage_number] })
+    onSuccess: () => {
+      invalidateStagePlanChild(queryClient, 'management-systems')
+      invalidateP2wCompletion(queryClient)
     },
   })
 }
@@ -638,8 +745,9 @@ export function useSaveTheory() {
       if (error) throw error
       return data
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['stage-plan', variables.campaign_id, variables.stage_number] })
+    onSuccess: () => {
+      invalidateStagePlanChild(queryClient, 'theory')
+      invalidateP2wCompletion(queryClient)
     },
   })
 }

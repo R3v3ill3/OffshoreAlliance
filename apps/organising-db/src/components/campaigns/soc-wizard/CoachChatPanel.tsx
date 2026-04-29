@@ -14,8 +14,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
-import { Send, Loader2, Lock, RotateCcw, MessageSquare } from 'lucide-react'
-import { useCoachStream, useLockStage, useRegenerateStage } from '@/lib/hooks/useSocWizard'
+import { Send, Loader2, Lock, RotateCcw, MessageSquare, Sparkles } from 'lucide-react'
+import {
+  useCoachStream,
+  useLockStage,
+  useRegenerateStage,
+  useSuggestDraft,
+  type SuggestDraftFocusPhrase,
+} from '@/lib/hooks/useSocWizard'
 import type { HopeFrame, SocStage } from '@/lib/prompts/soc-framework'
 import { STAGE_COACHING, HOPE_FRAME_COACHING } from '@/lib/prompts/soc/coaching'
 import { toast } from 'sonner'
@@ -65,6 +71,7 @@ export function CoachChatPanel({
   })
   const lockStage = useLockStage()
   const regenerate = useRegenerateStage()
+  const suggestDraft = useSuggestDraft()
 
   const purpose = useMemo(() => {
     if (hope_frame) {
@@ -91,30 +98,57 @@ export function CoachChatPanel({
   // composer with the flagged phrases highlighted, and to pre-fill the
   // composer with the previous draft so the user can edit rather than
   // retype.
-  const { lastUserDraft, lastCoachReply, lastAssistantTurnIndex } = useMemo(() => {
+  const {
+    displayedDraft,
+    structuredPhrases,
+    isSuggestion,
+    lastCoachReply,
+    lastAssistantTurnIndex,
+  } = useMemo(() => {
     const turns = stream.turns
-    let lastUser = ''
-    let lastCoach = ''
+    let draft = ''
+    let coachReply = ''
     let lastIdx = -1
+    let suggestion = false
+    let phrases: SuggestDraftFocusPhrase[] | null = null
+
     for (let i = turns.length - 1; i >= 0; i--) {
-      if (turns[i].role === 'assistant' && !lastCoach) {
-        lastCoach = turns[i].content
-        lastIdx = turns[i].turn_index
-        for (let j = i - 1; j >= 0; j--) {
-          if (turns[j].role === 'user') {
-            lastUser = turns[j].content
-            break
+      if (turns[i].role === 'assistant') {
+        const t = turns[i]
+        coachReply = t.content
+        lastIdx = t.turn_index
+        const meta = t.ai_metadata as Record<string, unknown> | null | undefined
+        // Suggestion: use the embedded draft_text + structured focus phrases.
+        if (meta && meta.kind === 'draft_suggestion' && typeof meta.draft_text === 'string') {
+          draft = meta.draft_text
+          suggestion = true
+          if (Array.isArray(meta.focus_phrases)) {
+            phrases = (meta.focus_phrases as SuggestDraftFocusPhrase[]) ?? []
+          }
+        } else {
+          // Regular critique: use the user's most recent draft turn.
+          for (let j = i - 1; j >= 0; j--) {
+            if (turns[j].role === 'user') {
+              draft = turns[j].content
+              break
+            }
           }
         }
         break
       }
     }
-    return { lastUserDraft: lastUser, lastCoachReply: lastCoach, lastAssistantTurnIndex: lastIdx }
+    return {
+      displayedDraft: draft,
+      structuredPhrases: phrases,
+      isSuggestion: suggestion,
+      lastCoachReply: coachReply,
+      lastAssistantTurnIndex: lastIdx,
+    }
   }, [stream.turns])
 
-  const flaggedPhrases = useMemo(
-    () => extractCoachQuotes(lastCoachReply),
-    [lastCoachReply]
+  const flaggedQuotes = useMemo(
+    () => (isSuggestion ? [] : extractCoachQuotes(lastCoachReply)),
+    [lastCoachReply, isSuggestion]
   )
 
   // Pre-fill the composer with the previous draft once a new coach turn
@@ -132,12 +166,29 @@ export function CoachChatPanel({
       prefilledForTurnRef.current = lastAssistantTurnIndex
       return
     }
-    if (!lastUserDraft) return
-    setComposerText(lastUserDraft)
+    if (!displayedDraft) return
+    setComposerText(displayedDraft)
     prefilledForTurnRef.current = lastAssistantTurnIndex
     // setComposerText is stable per render via a ref-like pattern; safe to omit
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream.isStreaming, lastAssistantTurnIndex, lastUserDraft])
+  }, [stream.isStreaming, lastAssistantTurnIndex, displayedDraft])
+
+  async function handleSuggest() {
+    if (suggestDraft.isPending || stream.isStreaming || alreadyLocked) return
+    try {
+      await suggestDraft.mutateAsync({
+        session_id,
+        stage_number,
+        hope_frame,
+      })
+      // Reset the prefilled-for-turn marker so the new suggestion turn
+      // pre-fills the composer if it's empty.
+      prefilledForTurnRef.current = -1
+      toast.success('Starting draft suggested — review the highlighted phrases.')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not suggest draft')
+    }
+  }
 
   async function handleSend() {
     const text = composerText.trim()
@@ -182,14 +233,30 @@ export function CoachChatPanel({
     <Card className="overflow-hidden">
       <CardContent className="p-0">
         <div className="px-4 py-3 border-b bg-slate-50">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-            <MessageSquare className="h-4 w-4 text-slate-500" />
-            Coach
-            {hope_frame && (
-              <span className="text-xs font-medium text-slate-500">
-                · {HOPE_FRAME_COACHING[hope_frame].name}
-              </span>
-            )}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <MessageSquare className="h-4 w-4 text-slate-500" />
+              Coach
+              {hope_frame && (
+                <span className="text-xs font-medium text-slate-500">
+                  · {HOPE_FRAME_COACHING[hope_frame].name}
+                </span>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSuggest}
+              disabled={suggestDraft.isPending || stream.isStreaming || alreadyLocked}
+              title="Generate a starting draft from the campaign context. The AI flags phrases where your judgment matters — especially sector language and tone."
+            >
+              {suggestDraft.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              Suggest a starting draft
+            </Button>
           </div>
           <p className="text-xs text-slate-600 mt-1">{purpose}</p>
         </div>
@@ -227,14 +294,18 @@ export function CoachChatPanel({
           )}
         </div>
 
-        {lastUserDraft && !alreadyLocked && (
+        {displayedDraft && !alreadyLocked && (
           <div className="px-4 py-3 border-t bg-amber-50/60">
             <div className="text-[10px] uppercase tracking-wide font-semibold text-amber-800 mb-1.5 flex items-center justify-between">
-              <span>Your last draft{flaggedPhrases.length > 0 ? ' — phrases the coach flagged are highlighted' : ''}</span>
+              <span>
+                {isSuggestion
+                  ? `Coach's suggested starting draft${(structuredPhrases?.length ?? 0) > 0 ? ' — focus phrases highlighted (hover for context)' : ''}`
+                  : `Your last draft${flaggedQuotes.length > 0 ? ' — phrases the coach flagged are highlighted' : ''}`}
+              </span>
               <button
                 type="button"
                 onClick={() => {
-                  setComposerText(lastUserDraft)
+                  setComposerText(displayedDraft)
                   prefilledForTurnRef.current = lastAssistantTurnIndex
                 }}
                 className="text-[10px] font-medium text-amber-700 hover:text-amber-900 underline-offset-2 hover:underline"
@@ -244,7 +315,9 @@ export function CoachChatPanel({
               </button>
             </div>
             <div className="text-xs text-slate-800 leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto bg-white border border-amber-200 rounded p-2">
-              {renderHighlightedDraft(lastUserDraft, flaggedPhrases)}
+              {isSuggestion && structuredPhrases
+                ? renderHighlightedDraftStructured(displayedDraft, structuredPhrases)
+                : renderHighlightedDraft(displayedDraft, flaggedQuotes)}
             </div>
           </div>
         )}
@@ -411,4 +484,54 @@ function renderHighlightedDraft(
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Render a draft with structured focus phrases (from a draft suggestion).
+ * Each highlight carries a tooltip with the reason + note so the user can
+ * hover to see why the AI flagged it (tone, sector_language, judgment).
+ *
+ * Same single-amber colour as the quote-based highlighter to keep visual
+ * noise low; the tooltip differentiates reasons.
+ */
+function renderHighlightedDraftStructured(
+  draft: string,
+  phrases: SuggestDraftFocusPhrase[]
+): React.ReactNode {
+  const valid = phrases.filter((p) => p?.phrase && draft.includes(p.phrase))
+  if (valid.length === 0) return draft
+  const sorted = [...valid].sort((a, b) => b.phrase.length - a.phrase.length)
+  const phraseToMeta = new Map<string, SuggestDraftFocusPhrase>()
+  for (const p of sorted) phraseToMeta.set(p.phrase.toLowerCase(), p)
+  const escaped = sorted.map((p) => escapeRegExp(p.phrase)).join('|')
+  const re = new RegExp(`(${escaped})`, 'g')
+  const parts: React.ReactNode[] = []
+  let lastIdx = 0
+  let m: RegExpExecArray | null
+  let key = 0
+  while ((m = re.exec(draft)) !== null) {
+    if (m.index > lastIdx) parts.push(draft.slice(lastIdx, m.index))
+    const meta = phraseToMeta.get(m[0].toLowerCase())
+    const reasonLabel = meta
+      ? meta.reason === 'tone'
+        ? 'Tone'
+        : meta.reason === 'sector_language'
+        ? 'Sector language'
+        : 'Judgment'
+      : 'Focus'
+    const tooltip = meta ? `${reasonLabel}: ${meta.note}` : 'Focus'
+    parts.push(
+      <mark
+        key={key++}
+        title={tooltip}
+        className="bg-amber-200/70 text-slate-900 rounded px-0.5 cursor-help"
+      >
+        {m[0]}
+      </mark>
+    )
+    lastIdx = m.index + m[0].length
+    if (m[0].length === 0) re.lastIndex++
+  }
+  if (lastIdx < draft.length) parts.push(draft.slice(lastIdx))
+  return parts
 }

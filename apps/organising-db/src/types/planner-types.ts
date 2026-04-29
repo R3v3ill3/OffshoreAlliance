@@ -256,6 +256,15 @@ export interface TheoryOfWinningRequest {
     enterprise_agreement_subtype?: string | null
   }
   previous_stage_theory?: string
+  /**
+   * Optional pre-rendered Situation Analysis context block (see
+   * apps/organising-db/src/lib/situation-analysis/serialise.ts). When
+   * present, gives the model organiser-confirmed strategic context
+   * (employer state, top issues with heat, predicted playbook,
+   * workforce populations) so theory-of-winning output is grounded in
+   * the campaign's actual situation rather than generic patterns.
+   */
+  situation_analysis_context?: string
 }
 
 export interface TheoryOfWinningResponse {
@@ -364,6 +373,15 @@ export interface CommsDraftRequest {
     body_text: string
   }[]
   custom_instructions?: string
+  /**
+   * Optional pre-rendered Situation Analysis context block (see
+   * apps/organising-db/src/lib/situation-analysis/serialise.ts). When
+   * present, comms drafts inherit organiser-confirmed predicted
+   * employer playbook moves (→ inoculation lines), top issues with
+   * heat (→ agitation hooks), and workforce populations (→ audience
+   * pacing). This is the explicit SOC pay-off of the wizard step.
+   */
+  situation_analysis_context?: string
 }
 
 export interface CommsDraftResponse {

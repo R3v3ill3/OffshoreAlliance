@@ -18,6 +18,7 @@ import { evaluateAmbitions } from '@/lib/utils/ambition-gate-logic'
 import { CampaignTimeline } from '@/components/campaigns/planning/CampaignTimeline'
 import { StageTimelineGantt } from '@/components/campaigns/planning/StageTimelineGantt'
 import { CampaignRevisionHistory } from '@/components/campaigns/planning/CampaignRevisionHistory'
+import { SituationAnalysisCard } from '@/components/campaigns/planning/SituationAnalysisCard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -287,6 +288,8 @@ export default function CampaignPlanPage({ params }: PageProps) {
           </CardContent>
         </Card>
       </div>
+
+      <SituationAnalysisCard campaignId={campaignId} />
 
       <Card>
         <CardHeader>

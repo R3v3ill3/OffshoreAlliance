@@ -156,6 +156,14 @@ ${wtp.platforms.map(p => `- ${p}`).join('\n')}
 ${wtp.engagement_intensity ? `ENGAGEMENT INTENSITY: ${wtp.engagement_intensity}` : ''}
 ${wtp.contact_method_priority?.length ? `CONTACT METHOD PRIORITY:\n${wtp.contact_method_priority.map(c => `- ${c}`).join('\n')}` : ''}`
 
+  if (request.situation_analysis_context) {
+    // Organiser-confirmed campaign context. Predicted employer playbook moves
+    // become inoculation lines; top issues become agitation hooks; workforce
+    // populations drive audience pacing. Treat anything here as factual
+    // background, but don't quote it back to workers verbatim.
+    msg += `\n\n${request.situation_analysis_context}`
+  }
+
   if (request.template_examples?.length) {
     msg += `\n\nREFERENCE TEMPLATES (use these as style/tone examples, do NOT copy them verbatim):\n`
     request.template_examples.forEach((t, i) => {

@@ -198,9 +198,12 @@ export function CoachChatPanel({
   }
 
   async function handleLock() {
-    const content = draftLocked.trim()
+    // Lock whatever the user has consolidated in the composer. Skips the
+    // copy-paste hop into a separate "locked content" box — what's in the
+    // composer is what gets locked.
+    const content = composerText.trim()
     if (!content) {
-      toast.error('Write what you want to lock for this stage first.')
+      toast.error('Type or edit your draft in the composer first, then lock it.')
       return
     }
     try {
@@ -211,7 +214,10 @@ export function CoachChatPanel({
         stage_name,
         locked_content: content,
       })
-      toast.success(`Stage locked: ${stage_name}${hope_frame ? ` (${HOPE_FRAME_COACHING[hope_frame].name})` : ''}`)
+      setDraftLocked(content)
+      toast.success(
+        `Stage locked: ${stage_name}${hope_frame ? ` (${HOPE_FRAME_COACHING[hope_frame].name})` : ''}`
+      )
       onLocked?.()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to lock stage')
@@ -336,7 +342,7 @@ export function CoachChatPanel({
               }
             }}
           />
-          <div className="flex items-center justify-between mt-2">
+          <div className="flex items-center justify-between mt-2 gap-2 flex-wrap">
             <div className="text-[11px] text-slate-500">⌘ + Enter to send</div>
             <div className="flex items-center gap-2">
               <Button
@@ -348,6 +354,23 @@ export function CoachChatPanel({
               >
                 <RotateCcw className="h-4 w-4" />
               </Button>
+              {!alreadyLocked && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleLock}
+                  disabled={lockStage.isPending || !composerText.trim() || stream.isStreaming}
+                  className="border-emerald-400 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-500"
+                  title="Commit this draft as the final language for this stage"
+                >
+                  {lockStage.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Lock className="h-4 w-4" />
+                  )}
+                  Lock as final
+                </Button>
+              )}
               <Button
                 size="sm"
                 onClick={handleSend}
@@ -362,45 +385,40 @@ export function CoachChatPanel({
               </Button>
             </div>
           </div>
+          {!alreadyLocked && (
+            <div className="text-[11px] text-slate-500 mt-2 italic leading-relaxed">
+              💡 Ready to lock? {STAGE_COACHING[stage_number].closing_question}
+            </div>
+          )}
           {stream.error && (
             <div className="text-xs text-red-600 mt-2">{stream.error}</div>
           )}
         </div>
 
-        <div className="px-4 py-3 border-t bg-white">
-          <div className="text-xs font-semibold text-slate-700 mb-1">
-            Locked content for this stage
-          </div>
-          <p className="text-[11px] text-slate-500 mb-2">
-            When you and the coach are happy with the language, paste or type the final version here and lock the stage.
-          </p>
-          <Textarea
-            value={draftLocked}
-            onChange={(e) => setDraftLocked(e.target.value)}
-            placeholder="Final language for this stage…"
-            className="min-h-[100px] text-sm"
-            disabled={alreadyLocked}
-          />
-          <div className="mt-2 flex items-center justify-between">
-            {alreadyLocked ? (
-              <div className="text-xs text-emerald-700 inline-flex items-center gap-1">
-                <Lock className="h-3 w-3" /> Locked. Use Reset above to start over.
+        {alreadyLocked && (
+          <div className="px-4 py-3 border-t bg-emerald-50/50">
+            <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+              <div className="text-xs font-semibold text-emerald-700 inline-flex items-center gap-1.5">
+                <Lock className="h-3.5 w-3.5" />
+                Locked content for this stage
               </div>
-            ) : (
-              <div className="text-[11px] text-slate-500">
-                {STAGE_COACHING[stage_number].closing_question}
-              </div>
-            )}
-            <Button
-              size="sm"
-              onClick={handleLock}
-              disabled={lockStage.isPending || !draftLocked.trim() || alreadyLocked}
-            >
-              {lockStage.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
-              {alreadyLocked ? 'Locked' : 'Lock stage'}
-            </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRegenerate}
+                disabled={regenerate.isPending}
+                className="h-7 text-xs text-slate-600 hover:text-slate-900"
+                title="Discard the locked content and chat history; start the stage over"
+              >
+                <RotateCcw className="h-3 w-3 mr-1" />
+                Reset & redo
+              </Button>
+            </div>
+            <div className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap bg-white border border-emerald-200 rounded p-3">
+              {draftLocked || initialLockedContent || '(empty)'}
+            </div>
           </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   )

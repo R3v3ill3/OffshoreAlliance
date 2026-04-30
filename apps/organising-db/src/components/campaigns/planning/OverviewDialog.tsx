@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/accordion'
 import {
   STAGE_NAMES,
-  type StageNumber,
+  type Phase1StageNumber,
 } from '@/types/planner-types'
 import {
   STAGE_HEADER_BLURB,
@@ -32,7 +32,7 @@ interface OverviewDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-const STAGE_NUMBERS: StageNumber[] = [1, 2, 3, 4, 5, 6]
+const STAGE_NUMBERS: Phase1StageNumber[] = [1, 2, 3, 4, 5, 6]
 const STEP_IDS: StepId[] = ['ambitions', 'where-to-play', 'theory', 'capacities', 'management']
 
 export function OverviewDialog({ open, onOpenChange }: OverviewDialogProps) {

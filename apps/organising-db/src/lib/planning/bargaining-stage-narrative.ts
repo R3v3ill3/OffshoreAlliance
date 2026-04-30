@@ -5,10 +5,6 @@ import type { Phase2StageNumber } from '@/types/planner-types'
 // PHASE 2 PRINCIPLES PREAMBLE
 // ---------------------------------------------------------------------------
 
-// @ts-ignore – Phase2StageNumber re-exported from planner-types once Wave 1 merges
- * Four foundational principles for running a Bargaining to Win campaign.
- * Display these prominently at the top of the Phase 2 planner overview.
- */
 export const PHASE2_PRINCIPLES_PREAMBLE: string[] = [
   'Full transparency: workers deserve to know the full state of play, not a managed narrative. Share the employer\'s counter-offers, the time-lines, the legal constraints, and the risks—unfiltered. When organisers curate information to protect morale, members cannot make informed decisions and trust erodes the moment reality diverges from the story they were told.',
   'Shared responsibility: the outcome of bargaining is determined by workers\' collective choices, not organisers\' heroics. The organiser\'s job is to create the conditions—information, structures, confidence—in which workers choose to act. Campaigns that rely on a small group of leaders to "carry" the result are fragile; campaigns where workers own the outcome are durable.',

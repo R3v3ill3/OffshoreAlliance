@@ -12243,3 +12243,220 @@ export interface VIntractableStateRow {
 }
 
 // === End Phase 2 additions ===
+
+// === Phase 3 additions (Wave 3 Agent E) ===
+
+// ── bargaining_strength_assessments ──────────────────────────────────────────
+
+export type StrengthOutcome = 'strong' | 'weak' | 'unclear'
+
+export interface BargainingStrengthAssessmentRow {
+  assessment_id: number
+  campaign_id: number
+  assessed_at: string
+  eligible_count: number | null
+  supportive_leader_count: number | null
+  supporter_count: number | null
+  neutral_count: number | null
+  opposed_count: number | null
+  oppositional_count: number | null
+  unassessed_count: number | null
+  percent_strike_ready: number | null
+  percent_paid_membership: number | null
+  readiness_criteria: Record<string, unknown> | null
+  notes: string | null
+  outcome: StrengthOutcome | null
+  created_by: string | null
+}
+
+export interface BargainingStrengthAssessmentInsert {
+  campaign_id: number
+  assessed_at?: string
+  eligible_count?: number | null
+  supportive_leader_count?: number | null
+  supporter_count?: number | null
+  neutral_count?: number | null
+  opposed_count?: number | null
+  oppositional_count?: number | null
+  unassessed_count?: number | null
+  percent_strike_ready?: number | null
+  percent_paid_membership?: number | null
+  readiness_criteria?: Record<string, unknown> | null
+  notes?: string | null
+  outcome?: StrengthOutcome | null
+  created_by?: string | null
+}
+
+// ── v_strength_assessment_inputs (view) ──────────────────────────────────────
+
+export interface StrengthAssessmentInputsRow {
+  campaign_id: number
+  eligible_count: number | null
+  supportive_leader_count: number | null
+  supporter_count: number | null
+  neutral_count: number | null
+  opposed_count: number | null
+  oppositional_count: number | null
+  unassessed_count: number | null
+  total_ambition_universe: number | null
+  total_supportive: number | null
+  total_unassessed: number | null
+  overall_supportive_pct: number | null
+}
+
+// ── bargaining_decision_points ────────────────────────────────────────────────
+
+export type DecisionScenario =
+  | 'good_offer'
+  | 'drags_on'
+  | 'employer_launches_proposal'
+
+export type MemberVoteOutcome = 'yes' | 'no' | 'not_yet' | 'n_a'
+
+export type DecisionStrengthOutcome = 'strong' | 'weak' | 'unclear' | 'n_a'
+
+export type DecisionResolution =
+  | 'settled'
+  | 'route_to_pabo'
+  | 'route_to_capacity_building'
+  | 'route_to_ratification'
+  | 'pending'
+
+export interface BargainingDecisionPointRow {
+  decision_id: number
+  campaign_id: number
+  triggered_at: string
+  scenario: DecisionScenario | null
+  member_vote_outcome: MemberVoteOutcome | null
+  strength_assessment_id: number | null
+  strength_outcome: DecisionStrengthOutcome | null
+  resolution: DecisionResolution | null
+  notes: string | null
+  resolved_at: string | null
+  resolved_by: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export interface BargainingDecisionPointInsert {
+  campaign_id: number
+  triggered_at?: string
+  scenario?: DecisionScenario | null
+  member_vote_outcome?: MemberVoteOutcome | null
+  strength_assessment_id?: number | null
+  strength_outcome?: DecisionStrengthOutcome | null
+  resolution?: DecisionResolution | null
+  notes?: string | null
+  resolved_at?: string | null
+  resolved_by?: string | null
+  created_by?: string | null
+}
+
+export interface BargainingDecisionPointUpdate {
+  resolution?: DecisionResolution | null
+  notes?: string | null
+  resolved_at?: string | null
+  resolved_by?: string | null
+}
+
+// ── bargaining_gate_definitions ────────────────────────────────────────────────
+
+export type BargainingGateType = 'hard' | 'soft'
+
+export interface BargainingGateDefinitionRow {
+  gate_id: number
+  campaign_id: number
+  gate_number: number
+  gate_name: string
+  gate_type: BargainingGateType
+  enforcement_stage: number
+  gate_criteria: Record<string, unknown>
+  is_active: boolean
+  created_at: string
+}
+
+export interface BargainingGateDefinitionInsert {
+  campaign_id: number
+  gate_number: number
+  gate_name: string
+  gate_type?: BargainingGateType
+  enforcement_stage: number
+  gate_criteria?: Record<string, unknown>
+  is_active?: boolean
+}
+
+// === End Phase 3 additions ===
+
+// === Phase 5 additions (Wave 3 Agent F) ===
+
+/** Lifecycle states for a PABO (Protected Action Ballot Order) application. */
+export type PaboStatus =
+  | 'drafting'
+  | 'lodged'
+  | 'granted'
+  | 'denied'
+  | 'expired'
+  | 'superseded'
+  | 'withdrawn'
+
+/** Outcome of a single question on a protected action ballot. */
+export type BallotQuestionOutcome = 'carried' | 'failed' | 'pending' | 'withdrawn'
+
+/** Row type for the pabo_applications table. */
+export interface PaboApplicationRow {
+  pabo_id: number
+  campaign_id: number
+  application_filed_at: string | null
+  fwc_application_number: string | null
+  ballot_order_made_at: string | null
+  aec_ballot_agent: string | null
+  ballot_opens_at: string | null
+  ballot_closes_at: string | null
+  eligible_voter_count: number | null
+  votes_cast: number | null
+  /** Generated column: computed turnout percentage (2dp). Read-only. */
+  voter_turnout_pct: number | null
+  valid_from: string | null
+  valid_until: string | null
+  notice_period_required_days: number
+  status: PaboStatus | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** Insert type for pabo_applications (omits generated + defaulted columns). */
+export type PaboApplicationInsert = Omit<
+  PaboApplicationRow,
+  'pabo_id' | 'voter_turnout_pct' | 'created_at' | 'updated_at'
+> & {
+  pabo_id?: number
+  notice_period_required_days?: number
+}
+
+/** Update type for pabo_applications. */
+export type PaboApplicationUpdate = Partial<PaboApplicationInsert>
+
+/** Row type for the pabo_ballot_questions table. */
+export interface PaboBallotQuestionRow {
+  question_id: number
+  pabo_id: number
+  question_order: number
+  question_text: string
+  action_type: string | null
+  votes_yes: number | null
+  votes_no: number | null
+  informal_count: number | null
+  outcome: BallotQuestionOutcome | null
+}
+
+/** Insert type for pabo_ballot_questions. */
+export type PaboBallotQuestionInsert = Omit<PaboBallotQuestionRow, 'question_id'> & {
+  question_id?: number
+}
+
+/** Update type for pabo_ballot_questions. */
+export type PaboBallotQuestionUpdate = Partial<PaboBallotQuestionInsert>
+
+// === End Phase 5 additions ===

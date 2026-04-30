@@ -1,5 +1,7 @@
 // Shared types for the wall chart subcomponents.
 
+import type { CampaignOuUnitBasis } from "@/types/organising-row-types";
+
 export type WallChartMemberRow = {
   membership_id: number;
   worker_id: number;
@@ -74,6 +76,8 @@ export type WallChartOU = {
   ou_type: string | null;
   total_workers_estimated: number | null;
   display_order?: number;
+  /** Optional filter metadata when unit was derived from employer/worksite/occupation/etc. */
+  unit_basis?: CampaignOuUnitBasis | null;
 };
 
 export type WallChartOUAssignment = {

@@ -75,6 +75,7 @@ import { CreateOrganisingUnitDialog } from "./wall-chart/create-organising-unit-
 import { useWallChartUnitVisibility } from "./wall-chart/use-wall-chart-unit-visibility";
 import { CreateAssessmentDialog } from "./assessments/create-assessment-dialog";
 import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
+import { AddCampaignWorkerDialog } from "./wall-chart/add-campaign-worker-dialog";
 
 export function CampaignWallChart({
   campaignId,
@@ -90,6 +91,9 @@ export function CampaignWallChart({
   const [createUnitOpen, setCreateUnitOpen] = useState(false);
   const [createAssessmentOpen, setCreateAssessmentOpen] = useState(false);
   const [importWizardOpen, setImportWizardOpen] = useState(false);
+  const [addWorkerOpen, setAddWorkerOpen] = useState(false);
+  const [addWorkerFormKey, setAddWorkerFormKey] = useState(0);
+  const [addWorkerContextOu, setAddWorkerContextOu] = useState<WallChartOU | null>(null);
   const unitVisibility = useWallChartUnitVisibility(campaignId);
 
   // Multi-select state for bulk Move/Copy/Link/Remove actions.
@@ -767,6 +771,21 @@ export function CampaignWallChart({
                   size="sm"
                   variant="outline"
                   className="h-7 px-2 text-xs print:hidden"
+                  onClick={() => {
+                    setAddWorkerContextOu(null);
+                    setAddWorkerFormKey((k) => k + 1);
+                    setAddWorkerOpen(true);
+                  }}
+                >
+                  Add worker
+                </Button>
+              )}
+              {canWrite && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs print:hidden"
                   onClick={() => setImportWizardOpen(true)}
                 >
                   Import Workers
@@ -941,6 +960,22 @@ export function CampaignWallChart({
                       }
                       toolbar={
                         <>
+                          {canWrite && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs print:hidden"
+                              onClick={() => {
+                                setAddWorkerContextOu(ou);
+                                setAddWorkerFormKey((k) => k + 1);
+                                setAddWorkerOpen(true);
+                              }}
+                              title="Add worker to this unit"
+                            >
+                              Add worker
+                            </Button>
+                          )}
                           {canWrite && sorted.length > 0 && (
                             <Button
                               type="button"
@@ -1126,6 +1161,19 @@ export function CampaignWallChart({
           queryClient.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
           queryClient.invalidateQueries({ queryKey: ["workers"] });
         }}
+      />
+
+      <AddCampaignWorkerDialog
+        open={addWorkerOpen}
+        onOpenChange={(next) => {
+          setAddWorkerOpen(next);
+          if (!next) setAddWorkerContextOu(null);
+        }}
+        campaignId={campaignId}
+        canWrite={canWrite}
+        contextOu={addWorkerContextOu}
+        organisingUnits={ous}
+        formResetKey={addWorkerFormKey}
       />
     </Card>
   );

@@ -954,7 +954,7 @@ export function CampaignUniverseSection({
               <p className="text-sm text-muted-foreground px-2 py-3 text-center">
                 {showAllWorksites || linkedWorksiteSet.size === 0
                   ? "No worksites to add."
-                  : "No linked worksites found. Enable "show all" or link sites to employers first."}
+                  : "No linked worksites found. Enable 'show all' or link sites to employers first."}
               </p>
             ) : (
               candidateWorksitesForDialog

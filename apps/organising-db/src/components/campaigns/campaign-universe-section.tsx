@@ -19,6 +19,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -39,6 +46,7 @@ import {
 import { Building2, MapPin, Plus, Trash2, Upload, Users } from "lucide-react";
 import { CampaignUnitsSection } from "@/components/campaigns/campaign-units-section";
 import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
+import { isWorkerMemberLike } from "@/lib/campaign/constants";
 
 const SCOPE_KEYS = {
   employers: (cid: string) => ["campaign-universe-employers", cid] as const,
@@ -130,6 +138,7 @@ export function CampaignUniverseSection({
     enabled: !!user && Number.isFinite(cid),
   });
 
+  // Comprehensive members query — same cache key as campaign-units-section so both get full shape.
   const { data: members = [] } = useQuery({
     queryKey: ["campaign-members", campaignId],
     queryFn: async () => {
@@ -138,9 +147,12 @@ export function CampaignUniverseSection({
         .select(
           `membership_id, worker_id,
            worker:workers(
-             worker_id, first_name, last_name,
-             member_role_type:member_role_types(role_name),
-             union_membership_type:union_membership_types(type_name)
+             worker_id, first_name, last_name, preferred_name,
+             member_role_type_id, is_bargaining_rep, occupation,
+             member_role_type:member_role_types(role_name, role_type_id, display_name),
+             union_membership_type:union_membership_types(type_name),
+             employer:employers(employer_name),
+             worksite:worksites(worksite_name)
            )`
         )
         .eq("campaign_id", cid);
@@ -148,6 +160,19 @@ export function CampaignUniverseSection({
       return data ?? [];
     },
     enabled: !!user && Number.isFinite(cid),
+  });
+
+  const { data: roleTypes = [] } = useQuery({
+    queryKey: ["member_role_types"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("member_role_types")
+        .select("role_type_id, role_name, display_name")
+        .eq("is_active", true)
+        .order("sort_order");
+      if (error) throw error;
+      return data ?? [];
+    },
   });
 
   const employerIds = useMemo(
@@ -181,6 +206,11 @@ export function CampaignUniverseSection({
         .filter((id): id is number => id != null),
     [siteRows]
   );
+
+  // Show employer column only when there are multiple employers in this campaign.
+  const showEmployerCol = campaignEmployers.length > 1;
+  // Show worksite column only when there are multiple specific (non-sector-wide) worksites.
+  const showWorksiteCol = !isSectorWide && siteRows.length > 1;
 
   const { data: eaEmployerIds = [] } = useQuery({
     queryKey: ["universe-ea-employers", campaignMeta?.replaced_agreement_id],
@@ -448,6 +478,20 @@ export function CampaignUniverseSection({
     onError: (e: Error) => window.alert(e.message || "Could not remove worker"),
   });
 
+  const updateWorkerRole = useAuthAwareMutation({
+    mutationFn: async (vars: { worker_id: number; member_role_type_id: number | null }) => {
+      const { error } = await supabase
+        .from("workers")
+        .update({ member_role_type_id: vars.member_role_type_id })
+        .eq("worker_id", vars.worker_id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaign-members", campaignId] });
+    },
+    onError: (e: Error) => window.alert(e.message || "Could not update role"),
+  });
+
   const existingEmployerSet = useMemo(
     () => new Set(employerIds),
     [employerIds]
@@ -530,18 +574,6 @@ export function CampaignUniverseSection({
               </TableBody>
             </Table>
           )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Campaign units</CardTitle>
-          <CardDescription>
-            Create units, add rule-based assignment, and flag workers who sit across multiple units.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <CampaignUnitsSection campaignId={campaignId} canWrite={canWrite} />
         </CardContent>
       </Card>
 
@@ -659,8 +691,7 @@ export function CampaignUniverseSection({
               Workers in campaign
             </CardTitle>
             <CardDescription>
-              Members allocated to this campaign (same list as Structure). Add or remove people
-              here.
+              Members allocated to this campaign. Add or remove people here, and assign organising roles.
             </CardDescription>
           </div>
           {canWrite && (
@@ -703,8 +734,11 @@ export function CampaignUniverseSection({
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead className="hidden sm:table-cell">Role / membership</TableHead>
-                  {canWrite && <TableHead className="w-[100px] text-right">Actions</TableHead>}
+                  <TableHead>Organising role</TableHead>
+                  <TableHead className="hidden sm:table-cell">Job type</TableHead>
+                  {showWorksiteCol && <TableHead className="hidden md:table-cell">Worksite</TableHead>}
+                  {showEmployerCol && <TableHead className="hidden md:table-cell">Employer</TableHead>}
+                  {canWrite && <TableHead className="w-[60px] text-right">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -718,12 +752,24 @@ export function CampaignUniverseSection({
                       m.worker as {
                         first_name?: string;
                         last_name?: string;
-                        member_role_type?: { role_name?: string } | null;
-                        union_membership_type?: { type_name?: string } | null;
+                        occupation?: string | null;
+                        member_role_type_id?: number | null;
+                        is_bargaining_rep?: boolean | null;
+                        member_role_type?: { role_name?: string; role_type_id?: number; display_name?: string } | { role_name?: string; role_type_id?: number; display_name?: string }[] | null;
+                        union_membership_type?: { type_name?: string } | { type_name?: string }[] | null;
+                        employer?: { employer_name?: string } | { employer_name?: string }[] | null;
+                        worksite?: { worksite_name?: string } | { worksite_name?: string }[] | null;
                       } | null
                     );
-                    const role = normalizeOne(w?.member_role_type ?? null);
+                    const mt = normalizeOne(w?.member_role_type ?? null);
                     const um = normalizeOne(w?.union_membership_type ?? null);
+                    const emp = normalizeOne(w?.employer ?? null);
+                    const ws = normalizeOne(w?.worksite ?? null);
+                    const delegateOk = isWorkerMemberLike({
+                      unionMembershipTypeName: um?.type_name,
+                      memberRoleName: mt?.role_name,
+                      isBargainingRep: w?.is_bargaining_rep,
+                    });
                     return (
                       <TableRow key={m.membership_id}>
                         <TableCell className="font-medium">
@@ -731,9 +777,64 @@ export function CampaignUniverseSection({
                             ? `${w.first_name ?? ""} ${w.last_name ?? ""}`.trim()
                             : `Worker #${m.worker_id}`}
                         </TableCell>
-                        <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">
-                          {[role?.role_name, um?.type_name].filter(Boolean).join(" · ") || "—"}
+                        <TableCell>
+                          {canWrite ? (
+                            <Select
+                              value={
+                                w?.member_role_type_id != null
+                                  ? String(w.member_role_type_id)
+                                  : "__none__"
+                              }
+                              onValueChange={(v) => {
+                                const roleTypeId = v === "__none__" ? null : Number(v);
+                                const selectedRole = roleTypes.find(
+                                  (rt) => rt.role_type_id === roleTypeId
+                                );
+                                if (selectedRole?.role_name === "delegate" && !delegateOk) return;
+                                updateWorkerRole.mutate({
+                                  worker_id: m.worker_id,
+                                  member_role_type_id: roleTypeId,
+                                });
+                              }}
+                            >
+                              <SelectTrigger className="w-40 h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">None</SelectItem>
+                                {roleTypes.map((rt) => (
+                                  <SelectItem
+                                    key={rt.role_type_id}
+                                    value={String(rt.role_type_id)}
+                                    disabled={rt.role_name === "delegate" && !delegateOk}
+                                  >
+                                    {rt.display_name}
+                                    {rt.role_name === "delegate" && !delegateOk
+                                      ? " (members only)"
+                                      : ""}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">
+                              {mt?.display_name ?? "None"}
+                            </span>
+                          )}
                         </TableCell>
+                        <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
+                          {w?.occupation ?? "—"}
+                        </TableCell>
+                        {showWorksiteCol && (
+                          <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+                            {ws?.worksite_name ?? "—"}
+                          </TableCell>
+                        )}
+                        {showEmployerCol && (
+                          <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+                            {emp?.employer_name ?? "—"}
+                          </TableCell>
+                        )}
                         {canWrite && (
                           <TableCell className="text-right">
                             <Button
@@ -757,6 +858,9 @@ export function CampaignUniverseSection({
           )}
         </CardContent>
       </Card>
+
+      {/* Campaign units — renders its own Card */}
+      <CampaignUnitsSection campaignId={campaignId} canWrite={canWrite} />
 
       <AlertDialog open={sectorConfirmOpen} onOpenChange={setSectorConfirmOpen}>
         <AlertDialogContent>
@@ -850,7 +954,7 @@ export function CampaignUniverseSection({
               <p className="text-sm text-muted-foreground px-2 py-3 text-center">
                 {showAllWorksites || linkedWorksiteSet.size === 0
                   ? "No worksites to add."
-                  : "No linked worksites found. Enable “show all” or link sites to employers first."}
+                  : "No linked worksites found. Enable "show all" or link sites to employers first."}
               </p>
             ) : (
               candidateWorksitesForDialog

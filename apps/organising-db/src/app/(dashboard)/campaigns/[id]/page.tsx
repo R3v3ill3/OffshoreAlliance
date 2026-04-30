@@ -51,7 +51,6 @@ import type {
 } from "@/types/database";
 import type { Database } from "@oa/db-types";
 import { CampaignAssessmentsSection } from "@/components/campaigns/campaign-assessments";
-import { CampaignStructureSection } from "@/components/campaigns/campaign-structure";
 import { CampaignReportingCharts } from "@/components/campaigns/campaign-reporting";
 import { CampaignProgressReport } from "@/components/reports/CampaignProgressReport";
 import { CampaignWallChart } from "@/components/campaigns/campaign-wall-chart";
@@ -186,7 +185,6 @@ export default function CampaignDetailPage() {
     "workplan",
     "universe",
     "assessments",
-    "structure",
     "reporting",
     "insights",
     "wall",
@@ -423,7 +421,6 @@ export default function CampaignDetailPage() {
           <TabsTrigger value="workplan">Workplan</TabsTrigger>
           <TabsTrigger value="universe">Universe</TabsTrigger>
           <TabsTrigger value="assessments">Assessments</TabsTrigger>
-          <TabsTrigger value="structure">Structure</TabsTrigger>
           <TabsTrigger value="reporting">Reporting</TabsTrigger>
           <TabsTrigger value="insights">Insights</TabsTrigger>
           <TabsTrigger value="wall">Wall chart</TabsTrigger>
@@ -526,10 +523,6 @@ export default function CampaignDetailPage() {
 
         <TabsContent value="assessments">
           <CampaignAssessmentsSection campaignId={id} canWrite={!!canWrite} />
-        </TabsContent>
-
-        <TabsContent value="structure">
-          <CampaignStructureSection campaignId={id} canWrite={!!canWrite} />
         </TabsContent>
 
         <TabsContent value="reporting">

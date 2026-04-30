@@ -12460,3 +12460,189 @@ export type PaboBallotQuestionInsert = Omit<PaboBallotQuestionRow, 'question_id'
 export type PaboBallotQuestionUpdate = Partial<PaboBallotQuestionInsert>
 
 // === End Phase 5 additions ===
+
+// === Phase 4 additions (Wave 4 Agent G) ===
+
+/** Vote kind values for member_endorsement_votes. */
+export type EndorsementVoteKind =
+  | "employer_proposal"
+  | "union_in_principle"
+  | "final_eba";
+
+/** Vote method values for member_endorsement_votes. */
+export type EndorsementVoteMethod =
+  | "postal"
+  | "online"
+  | "workplace"
+  | "hybrid"
+  | "employer_run"
+  | "union_run";
+
+/** Outcome values for member_endorsement_votes. */
+export type EndorsementVoteOutcome = "yes" | "no" | "pending" | "withdrawn";
+
+/** Row type for the member_endorsement_votes table. */
+export interface MemberEndorsementVote {
+  vote_id: number;
+  campaign_id: number;
+  vote_kind: EndorsementVoteKind;
+  proposal_label: string | null;
+  proposal_version: number;
+  proposal_document_url: string | null;
+  vote_method: EndorsementVoteMethod | null;
+  eligibility_definition: Record<string, unknown> | null;
+  eligible_count: number | null;
+  vote_opens_at: string | null;
+  vote_closes_at: string | null;
+  votes_yes: number | null;
+  votes_no: number | null;
+  votes_abstain: number | null;
+  informal_count: number | null;
+  outcome: EndorsementVoteOutcome | null;
+  fwc_notification_sent_at: string | null;
+  fwc_application_number: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Insert type for member_endorsement_votes. */
+export interface MemberEndorsementVoteInsert {
+  campaign_id: number;
+  vote_kind: EndorsementVoteKind;
+  proposal_label?: string | null;
+  proposal_version?: number;
+  proposal_document_url?: string | null;
+  vote_method?: EndorsementVoteMethod | null;
+  eligibility_definition?: Record<string, unknown> | null;
+  eligible_count?: number | null;
+  vote_opens_at?: string | null;
+  vote_closes_at?: string | null;
+  votes_yes?: number | null;
+  votes_no?: number | null;
+  votes_abstain?: number | null;
+  informal_count?: number | null;
+  outcome?: EndorsementVoteOutcome | null;
+  fwc_notification_sent_at?: string | null;
+  fwc_application_number?: string | null;
+  notes?: string | null;
+  created_by?: string | null;
+}
+
+/** Update type for member_endorsement_votes (all fields optional). */
+export type MemberEndorsementVoteUpdate = Partial<
+  Omit<MemberEndorsementVoteInsert, "campaign_id">
+>;
+
+// === End Phase 4 additions ===
+
+// === Phase 6 additions (Wave 4 Agent H) ===
+
+export interface PiaActionRow {
+  action_id: number
+  campaign_id: number
+  pabo_id: number | null
+  pabo_question_id: number | null
+  action_type: string
+  escalation_level: number
+  notice_given_at: string | null
+  action_starts_at: string | null
+  action_ends_at: string | null
+  target_population_definition: Json | null
+  participation_target_count: number | null
+  is_concluded: boolean
+  concluded_at: string | null
+  outcome_summary: Json | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PiaActionInsert {
+  campaign_id: number
+  pabo_id?: number | null
+  pabo_question_id?: number | null
+  action_type: string
+  escalation_level?: number
+  notice_given_at?: string | null
+  action_starts_at?: string | null
+  action_ends_at?: string | null
+  target_population_definition?: Json | null
+  participation_target_count?: number | null
+  is_concluded?: boolean
+  concluded_at?: string | null
+  outcome_summary?: Json | null
+  notes?: string | null
+  created_by?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface PiaActionUpdate {
+  campaign_id?: number
+  pabo_id?: number | null
+  pabo_question_id?: number | null
+  action_type?: string
+  escalation_level?: number
+  notice_given_at?: string | null
+  action_starts_at?: string | null
+  action_ends_at?: string | null
+  target_population_definition?: Json | null
+  participation_target_count?: number | null
+  is_concluded?: boolean
+  concluded_at?: string | null
+  outcome_summary?: Json | null
+  notes?: string | null
+  created_by?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface PiaSeedPackRow {
+  pack_key: string
+  label: string
+  description: string | null
+  action_types: string[]
+}
+
+export interface PiaSeedPackInsert {
+  pack_key: string
+  label: string
+  description?: string | null
+  action_types: string[]
+}
+
+export interface PiaSeedPackUpdate {
+  pack_key?: string
+  label?: string
+  description?: string | null
+  action_types?: string[]
+}
+
+/** View: v_pia_participation_by_action */
+export interface VPiaParticipationByAction {
+  action_id: number
+  campaign_id: number
+  action_type: string
+  escalation_level: number
+  action_starts_at: string | null
+  is_concluded: boolean
+  total_pledged: number
+  total_participated: number
+  participation_rate: number
+  percent_membership: number
+}
+
+/** View: v_worker_escalation_tier */
+export interface VWorkerEscalationTier {
+  campaign_id: number
+  worker_id: number
+  current_tier: number
+  last_action_at: string | null
+  last_action_type: string | null
+  next_recommended_ask: string
+}
+
+// === End Phase 6 additions ===

@@ -12646,3 +12646,24 @@ export interface VWorkerEscalationTier {
 }
 
 // === End Phase 6 additions ===
+
+// === Phase 9 additions (Wave 7 Agent K) ===
+
+export interface VBargainingProgress {
+  campaign_id: number
+  campaign_name: string
+  current_phase: string
+  bargaining_commenced_at: string | null
+  last_strength_assessed_at: string | null
+  /** Maps to bargaining_strength_assessments.outcome: 'strong' | 'weak' | 'unclear' */
+  last_strength_verdict: string | null
+  open_decision_count: number
+  latest_pabo_status: string | null
+  latest_vote_outcome: string | null
+  active_pia_count: number
+  intractable_status: string | null
+  /** Days elapsed since bargaining_commenced_at; divide by ~30 for months */
+  intractable_days_elapsed: number | null
+}
+
+// === End Phase 9 additions ===

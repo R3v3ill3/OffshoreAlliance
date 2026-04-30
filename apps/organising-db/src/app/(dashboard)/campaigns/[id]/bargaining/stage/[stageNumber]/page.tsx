@@ -41,6 +41,7 @@ import {
   CalendarDays,
   Info,
   BookOpen,
+  FileEdit,
   X,
 } from 'lucide-react'
 import {
@@ -49,6 +50,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { OverviewDialog } from '@/components/campaigns/planning/OverviewDialog'
+import { PlanRefinementDialog } from '@/components/campaigns/planning/PlanRefinementDialog'
 import { stageHeaderBlurb } from '@/lib/planning/stage-narrative'
 import { cn } from '@/lib/utils/cn'
 import type { TheoryOfWinningRequest } from '@/types/planner-types'
@@ -121,9 +123,11 @@ export default function BargainingStagePage({ params }: PageProps) {
   const [activeTab, setActiveTab] = useState<string>('ambitions')
   const [overviewOpen, setOverviewOpen] = useState(false)
   const [showBlurb, setShowBlurb] = useState(true)
+  const [revisionOpen, setRevisionOpen] = useState(false)
 
   const stageName = BARGAINING_STAGE_NAMES[stageNumber] ?? `Stage ${stageNumber}`
   const plan = stagePlanData?.plan
+  const isActiveOrCompleted = plan?.status === 'active' || plan?.status === 'completed'
 
   const sortedStagePlans = useMemo(() => {
     const plans =
@@ -353,6 +357,18 @@ export default function BargainingStagePage({ params }: PageProps) {
               <BookOpen className="h-3 w-3 mr-1" />
               Overview
             </Button>
+            {isActiveOrCompleted && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => setRevisionOpen(true)}
+                title="Log a revision note for this stage"
+              >
+                <FileEdit className="h-3 w-3 mr-1" />
+                Log revision
+              </Button>
+            )}
             {prevStage && (
               <Button asChild variant="outline" size="sm" className="h-8 text-xs">
                 <Link href={`/campaigns/${campaignId}/bargaining/stage/${prevStage}`}>
@@ -538,6 +554,17 @@ export default function BargainingStagePage({ params }: PageProps) {
       </div>
 
       <OverviewDialog open={overviewOpen} onOpenChange={setOverviewOpen} />
+
+      {/* Revision-note dialog — shown when editing an active/completed bargaining stage */}
+      {isActiveOrCompleted && (
+        <PlanRefinementDialog
+          open={revisionOpen}
+          onOpenChange={setRevisionOpen}
+          campaignId={campaignId}
+          stageNumber={stageNumber}
+          onConfirmed={() => setRevisionOpen(false)}
+        />
+      )}
     </div>
   )
 }

@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Search } from "lucide-react"
+import { ArrowLeft, Search, ExternalLink } from "lucide-react"
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading"
 import { CampaignProgressReport } from "@/components/reports/CampaignProgressReport"
 
@@ -25,6 +25,21 @@ interface CampaignPickRow {
   name: string
   campaign_type: string
   status: string
+  current_phase: string | null
+}
+
+function formatPhaseLabel(phase: string | null): string {
+  if (!phase) return ""
+  switch (phase) {
+    case "bargaining_to_win":
+      return "Bargaining"
+    case "post_settlement":
+      return "Post-settlement"
+    case "preparing_to_bargain":
+      return "Preparing"
+    default:
+      return phase.replace(/_/g, " ")
+  }
 }
 
 function PickerView({ onPick }: { onPick: (id: number) => void }) {
@@ -37,7 +52,7 @@ function PickerView({ onPick }: { onPick: (id: number) => void }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaigns")
-        .select("campaign_id, name, campaign_type, status")
+        .select("campaign_id, name, campaign_type, status, current_phase")
         .order("name")
       if (error) return []
       return (data ?? []) as CampaignPickRow[]
@@ -81,22 +96,48 @@ function PickerView({ onPick }: { onPick: (id: number) => void }) {
             </p>
           )}
           {filtered.map((c) => (
-            <button
+            <div
               key={c.campaign_id}
-              type="button"
-              onClick={() => onPick(c.campaign_id)}
-              className="w-full text-left p-3 hover:bg-muted/40 transition-colors flex items-center justify-between gap-2"
+              className="flex items-center justify-between gap-2 p-3 hover:bg-muted/40 transition-colors"
             >
-              <span className="text-sm font-medium truncate">{c.name}</span>
-              <span className="flex gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => onPick(c.campaign_id)}
+                className="flex-1 text-left min-w-0"
+              >
+                <span className="text-sm font-medium truncate block">{c.name}</span>
+              </button>
+              <span className="flex items-center gap-1 shrink-0">
+                {c.current_phase && (
+                  <Badge
+                    variant="outline"
+                    className={
+                      c.current_phase === "bargaining_to_win"
+                        ? "text-[10px] h-4 px-1 border-blue-300 text-blue-700 bg-blue-50"
+                        : "text-[10px] h-4 px-1"
+                    }
+                  >
+                    {formatPhaseLabel(c.current_phase)}
+                  </Badge>
+                )}
                 <Badge variant="outline" className="text-[10px] h-4 px-1">
                   {c.campaign_type}
                 </Badge>
                 <Badge variant="outline" className="text-[10px] h-4 px-1">
                   {c.status}
                 </Badge>
+                {c.current_phase === "bargaining_to_win" && (
+                  <Link
+                    href={`/campaigns/${c.campaign_id}/bargaining`}
+                    onClick={(e) => e.stopPropagation()}
+                    title="Open bargaining hub"
+                    className="ml-1 text-blue-600 hover:text-blue-800"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                  </Link>
+                )}
               </span>
-            </button>
+            </div>
           ))}
         </div>
       </CardContent>

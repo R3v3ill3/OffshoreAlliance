@@ -33,6 +33,8 @@ export type WallChartSelection = {
   has: (ouId: number | null, workerId: number) => boolean;
   toggle: (ouId: number | null, workerId: number) => void;
   selectOnly: (ouId: number | null, workerId: number) => void;
+  /** Add all given (ouId, workerId) pairs to the current selection (does not clear existing). */
+  addAll: (pairs: { ouId: number | null; workerId: number }[]) => void;
   clear: () => void;
   /** Returns distinct worker ids in the selection (dedupes across units). */
   workerIds: () => number[];
@@ -62,6 +64,14 @@ export function useWallChartSelection(): WallChartSelection {
     setKeys(new Set([makeKey(ouId, workerId)]));
   }, []);
 
+  const addAll = useCallback((pairs: { ouId: number | null; workerId: number }[]) => {
+    setKeys((prev) => {
+      const next = new Set(prev);
+      for (const { ouId, workerId } of pairs) next.add(makeKey(ouId, workerId));
+      return next;
+    });
+  }, []);
+
   const clear = useCallback(() => {
     setKeys((prev) => (prev.size === 0 ? prev : new Set()));
   }, []);
@@ -74,5 +84,5 @@ export function useWallChartSelection(): WallChartSelection {
 
   const refs = useCallback(() => [...keys].map(parseKey), [keys]);
 
-  return { keys, size: keys.size, has, toggle, selectOnly, clear, workerIds, refs };
+  return { keys, size: keys.size, has, toggle, selectOnly, addAll, clear, workerIds, refs };
 }

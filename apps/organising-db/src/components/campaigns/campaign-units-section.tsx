@@ -1144,13 +1144,12 @@ export function CampaignUnitsSection({
                                 worker_id: number;
                                 is_primary: boolean;
                                 assignment_source?: string | null;
-                                worker: unknown;
                               };
-                              const wr = row.worker;
-                              const w = (Array.isArray(wr) ? wr[0] : wr) as {
-                                first_name: string;
-                                last_name: string;
-                              } | null;
+                              const memberOption = memberOptions.find(
+                                (m) => m.worker_id === row.worker_id
+                              );
+                              const displayName =
+                                memberOption?.label ?? `Worker #${row.worker_id}`;
                               const selected = isUnitWorkerSelected(ou.ou_id, row.worker_id);
                               return (
                                 <tr
@@ -1164,12 +1163,12 @@ export function CampaignUnitsSection({
                                         onCheckedChange={() =>
                                           toggleUnitWorker(ou.ou_id, row.worker_id)
                                         }
-                                        aria-label={`Select ${w ? `${w.first_name} ${w.last_name}` : "worker"}`}
+                                        aria-label={`Select ${displayName}`}
                                       />
                                     </td>
                                   )}
                                   <td className="px-1 py-1">
-                                    {w ? `${w.first_name} ${w.last_name}` : "—"}
+                                    {displayName}
                                   </td>
                                   <td className="px-1 py-1 text-muted-foreground space-x-1">
                                     {row.is_primary && <span>(primary)</span>}

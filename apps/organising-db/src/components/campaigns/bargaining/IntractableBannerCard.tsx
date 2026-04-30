@@ -99,7 +99,18 @@ function formatDate(d: string | null): string {
  */
 export function IntractableBannerCard({ campaignId }: IntractableBannerCardProps) {
   const [expanded, setExpanded] = useState(true)
-  const { data } = useIntractableState(campaignId)
+  const { data, isLoading } = useIntractableState(campaignId)
+
+  if (isLoading) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 animate-pulse">
+        <div className="px-3 py-2 flex items-center justify-between">
+          <div className="h-3.5 w-48 rounded bg-slate-200" />
+          <div className="h-3.5 w-3.5 rounded bg-slate-200" />
+        </div>
+      </div>
+    )
+  }
 
   if (!data) return null
 

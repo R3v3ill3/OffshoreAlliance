@@ -193,9 +193,13 @@ export function CampaignUnitsSection({
     workerIds: Set<number>;
   } | null>(null);
 
+  // Selection for the Unallocated pseudo-unit.
+  const [unallocatedSelection, setUnallocatedSelection] = useState<Set<number>>(new Set());
+
   // Source OU + workers pending reallocation — opens the reallocate dialog.
+  // fromOuId: null means the workers are currently unallocated (assign, not move).
   const [reallocateTarget, setReallocateTarget] = useState<{
-    fromOuId: number;
+    fromOuId: number | null;
     fromOuType: string | null;
     workerIds: number[];
   } | null>(null);
@@ -377,6 +381,17 @@ export function CampaignUnitsSection({
         } => !!row
       );
   }, [members, memberUnitCount, multiUnitWorkerIds, assignTargetAssignedWorkerIds]);
+
+  // Workers in campaign but not assigned to any OU — shown in the Unallocated pseudo-unit.
+  const assignedWorkerIds = useMemo(
+    () => new Set(ouAssignments.map((a: { worker_id: number }) => a.worker_id)),
+    [ouAssignments]
+  );
+
+  const unallocatedMembers = useMemo(
+    () => memberOptions.filter((m) => !assignedWorkerIds.has(m.worker_id)),
+    [memberOptions, assignedWorkerIds]
+  );
 
   const assignEmployerOptions = useMemo(
     () => [...new Set(memberOptions.map((m) => m.employer_name).filter(Boolean))],
@@ -699,7 +714,7 @@ export function CampaignUnitsSection({
       toOuId,
       workerIds,
     }: {
-      fromOuId: number;
+      fromOuId: number | null;
       toOuId: number;
       workerIds: number[];
     }) => {
@@ -721,17 +736,21 @@ export function CampaignUnitsSection({
         .upsert(rows, { onConflict: "ou_id,worker_id", ignoreDuplicates: true });
       if (insErr) throw insErr;
 
-      const { error: delErr } = await supabase
-        .from("campaign_worker_ou" as never)
-        .delete()
-        .eq("ou_id", fromOuId)
-        .in("worker_id", workerIds);
-      if (delErr) throw delErr;
+      // Only remove from source when source is a real unit (not coming from Unallocated).
+      if (fromOuId !== null) {
+        const { error: delErr } = await supabase
+          .from("campaign_worker_ou" as never)
+          .delete()
+          .eq("ou_id", fromOuId)
+          .in("worker_id", workerIds);
+        if (delErr) throw delErr;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
       setUnitSelection(null);
+      setUnallocatedSelection(new Set());
       setReallocateTarget(null);
       setReallocateSelectedOuId("");
     },
@@ -1144,13 +1163,12 @@ export function CampaignUnitsSection({
                                 worker_id: number;
                                 is_primary: boolean;
                                 assignment_source?: string | null;
-                                worker: unknown;
                               };
-                              const wr = row.worker;
-                              const w = (Array.isArray(wr) ? wr[0] : wr) as {
-                                first_name: string;
-                                last_name: string;
-                              } | null;
+                              const memberOption = memberOptions.find(
+                                (m) => m.worker_id === row.worker_id
+                              );
+                              const displayName =
+                                memberOption?.label ?? `Worker #${row.worker_id}`;
                               const selected = isUnitWorkerSelected(ou.ou_id, row.worker_id);
                               return (
                                 <tr
@@ -1164,12 +1182,12 @@ export function CampaignUnitsSection({
                                         onCheckedChange={() =>
                                           toggleUnitWorker(ou.ou_id, row.worker_id)
                                         }
-                                        aria-label={`Select ${w ? `${w.first_name} ${w.last_name}` : "worker"}`}
+                                        aria-label={`Select ${displayName}`}
                                       />
                                     </td>
                                   )}
                                   <td className="px-1 py-1">
-                                    {w ? `${w.first_name} ${w.last_name}` : "—"}
+                                    {displayName}
                                   </td>
                                   <td className="px-1 py-1 text-muted-foreground space-x-1">
                                     {row.is_primary && <span>(primary)</span>}
@@ -1326,6 +1344,121 @@ export function CampaignUnitsSection({
                 </div>
               </div>
             ))
+          )}
+
+          {/* Unallocated pseudo-unit — workers in campaign with no unit assignment */}
+          {ous.length > 0 && unallocatedMembers.length > 0 && (
+            <div className="rounded-md border border-dashed p-3 space-y-2">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <p className="font-medium text-muted-foreground">Unallocated</p>
+                  <p className="text-xs text-muted-foreground">
+                    {unallocatedMembers.length} worker{unallocatedMembers.length !== 1 ? "s" : ""} not in any unit
+                  </p>
+                </div>
+                {canWrite && unallocatedSelection.size > 0 && (
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() =>
+                        setReallocateTarget({
+                          fromOuId: null,
+                          fromOuType: null,
+                          workerIds: [...unallocatedSelection],
+                        })
+                      }
+                    >
+                      Assign to unit…
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setUnallocatedSelection(new Set())}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b">
+                    {canWrite && (
+                      <th className="w-8 px-1 py-1">
+                        <Checkbox
+                          checked={
+                            unallocatedMembers.length > 0 &&
+                            unallocatedMembers.every((m) => unallocatedSelection.has(m.worker_id))
+                          }
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setUnallocatedSelection(
+                                new Set(unallocatedMembers.map((m) => m.worker_id))
+                              );
+                            } else {
+                              setUnallocatedSelection(new Set());
+                            }
+                          }}
+                          aria-label="Select all unallocated workers"
+                        />
+                      </th>
+                    )}
+                    <th className="text-left px-1 py-1 font-medium text-muted-foreground">Worker</th>
+                    {canWrite && <th className="w-20" />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {unallocatedMembers.map((m) => {
+                    const selected = unallocatedSelection.has(m.worker_id);
+                    return (
+                      <tr key={m.worker_id} className={selected ? "bg-primary/5" : undefined}>
+                        {canWrite && (
+                          <td className="px-1 py-1">
+                            <Checkbox
+                              checked={selected}
+                              onCheckedChange={() => {
+                                setUnallocatedSelection((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(m.worker_id)) next.delete(m.worker_id);
+                                  else next.add(m.worker_id);
+                                  return next;
+                                });
+                              }}
+                              aria-label={`Select ${m.label}`}
+                            />
+                          </td>
+                        )}
+                        <td className="px-1 py-1">{m.label}</td>
+                        {canWrite && (
+                          <td className="px-1 py-1 text-right">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-xs"
+                              onClick={() =>
+                                setReallocateTarget({
+                                  fromOuId: null,
+                                  fromOuType: null,
+                                  workerIds: [m.worker_id],
+                                })
+                              }
+                            >
+                              Assign…
+                            </Button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -1719,16 +1852,21 @@ export function CampaignUnitsSection({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Reallocate workers to another same-type unit */}
+      {/* Reallocate workers to another same-type unit, or assign from Unallocated */}
       {reallocateTarget && (() => {
         const fromOuType = reallocateTarget.fromOuType;
+        const isFromUnallocated = reallocateTarget.fromOuId === null;
         const candidateOus = (ous as { ou_id: number; name: string; ou_type: string }[]).filter(
           (o) => {
+            // Exclude source unit (null never matches any ou_id, so all OUs are candidates)
             if (o.ou_id === reallocateTarget.fromOuId) return false;
+            // When assigning from Unallocated, all OUs are valid targets
+            if (isFromUnallocated) return true;
             if (!fromOuType || fromOuType === "custom") return true;
             return o.ou_type === fromOuType;
           }
         );
+        const workerCount = reallocateTarget.workerIds.length;
         return (
           <Dialog
             open
@@ -1741,14 +1879,24 @@ export function CampaignUnitsSection({
           >
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Reallocate to another unit</DialogTitle>
+                <DialogTitle>
+                  {isFromUnallocated ? "Assign to unit" : "Reallocate to another unit"}
+                </DialogTitle>
                 <DialogDescription>
-                  Move {reallocateTarget.workerIds.length}{" "}
-                  {reallocateTarget.workerIds.length === 1 ? "worker" : "workers"} to a different
-                  unit. They will be removed from the current unit.
-                  {fromOuType && fromOuType !== "custom" && (
-                    <> Only <strong>{fromOuType.replace(/_/g, " ")}</strong> units are shown
-                    — moves are restricted to the same dimension.</>
+                  {isFromUnallocated ? (
+                    <>
+                      Assign {workerCount} {workerCount === 1 ? "worker" : "workers"} to an
+                      organising unit.
+                    </>
+                  ) : (
+                    <>
+                      Move {workerCount} {workerCount === 1 ? "worker" : "workers"} to a different
+                      unit. They will be removed from the current unit.
+                      {fromOuType && fromOuType !== "custom" && (
+                        <> Only <strong>{fromOuType.replace(/_/g, " ")}</strong> units are shown
+                        — moves are restricted to the same dimension.</>
+                      )}
+                    </>
                   )}
                 </DialogDescription>
               </DialogHeader>
@@ -1756,12 +1904,12 @@ export function CampaignUnitsSection({
               <div className="py-2">
                 {candidateOus.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No other{" "}
-                    {fromOuType && fromOuType !== "custom"
+                    No{" "}
+                    {fromOuType && fromOuType !== "custom" && !isFromUnallocated
                       ? fromOuType.replace(/_/g, " ") + " "
                       : ""}
-                    units to move to.{" "}
-                    {fromOuType && fromOuType !== "custom" && (
+                    units available.{" "}
+                    {fromOuType && fromOuType !== "custom" && !isFromUnallocated && (
                       <>Workers in custom units are unrestricted.</>
                     )}
                   </p>
@@ -1806,7 +1954,9 @@ export function CampaignUnitsSection({
                     });
                   }}
                 >
-                  {reallocateToUnitMutation.isPending ? "Moving…" : "Reallocate"}
+                  {reallocateToUnitMutation.isPending
+                    ? (isFromUnallocated ? "Assigning…" : "Moving…")
+                    : (isFromUnallocated ? "Assign" : "Reallocate")}
                 </Button>
               </DialogFooter>
             </DialogContent>

@@ -915,6 +915,9 @@ export function CampaignWallChart({
                   const sorted = applySort(filtered, workerById, ratingByWorker, filter.sort);
                   const placeholders = Math.max(0, est - ids.length);
                   const unitMetrics = metricsByOu.get(ou.ou_id);
+                  const allInUnitSelected =
+                    sorted.length > 0 &&
+                    sorted.every((wid) => selection.has(ou.ou_id, wid));
                   return (
                     <CampaignUnitCard
                       key={ou.ou_id}
@@ -937,18 +940,40 @@ export function CampaignWallChart({
                         ) : null
                       }
                       toolbar={
-                        <WallChartFilterBar
-                          state={filter}
-                          onChange={(next) => setFilter(ou.ou_id, next)}
-                          membershipTypes={derivedOptions.membershipTypes}
-                          occupations={derivedOptions.occupations}
-                          onApplyToAll={() => {
-                            const next = new Map<number, WallChartFilterState>();
-                            next.set(UNASSIGNED_KEY, { ...filter });
-                            for (const o of ous) next.set(o.ou_id, { ...filter });
-                            setFilterByScope(next);
-                          }}
-                        />
+                        <>
+                          {canWrite && sorted.length > 0 && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={allInUnitSelected ? "default" : "outline"}
+                              className="h-7 px-2 text-xs print:hidden"
+                              onClick={() => {
+                                if (allInUnitSelected) {
+                                  selection.clear();
+                                } else {
+                                  selection.addAll(
+                                    sorted.map((wid) => ({ ouId: ou.ou_id, workerId: wid }))
+                                  );
+                                }
+                              }}
+                              title={allInUnitSelected ? "Deselect all in unit" : "Select all in unit"}
+                            >
+                              {allInUnitSelected ? "Deselect all" : "Select all"}
+                            </Button>
+                          )}
+                          <WallChartFilterBar
+                            state={filter}
+                            onChange={(next) => setFilter(ou.ou_id, next)}
+                            membershipTypes={derivedOptions.membershipTypes}
+                            occupations={derivedOptions.occupations}
+                            onApplyToAll={() => {
+                              const next = new Map<number, WallChartFilterState>();
+                              next.set(UNASSIGNED_KEY, { ...filter });
+                              for (const o of ous) next.set(o.ou_id, { ...filter });
+                              setFilterByScope(next);
+                            }}
+                          />
+                        </>
                       }
                     >
                       {sorted.map((wid) => renderTile(wid, ou.ou_id))}

@@ -1,7 +1,7 @@
-import type { StageNumber } from '@/types/planner-types'
+import type { Phase1StageNumber } from '@/types/planner-types'
 
 /** One-line context shown next to the stage title on the stage plan page. */
-export const STAGE_HEADER_BLURB: Record<StageNumber, string> = {
+export const STAGE_HEADER_BLURB: Record<Phase1StageNumber, string> = {
   1: 'Build an accurate picture of who you represent, where they work, and how the site is organised.',
   2: 'Start conversations, raise awareness of the campaign, and grow basic understanding of bargaining and rights.',
   3: 'Turn interest into participation—structures, leaders, and measurable engagement across the workforce.',
@@ -11,7 +11,7 @@ export const STAGE_HEADER_BLURB: Record<StageNumber, string> = {
 }
 
 /** Longer generic guidance for the per-stage info dialog (1–3 paragraphs each). */
-export const STAGE_INFO_BODY: Record<StageNumber, string[]> = {
+export const STAGE_INFO_BODY: Record<Phase1StageNumber, string[]> = {
   1: [
     'This phase is about getting the facts straight before you scale activity. Reliable contact data, role clarity, and a sensible map of worksites and crews reduce wasted effort later and help you prioritise where organisers spend time.',
     'Use Playing to Win in this stage to set ambitions that are specific and measurable—what “good” looks like for identification coverage, mapping accuracy, or leadership visibility. That makes the next gates honest rather than aspirational.',
@@ -44,7 +44,7 @@ export const STAGE_INFO_BODY: Record<StageNumber, string[]> = {
   ],
 }
 
-export function isStageNumber(n: number): n is StageNumber {
+export function isStageNumber(n: number): n is Phase1StageNumber {
   return n >= 1 && n <= 6
 }
 

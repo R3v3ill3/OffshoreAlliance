@@ -3687,6 +3687,7 @@ export type Database = {
           campaign_id: number
           created_at: string | null
           created_by: string | null
+          phase: Database['public']['Enums']['campaign_phase_enum']
           plan_id: number
           planned_end_date: string | null
           planned_start_date: string | null
@@ -3703,6 +3704,7 @@ export type Database = {
           campaign_id: number
           created_at?: string | null
           created_by?: string | null
+          phase?: Database['public']['Enums']['campaign_phase_enum']
           plan_id?: number
           planned_end_date?: string | null
           planned_start_date?: string | null
@@ -3719,6 +3721,7 @@ export type Database = {
           campaign_id?: number
           created_at?: string | null
           created_by?: string | null
+          phase?: Database['public']['Enums']['campaign_phase_enum']
           plan_id?: number
           planned_end_date?: string | null
           planned_start_date?: string | null
@@ -4753,6 +4756,7 @@ export type Database = {
           campaign_type: string
           created_at: string
           created_by: string | null
+          current_phase: Database['public']['Enums']['campaign_phase_enum']
           description: string | null
           end_date: string | null
           enterprise_agreement_subtype: string | null
@@ -4774,6 +4778,7 @@ export type Database = {
           campaign_type: string
           created_at?: string
           created_by?: string | null
+          current_phase?: Database['public']['Enums']['campaign_phase_enum']
           description?: string | null
           end_date?: string | null
           enterprise_agreement_subtype?: string | null
@@ -4795,6 +4800,7 @@ export type Database = {
           campaign_type?: string
           created_at?: string
           created_by?: string | null
+          current_phase?: Database['public']['Enums']['campaign_phase_enum']
           description?: string | null
           end_date?: string | null
           enterprise_agreement_subtype?: string | null
@@ -12010,7 +12016,7 @@ export type Database = {
       sync_agreement_expired_status_by_date: { Args: never; Returns: number }
     }
     Enums: {
-      [_ in never]: never
+      campaign_phase_enum: 'preparing_to_bargain' | 'bargaining_to_win' | 'post_settlement'
     }
     CompositeTypes: {
       [_ in never]: never
@@ -12141,3 +12147,523 @@ export const Constants = {
   },
 } as const
 
+
+// === Phase 2 additions (Wave 2 Agent B) ===
+
+/** Mirrors the `nerr_status` CHECK constraint on campaign_situation_analyses */
+export type NerrStatus = 'not_issued' | 'issued' | 'superseded' | 'unknown'
+
+/** Mirrors the `bargaining_phase_state` CHECK constraint on campaign_situation_analyses */
+export type BargainingPhaseState =
+  | 'not_commenced'
+  | 'commenced'
+  | 'stalled'
+  | 'agreement_drafting'
+  | 'balloted'
+  | 'post_settlement'
+  | 'unknown'
+
+/** Mirrors the `employer_ballot_intent` CHECK constraint on campaign_situation_analyses */
+export type EmployerBallotIntent = 'none' | 'signalled' | 'imminent' | 'unknown'
+
+/** JSONB element shape for `campaign_situation_analyses.prior_employer_ballots` */
+export interface PriorEmployerBallot {
+  ballot_kind?: string
+  conducted_at?: string
+  eligible_count?: number
+  votes_yes?: number
+  votes_no?: number
+  outcome?: string
+  source_of_evidence?: string
+  notes?: string
+}
+
+/** JSONB element shape for `campaign_situation_analyses.key_disputes` */
+export interface KeyDispute {
+  topic?: string
+  oa_position?: string
+  employer_position?: string
+  /** Urgency rating 1–5 */
+  urgency?: number
+  notes?: string
+}
+
+/** JSONB object shape for `campaign_situation_analyses.worker_support_estimate` */
+export interface WorkerSupportEstimate {
+  percent_supportive_estimated?: number
+  basis_of_estimate?: string
+  notes?: string
+}
+
+/** Mirrors the `state` CHECK constraint on intractable_bargaining_tracker */
+export type IntractableState =
+  | 'safe'
+  | 'approaching'
+  | 'eligible'
+  | 'applied'
+  | 'declared'
+  | 'arbitrated'
+
+/**
+ * Row type for `intractable_bargaining_tracker`.
+ * Generated manually — do NOT run pnpm gen:types for this table.
+ */
+export interface IntractableBargainingTrackerRow {
+  campaign_id: number
+  bargaining_commenced_at: string
+  nine_month_threshold_at: string
+  intractable_application_filed_at: string | null
+  intractable_declaration_made_at: string | null
+  arbitration_outcome_recorded_at: string | null
+  state: IntractableState | null
+  last_reviewed_at: string | null
+  notes: string | null
+  created_by: string | null
+  updated_at: string
+}
+
+/**
+ * Row type for `v_intractable_state` view.
+ * Consumed by useIntractableState hook.
+ */
+export interface VIntractableStateRow {
+  campaign_id: number
+  days_elapsed: number
+  days_remaining_to_threshold: number
+  state: IntractableState
+  state_label: string
+  headline: string
+  bargaining_commenced_at: string
+  nine_month_threshold_at: string
+  intractable_application_filed_at: string | null
+  intractable_declaration_made_at: string | null
+  arbitration_outcome_recorded_at: string | null
+  last_reviewed_at: string | null
+  notes: string | null
+}
+
+// === End Phase 2 additions ===
+
+// === Phase 3 additions (Wave 3 Agent E) ===
+
+// ── bargaining_strength_assessments ──────────────────────────────────────────
+
+export type StrengthOutcome = 'strong' | 'weak' | 'unclear'
+
+export interface BargainingStrengthAssessmentRow {
+  assessment_id: number
+  campaign_id: number
+  assessed_at: string
+  eligible_count: number | null
+  supportive_leader_count: number | null
+  supporter_count: number | null
+  neutral_count: number | null
+  opposed_count: number | null
+  oppositional_count: number | null
+  unassessed_count: number | null
+  percent_strike_ready: number | null
+  percent_paid_membership: number | null
+  readiness_criteria: Record<string, unknown> | null
+  notes: string | null
+  outcome: StrengthOutcome | null
+  created_by: string | null
+}
+
+export interface BargainingStrengthAssessmentInsert {
+  campaign_id: number
+  assessed_at?: string
+  eligible_count?: number | null
+  supportive_leader_count?: number | null
+  supporter_count?: number | null
+  neutral_count?: number | null
+  opposed_count?: number | null
+  oppositional_count?: number | null
+  unassessed_count?: number | null
+  percent_strike_ready?: number | null
+  percent_paid_membership?: number | null
+  readiness_criteria?: Record<string, unknown> | null
+  notes?: string | null
+  outcome?: StrengthOutcome | null
+  created_by?: string | null
+}
+
+// ── v_strength_assessment_inputs (view) ──────────────────────────────────────
+
+export interface StrengthAssessmentInputsRow {
+  campaign_id: number
+  eligible_count: number | null
+  supportive_leader_count: number | null
+  supporter_count: number | null
+  neutral_count: number | null
+  opposed_count: number | null
+  oppositional_count: number | null
+  unassessed_count: number | null
+  total_ambition_universe: number | null
+  total_supportive: number | null
+  total_unassessed: number | null
+  overall_supportive_pct: number | null
+}
+
+// ── bargaining_decision_points ────────────────────────────────────────────────
+
+export type DecisionScenario =
+  | 'good_offer'
+  | 'drags_on'
+  | 'employer_launches_proposal'
+
+export type MemberVoteOutcome = 'yes' | 'no' | 'not_yet' | 'n_a'
+
+export type DecisionStrengthOutcome = 'strong' | 'weak' | 'unclear' | 'n_a'
+
+export type DecisionResolution =
+  | 'settled'
+  | 'route_to_pabo'
+  | 'route_to_capacity_building'
+  | 'route_to_ratification'
+  | 'pending'
+
+export interface BargainingDecisionPointRow {
+  decision_id: number
+  campaign_id: number
+  triggered_at: string
+  scenario: DecisionScenario | null
+  member_vote_outcome: MemberVoteOutcome | null
+  strength_assessment_id: number | null
+  strength_outcome: DecisionStrengthOutcome | null
+  resolution: DecisionResolution | null
+  notes: string | null
+  resolved_at: string | null
+  resolved_by: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export interface BargainingDecisionPointInsert {
+  campaign_id: number
+  triggered_at?: string
+  scenario?: DecisionScenario | null
+  member_vote_outcome?: MemberVoteOutcome | null
+  strength_assessment_id?: number | null
+  strength_outcome?: DecisionStrengthOutcome | null
+  resolution?: DecisionResolution | null
+  notes?: string | null
+  resolved_at?: string | null
+  resolved_by?: string | null
+  created_by?: string | null
+}
+
+export interface BargainingDecisionPointUpdate {
+  resolution?: DecisionResolution | null
+  notes?: string | null
+  resolved_at?: string | null
+  resolved_by?: string | null
+}
+
+// ── bargaining_gate_definitions ────────────────────────────────────────────────
+
+export type BargainingGateType = 'hard' | 'soft'
+
+export interface BargainingGateDefinitionRow {
+  gate_id: number
+  campaign_id: number
+  gate_number: number
+  gate_name: string
+  gate_type: BargainingGateType
+  enforcement_stage: number
+  gate_criteria: Record<string, unknown>
+  is_active: boolean
+  created_at: string
+}
+
+export interface BargainingGateDefinitionInsert {
+  campaign_id: number
+  gate_number: number
+  gate_name: string
+  gate_type?: BargainingGateType
+  enforcement_stage: number
+  gate_criteria?: Record<string, unknown>
+  is_active?: boolean
+}
+
+// === End Phase 3 additions ===
+
+// === Phase 5 additions (Wave 3 Agent F) ===
+
+/** Lifecycle states for a PABO (Protected Action Ballot Order) application. */
+export type PaboStatus =
+  | 'drafting'
+  | 'lodged'
+  | 'granted'
+  | 'denied'
+  | 'expired'
+  | 'superseded'
+  | 'withdrawn'
+
+/** Outcome of a single question on a protected action ballot. */
+export type BallotQuestionOutcome = 'carried' | 'failed' | 'pending' | 'withdrawn'
+
+/** Row type for the pabo_applications table. */
+export interface PaboApplicationRow {
+  pabo_id: number
+  campaign_id: number
+  application_filed_at: string | null
+  fwc_application_number: string | null
+  ballot_order_made_at: string | null
+  aec_ballot_agent: string | null
+  ballot_opens_at: string | null
+  ballot_closes_at: string | null
+  eligible_voter_count: number | null
+  votes_cast: number | null
+  /** Generated column: computed turnout percentage (2dp). Read-only. */
+  voter_turnout_pct: number | null
+  valid_from: string | null
+  valid_until: string | null
+  notice_period_required_days: number
+  status: PaboStatus | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** Insert type for pabo_applications (omits generated + defaulted columns). */
+export type PaboApplicationInsert = Omit<
+  PaboApplicationRow,
+  'pabo_id' | 'voter_turnout_pct' | 'created_at' | 'updated_at'
+> & {
+  pabo_id?: number
+  notice_period_required_days?: number
+}
+
+/** Update type for pabo_applications. */
+export type PaboApplicationUpdate = Partial<PaboApplicationInsert>
+
+/** Row type for the pabo_ballot_questions table. */
+export interface PaboBallotQuestionRow {
+  question_id: number
+  pabo_id: number
+  question_order: number
+  question_text: string
+  action_type: string | null
+  votes_yes: number | null
+  votes_no: number | null
+  informal_count: number | null
+  outcome: BallotQuestionOutcome | null
+}
+
+/** Insert type for pabo_ballot_questions. */
+export type PaboBallotQuestionInsert = Omit<PaboBallotQuestionRow, 'question_id'> & {
+  question_id?: number
+}
+
+/** Update type for pabo_ballot_questions. */
+export type PaboBallotQuestionUpdate = Partial<PaboBallotQuestionInsert>
+
+// === End Phase 5 additions ===
+
+// === Phase 4 additions (Wave 4 Agent G) ===
+
+/** Vote kind values for member_endorsement_votes. */
+export type EndorsementVoteKind =
+  | "employer_proposal"
+  | "union_in_principle"
+  | "final_eba";
+
+/** Vote method values for member_endorsement_votes. */
+export type EndorsementVoteMethod =
+  | "postal"
+  | "online"
+  | "workplace"
+  | "hybrid"
+  | "employer_run"
+  | "union_run";
+
+/** Outcome values for member_endorsement_votes. */
+export type EndorsementVoteOutcome = "yes" | "no" | "pending" | "withdrawn";
+
+/** Row type for the member_endorsement_votes table. */
+export interface MemberEndorsementVote {
+  vote_id: number;
+  campaign_id: number;
+  vote_kind: EndorsementVoteKind;
+  proposal_label: string | null;
+  proposal_version: number;
+  proposal_document_url: string | null;
+  vote_method: EndorsementVoteMethod | null;
+  eligibility_definition: Record<string, unknown> | null;
+  eligible_count: number | null;
+  vote_opens_at: string | null;
+  vote_closes_at: string | null;
+  votes_yes: number | null;
+  votes_no: number | null;
+  votes_abstain: number | null;
+  informal_count: number | null;
+  outcome: EndorsementVoteOutcome | null;
+  fwc_notification_sent_at: string | null;
+  fwc_application_number: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Insert type for member_endorsement_votes. */
+export interface MemberEndorsementVoteInsert {
+  campaign_id: number;
+  vote_kind: EndorsementVoteKind;
+  proposal_label?: string | null;
+  proposal_version?: number;
+  proposal_document_url?: string | null;
+  vote_method?: EndorsementVoteMethod | null;
+  eligibility_definition?: Record<string, unknown> | null;
+  eligible_count?: number | null;
+  vote_opens_at?: string | null;
+  vote_closes_at?: string | null;
+  votes_yes?: number | null;
+  votes_no?: number | null;
+  votes_abstain?: number | null;
+  informal_count?: number | null;
+  outcome?: EndorsementVoteOutcome | null;
+  fwc_notification_sent_at?: string | null;
+  fwc_application_number?: string | null;
+  notes?: string | null;
+  created_by?: string | null;
+}
+
+/** Update type for member_endorsement_votes (all fields optional). */
+export type MemberEndorsementVoteUpdate = Partial<
+  Omit<MemberEndorsementVoteInsert, "campaign_id">
+>;
+
+// === End Phase 4 additions ===
+
+// === Phase 6 additions (Wave 4 Agent H) ===
+
+export interface PiaActionRow {
+  action_id: number
+  campaign_id: number
+  pabo_id: number | null
+  pabo_question_id: number | null
+  action_type: string
+  escalation_level: number
+  notice_given_at: string | null
+  action_starts_at: string | null
+  action_ends_at: string | null
+  target_population_definition: Json | null
+  participation_target_count: number | null
+  is_concluded: boolean
+  concluded_at: string | null
+  outcome_summary: Json | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PiaActionInsert {
+  campaign_id: number
+  pabo_id?: number | null
+  pabo_question_id?: number | null
+  action_type: string
+  escalation_level?: number
+  notice_given_at?: string | null
+  action_starts_at?: string | null
+  action_ends_at?: string | null
+  target_population_definition?: Json | null
+  participation_target_count?: number | null
+  is_concluded?: boolean
+  concluded_at?: string | null
+  outcome_summary?: Json | null
+  notes?: string | null
+  created_by?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface PiaActionUpdate {
+  campaign_id?: number
+  pabo_id?: number | null
+  pabo_question_id?: number | null
+  action_type?: string
+  escalation_level?: number
+  notice_given_at?: string | null
+  action_starts_at?: string | null
+  action_ends_at?: string | null
+  target_population_definition?: Json | null
+  participation_target_count?: number | null
+  is_concluded?: boolean
+  concluded_at?: string | null
+  outcome_summary?: Json | null
+  notes?: string | null
+  created_by?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface PiaSeedPackRow {
+  pack_key: string
+  label: string
+  description: string | null
+  action_types: string[]
+}
+
+export interface PiaSeedPackInsert {
+  pack_key: string
+  label: string
+  description?: string | null
+  action_types: string[]
+}
+
+export interface PiaSeedPackUpdate {
+  pack_key?: string
+  label?: string
+  description?: string | null
+  action_types?: string[]
+}
+
+/** View: v_pia_participation_by_action */
+export interface VPiaParticipationByAction {
+  action_id: number
+  campaign_id: number
+  action_type: string
+  escalation_level: number
+  action_starts_at: string | null
+  is_concluded: boolean
+  total_pledged: number
+  total_participated: number
+  participation_rate: number
+  percent_membership: number
+}
+
+/** View: v_worker_escalation_tier */
+export interface VWorkerEscalationTier {
+  campaign_id: number
+  worker_id: number
+  current_tier: number
+  last_action_at: string | null
+  last_action_type: string | null
+  next_recommended_ask: string
+}
+
+// === End Phase 6 additions ===
+
+// === Phase 9 additions (Wave 7 Agent K) ===
+
+export interface VBargainingProgress {
+  campaign_id: number
+  campaign_name: string
+  current_phase: string
+  bargaining_commenced_at: string | null
+  last_strength_assessed_at: string | null
+  /** Maps to bargaining_strength_assessments.outcome: 'strong' | 'weak' | 'unclear' */
+  last_strength_verdict: string | null
+  open_decision_count: number
+  latest_pabo_status: string | null
+  latest_vote_outcome: string | null
+  active_pia_count: number
+  intractable_status: string | null
+  /** Days elapsed since bargaining_commenced_at; divide by ~30 for months */
+  intractable_days_elapsed: number | null
+}
+
+// === End Phase 9 additions ===

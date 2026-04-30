@@ -2,6 +2,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Database } from '@/types/database'
+import type { Phase } from '@/types/planner-types'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthAwareMutation, ensureValidSession } from '@/lib/hooks/useAuthAwareMutation'
 import { syncAmbitionTargetDatesForCampaign } from '@/lib/supabase/syncAmbitionTargetDates'
@@ -19,13 +20,22 @@ export type PlannerStageDateInput = {
   actual_end?: string | null
 }
 
-export function useCampaigns() {
+/**
+ * Returns all campaigns, optionally filtered to those in a specific
+ * bargaining lifecycle phase.
+ *
+ * @param options.phase  When supplied, adds `.eq('current_phase', phase)` so
+ *   callers can list only Phase-1 campaigns (preparing_to_bargain) or only
+ *   Phase-2 campaigns (bargaining_to_win) without fetching all rows.
+ */
+export function useCampaigns(options?: { phase?: Phase }) {
   const supabase = createClient()
+  const phase = options?.phase
 
   return useQuery({
-    queryKey: ['campaigns'],
+    queryKey: ['campaigns', phase ?? null],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('campaigns')
         .select(`
           *,
@@ -41,6 +51,12 @@ export function useCampaigns() {
           gate_definitions(gate_id, gate_number, gate_name, enforcement_type)
         `)
         .order('created_at', { ascending: false })
+
+      if (phase) {
+        query = query.eq('current_phase', phase)
+      }
+
+      const { data, error } = await query
 
       if (error) throw error
       return data

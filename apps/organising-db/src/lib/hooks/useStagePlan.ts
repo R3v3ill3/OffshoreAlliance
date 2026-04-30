@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
-import type { CapacityStatus } from '@/types/planner-types'
+import type { CapacityStatus, Phase } from '@/types/planner-types'
 
 const EMPTY_STAGE_PLAN_DATA = {
   plan: null,
@@ -43,23 +43,45 @@ function invalidateP2wCompletion(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: ['p2w-completion'] })
 }
 
-export function useStagePlan(campaignId: number, stageNumber: number) {
+/**
+ * Fetches all data for a single stage plan (core plan row + all 5 P2W step
+ * child tables).
+ *
+ * @param campaignId  Campaign to load.
+ * @param stageNumber Stage number (1–11 after B2W Phase 1 migration).
+ * @param options.phase  Optional phase filter. When supplied the query adds a
+ *   `.eq('phase', phase)` predicate so that a caller requesting a Phase-1 stage
+ *   (1–6) will receive `null` rather than a Phase-2 row if the stageNumber
+ *   happens to collide (defensive — the DB invariant already prevents this, but
+ *   the filter makes intent explicit in the UI layer).
+ */
+export function useStagePlan(
+  campaignId: number,
+  stageNumber: number,
+  options?: { phase?: Phase },
+) {
   const supabase = createClient()
   const enabled = !!campaignId && !!stageNumber
+  const phase = options?.phase
 
   const planQuery = useQuery({
-    queryKey: ['stage-plan-core', campaignId, stageNumber],
+    queryKey: ['stage-plan-core', campaignId, stageNumber, phase ?? null],
     queryFn: async () => {
       // Use maybeSingle() so a missing stage plan (PGRST116) is returned as
       // null rather than thrown. The page component is responsible for
       // handling null by triggering the auto-heal flow
       // (useInitializeCampaignStagePlans).
-      const { data: plan, error } = await supabase
+      let query = supabase
         .from('campaign_stage_plans')
         .select('*')
         .eq('campaign_id', campaignId)
         .eq('stage_number', stageNumber)
-        .maybeSingle()
+
+      if (phase) {
+        query = query.eq('phase', phase)
+      }
+
+      const { data: plan, error } = await query.maybeSingle()
 
       if (error) throw error
 

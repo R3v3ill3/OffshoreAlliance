@@ -3687,6 +3687,7 @@ export type Database = {
           campaign_id: number
           created_at: string | null
           created_by: string | null
+          phase: Database['public']['Enums']['campaign_phase_enum']
           plan_id: number
           planned_end_date: string | null
           planned_start_date: string | null
@@ -3703,6 +3704,7 @@ export type Database = {
           campaign_id: number
           created_at?: string | null
           created_by?: string | null
+          phase?: Database['public']['Enums']['campaign_phase_enum']
           plan_id?: number
           planned_end_date?: string | null
           planned_start_date?: string | null
@@ -3719,6 +3721,7 @@ export type Database = {
           campaign_id?: number
           created_at?: string | null
           created_by?: string | null
+          phase?: Database['public']['Enums']['campaign_phase_enum']
           plan_id?: number
           planned_end_date?: string | null
           planned_start_date?: string | null
@@ -4753,6 +4756,7 @@ export type Database = {
           campaign_type: string
           created_at: string
           created_by: string | null
+          current_phase: Database['public']['Enums']['campaign_phase_enum']
           description: string | null
           end_date: string | null
           enterprise_agreement_subtype: string | null
@@ -4774,6 +4778,7 @@ export type Database = {
           campaign_type: string
           created_at?: string
           created_by?: string | null
+          current_phase?: Database['public']['Enums']['campaign_phase_enum']
           description?: string | null
           end_date?: string | null
           enterprise_agreement_subtype?: string | null
@@ -4795,6 +4800,7 @@ export type Database = {
           campaign_type?: string
           created_at?: string
           created_by?: string | null
+          current_phase?: Database['public']['Enums']['campaign_phase_enum']
           description?: string | null
           end_date?: string | null
           enterprise_agreement_subtype?: string | null
@@ -12010,7 +12016,7 @@ export type Database = {
       sync_agreement_expired_status_by_date: { Args: never; Returns: number }
     }
     Enums: {
-      [_ in never]: never
+      campaign_phase_enum: 'preparing_to_bargain' | 'bargaining_to_win' | 'post_settlement'
     }
     CompositeTypes: {
       [_ in never]: never

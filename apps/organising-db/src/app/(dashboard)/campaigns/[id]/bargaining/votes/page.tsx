@@ -7,12 +7,6 @@ import { EndorsementVoteList } from '@/components/campaigns/bargaining/Endorseme
 import { EndorsementVoteEditor } from '@/components/campaigns/bargaining/EndorsementVoteEditor'
 import { useEndorsementVotes } from '@/hooks/useEndorsementVotes'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { ChevronRight, Vote, Plus } from 'lucide-react'
 
 interface PageProps {
@@ -96,19 +90,11 @@ export default function BargainingVotesPage({ params }: PageProps) {
         <EndorsementVoteList campaignId={campaignId} />
       )}
 
-      {/* New vote dialog */}
-      <Dialog open={newVoteDialogOpen} onOpenChange={setNewVoteDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>New Endorsement Vote</DialogTitle>
-          </DialogHeader>
-          <EndorsementVoteEditor
-            campaignId={campaignId}
-            onSuccess={() => setNewVoteDialogOpen(false)}
-            onCancel={() => setNewVoteDialogOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
+      <EndorsementVoteEditor
+        campaignId={campaignId}
+        open={newVoteDialogOpen}
+        onOpenChange={setNewVoteDialogOpen}
+      />
     </div>
   )
 }

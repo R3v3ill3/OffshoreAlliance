@@ -69,8 +69,8 @@ export default function BargainingHubPage({ params }: PageProps) {
 
   const { data: campaign, isLoading: campaignLoading } = useCampaign(campaignId)
   const { data: intractableState, isLoading: intractableLoading } = useIntractableState(campaignId)
-  const { data: strengthData, isLoading: strengthLoading } = useStrengthAssessment(campaignId)
-  const { data: decisionPoints, isLoading: decisionsLoading } = useDecisionPoints(campaignId)
+  const { assessments: strengthData, isLoading: strengthLoading } = useStrengthAssessment(campaignId)
+  const { decisionPoints, isLoading: decisionsLoading } = useDecisionPoints(campaignId)
   const { data: paboApplications, isLoading: paboLoading } = usePaboApplications(campaignId)
   const { data: piaActions, isLoading: actionsLoading } = usePiaActions(campaignId)
   const { data: endorsementVotes, isLoading: votesLoading } = useEndorsementVotes(campaignId)
@@ -263,8 +263,8 @@ export default function BargainingHubPage({ params }: PageProps) {
                 >
                   {activePabo.status}
                 </Badge>
-                {activePabo.fwc_number && (
-                  <p className="text-xs text-muted-foreground">FWC: {activePabo.fwc_number}</p>
+                {activePabo.fwc_application_number && (
+                  <p className="text-xs text-muted-foreground">FWC: {activePabo.fwc_application_number}</p>
                 )}
                 <Button asChild variant="link" size="sm" className="p-0 h-auto text-blue-600 text-xs">
                   <Link href={`/campaigns/${campaignId}/bargaining/pabo`}>

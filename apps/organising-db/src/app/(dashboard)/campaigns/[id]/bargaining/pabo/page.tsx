@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useCampaign } from '@/lib/hooks/usePlannerCampaigns'
 import { PaboApplicationCard } from '@/components/campaigns/bargaining/PaboApplicationCard'
 import { usePaboApplications } from '@/hooks/usePaboApplications'
+import type { PaboApplication } from '@/hooks/usePaboApplications'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -135,10 +136,10 @@ export default function BargainingPaboListPage({ params }: PageProps) {
 
       {!paboLoading && hasApplications && (
         <div className="space-y-4">
-          {(paboApplications as any[]).map((pabo: any) => (
+          {(paboApplications as PaboApplication[]).map((pabo) => (
             <Link
-              key={pabo.id}
-              href={`/campaigns/${campaignId}/bargaining/pabo/${pabo.id}`}
+              key={pabo.pabo_id}
+              href={`/campaigns/${campaignId}/bargaining/pabo/${pabo.pabo_id}`}
               className="block hover:no-underline"
             >
               <div className="border rounded-lg p-4 hover:border-blue-300 transition-colors bg-white">
@@ -147,38 +148,38 @@ export default function BargainingPaboListPage({ params }: PageProps) {
                     <div className="flex items-center gap-2 flex-wrap">
                       <Badge
                         variant="secondary"
-                        className={cn('text-xs', PABO_STATUS_COLOURS[pabo.status] ?? 'bg-slate-100 text-slate-700')}
+                        className={cn('text-xs', PABO_STATUS_COLOURS[pabo.status ?? ''] ?? 'bg-slate-100 text-slate-700')}
                       >
                         {pabo.status}
                       </Badge>
-                      {pabo.fwc_number && (
+                      {pabo.fwc_application_number && (
                         <span className="text-xs text-muted-foreground font-mono">
-                          FWC #{pabo.fwc_number}
+                          FWC #{pabo.fwc_application_number}
                         </span>
                       )}
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 mt-2 text-sm">
-                      {pabo.application_date && (
+                      {pabo.application_filed_at && (
                         <div>
                           <p className="text-xs text-muted-foreground">Applied</p>
                           <p className="font-medium">
-                            {new Date(pabo.application_date).toLocaleDateString()}
+                            {new Date(pabo.application_filed_at).toLocaleDateString()}
                           </p>
                         </div>
                       )}
-                      {pabo.ballot_start_date && (
+                      {pabo.ballot_opens_at && (
                         <div>
                           <p className="text-xs text-muted-foreground">Ballot opens</p>
                           <p className="font-medium">
-                            {new Date(pabo.ballot_start_date).toLocaleDateString()}
+                            {new Date(pabo.ballot_opens_at).toLocaleDateString()}
                           </p>
                         </div>
                       )}
-                      {pabo.ballot_end_date && (
+                      {pabo.ballot_closes_at && (
                         <div>
                           <p className="text-xs text-muted-foreground">Ballot closes</p>
                           <p className="font-medium">
-                            {new Date(pabo.ballot_end_date).toLocaleDateString()}
+                            {new Date(pabo.ballot_closes_at).toLocaleDateString()}
                           </p>
                         </div>
                       )}
@@ -194,7 +195,7 @@ export default function BargainingPaboListPage({ params }: PageProps) {
                 </div>
                 {/* PaboApplicationCard used inline for expanded view */}
                 <div className="mt-3 pt-3 border-t">
-                  <PaboApplicationCard paboId={pabo.id} campaignId={campaignId} compact />
+                  <PaboApplicationCard pabo={pabo} />
                 </div>
               </div>
             </Link>

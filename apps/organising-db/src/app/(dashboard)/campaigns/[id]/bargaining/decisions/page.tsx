@@ -19,8 +19,8 @@ export default function BargainingDecisionsPage({ params }: PageProps) {
   const campaignId = parseInt(id)
 
   const { data: campaign, isLoading: campaignLoading } = useCampaign(campaignId)
-  const { data: strengthData, isLoading: strengthLoading } = useStrengthAssessment(campaignId)
-  const { data: decisionPoints, isLoading: decisionsLoading } = useDecisionPoints(campaignId)
+  const { assessments: strengthData, isLoading: strengthLoading } = useStrengthAssessment(campaignId)
+  const { decisionPoints, isLoading: decisionsLoading } = useDecisionPoints(campaignId)
 
   const isLoading = campaignLoading || strengthLoading || decisionsLoading
   const hasData =

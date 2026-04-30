@@ -7,13 +7,8 @@ import { EndorsementResultsCard } from '@/components/campaigns/bargaining/Endors
 import { EndorsementVoteEditor } from '@/components/campaigns/bargaining/EndorsementVoteEditor'
 import { useEndorsementVotes } from '@/hooks/useEndorsementVotes'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { ChevronRight, Vote, Pencil } from 'lucide-react'
+import type { MemberEndorsementVote } from '@oa/db-types'
 
 interface PageProps {
   params: Promise<{ id: string; voteId: string }>
@@ -29,7 +24,7 @@ export default function BargainingVoteDetailPage({ params }: PageProps) {
   const [editDialogOpen, setEditDialogOpen] = useState(false)
 
   const vote = Array.isArray(endorsementVotes)
-    ? (endorsementVotes as any[]).find((v: any) => v.id === voteIdNum)
+    ? (endorsementVotes as MemberEndorsementVote[]).find((v) => v.vote_id === voteIdNum) ?? null
     : null
 
   if (campaignLoading || votesLoading) {
@@ -61,14 +56,14 @@ export default function BargainingVoteDetailPage({ params }: PageProps) {
           Votes
         </Link>
         <ChevronRight className="h-3 w-3" />
-        <span>{vote?.title ?? `Vote #${voteId}`}</span>
+        <span>{vote?.proposal_label ?? `Vote #${voteId}`}</span>
       </div>
 
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-2">
           <Vote className="h-5 w-5 text-slate-500" />
           <h1 className="text-2xl font-bold text-slate-900">
-            {vote?.title ?? `Vote #${voteId}`}
+            {vote?.proposal_label ?? `Vote #${voteId}`}
           </h1>
         </div>
         <Button
@@ -93,23 +88,15 @@ export default function BargainingVoteDetailPage({ params }: PageProps) {
           </Button>
         </div>
       ) : (
-        <EndorsementResultsCard voteId={voteIdNum} campaignId={campaignId} />
+        <EndorsementResultsCard vote={vote} />
       )}
 
-      {/* Edit vote dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Edit Vote</DialogTitle>
-          </DialogHeader>
-          <EndorsementVoteEditor
-            campaignId={campaignId}
-            voteId={voteIdNum}
-            onSuccess={() => setEditDialogOpen(false)}
-            onCancel={() => setEditDialogOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
+      <EndorsementVoteEditor
+        campaignId={campaignId}
+        existingVote={vote}
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+      />
     </div>
   )
 }

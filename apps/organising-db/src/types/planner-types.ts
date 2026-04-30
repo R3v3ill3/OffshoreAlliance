@@ -62,7 +62,9 @@ export type StageTimelineTarget = Tables['stage_timeline_targets']['Row']
 export type ReportingSnapshot = Tables['reporting_snapshots']['Row']
 
 // Computed / composite types
-export type StageNumber = 1 | 2 | 3 | 4 | 5 | 6
+export type StageNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11
+export type Phase1StageNumber = 1 | 2 | 3 | 4 | 5 | 6
+export type Phase2StageNumber = 7 | 8 | 9 | 10 | 11
 export type GateNumber = 1 | 2 | 3 | 4 | 5
 
 export const STAGE_NAMES: Record<StageNumber, string> = {
@@ -72,6 +74,47 @@ export const STAGE_NAMES: Record<StageNumber, string> = {
   4: 'Develop Claims / MSD',
   5: 'Endorsement & Commence Bargaining',
   6: 'Bargaining to Win',
+  7: 'Bargaining Commences',
+  8: 'Testing the Employer',
+  9: 'Strength Assessment & Decision',
+  10: 'Protected Industrial Action',
+  11: 'Settlement & Ratification',
+}
+
+/**
+ * High-level bargaining campaign lifecycle phase. Mirrors
+ * the campaign_phase_enum DB type added in
+ * 20260510100000_campaign_phase_enum.sql.
+ *
+ * preparing_to_bargain = Stages 1–6  (Playing to Win / P2W)
+ * bargaining_to_win    = Stages 7–11 (Bargaining to Win / B2W)
+ * post_settlement      = After ratification (no active stage plans)
+ */
+export type Phase = 'preparing_to_bargain' | 'bargaining_to_win' | 'post_settlement'
+
+export const PHASE_NAMES: Record<Phase, string> = {
+  preparing_to_bargain: 'Preparing to Bargain',
+  bargaining_to_win: 'Bargaining to Win',
+  post_settlement: 'Post Settlement',
+}
+
+/**
+ * Maps each stage number to its phase.
+ * Invariant: stages 1–6 are preparing_to_bargain; 7–11 are bargaining_to_win.
+ * Mirrors the DB-level invariant enforced by enforce_stage_phase_invariant().
+ */
+export const STAGE_PHASE_MAP: Record<StageNumber, Phase> = {
+  1: 'preparing_to_bargain',
+  2: 'preparing_to_bargain',
+  3: 'preparing_to_bargain',
+  4: 'preparing_to_bargain',
+  5: 'preparing_to_bargain',
+  6: 'preparing_to_bargain',
+  7: 'bargaining_to_win',
+  8: 'bargaining_to_win',
+  9: 'bargaining_to_win',
+  10: 'bargaining_to_win',
+  11: 'bargaining_to_win',
 }
 
 export const GATE_NAMES: Record<GateNumber, string> = {

@@ -7,6 +7,16 @@ import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -82,10 +92,11 @@ export function CampaignWallChart({
   const [importWizardOpen, setImportWizardOpen] = useState(false);
   const unitVisibility = useWallChartUnitVisibility(campaignId);
 
-  // Multi-select state for bulk Move/Copy/Link actions.
+  // Multi-select state for bulk Move/Copy/Link/Remove actions.
   const selection = useWallChartSelection();
   const [bulkDialog, setBulkDialog] = useState<{ mode: MoveMode } | null>(null);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
   const moveWorkers = useMoveWorkersMutation(campaignId);
 
   // Esc clears selection.
@@ -643,6 +654,35 @@ export function CampaignWallChart({
     [canWrite, moveWorkers, ouTypeById, selection]
   );
 
+  // Removes selected workers from their specific source units (not all units).
+  // Grouped by ouId so workers in multiple selected units are handled correctly.
+  const handleBulkRemoveFromUnit = useCallback(async () => {
+    if (!canWrite) return;
+    const refs = selection.refs().filter((r) => r.ouId !== null);
+    if (refs.length === 0) return;
+
+    const byOu = new Map<number, number[]>();
+    for (const ref of refs) {
+      const ouId = ref.ouId as number;
+      if (!byOu.has(ouId)) byOu.set(ouId, []);
+      byOu.get(ouId)!.push(ref.workerId);
+    }
+
+    for (const [ouId, workerIds] of byOu.entries()) {
+      const { error } = await supabase
+        .from("campaign_worker_ou" as never)
+        .delete()
+        .eq("ou_id", ouId)
+        .in("worker_id", workerIds);
+      if (error) throw error;
+    }
+
+    queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
+    queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
+    selection.clear();
+    setRemoveConfirmOpen(false);
+  }, [canWrite, selection, supabase, queryClient, campaignId]);
+
   return (
     <Card>
       <CardHeader>
@@ -668,6 +708,11 @@ export function CampaignWallChart({
           canWrite={canWrite}
           onMove={() => setBulkDialog({ mode: "move" })}
           onCopy={() => setBulkDialog({ mode: "copy" })}
+          onRemove={
+            selection.refs().some((r) => r.ouId !== null)
+              ? () => setRemoveConfirmOpen(true)
+              : undefined
+          }
           onLinkToLeader={() => setLinkDialogOpen(true)}
           onClear={() => selection.clear()}
         />
@@ -1012,6 +1057,24 @@ export function CampaignWallChart({
           }}
         />
       )}
+
+      <AlertDialog open={removeConfirmOpen} onOpenChange={setRemoveConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove workers from unit?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {(() => {
+                const count = selection.refs().filter((r) => r.ouId !== null).length;
+                return `Remove ${count} assignment${count === 1 ? "" : "s"} from their respective units? Workers remain in the campaign and any other units they belong to. This cannot be undone.`;
+              })()}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkRemoveFromUnit}>Remove</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <CreateOrganisingUnitDialog
         open={createUnitOpen}

@@ -11,6 +11,8 @@ export type WallChartSelectionBarProps = {
   onClear: () => void;
   /** When true, the "Link to leader" button is disabled (used during v2.1 before the dialog lands). */
   linkDisabled?: boolean;
+  /** When provided, shows a "Remove from unit" button. Pass undefined to hide (e.g. when all selected are already unassigned). */
+  onRemove?: () => void;
 };
 
 export function WallChartSelectionBar({
@@ -21,6 +23,7 @@ export function WallChartSelectionBar({
   onLinkToLeader,
   onClear,
   linkDisabled,
+  onRemove,
 }: WallChartSelectionBarProps) {
   if (count === 0) return null;
 
@@ -57,6 +60,18 @@ export function WallChartSelectionBar({
         >
           Copy to unit…
         </Button>
+        {onRemove && (
+          <Button
+            type="button"
+            size="sm"
+            variant="destructive"
+            className="h-7 px-2 text-xs"
+            onClick={onRemove}
+            disabled={!canWrite}
+          >
+            Remove from unit
+          </Button>
+        )}
         <Button
           type="button"
           size="sm"

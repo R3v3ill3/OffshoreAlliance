@@ -45,7 +45,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { CheckCircle2, XCircle, Pencil, Lightbulb, RefreshCw } from "lucide-react";
+import { CheckCircle2, XCircle, Pencil, Lightbulb, RefreshCw, Trash2 } from "lucide-react";
 import type { CampaignOuType, OuCandidateStatus } from "@/types/database";
 import { generateOuCandidatesFromWtp } from "@/lib/campaign/generate-ou-candidates";
 import { recomputeOuAssignments } from "@/lib/campaign/recompute-ou-assignments";
@@ -186,6 +186,26 @@ export function CampaignUnitsSection({
     Record<number, { include: boolean; dimension_type: string; operator: string; value: string }>
   >({});
   const [generateMessage, setGenerateMessage] = useState<string | null>(null);
+
+  // Per-OU bulk selection. Only one OU can have an active selection at a time.
+  const [unitSelection, setUnitSelection] = useState<{
+    ouId: number;
+    workerIds: Set<number>;
+  } | null>(null);
+
+  // Source OU + workers pending reallocation — opens the reallocate dialog.
+  const [reallocateTarget, setReallocateTarget] = useState<{
+    fromOuId: number;
+    fromOuType: string | null;
+    workerIds: number[];
+  } | null>(null);
+  const [reallocateSelectedOuId, setReallocateSelectedOuId] = useState<string>("");
+
+  // Confirm dialog state for single or bulk remove from unit.
+  const [removeConfirmState, setRemoveConfirmState] = useState<{
+    ouId: number;
+    workerIds: number[];
+  } | null>(null);
 
   const { data: members = [], isLoading: membersLoading } = useQuery({
     queryKey: ["campaign-members", campaignId],
@@ -655,6 +675,69 @@ export function CampaignUnitsSection({
     },
   });
 
+  const removeFromUnitMutation = useAuthAwareMutation({
+    mutationFn: async ({ ouId, workerIds }: { ouId: number; workerIds: number[] }) => {
+      const { error } = await supabase
+        .from("campaign_worker_ou" as never)
+        .delete()
+        .eq("ou_id", ouId)
+        .in("worker_id", workerIds);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
+      setUnitSelection(null);
+      setRemoveConfirmState(null);
+    },
+    onError: (e: Error) => window.alert(e.message || "Could not remove workers from unit"),
+  });
+
+  const reallocateToUnitMutation = useAuthAwareMutation({
+    mutationFn: async ({
+      fromOuId,
+      toOuId,
+      workerIds,
+    }: {
+      fromOuId: number;
+      toOuId: number;
+      workerIds: number[];
+    }) => {
+      const rows = workerIds.map((id) => ({
+        ou_id: toOuId,
+        worker_id: id,
+        assignment_source: "manual",
+        is_primary: false,
+      }));
+      const { error: insErr } = await (supabase as unknown as {
+        from: (table: string) => {
+          upsert: (
+            rows: unknown[],
+            opts: { onConflict: string; ignoreDuplicates: boolean }
+          ) => Promise<{ error: Error | null }>;
+        };
+      })
+        .from("campaign_worker_ou")
+        .upsert(rows, { onConflict: "ou_id,worker_id", ignoreDuplicates: true });
+      if (insErr) throw insErr;
+
+      const { error: delErr } = await supabase
+        .from("campaign_worker_ou" as never)
+        .delete()
+        .eq("ou_id", fromOuId)
+        .in("worker_id", workerIds);
+      if (delErr) throw delErr;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
+      setUnitSelection(null);
+      setReallocateTarget(null);
+      setReallocateSelectedOuId("");
+    },
+    onError: (e: Error) => window.alert(e.message || "Could not reallocate workers"),
+  });
+
   const rulesByOu = useMemo(() => {
     const map: Record<number, UnitRule[]> = {};
     for (const r of rules) {
@@ -727,6 +810,23 @@ export function CampaignUnitsSection({
     if (newIds.length === 0) return;
     assignOu.mutate(newIds);
   };
+
+  // Per-OU worker selection helpers. Selecting in a different OU clears the previous.
+  const toggleUnitWorker = (ouId: number, workerId: number) => {
+    setUnitSelection((prev) => {
+      const base = prev?.ouId === ouId ? prev.workerIds : new Set<number>();
+      const next = new Set(base);
+      if (next.has(workerId)) next.delete(workerId);
+      else next.add(workerId);
+      return next.size === 0 ? null : { ouId, workerIds: next };
+    });
+  };
+  const selectAllInUnit = (ouId: number, workerIds: number[]) =>
+    setUnitSelection({ ouId, workerIds: new Set(workerIds) });
+  const isUnitWorkerSelected = (ouId: number, workerId: number) =>
+    unitSelection?.ouId === ouId && unitSelection.workerIds.has(workerId);
+  const getUnitSelectionCount = (ouId: number) =>
+    unitSelection?.ouId === ouId ? unitSelection.workerIds.size : 0;
 
   return (
     <div className="space-y-6">
@@ -947,32 +1047,166 @@ export function CampaignUnitsSection({
                   )}
                 </div>
 
-                <ul className="text-sm text-muted-foreground list-disc pl-4">
-                  {ouAssignments
-                    .filter((a: { ou_id: number }) => a.ou_id === ou.ou_id)
-                    .map((a: unknown) => {
-                      const row = a as {
-                        id: number;
-                        worker_id: number;
-                        is_primary: boolean;
-                        assignment_source?: string | null;
-                        worker: unknown;
-                      };
-                      const wr = row.worker;
-                      const w = (Array.isArray(wr) ? wr[0] : wr) as {
-                        first_name: string;
-                        last_name: string;
-                      } | null;
-                      return (
-                        <li key={row.id}>
-                          {w ? `${w.first_name} ${w.last_name}` : "—"}
-                          {row.is_primary ? " (primary)" : ""}
-                          {row.assignment_source === "rule" ? " [rule]" : ""}
-                          {multiUnitWorkerIds.has(row.worker_id) ? " [multi-unit]" : ""}
-                        </li>
-                      );
-                    })}
-                </ul>
+                {/* Per-OU worker list with checkboxes, bulk actions, and per-row remove */}
+                {(() => {
+                  const ouWorkers = ouAssignments.filter(
+                    (a: { ou_id: number }) => a.ou_id === ou.ou_id
+                  );
+                  const ouWorkerIds = (ouWorkers as { worker_id: number }[]).map(
+                    (a) => a.worker_id
+                  );
+                  const selCount = getUnitSelectionCount(ou.ou_id);
+                  const allSelected =
+                    ouWorkerIds.length > 0 &&
+                    ouWorkerIds.every((id) => isUnitWorkerSelected(ou.ou_id, id));
+
+                  return (
+                    <div className="space-y-1">
+                      {/* Bulk action bar — visible when this OU has workers selected */}
+                      {canWrite && selCount > 0 && unitSelection?.ouId === ou.ou_id && (
+                        <div className="flex flex-wrap items-center gap-2 rounded border bg-primary/10 px-3 py-1.5 text-xs">
+                          <span className="font-medium">{selCount} selected</span>
+                          <div className="ml-auto flex items-center gap-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="destructive"
+                              className="h-7 px-2 text-xs"
+                              onClick={() =>
+                                setRemoveConfirmState({
+                                  ouId: ou.ou_id,
+                                  workerIds: [...unitSelection.workerIds],
+                                })
+                              }
+                              disabled={removeFromUnitMutation.isPending}
+                            >
+                              Remove from unit
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs"
+                              onClick={() =>
+                                setReallocateTarget({
+                                  fromOuId: ou.ou_id,
+                                  fromOuType: ou.ou_type,
+                                  workerIds: [...unitSelection.workerIds],
+                                })
+                              }
+                            >
+                              Reallocate to…
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => setUnitSelection(null)}
+                            >
+                              Clear
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Worker rows */}
+                      {ouWorkers.length === 0 ? (
+                        <p className="text-xs text-muted-foreground pl-1">No workers assigned.</p>
+                      ) : (
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b">
+                              {canWrite && (
+                                <th className="w-8 px-1 py-1">
+                                  <Checkbox
+                                    checked={allSelected}
+                                    onCheckedChange={(checked) => {
+                                      if (checked) {
+                                        selectAllInUnit(ou.ou_id, ouWorkerIds);
+                                      } else {
+                                        setUnitSelection(null);
+                                      }
+                                    }}
+                                    aria-label="Select all workers in unit"
+                                  />
+                                </th>
+                              )}
+                              <th className="text-left px-1 py-1 font-medium text-muted-foreground">Worker</th>
+                              <th className="text-left px-1 py-1 font-medium text-muted-foreground">Flags</th>
+                              {canWrite && <th className="w-8" />}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(ouWorkers as unknown[]).map((a) => {
+                              const row = a as {
+                                id: number;
+                                worker_id: number;
+                                is_primary: boolean;
+                                assignment_source?: string | null;
+                                worker: unknown;
+                              };
+                              const wr = row.worker;
+                              const w = (Array.isArray(wr) ? wr[0] : wr) as {
+                                first_name: string;
+                                last_name: string;
+                              } | null;
+                              const selected = isUnitWorkerSelected(ou.ou_id, row.worker_id);
+                              return (
+                                <tr
+                                  key={row.id}
+                                  className={selected ? "bg-primary/5" : undefined}
+                                >
+                                  {canWrite && (
+                                    <td className="px-1 py-1">
+                                      <Checkbox
+                                        checked={selected}
+                                        onCheckedChange={() =>
+                                          toggleUnitWorker(ou.ou_id, row.worker_id)
+                                        }
+                                        aria-label={`Select ${w ? `${w.first_name} ${w.last_name}` : "worker"}`}
+                                      />
+                                    </td>
+                                  )}
+                                  <td className="px-1 py-1">
+                                    {w ? `${w.first_name} ${w.last_name}` : "—"}
+                                  </td>
+                                  <td className="px-1 py-1 text-muted-foreground space-x-1">
+                                    {row.is_primary && <span>(primary)</span>}
+                                    {row.assignment_source === "rule" && <span>[rule]</span>}
+                                    {multiUnitWorkerIds.has(row.worker_id) && (
+                                      <span>[multi-unit]</span>
+                                    )}
+                                  </td>
+                                  {canWrite && (
+                                    <td className="px-1 py-1 text-right">
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                                        title="Remove from unit"
+                                        onClick={() =>
+                                          setRemoveConfirmState({
+                                            ouId: ou.ou_id,
+                                            workerIds: [row.worker_id],
+                                          })
+                                        }
+                                        disabled={removeFromUnitMutation.isPending}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </td>
+                                  )}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <div className="rounded-md border p-2 space-y-2">
                   <p className="text-xs font-medium">Assignment rules</p>
@@ -1446,6 +1680,139 @@ export function CampaignUnitsSection({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Confirm remove from unit (single or bulk) */}
+      <AlertDialog
+        open={removeConfirmState !== null}
+        onOpenChange={(open) => {
+          if (!open) setRemoveConfirmState(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove from unit?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {removeConfirmState && (
+                <>
+                  Remove {removeConfirmState.workerIds.length}{" "}
+                  {removeConfirmState.workerIds.length === 1 ? "worker" : "workers"} from this
+                  unit? They will remain in the campaign and in any other units they belong to.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (removeConfirmState) {
+                  removeFromUnitMutation.mutate({
+                    ouId: removeConfirmState.ouId,
+                    workerIds: removeConfirmState.workerIds,
+                  });
+                }
+              }}
+            >
+              {removeFromUnitMutation.isPending ? "Removing…" : "Remove"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reallocate workers to another same-type unit */}
+      {reallocateTarget && (() => {
+        const fromOuType = reallocateTarget.fromOuType;
+        const candidateOus = (ous as { ou_id: number; name: string; ou_type: string }[]).filter(
+          (o) => {
+            if (o.ou_id === reallocateTarget.fromOuId) return false;
+            if (!fromOuType || fromOuType === "custom") return true;
+            return o.ou_type === fromOuType;
+          }
+        );
+        return (
+          <Dialog
+            open
+            onOpenChange={(open) => {
+              if (!open) {
+                setReallocateTarget(null);
+                setReallocateSelectedOuId("");
+              }
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Reallocate to another unit</DialogTitle>
+                <DialogDescription>
+                  Move {reallocateTarget.workerIds.length}{" "}
+                  {reallocateTarget.workerIds.length === 1 ? "worker" : "workers"} to a different
+                  unit. They will be removed from the current unit.
+                  {fromOuType && fromOuType !== "custom" && (
+                    <> Only <strong>{fromOuType.replace(/_/g, " ")}</strong> units are shown
+                    — moves are restricted to the same dimension.</>
+                  )}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="py-2">
+                {candidateOus.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No other{" "}
+                    {fromOuType && fromOuType !== "custom"
+                      ? fromOuType.replace(/_/g, " ") + " "
+                      : ""}
+                    units to move to.{" "}
+                    {fromOuType && fromOuType !== "custom" && (
+                      <>Workers in custom units are unrestricted.</>
+                    )}
+                  </p>
+                ) : (
+                  <Select value={reallocateSelectedOuId} onValueChange={setReallocateSelectedOuId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose target unit…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {candidateOus.map((o) => (
+                        <SelectItem key={o.ou_id} value={String(o.ou_id)}>
+                          {o.name || `${o.ou_type?.replace(/_/g, " ")} #${o.ou_id}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setReallocateTarget(null);
+                    setReallocateSelectedOuId("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  disabled={
+                    !reallocateSelectedOuId ||
+                    candidateOus.length === 0 ||
+                    reallocateToUnitMutation.isPending
+                  }
+                  onClick={() => {
+                    if (!reallocateSelectedOuId || !reallocateTarget) return;
+                    reallocateToUnitMutation.mutate({
+                      fromOuId: reallocateTarget.fromOuId,
+                      toOuId: Number(reallocateSelectedOuId),
+                      workerIds: reallocateTarget.workerIds,
+                    });
+                  }}
+                >
+                  {reallocateToUnitMutation.isPending ? "Moving…" : "Reallocate"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
     </div>
   );
 }

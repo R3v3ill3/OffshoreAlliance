@@ -12147,3 +12147,99 @@ export const Constants = {
   },
 } as const
 
+
+// === Phase 2 additions (Wave 2 Agent B) ===
+
+/** Mirrors the `nerr_status` CHECK constraint on campaign_situation_analyses */
+export type NerrStatus = 'not_issued' | 'issued' | 'superseded' | 'unknown'
+
+/** Mirrors the `bargaining_phase_state` CHECK constraint on campaign_situation_analyses */
+export type BargainingPhaseState =
+  | 'not_commenced'
+  | 'commenced'
+  | 'stalled'
+  | 'agreement_drafting'
+  | 'balloted'
+  | 'post_settlement'
+  | 'unknown'
+
+/** Mirrors the `employer_ballot_intent` CHECK constraint on campaign_situation_analyses */
+export type EmployerBallotIntent = 'none' | 'signalled' | 'imminent' | 'unknown'
+
+/** JSONB element shape for `campaign_situation_analyses.prior_employer_ballots` */
+export interface PriorEmployerBallot {
+  ballot_kind?: string
+  conducted_at?: string
+  eligible_count?: number
+  votes_yes?: number
+  votes_no?: number
+  outcome?: string
+  source_of_evidence?: string
+  notes?: string
+}
+
+/** JSONB element shape for `campaign_situation_analyses.key_disputes` */
+export interface KeyDispute {
+  topic?: string
+  oa_position?: string
+  employer_position?: string
+  /** Urgency rating 1–5 */
+  urgency?: number
+  notes?: string
+}
+
+/** JSONB object shape for `campaign_situation_analyses.worker_support_estimate` */
+export interface WorkerSupportEstimate {
+  percent_supportive_estimated?: number
+  basis_of_estimate?: string
+  notes?: string
+}
+
+/** Mirrors the `state` CHECK constraint on intractable_bargaining_tracker */
+export type IntractableState =
+  | 'safe'
+  | 'approaching'
+  | 'eligible'
+  | 'applied'
+  | 'declared'
+  | 'arbitrated'
+
+/**
+ * Row type for `intractable_bargaining_tracker`.
+ * Generated manually — do NOT run pnpm gen:types for this table.
+ */
+export interface IntractableBargainingTrackerRow {
+  campaign_id: number
+  bargaining_commenced_at: string
+  nine_month_threshold_at: string
+  intractable_application_filed_at: string | null
+  intractable_declaration_made_at: string | null
+  arbitration_outcome_recorded_at: string | null
+  state: IntractableState | null
+  last_reviewed_at: string | null
+  notes: string | null
+  created_by: string | null
+  updated_at: string
+}
+
+/**
+ * Row type for `v_intractable_state` view.
+ * Consumed by useIntractableState hook.
+ */
+export interface VIntractableStateRow {
+  campaign_id: number
+  days_elapsed: number
+  days_remaining_to_threshold: number
+  state: IntractableState
+  state_label: string
+  headline: string
+  bargaining_commenced_at: string
+  nine_month_threshold_at: string
+  intractable_application_filed_at: string | null
+  intractable_declaration_made_at: string | null
+  arbitration_outcome_recorded_at: string | null
+  last_reviewed_at: string | null
+  notes: string | null
+}
+
+// === End Phase 2 additions ===

@@ -1,10 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Pencil, Sparkles, AlertTriangle } from "lucide-react";
+import { Pencil, Sparkles, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import { useSituationAnalysis } from "@/lib/hooks/useSituationAnalysis";
 import {
   EMPLOYER_INTERACTION_STATES,
@@ -12,6 +13,7 @@ import {
   type EmployerInteractionState,
   type HrSentiment,
 } from "@/lib/situation-analysis/constants";
+import { cn } from "@/lib/utils/cn";
 
 interface SituationAnalysisCardProps {
   campaignId: number;
@@ -28,6 +30,12 @@ interface SituationAnalysisCardProps {
    * (the wizard itself enforces write permission).
    */
   canWrite?: boolean;
+  /**
+   * The campaign's current_phase value (Wave 1 addition). When provided,
+   * the "Bargaining context" section is shown automatically for campaigns
+   * beyond the 'preparing_to_bargain' phase.
+   */
+  currentPhase?: string | null;
 }
 
 /**
@@ -43,6 +51,7 @@ export function SituationAnalysisCard({
   campaignId,
   onEdit,
   canWrite = true,
+  currentPhase,
 }: SituationAnalysisCardProps) {
   const { data, isLoading } = useSituationAnalysis(campaignId);
   const row = data?.row ?? null;
@@ -85,19 +94,261 @@ export function SituationAnalysisCard({
             comms drafts and theory-of-winning use this as their grounding.
           </p>
         ) : (
-          <SituationSummary row={row} />
+          <SituationSummary row={row} currentPhase={currentPhase} />
         )}
       </CardContent>
     </Card>
   );
 }
 
+// ── Bargaining context types (Phase 2 additions) ─────────────────────────────
+interface BargainingRow {
+  nerr_status?: string | null
+  nerr_issued_at?: string | null
+  bargaining_phase_state?: string | null
+  employer_ballot_intent?: string | null
+  prior_employer_ballots?: Array<{
+    ballot_kind?: string
+    conducted_at?: string
+    eligible_count?: number
+    votes_yes?: number
+    votes_no?: number
+    outcome?: string
+    source_of_evidence?: string
+    notes?: string
+  }>
+  key_disputes?: Array<{
+    topic?: string
+    oa_position?: string
+    employer_position?: string
+    urgency?: number
+    notes?: string
+  }>
+  worker_support_estimate?: {
+    percent_supportive_estimated?: number
+    basis_of_estimate?: string
+    notes?: string
+  }
+}
+
+const NERR_STATUS_LABELS: Record<string, string> = {
+  not_issued: 'Not issued',
+  issued: 'Issued',
+  superseded: 'Superseded',
+  unknown: 'Unknown',
+}
+
+const BARGAINING_PHASE_LABELS: Record<string, string> = {
+  not_commenced: 'Not commenced',
+  commenced: 'Commenced',
+  stalled: 'Stalled',
+  agreement_drafting: 'Agreement drafting',
+  balloted: 'Balloted',
+  post_settlement: 'Post settlement',
+  unknown: 'Unknown',
+}
+
+const BALLOT_INTENT_LABELS: Record<string, string> = {
+  none: 'None',
+  signalled: 'Signalled',
+  imminent: 'Imminent',
+  unknown: 'Unknown',
+}
+
+function BargainingContextSection({
+  row,
+  defaultOpen = false,
+}: {
+  row: BargainingRow
+  defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  const hasData =
+    (row.nerr_status && row.nerr_status !== 'unknown') ||
+    row.nerr_issued_at ||
+    (row.bargaining_phase_state && row.bargaining_phase_state !== 'unknown') ||
+    row.employer_ballot_intent ||
+    (row.prior_employer_ballots ?? []).length > 0 ||
+    (row.key_disputes ?? []).length > 0 ||
+    (row.worker_support_estimate &&
+      Object.keys(row.worker_support_estimate).length > 0)
+
+  return (
+    <div className="border-t pt-3">
+      <button
+        type="button"
+        className="w-full flex items-center justify-between text-left group"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="text-xs uppercase tracking-wide text-muted-foreground font-medium group-hover:text-foreground transition-colors">
+          Bargaining context
+        </span>
+        <div className="flex items-center gap-1">
+          {!hasData && (
+            <span className="text-[10px] text-muted-foreground italic">no data</span>
+          )}
+          {open ? (
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+          )}
+        </div>
+      </button>
+
+      <div
+        className={cn(
+          'overflow-hidden transition-all duration-200',
+          open ? 'max-h-[800px] opacity-100 mt-3' : 'max-h-0 opacity-0'
+        )}
+      >
+        <div className="space-y-3 text-sm">
+          {/* NERR + bargaining phase */}
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                NERR status
+              </p>
+              <p>
+                {row.nerr_status
+                  ? NERR_STATUS_LABELS[row.nerr_status] ?? row.nerr_status
+                  : <span className="italic text-muted-foreground">Not set</span>}
+              </p>
+              {row.nerr_issued_at && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Issued {new Date(row.nerr_issued_at).toLocaleDateString('en-AU', {
+                    day: 'numeric', month: 'short', year: 'numeric',
+                  })}
+                </p>
+              )}
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                Bargaining phase
+              </p>
+              {row.bargaining_phase_state ? (
+                <p>{BARGAINING_PHASE_LABELS[row.bargaining_phase_state] ?? row.bargaining_phase_state}</p>
+              ) : (
+                <p className="italic text-muted-foreground">Not set</p>
+              )}
+            </div>
+          </div>
+
+          {/* Employer ballot intent */}
+          <div>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+              Employer ballot intent
+            </p>
+            {row.employer_ballot_intent ? (
+              <p>{BALLOT_INTENT_LABELS[row.employer_ballot_intent] ?? row.employer_ballot_intent}</p>
+            ) : (
+              <p className="italic text-muted-foreground">Not set</p>
+            )}
+          </div>
+
+          {/* Worker support estimate */}
+          {row.worker_support_estimate &&
+            row.worker_support_estimate.percent_supportive_estimated != null && (
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                  Worker support estimate
+                </p>
+                <p>
+                  <span className="font-semibold">
+                    {row.worker_support_estimate.percent_supportive_estimated}%
+                  </span>{' '}
+                  supportive (estimated)
+                </p>
+                {row.worker_support_estimate.basis_of_estimate && (
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Basis: {row.worker_support_estimate.basis_of_estimate}
+                  </p>
+                )}
+                {row.worker_support_estimate.notes && (
+                  <p className="text-xs text-muted-foreground">
+                    {row.worker_support_estimate.notes}
+                  </p>
+                )}
+              </div>
+            )}
+
+          {/* Key disputes */}
+          {(row.key_disputes ?? []).length > 0 && (
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                Key disputes
+              </p>
+              <ul className="space-y-1.5">
+                {(row.key_disputes ?? []).slice(0, 5).map((d, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    {d.urgency != null && (
+                      <Badge variant="secondary" className="shrink-0 mt-0.5">
+                        {d.urgency}/5
+                      </Badge>
+                    )}
+                    <div className="min-w-0">
+                      <span className="font-medium">{d.topic}</span>
+                      {d.oa_position && (
+                        <span className="text-muted-foreground"> — OA: {d.oa_position}</span>
+                      )}
+                      {d.employer_position && (
+                        <span className="text-muted-foreground">
+                          {' '} / Employer: {d.employer_position}
+                        </span>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Prior employer ballots */}
+          {(row.prior_employer_ballots ?? []).length > 0 && (
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                Prior employer ballots
+              </p>
+              <ul className="space-y-1 list-disc list-inside">
+                {(row.prior_employer_ballots ?? []).map((b, i) => (
+                  <li key={i}>
+                    {b.ballot_kind && (
+                      <span className="font-medium">{b.ballot_kind} </span>
+                    )}
+                    {b.conducted_at && (
+                      <span className="text-muted-foreground">
+                        ({new Date(b.conducted_at).toLocaleDateString('en-AU', {
+                          month: 'short', year: 'numeric',
+                        })})
+                      </span>
+                    )}
+                    {b.outcome && (
+                      <span className="text-muted-foreground"> — {b.outcome}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SituationSummary({
   row,
+  currentPhase,
 }: {
   row: NonNullable<ReturnType<typeof useSituationAnalysis>["data"]>["row"];
+  currentPhase?: string | null;
 }) {
   if (!row) return null;
+
+  // Auto-expand bargaining context when campaign is beyond preparing_to_bargain.
+  // The section is always rendered so organisers can expand it via the toggle
+  // even for campaigns still in the preparing_to_bargain phase.
+  const bargainingDefaultOpen = currentPhase !== 'preparing_to_bargain'
 
   const stateLabel = EMPLOYER_INTERACTION_STATES.find(
     (s) => s.id === (row.employer_interaction_state as EmployerInteractionState | null)
@@ -220,6 +471,13 @@ function SituationSummary({
           </ul>
         </div>
       )}
+
+      {/* Bargaining context — always rendered so organisers can use the toggle.
+          defaultOpen=true when campaign is beyond preparing_to_bargain. */}
+      <BargainingContextSection
+        row={row as unknown as BargainingRow}
+        defaultOpen={bargainingDefaultOpen}
+      />
 
       <p className="text-xs text-muted-foreground italic pt-2 border-t">
         Last updated {new Date(row.updated_at).toLocaleString()}

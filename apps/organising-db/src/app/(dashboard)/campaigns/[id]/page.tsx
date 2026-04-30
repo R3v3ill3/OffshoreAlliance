@@ -51,7 +51,6 @@ import type {
 } from "@/types/database";
 import type { Database } from "@oa/db-types";
 import { CampaignAssessmentsSection } from "@/components/campaigns/campaign-assessments";
-import { CampaignStructureSection } from "@/components/campaigns/campaign-structure";
 import { CampaignReportingCharts } from "@/components/campaigns/campaign-reporting";
 import { CampaignProgressReport } from "@/components/reports/CampaignProgressReport";
 import { CampaignWallChart } from "@/components/campaigns/campaign-wall-chart";
@@ -81,6 +80,8 @@ interface CampaignDetail {
   total_worker_estimate: number | null;
   sector_wide: boolean;
   organiser: { organiser_name: string } | null;
+  // Wave 1: phase tracking
+  current_phase: string | null;
 }
 
 interface UniverseRow {
@@ -186,7 +187,6 @@ export default function CampaignDetailPage() {
     "workplan",
     "universe",
     "assessments",
-    "structure",
     "reporting",
     "insights",
     "wall",
@@ -195,6 +195,7 @@ export default function CampaignDetailPage() {
     "phone",
     "actions",
     "results",
+    "bargaining",
   ] as const;
   const tabFromUrl = searchParams.get("tab");
   const activeTab = (validTabs as readonly string[]).includes(tabFromUrl ?? "")
@@ -423,7 +424,6 @@ export default function CampaignDetailPage() {
           <TabsTrigger value="workplan">Workplan</TabsTrigger>
           <TabsTrigger value="universe">Universe</TabsTrigger>
           <TabsTrigger value="assessments">Assessments</TabsTrigger>
-          <TabsTrigger value="structure">Structure</TabsTrigger>
           <TabsTrigger value="reporting">Reporting</TabsTrigger>
           <TabsTrigger value="insights">Insights</TabsTrigger>
           <TabsTrigger value="wall">Wall chart</TabsTrigger>
@@ -432,6 +432,9 @@ export default function CampaignDetailPage() {
           <TabsTrigger value="phone">Phone Ops</TabsTrigger>
           <TabsTrigger value="actions">Actions</TabsTrigger>
           <TabsTrigger value="results">Results</TabsTrigger>
+          {campaign.current_phase === "bargaining_to_win" && (
+            <TabsTrigger value="bargaining">Bargaining</TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -526,10 +529,6 @@ export default function CampaignDetailPage() {
 
         <TabsContent value="assessments">
           <CampaignAssessmentsSection campaignId={id} canWrite={!!canWrite} />
-        </TabsContent>
-
-        <TabsContent value="structure">
-          <CampaignStructureSection campaignId={id} canWrite={!!canWrite} />
         </TabsContent>
 
         <TabsContent value="reporting">
@@ -895,6 +894,10 @@ export default function CampaignDetailPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="bargaining">
+          <BargainingTabContent campaignId={campaignId} />
+        </TabsContent>
       </Tabs>
 
       {campaignIdValid && (
@@ -905,5 +908,24 @@ export default function CampaignDetailPage() {
         />
       )}
     </div>
+  );
+}
+
+// ── Bargaining tab content (stub — delegates to /bargaining sub-route) ─────
+
+function BargainingTabContent({ campaignId }: { campaignId: number }) {
+  const router = useRouter();
+  return (
+    <Card>
+      <CardContent className="p-8 text-center space-y-4">
+        <p className="text-sm text-slate-600">
+          The Bargaining Hub is a dedicated page with the full stage planner,
+          decisions, PABO, PIA actions, and member votes.
+        </p>
+        <Button onClick={() => router.push(`/campaigns/${campaignId}/bargaining`)}>
+          Open Bargaining Hub
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

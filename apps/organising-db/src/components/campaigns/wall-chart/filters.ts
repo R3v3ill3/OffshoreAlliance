@@ -1,4 +1,15 @@
-import type { ActivityRating, WallChartRatingSummary, WallChartWorker } from "./types";
+import { assessmentNumericForWallChart } from "./rating-colour";
+import type {
+  ActivityRating,
+  AssessmentSelection,
+  WallChartRatingSummary,
+  WallChartWorker,
+} from "./types";
+
+/** When rating filter runs against per-activity rows, pass this for binary-aware buckets. */
+export type RatingFilterAssessmentContext = {
+  selection: Extract<AssessmentSelection, { kind: "assessment" }>;
+};
 
 export type SortKey =
   | "last_name"
@@ -69,7 +80,9 @@ export function applyFilters(
   ratingByWorker: Map<number, WallChartRatingSummary>,
   state: WallChartFilterState,
   /** When provided, the Rating filter is applied against these per-activity ratings instead of cumulative. */
-  activityRatings?: Map<number, ActivityRating>
+  activityRatings?: Map<number, ActivityRating>,
+  /** Required when `activityRatings` is set and the assessment is binary — selects correct numeric band. */
+  ratingAssessmentContext?: RatingFilterAssessmentContext
 ): number[] {
   if (!hasActiveFilter(state)) return ids;
 
@@ -94,7 +107,12 @@ export function applyFilters(
     // Ratings — sources from per-activity ratings when in assessment view, else cumulative.
     if (state.ratings.size > 0) {
       let ratingValue: number | null | undefined;
-      if (activityRatings) {
+      if (activityRatings && ratingAssessmentContext) {
+        ratingValue = assessmentNumericForWallChart(
+          ratingAssessmentContext.selection,
+          activityRatings.get(id)
+        );
+      } else if (activityRatings) {
         ratingValue = activityRatings.get(id)?.rating ?? null;
       } else {
         ratingValue = ratingByWorker.get(id)?.cumulative_rating;
@@ -117,7 +135,13 @@ export function applySort(
   ids: number[],
   workerById: Map<number, WallChartWorker>,
   ratingByWorker: Map<number, WallChartRatingSummary>,
-  sort: SortKey
+  sort: SortKey,
+  opts?: {
+    assessmentSort?: {
+      selection: Extract<AssessmentSelection, { kind: "assessment" }>;
+      activityRatings: Map<number, ActivityRating>;
+    };
+  }
 ): number[] {
   const copy = [...ids];
   const cmpString = (a: string | null | undefined, b: string | null | undefined) =>
@@ -148,6 +172,13 @@ export function applySort(
         return c !== 0 ? c : cmpString(wa?.last_name, wb?.last_name);
       }
       case "cumulative_desc":
+        if (opts?.assessmentSort) {
+          const { selection, activityRatings } = opts.assessmentSort;
+          return cmpNumDesc(
+            assessmentNumericForWallChart(selection, activityRatings.get(a)),
+            assessmentNumericForWallChart(selection, activityRatings.get(b))
+          );
+        }
         return cmpNumDesc(
           ratingByWorker.get(a)?.cumulative_rating,
           ratingByWorker.get(b)?.cumulative_rating

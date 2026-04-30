@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   Select,
   SelectContent,
@@ -19,7 +20,98 @@ import type {
   WallChartAssessmentOption,
 } from "./types";
 
-const CUMULATIVE_VALUE = "__cumulative__";
+export const CUMULATIVE_VALUE = "__cumulative__";
+export const INHERIT_VALUE = "__inherit__";
+
+export async function fetchWallChartAssessmentOptions(
+  supabase: SupabaseClient,
+  campaignId: string
+): Promise<WallChartAssessmentOption[]> {
+  const { data: activities, error: actErr } = await supabase
+    .from("campaign_activities")
+    .select(
+      `activity_id, title, is_binary, supporter_outcome_value, created_at,
+       activity_ambitions(plan_ambition_id)`
+    )
+    .eq("campaign_id", campaignId)
+    .eq("activity_kind", "assessment");
+  if (actErr) throw actErr;
+
+  const rows = (activities ?? []) as Array<{
+    activity_id: number;
+    title: string;
+    is_binary: boolean | null;
+    supporter_outcome_value: string | null;
+    created_at: string | null;
+    activity_ambitions:
+      | { plan_ambition_id: number }[]
+      | { plan_ambition_id: number }
+      | null;
+  }>;
+
+  const byId = new Map<number, WallChartAssessmentOption>();
+  for (const r of rows) {
+    const ambitions = r.activity_ambitions;
+    const hasLinked =
+      Array.isArray(ambitions) ? ambitions.length > 0 : ambitions != null;
+    const existing = byId.get(r.activity_id);
+    if (existing) {
+      existing.has_linked_ambition = existing.has_linked_ambition || hasLinked;
+      continue;
+    }
+    byId.set(r.activity_id, {
+      activity_id: r.activity_id,
+      title: r.title,
+      is_binary: Boolean(r.is_binary),
+      supporter_outcome_value: r.supporter_outcome_value,
+      created_at: r.created_at,
+      last_rated_at: null,
+      has_linked_ambition: hasLinked,
+    });
+  }
+
+  const ids = Array.from(byId.keys());
+  if (ids.length === 0) return [];
+
+  const { data: ratings, error: rErr } = await supabase
+    .from("campaign_activity_ratings")
+    .select("activity_id, rated_at")
+    .in("activity_id", ids)
+    .order("rated_at", { ascending: false });
+  if (rErr) throw rErr;
+
+  const latestByActivity = new Map<number, string>();
+  for (const row of (ratings ?? []) as Array<{
+    activity_id: number;
+    rated_at: string | null;
+  }>) {
+    if (row.rated_at == null) continue;
+    if (!latestByActivity.has(row.activity_id)) {
+      latestByActivity.set(row.activity_id, row.rated_at);
+    }
+  }
+  for (const opt of byId.values()) {
+    opt.last_rated_at = latestByActivity.get(opt.activity_id) ?? null;
+  }
+
+  return Array.from(byId.values()).sort((a, b) => {
+    const aKey = a.last_rated_at ?? "";
+    const bKey = b.last_rated_at ?? "";
+    if (aKey !== bKey) return aKey < bKey ? 1 : -1;
+    const aCreated = a.created_at ?? "";
+    const bCreated = b.created_at ?? "";
+    if (aCreated !== bCreated) return aCreated < bCreated ? 1 : -1;
+    return a.title.localeCompare(b.title);
+  });
+}
+
+function useWallChartAssessmentOptions(campaignId: string) {
+  const supabase = createClient();
+  return useQuery({
+    queryKey: ["campaign-assessments-rated", campaignId],
+    queryFn: () => fetchWallChartAssessmentOptions(supabase, campaignId),
+  });
+}
 
 export type AssessmentSelectorProps = {
   campaignId: string;
@@ -28,117 +120,15 @@ export type AssessmentSelectorProps = {
 };
 
 /**
- * Prominent dropdown that controls which rating source drives the wall chart
- * tile colour, the unit summary metrics, and the inline rating popover.
- *
- * Lists assessments (campaign_activities with activity_kind='assessment') that
- * have at least one linked ambition via activity_ambitions — these are what
- * the user calls "assessments with rating capacity attached". Plus a single
- * "Cumulative" option at the bottom of the list.
- *
- * On first load, when the selection is Cumulative and there is at least one
- * assessment with ratings, auto-selects the assessment with the most recent
- * rated_at (the "latest assessment").
+ * Campaign-level dropdown: cumulative vs a specific assessment (drives default
+ * for all units unless a unit overrides).
  */
 export function AssessmentSelector({
   campaignId,
   value,
   onChange,
 }: AssessmentSelectorProps) {
-  const supabase = createClient();
-
-  const { data: options = [], isLoading } = useQuery({
-    queryKey: ["campaign-assessments-rated", campaignId],
-    queryFn: async () => {
-      // 1. Pull all assessment activities for this campaign that have at least
-      //    one row in activity_ambitions.
-      const { data: activities, error: actErr } = await supabase
-        .from("campaign_activities")
-        .select(
-          `activity_id, title, is_binary, supporter_outcome_value, created_at,
-           activity_ambitions!inner(plan_ambition_id)`
-        )
-        .eq("campaign_id", campaignId)
-        .eq("activity_kind", "assessment");
-      if (actErr) throw actErr;
-
-      const rows = (activities ?? []) as Array<{
-        activity_id: number;
-        title: string;
-        is_binary: boolean | null;
-        supporter_outcome_value: string | null;
-        created_at: string | null;
-      }>;
-
-      // Deduplicate by activity_id (inner join may emit one row per ambition).
-      const byId = new Map<number, WallChartAssessmentOption>();
-      for (const r of rows) {
-        if (byId.has(r.activity_id)) continue;
-        byId.set(r.activity_id, {
-          activity_id: r.activity_id,
-          title: r.title,
-          is_binary: Boolean(r.is_binary),
-          supporter_outcome_value: r.supporter_outcome_value,
-          created_at: r.created_at,
-          last_rated_at: null,
-        });
-      }
-
-      const ids = Array.from(byId.keys());
-      if (ids.length === 0) return [] as WallChartAssessmentOption[];
-
-      // 2. Pull the most recent rated_at per activity.
-      const { data: ratings, error: rErr } = await supabase
-        .from("campaign_activity_ratings")
-        .select("activity_id, rated_at")
-        .in("activity_id", ids)
-        .order("rated_at", { ascending: false });
-      if (rErr) throw rErr;
-
-      const latestByActivity = new Map<number, string>();
-      for (const row of (ratings ?? []) as Array<{
-        activity_id: number;
-        rated_at: string | null;
-      }>) {
-        if (row.rated_at == null) continue;
-        if (!latestByActivity.has(row.activity_id)) {
-          latestByActivity.set(row.activity_id, row.rated_at);
-        }
-      }
-      for (const opt of byId.values()) {
-        opt.last_rated_at = latestByActivity.get(opt.activity_id) ?? null;
-      }
-
-      return Array.from(byId.values()).sort((a, b) => {
-        const aKey = a.last_rated_at ?? "";
-        const bKey = b.last_rated_at ?? "";
-        if (aKey !== bKey) return aKey < bKey ? 1 : -1;
-        const aCreated = a.created_at ?? "";
-        const bCreated = b.created_at ?? "";
-        if (aCreated !== bCreated) return aCreated < bCreated ? 1 : -1;
-        return a.title.localeCompare(b.title);
-      });
-    },
-  });
-
-  // Auto-pick the latest rated assessment once the options load, unless the
-  // user (or parent) has already chosen something.
-  useEffect(() => {
-    if (isLoading) return;
-    if (value.kind !== "cumulative") return;
-    const firstWithRating = options.find((o) => o.last_rated_at != null);
-    if (firstWithRating) {
-      onChange({
-        kind: "assessment",
-        activityId: firstWithRating.activity_id,
-        title: firstWithRating.title,
-        isBinary: firstWithRating.is_binary,
-        supporterOutcomeValue: firstWithRating.supporter_outcome_value,
-      });
-    }
-    // We intentionally omit `value` from deps — only run on options load.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, options]);
+  const { data: options = [], isLoading } = useWallChartAssessmentOptions(campaignId);
 
   const selectValue =
     value.kind === "cumulative" ? CUMULATIVE_VALUE : String(value.activityId);
@@ -169,18 +159,16 @@ export function AssessmentSelector({
   return (
     <div className="flex flex-col gap-1 min-w-[14rem]">
       <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
-        Assessment view
+        Assessment view (campaign default)
       </Label>
-      <Select value={selectValue} onValueChange={handleChange}>
+      <Select value={selectValue} onValueChange={handleChange} disabled={isLoading}>
         <SelectTrigger className="h-8 text-xs">
-          <SelectValue placeholder="Select assessment view…" />
+          <SelectValue placeholder={isLoading ? "Loading…" : "Select assessment view…"} />
         </SelectTrigger>
         <SelectContent>
           {options.length === 0 ? (
             <SelectGroup>
-              <SelectLabel className="text-[10px]">
-                No assessments with rating capacity
-              </SelectLabel>
+              <SelectLabel className="text-[10px]">No assessments in this campaign</SelectLabel>
               <SelectItem value={CUMULATIVE_VALUE}>Cumulative</SelectItem>
             </SelectGroup>
           ) : (
@@ -195,6 +183,7 @@ export function AssessmentSelector({
                     >
                       {opt.title}
                       {opt.is_binary ? " (binary)" : ""}
+                      {!opt.has_linked_ambition ? " · no plan link" : ""}
                       {opt.last_rated_at
                         ? ` · ${new Date(opt.last_rated_at).toLocaleDateString()}`
                         : ""}
@@ -212,6 +201,7 @@ export function AssessmentSelector({
                     >
                       {opt.title}
                       {opt.is_binary ? " (binary)" : ""}
+                      {!opt.has_linked_ambition ? " · no plan link" : ""}
                     </SelectItem>
                   ))}
                 </SelectGroup>
@@ -222,6 +212,119 @@ export function AssessmentSelector({
               </SelectGroup>
             </>
           )}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+export type UnitAssessmentViewControlProps = {
+  campaignId: string;
+  /** Campaign-level default (for labels when inheriting). */
+  campaignDefault: AssessmentSelection;
+  /** When undefined, this unit uses `campaignDefault`. */
+  override: AssessmentSelection | undefined;
+  onChangeOverride: (next: AssessmentSelection | undefined) => void;
+};
+
+function campaignDefaultShortLabel(s: AssessmentSelection): string {
+  return s.kind === "cumulative" ? "Cumulative" : s.title;
+}
+
+/**
+ * Per-unit override: inherit campaign default, cumulative, or a specific assessment.
+ */
+export function UnitAssessmentViewControl({
+  campaignId,
+  campaignDefault,
+  override,
+  onChangeOverride,
+}: UnitAssessmentViewControlProps) {
+  const { data: options = [], isLoading } = useWallChartAssessmentOptions(campaignId);
+
+  const effective = override ?? campaignDefault;
+  const selectValue =
+    override === undefined
+      ? INHERIT_VALUE
+      : effective.kind === "cumulative"
+        ? CUMULATIVE_VALUE
+        : String(effective.activityId);
+
+  const handleChange = (next: string) => {
+    if (next === INHERIT_VALUE) {
+      onChangeOverride(undefined);
+      return;
+    }
+    if (next === CUMULATIVE_VALUE) {
+      onChangeOverride({ kind: "cumulative" });
+      return;
+    }
+    const id = Number(next);
+    const opt = options.find((o) => o.activity_id === id);
+    if (!opt) return;
+    onChangeOverride({
+      kind: "assessment",
+      activityId: opt.activity_id,
+      title: opt.title,
+      isBinary: opt.is_binary,
+      supporterOutcomeValue: opt.supporter_outcome_value,
+    });
+  };
+
+  const groupedAssessments = useMemo(() => {
+    const withRatings = options.filter((o) => o.last_rated_at != null);
+    const withoutRatings = options.filter((o) => o.last_rated_at == null);
+    return { withRatings, withoutRatings };
+  }, [options]);
+
+  const inheritHint = campaignDefaultShortLabel(campaignDefault);
+
+  return (
+    <div className="flex flex-col gap-0.5 min-w-[10rem] max-w-[12rem]">
+      <Label className="text-[9px] uppercase tracking-wide text-muted-foreground">
+        View
+      </Label>
+      <Select value={selectValue} onValueChange={handleChange} disabled={isLoading}>
+        <SelectTrigger className="h-7 text-[10px] px-2">
+          <SelectValue placeholder={isLoading ? "…" : "View"} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            <SelectLabel className="text-[10px]">Unit</SelectLabel>
+            <SelectItem value={INHERIT_VALUE}>
+              Default ({inheritHint})
+            </SelectItem>
+          </SelectGroup>
+          {options.length > 0 && (
+            <>
+              {groupedAssessments.withRatings.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel className="text-[10px]">Assessments</SelectLabel>
+                  {groupedAssessments.withRatings.map((opt) => (
+                    <SelectItem key={opt.activity_id} value={String(opt.activity_id)}>
+                      {opt.title}
+                      {opt.is_binary ? " (bin)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
+              {groupedAssessments.withoutRatings.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel className="text-[10px]">Not rated</SelectLabel>
+                  {groupedAssessments.withoutRatings.map((opt) => (
+                    <SelectItem key={opt.activity_id} value={String(opt.activity_id)}>
+                      {opt.title}
+                      {opt.is_binary ? " (bin)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
+            </>
+          )}
+          <SelectSeparator />
+          <SelectGroup>
+            <SelectItem value={CUMULATIVE_VALUE}>Cumulative only</SelectItem>
+          </SelectGroup>
         </SelectContent>
       </Select>
     </div>

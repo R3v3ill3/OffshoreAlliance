@@ -3,7 +3,7 @@
 import Image from "next/image";
 import type { DragEvent, MouseEvent } from "react";
 import { getWallChartDefaultCumulative, isWorkerMemberLike } from "@/lib/campaign/constants";
-import { ratingBgClass } from "./rating-colour";
+import { assessmentNumericForWallChart, ratingBgClass } from "./rating-colour";
 import type {
   ActivityRating,
   AssessmentSelection,
@@ -93,7 +93,11 @@ export function WorkerTile({
   // membership-based defaults do not apply, because the tile is telling the
   // user "this worker has not been assessed on this activity".
   const activityRatingValue = activityRating?.rating ?? null;
-  const colourSource = isAssessmentMode ? activityRatingValue : cumulativeColourFallback;
+  const assessmentColourNumeric =
+    isAssessmentMode && assessment
+      ? assessmentNumericForWallChart(assessment, activityRating)
+      : null;
+  const colourSource = isAssessmentMode ? assessmentColourNumeric : cumulativeColourFallback;
   const isMemberLike = isWorkerMemberLike({
     unionMembershipTypeName: um?.type_name,
     memberRoleName: mt?.role_name,

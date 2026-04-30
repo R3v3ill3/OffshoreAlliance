@@ -26,8 +26,11 @@ import { CampaignUnitCard } from "./wall-chart/campaign-unit-card";
 import { WorkerTile } from "./wall-chart/worker-tile";
 import { WALL_CHART_GRID_CLASS } from "./wall-chart/rating-colour";
 import { humanizeOuType, ouDisplayName } from "./wall-chart/types";
-import { AssessmentSelector } from "./wall-chart/assessment-selector";
-import { computeMetrics } from "./wall-chart/metrics";
+import {
+  AssessmentSelector,
+  UnitAssessmentViewControl,
+} from "./wall-chart/assessment-selector";
+import { computeMetrics, type AssessmentMetricsInput } from "./wall-chart/metrics";
 import {
   ParticipationSelector,
   participationSourceLabel,
@@ -58,6 +61,7 @@ import {
   DEFAULT_FILTER_STATE,
   applyFilters,
   applySort,
+  type RatingFilterAssessmentContext,
   type WallChartFilterState,
 } from "./wall-chart/filters";
 import type {
@@ -76,6 +80,86 @@ import { useWallChartUnitVisibility } from "./wall-chart/use-wall-chart-unit-vis
 import { CreateAssessmentDialog } from "./assessments/create-assessment-dialog";
 import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 import { AddCampaignWorkerDialog } from "./wall-chart/add-campaign-worker-dialog";
+
+function collapseActivityRatingsToWorkerMap(rows: ActivityRating[]): Map<number, ActivityRating> {
+  const phaseRank = (phase: string | null | undefined) =>
+    phase === "actual" ? 2 : phase === "expected" ? 1 : 0;
+  const best = new Map<number, ActivityRating>();
+  for (const row of rows) {
+    const cur = best.get(row.worker_id);
+    if (!cur) {
+      best.set(row.worker_id, row);
+      continue;
+    }
+    const curPhase = phaseRank(cur.rating_phase);
+    const newPhase = phaseRank(row.rating_phase);
+    if (newPhase > curPhase) {
+      best.set(row.worker_id, row);
+      continue;
+    }
+    if (newPhase < curPhase) continue;
+    const curAt = cur.rated_at ?? "";
+    const newAt = row.rated_at ?? "";
+    if (newAt > curAt) best.set(row.worker_id, row);
+  }
+  return best;
+}
+
+function activityIdsForWallChartSelections(
+  campaignDefault: AssessmentSelection,
+  overrides: Map<number, AssessmentSelection>
+): number[] {
+  const s = new Set<number>();
+  if (campaignDefault.kind === "assessment") s.add(campaignDefault.activityId);
+  for (const v of overrides.values()) {
+    if (v.kind === "assessment") s.add(v.activityId);
+  }
+  return [...s].sort((a, b) => a - b);
+}
+
+function effectiveAssessmentForScope(
+  scopeKey: number,
+  campaignDefault: AssessmentSelection,
+  overrides: Map<number, AssessmentSelection>
+): AssessmentSelection {
+  return overrides.get(scopeKey) ?? campaignDefault;
+}
+
+function buildAssessmentMetricsInput(
+  sel: AssessmentSelection,
+  byActivity: Map<number, Map<number, ActivityRating>>
+): AssessmentMetricsInput | undefined {
+  if (sel.kind !== "assessment") return undefined;
+  const ratings = byActivity.get(sel.activityId) ?? new Map();
+  return {
+    ratings,
+    isBinary: sel.isBinary,
+    supportiveBinaryValue: sel.supporterOutcomeValue,
+  };
+}
+
+function scopeAssessmentFilterAndSort(
+  scopeKey: number,
+  campaignDefault: AssessmentSelection,
+  overrides: Map<number, AssessmentSelection>,
+  byActivity: Map<number, Map<number, ActivityRating>>
+): {
+  activityRatings?: Map<number, ActivityRating>;
+  ratingCtx?: RatingFilterAssessmentContext;
+  sortAssessment?: {
+    selection: Extract<AssessmentSelection, { kind: "assessment" }>;
+    activityRatings: Map<number, ActivityRating>;
+  };
+} {
+  const effective = effectiveAssessmentForScope(scopeKey, campaignDefault, overrides);
+  if (effective.kind !== "assessment") return {};
+  const activityRatings = byActivity.get(effective.activityId) ?? new Map();
+  return {
+    activityRatings,
+    ratingCtx: { selection: effective },
+    sortAssessment: { selection: effective, activityRatings },
+  };
+}
 
 export function CampaignWallChart({
   campaignId,
@@ -167,54 +251,46 @@ export function CampaignWallChart({
     },
   });
 
-  // Assessment selector state. Default is cumulative; AssessmentSelector
-  // auto-upgrades to the latest rated assessment once its options load.
-  const [assessmentSelection, setAssessmentSelection] = useState<AssessmentSelection>(
-    { kind: "cumulative" }
+  const [campaignAssessmentDefault, setCampaignAssessmentDefault] =
+    useState<AssessmentSelection>({ kind: "cumulative" });
+  const [unitAssessmentOverride, setUnitAssessmentOverride] = useState<
+    Map<number, AssessmentSelection>
+  >(() => new Map());
+
+  const activityIdsForRatings = useMemo(
+    () => activityIdsForWallChartSelections(campaignAssessmentDefault, unitAssessmentOverride),
+    [campaignAssessmentDefault, unitAssessmentOverride]
   );
 
-  const selectedActivityId =
-    assessmentSelection.kind === "assessment" ? assessmentSelection.activityId : null;
+  const activityIdsKey = activityIdsForRatings.join(",");
 
-  const { data: activityRatingsByWorker = new Map<number, ActivityRating>() } = useQuery<
-    Map<number, ActivityRating>
-  >({
-    queryKey: ["campaign-activity-ratings", campaignId, selectedActivityId],
-    enabled: selectedActivityId != null,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("campaign_activity_ratings")
-        .select(
-          "rating_id, worker_id, activity_id, rating, binary_value, rating_phase, rated_at, source, notes"
-        )
-        .eq("activity_id", selectedActivityId as number);
-      if (error) throw error;
+  const { data: activityRatingsByActivityId = new Map<number, Map<number, ActivityRating>>() } =
+    useQuery({
+      queryKey: ["campaign-activity-ratings", campaignId, activityIdsKey],
+      enabled: activityIdsForRatings.length > 0,
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from("campaign_activity_ratings")
+          .select(
+            "rating_id, worker_id, activity_id, rating, binary_value, rating_phase, rated_at, source, notes"
+          )
+          .in("activity_id", activityIdsForRatings);
+        if (error) throw error;
 
-      // Collapse to one row per worker. Prefer rating_phase='actual' over
-      // 'expected'; within the same phase, take the most recent rated_at.
-      const phaseRank = (phase: string | null | undefined) =>
-        phase === "actual" ? 2 : phase === "expected" ? 1 : 0;
-      const best = new Map<number, ActivityRating>();
-      for (const row of (data ?? []) as ActivityRating[]) {
-        const cur = best.get(row.worker_id);
-        if (!cur) {
-          best.set(row.worker_id, row);
-          continue;
+        const byActivityRows = new Map<number, ActivityRating[]>();
+        for (const row of (data ?? []) as ActivityRating[]) {
+          const list = byActivityRows.get(row.activity_id) ?? [];
+          list.push(row);
+          byActivityRows.set(row.activity_id, list);
         }
-        const curPhase = phaseRank(cur.rating_phase);
-        const newPhase = phaseRank(row.rating_phase);
-        if (newPhase > curPhase) {
-          best.set(row.worker_id, row);
-          continue;
+        const out = new Map<number, Map<number, ActivityRating>>();
+        for (const id of activityIdsForRatings) {
+          const rows = byActivityRows.get(id) ?? [];
+          out.set(id, collapseActivityRatingsToWorkerMap(rows));
         }
-        if (newPhase < curPhase) continue;
-        const curAt = cur.rated_at ?? "";
-        const newAt = row.rated_at ?? "";
-        if (newAt > curAt) best.set(row.worker_id, row);
-      }
-      return best;
-    },
-  });
+        return out;
+      },
+    });
 
   const { data: ous = [] } = useQuery({
     queryKey: ["campaign-ous", campaignId],
@@ -474,14 +550,10 @@ export function CampaignWallChart({
 
   const allWorkerIds = useMemo(() => memberRows.map((r) => r.worker_id), [memberRows]);
 
-  const assessmentMetricsInput = useMemo(() => {
-    if (assessmentSelection.kind !== "assessment") return undefined;
-    return {
-      ratings: activityRatingsByWorker,
-      isBinary: assessmentSelection.isBinary,
-      supportiveBinaryValue: assessmentSelection.supporterOutcomeValue,
-    };
-  }, [assessmentSelection, activityRatingsByWorker]);
+  const campaignMetricsInput = useMemo(
+    () => buildAssessmentMetricsInput(campaignAssessmentDefault, activityRatingsByActivityId),
+    [campaignAssessmentDefault, activityRatingsByActivityId]
+  );
 
   const campaignMetrics = useMemo(
     () =>
@@ -490,47 +562,62 @@ export function CampaignWallChart({
         workerById,
         ratingByWorker,
         participationPredicate,
-        assessmentMetricsInput
+        campaignMetricsInput
       ),
-    [allWorkerIds, workerById, ratingByWorker, participationPredicate, assessmentMetricsInput]
+    [allWorkerIds, workerById, ratingByWorker, participationPredicate, campaignMetricsInput]
   );
 
   const metricsByOu = useMemo(() => {
     const m = new Map<number, ReturnType<typeof computeMetrics>>();
     for (const [ouId, ids] of workersByOu.entries()) {
+      const effective = effectiveAssessmentForScope(
+        ouId,
+        campaignAssessmentDefault,
+        unitAssessmentOverride
+      );
+      const input = buildAssessmentMetricsInput(effective, activityRatingsByActivityId);
       m.set(
         ouId,
-        computeMetrics(
-          ids,
-          workerById,
-          ratingByWorker,
-          participationPredicate,
-          assessmentMetricsInput
-        )
+        computeMetrics(ids, workerById, ratingByWorker, participationPredicate, input)
       );
     }
     return m;
-  }, [workersByOu, workerById, ratingByWorker, participationPredicate, assessmentMetricsInput]);
+  }, [
+    workersByOu,
+    workerById,
+    ratingByWorker,
+    participationPredicate,
+    campaignAssessmentDefault,
+    unitAssessmentOverride,
+    activityRatingsByActivityId,
+  ]);
 
-  const unassignedMetrics = useMemo(
-    () =>
-      computeMetrics(
-        unassignedWorkerIds,
-        workerById,
-        ratingByWorker,
-        participationPredicate,
-        assessmentMetricsInput
-      ),
-    [unassignedWorkerIds, workerById, ratingByWorker, participationPredicate, assessmentMetricsInput]
-  );
-
-  const assessmentTitle =
-    assessmentSelection.kind === "assessment" ? assessmentSelection.title : null;
-  const activityRatingsForFilter =
-    assessmentSelection.kind === "assessment" ? activityRatingsByWorker : undefined;
+  const unassignedMetrics = useMemo(() => {
+    const effective = effectiveAssessmentForScope(
+      UNASSIGNED_KEY,
+      campaignAssessmentDefault,
+      unitAssessmentOverride
+    );
+    const input = buildAssessmentMetricsInput(effective, activityRatingsByActivityId);
+    return computeMetrics(
+      unassignedWorkerIds,
+      workerById,
+      ratingByWorker,
+      participationPredicate,
+      input
+    );
+  }, [
+    unassignedWorkerIds,
+    workerById,
+    ratingByWorker,
+    participationPredicate,
+    campaignAssessmentDefault,
+    unitAssessmentOverride,
+    activityRatingsByActivityId,
+  ]);
 
   const renderTile = useCallback(
-    (workerId: number, ouId: number | null) => {
+    (workerId: number, ouId: number | null, scopeKey: number) => {
       const worker = workerById.get(workerId);
       if (!worker) return null;
       const otherUnitIds = (unitsByWorker.get(workerId) ?? []).filter((id) => id !== ouId);
@@ -538,6 +625,17 @@ export function CampaignWallChart({
         .map((id) => ouNameById.get(id))
         .filter((n): n is string => Boolean(n));
       const inMultipleUnits = (unitsByWorker.get(workerId) ?? []).length > 1;
+      const effective = effectiveAssessmentForScope(
+        scopeKey,
+        campaignAssessmentDefault,
+        unitAssessmentOverride
+      );
+      const rMap =
+        effective.kind === "assessment"
+          ? activityRatingsByActivityId.get(effective.activityId) ?? new Map()
+          : new Map<number, ActivityRating>();
+      const activityRating =
+        effective.kind === "assessment" ? rMap.get(workerId) ?? null : null;
       return (
         <WorkerTile
           key={`${ouId ?? "u"}-${workerId}`}
@@ -547,25 +645,20 @@ export function CampaignWallChart({
           inMultipleUnits={inMultipleUnits}
           otherUnitNames={otherUnitNames}
           canWrite={canWrite}
-          selection={assessmentSelection}
+          selection={effective}
           campaignId={campaignId}
-          activityRating={activityRatingsByWorker.get(workerId) ?? null}
+          activityRating={activityRating}
           isSelected={selection.has(ouId, workerId)}
           onClick={(id, tileOuId, kind) => {
             if (kind === "toggle-select") {
               selection.toggle(tileOuId, id);
               return;
             }
-            // Plain click: open the sheet. If a selection exists, clear it first
-            // so the user isn't left with a stale selection after drilling in.
             if (selection.size > 0) selection.clear();
             setSelectedWorkerId(id);
           }}
           onCopy={(id) => setCopyWorkerId(id)}
           onDragStartRefs={(id, tileOuId) => {
-            // If the dragged tile is in the current selection, carry the whole
-            // selection; otherwise, drag just this one tile. This matches the
-            // Finder/macOS convention for list drags.
             if (selection.has(tileOuId, id)) {
               return selection
                 .refs()
@@ -592,8 +685,9 @@ export function CampaignWallChart({
       ratingByWorker,
       canWrite,
       selection,
-      assessmentSelection,
-      activityRatingsByWorker,
+      campaignAssessmentDefault,
+      unitAssessmentOverride,
+      activityRatingsByActivityId,
       campaignId,
     ]
   );
@@ -692,10 +786,13 @@ export function CampaignWallChart({
       <CardHeader>
         <CardTitle className="text-lg">Wall chart</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Colours: blue &lt;2, green 2–&lt;3, orange 3–&lt;4, red ≥4, grey unrated. Cells show c =
-          cumulative and L = last activity (hover for full labels). Unrated cells may use membership
-          or leadership defaults for background colour only (see hover text).{" "}
+          Cumulative mode uses numeric ratings: blue &lt;2, green 2–&lt;3, amber 3–&lt;4, red ≥4,
+          grey unrated (defaults may apply from membership; see tile hover). In an assessment view,
+          tile colour is that activity&apos;s rating; binary votes map to the same palette as
+          2–4 (supportive / abstained / other). Campaign default view can be overridden per unit
+          with the unit &quot;View&quot; control. Cells show c = cumulative and L = last activity.
           <span className="text-foreground/90">
+            {" "}
             Campaign-level unmapped slots are unnamed gaps from the worker estimate (up to 40
             displayed); unassigned are named members not placed in an organising unit yet.
           </span>{" "}
@@ -723,17 +820,17 @@ export function CampaignWallChart({
         <div className="rounded border bg-muted/30 px-3 py-2 print:hidden">
           <AssessmentSelector
             campaignId={campaignId}
-            value={assessmentSelection}
-            onChange={setAssessmentSelection}
+            value={campaignAssessmentDefault}
+            onChange={setCampaignAssessmentDefault}
           />
-          {assessmentSelection.kind === "assessment" && (
+          {campaignAssessmentDefault.kind === "assessment" && (
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Tile colour shows each worker&apos;s rating for{" "}
+              Campaign default: tile colour shows each worker&apos;s rating for{" "}
               <span className="font-medium text-foreground">
-                {assessmentSelection.title}
+                {campaignAssessmentDefault.title}
               </span>
-              . Click the rating number on a tile to change it. The small badge in
-              the corner is the cumulative rating.
+              . Use each unit&apos;s View control to override. Click the rating on a tile to
+              change it; the small badge is cumulative.
             </p>
           )}
         </div>
@@ -844,20 +941,42 @@ export function CampaignWallChart({
         <div ref={unitsContainerRef} className="relative space-y-4 print:space-y-2">
         {unassignedWorkerIds.length > 0 && (() => {
           const filter = getFilter(UNASSIGNED_KEY);
+          const fa = scopeAssessmentFilterAndSort(
+            UNASSIGNED_KEY,
+            campaignAssessmentDefault,
+            unitAssessmentOverride,
+            activityRatingsByActivityId
+          );
           const filtered = applyFilters(
             unassignedWorkerIds,
             workerById,
             ratingByWorker,
             filter,
-            activityRatingsForFilter
+            fa.activityRatings,
+            fa.ratingCtx
           );
-          const sorted = applySort(filtered, workerById, ratingByWorker, filter.sort);
+          const sorted = applySort(
+            filtered,
+            workerById,
+            ratingByWorker,
+            filter.sort,
+            fa.sortAssessment ? { assessmentSort: fa.sortAssessment } : undefined
+          );
+          const effScope = effectiveAssessmentForScope(
+            UNASSIGNED_KEY,
+            campaignAssessmentDefault,
+            unitAssessmentOverride
+          );
+          const scopeAssessmentTitle =
+            effScope.kind === "assessment" ? effScope.title : null;
+          const assessmentLabelForCard =
+            effScope.kind === "assessment" ? effScope.title : "Cumulative";
           return (
             <CampaignUnitCard
               ou={null}
               fallbackTitle="Unassigned workers"
               workerCount={sorted.length}
-              assessmentLabel={assessmentTitle}
+              assessmentLabel={assessmentLabelForCard}
               onWorkerDrop={handleWorkerDrop}
               dropDisabled={!canWrite}
               summary={
@@ -866,25 +985,40 @@ export function CampaignWallChart({
                   mode={displayMode}
                   compact
                   participationLabel={participationSourceLabel(participationSource)}
-                  assessmentTitle={assessmentTitle}
+                  assessmentTitle={scopeAssessmentTitle}
                 />
               }
               toolbar={
-                <WallChartFilterBar
-                  state={filter}
-                  onChange={(next) => setFilter(UNASSIGNED_KEY, next)}
-                  membershipTypes={derivedOptions.membershipTypes}
-                  occupations={derivedOptions.occupations}
-                  onApplyToAll={() => {
-                    const next = new Map<number, WallChartFilterState>();
-                    next.set(UNASSIGNED_KEY, filter);
-                    for (const ou of ous) next.set(ou.ou_id, { ...filter });
-                    setFilterByScope(next);
-                  }}
-                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <UnitAssessmentViewControl
+                    campaignId={campaignId}
+                    campaignDefault={campaignAssessmentDefault}
+                    override={unitAssessmentOverride.get(UNASSIGNED_KEY)}
+                    onChangeOverride={(next) => {
+                      setUnitAssessmentOverride((prev) => {
+                        const copy = new Map(prev);
+                        if (next === undefined) copy.delete(UNASSIGNED_KEY);
+                        else copy.set(UNASSIGNED_KEY, next);
+                        return copy;
+                      });
+                    }}
+                  />
+                  <WallChartFilterBar
+                    state={filter}
+                    onChange={(next) => setFilter(UNASSIGNED_KEY, next)}
+                    membershipTypes={derivedOptions.membershipTypes}
+                    occupations={derivedOptions.occupations}
+                    onApplyToAll={() => {
+                      const next = new Map<number, WallChartFilterState>();
+                      next.set(UNASSIGNED_KEY, filter);
+                      for (const ou of ous) next.set(ou.ou_id, { ...filter });
+                      setFilterByScope(next);
+                    }}
+                  />
+                </div>
               }
             >
-              {sorted.map((wid) => renderTile(wid, null))}
+              {sorted.map((wid) => renderTile(wid, null, UNASSIGNED_KEY))}
             </CampaignUnitCard>
           );
         })()}
@@ -924,19 +1058,41 @@ export function CampaignWallChart({
                   const ids = workersByOu.get(ou.ou_id) ?? [];
                   const est = ou.total_workers_estimated ?? 0;
                   const filter = getFilter(ou.ou_id);
+                  const fa = scopeAssessmentFilterAndSort(
+                    ou.ou_id,
+                    campaignAssessmentDefault,
+                    unitAssessmentOverride,
+                    activityRatingsByActivityId
+                  );
                   const filtered = applyFilters(
                     ids,
                     workerById,
                     ratingByWorker,
                     filter,
-                    activityRatingsForFilter
+                    fa.activityRatings,
+                    fa.ratingCtx
                   );
-                  const sorted = applySort(filtered, workerById, ratingByWorker, filter.sort);
+                  const sorted = applySort(
+                    filtered,
+                    workerById,
+                    ratingByWorker,
+                    filter.sort,
+                    fa.sortAssessment ? { assessmentSort: fa.sortAssessment } : undefined
+                  );
                   const placeholders = Math.max(0, est - ids.length);
                   const unitMetrics = metricsByOu.get(ou.ou_id);
                   const allInUnitSelected =
                     sorted.length > 0 &&
                     sorted.every((wid) => selection.has(ou.ou_id, wid));
+                  const effScope = effectiveAssessmentForScope(
+                    ou.ou_id,
+                    campaignAssessmentDefault,
+                    unitAssessmentOverride
+                  );
+                  const scopeAssessmentTitle =
+                    effScope.kind === "assessment" ? effScope.title : null;
+                  const assessmentLabelForCard =
+                    effScope.kind === "assessment" ? effScope.title : "Cumulative";
                   return (
                     <CampaignUnitCard
                       key={ou.ou_id}
@@ -944,7 +1100,7 @@ export function CampaignWallChart({
                       workerCount={sorted.length}
                       estimate={est}
                       placeholders={placeholders}
-                      assessmentLabel={assessmentTitle}
+                      assessmentLabel={assessmentLabelForCard}
                       onWorkerDrop={handleWorkerDrop}
                       dropDisabled={!canWrite}
                       summary={
@@ -953,13 +1109,26 @@ export function CampaignWallChart({
                             metrics={unitMetrics}
                             mode={displayMode}
                             compact
-                            assessmentTitle={assessmentTitle}
+                            assessmentTitle={scopeAssessmentTitle}
                             participationLabel={participationSourceLabel(participationSource)}
                           />
                         ) : null
                       }
                       toolbar={
-                        <>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <UnitAssessmentViewControl
+                            campaignId={campaignId}
+                            campaignDefault={campaignAssessmentDefault}
+                            override={unitAssessmentOverride.get(ou.ou_id)}
+                            onChangeOverride={(next) => {
+                              setUnitAssessmentOverride((prev) => {
+                                const copy = new Map(prev);
+                                if (next === undefined) copy.delete(ou.ou_id);
+                                else copy.set(ou.ou_id, next);
+                                return copy;
+                              });
+                            }}
+                          />
                           {canWrite && (
                             <Button
                               type="button"
@@ -1008,10 +1177,10 @@ export function CampaignWallChart({
                               setFilterByScope(next);
                             }}
                           />
-                        </>
+                        </div>
                       }
                     >
-                      {sorted.map((wid) => renderTile(wid, ou.ou_id))}
+                      {sorted.map((wid) => renderTile(wid, ou.ou_id, ou.ou_id))}
                     </CampaignUnitCard>
                   );
                 })}
@@ -1150,6 +1319,7 @@ export function CampaignWallChart({
         lockKind="assessment"
         onCreated={() => {
           queryClient.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
+          queryClient.invalidateQueries({ queryKey: ["campaign-assessments-rated", campaignId] });
         }}
       />
 

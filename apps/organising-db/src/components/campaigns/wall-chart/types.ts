@@ -67,6 +67,8 @@ export type WallChartAssessmentOption = {
   supporter_outcome_value: string | null;
   last_rated_at: string | null;
   created_at: string | null;
+  /** False when the activity has no rows in activity_ambitions (plan link). */
+  has_linked_ambition: boolean;
 };
 
 export type WallChartOU = {

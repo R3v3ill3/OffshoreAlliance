@@ -64,6 +64,7 @@ import { InlinePhoneOpsPanel } from "@/components/phone/InlinePhoneOpsPanel";
 import { SituationAnalysisCard } from "@/components/campaigns/planning/SituationAnalysisCard";
 import { SituationAnalysisEditSheet } from "@/components/campaigns/situation-analysis/SituationAnalysisEditSheet";
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
+import { BargainingInsightsWidget } from "@/components/campaigns/bargaining/BargainingInsightsWidget";
 
 interface CampaignDetail {
   campaign_id: number;
@@ -80,6 +81,8 @@ interface CampaignDetail {
   total_worker_estimate: number | null;
   sector_wide: boolean;
   organiser: { organiser_name: string } | null;
+  /** Added by Wave 1 of Bargaining to Win (20260510100000). May be absent on older rows. */
+  current_phase?: string | null;
 }
 
 interface UniverseRow {
@@ -529,7 +532,10 @@ export default function CampaignDetailPage() {
           <CampaignReportingCharts campaignId={id} />
         </TabsContent>
 
-        <TabsContent value="insights">
+        <TabsContent value="insights" className="space-y-6">
+          {campaign.current_phase === "bargaining_to_win" && (
+            <BargainingInsightsWidget campaignId={campaignId} />
+          )}
           <CampaignProgressReport campaignId={campaignId} embedded />
         </TabsContent>
 

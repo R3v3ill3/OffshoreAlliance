@@ -40,6 +40,7 @@ import {
   Star,
   Network,
   Globe2,
+  Scale,
 } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import {
@@ -65,7 +66,8 @@ type ReportType =
   | "campaign_activity"
   | "campaign_progress"
   | "dues_schedule"
-  | "bargaining_calendar";
+  | "bargaining_calendar"
+  | "bargaining_progress";
 
 interface ReportOption {
   type: ReportType;
@@ -134,6 +136,15 @@ const reportOptions: ReportOption[] = [
     icon: <Megaphone className="h-8 w-8 text-blue-600" />,
     isNew: true,
     href: "/reports/campaign-progress",
+  },
+  {
+    type: "bargaining_progress",
+    title: "Bargaining Progress",
+    description:
+      "Live dashboard of all active bargaining campaigns — strength assessments, decision points, PABO status, and PIA actions.",
+    icon: <Scale className="h-8 w-8 text-blue-700" />,
+    isNew: true,
+    href: "/reports/bargaining",
   },
   {
     type: "dues_schedule",

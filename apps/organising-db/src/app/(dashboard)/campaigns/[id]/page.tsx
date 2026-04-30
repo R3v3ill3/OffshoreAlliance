@@ -65,6 +65,7 @@ import { SituationAnalysisCard } from "@/components/campaigns/planning/Situation
 import { SituationAnalysisEditSheet } from "@/components/campaigns/situation-analysis/SituationAnalysisEditSheet";
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
 import { BargainingInsightsWidget } from "@/components/campaigns/bargaining/BargainingInsightsWidget";
+import { Phase2WizardLaunchCard } from "@/components/campaigns/bargaining/wizard/Phase2WizardLaunchCard";
 
 interface CampaignDetail {
   campaign_id: number;
@@ -522,6 +523,11 @@ export default function CampaignDetailPage() {
 
         <TabsContent value="campaign-plan">
           <CampaignPlanPanel campaignId={Number(id)} organiserId={campaign?.organiser_id} />
+          {(!campaign.current_phase || campaign.current_phase === "preparing_to_bargain") && (
+            <div className="mt-6 pt-6 border-t border-slate-200">
+              <Phase2WizardLaunchCard campaignId={campaignId} mode="continuation" />
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="workplan">

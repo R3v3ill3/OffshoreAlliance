@@ -116,7 +116,6 @@ function MetTargetTick({
         textAnchor="end"
         fill="#6b7280"
         fontSize={11}
-        className="truncate"
       >
         {label.length > 18 ? label.slice(0, 17) + "…" : label}
       </text>
@@ -196,14 +195,9 @@ export function AssessmentStackedBarChart({
               type="category"
               dataKey="entityLabel"
               width={136}
-              tick={
-                <MetTargetTick
-                  metTargetIds={metTargetIds}
-                  x={undefined}
-                  y={undefined}
-                  payload={undefined}
-                />
-              }
+              tick={(props: { x: number; y: number; payload: { value: string } }) => (
+                <MetTargetTick {...props} metTargetIds={metTargetIds} />
+              )}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
@@ -66,6 +66,11 @@ import { SituationAnalysisEditSheet } from "@/components/campaigns/situation-ana
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
 import { BargainingInsightsWidget } from "@/components/campaigns/bargaining/BargainingInsightsWidget";
 import { Phase2WizardLaunchCard } from "@/components/campaigns/bargaining/wizard/Phase2WizardLaunchCard";
+import {
+  VALID_TABS,
+  resolveTabParams,
+  needsRedirect,
+} from "@/lib/campaign-tabs";
 
 interface CampaignDetail {
   campaign_id: number;
@@ -183,34 +188,72 @@ export default function CampaignDetailPage() {
 
   // Phase 5: persist the selected tab in the URL so back/forward + reload land
   // on the same view, and direct links can deep-link into a tab.
-  const validTabs = [
-    "overview",
-    "campaign-plan",
-    "workplan",
-    "universe",
-    "assessments",
-    "reporting",
-    "insights",
-    "wall",
-    "tasklists",
-    "comms",
-    "phone",
-    "actions",
-    "results",
-    "bargaining",
-  ] as const;
-  const tabFromUrl = searchParams.get("tab");
-  const activeTab = (validTabs as readonly string[]).includes(tabFromUrl ?? "")
-    ? (tabFromUrl as (typeof validTabs)[number])
-    : "overview";
+  // Phase A extension: also read/write a ?sub= param and apply legacy redirects
+  // via resolveTabParams so old ?tab=workplan URLs rewrite to ?tab=plan&sub=workplan.
+  const rawTab = searchParams.get("tab");
+  const rawSub = searchParams.get("sub");
+
+  const resolved = resolveTabParams(
+    (VALID_TABS as readonly string[]).includes(rawTab ?? "")
+      ? rawTab
+      : rawTab
+        ? null // unknown tab value → fall back to overview
+        : null,
+    rawSub
+  );
+
+  const activeTab = resolved.tab;
+  // activeSub and handleSubChange are wired up by Phase B–E (sub-tab clusters).
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const activeSub = resolved.sub;
+
+  // Redirect legacy URLs (e.g. ?tab=workplan → ?tab=plan&sub=workplan).
+  useEffect(() => {
+    if (needsRedirect(rawTab, rawSub, resolved)) {
+      const params = new URLSearchParams(searchParams.toString());
+      if (resolved.tab === "overview") {
+        params.delete("tab");
+        params.delete("sub");
+      } else {
+        params.set("tab", resolved.tab);
+        if (resolved.sub) {
+          params.set("sub", resolved.sub);
+        } else {
+          params.delete("sub");
+        }
+      }
+      const qs = params.toString();
+      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+    }
+  // Only run when the raw URL params change, not on every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawTab, rawSub]);
 
   const handleTabChange = useCallback(
     (next: string) => {
       const params = new URLSearchParams(searchParams.toString());
       if (next === "overview") {
         params.delete("tab");
+        params.delete("sub");
       } else {
         params.set("tab", next);
+        // Clear sub so the cluster default kicks in on next render.
+        params.delete("sub");
+      }
+      const qs = params.toString();
+      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleSubChange = useCallback(
+    (nextSub: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (nextSub) {
+        params.set("sub", nextSub);
+      } else {
+        params.delete("sub");
       }
       const qs = params.toString();
       router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });

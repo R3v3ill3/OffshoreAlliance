@@ -6,7 +6,8 @@ import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, CheckCircle, AlertCircle } from 'lucide-react'
+import { Loader2, CheckCircle, AlertCircle, AlertTriangle } from 'lucide-react'
+import { useFoundationalReadiness } from '@/hooks/useFoundationalReadiness'
 import { toast } from 'sonner'
 import type { Phase2WizardData } from './Phase2WizardLaunchCard'
 import type { KeyDispute as WizardKeyDispute } from './Phase2WizardLaunchCard'
@@ -23,6 +24,9 @@ export function ConfirmStep({ campaignId, wizardData, mode }: Props) {
   const supabase = createClient()
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Foundational readiness — used to render a soft warning when data is incomplete.
+  const { data: readiness } = useFoundationalReadiness(campaignId)
 
   async function handleConfirm() {
     if (!wizardData.bargaining_commenced_at) {
@@ -235,6 +239,43 @@ export function ConfirmStep({ campaignId, wizardData, mode }: Props) {
             </Badge>
           </SummaryRow>
         </div>
+
+        {/* Soft readiness warning — does not block the Confirm button */}
+        {readiness && (() => {
+          const universeBase = Math.max(readiness.universe_size, 1)
+          const gaps: string[] = []
+          if (readiness.workers_allocated / universeBase < 0.8) {
+            gaps.push(
+              `Only ${Math.round((readiness.workers_allocated / universeBase) * 100)}% of the estimated universe is allocated to organising units (target: 80%).`
+            )
+          }
+          if (readiness.workers_with_contact / universeBase < 0.6) {
+            gaps.push(
+              `Only ${Math.round((readiness.workers_with_contact / universeBase) * 100)}% of the universe has contact details (target: 60%).`
+            )
+          }
+          if (readiness.workers_with_rating / universeBase < 0.2) {
+            gaps.push(
+              `Only ${Math.round((readiness.workers_with_rating / universeBase) * 100)}% of the universe has been rated (target: 20%).`
+            )
+          }
+          if (gaps.length === 0) return null
+          return (
+            <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3">
+              <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+              <div>
+                <div className="text-xs font-semibold text-amber-800 mb-1">
+                  Your data looks incomplete — you can still proceed and update later
+                </div>
+                <ul className="text-xs text-amber-700 space-y-0.5 list-disc list-inside">
+                  {gaps.map((gap, i) => (
+                    <li key={i}>{gap}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )
+        })()}
 
         {error && (
           <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3">

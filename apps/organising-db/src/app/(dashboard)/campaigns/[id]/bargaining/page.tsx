@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useCampaign } from '@/lib/hooks/usePlannerCampaigns'
 import { IntractableBannerCard } from '@/components/campaigns/bargaining/IntractableBannerCard'
+import { FoundationalReadinessPanel } from '@/components/campaigns/bargaining/FoundationalReadinessPanel'
+import { AmbitionReviewBanner } from '@/components/campaigns/bargaining/AmbitionReviewBanner'
 import { useIntractableState } from '@/hooks/useIntractableState'
 import { useStrengthAssessment } from '@/hooks/useStrengthAssessment'
 import { useDecisionPoints } from '@/hooks/useDecisionPoints'
@@ -144,6 +146,12 @@ export default function BargainingHubPage({ params }: PageProps) {
       {!intractableLoading && (
         <IntractableBannerCard campaignId={campaignId} />
       )}
+
+      {/* Foundational readiness panel */}
+      <FoundationalReadinessPanel campaignId={campaignId} />
+
+      {/* Ambition review banner — shown when industrial_outcomes ambitions need review */}
+      <AmbitionReviewBanner campaignId={campaignId} />
 
       {/* Sub-section tabs */}
       <div className="flex flex-wrap gap-2">

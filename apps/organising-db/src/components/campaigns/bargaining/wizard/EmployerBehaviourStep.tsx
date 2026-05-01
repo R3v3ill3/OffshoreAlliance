@@ -50,12 +50,14 @@ export function EmployerBehaviourStep({ campaignId, wizardData, onChange, mode }
   const supabase = createClient()
   const prefillAttempted = useRef(false)
   const [prefillBanner, setPrefillBanner] = useState(false)
+  // Tracks which key_dispute row indices were pre-filled from the SA row
+  const [prefilledIndices, setPrefilledIndices] = useState<Set<number>>(new Set())
 
-  // Standalone-mode pre-fill: fetch the latest SA row and map top_issues
-  // entries that have oa_position or employer_position set into key_disputes.
-  // Only runs once and only when key_disputes is currently empty.
+  // Pre-fill in standalone and continuation mode: fetch the latest SA row and
+  // map top_issues entries that have oa_position or employer_position set into
+  // key_disputes. Only runs once and only when key_disputes is currently empty.
   useEffect(() => {
-    if (mode !== 'standalone') return
+    if (mode !== 'standalone' && mode !== 'continuation') return
     if (!campaignId) return
     if (prefillAttempted.current) return
     if (wizardData.key_disputes.length > 0) return
@@ -93,6 +95,7 @@ export function EmployerBehaviourStep({ campaignId, wizardData, onChange, mode }
       if (carried.length > 0) {
         onChange({ key_disputes: carried })
         setPrefillBanner(true)
+        setPrefilledIndices(new Set(carried.map((_, i) => i)))
       }
     }
 
@@ -345,9 +348,16 @@ export function EmployerBehaviourStep({ campaignId, wizardData, onChange, mode }
           {wizardData.key_disputes.map((dispute, i) => (
             <div key={i} className="border rounded-md p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-700">
-                  Dispute {i + 1}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-700">
+                    Dispute {i + 1}
+                  </span>
+                  {prefilledIndices.has(i) && (
+                    <Badge variant="secondary" className="text-[10px] text-blue-700 border-blue-300">
+                      Pre-filled from situation analysis
+                    </Badge>
+                  )}
+                </div>
                 <Button
                   variant="ghost"
                   size="sm"

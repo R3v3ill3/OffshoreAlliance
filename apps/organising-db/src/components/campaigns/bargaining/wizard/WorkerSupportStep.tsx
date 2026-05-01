@@ -1,19 +1,62 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
 import { Users } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 import type { Phase2WizardData } from './Phase2WizardLaunchCard'
 
 interface Props {
   wizardData: Phase2WizardData
   onChange: (updates: Partial<Phase2WizardData>) => void
   mode: 'continuation' | 'standalone'
+  /** Required for continuation-mode pre-fill. */
+  campaignId?: number
 }
 
-export function WorkerSupportStep({ wizardData, onChange }: Props) {
+export function WorkerSupportStep({ wizardData, onChange, mode, campaignId }: Props) {
+  const supabase = createClient()
+  const prefillAttempted = useRef(false)
+
+  // Continuation-mode pre-fill: fetch the latest SA row and set
+  // percent_supportive_estimated from worker_support_estimate if it exists
+  // and the field is currently empty.
+  useEffect(() => {
+    if (mode !== 'continuation') return
+    if (!campaignId) return
+    if (prefillAttempted.current) return
+    if (wizardData.worker_support_estimate.percent_supportive_estimated !== '') return
+
+    prefillAttempted.current = true
+
+    async function prefill() {
+      const { data } = await supabase
+        .from('campaign_situation_analyses')
+        .select('worker_support_estimate')
+        .eq('campaign_id', campaignId!)
+        .eq('is_current', true)
+        .maybeSingle()
+
+      if (!data) return
+
+      // SA worker_support_estimate is stored as a number (percent).
+      const saEstimate = data.worker_support_estimate as number | null
+      if (saEstimate != null) {
+        onChange({
+          worker_support_estimate: {
+            ...wizardData.worker_support_estimate,
+            percent_supportive_estimated: saEstimate,
+          },
+        })
+      }
+    }
+
+    prefill()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, campaignId])
   const estimate = wizardData.worker_support_estimate
 
   function updateEstimate(

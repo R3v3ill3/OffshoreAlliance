@@ -40,8 +40,8 @@ interface StepDef {
 
 const ALL_STEPS: StepDef[] = [
   { key: 'timing',           label: 'Bargaining timing',       modes: ['continuation', 'standalone'] },
-  { key: 'employer',         label: 'Employer behaviour',      modes: ['standalone'] },
-  { key: 'worker_support',   label: 'Worker support',          modes: ['standalone'] },
+  { key: 'employer',         label: 'Employer behaviour',      modes: ['continuation', 'standalone'] },
+  { key: 'worker_support',   label: 'Worker support',          modes: ['continuation', 'standalone'] },
   { key: 'carry_forward',    label: 'Carry forward',           modes: ['continuation', 'standalone'] },
   { key: 'claim_package',    label: 'Claim package',           modes: ['continuation', 'standalone'] },
   { key: 'seed_pack',        label: 'PIA seed pack',           modes: ['continuation', 'standalone'] },
@@ -130,10 +130,10 @@ export default function BargainingWizardPage() {
         <BargainingTimingStep {...stepProps} />
       )}
       {currentStep.key === 'employer' && (
-        <EmployerBehaviourStep {...stepProps} />
+        <EmployerBehaviourStep {...stepProps} campaignId={campaignId} />
       )}
       {currentStep.key === 'worker_support' && (
-        <WorkerSupportStep {...stepProps} />
+        <WorkerSupportStep {...stepProps} campaignId={campaignId} />
       )}
       {currentStep.key === 'carry_forward' && (
         <CarryForwardStep {...stepProps} campaignId={campaignId} />

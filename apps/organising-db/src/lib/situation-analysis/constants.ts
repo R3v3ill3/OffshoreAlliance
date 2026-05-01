@@ -117,3 +117,20 @@ export const ISSUE_HEAT_LEVELS = [
 ] as const;
 
 export type IssueHeat = 1 | 2 | 3 | 4 | 5;
+
+/**
+ * Maps the wizard bargaining triage value to the most-likely
+ * `employer_interaction_state` default for step 7.
+ *
+ * Used to pre-suggest a starting state in the situation analysis picker when
+ * the organiser has already indicated how far along bargaining is. The
+ * organiser can always override the suggestion.
+ */
+export const TRIAGE_TO_INTERACTION_STATE_DEFAULTS: Record<
+  'not_started' | 'underway' | 'advanced',
+  EmployerInteractionState
+> = {
+  not_started: 'no_engagement',
+  underway: 'bargaining_underway',
+  advanced: 'agreement_balloted',
+} as const;

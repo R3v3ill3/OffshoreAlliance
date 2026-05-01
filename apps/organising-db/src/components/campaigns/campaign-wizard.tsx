@@ -50,7 +50,10 @@ import {
   StepCampaignAmbitions,
   type CampaignAmbitionDraft,
 } from "@/components/campaigns/step-campaign-ambitions";
-import { StepSituationAnalysis } from "@/components/campaigns/step-situation-analysis";
+import {
+  StepSituationAnalysis,
+  type WizardBargainingTriage,
+} from "@/components/campaigns/step-situation-analysis";
 import {
   emptySituationAnalysisDraft,
   type SituationAnalysisDraft,
@@ -209,6 +212,14 @@ export function CampaignWizard() {
   const [situationDraft, setSituationDraft] = useState<SituationAnalysisDraft>(
     () => emptySituationAnalysisDraft()
   );
+
+  /**
+   * Coarse bargaining stage captured in step 1 (shown only for bargaining
+   * campaigns). Drives step 7 default-suggestion and step 9 routing.
+   * Null means not set (treat as 'not_started' for routing).
+   */
+  const [wizardBargainingTriage, setWizardBargainingTriage] =
+    useState<WizardBargainingTriage | null>(null);
 
   // ── Queries ───────────────────────────────────────────────────────────────
 
@@ -449,6 +460,16 @@ export function CampaignWizard() {
           row.total_worker_estimate != null ? String(row.total_worker_estimate) : "",
         sector_wide: row.sector_wide ?? false,
       });
+
+      // Hydrate wizard_bargaining_triage if stored on the existing row.
+      const existingTriage = (row as Record<string, unknown>).wizard_bargaining_triage as
+        | WizardBargainingTriage
+        | null
+        | undefined;
+      if (existingTriage != null) {
+        setWizardBargainingTriage(existingTriage);
+      }
+
       basicsHydratedFor.current = campaignId;
       setBasicsHydrated(true);
     })();
@@ -519,6 +540,11 @@ export function CampaignWizard() {
       if (basics.enterprise_agreement_subtype) {
         payload.enterprise_agreement_subtype = basics.enterprise_agreement_subtype;
       }
+      // Wire wizard_bargaining_triage — only relevant for bargaining campaigns,
+      // but safe to include for others (column is nullable / unchecked for them).
+      if (basics.campaign_type === "bargaining" && wizardBargainingTriage != null) {
+        payload.wizard_bargaining_triage = wizardBargainingTriage;
+      }
       // replaced_agreement_id is deprecated as a primary write target — Step 3
       // (StepAgreements) writes campaign_agreements, and a DB trigger keeps the
       // legacy column mirrored. Setting it here would be redundant.
@@ -562,6 +588,12 @@ export function CampaignWizard() {
         notes: basics.notes || null,
         campaign_scope: basics.campaign_scope || null,
         enterprise_agreement_subtype: basics.enterprise_agreement_subtype || null,
+        // Wire wizard_bargaining_triage. Set to null when the campaign is not
+        // a bargaining type (or when no selection has been made) so that edits
+        // to an existing bargaining campaign that remove the type don't leave
+        // a stale triage value.
+        wizard_bargaining_triage:
+          basics.campaign_type === "bargaining" ? wizardBargainingTriage ?? null : null,
         // Worker estimate is no longer set from Step 1; Step 4 owns it. We do not
         // null it out on edits saved from Step 1 (preserve whatever Step 4 wrote).
       };
@@ -1358,6 +1390,35 @@ export function CampaignWizard() {
               </p>
             )}
 
+            {/* Bargaining triage — shown only for bargaining campaigns */}
+            {basics.campaign_type === "bargaining" && (
+              <div className="space-y-2">
+                <Label>Where is bargaining at? (optional)</Label>
+                <Select
+                  value={wizardBargainingTriage ?? "__none__"}
+                  onValueChange={(v) =>
+                    setWizardBargainingTriage(
+                      v === "__none__" ? null : (v as WizardBargainingTriage)
+                    )
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select bargaining stage…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Not sure / not applicable</SelectItem>
+                    <SelectItem value="not_started">Not started yet</SelectItem>
+                    <SelectItem value="underway">Bargaining is underway</SelectItem>
+                    <SelectItem value="advanced">Advanced stage (near ballot / EBA)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Helps tailor the situation analysis step and determines which planning
+                  tool you&apos;re routed to at the end of the wizard.
+                </p>
+              </div>
+            )}
+
             <div className="grid sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Status</Label>
@@ -1634,6 +1695,7 @@ export function CampaignWizard() {
           isPending={saveSituationAnalysisMutation.isPending}
           onBack={() => setStep(6)}
           onContinue={() => saveSituationAnalysisMutation.mutate()}
+          wizardBargainingTriage={wizardBargainingTriage ?? undefined}
         />
       )}
 
@@ -1656,51 +1718,143 @@ export function CampaignWizard() {
         />
       )}
 
-      {/* ── Step 9: Create campaign plan (bargaining only) ──────────────── */}
-      {step === 9 && campaignId && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="rounded-full bg-green-100 p-2 dark:bg-green-900/30">
-                <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
+      {/* ── Step 9: Handoff (bargaining only) ───────────────────────────── */}
+      {step === 9 && campaignId && (() => {
+        // Post-settlement campaigns skip all planner routing — go straight to overview.
+        const isPostSettlement =
+          situationDraft.employer_interaction_state === "post_settlement";
+
+        // Bargaining is already underway or advanced → route to Bargaining to Win setup.
+        const isBargainingActive =
+          wizardBargainingTriage === "underway" ||
+          wizardBargainingTriage === "advanced";
+
+        if (isPostSettlement) {
+          // Navigate immediately — render a brief confirmation card with the redirect.
+          return (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="rounded-full bg-green-100 p-2 dark:bg-green-900/30">
+                    <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
+                  </div>
+                  <div>
+                    <CardTitle>Campaign created</CardTitle>
+                    <CardDescription>
+                      This campaign is in post-settlement / implementation. Go to the
+                      campaign overview to review and track implementation.
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Button
+                  className="w-full sm:w-auto"
+                  onClick={() => router.push(`/campaigns/${campaignId}`)}
+                >
+                  Go to campaign overview
+                </Button>
+              </CardContent>
+            </Card>
+          );
+        }
+
+        if (isBargainingActive) {
+          return (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="rounded-full bg-green-100 p-2 dark:bg-green-900/30">
+                    <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
+                  </div>
+                  <div>
+                    <CardTitle>Campaign created</CardTitle>
+                    <CardDescription>
+                      Since bargaining is already{" "}
+                      {wizardBargainingTriage === "advanced"
+                        ? "at an advanced stage"
+                        : "underway"}
+                      , set up your Bargaining to Win plan to track live negotiations.
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  The Bargaining to Win setup captures claims, mandate, employer behaviour,
+                  ballot history, and bargaining goals — all linked to this campaign.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button
+                    className="flex-1"
+                    onClick={() =>
+                      router.push(
+                        `/campaigns/${campaignId}/bargaining-wizard?mode=standalone&from_wizard=1`
+                      )
+                    }
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Launch Bargaining to Win setup
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => router.push(`/campaigns/${campaignId}`)}
+                  >
+                    Skip for now — go to campaign
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        }
+
+        // Default: not_started or null triage — route to OA Planner (Phase 1 flow).
+        return (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="rounded-full bg-green-100 p-2 dark:bg-green-900/30">
+                  <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <CardTitle>Campaign created</CardTitle>
+                  <CardDescription>
+                    The campaign has been set up. Would you like to create a strategic
+                    campaign plan in OA Planner?
+                  </CardDescription>
+                </div>
               </div>
-              <div>
-                <CardTitle>Campaign created</CardTitle>
-                <CardDescription>
-                  The campaign has been set up. Would you like to create a strategic
-                  campaign plan in OA Planner?
-                </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                OA Planner uses a &ldquo;Playing to Win&rdquo; methodology with six campaign stages
+                and five gate assessments. It will be pre-linked to this bargaining campaign.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Button
+                  className="flex-1"
+                  onClick={() => {
+                    const url = `/campaigns/new?campaign_id=${campaignId}${existingCampaign?.organiser_id ? `&organiser_id=${existingCampaign.organiser_id}` : ""}`;
+                    router.push(url);
+                    router.refresh();
+                  }}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Create Campaign Plan in OA Planner
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => router.push(`/campaigns/${campaignId}`)}
+                >
+                  Skip for now — go to campaign
+                </Button>
               </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              OA Planner uses a "Playing to Win" methodology with six campaign stages and
-              five gate assessments. It will be pre-linked to this bargaining campaign.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Button
-                className="flex-1"
-                onClick={() => {
-                  const url = `/campaigns/new?campaign_id=${campaignId}${existingCampaign?.organiser_id ? `&organiser_id=${existingCampaign.organiser_id}` : ""}`;
-                  router.push(url);
-                  router.refresh();
-                }}
-              >
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Create Campaign Plan in OA Planner
-              </Button>
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => router.push(`/campaigns/${campaignId}`)}
-              >
-                Skip for now — go to campaign
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {existingCampaign && step > 1 && step < 9 && (
         <p className="text-xs text-muted-foreground">

@@ -67,6 +67,7 @@ import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constan
 import { BargainingInsightsWidget } from "@/components/campaigns/bargaining/BargainingInsightsWidget";
 import { Phase2WizardLaunchCard } from "@/components/campaigns/bargaining/wizard/Phase2WizardLaunchCard";
 import { FoundationalReadinessPanel } from "@/components/campaigns/bargaining/FoundationalReadinessPanel";
+import { CampaignResultsSection } from "@/components/campaigns/campaign-results-section";
 import {
   VALID_TABS,
   resolveTabParams,
@@ -147,18 +148,6 @@ const ACTION_STATUS_VARIANT: Record<string, "secondary" | "success" | "info" | "
   in_progress: "info",
   completed: "success",
   cancelled: "warning",
-};
-
-const RESULT_TYPE_VARIANT: Record<ActionResultType, "success" | "secondary" | "destructive" | "info" | "warning" | "default"> = {
-  contacted: "success",
-  not_home: "secondary",
-  refused: "destructive",
-  signed: "success",
-  attended: "info",
-  left_message: "warning",
-  wrong_number: "secondary",
-  moved: "secondary",
-  other: "default",
 };
 
 function formatDate(d: string | null) {
@@ -466,13 +455,11 @@ export default function CampaignDetailPage() {
           <TabsTrigger value="campaign-plan">Campaign Plan</TabsTrigger>
           <TabsTrigger value="workplan">Workplan</TabsTrigger>
           <TabsTrigger value="workforce">Workforce</TabsTrigger>
-          <TabsTrigger value="reporting">Reporting</TabsTrigger>
-          <TabsTrigger value="insights">Insights</TabsTrigger>
+          <TabsTrigger value="outcomes">Outcomes</TabsTrigger>
           <TabsTrigger value="tasklists">Task lists</TabsTrigger>
           <TabsTrigger value="comms">Comms</TabsTrigger>
           <TabsTrigger value="phone">Phone Ops</TabsTrigger>
           <TabsTrigger value="actions">Actions</TabsTrigger>
-          <TabsTrigger value="results">Results</TabsTrigger>
           {campaign.current_phase === "bargaining_to_win" && (
             <TabsTrigger value="bargaining">Bargaining</TabsTrigger>
           )}
@@ -573,15 +560,32 @@ export default function CampaignDetailPage() {
           <CampaignWorkplanSection campaignId={id} canWrite={!!canWrite} />
         </TabsContent>
 
-        <TabsContent value="reporting">
-          <CampaignReportingCharts campaignId={id} />
-        </TabsContent>
+        <TabsContent value="outcomes">
+          <Tabs
+            value={activeSub ?? "reports"}
+            onValueChange={handleSubChange}
+          >
+            <TabsList className="mb-4">
+              <TabsTrigger value="reports">Reports</TabsTrigger>
+              <TabsTrigger value="results">Results</TabsTrigger>
+              <TabsTrigger value="insights">Insights</TabsTrigger>
+            </TabsList>
 
-        <TabsContent value="insights" className="space-y-6">
-          {campaign.current_phase === "bargaining_to_win" && (
-            <BargainingInsightsWidget campaignId={campaignId} />
-          )}
-          <CampaignProgressReport campaignId={campaignId} embedded />
+            <TabsContent value="reports">
+              <CampaignReportingCharts campaignId={id} />
+            </TabsContent>
+
+            <TabsContent value="results">
+              <CampaignResultsSection results={results} />
+            </TabsContent>
+
+            <TabsContent value="insights" className="space-y-6">
+              {campaign.current_phase === "bargaining_to_win" && (
+                <BargainingInsightsWidget campaignId={campaignId} />
+              )}
+              <CampaignProgressReport campaignId={campaignId} embedded />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="tasklists">
@@ -899,58 +903,6 @@ export default function CampaignDetailPage() {
                             >
                               {a.status.replace(/_/g, " ")}
                             </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="results">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Campaign Results</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {results.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No results recorded yet.
-                </p>
-              ) : (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Worker</TableHead>
-                        <TableHead>Action</TableHead>
-                        <TableHead>Result</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Notes</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {results.map((r) => (
-                        <TableRow key={r.result_id}>
-                          <TableCell className="font-medium">
-                            {r.worker
-                              ? `${r.worker.first_name} ${r.worker.last_name}`
-                              : "—"}
-                          </TableCell>
-                          <TableCell>{r.action?.title ?? "—"}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={RESULT_TYPE_VARIANT[r.result_type] ?? "default"}
-                            >
-                              {r.result_type.replace(/_/g, " ")}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{formatDate(r.action_date)}</TableCell>
-                          <TableCell className="max-w-xs truncate">
-                            {r.notes ?? "—"}
                           </TableCell>
                         </TableRow>
                       ))}

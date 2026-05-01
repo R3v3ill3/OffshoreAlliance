@@ -30,6 +30,7 @@ import type {
   KeyDispute,
   PriorEmployerBallot,
   SituationAnalysisDraft,
+  TopIssue,
 } from "@/lib/situation-analysis/types";
 import type { WizardBargainingTriage } from "@/lib/situation-analysis/constants";
 
@@ -90,6 +91,16 @@ export function SurveyPanel({
   // Whether NERR status is required (must be answered when triage is underway/advanced).
   const nerrRequired =
     wizardBargainingTriage === 'underway' || wizardBargainingTriage === 'advanced';
+
+  function updateTopIssuePosition(
+    index: number,
+    patch: Partial<Pick<TopIssue, 'oa_position' | 'employer_position'>>
+  ) {
+    const updated = draft.top_issues.map((issue, i) =>
+      i === index ? { ...issue, ...patch } : issue
+    );
+    onChange({ ...draft, top_issues: updated });
+  }
 
   function updateBallot(index: number, patch: Partial<PriorEmployerBallot>) {
     const ballots = draft.prior_employer_ballots ?? [];
@@ -224,6 +235,54 @@ export function SurveyPanel({
             issues={draft.top_issues}
             onChange={(top_issues) => onChange({ ...draft, top_issues })}
           />
+          {showBargainingContext && draft.top_issues.length > 0 && (
+            <div className="mt-4 space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Record OA and employer negotiating positions for each issue
+                — these carry forward to the Bargaining to Win key disputes.
+              </p>
+              {draft.top_issues.map((issue, i) => (
+                <div
+                  key={issue.draft_id ?? i}
+                  className="rounded-md border bg-muted/10 p-3 space-y-2"
+                >
+                  <p className="text-xs font-semibold text-muted-foreground">
+                    {issue.label || `Issue ${i + 1}`}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">OA position</Label>
+                      <Textarea
+                        rows={2}
+                        className="text-xs"
+                        value={issue.oa_position ?? ''}
+                        onChange={(e) =>
+                          updateTopIssuePosition(i, {
+                            oa_position: e.target.value || undefined,
+                          })
+                        }
+                        placeholder="What OA is seeking on this issue…"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Employer position</Label>
+                      <Textarea
+                        rows={2}
+                        className="text-xs"
+                        value={issue.employer_position ?? ''}
+                        onChange={(e) =>
+                          updateTopIssuePosition(i, {
+                            employer_position: e.target.value || undefined,
+                          })
+                        }
+                        placeholder="Employer's stated position on this issue…"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </AccordionContent>
       </AccordionItem>
 

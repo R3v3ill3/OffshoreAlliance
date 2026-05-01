@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Loader2, CheckCircle, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Phase2WizardData } from './Phase2WizardLaunchCard'
+import type { KeyDispute as WizardKeyDispute } from './Phase2WizardLaunchCard'
 
 interface Props {
   campaignId: number
@@ -32,7 +33,7 @@ export function ConfirmStep({ campaignId, wizardData, mode }: Props) {
     setSubmitting(true)
     setError(null)
 
-    // Build situation_overrides from standalone-mode fields
+    // Build situation_overrides from wizard-collected fields
     const situationOverrides: Record<string, unknown> = {}
     if (mode === 'standalone') {
       if (wizardData.prior_employer_ballots.length > 0) {
@@ -52,6 +53,48 @@ export function ConfirmStep({ campaignId, wizardData, mode }: Props) {
       }
       if (wizardData.employer_ballot_intent) {
         situationOverrides.employer_ballot_intent = wizardData.employer_ballot_intent
+      }
+    } else if (mode === 'continuation' && wizardData.carryforward_situation_analysis_id !== null) {
+      // In continuation mode, derive key_disputes from the extended top_issues of the
+      // selected SA row (entries where oa_position or employer_position is set).
+      // wizardData.key_disputes from EmployerBehaviourStep (Phase 4) may also be used;
+      // fall back to SA fetch to ensure key disputes are populated.
+      const disputesFromWizard: WizardKeyDispute[] = wizardData.key_disputes
+      if (disputesFromWizard.length > 0) {
+        situationOverrides.key_disputes = disputesFromWizard
+      } else {
+        // Fetch the carry-forward SA row and derive key_disputes from extended top_issues
+        try {
+          const { data: saRow } = await supabase
+            .from('campaign_situation_analyses')
+            .select('top_issues')
+            .eq('situation_id', wizardData.carryforward_situation_analysis_id)
+            .maybeSingle()
+
+          if (saRow) {
+            const topIssues: Array<{
+              label?: string
+              oa_position?: string
+              employer_position?: string
+            }> = Array.isArray(saRow.top_issues) ? saRow.top_issues : []
+
+            const derived: WizardKeyDispute[] = topIssues
+              .filter((issue) => issue.oa_position || issue.employer_position)
+              .map((issue) => ({
+                topic: issue.label ?? '',
+                oa_position: issue.oa_position ?? '',
+                employer_position: issue.employer_position ?? '',
+                urgency: 3,
+                notes: '',
+              }))
+
+            if (derived.length > 0) {
+              situationOverrides.key_disputes = derived
+            }
+          }
+        } catch {
+          // Non-fatal: proceed without key_disputes override
+        }
       }
     }
 

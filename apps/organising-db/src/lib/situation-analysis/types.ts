@@ -50,6 +50,10 @@ export interface TopIssue {
   label: string;
   heat: IssueHeat;
   notes?: string;
+  /** Phase 3: OA (union) negotiating position on this issue. */
+  oa_position?: string;
+  /** Phase 3: Employer's negotiating position on this issue. */
+  employer_position?: string;
 }
 
 export interface WorkforceChange {

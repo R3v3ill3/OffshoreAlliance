@@ -32,6 +32,7 @@ import { toast } from 'sonner'
 import { fetchApi, API_FETCH_TIMEOUT_LLM_MS } from '@/lib/api/fetch-api'
 import { CoachChatPanel } from './CoachChatPanel'
 import { ExportArtifactDialog } from './ExportArtifactDialog'
+import { SocDiagramPanel } from './SocDiagramPanel'
 import { StageSeedPanel } from './StageSeedPanel'
 import { useSituationAnalysis } from '@/lib/hooks/useSituationAnalysis'
 import {
@@ -283,6 +284,9 @@ export function SocWizardSteps() {
         onRefreshed={(snap) => setContextSnapshot(snap)}
       />
 
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6 items-start">
+      <div>
+
       {/* Step 1: Context */}
       {step === 1 && (
         <Card>
@@ -416,6 +420,14 @@ export function SocWizardSteps() {
           onExport={(scope) => setExportingScope(scope)}
         />
       )}
+
+      </div>{/* end left column */}
+
+      <div className="hidden lg:block">
+        <SocDiagramPanel activeStage={currentStep.socStage ?? null} />
+      </div>
+
+      </div>{/* end grid */}
 
       <div className="flex items-center justify-between pt-4 border-t">
         <Button

@@ -440,7 +440,7 @@ export default function CampaignDetailPage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
-          <CampaignOverviewMetrics campaignId={campaignId} />
+          <CampaignOverviewMetrics campaignId={campaignId} campaignLabel={campaign?.name ?? undefined} />
           <Card>
             <CardContent className="pt-6">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-4 text-sm">

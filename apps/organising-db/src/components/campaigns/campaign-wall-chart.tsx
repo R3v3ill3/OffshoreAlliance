@@ -26,6 +26,7 @@ import { CampaignUnitCard } from "./wall-chart/campaign-unit-card";
 import { WorkerTile } from "./wall-chart/worker-tile";
 import { WALL_CHART_GRID_CLASS } from "./wall-chart/rating-colour";
 import { humanizeOuType, ouDisplayName } from "./wall-chart/types";
+import { collapseActivityRatingsToWorkerMap } from "@/lib/utils/collapse-activity-ratings";
 import {
   AssessmentSelector,
   UnitAssessmentViewControl,
@@ -80,30 +81,8 @@ import { useWallChartUnitVisibility } from "./wall-chart/use-wall-chart-unit-vis
 import { CreateAssessmentDialog } from "./assessments/create-assessment-dialog";
 import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 import { AddCampaignWorkerDialog } from "./wall-chart/add-campaign-worker-dialog";
+import { WallChartAssessmentCharts } from "./WallChartAssessmentCharts";
 
-function collapseActivityRatingsToWorkerMap(rows: ActivityRating[]): Map<number, ActivityRating> {
-  const phaseRank = (phase: string | null | undefined) =>
-    phase === "actual" ? 2 : phase === "expected" ? 1 : 0;
-  const best = new Map<number, ActivityRating>();
-  for (const row of rows) {
-    const cur = best.get(row.worker_id);
-    if (!cur) {
-      best.set(row.worker_id, row);
-      continue;
-    }
-    const curPhase = phaseRank(cur.rating_phase);
-    const newPhase = phaseRank(row.rating_phase);
-    if (newPhase > curPhase) {
-      best.set(row.worker_id, row);
-      continue;
-    }
-    if (newPhase < curPhase) continue;
-    const curAt = cur.rated_at ?? "";
-    const newAt = row.rated_at ?? "";
-    if (newAt > curAt) best.set(row.worker_id, row);
-  }
-  return best;
-}
 
 function activityIdsForWallChartSelections(
   campaignDefault: AssessmentSelection,
@@ -909,6 +888,15 @@ export function CampaignWallChart({
                 onOpenCreateUnit={() => setCreateUnitOpen(true)}
               />
             </div>
+          }
+        />
+
+        <WallChartAssessmentCharts
+          campaignId={campaignId}
+          activeAssessmentId={
+            campaignAssessmentDefault.kind === "assessment"
+              ? campaignAssessmentDefault.activityId
+              : null
           }
         />
 

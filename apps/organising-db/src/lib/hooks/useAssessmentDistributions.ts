@@ -126,7 +126,7 @@ export function useAssessmentDistributions(campaignId: string) {
         )
         .in("activity_id", activityIds);
       if (error) throw error;
-      return (data ?? []) as Array<{
+      return (data ?? []) as unknown as Array<{
         activity_id: number;
         is_primary: boolean;
         plan_ambition_id: number;

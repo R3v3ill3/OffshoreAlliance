@@ -126,11 +126,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { session_id, stage_number, hope_frame } = (await req.json()) as {
+    const { session_id, stage_number, hope_frame, population_index: rawPopulationIndex } = (await req.json()) as {
       session_id: number
       stage_number: number
       hope_frame?: HopeFrame
+      population_index?: number | null
     }
+    const population_index: number | null = stage_number !== 5 ? (rawPopulationIndex ?? null) : null
 
     if (!Number.isInteger(session_id)) {
       return NextResponse.json({ error: 'session_id required' }, { status: 400 })
@@ -223,7 +225,7 @@ export async function POST(req: NextRequest) {
       '',
       hopeCoaching ? hopeCoaching.coach_directives : '',
       '',
-      buildPopulationContext(populations),
+      buildPopulationContext(populations, population_index),
       '',
       contextLines.join('\n'),
     ]
@@ -296,6 +298,10 @@ export async function POST(req: NextRequest) {
       hopeFrame === null
         ? priorQuery.is('hope_frame', null)
         : priorQuery.eq('hope_frame', hopeFrame)
+    priorQuery =
+      population_index === null
+        ? priorQuery.is('population_index', null)
+        : priorQuery.eq('population_index', population_index)
     const { data: prior } = await priorQuery
     const nextTurnIndex =
       Array.isArray(prior) && prior.length > 0 ? prior[0].turn_index + 1 : 0
@@ -306,6 +312,7 @@ export async function POST(req: NextRequest) {
         session_id,
         stage_number,
         hope_frame: hopeFrame,
+        population_index: population_index,
         turn_index: nextTurnIndex,
         role: 'assistant',
         content: commentary || 'Here is a starting draft. The amber-highlighted phrases are places where your judgment matters most — verify the sector language and tone for this workforce before locking.',

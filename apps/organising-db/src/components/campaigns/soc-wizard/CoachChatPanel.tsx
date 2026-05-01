@@ -32,6 +32,7 @@ interface CoachChatPanelProps {
   stage_number: SocStage
   stage_name: string
   hope_frame?: HopeFrame
+  population_index?: number | null
   alreadyLocked: boolean
   initialLockedContent?: string
   onLocked?: () => void
@@ -49,6 +50,7 @@ export function CoachChatPanel({
   stage_number,
   stage_name,
   hope_frame,
+  population_index,
   alreadyLocked,
   initialLockedContent,
   onLocked,
@@ -68,6 +70,7 @@ export function CoachChatPanel({
     session_id,
     stage_number,
     hope_frame: hope_frame ?? null,
+    population_index: population_index ?? null,
   })
   const lockStage = useLockStage()
   const regenerate = useRegenerateStage()
@@ -89,7 +92,7 @@ export function CoachChatPanel({
   // Sync initialLockedContent when scope changes
   useEffect(() => {
     setDraftLocked(initialLockedContent ?? '')
-  }, [initialLockedContent, session_id, stage_number, hope_frame])
+  }, [initialLockedContent, session_id, stage_number, hope_frame, population_index])
 
   // ----- Last draft + coach-flagged phrases -----
   // After the coach responds, find the user's most recent draft (the turn
@@ -180,6 +183,7 @@ export function CoachChatPanel({
         session_id,
         stage_number,
         hope_frame,
+        population_index: population_index ?? null,
       })
       // Reset the prefilled-for-turn marker so the new suggestion turn
       // pre-fills the composer if it's empty.
@@ -211,6 +215,7 @@ export function CoachChatPanel({
         session_id,
         stage_number,
         hope_frame,
+        population_index: population_index ?? null,
         stage_name,
         locked_content: content,
       })
@@ -227,7 +232,7 @@ export function CoachChatPanel({
   async function handleRegenerate() {
     if (!confirm('Regenerate this stage? This deletes the chat history and any locked content.')) return
     try {
-      await regenerate.mutateAsync({ session_id, stage_number, hope_frame })
+      await regenerate.mutateAsync({ session_id, stage_number, hope_frame, population_index: population_index ?? null })
       setDraftLocked('')
       toast.success('Stage reset.')
     } catch (e) {

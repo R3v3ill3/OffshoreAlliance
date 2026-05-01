@@ -29,6 +29,7 @@ interface LockStageBody {
   session_id: number
   stage_number: number
   hope_frame?: HopeFrame | null
+  population_index?: number | null
   stage_name: string
   locked_content: string
   organiser_notes?: string | null
@@ -64,8 +65,15 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       )
     }
+    if (body.stage_number === 5 && body.population_index != null) {
+      return NextResponse.json(
+        { error: 'population_index is not valid when stage_number === 5' },
+        { status: 400 }
+      )
+    }
 
     const hopeFrame = body.stage_number === 5 ? (body.hope_frame as HopeFrame) : null
+    const populationIndex = body.stage_number !== 5 ? (body.population_index ?? null) : null
 
     // Upsert via delete + insert. PostgREST upsert with a composite key
     // including NULL is awkward; this is the simplest correct approach.
@@ -77,6 +85,7 @@ export async function POST(req: NextRequest) {
         .eq('session_id', body.session_id)
         .eq('stage_number', body.stage_number)
       q = hopeFrame === null ? q.is('hope_frame', null) : q.eq('hope_frame', hopeFrame)
+      q = populationIndex === null ? q.is('population_index', null) : q.eq('population_index', populationIndex)
       const { error: delErr } = await q
       if (delErr) throw delErr
     }
@@ -87,6 +96,7 @@ export async function POST(req: NextRequest) {
         session_id: body.session_id,
         stage_number: body.stage_number,
         hope_frame: hopeFrame,
+        population_index: populationIndex,
         stage_name: body.stage_name,
         locked_content: body.locked_content,
         organiser_notes: body.organiser_notes ?? null,
@@ -105,22 +115,41 @@ export async function POST(req: NextRequest) {
       .update({ updated_at: new Date().toISOString() })
       .eq('session_id', body.session_id)
 
-    // Check completeness: 8 stages, with stage 5 needing all three hope frames
-    const { data: locked } = await supabase
-      .from('soc_stage_content')
-      .select('stage_number, hope_frame')
-      .eq('session_id', body.session_id)
+    // Check completeness: all 8 stages locked, with stage 5 needing all 3 hope
+    // frames and stages 1-4/6-8 needing one row per population (or one NULL row
+    // if no populations are defined for this session).
+    const [{ data: locked }, { data: sessionForCheck }] = await Promise.all([
+      supabase
+        .from('soc_stage_content')
+        .select('stage_number, hope_frame, population_index')
+        .eq('session_id', body.session_id),
+      supabase
+        .from('soc_sessions')
+        .select('target_populations')
+        .eq('session_id', body.session_id)
+        .maybeSingle(),
+    ])
 
     const lockedRows = locked || []
-    const stagesLocked = new Set<number>()
-    const hopeFramesLocked = new Set<HopeFrame>()
-    for (const r of lockedRows) {
-      if (r.stage_number !== 5) stagesLocked.add(r.stage_number)
-      else if (r.hope_frame) hopeFramesLocked.add(r.hope_frame as HopeFrame)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const populations = ((sessionForCheck?.target_populations as any[]) || [])
+    const popCount = populations.length
+
+    const expected = new Set<string>()
+    for (const s of [1, 2, 3, 4, 6, 7, 8]) {
+      if (popCount > 0) {
+        for (let i = 0; i < popCount; i++) expected.add(`${s}:null:${i}`)
+      } else {
+        expected.add(`${s}:null:null`)
+      }
     }
-    const allComplete =
-      [1, 2, 3, 4, 6, 7, 8].every((n) => stagesLocked.has(n)) &&
-      HOPE_FRAMES.every((f) => hopeFramesLocked.has(f))
+    for (const f of HOPE_FRAMES) expected.add(`5:${f}:null`)
+
+    for (const r of lockedRows) {
+      const key = `${r.stage_number}:${r.hope_frame ?? 'null'}:${r.population_index ?? 'null'}`
+      expected.delete(key)
+    }
+    const allComplete = expected.size === 0
 
     if (allComplete) {
       await supabase

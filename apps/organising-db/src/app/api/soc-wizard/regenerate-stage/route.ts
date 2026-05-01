@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { session_id, stage_number, hope_frame } = await req.json()
+    const { session_id, stage_number, hope_frame, population_index: rawPopulationIndex } = await req.json()
     if (!Number.isInteger(session_id)) {
       return NextResponse.json({ error: 'session_id is required' }, { status: 400 })
     }
@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
     }
 
     const hopeFrame = stage_number === 5 ? (hope_frame as HopeFrame) : null
+    const populationIndex: number | null = stage_number !== 5 ? (rawPopulationIndex ?? null) : null
 
     // Delete chat turns
     {
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
         .eq('session_id', session_id)
         .eq('stage_number', stage_number)
       q = hopeFrame === null ? q.is('hope_frame', null) : q.eq('hope_frame', hopeFrame)
+      q = populationIndex === null ? q.is('population_index', null) : q.eq('population_index', populationIndex)
       const { error } = await q
       if (error) throw error
     }
@@ -69,6 +71,7 @@ export async function POST(req: NextRequest) {
         .eq('session_id', session_id)
         .eq('stage_number', stage_number)
       q = hopeFrame === null ? q.is('hope_frame', null) : q.eq('hope_frame', hopeFrame)
+      q = populationIndex === null ? q.is('population_index', null) : q.eq('population_index', populationIndex)
       const { error } = await q
       if (error) throw error
     }

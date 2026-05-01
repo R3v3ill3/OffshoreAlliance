@@ -197,8 +197,8 @@ export function EndorsementVoteEditor({
             {isEditing ? "Edit Endorsement Vote" : "Record Endorsement Vote"}
           </SheetTitle>
           <SheetDescription>
-            Capture ballot details for an employer proposal, union in-principle
-            approval, or final EBA ratification vote.
+            Capture ballot details for a Log of Claims vote, employer proposal,
+            union in-principle approval, or final EBA ratification vote.
           </SheetDescription>
         </SheetHeader>
 
@@ -215,6 +215,8 @@ export function EndorsementVoteEditor({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="employer_proposal">Employer Proposal</SelectItem>
+                <SelectItem value="union_claim">Union Claim</SelectItem>
+                <SelectItem value="log_of_claims">Log of Claims vote</SelectItem>
                 <SelectItem value="union_in_principle">Union In-Principle</SelectItem>
                 <SelectItem value="final_eba">Final EBA Vote</SelectItem>
               </SelectContent>

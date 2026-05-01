@@ -6,9 +6,11 @@ import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, CheckCircle, AlertCircle } from 'lucide-react'
+import { Loader2, CheckCircle, AlertCircle, AlertTriangle } from 'lucide-react'
+import { useFoundationalReadiness } from '@/hooks/useFoundationalReadiness'
 import { toast } from 'sonner'
 import type { Phase2WizardData } from './Phase2WizardLaunchCard'
+import type { KeyDispute as WizardKeyDispute } from './Phase2WizardLaunchCard'
 
 interface Props {
   campaignId: number
@@ -23,6 +25,9 @@ export function ConfirmStep({ campaignId, wizardData, mode }: Props) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Foundational readiness — used to render a soft warning when data is incomplete.
+  const { data: readiness } = useFoundationalReadiness(campaignId)
+
   async function handleConfirm() {
     if (!wizardData.bargaining_commenced_at) {
       toast.error('Bargaining commenced date is required.')
@@ -32,7 +37,7 @@ export function ConfirmStep({ campaignId, wizardData, mode }: Props) {
     setSubmitting(true)
     setError(null)
 
-    // Build situation_overrides from standalone-mode fields
+    // Build situation_overrides from wizard-collected fields
     const situationOverrides: Record<string, unknown> = {}
     if (mode === 'standalone') {
       if (wizardData.prior_employer_ballots.length > 0) {
@@ -52,6 +57,48 @@ export function ConfirmStep({ campaignId, wizardData, mode }: Props) {
       }
       if (wizardData.employer_ballot_intent) {
         situationOverrides.employer_ballot_intent = wizardData.employer_ballot_intent
+      }
+    } else if (mode === 'continuation' && wizardData.carryforward_situation_analysis_id !== null) {
+      // In continuation mode, derive key_disputes from the extended top_issues of the
+      // selected SA row (entries where oa_position or employer_position is set).
+      // wizardData.key_disputes from EmployerBehaviourStep (Phase 4) may also be used;
+      // fall back to SA fetch to ensure key disputes are populated.
+      const disputesFromWizard: WizardKeyDispute[] = wizardData.key_disputes
+      if (disputesFromWizard.length > 0) {
+        situationOverrides.key_disputes = disputesFromWizard
+      } else {
+        // Fetch the carry-forward SA row and derive key_disputes from extended top_issues
+        try {
+          const { data: saRow } = await supabase
+            .from('campaign_situation_analyses')
+            .select('top_issues')
+            .eq('situation_id', wizardData.carryforward_situation_analysis_id)
+            .maybeSingle()
+
+          if (saRow) {
+            const topIssues: Array<{
+              label?: string
+              oa_position?: string
+              employer_position?: string
+            }> = Array.isArray(saRow.top_issues) ? saRow.top_issues : []
+
+            const derived: WizardKeyDispute[] = topIssues
+              .filter((issue) => issue.oa_position || issue.employer_position)
+              .map((issue) => ({
+                topic: issue.label ?? '',
+                oa_position: issue.oa_position ?? '',
+                employer_position: issue.employer_position ?? '',
+                urgency: 3,
+                notes: '',
+              }))
+
+            if (derived.length > 0) {
+              situationOverrides.key_disputes = derived
+            }
+          }
+        } catch {
+          // Non-fatal: proceed without key_disputes override
+        }
       }
     }
 
@@ -192,6 +239,43 @@ export function ConfirmStep({ campaignId, wizardData, mode }: Props) {
             </Badge>
           </SummaryRow>
         </div>
+
+        {/* Soft readiness warning — does not block the Confirm button */}
+        {readiness && (() => {
+          const universeBase = Math.max(readiness.universe_size, 1)
+          const gaps: string[] = []
+          if (readiness.workers_allocated / universeBase < 0.8) {
+            gaps.push(
+              `Only ${Math.round((readiness.workers_allocated / universeBase) * 100)}% of the estimated universe is allocated to organising units (target: 80%).`
+            )
+          }
+          if (readiness.workers_with_contact / universeBase < 0.6) {
+            gaps.push(
+              `Only ${Math.round((readiness.workers_with_contact / universeBase) * 100)}% of the universe has contact details (target: 60%).`
+            )
+          }
+          if (readiness.workers_with_rating / universeBase < 0.2) {
+            gaps.push(
+              `Only ${Math.round((readiness.workers_with_rating / universeBase) * 100)}% of the universe has been rated (target: 20%).`
+            )
+          }
+          if (gaps.length === 0) return null
+          return (
+            <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3">
+              <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+              <div>
+                <div className="text-xs font-semibold text-amber-800 mb-1">
+                  Your data looks incomplete — you can still proceed and update later
+                </div>
+                <ul className="text-xs text-amber-700 space-y-0.5 list-disc list-inside">
+                  {gaps.map((gap, i) => (
+                    <li key={i}>{gap}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )
+        })()}
 
         {error && (
           <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3">

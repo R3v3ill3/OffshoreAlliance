@@ -1,9 +1,11 @@
 'use client'
 
+import { useEffect, useRef, useState } from 'react'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -13,9 +15,14 @@ import {
 } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
 import { Building2, Plus, Trash2 } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 import type { Phase2WizardData, PriorBallot, KeyDispute } from './Phase2WizardLaunchCard'
 
 interface Props {
+  /** Required for standalone-mode pre-fill from the situation analysis.
+   *  Phase 4 wires this at the call site; optional here so the component
+   *  compiles without a page.tsx edit in Phase 3. */
+  campaignId?: number
   wizardData: Phase2WizardData
   onChange: (updates: Partial<Phase2WizardData>) => void
   mode: 'continuation' | 'standalone'
@@ -39,7 +46,63 @@ const BLANK_DISPUTE: KeyDispute = {
   notes: '',
 }
 
-export function EmployerBehaviourStep({ wizardData, onChange }: Props) {
+export function EmployerBehaviourStep({ campaignId, wizardData, onChange, mode }: Props) {
+  const supabase = createClient()
+  const prefillAttempted = useRef(false)
+  const [prefillBanner, setPrefillBanner] = useState(false)
+  // Tracks which key_dispute row indices were pre-filled from the SA row
+  const [prefilledIndices, setPrefilledIndices] = useState<Set<number>>(new Set())
+
+  // Pre-fill in standalone and continuation mode: fetch the latest SA row and
+  // map top_issues entries that have oa_position or employer_position set into
+  // key_disputes. Only runs once and only when key_disputes is currently empty.
+  useEffect(() => {
+    if (mode !== 'standalone' && mode !== 'continuation') return
+    if (!campaignId) return
+    if (prefillAttempted.current) return
+    if (wizardData.key_disputes.length > 0) return
+
+    prefillAttempted.current = true
+
+    async function prefill() {
+      const { data } = await supabase
+        .from('campaign_situation_analyses')
+        .select('top_issues, key_disputes')
+        .eq('campaign_id', campaignId!)
+        .eq('is_current', true)
+        .maybeSingle()
+
+      if (!data) return
+
+      // Map top_issues rows that have at least one position field set into
+      // the Phase 2 wizard's KeyDispute shape.
+      const topIssues: Array<{
+        label?: string
+        oa_position?: string
+        employer_position?: string
+      }> = Array.isArray(data.top_issues) ? data.top_issues : []
+
+      const carried: KeyDispute[] = topIssues
+        .filter((issue) => issue.oa_position || issue.employer_position)
+        .map((issue) => ({
+          topic: issue.label ?? '',
+          oa_position: issue.oa_position ?? '',
+          employer_position: issue.employer_position ?? '',
+          urgency: 3,
+          notes: '',
+        }))
+
+      if (carried.length > 0) {
+        onChange({ key_disputes: carried })
+        setPrefillBanner(true)
+        setPrefilledIndices(new Set(carried.map((_, i) => i)))
+      }
+    }
+
+    prefill()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, campaignId])
+
   function updateBallot(index: number, patch: Partial<PriorBallot>) {
     const updated = wizardData.prior_employer_ballots.map((b, i) =>
       i === index ? { ...b, ...patch } : b
@@ -75,6 +138,15 @@ export function EmployerBehaviourStep({ wizardData, onChange }: Props) {
           <Building2 className="h-4 w-4 text-slate-500" />
           <h2 className="text-sm font-semibold">Employer behaviour</h2>
         </div>
+
+        {prefillBanner && (
+          <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+            <Badge variant="secondary" className="mr-2 text-blue-700 border-blue-300">
+              Pre-filled
+            </Badge>
+            Disputes carried from your situation analysis — review and add any missing.
+          </div>
+        )}
 
         {/* Employer ballot intent */}
         <div className="space-y-2">
@@ -276,9 +348,16 @@ export function EmployerBehaviourStep({ wizardData, onChange }: Props) {
           {wizardData.key_disputes.map((dispute, i) => (
             <div key={i} className="border rounded-md p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-700">
-                  Dispute {i + 1}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-700">
+                    Dispute {i + 1}
+                  </span>
+                  {prefilledIndices.has(i) && (
+                    <Badge variant="secondary" className="text-[10px] text-blue-700 border-blue-300">
+                      Pre-filled from situation analysis
+                    </Badge>
+                  )}
+                </div>
                 <Button
                   variant="ghost"
                   size="sm"

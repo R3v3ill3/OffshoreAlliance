@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -16,6 +17,13 @@ import {
   type SituationAnalysisDraft,
   isSituationAnalysisComplete,
 } from "@/lib/situation-analysis/types";
+import {
+  TRIAGE_TO_INTERACTION_STATE_DEFAULTS,
+  type WizardBargainingTriage,
+} from "@/lib/situation-analysis/constants";
+
+/** Coarse bargaining stage recorded in wizard step 1. Re-exported from constants. */
+export type { WizardBargainingTriage };
 
 interface StepSituationAnalysisProps {
   campaignId: number;
@@ -25,6 +33,13 @@ interface StepSituationAnalysisProps {
   isPending: boolean;
   onBack: () => void;
   onContinue: () => void;
+  /**
+   * Coarse bargaining stage from wizard step 1 (only present when
+   * `campaign_type === 'bargaining'`). Used to:
+   * - Default-suggest an `employer_interaction_state` when none is set yet
+   * - (Phase 2) Gate and reorder the employer interaction state picker options
+   */
+  wizardBargainingTriage?: WizardBargainingTriage;
 }
 
 /**
@@ -42,7 +57,20 @@ export function StepSituationAnalysis({
   isPending,
   onBack,
   onContinue,
+  wizardBargainingTriage,
 }: StepSituationAnalysisProps) {
+  // When the organiser indicated bargaining is already 'underway' in step 1
+  // and the situation analysis has not yet been given an interaction state,
+  // pre-fill the most contextually relevant default so they land on a
+  // plausible answer rather than a blank picker.
+  useEffect(() => {
+    if (!wizardBargainingTriage) return;
+    if (draft.employer_interaction_state != null) return;
+    const suggested = TRIAGE_TO_INTERACTION_STATE_DEFAULTS[wizardBargainingTriage];
+    setDraft({ ...draft, employer_interaction_state: suggested });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wizardBargainingTriage]);
+
   const canContinue = isSituationAnalysisComplete(draft);
 
   return (
@@ -65,6 +93,7 @@ export function StepSituationAnalysis({
             campaignEmployerIds={campaignEmployerIds}
             draft={draft}
             onChange={setDraft}
+            wizardBargainingTriage={wizardBargainingTriage}
           />
         </CardContent>
       </Card>

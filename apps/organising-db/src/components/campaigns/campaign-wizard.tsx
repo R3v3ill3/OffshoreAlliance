@@ -273,7 +273,7 @@ export function CampaignWizard() {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .from("campaign_situation_analyses" as any)
           .select(
-            "situation_id, employer_interaction_state, employer_state_notes, balloted_count, top_issues, upcoming_workforce_changes, employer_relationships, hr_posture, union_history, strategic_context_summary, company_playbook, workforce_populations, leverage_and_maths, information_gaps"
+            "situation_id, employer_interaction_state, employer_state_notes, balloted_count, top_issues, upcoming_workforce_changes, employer_relationships, hr_posture, union_history, strategic_context_summary, company_playbook, workforce_populations, leverage_and_maths, information_gaps, nerr_status, nerr_issued_at, bargaining_phase_state, employer_ballot_intent, prior_employer_ballots, key_disputes, worker_support_estimate"
           )
           .eq("campaign_id", cid)
           .eq("is_current", true)
@@ -397,6 +397,21 @@ export function CampaignWizard() {
               information_gaps:
                 (situationRow.information_gaps as SituationAnalysisDraft["information_gaps"]) ??
                 [],
+              // Bargaining context fields (Phase 2)
+              nerr_status:
+                (situationRow.nerr_status as SituationAnalysisDraft["nerr_status"] | null) ?? undefined,
+              nerr_issued_at:
+                (situationRow.nerr_issued_at as string | null) ?? undefined,
+              bargaining_phase_state:
+                (situationRow.bargaining_phase_state as string | null) ?? undefined,
+              employer_ballot_intent:
+                (situationRow.employer_ballot_intent as SituationAnalysisDraft["employer_ballot_intent"] | null) ?? undefined,
+              prior_employer_ballots:
+                (situationRow.prior_employer_ballots as SituationAnalysisDraft["prior_employer_ballots"]) ?? [],
+              key_disputes:
+                (situationRow.key_disputes as SituationAnalysisDraft["key_disputes"]) ?? [],
+              worker_support_estimate:
+                (situationRow.worker_support_estimate as number | null) ?? undefined,
             } satisfies SituationAnalysisDraft)
           : null,
       };
@@ -997,6 +1012,14 @@ export function CampaignWizard() {
           workforce_populations: situationDraft.workforce_populations,
           leverage_and_maths: situationDraft.leverage_and_maths,
           information_gaps: situationDraft.information_gaps,
+          // Bargaining context fields (Phase 2)
+          nerr_status: situationDraft.nerr_status ?? null,
+          nerr_issued_at: situationDraft.nerr_issued_at ?? null,
+          bargaining_phase_state: situationDraft.bargaining_phase_state ?? null,
+          employer_ballot_intent: situationDraft.employer_ballot_intent ?? null,
+          prior_employer_ballots: situationDraft.prior_employer_ballots ?? [],
+          key_disputes: situationDraft.key_disputes ?? [],
+          worker_support_estimate: situationDraft.worker_support_estimate ?? null,
         };
 
         if (situationDraft.situation_id != null) {

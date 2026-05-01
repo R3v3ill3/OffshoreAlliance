@@ -118,6 +118,9 @@ export const ISSUE_HEAT_LEVELS = [
 
 export type IssueHeat = 1 | 2 | 3 | 4 | 5;
 
+/** Coarse bargaining stage captured in wizard step 1. */
+export type WizardBargainingTriage = 'not_started' | 'underway' | 'advanced';
+
 /**
  * Maps the wizard bargaining triage value to the most-likely
  * `employer_interaction_state` default for step 7.
@@ -127,7 +130,7 @@ export type IssueHeat = 1 | 2 | 3 | 4 | 5;
  * organiser can always override the suggestion.
  */
 export const TRIAGE_TO_INTERACTION_STATE_DEFAULTS: Record<
-  'not_started' | 'underway' | 'advanced',
+  WizardBargainingTriage,
   EmployerInteractionState
 > = {
   not_started: 'no_engagement',

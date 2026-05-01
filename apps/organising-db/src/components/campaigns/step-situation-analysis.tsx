@@ -17,10 +17,13 @@ import {
   type SituationAnalysisDraft,
   isSituationAnalysisComplete,
 } from "@/lib/situation-analysis/types";
-import { TRIAGE_TO_INTERACTION_STATE_DEFAULTS } from "@/lib/situation-analysis/constants";
+import {
+  TRIAGE_TO_INTERACTION_STATE_DEFAULTS,
+  type WizardBargainingTriage,
+} from "@/lib/situation-analysis/constants";
 
-/** Coarse bargaining stage recorded in wizard step 1. */
-export type WizardBargainingTriage = 'not_started' | 'underway' | 'advanced';
+/** Coarse bargaining stage recorded in wizard step 1. Re-exported from constants. */
+export type { WizardBargainingTriage };
 
 interface StepSituationAnalysisProps {
   campaignId: number;
@@ -90,6 +93,7 @@ export function StepSituationAnalysis({
             campaignEmployerIds={campaignEmployerIds}
             draft={draft}
             onChange={setDraft}
+            wizardBargainingTriage={wizardBargainingTriage}
           />
         </CardContent>
       </Card>

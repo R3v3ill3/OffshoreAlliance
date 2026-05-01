@@ -10,7 +10,12 @@ import {
   type WorkforceEventScale,
   type WorkforceEventType,
 } from "./constants";
-import type { CampaignSituationAnalysis } from "./types";
+import type {
+  CampaignSituationAnalysis,
+  KeyDispute,
+  PriorEmployerBallot,
+  SituationAnalysisDraft,
+} from "./types";
 
 /**
  * Loosely typed handle for the supabase client. We accept `any` rather
@@ -217,9 +222,132 @@ export function renderSituationContext(
     );
   }
 
+  // Bargaining context fields (Phase 2)
+  const bargainingRow = row as Partial<SituationAnalysisDraft>;
+  if (bargainingRow.nerr_status) {
+    const nerrParts = [`NERR: ${bargainingRow.nerr_status}`];
+    if (bargainingRow.nerr_status === 'issued' && bargainingRow.nerr_issued_at) {
+      nerrParts.push(`issued ${bargainingRow.nerr_issued_at}`);
+    }
+    lines.push(`- ${nerrParts.join(', ')}`);
+  }
+  if (bargainingRow.bargaining_phase_state) {
+    lines.push(`- Bargaining phase: ${bargainingRow.bargaining_phase_state}`);
+  }
+  if (bargainingRow.worker_support_estimate != null) {
+    lines.push(`- Worker support estimate: ${bargainingRow.worker_support_estimate}%`);
+  }
+  if (bargainingRow.employer_ballot_intent && bargainingRow.employer_ballot_intent !== 'none') {
+    lines.push(`- Employer ballot intent: ${bargainingRow.employer_ballot_intent}`);
+  }
+  if (bargainingRow.prior_employer_ballots && bargainingRow.prior_employer_ballots.length > 0) {
+    const ballots = bargainingRow.prior_employer_ballots.slice(0, 3);
+    lines.push(
+      `- Prior employer ballots: ${ballots
+        .map((b) => {
+          const parts: string[] = [];
+          if (b.ballot_date) parts.push(b.ballot_date);
+          if (b.outcome) parts.push(b.outcome);
+          if (b.yes_count != null && b.no_count != null) {
+            parts.push(`yes=${b.yes_count} no=${b.no_count}`);
+          }
+          return parts.join(' ') || '—';
+        })
+        .join('; ')}`
+    );
+  }
+  if (bargainingRow.key_disputes && bargainingRow.key_disputes.length > 0) {
+    const disputes = bargainingRow.key_disputes.slice(0, 5);
+    lines.push(
+      `- Key disputes: ${disputes.map((d) => d.issue_label).filter(Boolean).join('; ')}`
+    );
+  }
+
   if (lines.length === 0) return null;
 
   return `SITUATION ANALYSIS (organiser-confirmed):\n${lines.join("\n")}`;
+}
+
+// ─── Serialise / deserialise helpers for the wizard inline save ───────────────
+
+/**
+ * Builds the DB payload from a `SituationAnalysisDraft`, including the Phase 2
+ * bargaining context fields. Used by the campaign wizard's
+ * `saveSituationAnalysisMutation` and any other direct upsert callers.
+ */
+export function serialiseSituationAnalysisDraft(
+  draft: SituationAnalysisDraft,
+  campaignId: number
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    campaign_id: campaignId,
+    version: 1,
+    is_current: true,
+    employer_interaction_state: draft.employer_interaction_state,
+    employer_state_notes: draft.employer_state_notes || null,
+    balloted_count: draft.balloted_count,
+    top_issues: draft.top_issues,
+    upcoming_workforce_changes: draft.upcoming_workforce_changes,
+    employer_relationships: draft.employer_relationships,
+    hr_posture: draft.hr_posture,
+    union_history: draft.union_history,
+    strategic_context_summary: draft.strategic_context_summary || null,
+    company_playbook: draft.company_playbook,
+    workforce_populations: draft.workforce_populations,
+    leverage_and_maths: draft.leverage_and_maths,
+    information_gaps: draft.information_gaps,
+    // Bargaining context fields (Phase 2)
+    nerr_status: draft.nerr_status ?? null,
+    nerr_issued_at: draft.nerr_issued_at ?? null,
+    bargaining_phase_state: draft.bargaining_phase_state ?? null,
+    employer_ballot_intent: draft.employer_ballot_intent ?? null,
+    prior_employer_ballots: draft.prior_employer_ballots ?? [],
+    key_disputes: draft.key_disputes ?? [],
+    worker_support_estimate: draft.worker_support_estimate ?? null,
+  };
+  return payload;
+}
+
+/**
+ * Hydrates a `SituationAnalysisDraft` from a raw DB row (as returned by
+ * Supabase). Handles missing bargaining fields gracefully — existing rows
+ * without them deserialise as undefined/empty.
+ */
+export function deserialiseSituationAnalysisDraft(
+  row: Record<string, unknown>
+): SituationAnalysisDraft {
+  return {
+    situation_id: (row.situation_id as number) ?? null,
+    employer_interaction_state:
+      (row.employer_interaction_state as SituationAnalysisDraft['employer_interaction_state'] | null) ?? null,
+    employer_state_notes: (row.employer_state_notes as string | null) ?? '',
+    balloted_count: (row.balloted_count as number | null) ?? null,
+    top_issues: (row.top_issues as SituationAnalysisDraft['top_issues']) ?? [],
+    upcoming_workforce_changes:
+      (row.upcoming_workforce_changes as SituationAnalysisDraft['upcoming_workforce_changes']) ?? [],
+    employer_relationships:
+      (row.employer_relationships as SituationAnalysisDraft['employer_relationships']) ?? [],
+    hr_posture: (row.hr_posture as SituationAnalysisDraft['hr_posture']) ?? {},
+    union_history: (row.union_history as SituationAnalysisDraft['union_history']) ?? {},
+    strategic_context_summary: (row.strategic_context_summary as string | null) ?? '',
+    company_playbook: (row.company_playbook as SituationAnalysisDraft['company_playbook']) ?? [],
+    workforce_populations:
+      (row.workforce_populations as SituationAnalysisDraft['workforce_populations']) ?? [],
+    leverage_and_maths: (row.leverage_and_maths as SituationAnalysisDraft['leverage_and_maths']) ?? {},
+    information_gaps: (row.information_gaps as SituationAnalysisDraft['information_gaps']) ?? [],
+    // Bargaining context fields (Phase 2)
+    nerr_status:
+      (row.nerr_status as SituationAnalysisDraft['nerr_status'] | null) ?? undefined,
+    nerr_issued_at: (row.nerr_issued_at as string | null) ?? undefined,
+    bargaining_phase_state: (row.bargaining_phase_state as string | null) ?? undefined,
+    employer_ballot_intent:
+      (row.employer_ballot_intent as SituationAnalysisDraft['employer_ballot_intent'] | null) ?? undefined,
+    prior_employer_ballots:
+      (row.prior_employer_ballots as PriorEmployerBallot[] | null) ?? [],
+    key_disputes: (row.key_disputes as KeyDispute[] | null) ?? [],
+    worker_support_estimate:
+      (row.worker_support_estimate as number | null) ?? undefined,
+  };
 }
 
 /**
@@ -237,7 +365,7 @@ export async function loadSituationContextString(
     const { data, error } = await supabase
       .from("campaign_situation_analyses")
       .select(
-        "employer_interaction_state, employer_state_notes, balloted_count, top_issues, upcoming_workforce_changes, employer_relationships, hr_posture, union_history, strategic_context_summary, company_playbook, workforce_populations, leverage_and_maths, information_gaps"
+        "employer_interaction_state, employer_state_notes, balloted_count, top_issues, upcoming_workforce_changes, employer_relationships, hr_posture, union_history, strategic_context_summary, company_playbook, workforce_populations, leverage_and_maths, information_gaps, nerr_status, nerr_issued_at, bargaining_phase_state, employer_ballot_intent, prior_employer_ballots, key_disputes, worker_support_estimate"
       )
       .eq("campaign_id", campaignId)
       .eq("is_current", true)

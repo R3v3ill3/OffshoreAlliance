@@ -139,6 +139,28 @@ export interface InformationGap {
 }
 
 /**
+ * A prior employer-initiated ballot (PABO or approval ballot) recorded
+ * as part of the bargaining context section of the situation analysis.
+ */
+export interface PriorEmployerBallot {
+  ballot_date?: string;
+  yes_count?: number;
+  no_count?: number;
+  total_eligible?: number;
+  outcome?: 'passed' | 'failed' | 'withdrawn';
+  notes?: string;
+}
+
+/**
+ * A key dispute in the bargaining context, representing a contested issue
+ * between the union and the employer.
+ */
+export interface KeyDispute {
+  issue_label: string;
+  notes?: string;
+}
+
+/**
  * Draft state used by the wizard step: a CampaignSituationAnalysis with
  * server-set columns (id, version, audit) optional/absent, suitable for
  * upsert from the client.
@@ -160,6 +182,22 @@ export interface SituationAnalysisDraft {
   workforce_populations: WorkforcePopulation[];
   leverage_and_maths: LeverageAndMaths;
   information_gaps: InformationGap[];
+
+  // ── Bargaining context (Phase 2) ────────────────────────────────────────
+  /** NERR (Notice of Employee Representational Rights) status. */
+  nerr_status?: 'not_issued' | 'issued' | 'expired';
+  /** ISO date when the NERR was issued. Only relevant when nerr_status === 'issued'. */
+  nerr_issued_at?: string;
+  /** Mirrors the bargaining_phase_state DB enum; tracks the current bargaining phase. */
+  bargaining_phase_state?: string;
+  /** Whether the employer has indicated or threatened an employer ballot (PABO). */
+  employer_ballot_intent?: 'indicated' | 'threatened' | 'none';
+  /** Structured history of prior employer-initiated ballots. */
+  prior_employer_ballots?: PriorEmployerBallot[];
+  /** Key disputed issues between the union and employer during bargaining. */
+  key_disputes?: KeyDispute[];
+  /** Organiser's estimate of worker support as a percentage (0–100). */
+  worker_support_estimate?: number;
 }
 
 export function emptySituationAnalysisDraft(): SituationAnalysisDraft {
@@ -178,6 +216,13 @@ export function emptySituationAnalysisDraft(): SituationAnalysisDraft {
     workforce_populations: [],
     leverage_and_maths: {},
     information_gaps: [],
+    nerr_status: undefined,
+    nerr_issued_at: undefined,
+    bargaining_phase_state: undefined,
+    employer_ballot_intent: undefined,
+    prior_employer_ballots: [],
+    key_disputes: [],
+    worker_support_estimate: undefined,
   };
 }
 

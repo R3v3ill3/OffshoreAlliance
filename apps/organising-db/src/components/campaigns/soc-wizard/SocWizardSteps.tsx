@@ -247,6 +247,13 @@ export function SocWizardSteps() {
     }).catch((e) => toast.error(e instanceof Error ? e.message : 'Save failed'))
   }
 
+  const [partialLockPrompt, setPartialLockPrompt] = useState<{
+    stage: SocStage; lockedCount: number; totalCount: number
+  } | null>(null)
+
+  // Clear the prompt whenever the visible step changes (Back, step pills, etc.)
+  useEffect(() => { setPartialLockPrompt(null) }, [step])
+
   async function handleNext() {
     if (step === 1) {
       const id = await ensureSessionExists()
@@ -254,9 +261,25 @@ export function SocWizardSteps() {
       await persistContext()
     }
     if (step === 2) await persistPopulations()
+
+    // If this is a population-tabbed stage with some (not all) populations locked,
+    // pause and ask the user whether to refine the remaining tabs or move on.
+    const stage = currentStep.socStage
+    if (stage && stage !== 5 && populations.length > 1 && !partialLockPrompt) {
+      const lockedCount = populations.filter(
+        (_, i) => lockedStageIndex.has(`${stage}:none:${i}`)
+      ).length
+      if (lockedCount > 0 && lockedCount < populations.length) {
+        setPartialLockPrompt({ stage, lockedCount, totalCount: populations.length })
+        return
+      }
+    }
+
+    setPartialLockPrompt(null)
     setStep((s) => Math.min(totalSteps, s + 1))
   }
   function handleBack() {
+    setPartialLockPrompt(null)
     setStep((s) => Math.max(1, s - 1))
   }
 
@@ -437,6 +460,27 @@ export function SocWizardSteps() {
 
       </div>{/* end grid */}
 
+      {partialLockPrompt && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 flex items-start justify-between gap-4">
+          <div>
+            <div className="text-sm font-medium text-amber-900">
+              Stage {partialLockPrompt.stage} — {partialLockPrompt.lockedCount} of {partialLockPrompt.totalCount} population drafts locked
+            </div>
+            <div className="text-xs text-amber-800 mt-0.5">
+              Refine the remaining population tabs to tailor the language for each group, or move on and return later.
+            </div>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <Button variant="outline" size="sm" onClick={() => setPartialLockPrompt(null)}>
+              Stay on this stage
+            </Button>
+            <Button size="sm" onClick={() => { setPartialLockPrompt(null); setStep((s) => Math.min(totalSteps, s + 1)) }}>
+              Move to next stage
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between pt-4 border-t">
         <Button
           variant="ghost"
@@ -452,7 +496,7 @@ export function SocWizardSteps() {
             return (
               <button
                 key={s.step}
-                onClick={() => sessionId && setStep(s.step)}
+                onClick={() => { setPartialLockPrompt(null); sessionId && setStep(s.step) }}
                 disabled={!sessionId && s.step > 1}
                 className={
                   'text-[10px] px-1.5 py-0.5 rounded ' +
@@ -518,6 +562,10 @@ function SocStageStep({
     setComposers((prev) => ({ ...prev, [composerKey(frame, popIdx)]: next }))
   const composerFor = (frame?: HopeFrame, popIdx?: number | null) =>
     composers[composerKey(frame, popIdx)] ?? ''
+  // Track whether the user has ever typed in a given composer slot.
+  // Used to decide whether to show the sibling-seed pre-fill: once a user
+  // has touched a composer (even if they then clear it), don't re-seed.
+  const composerTouched = (popIdx: number) => composerKey(undefined, popIdx) in composers
 
   function appendSeed(frame: HopeFrame | undefined, popIdx: number | null | undefined, body: string) {
     const current = composerFor(frame, popIdx)
@@ -584,6 +632,17 @@ function SocStageStep({
 
   // Population tabs — stages 1-4, 6-8
   if (populations.length > 0) {
+    // First locked sibling row — used to seed other population composers
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const siblingLockRow: any = stageContent.find(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (c: any) => c.stage_number === stage && !c.hope_frame && c.population_index != null
+    )
+    const siblingContent: string | null = siblingLockRow?.locked_content ?? null
+    const siblingPopName: string | null = siblingLockRow != null
+      ? (populations[siblingLockRow.population_index]?.name ?? null)
+      : null
+
     return (
       <Card>
         <CardContent className="p-6 space-y-4">
@@ -614,8 +673,16 @@ function SocStageStep({
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (c: any) => c.stage_number === stage && !c.hope_frame && c.population_index === i
               )
+              // Seed the composer from a locked sibling if this tab hasn't been touched
+              const showSeed = !locked && !composerTouched(i) && !!siblingContent && siblingLockRow?.population_index !== i
+              const effectiveComposer = composerTouched(i) ? composerFor(undefined, i) : (showSeed ? siblingContent! : '')
               return (
                 <TabsContent key={i} value={String(i)} className="mt-3 space-y-3">
+                  {showSeed && siblingPopName && (
+                    <div className="text-xs bg-blue-50 border border-blue-200 rounded px-3 py-2 text-blue-800">
+                      Starting from <span className="font-medium">{siblingPopName}</span>&apos;s locked draft — edit to suit this population.
+                    </div>
+                  )}
                   <StageSeedPanel
                     stage={stage}
                     situation={situation}
@@ -629,7 +696,7 @@ function SocStageStep({
                     alreadyLocked={!!locked}
                     initialLockedContent={locked?.locked_content ?? ''}
                     onLocked={onScrollToTop}
-                    composerText={composerFor(undefined, i)}
+                    composerText={effectiveComposer}
                     onComposerTextChange={(next) => setComposerFor(undefined, i, next)}
                   />
                 </TabsContent>

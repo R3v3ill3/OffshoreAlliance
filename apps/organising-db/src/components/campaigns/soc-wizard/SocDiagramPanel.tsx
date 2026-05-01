@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/utils/cn'
 import type { SocStage } from '@/lib/prompts/soc-framework'
 
 interface SocDiagramPanelProps {

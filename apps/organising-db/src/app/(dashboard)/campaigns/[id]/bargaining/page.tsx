@@ -6,7 +6,9 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { useCampaign } from '@/lib/hooks/usePlannerCampaigns'
 import { IntractableBannerCard } from '@/components/campaigns/bargaining/IntractableBannerCard'
 import { FoundationalReadinessPanel } from '@/components/campaigns/bargaining/FoundationalReadinessPanel'
+import { BaselineAssessmentQuickStart } from '@/components/campaigns/bargaining/BaselineAssessmentQuickStart'
 import { AmbitionReviewBanner } from '@/components/campaigns/bargaining/AmbitionReviewBanner'
+import { useFoundationalReadinessGaps } from '@/hooks/useFoundationalReadiness'
 import { useIntractableState } from '@/hooks/useIntractableState'
 import { useStrengthAssessment } from '@/hooks/useStrengthAssessment'
 import { useDecisionPoints } from '@/hooks/useDecisionPoints'
@@ -76,6 +78,7 @@ export default function BargainingHubPage({ params }: PageProps) {
   const { data: paboApplications, isLoading: paboLoading } = usePaboApplications(campaignId)
   const { data: piaActions, isLoading: actionsLoading } = usePiaActions(campaignId)
   const { data: endorsementVotes, isLoading: votesLoading } = useEndorsementVotes(campaignId)
+  const { ratingsGapPct } = useFoundationalReadinessGaps(campaignId)
 
   function setSubtab(tab: SubtabValue) {
     const params = new URLSearchParams(searchParams.toString())
@@ -149,6 +152,11 @@ export default function BargainingHubPage({ params }: PageProps) {
 
       {/* Foundational readiness panel */}
       <FoundationalReadinessPanel campaignId={campaignId} />
+
+      {/* Baseline assessment quick-start — shown when <20% of workers are rated */}
+      {ratingsGapPct > 0.80 && (
+        <BaselineAssessmentQuickStart campaignId={campaignId} />
+      )}
 
       {/* Ambition review banner — shown when industrial_outcomes ambitions need review */}
       <AmbitionReviewBanner campaignId={campaignId} />

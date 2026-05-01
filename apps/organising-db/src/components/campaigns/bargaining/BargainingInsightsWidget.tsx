@@ -12,7 +12,8 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { cn } from "@/lib/utils/cn"
-import { ArrowRight, AlertTriangle, BarChart3, Zap, ShieldAlert } from "lucide-react"
+import { ArrowRight, AlertTriangle, BarChart3, Zap, ShieldAlert, Users } from "lucide-react"
+import type { WocOutcome } from "./WocMeetingOutcomeEditor"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,6 +25,19 @@ interface ProgressRow {
   active_pia_count: number
   intractable_status: string | null
   intractable_days_elapsed: number | null
+}
+
+interface LastWocRow {
+  event_id: number
+  scheduled_at: string | null
+  outcome: WocOutcome | null
+}
+
+const WOC_DECISION_LABELS: Record<NonNullable<WocOutcome["decision"]>, string> = {
+  endorsed_counter_offer: "Endorsed counter-offer",
+  rejected: "Rejected offer",
+  deferred: "Deferred",
+  information_only: "Information only",
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -113,6 +127,40 @@ export function BargainingInsightsWidget({
       const { data, error } = await q
       if (error) return null
       return (data ?? null) as ProgressRow | null
+    },
+    enabled: !!user && !!campaignId,
+    staleTime: 60_000,
+  })
+
+  // Last WOC meeting outcome — fetches the most recent concluded woc_meeting
+  // event that has an outcome recorded for this campaign.
+  const { data: lastWoc } = useQuery<LastWocRow | null>({
+    queryKey: ["woc-last-outcome", campaignId],
+    queryFn: async (): Promise<LastWocRow | null> => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (supabase as any)
+          .from("activity_events")
+          .select(
+            "event_id, scheduled_at, outcome, campaign_activities!inner(campaign_id, activity_kind)"
+          )
+          .eq("campaign_activities.campaign_id", campaignId)
+          .eq("campaign_activities.activity_kind", "woc_meeting")
+          .not("outcome", "is", null)
+          .order("scheduled_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (error) return null
+        if (!data) return null
+        return {
+          event_id: data.event_id as number,
+          scheduled_at: data.scheduled_at as string | null,
+          outcome: data.outcome as WocOutcome | null,
+        }
+      } catch {
+        return null
+      }
     },
     enabled: !!user && !!campaignId,
     staleTime: 60_000,
@@ -237,6 +285,50 @@ export function BargainingInsightsWidget({
                   row.intractable_days_elapsed
                 )}
               </span>
+            </div>
+          </div>
+        )}
+
+        {/* ── Last WOC meeting outcome ─────────────────────────────── */}
+        {lastWoc && lastWoc.outcome && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1.5 flex items-center gap-1">
+              <Users className="h-3 w-3" />
+              Last WOC Meeting
+            </p>
+            <div className="space-y-1">
+              {lastWoc.outcome.decision && (
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "text-[10px] h-5",
+                    lastWoc.outcome.decision === "endorsed_counter_offer"
+                      ? "bg-green-100 text-green-700"
+                      : lastWoc.outcome.decision === "rejected"
+                      ? "bg-red-100 text-red-700"
+                      : "bg-slate-100 text-slate-600"
+                  )}
+                >
+                  {WOC_DECISION_LABELS[lastWoc.outcome.decision]}
+                </Badge>
+              )}
+              {lastWoc.scheduled_at && (
+                <p className="text-[10px] text-muted-foreground">
+                  {new Date(lastWoc.scheduled_at).toLocaleDateString("en-AU", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </p>
+              )}
+              {lastWoc.outcome.decision === "endorsed_counter_offer" &&
+                lastWoc.outcome.endorsement_count != null &&
+                lastWoc.outcome.eligible_count != null && (
+                  <p className="text-[10px] text-muted-foreground">
+                    {lastWoc.outcome.endorsement_count} /{" "}
+                    {lastWoc.outcome.eligible_count} members endorsed
+                  </p>
+                )}
             </div>
           </div>
         )}

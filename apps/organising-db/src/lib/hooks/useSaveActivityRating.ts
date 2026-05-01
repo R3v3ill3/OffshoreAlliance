@@ -64,6 +64,9 @@ export function useSaveActivityRating({
         queryKey: ["campaign-activity-ratings", campaignId],
       });
       queryClient.invalidateQueries({
+        queryKey: ["campaign-activity-ratings-dist", campaignId],
+      });
+      queryClient.invalidateQueries({
         queryKey: ["worker-activity-ratings", campaignId, args.workerId],
       });
       onSuccess?.(args);

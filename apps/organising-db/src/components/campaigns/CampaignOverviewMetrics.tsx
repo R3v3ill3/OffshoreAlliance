@@ -18,6 +18,7 @@ import { CampaignUnitMetricsTable } from '@/components/campaigns/CampaignUnitMet
 import { OverviewMetricBar } from '@/components/campaigns/overview-metric-bar'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { AssessmentsProgressFrame } from '@/components/campaigns/AssessmentsProgressFrame'
 
 const EMPTY_P2W = new Map<number, P2wCompletion>()
 
@@ -56,7 +57,13 @@ function ambitionNumericCurrent(ambition: PlanAmbitionWithOption): number {
   return 0
 }
 
-export function CampaignOverviewMetrics({ campaignId }: { campaignId: number }) {
+export function CampaignOverviewMetrics({
+  campaignId,
+  campaignLabel,
+}: {
+  campaignId: number
+  campaignLabel?: string
+}) {
   const {
     stats,
     totalWorkerEstimate,
@@ -212,6 +219,8 @@ export function CampaignOverviewMetrics({ campaignId }: { campaignId: number }) 
           />
         </CardContent>
       </Card>
+
+      <AssessmentsProgressFrame campaignId={campaignId} campaignLabel={campaignLabel} />
 
       <div className="space-y-2">
         <h3 className="text-sm font-semibold text-foreground">Organising unit summaries</h3>

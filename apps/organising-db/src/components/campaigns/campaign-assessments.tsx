@@ -49,6 +49,7 @@ import { VOTE_SUPPORTER_OPTIONS } from "@/lib/campaign/constants";
 import { formatWorkerLabel } from "@/lib/workers/format-worker-label";
 import type { CampaignActivity } from "@/types/database";
 import { CreateAssessmentDialog } from "./assessments/create-assessment-dialog";
+import { AssessmentsTabCharts } from "./AssessmentsTabCharts";
 
 type PrimitiveValue = string | number | boolean | null;
 
@@ -647,6 +648,8 @@ export function CampaignAssessmentsSection({
               ))}
             </div>
           )}
+
+          <AssessmentsTabCharts campaignId={campaignId} />
 
           {activityForRates && workerRows.length > 0 && (
             <>

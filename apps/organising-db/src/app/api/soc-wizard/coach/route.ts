@@ -119,6 +119,7 @@ export async function POST(req: NextRequest) {
   const session_id = body.session_id as number
   const stage_number = body.stage_number as number
   const hope_frame = body.hope_frame as HopeFrame | undefined
+  const population_index: number | null = stage_number !== 5 ? (body.population_index ?? null) as number | null : null
   const user_message = body.user_message as string
 
   if (!Number.isInteger(session_id) || !Number.isInteger(stage_number) || !user_message) {
@@ -158,6 +159,7 @@ export async function POST(req: NextRequest) {
     .eq('stage_number', stage_number)
     .order('turn_index', { ascending: true })
   priorQuery = hopeFrame === null ? priorQuery.is('hope_frame', null) : priorQuery.eq('hope_frame', hopeFrame)
+  priorQuery = population_index === null ? priorQuery.is('population_index', null) : priorQuery.eq('population_index', population_index)
   const { data: priorTurns, error: priorErr } = await priorQuery
   if (priorErr) {
     return new Response(JSON.stringify({ error: priorErr.message }), {
@@ -178,6 +180,7 @@ export async function POST(req: NextRequest) {
         session_id,
         stage_number,
         hope_frame: hopeFrame,
+        population_index: population_index,
         turn_index: nextTurnIndex,
         role: 'user',
         content: user_message,
@@ -221,7 +224,7 @@ export async function POST(req: NextRequest) {
     hopeCoaching ? 'Hope-frame failures to push back on:' : '',
     ...(hopeCoaching ? hopeCoaching.common_failures.map((s) => `- ${s}`) : []),
     '',
-    buildPopulationContext(populations),
+    buildPopulationContext(populations, population_index),
     '',
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     buildContextSummary(session.context_snapshot as Record<string, unknown>, session.custom_situation as string | null),
@@ -281,6 +284,7 @@ export async function POST(req: NextRequest) {
           session_id,
           stage_number,
           hope_frame: hopeFrame,
+          population_index: population_index,
           turn_index: assistantTurnIndex,
           role: 'assistant',
           content: assistantBuffer,
@@ -301,6 +305,7 @@ export async function POST(req: NextRequest) {
             session_id,
             stage_number,
             hope_frame: hopeFrame,
+            population_index: population_index,
             turn_index: assistantTurnIndex,
             role: 'assistant',
             content: assistantBuffer,

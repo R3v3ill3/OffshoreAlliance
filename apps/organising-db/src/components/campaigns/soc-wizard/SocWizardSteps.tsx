@@ -181,16 +181,22 @@ export function SocWizardSteps() {
   const lockedStageIndex = useMemo(() => {
     const set = new Set<string>()
     for (const c of stageContent.data || []) {
-      const key = c.stage_number === 5 ? `5:${c.hope_frame}` : `${c.stage_number}`
+      const key = c.stage_number === 5
+        ? `5:${c.hope_frame}:none`
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        : `${c.stage_number}:none:${(c as any).population_index ?? 'none'}`
       set.add(key)
     }
     return set
   }, [stageContent.data])
 
   const isStageFullyLocked = useCallback((s: SocStage): boolean => {
-    if (s === 5) return HOPE_FRAMES.every((f) => lockedStageIndex.has(`5:${f}`))
-    return lockedStageIndex.has(`${s}`)
-  }, [lockedStageIndex])
+    if (s === 5) return HOPE_FRAMES.every((f) => lockedStageIndex.has(`5:${f}:none`))
+    if (populations.length > 0) {
+      return populations.every((_, i) => lockedStageIndex.has(`${s}:none:${i}`))
+    }
+    return lockedStageIndex.has(`${s}:none:none`)
+  }, [lockedStageIndex, populations])
 
   async function ensureSessionExists(): Promise<number | null> {
     if (sessionId) return sessionId
@@ -391,6 +397,7 @@ export function SocWizardSteps() {
           session_id={sessionId}
           stage={currentStep.socStage as SocStage}
           stageContent={stageContent.data || []}
+          populations={populations}
           situation={
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             ((session.data?.context_snapshot as any)?.situation_analysis ?? null) ||
@@ -416,6 +423,7 @@ export function SocWizardSteps() {
           session_id={sessionId}
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           stageContent={(stageContent.data as any[]) || []}
+          populations={populations}
           campaign_id={session.data?.campaign_id ?? null}
           onExport={(scope) => setExportingScope(scope)}
         />
@@ -489,6 +497,7 @@ function SocStageStep({
   session_id,
   stage,
   stageContent,
+  populations,
   situation,
   onScrollToTop,
 }: {
@@ -496,22 +505,24 @@ function SocStageStep({
   stage: SocStage
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   stageContent: any[]
+  populations: SocSessionPopulation[]
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   situation: any | null
   onScrollToTop: () => void
 }) {
-  // Composer state lifted to this component so StageSeedPanel can drop
-  // text into it. One slot per (stage, hope_frame) keyed string.
+  // Composer state keyed by (stage, frame, popIdx) so each tab is independent.
   const [composers, setComposers] = useState<Record<string, string>>({})
-  const composerKey = (frame?: HopeFrame) => `${stage}:${frame ?? 'none'}`
-  const setComposerFor = (frame: HopeFrame | undefined, next: string) =>
-    setComposers((prev) => ({ ...prev, [composerKey(frame)]: next }))
-  const composerFor = (frame?: HopeFrame) => composers[composerKey(frame)] ?? ''
+  const composerKey = (frame?: HopeFrame, popIdx?: number | null) =>
+    `${stage}:${frame ?? 'none'}:${popIdx ?? 'none'}`
+  const setComposerFor = (frame: HopeFrame | undefined, popIdx: number | null | undefined, next: string) =>
+    setComposers((prev) => ({ ...prev, [composerKey(frame, popIdx)]: next }))
+  const composerFor = (frame?: HopeFrame, popIdx?: number | null) =>
+    composers[composerKey(frame, popIdx)] ?? ''
 
-  function appendSeed(frame: HopeFrame | undefined, body: string) {
-    const current = composerFor(frame)
+  function appendSeed(frame: HopeFrame | undefined, popIdx: number | null | undefined, body: string) {
+    const current = composerFor(frame, popIdx)
     const next = current.trim().length > 0 ? `${current}\n\n${body}` : body
-    setComposerFor(frame, next)
+    setComposerFor(frame, popIdx, next)
   }
 
   if (stage === 5) {
@@ -549,7 +560,7 @@ function SocStageStep({
                     stage={5}
                     hopeFrame={f}
                     situation={situation}
-                    onSeed={(body) => appendSeed(f, body)}
+                    onSeed={(body) => appendSeed(f, null, body)}
                   />
                   <CoachChatPanel
                     session_id={session_id}
@@ -559,8 +570,8 @@ function SocStageStep({
                     alreadyLocked={!!locked}
                     initialLockedContent={locked?.locked_content ?? ''}
                     onLocked={onScrollToTop}
-                    composerText={composerFor(f)}
-                    onComposerTextChange={(next) => setComposerFor(f, next)}
+                    composerText={composerFor(f, null)}
+                    onComposerTextChange={(next) => setComposerFor(f, null, next)}
                   />
                 </TabsContent>
               )
@@ -571,8 +582,69 @@ function SocStageStep({
     )
   }
 
+  // Population tabs — stages 1-4, 6-8
+  if (populations.length > 0) {
+    return (
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="h-4 w-4 text-slate-500" />
+            <h2 className="text-sm font-semibold">
+              Stage {stage} — {SOC_STAGE_NAMES[stage]}
+            </h2>
+          </div>
+          <p className="text-xs text-slate-600">{STAGE_COACHING[stage].short_purpose}</p>
+          <Tabs defaultValue="0">
+            <TabsList className={`grid w-full`} style={{ gridTemplateColumns: `repeat(${populations.length}, minmax(0, 1fr))` }}>
+              {populations.map((pop, i) => {
+                const isLocked = stageContent.some(
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (c: any) => c.stage_number === stage && !c.hope_frame && c.population_index === i
+                )
+                return (
+                  <TabsTrigger key={i} value={String(i)} className="text-xs">
+                    {pop.name || `Population ${i + 1}`}
+                    {isLocked && <Lock className="h-3 w-3 ml-1" />}
+                  </TabsTrigger>
+                )
+              })}
+            </TabsList>
+            {populations.map((_, i) => {
+              const locked = stageContent.find(
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (c: any) => c.stage_number === stage && !c.hope_frame && c.population_index === i
+              )
+              return (
+                <TabsContent key={i} value={String(i)} className="mt-3 space-y-3">
+                  <StageSeedPanel
+                    stage={stage}
+                    situation={situation}
+                    onSeed={(body) => appendSeed(undefined, i, body)}
+                  />
+                  <CoachChatPanel
+                    session_id={session_id}
+                    stage_number={stage}
+                    stage_name={SOC_STAGE_NAMES[stage]}
+                    population_index={i}
+                    alreadyLocked={!!locked}
+                    initialLockedContent={locked?.locked_content ?? ''}
+                    onLocked={onScrollToTop}
+                    composerText={composerFor(undefined, i)}
+                    onComposerTextChange={(next) => setComposerFor(undefined, i, next)}
+                  />
+                </TabsContent>
+              )
+            })}
+          </Tabs>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // No populations — single draft (original behaviour)
   const locked = stageContent.find(
-    (c) => c.stage_number === stage && !c.hope_frame
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (c: any) => c.stage_number === stage && !c.hope_frame && c.population_index == null
   )
 
   return (
@@ -589,7 +661,7 @@ function SocStageStep({
         <StageSeedPanel
           stage={stage}
           situation={situation}
-          onSeed={(body) => appendSeed(undefined, body)}
+          onSeed={(body) => appendSeed(undefined, null, body)}
         />
         <CoachChatPanel
           session_id={session_id}
@@ -598,8 +670,8 @@ function SocStageStep({
           alreadyLocked={!!locked}
           initialLockedContent={locked?.locked_content ?? ''}
           onLocked={onScrollToTop}
-          composerText={composerFor()}
-          onComposerTextChange={(next) => setComposerFor(undefined, next)}
+          composerText={composerFor(undefined, null)}
+          onComposerTextChange={(next) => setComposerFor(undefined, null, next)}
         />
       </CardContent>
     </Card>
@@ -611,19 +683,23 @@ function SocStageStep({
 function ReviewStep({
   session_id,
   stageContent,
+  populations,
   campaign_id,
   onExport,
 }: {
   session_id: number
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   stageContent: any[]
+  populations: SocSessionPopulation[]
   campaign_id: number | null
   onExport: (scope: { stage_number?: SocStage; hope_frame?: HopeFrame; label?: string }) => void
 }) {
   const sorted = [...stageContent].sort((a, b) => {
     if (a.stage_number !== b.stage_number) return a.stage_number - b.stage_number
     const order: Record<string, number> = { opportunity: 0, plan: 1, dont_take_lolly: 2 }
-    return (order[a.hope_frame ?? ''] ?? 0) - (order[b.hope_frame ?? ''] ?? 0)
+    const frameOrder = (order[a.hope_frame ?? ''] ?? 0) - (order[b.hope_frame ?? ''] ?? 0)
+    if (frameOrder !== 0) return frameOrder
+    return (a.population_index ?? -1) - (b.population_index ?? -1)
   })
 
   return (
@@ -660,6 +736,9 @@ function ReviewStep({
                   Stage {c.stage_number} — {c.stage_name}
                   {c.hope_frame && (
                     <span className="text-slate-500 font-normal"> · {HOPE_FRAME_NAMES[c.hope_frame as HopeFrame]}</span>
+                  )}
+                  {c.population_index != null && populations[c.population_index] && (
+                    <span className="text-slate-500 font-normal"> · {populations[c.population_index].name}</span>
                   )}
                 </div>
                 <Button

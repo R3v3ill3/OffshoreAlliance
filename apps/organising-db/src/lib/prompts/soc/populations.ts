@@ -30,8 +30,15 @@ push them to refine.
  * Build the population context block injected into the SOC coach's
  * system prompt. If no populations are defined, returns a short prompt
  * encouraging the user to define them.
+ *
+ * When targetIndex is set (population tab coaching), the block highlights
+ * the specific population this session is focused on and lists the rest
+ * for contrast only.
  */
-export function buildPopulationContext(populations: SocSessionPopulation[] | null | undefined): string {
+export function buildPopulationContext(
+  populations: SocSessionPopulation[] | null | undefined,
+  targetIndex: number | null = null
+): string {
   if (!populations || populations.length === 0) {
     return `${POPULATION_CONCEPT_BLOCK}
 
@@ -40,12 +47,35 @@ language would benefit from population segmentation, surface that —
 otherwise proceed with the stage's coaching directives.`
   }
 
-  const lines = populations.map((p, i) => {
-    const parts: string[] = [`${i + 1}. ${p.name}`]
-    if (p.description) parts.push(`   Description: ${p.description}`)
-    if (p.characteristics) parts.push(`   Characteristics: ${p.characteristics}`)
+  const formatPop = (p: SocSessionPopulation) => {
+    const parts: string[] = [p.name]
+    if (p.description) parts.push(`  Description: ${p.description}`)
+    if (p.characteristics) parts.push(`  Characteristics: ${p.characteristics}`)
     return parts.join('\n')
-  })
+  }
+
+  if (targetIndex !== null && populations[targetIndex]) {
+    const target = populations[targetIndex]
+    const others = populations
+      .map((p, i) => ({ p, i }))
+      .filter(({ i }) => i !== targetIndex)
+
+    const otherLines = others.length > 0
+      ? `\nOTHER POPULATIONS IN THIS SOC (for context only):\n${others.map(({ p, i }) => `${i + 1}. ${p.name}${p.description ? ` — ${p.description}` : ''}`).join('\n')}`
+      : ''
+
+    return `${POPULATION_CONCEPT_BLOCK}
+
+TARGET POPULATION FOR THIS COACHING SESSION:
+${formatPop(target)}
+
+Focus all coaching, feedback, and draft suggestions on language and framing
+appropriate for this specific population. You may reference other populations
+for contrast, but this draft is for the target population only.
+${otherLines}`
+  }
+
+  const lines = populations.map((p, i) => `${i + 1}. ${formatPop(p)}`)
 
   return `${POPULATION_CONCEPT_BLOCK}
 

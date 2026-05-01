@@ -44,6 +44,7 @@ export interface SocStageContentRow {
   organiser_notes: string | null
   populations_targeted: SocSessionPopulation[]
   hope_frame: HopeFrame | null
+  population_index: number | null
   locked_at: string
   locked_by: string | null
 }
@@ -53,6 +54,7 @@ export interface SocChatTurnRow {
   session_id: number
   stage_number: number
   hope_frame: HopeFrame | null
+  population_index: number | null
   turn_index: number
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -209,6 +211,7 @@ export function useLockStage() {
       session_id: number
       stage_number: SocStage
       hope_frame?: HopeFrame
+      population_index?: number | null
       stage_name: string
       locked_content: string
       organiser_notes?: string
@@ -240,6 +243,7 @@ export function useRegenerateStage() {
       session_id: number
       stage_number: SocStage
       hope_frame?: HopeFrame
+      population_index?: number | null
     }) => {
       const res = await fetchApi('/api/soc-wizard/regenerate-stage', {
         method: 'POST',
@@ -255,7 +259,7 @@ export function useRegenerateStage() {
     },
     onSuccess: (_d, variables) => {
       queryClient.invalidateQueries({ queryKey: ['soc-stage-content', variables.session_id] })
-      queryClient.invalidateQueries({ queryKey: ['soc-chat-turns', variables.session_id, variables.stage_number, variables.hope_frame ?? null] })
+      queryClient.invalidateQueries({ queryKey: ['soc-chat-turns', variables.session_id, variables.stage_number, variables.hope_frame ?? null, variables.population_index ?? null] })
     },
   })
 }
@@ -268,10 +272,11 @@ export function useChatTurns(args: {
   session_id: number | null
   stage_number: SocStage | null
   hope_frame: HopeFrame | null
+  population_index: number | null
 }) {
   const supabase = createClient()
   return useQuery({
-    queryKey: ['soc-chat-turns', args.session_id, args.stage_number, args.hope_frame],
+    queryKey: ['soc-chat-turns', args.session_id, args.stage_number, args.hope_frame, args.population_index],
     enabled: !!args.session_id && !!args.stage_number,
     queryFn: async (): Promise<SocChatTurnRow[]> => {
       if (!args.session_id || !args.stage_number) return []
@@ -282,6 +287,7 @@ export function useChatTurns(args: {
         .eq('stage_number', args.stage_number)
         .order('turn_index', { ascending: true })
       q = args.hope_frame === null ? q.is('hope_frame', null) : q.eq('hope_frame', args.hope_frame)
+      q = args.population_index === null ? q.is('population_index', null) : q.eq('population_index', args.population_index)
       const { data, error } = await q
       if (error) throw error
       return (data || []) as unknown as SocChatTurnRow[]
@@ -303,6 +309,7 @@ export function useCoachStream(args: {
   session_id: number | null
   stage_number: SocStage | null
   hope_frame: HopeFrame | null
+  population_index: number | null
 }) {
   const queryClient = useQueryClient()
   const persisted = useChatTurns(args)
@@ -318,7 +325,7 @@ export function useCoachStream(args: {
     setIsStreaming(false)
     abortRef.current?.abort()
     abortRef.current = null
-  }, [args.session_id, args.stage_number, args.hope_frame])
+  }, [args.session_id, args.stage_number, args.hope_frame, args.population_index])
 
   // Combine persisted + in-flight local turns. Persisted is the source of
   // truth once the stream has finished; localTurns drives the live updates.
@@ -363,6 +370,7 @@ export function useCoachStream(args: {
           session_id: args.session_id,
           stage_number: args.stage_number,
           hope_frame: args.hope_frame ?? undefined,
+          population_index: args.population_index ?? undefined,
           user_message,
         }),
         signal: ac.signal,
@@ -432,11 +440,11 @@ export function useCoachStream(args: {
       // the server persisted on stream end. Then drop local turns whose
       // indices are now in the DB.
       await queryClient.invalidateQueries({
-        queryKey: ['soc-chat-turns', args.session_id, args.stage_number, args.hope_frame ?? null],
+        queryKey: ['soc-chat-turns', args.session_id, args.stage_number, args.hope_frame ?? null, args.population_index ?? null],
       })
       setLocalTurns([])
     }
-  }, [args.session_id, args.stage_number, args.hope_frame, combinedTurns, isStreaming, queryClient])
+  }, [args.session_id, args.stage_number, args.hope_frame, args.population_index, combinedTurns, isStreaming, queryClient])
 
   const cancel = useCallback(() => {
     abortRef.current?.abort()
@@ -513,6 +521,7 @@ export function useSuggestDraft() {
       session_id: number
       stage_number: SocStage
       hope_frame?: HopeFrame
+      population_index?: number | null
     }): Promise<SuggestDraftResult> => {
       const res = await fetchApi('/api/soc-wizard/suggest-draft', {
         method: 'POST',
@@ -533,6 +542,7 @@ export function useSuggestDraft() {
           variables.session_id,
           variables.stage_number,
           variables.hope_frame ?? null,
+          variables.population_index ?? null,
         ],
       })
     },

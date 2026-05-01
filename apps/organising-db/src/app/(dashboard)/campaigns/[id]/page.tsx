@@ -5,7 +5,13 @@ import { useParams, useRouter, useSearchParams, usePathname } from "next/navigat
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { format } from "date-fns";
-import { ArrowLeft, Pencil, Plus, Settings as SettingsIcon } from "lucide-react";
+import { ArrowLeft, ChevronDown, Pencil, Plus, Settings as SettingsIcon } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -428,24 +434,39 @@ export default function CampaignDetailPage() {
           </p>
         </div>
         {canWrite && (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => router.push(`/campaigns/${campaignId}/settings`)}
-            >
-              <SettingsIcon className="h-4 w-4" />
-              All settings
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() =>
-                router.push(`/campaigns/new?cid=${campaignId}&edit=1`)
-              }
-            >
-              <Pencil className="h-4 w-4" />
-              Re-run wizard
-            </Button>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                Actions
+                <ChevronDown className="h-4 w-4 ml-1" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() =>
+                  router.push(`/campaigns/new?cid=${campaignId}&edit=1`)
+                }
+              >
+                <Pencil className="h-4 w-4 mr-2" />
+                Re-run wizard
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() =>
+                  router.push(`/campaigns/${campaignId}/settings`)
+                }
+              >
+                <SettingsIcon className="h-4 w-4 mr-2" />
+                All settings
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() =>
+                  router.push(`/campaigns/${campaignId}/plan`)
+                }
+              >
+                View full plan
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
 

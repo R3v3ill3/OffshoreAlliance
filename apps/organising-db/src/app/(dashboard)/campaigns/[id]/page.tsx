@@ -66,6 +66,7 @@ import { SituationAnalysisEditSheet } from "@/components/campaigns/situation-ana
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
 import { BargainingInsightsWidget } from "@/components/campaigns/bargaining/BargainingInsightsWidget";
 import { Phase2WizardLaunchCard } from "@/components/campaigns/bargaining/wizard/Phase2WizardLaunchCard";
+import { FoundationalReadinessPanel } from "@/components/campaigns/bargaining/FoundationalReadinessPanel";
 import {
   VALID_TABS,
   resolveTabParams,
@@ -203,8 +204,6 @@ export default function CampaignDetailPage() {
   );
 
   const activeTab = resolved.tab;
-  // activeSub and handleSubChange are wired up by Phase B–E (sub-tab clusters).
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const activeSub = resolved.sub;
 
   // Redirect legacy URLs (e.g. ?tab=workplan → ?tab=plan&sub=workplan).
@@ -246,7 +245,6 @@ export default function CampaignDetailPage() {
     [pathname, router, searchParams]
   );
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleSubChange = useCallback(
     (nextSub: string) => {
       const params = new URLSearchParams(searchParams.toString());
@@ -467,11 +465,9 @@ export default function CampaignDetailPage() {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="campaign-plan">Campaign Plan</TabsTrigger>
           <TabsTrigger value="workplan">Workplan</TabsTrigger>
-          <TabsTrigger value="universe">Universe</TabsTrigger>
-          <TabsTrigger value="assessments">Assessments</TabsTrigger>
+          <TabsTrigger value="workforce">Workforce</TabsTrigger>
           <TabsTrigger value="reporting">Reporting</TabsTrigger>
           <TabsTrigger value="insights">Insights</TabsTrigger>
-          <TabsTrigger value="wall">Wall chart</TabsTrigger>
           <TabsTrigger value="tasklists">Task lists</TabsTrigger>
           <TabsTrigger value="comms">Comms</TabsTrigger>
           <TabsTrigger value="phone">Phone Ops</TabsTrigger>
@@ -577,10 +573,6 @@ export default function CampaignDetailPage() {
           <CampaignWorkplanSection campaignId={id} canWrite={!!canWrite} />
         </TabsContent>
 
-        <TabsContent value="assessments">
-          <CampaignAssessmentsSection campaignId={id} canWrite={!!canWrite} />
-        </TabsContent>
-
         <TabsContent value="reporting">
           <CampaignReportingCharts campaignId={id} />
         </TabsContent>
@@ -592,118 +584,140 @@ export default function CampaignDetailPage() {
           <CampaignProgressReport campaignId={campaignId} embedded />
         </TabsContent>
 
-        <TabsContent value="wall">
-          <CampaignWallChart campaignId={id} canWrite={!!canWrite} />
-        </TabsContent>
-
         <TabsContent value="tasklists">
           <CampaignTaskListsSection campaignId={id} canWrite={!!canWrite} />
         </TabsContent>
 
-        <TabsContent value="universe" className="space-y-6">
-          <CampaignUniverseSection campaignId={id} canWrite={!!canWrite} />
+        <TabsContent value="workforce">
+          <Tabs
+            value={activeSub ?? "universe"}
+            onValueChange={handleSubChange}
+          >
+            <TabsList className="mb-4">
+              <TabsTrigger value="universe">Universe</TabsTrigger>
+              <TabsTrigger value="assessments">Assessments</TabsTrigger>
+              <TabsTrigger value="wall-chart">Wall Chart</TabsTrigger>
+              <TabsTrigger value="foundational-readiness">Foundational Readiness</TabsTrigger>
+            </TabsList>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-4">
-              <div className="space-y-1 min-w-0">
-                <CardTitle className="text-lg">Named universes (optional)</CardTitle>
-                <CardDescription>
-                  Labels for the Actions tab only. Campaign scope (employers, worksites, workers) is
-                  managed above.
-                </CardDescription>
-              </div>
-              {canWrite && (
-                <Dialog open={universeDialogOpen} onOpenChange={setUniverseDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" variant="outline">
-                      <Plus className="h-4 w-4" />
-                      Add named universe
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Add named universe</DialogTitle>
-                      <DialogDescription>
-                        Optional grouping you can attach when creating a campaign action.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="universe_name">Name *</Label>
-                        <Input
-                          id="universe_name"
-                          value={universeForm.name}
-                          onChange={(e) =>
-                            setUniverseForm({ ...universeForm, name: e.target.value })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="universe_desc">Description</Label>
-                        <Textarea
-                          id="universe_desc"
-                          value={universeForm.description}
-                          onChange={(e) =>
-                            setUniverseForm({ ...universeForm, description: e.target.value })
-                          }
-                          rows={3}
-                        />
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setUniverseDialogOpen(false)}>
-                        Cancel
-                      </Button>
-                      <Button
-                        onClick={() => createUniverseMutation.mutate()}
-                        disabled={!universeForm.name || createUniverseMutation.isPending}
-                      >
-                        {createUniverseMutation.isPending ? "Creating…" : "Create Universe"}
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              )}
-            </CardHeader>
-            <CardContent>
-              {universes.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No named universes. Actions can still be created without one.
-                </p>
-              ) : (
-                <div className="space-y-4">
-                  {universes.map((u) => {
-                    const rules = rulesByUniverse[u.universe_id] ?? [];
-                    return (
-                      <div key={u.universe_id} className="rounded-md border p-4 space-y-3">
-                        <div>
-                          <h4 className="font-medium">{u.name}</h4>
-                          {u.description && (
-                            <p className="text-sm text-muted-foreground mt-0.5">
-                              {u.description}
-                            </p>
-                          )}
-                        </div>
-                        {rules.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5">
-                            {rules.map((r) => (
-                              <Badge
-                                key={r.rule_id}
-                                variant={r.include ? "info" : "destructive"}
-                              >
-                                {r.include ? "Include" : "Exclude"}{" "}
-                                {RULE_TYPE_LABELS[r.rule_type]}: #{r.rule_entity_id}
-                              </Badge>
-                            ))}
+            <TabsContent value="universe" className="space-y-6">
+              <CampaignUniverseSection campaignId={id} canWrite={!!canWrite} />
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-4">
+                  <div className="space-y-1 min-w-0">
+                    <CardTitle className="text-lg">Named universes (optional)</CardTitle>
+                    <CardDescription>
+                      Labels for the Actions tab only. Campaign scope (employers, worksites, workers) is
+                      managed above.
+                    </CardDescription>
+                  </div>
+                  {canWrite && (
+                    <Dialog open={universeDialogOpen} onOpenChange={setUniverseDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button size="sm" variant="outline">
+                          <Plus className="h-4 w-4" />
+                          Add named universe
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Add named universe</DialogTitle>
+                          <DialogDescription>
+                            Optional grouping you can attach when creating a campaign action.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="universe_name">Name *</Label>
+                            <Input
+                              id="universe_name"
+                              value={universeForm.name}
+                              onChange={(e) =>
+                                setUniverseForm({ ...universeForm, name: e.target.value })
+                              }
+                            />
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                          <div className="space-y-2">
+                            <Label htmlFor="universe_desc">Description</Label>
+                            <Textarea
+                              id="universe_desc"
+                              value={universeForm.description}
+                              onChange={(e) =>
+                                setUniverseForm({ ...universeForm, description: e.target.value })
+                              }
+                              rows={3}
+                            />
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button variant="outline" onClick={() => setUniverseDialogOpen(false)}>
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={() => createUniverseMutation.mutate()}
+                            disabled={!universeForm.name || createUniverseMutation.isPending}
+                          >
+                            {createUniverseMutation.isPending ? "Creating…" : "Create Universe"}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  {universes.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">
+                      No named universes. Actions can still be created without one.
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {universes.map((u) => {
+                        const rules = rulesByUniverse[u.universe_id] ?? [];
+                        return (
+                          <div key={u.universe_id} className="rounded-md border p-4 space-y-3">
+                            <div>
+                              <h4 className="font-medium">{u.name}</h4>
+                              {u.description && (
+                                <p className="text-sm text-muted-foreground mt-0.5">
+                                  {u.description}
+                                </p>
+                              )}
+                            </div>
+                            {rules.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5">
+                                {rules.map((r) => (
+                                  <Badge
+                                    key={r.rule_id}
+                                    variant={r.include ? "info" : "destructive"}
+                                  >
+                                    {r.include ? "Include" : "Exclude"}{" "}
+                                    {RULE_TYPE_LABELS[r.rule_type]}: #{r.rule_entity_id}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="assessments">
+              <CampaignAssessmentsSection campaignId={id} canWrite={!!canWrite} />
+            </TabsContent>
+
+            <TabsContent value="wall-chart">
+              <CampaignWallChart campaignId={id} canWrite={!!canWrite} />
+            </TabsContent>
+
+            <TabsContent value="foundational-readiness">
+              <FoundationalReadinessPanel campaignId={campaignId} />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="comms">

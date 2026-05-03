@@ -98,15 +98,15 @@ function MetTargetTick({
   payload,
   metTargetIds,
 }: {
-  x?: number;
-  y?: number;
+  x?: string | number;
+  y?: string | number;
   payload?: { value: string };
   metTargetIds: Set<string>;
 }) {
   if (!payload) return null;
   const label = payload.value;
-  const xPos = x ?? 0;
-  const yPos = y ?? 0;
+  const xPos = typeof x === "number" ? x : parseFloat(x ?? "0");
+  const yPos = typeof y === "number" ? y : parseFloat(y ?? "0");
   return (
     <g transform={`translate(${xPos},${yPos})`}>
       <text
@@ -195,8 +195,13 @@ export function AssessmentStackedBarChart({
               type="category"
               dataKey="entityLabel"
               width={136}
-              tick={(props: { x: number; y: number; payload: { value: string } }) => (
-                <MetTargetTick {...props} metTargetIds={metTargetIds} />
+              tick={(props) => (
+                <MetTargetTick
+                  x={props.x}
+                  y={props.y}
+                  payload={props.payload as { value: string }}
+                  metTargetIds={metTargetIds}
+                />
               )}
             />
             <Tooltip content={<CustomTooltip />} />

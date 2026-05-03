@@ -1281,8 +1281,7 @@ export function CampaignWizard() {
 
   const step1Valid =
     !!basics.name &&
-    !!basics.campaign_scope &&
-    (basics.enterprise_agreement_subtype !== "replacement" || !!basics.replaced_agreement_id);
+    !!basics.campaign_scope;
 
   // ── Guards ────────────────────────────────────────────────────────────────
 
@@ -1630,9 +1629,6 @@ export function CampaignWizard() {
                 {[
                   !basics.name && "Campaign name",
                   !basics.campaign_scope && "Campaign scope",
-                  basics.enterprise_agreement_subtype === "replacement" &&
-                    !basics.replaced_agreement_id &&
-                    "Replaced agreement",
                 ]
                   .filter(Boolean)
                   .join(", ")}

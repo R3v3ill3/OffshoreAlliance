@@ -12,6 +12,7 @@ export function initPostHogIfNeeded(): void {
     api_host: getPostHogHost()!,
     capture_pageview: false,
     capture_pageleave: true,
+    disable_session_recording: true,
   });
   clientInitialized = true;
 }

@@ -221,6 +221,8 @@ export function CampaignWizard() {
   const [wizardBargainingTriage, setWizardBargainingTriage] =
     useState<WizardBargainingTriage | null>(null);
 
+  const [step1Error, setStep1Error] = useState<string | null>(null);
+
   // ── Queries ───────────────────────────────────────────────────────────────
 
   const { data: existingCampaign, isPending: existingCampaignLoading } = useQuery({
@@ -573,11 +575,15 @@ export function CampaignWizard() {
       return data.campaign_id as number;
     },
     onSuccess: (id) => {
+      setStep1Error(null);
       setCampaignId(id);
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       queryClient.invalidateQueries({ queryKey: ["organisers"] });
       queryClient.invalidateQueries({ queryKey: ["user-profiles-staff-organiser-picker"] });
       setStep(2, id); // pass id explicitly — campaignId state isn't committed yet
+    },
+    onError: (error) => {
+      setStep1Error(error instanceof Error ? error.message : "Failed to create campaign. Please try again.");
     },
   });
 
@@ -617,6 +623,7 @@ export function CampaignWizard() {
       if (error) throw error;
     },
     onSuccess: () => {
+      setStep1Error(null);
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });
       queryClient.invalidateQueries({ queryKey: ["campaign-wizard", campaignId] });
@@ -628,6 +635,9 @@ export function CampaignWizard() {
       } else {
         setStep(2);
       }
+    },
+    onError: (error) => {
+      setStep1Error(error instanceof Error ? error.message : "Failed to save campaign. Please try again.");
     },
   });
 
@@ -1346,7 +1356,7 @@ export function CampaignWizard() {
               <Label>Name *</Label>
               <Input
                 value={basics.name}
-                onChange={(e) => setBasics({ ...basics, name: e.target.value })}
+                onChange={(e) => setBasics(prev => ({ ...prev, name: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
@@ -1354,7 +1364,7 @@ export function CampaignWizard() {
               <Textarea
                 rows={3}
                 value={basics.description}
-                onChange={(e) => setBasics({ ...basics, description: e.target.value })}
+                onChange={(e) => setBasics(prev => ({ ...prev, description: e.target.value }))}
               />
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
@@ -1363,7 +1373,7 @@ export function CampaignWizard() {
                 <Select
                   value={basics.campaign_type}
                   onValueChange={(v) =>
-                    setBasics({ ...basics, campaign_type: v as CampaignType })
+                    setBasics(prev => ({ ...prev, campaign_type: v as CampaignType }))
                   }
                 >
                   <SelectTrigger>
@@ -1382,14 +1392,14 @@ export function CampaignWizard() {
                 <Select
                   value={basics.enterprise_agreement_subtype || "__none__"}
                   onValueChange={(v) =>
-                    setBasics({
-                      ...basics,
+                    setBasics(prev => ({
+                      ...prev,
                       enterprise_agreement_subtype:
                         v === "__none__" ? "" : (v as EnterpriseAgreementSubtype),
                       // Clear replaced agreement when subtype is removed
                       replaced_agreement_id:
-                        v === "replacement" ? basics.replaced_agreement_id : null,
-                    })
+                        v === "replacement" ? prev.replaced_agreement_id : null,
+                    }))
                   }
                 >
                   <SelectTrigger>
@@ -1448,7 +1458,7 @@ export function CampaignWizard() {
                 <Select
                   value={basics.status}
                   onValueChange={(v) =>
-                    setBasics({ ...basics, status: v as CampaignStatus })
+                    setBasics(prev => ({ ...prev, status: v as CampaignStatus }))
                   }
                 >
                   <SelectTrigger>
@@ -1466,7 +1476,7 @@ export function CampaignWizard() {
                 label="Organiser"
                 value={basics.organiser_id}
                 onChange={(v) =>
-                  setBasics({ ...basics, organiser_id: v === "__none__" ? "" : v })
+                  setBasics(prev => ({ ...prev, organiser_id: v === "__none__" ? "" : v }))
                 }
                 allowNone
                 autoDefaultToCurrentUser={!campaignId && !editMode}
@@ -1477,7 +1487,7 @@ export function CampaignWizard() {
               <Input
                 type="date"
                 value={basics.start_date}
-                onChange={(e) => setBasics({ ...basics, start_date: e.target.value })}
+                onChange={(e) => setBasics(prev => ({ ...prev, start_date: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
@@ -1491,15 +1501,15 @@ export function CampaignWizard() {
                 <Select
                   value={basics.plan_timeframe_mode}
                   onValueChange={(v) =>
-                    setBasics({
-                      ...basics,
+                    setBasics(prev => ({
+                      ...prev,
                       plan_timeframe_mode: v as "weeks" | "months" | "custom",
                       // Reset numeric input when switching to custom; reset end_date
                       // when switching away from custom.
                       plan_timeframe_weeks:
-                        v === "custom" ? "" : basics.plan_timeframe_weeks,
-                      end_date: v === "custom" ? basics.end_date : "",
-                    })
+                        v === "custom" ? "" : prev.plan_timeframe_weeks,
+                      end_date: v === "custom" ? prev.end_date : "",
+                    }))
                   }
                 >
                   <SelectTrigger>
@@ -1516,7 +1526,7 @@ export function CampaignWizard() {
                     className="sm:col-span-2"
                     type="date"
                     value={basics.end_date}
-                    onChange={(e) => setBasics({ ...basics, end_date: e.target.value })}
+                    onChange={(e) => setBasics(prev => ({ ...prev, end_date: e.target.value }))}
                   />
                 ) : (
                   <Input
@@ -1525,7 +1535,7 @@ export function CampaignWizard() {
                     min={1}
                     value={basics.plan_timeframe_weeks}
                     onChange={(e) =>
-                      setBasics({ ...basics, plan_timeframe_weeks: e.target.value })
+                      setBasics(prev => ({ ...prev, plan_timeframe_weeks: e.target.value }))
                     }
                     placeholder={
                       basics.plan_timeframe_mode === "months"
@@ -1547,10 +1557,10 @@ export function CampaignWizard() {
               <Select
                 value={basics.campaign_scope || ""}
                 onValueChange={(v) =>
-                  setBasics({
-                    ...basics,
+                  setBasics(prev => ({
+                    ...prev,
                     campaign_scope: v as CampaignScopeType,
-                  })
+                  }))
                 }
               >
                 <SelectTrigger>
@@ -1577,7 +1587,7 @@ export function CampaignWizard() {
                   type="checkbox"
                   checked={basics.sector_wide}
                   onChange={(e) =>
-                    setBasics({ ...basics, sector_wide: e.target.checked })
+                    setBasics(prev => ({ ...prev, sector_wide: e.target.checked }))
                   }
                 />
                 <span className="text-sm font-medium">Sector-wide campaign</span>
@@ -1595,7 +1605,7 @@ export function CampaignWizard() {
               <Textarea
                 rows={2}
                 value={basics.notes}
-                onChange={(e) => setBasics({ ...basics, notes: e.target.value })}
+                onChange={(e) => setBasics(prev => ({ ...prev, notes: e.target.value }))}
               />
             </div>
             <Button
@@ -1614,6 +1624,23 @@ export function CampaignWizard() {
                   : "Continue"}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
+            {!step1Valid && (
+              <p className="text-xs text-destructive">
+                {"Required: "}
+                {[
+                  !basics.name && "Campaign name",
+                  !basics.campaign_scope && "Campaign scope",
+                  basics.enterprise_agreement_subtype === "replacement" &&
+                    !basics.replaced_agreement_id &&
+                    "Replaced agreement",
+                ]
+                  .filter(Boolean)
+                  .join(", ")}
+              </p>
+            )}
+            {step1Error && (
+              <p className="text-xs text-destructive">{step1Error}</p>
+            )}
           </CardContent>
         </Card>
       )}
@@ -1656,7 +1683,7 @@ export function CampaignWizard() {
           worksiteSectorWide={worksiteSectorWide}
           totalWorkerEstimate={basics.total_worker_estimate}
           setTotalWorkerEstimate={(v) =>
-            setBasics({ ...basics, total_worker_estimate: v })
+            setBasics(prev => ({ ...prev, total_worker_estimate: v }))
           }
           isPending={saveEstimateMutation.isPending}
           onBack={() => setStep(3)}

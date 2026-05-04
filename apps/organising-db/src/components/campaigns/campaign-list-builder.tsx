@@ -68,6 +68,8 @@ interface WorkerRow {
   organising_role_name: string | null;
   is_bargaining_rep: boolean;
   membership_status: string | null;
+  union_membership_type_name?: string | null;
+  non_oa_union_badge_initials?: string | null;
   action_network_id: string | null;
   unit_count?: number;
   is_multi_unit_member?: boolean;
@@ -353,7 +355,9 @@ export function CampaignListBuilder({
       "Worksite",
       "Occupation",
       "Role",
-      "Membership",
+      "Membership bucket",
+      "Membership type code",
+      "Other union initials",
     ];
     const csvContent = [
       headers.join(","),
@@ -367,6 +371,8 @@ export function CampaignListBuilder({
           `"${w.occupation ?? ""}"`,
           `"${w.organising_role ?? ""}"`,
           `"${w.membership_status ?? ""}"`,
+          `"${w.union_membership_type_name ?? ""}"`,
+          `"${w.non_oa_union_badge_initials ?? ""}"`,
         ].join(",")
       ),
     ].join("\n");

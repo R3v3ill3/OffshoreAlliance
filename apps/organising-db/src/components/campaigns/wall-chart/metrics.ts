@@ -1,3 +1,4 @@
+import type { NonOaUnionCountEntry } from "@/lib/workers/other-union-display";
 import { isWorkerMemberLike } from "@/lib/campaign/constants";
 import type { ActivityRating, WallChartRatingSummary, WallChartWorker } from "./types";
 
@@ -23,6 +24,10 @@ export type WallChartMetrics = {
   /** Numerator & denominator for participation. */
   participationCount: number;
   participationTotal: number;
+  /**
+   * Non-OA members with `non_oa_union_option` set, by badge initials — empty when none.
+   */
+  nonOaUnionCounts: NonOaUnionCountEntry[];
   /**
    * Metrics for the currently-selected assessment. Null when the wall chart is
    * in cumulative view (no assessment picked).
@@ -76,9 +81,11 @@ export function computeMetrics(
     avgCumulative: null,
     participationCount: 0,
     participationTotal: workerIds.length,
+    nonOaUnionCounts: [],
     assessment: null,
   };
 
+  const nonOaTally = new Map<string, number>();
   let cumSum = 0;
 
   for (const id of workerIds) {
@@ -93,6 +100,11 @@ export function computeMetrics(
       })
     ) {
       out.members += 1;
+    }
+
+    if (w.union_membership_type?.type_name === "non_oa_member") {
+      const bi = w.non_oa_union_option?.badge_initials?.trim();
+      if (bi) nonOaTally.set(bi, (nonOaTally.get(bi) ?? 0) + 1);
     }
 
     switch (w.member_role_type_id) {
@@ -122,6 +134,11 @@ export function computeMetrics(
     }
   }
 
+  out.nonOaUnionCounts = [...nonOaTally.entries()]
+    .map(([initials, count]) => ({ initials, count }))
+    .filter((e) => e.count > 0)
+    .sort((a, b) => a.initials.localeCompare(b.initials));
+
   out.avgCumulative = out.ratedCount > 0 ? Math.round((cumSum / out.ratedCount) * 10) / 10 : null;
 
   if (assessmentInput) {
@@ -136,25 +153,23 @@ export function computeMetrics(
     };
     let sum = 0;
     for (const id of workerIds) {
-      const r = assessmentInput.ratings.get(id);
-      if (!r) continue;
+      const rv = assessmentInput.ratings.get(id);
+      if (!rv) continue;
       if (assessmentInput.isBinary) {
-        if (r.binary_value != null) {
+        if (rv.binary_value != null) {
           am.binaryTotalRated += 1;
           if (
             assessmentInput.supportiveBinaryValue &&
-            r.binary_value === assessmentInput.supportiveBinaryValue
+            rv.binary_value === assessmentInput.supportiveBinaryValue
           ) {
             am.binarySupportiveCount += 1;
           }
         }
-      } else if (r.rating != null) {
+      } else if (rv.rating != null) {
         am.ratedCount += 1;
-        sum += r.rating;
-        // 1 = supportive_leader, 2 = supporter (rating_level seed).
-        if (r.rating <= 2) am.supportiveCount += 1;
-        // 4 = opposed, 5 = oppositional_leader.
-        if (r.rating >= 4) am.opposedCount += 1;
+        sum += rv.rating;
+        if (rv.rating <= 2) am.supportiveCount += 1;
+        if (rv.rating >= 4) am.opposedCount += 1;
       }
     }
     am.avgRating = am.ratedCount > 0 ? Math.round((sum / am.ratedCount) * 10) / 10 : null;

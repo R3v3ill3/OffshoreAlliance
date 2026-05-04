@@ -14,6 +14,7 @@ import type { CampaignAggStats, P2wCompletion } from '@/lib/hooks/useCampaignsAl
 import { formatLeadershipRatio, formatPct } from '@/lib/hooks/useCampaignsAllStats'
 import { CampaignRatingsBar } from '@/components/campaigns/CampaignRatingsBar'
 import { humanizeOuType, ouDisplayName } from '@/components/campaigns/wall-chart/types'
+import { countNonOaUnionsAmongWorkers } from '@/lib/workers/other-union-display'
 import { Skeleton } from '@/components/ui/skeleton'
 
 function MetricCell({ children }: { children: React.ReactNode }) {
@@ -242,6 +243,7 @@ export function CampaignUnitMetricsTable({
               dimWorkerCount,
               emptyP2w
             )
+            const dimNonOaBreakdown = countNonOaUnionsAmongWorkers(dimWorkerSet, members)
 
             return (
               <>
@@ -282,6 +284,7 @@ export function CampaignUnitMetricsTable({
                     inAnyOu,
                     emptyP2w
                   )
+                  const nonOaUnionBreakdown = countNonOaUnionsAmongWorkers(workerSet, members)
 
                   let multiInUnit = 0
                   for (const wid of workerSet) {
@@ -342,6 +345,18 @@ export function CampaignUnitMetricsTable({
                             <span className="text-[10px] text-muted-foreground">
                               {subStats.memberLikeCount} members
                             </span>
+                            {nonOaUnionBreakdown.length > 0 && (
+                              <div className="flex flex-col gap-0.5 mt-0.5">
+                                {nonOaUnionBreakdown.map((row) => (
+                                  <span
+                                    key={row.initials}
+                                    className="text-[10px] font-medium tabular-nums text-sky-700 dark:text-sky-400"
+                                  >
+                                    {row.initials} — {row.count}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )}
                       </MetricCell>
@@ -454,8 +469,27 @@ export function CampaignUnitMetricsTable({
                       )}
                     </MetricCell>
                     <MetricCell>
-                      {isLoading ? <Skeleton className="h-4 w-12" /> : (
-                        <PctPill value={dimStats.memberLikeCount} denominator={dimWorkerCount || null} />
+                      {isLoading ? (
+                        <Skeleton className="h-4 w-12" />
+                      ) : (
+                        <div className="flex flex-col gap-0.5">
+                          <PctPill
+                            value={dimStats.memberLikeCount}
+                            denominator={dimWorkerCount || null}
+                          />
+                          {dimNonOaBreakdown.length > 0 && (
+                            <div className="flex flex-col gap-0.5 mt-0.5">
+                              {dimNonOaBreakdown.map((row) => (
+                                <span
+                                  key={row.initials}
+                                  className="text-[10px] font-medium tabular-nums text-sky-700 dark:text-sky-400"
+                                >
+                                  {row.initials} — {row.count}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </MetricCell>
                     <td className="px-3 py-2 text-xs text-muted-foreground italic" colSpan={5}>

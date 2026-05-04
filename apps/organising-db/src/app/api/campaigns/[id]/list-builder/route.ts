@@ -56,7 +56,8 @@ export async function GET(
           employers ( employer_name ),
           worksites ( worksite_name ),
           member_role_type:member_role_types ( role_name, display_name ),
-          union_membership_type:union_membership_types ( type_name )
+          union_membership_type:union_membership_types ( type_name ),
+          non_oa_union_option:non_oa_union_options!workers_non_oa_union_option_id_fkey ( badge_initials )
         )
       `
       )
@@ -85,12 +86,16 @@ export async function GET(
           | { role_name: string; display_name: string }[]
           | null;
         union_membership_type: { type_name: string } | { type_name: string }[] | null;
+        non_oa_union_option: { badge_initials: string } | { badge_initials: string }[] | null;
       };
 
       const mrt = Array.isArray(worker.member_role_type) ? worker.member_role_type[0] : worker.member_role_type;
       const umt = Array.isArray(worker.union_membership_type)
         ? worker.union_membership_type[0]
         : worker.union_membership_type;
+      const nuo = Array.isArray(worker.non_oa_union_option)
+        ? worker.non_oa_union_option[0]
+        : worker.non_oa_union_option;
       const membershipStatus = getCampaignMembershipStatus({
         unionMembershipTypeName: umt?.type_name,
         memberRoleName: mrt?.role_name,
@@ -110,6 +115,8 @@ export async function GET(
         organising_role_name: mrt?.role_name ?? null,
         is_bargaining_rep: worker.is_bargaining_rep ?? false,
         membership_status: membershipStatus,
+        union_membership_type_name: umt?.type_name ?? null,
+        non_oa_union_badge_initials: nuo?.badge_initials ?? null,
         action_network_id: worker.action_network_id,
         employer_id: worker.employer_id,
         worksite_id: worker.worksite_id,

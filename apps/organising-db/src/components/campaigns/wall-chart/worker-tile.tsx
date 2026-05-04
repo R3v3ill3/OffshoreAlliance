@@ -3,6 +3,10 @@
 import Image from "next/image";
 import type { DragEvent, MouseEvent } from "react";
 import { getWallChartDefaultCumulative, isWorkerMemberLike } from "@/lib/campaign/constants";
+import {
+  otherUnionLabel,
+  shouldShowOtherUnionBadge,
+} from "@/lib/workers/other-union-display";
 import { assessmentNumericForWallChart, ratingBgClass } from "./rating-colour";
 import type {
   ActivityRating,
@@ -97,6 +101,18 @@ export function WorkerTile({
     isAssessmentMode && assessment
       ? assessmentNumericForWallChart(assessment, activityRating)
       : null;
+
+  const showOtherBadge = shouldShowOtherUnionBadge({
+    unionMembershipTypeName: um?.type_name,
+    nonOaBadgeInitials: worker.non_oa_union_option?.badge_initials ?? null,
+  });
+  const otherUnionTitle = showOtherBadge
+    ? otherUnionLabel({
+        unionMembershipTypeName: um?.type_name,
+        nonOaBadgeInitials: worker.non_oa_union_option?.badge_initials ?? null,
+        nonOaDisplayName: worker.non_oa_union_option?.display_name ?? null,
+      })
+    : null;
   const colourSource = isAssessmentMode ? assessmentColourNumeric : cumulativeColourFallback;
   const isMemberLike = isWorkerMemberLike({
     unionMembershipTypeName: um?.type_name,
@@ -121,6 +137,7 @@ export function WorkerTile({
     ? ` Also in: ${otherUnitNames.join(", ")}.`
     : "";
   const titleHsr = worker.is_hsr ? " Health and Safety Representative." : "";
+  const titleOtherUnion = showOtherBadge && otherUnionTitle ? ` ${otherUnionTitle}.` : "";
   const titleHints =
     canWrite ? " Click to open, \u2318/Ctrl-click to select, Shift-click to add, right-click to copy." : "";
 
@@ -175,7 +192,7 @@ export function WorkerTile({
       <button
         type="button"
         disabled={!canWrite}
-        title={`${displayName}. ${titleRatings}.${titleAssessment}${titleDefaultHint}${titleMultiUnit}${titleHsr}${titleHints}`}
+        title={`${displayName}. ${titleRatings}.${titleAssessment}${titleDefaultHint}${titleMultiUnit}${titleHsr}${titleOtherUnion}${titleHints}`}
         aria-pressed={isSelected ? true : undefined}
         onClick={handleClick}
         className={`w-full text-left text-[11px] leading-tight p-1.5 rounded border min-h-[3.25rem] flex flex-col gap-0.5 justify-between ${ratingBgClass(
@@ -212,6 +229,15 @@ export function WorkerTile({
               className="text-[9px] uppercase bg-amber-600/80 text-white px-0.5 rounded leading-none py-px"
             >
               HSR
+            </span>
+          )}
+          {showOtherBadge && worker.non_oa_union_option && (
+            <span
+              title={otherUnionTitle ?? undefined}
+              aria-label={otherUnionTitle ?? "Other union member"}
+              className="text-[9px] font-semibold uppercase bg-sky-800/95 text-white px-0.5 rounded leading-none py-px"
+            >
+              {worker.non_oa_union_option.badge_initials}
             </span>
           )}
           {isMemberLike && (

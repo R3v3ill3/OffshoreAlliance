@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
+import {
+  parseMembershipStatus,
+  type UnionMembershipTypeKey,
+} from "@/lib/workers/worker-import-membership";
 
-/** Stable keys matching union_membership_types.type_name */
-export type UnionMembershipTypeKey =
-  | "financial_member"
-  | "non_oa_member"
-  | "non_member"
-  | "resigned_member"
-  | "member_pending";
+export type { UnionMembershipTypeKey };
 
 export interface ParsedWorkerRow {
   rowIndex: number;
@@ -25,6 +23,8 @@ export interface ParsedWorkerRow {
   phone: string | null;
   email: string | null;
   parseWarnings: string[];
+  /** Mapped to non_oa_union_options.badge_initials when unionMembershipTypeKey is non_oa_member */
+  nonOaUnionBadgeInitials: string | null;
 }
 
 export interface ParsedWorkerGroup {
@@ -49,42 +49,6 @@ export type ParseWorkerImportResponse =
       totalRows: number;
     };
 
-// Membership status → union_membership_types.type_name
-const MEMBERSHIP_PATTERNS: {
-  pattern: RegExp;
-  membershipKey: UnionMembershipTypeKey;
-  unionCode?: string;
-}[] = [
-  { pattern: /financial\s+awu\s+member/i, membershipKey: "non_oa_member", unionCode: "AWU" },
-  { pattern: /financial\s+mua\s+member/i, membershipKey: "non_oa_member", unionCode: "MUA" },
-  { pattern: /financial\s+cfmeu\s+member/i, membershipKey: "non_oa_member", unionCode: "CFMEU" },
-  { pattern: /financial\s+amwu\s+member/i, membershipKey: "non_oa_member", unionCode: "AMWU" },
-  { pattern: /financial\s+amou\s+member/i, membershipKey: "non_oa_member", unionCode: "AMOU" },
-  { pattern: /financial\s+aimpe\s+member/i, membershipKey: "non_oa_member", unionCode: "AIMPE" },
-  {
-    pattern: /member[\s_-]+pending|pending[\s_-]+member|member\s*[–-]\s*pending/i,
-    membershipKey: "member_pending",
-  },
-  { pattern: /financial\s+member/i, membershipKey: "financial_member" },
-  { pattern: /\bmember\b/i, membershipKey: "financial_member" },
-  { pattern: /not\s+a\s+member/i, membershipKey: "non_member" },
-  { pattern: /awu\s+membership\s+archived/i, membershipKey: "resigned_member", unionCode: "AWU" },
-  { pattern: /membership\s+archived/i, membershipKey: "resigned_member" },
-  { pattern: /membership\s+resigned/i, membershipKey: "resigned_member" },
-  { pattern: /resigned/i, membershipKey: "resigned_member" },
-  { pattern: /archived/i, membershipKey: "resigned_member" },
-];
-
-// Union code → union_id (matches DB)
-const UNION_CODE_TO_ID: Record<string, number> = {
-  AWU: 1,
-  MUA: 2,
-  AMOU: 3,
-  AIMPE: 4,
-  CFMEU: 5,
-  AMWU: 6,
-};
-
 // Header patterns used to detect header-based format.
 // Deliberately broad — detection no longer requires ALL cells to be text,
 // so false positives from data rows are very unlikely.
@@ -97,6 +61,7 @@ const KNOWN_HEADER_PATTERNS = [
   /^(name|full[\s_-]?name|fullname|worker[\s_-]?name|employee[\s_-]?name)$/i,
   /^(preferred[\s_-]?name|preferredname|nickname|nick[\s_-]?name|known[\s_-]?as|alias|preferred[\s_-]?first[\s_-]?name)$/i,
   /^(membership|membership[\s_-]?status|status|role|role[\s_-]?type)$/i,
+  /^(other[\s_-]?union|union[\s_-]?badge|non[\s_-]?oa[\s_-]?union)$/i,
 ];
 
 function detectHeaderRow(
@@ -132,44 +97,6 @@ function detectHeaderRow(
   }
 
   return false;
-}
-
-function parseMembershipStatus(raw: string): {
-  membershipKey: UnionMembershipTypeKey | null;
-  unionId: number | null;
-  resignationDate: string | null;
-} {
-  const trimmed = raw.trim();
-  if (!trimmed) return { membershipKey: null, unionId: null, resignationDate: null };
-
-  let membershipKey: UnionMembershipTypeKey | null = null;
-  let unionId: number | null = null;
-
-  for (const { pattern, membershipKey: key, unionCode } of MEMBERSHIP_PATTERNS) {
-    if (pattern.test(trimmed)) {
-      membershipKey = key;
-      if (unionCode) unionId = UNION_CODE_TO_ID[unionCode] ?? null;
-      break;
-    }
-  }
-
-  // Extract date from resigned/archived statuses (e.g. "membership resigned 29/4/24")
-  let resignationDate: string | null = null;
-  if (membershipKey === "resigned_member") {
-    const dateMatch = trimmed.match(
-      /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/
-    );
-    if (dateMatch) {
-      const [, day, month, year] = dateMatch;
-      const fullYear = year.length === 2 ? `20${year}` : year;
-      const d = new Date(`${fullYear}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`);
-      if (!isNaN(d.getTime())) {
-        resignationDate = d.toISOString().split("T")[0];
-      }
-    }
-  }
-
-  return { membershipKey, unionId, resignationDate };
 }
 
 function parseName(raw: string): {
@@ -418,7 +345,8 @@ export async function POST(request: NextRequest) {
 
       const { firstName, lastName, preferredName, warnings: nameWarnings } = parseName(rawName);
       const rawMembership = String(row[1] ?? "").trim();
-      const { membershipKey, unionId, resignationDate } = parseMembershipStatus(rawMembership);
+      const { membershipKey, unionId, resignationDate, nonOaUnionBadgeInitials } =
+        parseMembershipStatus(rawMembership);
       const { phone, warnings: phoneWarnings } = normalisePhone(row[2]);
       const email = row[3] ? String(row[3]).trim() || null : null;
 
@@ -442,6 +370,7 @@ export async function POST(request: NextRequest) {
         phone,
         email,
         parseWarnings,
+        nonOaUnionBadgeInitials,
       });
 
       rowIndex++;

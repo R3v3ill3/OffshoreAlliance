@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
@@ -59,6 +59,8 @@ interface WorkerPreview {
   employer_name: string | null
   worksite_name: string | null
   membership_status?: string | null
+  union_membership_type_name?: string | null
+  non_oa_union_badge_initials?: string | null
   organising_role?: string | null
   cumulative_rating?: number | null
   last_activity_rating?: number | null
@@ -77,6 +79,52 @@ type WorksiteRow = { worksite_id: number; worksite_name: string }
 const EMPTY_WORKSITES: WorksiteRow[] = []
 type WorkerRatingRow = { worker_id: number; cumulative_rating: number | null; last_activity_rating: number | null }
 const EMPTY_WORKER_RATINGS: WorkerRatingRow[] = []
+
+function membershipBadgesCampaign(w: WorkerPreview): ReactNode {
+  const ms = w.membership_status
+  if (!ms) return '—'
+  if (ms === 'member_pending') {
+    return (
+      <Badge variant="outline" className="text-[10px] py-0">
+        Member – pending
+      </Badge>
+    )
+  }
+  if (ms === 'non_member') {
+    return (
+      <Badge variant="secondary" className="text-[10px] py-0">
+        Non-member
+      </Badge>
+    )
+  }
+  if (ms === 'member') {
+    if (w.union_membership_type_name === 'non_oa_member') {
+      const initials = w.non_oa_union_badge_initials?.trim()
+      return (
+        <span className="inline-flex flex-wrap items-center gap-1">
+          <Badge variant="secondary" className="text-[10px] py-0">
+            Other union
+          </Badge>
+          {initials ? (
+            <Badge variant="outline" className="text-[10px] py-0 font-mono">
+              {initials}
+            </Badge>
+          ) : null}
+        </span>
+      )
+    }
+    return (
+      <Badge variant="default" className="text-[10px] py-0">
+        Member
+      </Badge>
+    )
+  }
+  return (
+    <Badge variant="outline" className="text-[10px] py-0">
+      {ms}
+    </Badge>
+  )
+}
 
 const RATING_BANDS = [
   { key: 'unrated', label: 'Unrated', test: (v: number | null | undefined) => v == null },
@@ -424,6 +472,8 @@ export function PhoneWizardSteps() {
           ...row,
           phone: row.phone ?? null,
           membership_status: row.membership_status ?? null,
+          union_membership_type_name: row.union_membership_type_name ?? null,
+          non_oa_union_badge_initials: row.non_oa_union_badge_initials ?? null,
           organising_role: row.organising_role ?? null,
         }))
       }
@@ -2426,15 +2476,7 @@ export function PhoneWizardSteps() {
                               <td className="p-2 text-muted-foreground">{w.occupation || '—'}</td>
                               {state.campaignId && (
                                 <>
-                                  <td className="p-2 whitespace-nowrap">
-                                    {w.membership_status === 'member' ? (
-                                      <Badge variant="default" className="text-[10px] py-0">Member</Badge>
-                                    ) : w.membership_status === 'member_pending' ? (
-                                      <Badge variant="outline" className="text-[10px] py-0">Member – pending</Badge>
-                                    ) : w.membership_status ? (
-                                      <Badge variant="secondary" className="text-[10px] py-0">Non-member</Badge>
-                                    ) : '—'}
-                                  </td>
+                                  <td className="p-2 whitespace-nowrap">{membershipBadgesCampaign(w)}</td>
                                   <td className="p-2 text-muted-foreground whitespace-nowrap">{w.organising_role || '—'}</td>
                                   <td className="p-2 text-center">
                                     {w.cumulative_rating != null

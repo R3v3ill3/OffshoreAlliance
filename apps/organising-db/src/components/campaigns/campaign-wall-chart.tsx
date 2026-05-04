@@ -577,9 +577,14 @@ export function CampaignWallChart({
         unitAssessmentOverride
       );
       const input = buildAssessmentMetricsInput(effective, activityRatingsByActivityId);
+      const multiUnitWorkerIds = new Set(
+        ids.filter((id) => (unitsByWorker.get(id)?.length ?? 0) > 1)
+      );
       m.set(
         ouId,
-        computeMetrics(ids, workerById, ratingByWorker, participationPredicate, input)
+        computeMetrics(ids, workerById, ratingByWorker, participationPredicate, input, {
+          multiUnitWorkerIds,
+        })
       );
     }
     return m;
@@ -591,6 +596,7 @@ export function CampaignWallChart({
     campaignAssessmentDefault,
     unitAssessmentOverride,
     activityRatingsByActivityId,
+    unitsByWorker,
   ]);
 
   const unassignedMetrics = useMemo(() => {

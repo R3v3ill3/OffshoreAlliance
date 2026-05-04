@@ -33,6 +33,14 @@ export type WallChartMetrics = {
    * in cumulative view (no assessment picked).
    */
   assessment: AssessmentMetrics | null;
+  /** Workers with a phone number on file. */
+  phoneCount: number;
+  /** Workers with an email address on file. */
+  emailCount: number;
+  /** Workers in this scope who also belong to at least one other organising unit. */
+  multiUnitCount: number;
+  /** Cumulative-rating distribution across named workers. */
+  ratingBuckets: { r1: number; r2: number; r3: number; r4: number; unrated: number };
 };
 
 export type AssessmentMetrics = {
@@ -55,6 +63,11 @@ export type AssessmentMetricsInput = {
 
 export type ParticipationPredicate = (workerId: number) => boolean;
 
+export type ComputeMetricsOptions = {
+  /** Pre-computed set of worker ids that belong to ≥2 organising units. */
+  multiUnitWorkerIds?: ReadonlySet<number>;
+};
+
 /**
  * Compute metrics for a set of workers.
  * @param workerIds the workers in scope (unit or campaign)
@@ -67,7 +80,8 @@ export function computeMetrics(
   workerById: Map<number, WallChartWorker>,
   ratingByWorker: Map<number, WallChartRatingSummary>,
   isParticipating?: ParticipationPredicate,
-  assessmentInput?: AssessmentMetricsInput
+  assessmentInput?: AssessmentMetricsInput,
+  options?: ComputeMetricsOptions
 ): WallChartMetrics {
   const out: WallChartMetrics = {
     total: workerIds.length,
@@ -83,6 +97,10 @@ export function computeMetrics(
     participationTotal: workerIds.length,
     nonOaUnionCounts: [],
     assessment: null,
+    phoneCount: 0,
+    emailCount: 0,
+    multiUnitCount: 0,
+    ratingBuckets: { r1: 0, r2: 0, r3: 0, r4: 0, unrated: 0 },
   };
 
   const nonOaTally = new Map<string, number>();
@@ -121,10 +139,21 @@ export function computeMetrics(
     if (w.is_bargaining_rep) out.bargainingReps += 1;
     if (w.is_hsr) out.hsrs += 1;
 
+    if (w.phone?.trim()) out.phoneCount += 1;
+    if (w.email?.trim()) out.emailCount += 1;
+    if (options?.multiUnitWorkerIds?.has(id)) out.multiUnitCount += 1;
+
     const r = ratingByWorker.get(id);
     if (r?.cumulative_rating != null) {
       out.ratedCount += 1;
       cumSum += r.cumulative_rating;
+      const cr = r.cumulative_rating;
+      if (cr <= 1) out.ratingBuckets.r1 += 1;
+      else if (cr <= 2) out.ratingBuckets.r2 += 1;
+      else if (cr <= 3) out.ratingBuckets.r3 += 1;
+      else out.ratingBuckets.r4 += 1;
+    } else {
+      out.ratingBuckets.unrated += 1;
     }
 
     if (isParticipating) {

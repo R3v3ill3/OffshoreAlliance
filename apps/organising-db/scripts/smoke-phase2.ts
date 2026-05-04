@@ -10,7 +10,7 @@ const url = process.env.SUPABASE_URL!
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY!
 const supabase = createClient(url, key)
 
-async function check(label: string, fn: () => Promise<unknown>) {
+async function check(label: string, fn: () => PromiseLike<unknown>) {
   try {
     const result = await fn()
     console.log(`✓ ${label}`, result != null ? '' : '(null)')

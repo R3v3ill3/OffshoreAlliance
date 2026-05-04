@@ -2,6 +2,9 @@
 
 import type { CampaignOuUnitBasis } from "@/types/organising-row-types";
 
+/** Worker detail sheet Details-tab focus target (phone/email fields). */
+export type WallChartWorkerContactFocusField = "phone" | "email";
+
 export type WallChartMemberRow = {
   membership_id: number;
   worker_id: number;

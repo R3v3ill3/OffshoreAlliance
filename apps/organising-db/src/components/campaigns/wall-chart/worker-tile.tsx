@@ -1,7 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import type { DragEvent, MouseEvent } from "react";
+import { Mail, Phone } from "lucide-react";
+import type { DragEvent, KeyboardEvent, MouseEvent } from "react";
+import { cn } from "@/lib/utils/cn";
 import { getWallChartDefaultCumulative, isWorkerMemberLike } from "@/lib/campaign/constants";
 import {
   otherUnionLabel,
@@ -13,6 +15,7 @@ import type {
   AssessmentSelection,
   WallChartRatingSummary,
   WallChartWorker,
+  WallChartWorkerContactFocusField,
 } from "./types";
 import { InlineRatingPopover } from "./inline-rating-popover";
 import {
@@ -22,6 +25,8 @@ import {
 } from "./dnd";
 
 export type WorkerTileClickKind = "open" | "toggle-select" | "select-only";
+
+export type WorkerTileContactField = WallChartWorkerContactFocusField;
 
 export type WorkerTileProps = {
   worker: WallChartWorker;
@@ -56,6 +61,8 @@ export type WorkerTileProps = {
   onDragStartRefs?: (workerId: number, ouId: number | null) => WorkerDragRef[];
   /** Called when the drag ends (regardless of drop success). */
   onDragEnd?: () => void;
+  /** Phone / email icon → open worker sheet with that field focused (when canWrite). */
+  onContactBadgeClick?: (workerId: number, field: WorkerTileContactField) => void;
 };
 
 export function WorkerTile({
@@ -73,6 +80,7 @@ export function WorkerTile({
   isSelected,
   onDragStartRefs,
   onDragEnd,
+  onContactBadgeClick,
 }: WorkerTileProps) {
   const mt = worker.member_role_type;
   const um = worker.union_membership_type;
@@ -141,6 +149,9 @@ export function WorkerTile({
   const titleHints =
     canWrite ? " Click to open, \u2318/Ctrl-click to select, Shift-click to add, right-click to copy." : "";
 
+  const hasPhone = Boolean(worker.phone?.trim());
+  const hasEmail = Boolean(worker.email?.trim());
+
   const handleClick = (e: MouseEvent<HTMLButtonElement>) => {
     if (!canWrite) return;
     const meta = e.metaKey || e.ctrlKey;
@@ -195,7 +206,7 @@ export function WorkerTile({
         title={`${displayName}. ${titleRatings}.${titleAssessment}${titleDefaultHint}${titleMultiUnit}${titleHsr}${titleOtherUnion}${titleHints}`}
         aria-pressed={isSelected ? true : undefined}
         onClick={handleClick}
-        className={`w-full text-left text-[11px] leading-tight p-1.5 rounded border min-h-[3.25rem] flex flex-col gap-0.5 justify-between ${ratingBgClass(
+        className={`w-full text-left text-[11px] leading-tight p-1.5 pb-5 rounded border min-h-[3.25rem] flex flex-col gap-0.5 justify-between ${ratingBgClass(
           colourSource
         )} ${canWrite ? "cursor-pointer hover:opacity-90" : ""} ${
           isSelected ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : ""
@@ -252,6 +263,22 @@ export function WorkerTile({
           )}
         </div>
       </button>
+      <div className="pointer-events-none absolute bottom-1 left-1 z-[1] flex items-center gap-0.5">
+        <WorkerContactBadge
+          kind="phone"
+          hasValue={hasPhone}
+          canWrite={canWrite}
+          workerId={worker.worker_id}
+          onContactBadgeClick={onContactBadgeClick}
+        />
+        <WorkerContactBadge
+          kind="email"
+          hasValue={hasEmail}
+          canWrite={canWrite}
+          workerId={worker.worker_id}
+          onContactBadgeClick={onContactBadgeClick}
+        />
+      </div>
       {inMultipleUnits && (
         <span
           aria-label="In multiple organising units"
@@ -262,6 +289,63 @@ export function WorkerTile({
         </span>
       )}
     </div>
+  );
+}
+
+function WorkerContactBadge({
+  kind,
+  hasValue,
+  canWrite,
+  workerId,
+  onContactBadgeClick,
+}: {
+  kind: WorkerTileContactField;
+  hasValue: boolean;
+  canWrite: boolean;
+  workerId: number;
+  onContactBadgeClick?: (workerId: number, field: WorkerTileContactField) => void;
+}) {
+  const Icon = kind === "phone" ? Phone : Mail;
+  const noun = kind === "phone" ? "phone" : "email";
+  const shortTitle = hasValue ? `${noun} on file` : `No ${noun}`;
+  const actionHint = canWrite ? ` Open worker details, focus ${noun}.` : "";
+  const title = `${shortTitle}.${actionHint}`;
+
+  const shellClass = cn(
+    "inline-flex shrink-0 items-center justify-center rounded-sm border shadow-sm",
+    hasValue
+      ? "h-[18px] min-w-[18px] border-primary/30 bg-primary/20 text-primary"
+      : "h-[14px] min-w-[14px] border-muted-foreground/25 bg-muted/50 text-muted-foreground opacity-75"
+  );
+
+  const iconClass = hasValue ? "h-3.5 w-3.5" : "h-2.5 w-2.5";
+
+  const stopKeyBubble = (e: KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+  };
+
+  if (!canWrite) {
+    return (
+      <span className={shellClass} title={shortTitle} aria-label={shortTitle}>
+        <Icon className={cn(iconClass, "mx-auto")} aria-hidden />
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      title={title.trim()}
+      aria-label={title.trim()}
+      className={cn(shellClass, "pointer-events-auto hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring")}
+      onClick={(e) => {
+        e.stopPropagation();
+        onContactBadgeClick?.(workerId, kind);
+      }}
+      onKeyDown={stopKeyBubble}
+    >
+      <Icon className={cn(iconClass, "mx-auto")} aria-hidden />
+    </button>
   );
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { useSaveActivityRating } from "@/lib/hooks/useSaveActivityRating";
@@ -27,7 +27,12 @@ import {
 } from "@/components/workers/membership-non-oa-fields";
 import { WorkerRelationshipsTab } from "./worker-relationships-tab";
 import { RatingPicker } from "../assessments/rating-picker";
-import type { WallChartOU, WallChartRoleType, WallChartWorker } from "./types";
+import type {
+  WallChartOU,
+  WallChartRoleType,
+  WallChartWorker,
+  WallChartWorkerContactFocusField,
+} from "./types";
 import { ouDisplayName } from "./types";
 
 export type WorkerDetailSheetProps = {
@@ -39,6 +44,7 @@ export type WorkerDetailSheetProps = {
   primaryOuId: number | null;
   roleTypes: WallChartRoleType[];
   canWrite: boolean;
+  detailFocusField?: WallChartWorkerContactFocusField | null;
   onClose: () => void;
   onRequestCopyToUnit?: (workerId: number) => void;
 };
@@ -52,6 +58,7 @@ export function WorkerDetailSheet({
   primaryOuId,
   roleTypes,
   canWrite,
+  detailFocusField = null,
   onClose,
   onRequestCopyToUnit,
 }: WorkerDetailSheetProps) {
@@ -72,6 +79,7 @@ export function WorkerDetailSheet({
           worker={worker}
           roleTypes={roleTypes}
           canWrite={canWrite}
+          detailFocusField={detailFocusField}
           onClose={onClose}
         />
       </TabsContent>
@@ -125,6 +133,7 @@ function DetailsTab({
   worker,
   roleTypes,
   canWrite,
+  detailFocusField,
   onClose,
 }: {
   campaignId: string;
@@ -132,11 +141,14 @@ function DetailsTab({
   worker: WallChartWorker;
   roleTypes: WallChartRoleType[];
   canWrite: boolean;
+  detailFocusField?: WallChartWorkerContactFocusField | null;
   onClose: () => void;
 }) {
   const supabase = createClient();
   const qc = useQueryClient();
   const cid = Number(campaignId);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const phoneRef = useRef<HTMLInputElement>(null);
   const [first, setFirst] = useState(worker.first_name);
   const [last, setLast] = useState(worker.last_name);
   const [email, setEmail] = useState(worker.email ?? "");
@@ -208,6 +220,16 @@ function DetailsTab({
     worker.non_oa_union_option_id,
   ]);
 
+  useEffect(() => {
+    if (!detailFocusField) return;
+    const id = requestAnimationFrame(() => {
+      const el = detailFocusField === "email" ? emailRef.current : phoneRef.current;
+      el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      el?.focus();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [detailFocusField, worker.worker_id]);
+
   const resolvedRoleName = useMemo(() => {
     if (!roleId || roleId === "__none__") return null;
     return roleTypes.find((r) => r.role_type_id === Number(roleId))?.role_name ?? null;
@@ -258,10 +280,20 @@ function DetailsTab({
         </Field>
       </div>
       <Field label="Email">
-        <Input value={email} onChange={(e) => setEmail(e.target.value)} disabled={!canWrite} />
+        <Input
+          ref={emailRef}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          disabled={!canWrite}
+        />
       </Field>
       <Field label="Phone">
-        <Input value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!canWrite} />
+        <Input
+          ref={phoneRef}
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          disabled={!canWrite}
+        />
       </Field>
       <Field label="Occupation">
         <Input

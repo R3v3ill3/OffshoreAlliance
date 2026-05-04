@@ -74,6 +74,7 @@ import type {
   WallChartRatingSummary,
   WallChartRoleType,
   WallChartWorker,
+  WallChartWorkerContactFocusField,
 } from "./wall-chart/types";
 import { WallChartUnitManager } from "./wall-chart/wall-chart-unit-manager";
 import { CreateOrganisingUnitDialog } from "./wall-chart/create-organising-unit-dialog";
@@ -150,6 +151,8 @@ export function CampaignWallChart({
   const supabase = createClient();
   const queryClient = useQueryClient();
   const [selectedWorkerId, setSelectedWorkerId] = useState<number | null>(null);
+  const [detailFocusField, setDetailFocusField] =
+    useState<WallChartWorkerContactFocusField | null>(null);
   const [copyWorkerId, setCopyWorkerId] = useState<number | null>(null);
   const [createUnitOpen, setCreateUnitOpen] = useState(false);
   const [createAssessmentOpen, setCreateAssessmentOpen] = useState(false);
@@ -356,6 +359,8 @@ export function CampaignWallChart({
       const um = (Array.isArray(umRaw) ? umRaw[0] : umRaw) ?? null;
       const nauoRaw = w?.non_oa_union_option;
       const nauo = (Array.isArray(nauoRaw) ? nauoRaw[0] : nauoRaw) ?? null;
+      const coRaw = w?.canonical_occupation;
+      const occ = (Array.isArray(coRaw) ? coRaw[0] : coRaw) ?? null;
       return {
         membership_id: row.membership_id,
         worker_id: row.worker_id,
@@ -651,6 +656,12 @@ export function CampaignWallChart({
               return;
             }
             if (selection.size > 0) selection.clear();
+            setDetailFocusField(null);
+            setSelectedWorkerId(id);
+          }}
+          onContactBadgeClick={(id, field) => {
+            if (selection.size > 0) selection.clear();
+            setDetailFocusField(field);
             setSelectedWorkerId(id);
           }}
           onCopy={(id) => setCopyWorkerId(id)}
@@ -1213,8 +1224,21 @@ export function CampaignWallChart({
         </Button>
       </CardContent>
 
-      <Sheet open={!!selectedRow} onOpenChange={() => setSelectedWorkerId(null)}>
-        <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
+      <Sheet
+        open={!!selectedRow}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedWorkerId(null);
+            setDetailFocusField(null);
+          }
+        }}
+      >
+        <SheetContent
+          className="w-full sm:max-w-xl overflow-y-auto"
+          onOpenAutoFocus={(e) => {
+            if (detailFocusField) e.preventDefault();
+          }}
+        >
           <SheetHeader>
             <SheetTitle>
               {selectedRow?.worker
@@ -1237,7 +1261,11 @@ export function CampaignWallChart({
               }
               roleTypes={roleTypes}
               canWrite={canWrite}
-              onClose={() => setSelectedWorkerId(null)}
+              detailFocusField={detailFocusField}
+              onClose={() => {
+                setSelectedWorkerId(null);
+                setDetailFocusField(null);
+              }}
               onRequestCopyToUnit={(id) => setCopyWorkerId(id)}
             />
           )}

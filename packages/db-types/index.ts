@@ -14530,3 +14530,8 @@ export const Constants = {
     },
   },
 } as const
+
+/** Row / insert / update types for public.member_endorsement_votes (app-level names). */
+export type MemberEndorsementVote = Tables<"member_endorsement_votes">
+export type MemberEndorsementVoteInsert = TablesInsert<"member_endorsement_votes">
+export type MemberEndorsementVoteUpdate = TablesUpdate<"member_endorsement_votes">

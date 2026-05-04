@@ -34,7 +34,7 @@ export const CAMPAIGN_SCOPE_LABELS: Record<string, string> = {
 export const EA_SUBTYPE_LABELS: Record<string, string> = {
   new: "Enterprise Agreement — new",
   replacement: "Enterprise Agreement — replacement",
-  boss_initiated: "Enterprise Agreement — boss initiated",
+  boss_initiated: "Enterprise Agreement — employer initiated",
 };
 
 /** Union membership categories that count as members for density / delegate eligibility. */

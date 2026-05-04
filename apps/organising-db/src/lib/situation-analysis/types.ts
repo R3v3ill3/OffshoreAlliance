@@ -143,11 +143,13 @@ export interface InformationGap {
 }
 
 /**
- * A prior employer-initiated ballot (PABO or approval ballot) recorded
- * as part of the bargaining context section of the situation analysis.
+ * A prior employer-run or union-run ballot recorded as part of the
+ * bargaining context section of the situation analysis.
  */
 export interface PriorEmployerBallot {
-  ballot_date?: string;
+  ballot_kind?: 'agreement_approval' | 'protected_action' | 'other';
+  /** ISO date when the ballot was conducted. */
+  conducted_at?: string;
   yes_count?: number;
   no_count?: number;
   total_eligible?: number;
@@ -160,7 +162,22 @@ export interface PriorEmployerBallot {
  * between the union and the employer.
  */
 export interface KeyDispute {
-  issue_label: string;
+  topic: string;
+  notes?: string;
+}
+
+/**
+ * Organiser's estimate of worker support, stored as a JSONB object in the DB.
+ * The `context` field clarifies what the estimate is measuring, since the
+ * strategic interpretation differs significantly between the three scenarios.
+ */
+export interface WorkerSupportEstimate {
+  /** Clarifies what this estimate is measuring. */
+  context?: 'general_support' | 'employer_agreement_ballot' | 'pabo_industrial_action';
+  /** Percentage of workers estimated to be supportive (0–100). */
+  percent_supportive_estimated?: number;
+  /** How the organiser arrived at this estimate. */
+  basis_of_estimate?: string;
   notes?: string;
 }
 
@@ -189,19 +206,19 @@ export interface SituationAnalysisDraft {
 
   // ── Bargaining context (Phase 2) ────────────────────────────────────────
   /** NERR (Notice of Employee Representational Rights) status. */
-  nerr_status?: 'not_issued' | 'issued' | 'expired';
+  nerr_status?: 'not_issued' | 'issued' | 'superseded' | 'unknown';
   /** ISO date when the NERR was issued. Only relevant when nerr_status === 'issued'. */
   nerr_issued_at?: string;
   /** Mirrors the bargaining_phase_state DB enum; tracks the current bargaining phase. */
   bargaining_phase_state?: string;
-  /** Whether the employer has indicated or threatened an employer ballot (PABO). */
-  employer_ballot_intent?: 'indicated' | 'threatened' | 'none';
+  /** Whether the employer is expected to put their proposed agreement to a vote (s437 agreement approval ballot). none / signalled / imminent / unknown. */
+  employer_ballot_intent?: 'none' | 'signalled' | 'imminent' | 'unknown';
   /** Structured history of prior employer-initiated ballots. */
   prior_employer_ballots?: PriorEmployerBallot[];
   /** Key disputed issues between the union and employer during bargaining. */
   key_disputes?: KeyDispute[];
-  /** Organiser's estimate of worker support as a percentage (0–100). */
-  worker_support_estimate?: number;
+  /** Organiser's estimate of worker support. See WorkerSupportEstimate for context field usage. */
+  worker_support_estimate?: WorkerSupportEstimate;
 }
 
 export function emptySituationAnalysisDraft(): SituationAnalysisDraft {

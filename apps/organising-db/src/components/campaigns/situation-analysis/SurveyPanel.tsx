@@ -44,7 +44,8 @@ interface SurveyPanelProps {
 }
 
 const BLANK_BALLOT: PriorEmployerBallot = {
-  ballot_date: undefined,
+  ballot_kind: undefined,
+  conducted_at: undefined,
   yes_count: undefined,
   no_count: undefined,
   total_eligible: undefined,
@@ -53,7 +54,7 @@ const BLANK_BALLOT: PriorEmployerBallot = {
 };
 
 const BLANK_DISPUTE: KeyDispute = {
-  issue_label: '',
+  topic: '',
   notes: undefined,
 };
 
@@ -160,7 +161,7 @@ export function SurveyPanel({
         draft.nerr_status ||
         (draft.prior_employer_ballots ?? []).length > 0 ||
         (draft.key_disputes ?? []).length > 0 ||
-        draft.worker_support_estimate != null
+        draft.worker_support_estimate?.percent_supportive_estimated != null
       ),
     },
   };
@@ -396,11 +397,12 @@ export function SurveyPanel({
                     <SelectItem value="__none__">Not set</SelectItem>
                     <SelectItem value="not_issued">Not issued</SelectItem>
                     <SelectItem value="issued">Issued</SelectItem>
-                    <SelectItem value="expired">Expired</SelectItem>
+                    <SelectItem value="superseded">Superseded (employer issued a replacement NERR)</SelectItem>
+                    <SelectItem value="unknown">Unknown</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Notice of Employee Representational Rights — required before bargaining can formally commence.
+                  Notice of Employee Representational Rights — issued by the employer under s173 of the Fair Work Act before bargaining formally commences.
                 </p>
               </div>
 
@@ -420,17 +422,29 @@ export function SurveyPanel({
 
               {/* Worker support estimate */}
               <div className="space-y-2">
-                <Label>Worker support estimate (%)</Label>
+                <Label>
+                  {draft.employer_ballot_intent === 'signalled' || draft.employer_ballot_intent === 'imminent'
+                    ? 'Workers expected to vote YES on employer\'s proposed agreement (%)'
+                    : 'Worker support estimate (%)'}
+                </Label>
                 <div className="flex items-center gap-2">
                   <Input
                     type="number"
                     min={0}
                     max={100}
-                    value={draft.worker_support_estimate ?? ''}
+                    value={draft.worker_support_estimate?.percent_supportive_estimated ?? ''}
                     onChange={(e) => {
                       const raw = e.target.value;
                       const n = raw === '' ? undefined : Math.min(100, Math.max(0, Number(raw)));
-                      onChange({ ...draft, worker_support_estimate: n });
+                      const context = (draft.employer_ballot_intent === 'signalled' || draft.employer_ballot_intent === 'imminent')
+                        ? 'employer_agreement_ballot' as const
+                        : 'general_support' as const;
+                      onChange({
+                        ...draft,
+                        worker_support_estimate: n == null
+                          ? undefined
+                          : { ...draft.worker_support_estimate, percent_supportive_estimated: n, context },
+                      });
                     }}
                     placeholder="e.g. 65"
                     className="w-28"
@@ -438,13 +452,15 @@ export function SurveyPanel({
                   <span className="text-sm text-muted-foreground">%</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Organiser&apos;s estimate of workers likely to vote yes. Used to track movement over time.
+                  {draft.employer_ballot_intent === 'signalled' || draft.employer_ballot_intent === 'imminent'
+                    ? 'Estimate of workers voting yes if the employer runs an approval ballot now. Separate from willingness to take industrial action.'
+                    : 'Organiser\'s estimate of workers likely to vote yes. Used to track movement over time.'}
                 </p>
               </div>
 
               {/* Employer ballot intent */}
               <div className="space-y-2">
-                <Label>Employer ballot intent (PABO)</Label>
+                <Label>Employer agreement ballot intent</Label>
                 <Select
                   value={draft.employer_ballot_intent ?? '__none__'}
                   onValueChange={(v) =>
@@ -462,12 +478,13 @@ export function SurveyPanel({
                   <SelectContent>
                     <SelectItem value="__none__">Not set</SelectItem>
                     <SelectItem value="none">None indicated</SelectItem>
-                    <SelectItem value="indicated">Indicated</SelectItem>
-                    <SelectItem value="threatened">Threatened</SelectItem>
+                    <SelectItem value="signalled">Signalled</SelectItem>
+                    <SelectItem value="imminent">Imminent</SelectItem>
+                    <SelectItem value="unknown">Unknown</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Whether the employer has indicated or threatened to apply for a Protected Action Ballot Order.
+                  Whether the employer is likely to put their proposed agreement to a vote under s437 of the Fair Work Act. This is not a PABO — the PABO is the union&apos;s separate tool for authorising industrial action.
                 </p>
               </div>
 
@@ -514,13 +531,36 @@ export function SurveyPanel({
                       </Button>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1 col-span-2">
+                        <Label className="text-xs">Ballot type</Label>
+                        <Select
+                          value={ballot.ballot_kind ?? '__none__'}
+                          onValueChange={(v) =>
+                            updateBallot(i, {
+                              ballot_kind: v === '__none__'
+                                ? undefined
+                                : (v as PriorEmployerBallot['ballot_kind']),
+                            })
+                          }
+                        >
+                          <SelectTrigger className="text-xs">
+                            <SelectValue placeholder="Select type…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Unknown</SelectItem>
+                            <SelectItem value="agreement_approval">Agreement approval ballot (s437)</SelectItem>
+                            <SelectItem value="protected_action">Protected action ballot (OA-run)</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <div className="space-y-1">
                         <Label className="text-xs">Date</Label>
                         <Input
                           type="date"
-                          value={ballot.ballot_date ?? ''}
+                          value={ballot.conducted_at ?? ''}
                           onChange={(e) =>
-                            updateBallot(i, { ballot_date: e.target.value || undefined })
+                            updateBallot(i, { conducted_at: e.target.value || undefined })
                           }
                           className="text-xs"
                         />
@@ -654,8 +694,8 @@ export function SurveyPanel({
                     <div className="space-y-1">
                       <Label className="text-xs">Issue</Label>
                       <Input
-                        value={dispute.issue_label}
-                        onChange={(e) => updateDispute(i, { issue_label: e.target.value })}
+                        value={dispute.topic}
+                        onChange={(e) => updateDispute(i, { topic: e.target.value })}
                         placeholder="e.g. Overtime rates, roster cycles"
                         className="text-xs"
                       />

@@ -18,7 +18,7 @@ export const PHASE2_PRINCIPLES_PREAMBLE: string[] = [
 
 /** One-line context shown next to the stage title on the bargaining stage plan page. */
 export const BARGAINING_STAGE_HEADER_BLURB: Record<Phase2StageNumber, string> = {
-  7: 'Open the formal bargaining process: serve the NERR, notify bargaining representatives, and set the legal clock running.',
+  7: 'Open the formal bargaining process: the employer issues the NERR, bargaining representatives are confirmed, and the intractable bargaining clock starts.',
   8: 'Exchange initial proposals, read the employer\'s posture, and deepen organising through structured floor activity and comms discipline.',
   9: 'Take a formal strike-readiness snapshot against the seven criteria and decide: escalate to industrial action or loop back to capacity-building.',
   10: 'File the PABO, win the ballot, and execute a disciplined escalating industrial-action ladder to move the employer.',
@@ -32,7 +32,7 @@ export const BARGAINING_STAGE_HEADER_BLURB: Record<Phase2StageNumber, string> = 
 /** Longer guidance for the per-stage info dialog (3–4 paragraphs each). */
 export const BARGAINING_STAGE_INFO_BODY: Record<Phase2StageNumber, string[]> = {
   7: [
-    'Bargaining Commences once the Notice of Employee Representational Rights (NERR) is served and the bargaining agent has been notified under s176 of the Fair Work Act. The date of that first formal meeting marks the commencement of bargaining—this is the legal reference point from which the nine-month s235 intractable bargaining clock begins. Record this date precisely and flag it in all planning documents.',
+    'Bargaining Commences once the employer issues the Notice of Employee Representational Rights (NERR) under s173 of the Fair Work Act, and the bargaining agent has been notified under s176. The date of that first formal meeting marks the commencement of bargaining—this is the legal reference point from which the nine-month s235 intractable bargaining clock begins. Record this date precisely and flag it in all planning documents.',
     'Carry forward the situation analysis developed in Stage 6 of Phase 1. The organising map, delegate structure, membership density data, and identified leverage points are the foundation on which the Phase 2 plan is built. Do not treat the transition to formal bargaining as a reset—continuity of analysis is a strategic asset, not administrative tidiness.',
     'Scope the first claim package in collaboration with delegates and the broader claims committee. Delegates should be formally appointed as bargaining representatives where possible, giving them standing at the table and legal protection for their bargaining activity. Establish the comms cadence for swing-roster workforces at this stage: information that needs to reach workers on rotating shifts must travel on rotation change days, not on fixed weekly cycles that miss entire crews.',
     'Key FWA references for this stage: s174 (NERR notification obligations), s176 (bargaining representatives—who qualifies, how they are notified, and their rights), and s181 (employee approval requirements for enterprise agreements, which sets the frame for the ratification stage ahead).',

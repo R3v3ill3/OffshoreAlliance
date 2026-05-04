@@ -169,8 +169,7 @@ export function EmployerBehaviourStep({ campaignId, wizardData, onChange, mode }
             </SelectContent>
           </Select>
           <p className="text-xs text-slate-500">
-            Whether the employer is likely to apply for a protected action ballot
-            order.
+            Whether the employer is likely to put their proposed agreement to a vote under s437 of the Fair Work Act. This is not a PABO — the PABO is the union&apos;s separate tool for authorising industrial action.
           </p>
         </div>
 
@@ -229,9 +228,8 @@ export function EmployerBehaviourStep({ campaignId, wizardData, onChange, mode }
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="unknown">Unknown</SelectItem>
-                      <SelectItem value="employer_pabo">Employer PABO</SelectItem>
-                      <SelectItem value="protected_action">Protected action</SelectItem>
-                      <SelectItem value="approval">Approval ballot</SelectItem>
+                      <SelectItem value="agreement_approval">Agreement approval ballot (s437)</SelectItem>
+                      <SelectItem value="protected_action">Protected action ballot (OA-run)</SelectItem>
                       <SelectItem value="other">Other</SelectItem>
                     </SelectContent>
                   </Select>

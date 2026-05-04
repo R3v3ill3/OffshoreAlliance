@@ -413,7 +413,7 @@ export function CampaignWizard() {
               key_disputes:
                 (situationRow.key_disputes as SituationAnalysisDraft["key_disputes"]) ?? [],
               worker_support_estimate:
-                (situationRow.worker_support_estimate as number | null) ?? undefined,
+                (situationRow.worker_support_estimate as SituationAnalysisDraft["worker_support_estimate"] | null) ?? undefined,
             } satisfies SituationAnalysisDraft)
           : null,
       };

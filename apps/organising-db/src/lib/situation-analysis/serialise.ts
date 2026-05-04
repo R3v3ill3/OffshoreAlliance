@@ -15,6 +15,7 @@ import type {
   KeyDispute,
   PriorEmployerBallot,
   SituationAnalysisDraft,
+  WorkerSupportEstimate,
 } from "./types";
 
 /**
@@ -234,8 +235,17 @@ export function renderSituationContext(
   if (bargainingRow.bargaining_phase_state) {
     lines.push(`- Bargaining phase: ${bargainingRow.bargaining_phase_state}`);
   }
-  if (bargainingRow.worker_support_estimate != null) {
-    lines.push(`- Worker support estimate: ${bargainingRow.worker_support_estimate}%`);
+  if (bargainingRow.worker_support_estimate?.percent_supportive_estimated != null) {
+    const est = bargainingRow.worker_support_estimate;
+    const parts = [`${est.percent_supportive_estimated}%`];
+    if (est.context && est.context !== 'general_support') {
+      const ctxLabel = est.context === 'employer_agreement_ballot'
+        ? 'employer agreement ballot estimate'
+        : 'PABO/industrial action estimate';
+      parts.push(ctxLabel);
+    }
+    if (est.basis_of_estimate) parts.push(`basis: ${est.basis_of_estimate}`);
+    lines.push(`- Worker support estimate: ${parts.join(', ')}`);
   }
   if (bargainingRow.employer_ballot_intent && bargainingRow.employer_ballot_intent !== 'none') {
     lines.push(`- Employer ballot intent: ${bargainingRow.employer_ballot_intent}`);
@@ -246,7 +256,8 @@ export function renderSituationContext(
       `- Prior employer ballots: ${ballots
         .map((b) => {
           const parts: string[] = [];
-          if (b.ballot_date) parts.push(b.ballot_date);
+          if (b.conducted_at) parts.push(b.conducted_at);
+          if (b.ballot_kind) parts.push(b.ballot_kind);
           if (b.outcome) parts.push(b.outcome);
           if (b.yes_count != null && b.no_count != null) {
             parts.push(`yes=${b.yes_count} no=${b.no_count}`);
@@ -259,7 +270,7 @@ export function renderSituationContext(
   if (bargainingRow.key_disputes && bargainingRow.key_disputes.length > 0) {
     const disputes = bargainingRow.key_disputes.slice(0, 5);
     lines.push(
-      `- Key disputes: ${disputes.map((d) => d.issue_label).filter(Boolean).join('; ')}`
+      `- Key disputes: ${disputes.map((d) => d.topic).filter(Boolean).join('; ')}`
     );
   }
 
@@ -346,7 +357,7 @@ export function deserialiseSituationAnalysisDraft(
       (row.prior_employer_ballots as PriorEmployerBallot[] | null) ?? [],
     key_disputes: (row.key_disputes as KeyDispute[] | null) ?? [],
     worker_support_estimate:
-      (row.worker_support_estimate as number | null) ?? undefined,
+      (row.worker_support_estimate as WorkerSupportEstimate | null) ?? undefined,
   };
 }
 

@@ -22,6 +22,24 @@ export const EMPLOYER_INTERACTION_STATES = [
       "Signals (e.g. legal advice retained, HR moves, communications drafted) suggest the employer is preparing a pre-emptive bargaining play.",
   },
   {
+    id: "oa_requested_bargaining",
+    label: "OA has requested the employer agree to bargain",
+    description:
+      "OA has formally requested the employer agree to commence bargaining. Awaiting the employer's response.",
+  },
+  {
+    id: "employer_disputing_coverage",
+    label: "Employer disputing OA coverage",
+    description:
+      "Employer has rejected the request to bargain by claiming OA does not cover the relevant workers. FWC coverage proceedings may follow.",
+  },
+  {
+    id: "msd_pending",
+    label: "Majority Support Determination (MSD) pending",
+    description:
+      "OA has applied to the Fair Work Commission for an MSD. If granted, the employer is required to bargain. Note: MSD is not applicable for replacement agreements.",
+  },
+  {
     id: "bargaining_underway",
     label: "Bargaining underway",
     description: "Formal bargaining sessions are in progress.",
@@ -34,9 +52,9 @@ export const EMPLOYER_INTERACTION_STATES = [
   },
   {
     id: "employer_delaying",
-    label: "Employer delaying / refusing to initiate bargaining",
+    label: "Employer delaying / refusing to bargain",
     description:
-      "The employer is using delay or procedural tactics to avoid commencing bargaining.",
+      "The employer is delaying or refusing to bargain despite OA's request, without citing a specific coverage dispute or support challenge. Use the more specific states above if the employer has formally disputed OA coverage or OA has lodged an MSD.",
   },
   {
     id: "industrial_action_phase",

@@ -42,7 +42,7 @@ export function BargainingTimingStep({ wizardData, onChange }: Props) {
           />
           <p className="text-xs text-slate-500">
             The date formal bargaining commenced — used to calculate the
-            intractable clock (90 days to NERR eligibility).
+            nine-month intractable bargaining threshold (s235 Fair Work Act).
           </p>
         </div>
 

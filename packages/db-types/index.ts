@@ -12168,7 +12168,7 @@ export type EmployerBallotIntent = 'none' | 'signalled' | 'imminent' | 'unknown'
 
 /** JSONB element shape for `campaign_situation_analyses.prior_employer_ballots` */
 export interface PriorEmployerBallot {
-  ballot_kind?: string
+  ballot_kind?: 'agreement_approval' | 'protected_action' | 'other'
   conducted_at?: string
   eligible_count?: number
   votes_yes?: number
@@ -12190,6 +12190,8 @@ export interface KeyDispute {
 
 /** JSONB object shape for `campaign_situation_analyses.worker_support_estimate` */
 export interface WorkerSupportEstimate {
+  /** Clarifies what this estimate is measuring. */
+  context?: 'general_support' | 'employer_agreement_ballot' | 'pabo_industrial_action'
   percent_supportive_estimated?: number
   basis_of_estimate?: string
   notes?: string

@@ -151,9 +151,9 @@ function BargainingRow({ row }: { row: VBargainingProgress }) {
         </div>
       </TableCell>
       <TableCell className="text-center">
-        {row.open_decision_count > 0 ? (
+        {(row.open_decision_count ?? 0) > 0 ? (
           <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-xs">
-            {row.open_decision_count}
+            {row.open_decision_count ?? 0}
           </Badge>
         ) : (
           <span className="text-muted-foreground text-xs">0</span>
@@ -166,9 +166,9 @@ function BargainingRow({ row }: { row: VBargainingProgress }) {
         <VoteBadge outcome={row.latest_vote_outcome} />
       </TableCell>
       <TableCell className="text-center">
-        {row.active_pia_count > 0 ? (
+        {(row.active_pia_count ?? 0) > 0 ? (
           <Badge variant="secondary" className="bg-blue-100 text-blue-700 text-xs">
-            {row.active_pia_count}
+            {row.active_pia_count ?? 0}
           </Badge>
         ) : (
           <span className="text-muted-foreground text-xs">0</span>

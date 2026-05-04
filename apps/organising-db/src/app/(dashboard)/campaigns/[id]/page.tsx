@@ -808,7 +808,9 @@ export default function CampaignDetailPage() {
         </TabsContent>
 
         <TabsContent value="library">
-          <LibrarySection campaignId={campaignId} canWrite={!!canWrite} />
+          {activeTab === "library" && (
+            <LibrarySection campaignId={campaignId} canWrite={!!canWrite} />
+          )}
         </TabsContent>
 
         <TabsContent value="bargaining">

@@ -306,7 +306,11 @@ export function CampaignUniverseSection({
     queryFn: async () => {
       let q = supabase
         .from("workers")
-        .select("worker_id, first_name, last_name, employer_id, worksite_id")
+        .select(
+          `worker_id, first_name, last_name, employer_id, worksite_id,
+           employer:employers(employer_name),
+           worksite:worksites(worksite_name)`
+        )
         .eq("is_active", true);
 
       if (employerIds.length > 0) {
@@ -1012,17 +1016,30 @@ export function CampaignUniverseSection({
                       : "No workers match your search."}
                   </p>
                 ) : (
-                  filteredAddableWorkers.map((w) => (
-                    <button
-                      key={w.worker_id}
-                      type="button"
-                      className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-muted"
-                      onClick={() => addWorkerMutation.mutate(w.worker_id)}
-                      disabled={addWorkerMutation.isPending}
-                    >
-                      {w.first_name} {w.last_name}
-                    </button>
-                  ))
+                  filteredAddableWorkers.map((w) => {
+                    const emp = normalizeOne(
+                      (w as { employer?: { employer_name?: string } | { employer_name?: string }[] | null }).employer ?? null
+                    );
+                    const ws = normalizeOne(
+                      (w as { worksite?: { worksite_name?: string } | { worksite_name?: string }[] | null }).worksite ?? null
+                    );
+                    return (
+                      <button
+                        key={w.worker_id}
+                        type="button"
+                        className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-muted"
+                        onClick={() => addWorkerMutation.mutate(w.worker_id)}
+                        disabled={addWorkerMutation.isPending}
+                      >
+                        <span className="font-medium">{w.first_name} {w.last_name}</span>
+                        {(emp?.employer_name || ws?.worksite_name) && (
+                          <span className="ml-2 text-muted-foreground text-xs">
+                            {[emp?.employer_name, ws?.worksite_name].filter(Boolean).join(" · ")}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
                 )}
               </div>
             </>

@@ -3,13 +3,33 @@
  *
  * Install at app startup (e.g., in providers.tsx) via installDiagnosticShims().
  * These are non-destructive — they wrap browser APIs to add logging without
- * changing behavior. Remove after the data-access issue is resolved.
+ * changing behavior.
  *
  * Detected conditions:
  * - navigator.locks held for > 10 seconds (potential deadlock)
+ * - navigator.locks rejected by AbortError (cross-tab steal — should be ~0
+ *   after the processLock fix landed)
  * - fetch requests to Supabase that take > 15 seconds (potential hang)
  * - fetch requests that never resolve
+ *
+ * All four conditions are forwarded to Sentry via captureMessage so we can
+ * build queryable dashboards and verify the cross-tab fix in production.
  */
+
+import * as Sentry from "@sentry/nextjs";
+
+function captureToSentry(
+  message: string,
+  level: "info" | "warning" | "error",
+  tags: Record<string, string>,
+  extra: Record<string, unknown>,
+): void {
+  try {
+    Sentry.captureMessage(message, { level, tags, extra });
+  } catch {
+    // Sentry not initialised yet — ignore.
+  }
+}
 
 const LOCK_WARN_MS = 10_000;
 const FETCH_WARN_MS = 15_000;
@@ -180,6 +200,12 @@ function installLockShim(): void {
           `[lock-diag] LOCK BLOCKED for ${LOCK_WARN_MS}ms: "${lockName}". ` +
             `Active locks: ${_activeLocks}. This may indicate a deadlock in @supabase/auth-js.`
         );
+        captureToSentry(
+          `[lock-diag] LOCK BLOCKED ${LOCK_WARN_MS}ms`,
+          "warning",
+          { diag: "lock_blocked", lock_name: lockName },
+          { activeLocks: _activeLocks, lockName, blockedMs: LOCK_WARN_MS },
+        );
       }
     }, LOCK_WARN_MS);
 
@@ -208,6 +234,12 @@ function installLockShim(): void {
           console.warn(
             `[lock-diag] Lock "${lockName}" held for ${heldMs}ms (acquire wait: ${acquireMs}ms)`
           );
+          captureToSentry(
+            `[lock-diag] Lock held >5s`,
+            "warning",
+            { diag: "lock_held_long", lock_name: lockName },
+            { lockName, heldMs, acquireMs },
+          );
         }
       }
     };
@@ -219,6 +251,21 @@ function installLockShim(): void {
       clearTimeout(warnTimer);
       _activeLocks--;
       console.warn(`[lock-diag] Lock "${lockName}" request rejected:`, err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const errName = err instanceof Error ? err.name : "unknown";
+      const isStealAbort =
+        errName === "AbortError" && errMsg.toLowerCase().includes("steal");
+      captureToSentry(
+        isStealAbort
+          ? `[lock-diag] Lock STOLEN (steal cascade)`
+          : `[lock-diag] Lock request rejected`,
+        "warning",
+        {
+          diag: isStealAbort ? "lock_stolen" : "lock_rejected",
+          lock_name: lockName,
+        },
+        { lockName, errorName: errName, errorMessage: errMsg },
+      );
       throw err;
     });
   };
@@ -261,6 +308,12 @@ function installFetchShim(): void {
       console.warn(
         `[fetch-diag] SUPABASE REQUEST HANGING for ${FETCH_WARN_MS}ms: ${urlPath}. ` +
           `Pending Supabase fetches: ${_pendingFetches}.`
+      );
+      captureToSentry(
+        `[fetch-diag] Supabase request hanging >15s`,
+        "warning",
+        { diag: "fetch_hanging", path: urlPath },
+        { path: urlPath, search: urlSearch, pending: _pendingFetches, hangMs: FETCH_WARN_MS },
       );
     }, FETCH_WARN_MS);
 

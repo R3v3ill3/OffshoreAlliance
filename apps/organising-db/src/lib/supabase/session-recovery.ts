@@ -99,6 +99,16 @@ function buildErrorSummary(error: unknown): string {
  * Determines whether an error is a genuine Supabase auth failure.
  * 403 alone is NOT sufficient -- RLS violations also return 403.
  * Only treat 403 as auth failure when accompanied by a known auth error code.
+ *
+ * Also treats lock-related errors as auth failures so the recovery flow can
+ * trigger forceLogoutToLogin / nuclear reset rather than hang. These cover:
+ *   - NavigatorLockAcquireTimeoutError / ProcessLockAcquireTimeoutError
+ *     (auth-js's typed lock-timeout errors; both set isAcquireTimeout = true).
+ *   - The raw Chromium DOMException "Lock broken by another request with the
+ *     'steal' option" that surfaces if anything bypasses auth-js's
+ *     v2.100 cascade guard (e.g. a third-party library or extension that
+ *     uses the same lock name).
+ *   - Our own withAuthOpTimeout sentinel (isAuthOpTimeout).
  */
 export function isLikelyAuthError(error: unknown): boolean {
   const status = readErrorStatus(error);
@@ -110,13 +120,25 @@ export function isLikelyAuthError(error: unknown): boolean {
 
   if (code && ["PGRST301", "INVALID_JWT"].includes(code)) return true;
 
+  // Lock / timeout sentinels (custom flags set by auth-js and our wrappers)
+  if (error && typeof error === "object") {
+    const rec = error as Record<string, unknown>;
+    if (rec.isAcquireTimeout === true) return true;
+    if (rec.isAuthOpTimeout === true) return true;
+  }
+
   const message = readErrorMessage(error).toLowerCase();
   return (
     message.includes("jwt expired") ||
     message.includes("jwt malformed") ||
     message.includes("not authenticated") ||
     message.includes("invalid refresh token") ||
-    message.includes("session_not_found")
+    message.includes("session_not_found") ||
+    // Lock-related — see jsdoc above.
+    message.includes("lock broken by another request") ||
+    message.includes("released because another request stole it") ||
+    message.includes("acquiring process lock") ||
+    message.includes("acquiring navigator lock")
   );
 }
 

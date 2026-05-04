@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getSessionWithTimeout } from "@/lib/supabase/client";
 import {
   performRobustSignOut,
   recoverSessionConnection,
@@ -131,25 +131,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // destructive forceLogoutToLogin that wipes shared cookies and takes
       // down the parent tab. After retry exhaustion the existing destructive
       // path runs, preserving 48c3c1c's intent for genuinely corrupt cookies.
-      let getSessionResult: Awaited<ReturnType<typeof supabase.auth.getSession>> | null = null;
+      // getSessionWithTimeout adds a 6s ceiling so a stuck auth client
+      // doesn't keep the app loading state stuck forever.
+      let getSessionSession: Awaited<ReturnType<typeof getSessionWithTimeout>>["session"] = null;
+      let getSessionTimedOut = false;
       let getSessionError: unknown = null;
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
-          getSessionResult = await supabase.auth.getSession();
-          getSessionError = getSessionResult.error ?? null;
+          const result = await getSessionWithTimeout("auth-context-init");
+          getSessionSession = result.session;
+          getSessionTimedOut = result.timedOut;
+          getSessionError = null;
         } catch (err) {
           getSessionError = err;
-          getSessionResult = null;
+          getSessionSession = null;
+          getSessionTimedOut = false;
         }
-        if (!getSessionError) break;
+        if (!getSessionError && !getSessionTimedOut) break;
         if (attempt === 0) {
           await wait(350);
         }
       }
 
       try {
-        if (getSessionError) {
-          const message = getSessionError instanceof Error ? getSessionError.message : String(getSessionError);
+        if (getSessionError || getSessionTimedOut) {
+          const message = getSessionTimedOut
+            ? "auth init: getSession timed out"
+            : getSessionError instanceof Error
+            ? getSessionError.message
+            : String(getSessionError);
           logConnectionEvent({ type: "token_refresh_fail", detail: message });
           setUser(null);
           setProfile(null);
@@ -157,7 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const session = getSessionResult?.data.session ?? null;
+        const session = getSessionSession;
         const currentUser = session?.user ?? null;
         setUser(currentUser);
 

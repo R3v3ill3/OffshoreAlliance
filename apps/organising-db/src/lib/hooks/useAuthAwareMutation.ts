@@ -1,14 +1,13 @@
 import { useMutation, type UseMutationOptions, type UseMutationResult } from "@tanstack/react-query";
-import { createClient, coordinatedRefreshSession } from "@/lib/supabase/client";
+import { coordinatedRefreshSession, getSessionWithTimeout } from "@/lib/supabase/client";
 import { isLikelyAuthError } from "@/lib/supabase/session-recovery";
 import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
 
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000; // 5 minutes
 
 export async function ensureValidSession(): Promise<boolean> {
-  const supabase = createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-
+  const { session, timedOut } = await getSessionWithTimeout("ensureValidSession");
+  if (timedOut) return false; // bail rather than block the mutation indefinitely
   if (!session) return false;
 
   const expiresAt = session.expires_at;

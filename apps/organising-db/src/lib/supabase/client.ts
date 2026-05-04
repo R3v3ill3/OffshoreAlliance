@@ -16,13 +16,23 @@ const SUPABASE_FETCH_TIMEOUT_MS = 20_000;
 
 /**
  * Maximum time to wait for any single supabase.auth.* call.
- * The auth client wraps these in `lock`, which is normally fast, but
- * before the navigator.locks-elimination fix it could hang for tens of
- * seconds during cross-tab steal cascades. This timeout is a defensive
- * guard against any future hang in the auth layer (storage adapter,
- * BroadcastChannel queue, etc.) — see Workstream C in the remediation plan.
+ *
+ * Set to 12 s (was 6 s — too aggressive). When a sibling tab opens and its
+ * middleware rotates the refresh cookie, our tab's getSession() may trigger
+ * a fresh refresh-token fetch against Supabase auth. Cold starts plus
+ * cross-tab refresh-token contention can legitimately push this over 6 s
+ * even on a healthy connection — so 6 s was misclassifying transient
+ * slowness as auth failure and triggering forceLogoutToLogin.
+ *
+ * 12 s is below our fetch timeout (20 s) but well above the realistic
+ * upper bound for a healthy refresh.
+ *
+ * Callers must NEVER treat a timeout as confirmed auth failure: the
+ * underlying call may still complete after the wrapper rejects, and
+ * even if it doesn't, an inflight 401 from a real query will route us
+ * through the proper recovery path with cleaner signals.
  */
-const SUPABASE_AUTH_OP_TIMEOUT_MS = 6_000;
+const SUPABASE_AUTH_OP_TIMEOUT_MS = 12_000;
 
 /**
  * Wraps the global fetch with an AbortController timeout.

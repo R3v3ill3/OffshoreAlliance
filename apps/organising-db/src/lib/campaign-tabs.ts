@@ -55,21 +55,23 @@ interface ResolvedTabParams {
  * Maps legacy ?tab= values to their new clustered {tab, sub} equivalents.
  * Keys are the old tab values; values are the canonical {tab, sub} pairs.
  *
- * Legacy key  →  new tab      new sub
- * ──────────────────────────────────────
- * workplan    →  plan         workplan
- * actions     →  plan         actions
- * tasklists   →  plan         task-lists
- * universe    →  workforce    universe
- * assessments →  workforce    assessments
- * wall        →  workforce    wall-chart
- * comms       →  outreach     comms
- * phone       →  outreach     phone
- * reporting   →  outcomes     reports
- * insights    →  outcomes     insights
- * results     →  outcomes     results
+ * Legacy key     →  new tab      new sub
+ * ─────────────────────────────────────────
+ * campaign-plan  →  plan         strategy
+ * workplan       →  plan         workplan
+ * actions        →  plan         actions
+ * tasklists      →  plan         task-lists
+ * universe       →  workforce    universe
+ * assessments    →  workforce    assessments
+ * wall           →  workforce    wall-chart
+ * comms          →  outreach     comms
+ * phone          →  outreach     phone
+ * reporting      →  outcomes     reports
+ * insights       →  outcomes     insights
+ * results        →  outcomes     results
  */
 export const REDIRECT_MAP: Record<string, { tab: string; sub: string }> = {
+  "campaign-plan": { tab: "plan", sub: "strategy" },
   workplan: { tab: "plan", sub: "workplan" },
   actions: { tab: "plan", sub: "actions" },
   tasklists: { tab: "plan", sub: "task-lists" },

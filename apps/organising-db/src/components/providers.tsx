@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-qu
 import { useState, useEffect, useRef, Suspense, type ReactNode } from "react";
 import { AuthProvider } from "@/lib/supabase/auth-context";
 import { DeviceProvider } from "@/contexts/device-context";
-import { createClient, coordinatedRefreshSession } from "@/lib/supabase/client";
+import { createClient, coordinatedRefreshSession, getSessionWithTimeout } from "@/lib/supabase/client";
 import { forceLogoutToLogin, isLikelyAuthError } from "@/lib/supabase/session-recovery";
 import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
 import { logCookieDiagnostic } from "@/lib/supabase/cookie-diagnostics";
@@ -102,8 +102,14 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
       // The browser may have throttled the Supabase background refresh timer
       // while the tab was hidden, leaving the token expired or close to expiry.
       try {
-        const supabase = createClient();
-        const { data: { session } } = await supabase.auth.getSession();
+        const { session, timedOut } = await getSessionWithTimeout("visibility");
+
+        if (timedOut) {
+          // getSession itself hung beyond 6s — the auth client is stuck.
+          // Fall through to the null-session path which will attempt recovery
+          // and, on continued failure, force-logout to clear corrupted state.
+          logConnectionEvent({ type: "lock_timeout", detail: "visibility-getSession-timeout" });
+        }
 
         if (!session) {
           // FIX: Previously this silently returned, leaving the user with an
@@ -155,10 +161,16 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
 
     const heartbeat = async () => {
       try {
-        const supabase = createClient();
-        const { data: { session } } = await supabase.auth.getSession();
+        const { session, timedOut } = await getSessionWithTimeout("heartbeat");
+        if (timedOut) {
+          // Auth client is stuck — log and bail. The visibility handler will
+          // pick up recovery on next tab focus.
+          logConnectionEvent({ type: "lock_timeout", detail: "heartbeat-getSession-timeout" });
+          return;
+        }
         if (!session?.user) return; // Not logged in — nothing to check
 
+        const supabase = createClient();
         const { data, error } = await supabase
           .from("user_profiles")
           .select("user_id")

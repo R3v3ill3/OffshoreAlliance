@@ -1,5 +1,7 @@
 import { createBrowserClient } from "@supabase/ssr";
-import type { SupabaseClient, AuthResponse } from "@supabase/supabase-js";
+// processLock is re-exported by supabase-js from auth-js. Importing from
+// supabase-js avoids declaring a direct auth-js dependency.
+import { processLock, type SupabaseClient, type AuthResponse, type Session } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import { getCookieOptions } from "@/lib/supabase/cookie-options";
 import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
@@ -11,6 +13,16 @@ import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
  * infinite loading spinner that requires a browser restart to clear.
  */
 const SUPABASE_FETCH_TIMEOUT_MS = 20_000;
+
+/**
+ * Maximum time to wait for any single supabase.auth.* call.
+ * The auth client wraps these in `lock`, which is normally fast, but
+ * before the navigator.locks-elimination fix it could hang for tens of
+ * seconds during cross-tab steal cascades. This timeout is a defensive
+ * guard against any future hang in the auth layer (storage adapter,
+ * BroadcastChannel queue, etc.) — see Workstream C in the remediation plan.
+ */
+const SUPABASE_AUTH_OP_TIMEOUT_MS = 6_000;
 
 /**
  * Wraps the global fetch with an AbortController timeout.
@@ -47,11 +59,11 @@ export function createClient(): SupabaseClient {
       global: { fetch: fetchWithTimeout },
       auth: {
         // Disable the Supabase client's built-in background auto-refresh timer.
-        // This is the KEY fix for the refresh token race condition: the timer runs
-        // independently of all our coordination code (coordinatedRefreshSession,
-        // visibility handler, middleware), and when it consumes a refresh token
-        // that was already rotated by the middleware, it triggers an unrecoverable
-        // "Invalid Refresh Token: Already Used" error that corrupts the auth state.
+        // The timer runs independently of all our coordination code
+        // (coordinatedRefreshSession, visibility handler, middleware), and when
+        // it consumes a refresh token that was already rotated by the middleware,
+        // it triggers an unrecoverable "Invalid Refresh Token: Already Used"
+        // error that corrupts the auth state.
         //
         // Token refresh is handled by:
         // 1. Middleware (server-side, on every page navigation)
@@ -59,10 +71,113 @@ export function createClient(): SupabaseClient {
         // 3. Pre-mutation guard (client-side, before writes)
         // All three go through coordinatedRefreshSession() which deduplicates.
         autoRefreshToken: false,
+
+        // PRIMARY FIX for the cross-tab connection-loss issue.
+        //
+        // By default, @supabase/auth-js uses the browser's navigator.locks API
+        // ("navigatorLock") to coordinate auth operations across browser tabs of
+        // the same origin. When two tabs are open and one tab's getSession() /
+        // getUser() / refreshSession() takes longer than 5 seconds (the
+        // hard-coded acquireTimeout — auth.lockAcquireTimeout is silently
+        // dropped in supabase-js, see issue #2308), the second tab forcibly
+        // STEALS the lock, causing the first tab's auth call to reject with:
+        //   "AbortError: Lock broken by another request with the 'steal' option"
+        // The first tab's auth state then becomes inconsistent, and subsequent
+        // queries either fail silently or hang.
+        //
+        // processLock is auth-js's in-tab promise-queue alternative. It
+        // serializes auth operations within the tab (matching what auth-js's
+        // _acquireLock requires for re-entrancy) but does NOT touch
+        // navigator.locks. Cross-tab serialization is forfeited, but:
+        //   - Refresh tokens are still serialized server-side (single-use).
+        //   - Cookie writes are last-writer-wins with the same value.
+        //   - SIGNED_IN / SIGNED_OUT / TOKEN_REFRESHED still propagate cross-tab
+        //     via auth-js's BroadcastChannel (unaffected by removing the lock).
+        //   - Our coordinatedRefreshSession() mutex serializes within a tab.
+        //
+        // See plan: cuddly-herding-acorn.md (Workstream A).
+        // Source: node_modules/@supabase/auth-js/src/lib/locks.ts (processLock).
+        lock: processLock,
       },
     }
   ) as unknown as SupabaseClient;
   return _client;
+}
+
+/**
+ * Wraps any auth-client promise in a hard timeout. Used to prevent
+ * supabase.auth.getSession() / getUser() etc. from blocking the UI
+ * indefinitely if the auth layer (storage, broadcast channel, etc.) hangs.
+ *
+ * On timeout, logs a connection event and rejects with a tagged error so
+ * callers can detect the timeout and trigger recovery rather than hang.
+ */
+export async function withAuthOpTimeout<T>(
+  source: string,
+  promise: PromiseLike<T>,
+  timeoutMs: number = SUPABASE_AUTH_OP_TIMEOUT_MS,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      logConnectionEvent({
+        type: "lock_timeout",
+        detail: `auth-op-timeout: ${source} after ${timeoutMs}ms`,
+      });
+      const err = new Error(`Supabase auth op '${source}' timed out after ${timeoutMs}ms`);
+      (err as Error & { isAuthOpTimeout?: boolean }).isAuthOpTimeout = true;
+      reject(err);
+    }, timeoutMs);
+
+    Promise.resolve(promise).then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+/**
+ * getSession() with a 6-second timeout. Use this everywhere outside
+ * coordinatedRefreshSession (which has its own 12-second timeout) and
+ * recoverSessionConnection (which has its own 15-second timeout).
+ *
+ * Returns null on timeout rather than throwing, so callers can fall through
+ * to recovery without try/catch boilerplate.
+ */
+export async function getSessionWithTimeout(source: string): Promise<{
+  session: Session | null;
+  timedOut: boolean;
+}> {
+  const client = createClient();
+  try {
+    const { data: { session } } = await withAuthOpTimeout(
+      `getSession:${source}`,
+      client.auth.getSession(),
+    );
+    return { session: session ?? null, timedOut: false };
+  } catch (error) {
+    const isTimeout = (error as Error & { isAuthOpTimeout?: boolean })?.isAuthOpTimeout === true;
+    if (!isTimeout) {
+      // Non-timeout errors are unusual but possible — log and treat as null session
+      logConnectionEvent({
+        type: "api_error",
+        detail: `getSessionWithTimeout exception (${source}): ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+    return { session: null, timedOut: isTimeout };
+  }
 }
 
 export function resetClient(): void {

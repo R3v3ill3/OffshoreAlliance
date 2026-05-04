@@ -2,13 +2,78 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { WifiOff, RefreshCw, LogIn, Zap } from "lucide-react";
+import { WifiOff, RefreshCw, LogIn, Zap, ChevronDown, ChevronUp, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getHealthSummary } from "@/lib/supabase/connection-monitor";
+import { getHealthSummary, getRecentEvents } from "@/lib/supabase/connection-monitor";
 import { forceLogoutToLogin, nuclearReset } from "@/lib/supabase/session-recovery";
 import { useAuth } from "@/lib/supabase/auth-context";
 
 const PUBLIC_PATHS = ["/login", "/auth"];
+
+function formatEventTimestamp(ts: number): string {
+  const d = new Date(ts);
+  return d.toISOString().substring(11, 19); // HH:MM:SS
+}
+
+function buildDiagnosticsText(): string {
+  const events = getRecentEvents();
+  const lines = events.map((e) => {
+    const time = formatEventTimestamp(e.ts);
+    const trace = e.traceId ? ` trace=${e.traceId}` : "";
+    const dur = e.durationMs != null ? ` ${e.durationMs}ms` : "";
+    return `${time} [${e.type}] ${e.detail ?? ""}${dur}${trace}`;
+  });
+  return lines.join("\n");
+}
+
+function DiagnosticsDisclosure() {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [eventCount, setEventCount] = useState(0);
+
+  useEffect(() => {
+    if (!open) return;
+    setEventCount(getRecentEvents().length);
+    const interval = setInterval(() => setEventCount(getRecentEvents().length), 2000);
+    return () => clearInterval(interval);
+  }, [open]);
+
+  return (
+    <div className="mt-2 border-t border-amber-200 dark:border-amber-800 pt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300 hover:underline"
+      >
+        {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        Diagnostics ({eventCount} events)
+      </button>
+      {open && (
+        <div className="mt-1.5">
+          <pre className="text-[10px] leading-tight text-amber-900 dark:text-amber-200 bg-amber-100/60 dark:bg-amber-950/60 rounded p-1.5 max-h-40 overflow-auto whitespace-pre-wrap break-all">
+            {buildDiagnosticsText() || "(no events captured)"}
+          </pre>
+          <button
+            type="button"
+            className="mt-1 inline-flex items-center gap-1 text-[10px] text-amber-700 dark:text-amber-300 hover:underline"
+            onClick={() => {
+              const text = buildDiagnosticsText();
+              if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(() => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                });
+              }
+            }}
+          >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function ConnectionStatusBanner() {
   const [errorCount, setErrorCount] = useState(0);
@@ -108,6 +173,7 @@ export function ConnectionStatusBanner() {
               </Button>
             </div>
           </div>
+          <DiagnosticsDisclosure />
         </div>
       </div>
     );

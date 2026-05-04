@@ -38,7 +38,7 @@ export type ValidTab = (typeof VALID_TABS)[number];
 
 /** Default sub-tab for each top-level cluster tab. */
 export const DEFAULT_SUB: Partial<Record<ValidTab, string>> = {
-  plan: "workplan",
+  plan: "strategy",
   workforce: "universe",
   outreach: "comms",
   outcomes: "reports",

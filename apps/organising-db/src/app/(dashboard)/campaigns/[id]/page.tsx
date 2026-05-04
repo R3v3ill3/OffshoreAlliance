@@ -23,13 +23,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -38,14 +31,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import type {
   CampaignType,
   CampaignStatus,
@@ -74,6 +59,7 @@ import { BargainingInsightsWidget } from "@/components/campaigns/bargaining/Barg
 import { Phase2WizardLaunchCard } from "@/components/campaigns/bargaining/wizard/Phase2WizardLaunchCard";
 import { FoundationalReadinessPanel } from "@/components/campaigns/bargaining/FoundationalReadinessPanel";
 import { CampaignResultsSection } from "@/components/campaigns/campaign-results-section";
+import { CampaignActionsSection } from "@/components/campaigns/campaign-actions-section";
 import { LibrarySection } from "@/components/campaigns/library/campaign-library";
 import {
   VALID_TABS,
@@ -148,13 +134,6 @@ const TYPE_VARIANT: Record<CampaignType, "default" | "info" | "warning" | "secon
   organising: "default",
   mobilisation: "warning",
   political: "secondary",
-};
-
-const ACTION_STATUS_VARIANT: Record<string, "secondary" | "success" | "info" | "warning" | "default"> = {
-  pending: "secondary",
-  in_progress: "info",
-  completed: "success",
-  cancelled: "warning",
 };
 
 function formatDate(d: string | null) {
@@ -474,14 +453,11 @@ export default function CampaignDetailPage() {
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="campaign-plan">Campaign Plan</TabsTrigger>
-          <TabsTrigger value="workplan">Workplan</TabsTrigger>
+          <TabsTrigger value="plan">Plan &amp; Execution</TabsTrigger>
           <TabsTrigger value="workforce">Workforce</TabsTrigger>
           <TabsTrigger value="outcomes">Outcomes</TabsTrigger>
-          <TabsTrigger value="tasklists">Task lists</TabsTrigger>
           <TabsTrigger value="comms">Comms</TabsTrigger>
           <TabsTrigger value="phone">Phone Ops</TabsTrigger>
-          <TabsTrigger value="actions">Actions</TabsTrigger>
           <TabsTrigger value="library">Library</TabsTrigger>
           {campaign.current_phase === "bargaining_to_win" && (
             <TabsTrigger value="bargaining">Bargaining</TabsTrigger>
@@ -570,17 +546,50 @@ export default function CampaignDetailPage() {
           />
         </TabsContent>
 
-        <TabsContent value="campaign-plan">
-          <CampaignPlanPanel campaignId={Number(id)} organiserId={campaign?.organiser_id} />
-          {(!campaign.current_phase || campaign.current_phase === "preparing_to_bargain") && (
-            <div className="mt-6 pt-6 border-t border-slate-200">
-              <Phase2WizardLaunchCard campaignId={campaignId} mode="continuation" />
-            </div>
-          )}
-        </TabsContent>
+        <TabsContent value="plan">
+          <Tabs
+            value={activeSub ?? "strategy"}
+            onValueChange={handleSubChange}
+          >
+            <TabsList className="mb-4">
+              <TabsTrigger value="strategy">Strategy</TabsTrigger>
+              <TabsTrigger value="workplan">Workplan</TabsTrigger>
+              <TabsTrigger value="actions">Actions</TabsTrigger>
+              <TabsTrigger value="task-lists">Task Lists</TabsTrigger>
+            </TabsList>
 
-        <TabsContent value="workplan">
-          <CampaignWorkplanSection campaignId={id} canWrite={!!canWrite} />
+            <TabsContent value="strategy">
+              <CampaignPlanPanel campaignId={Number(id)} organiserId={campaign?.organiser_id} />
+              {(!campaign.current_phase || campaign.current_phase === "preparing_to_bargain") && (
+                <div className="mt-6 pt-6 border-t border-slate-200">
+                  <Phase2WizardLaunchCard campaignId={campaignId} mode="continuation" />
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="workplan">
+              <CampaignWorkplanSection campaignId={id} canWrite={!!canWrite} />
+            </TabsContent>
+
+            <TabsContent value="actions">
+              <CampaignActionsSection
+                campaignId={campaignId}
+                canWrite={!!canWrite}
+                actions={actions}
+                universes={universes}
+                actionDialogOpen={actionDialogOpen}
+                setActionDialogOpen={setActionDialogOpen}
+                actionForm={actionForm}
+                setActionForm={setActionForm}
+                onCreateAction={() => createActionMutation.mutate()}
+                isCreatingAction={createActionMutation.isPending}
+              />
+            </TabsContent>
+
+            <TabsContent value="task-lists">
+              <CampaignTaskListsSection campaignId={id} canWrite={!!canWrite} />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="outcomes">
@@ -609,10 +618,6 @@ export default function CampaignDetailPage() {
               <CampaignProgressReport campaignId={campaignId} embedded />
             </TabsContent>
           </Tabs>
-        </TabsContent>
-
-        <TabsContent value="tasklists">
-          <CampaignTaskListsSection campaignId={id} canWrite={!!canWrite} />
         </TabsContent>
 
         <TabsContent value="workforce">
@@ -753,188 +758,6 @@ export default function CampaignDetailPage() {
 
         <TabsContent value="phone">
           <InlinePhoneOpsPanel campaignId={id} />
-        </TabsContent>
-
-        <TabsContent value="actions">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-lg">Campaign Actions</CardTitle>
-              {canWrite && (
-                <Dialog open={actionDialogOpen} onOpenChange={setActionDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="sm">
-                      <Plus className="h-4 w-4" />
-                      Add Action
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Add Action</DialogTitle>
-                      <DialogDescription>
-                        Create a new action for this campaign.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="action_title">Title *</Label>
-                        <Input
-                          id="action_title"
-                          value={actionForm.title}
-                          onChange={(e) =>
-                            setActionForm({ ...actionForm, title: e.target.value })
-                          }
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label>Action Type *</Label>
-                          <Select
-                            value={actionForm.action_type}
-                            onValueChange={(v) =>
-                              setActionForm({ ...actionForm, action_type: v as ActionType })
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="door_knock">Door Knock</SelectItem>
-                              <SelectItem value="phone_call">Phone Call</SelectItem>
-                              <SelectItem value="text_blast">Text Blast</SelectItem>
-                              <SelectItem value="meeting">Meeting</SelectItem>
-                              <SelectItem value="petition">Petition</SelectItem>
-                              <SelectItem value="rally">Rally</SelectItem>
-                              <SelectItem value="worksite_visit">Worksite Visit</SelectItem>
-                              <SelectItem value="sign_up">Sign Up</SelectItem>
-                              <SelectItem value="survey">Survey</SelectItem>
-                              <SelectItem value="custom">Custom</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Status</Label>
-                          <Select
-                            value={actionForm.status}
-                            onValueChange={(v) =>
-                              setActionForm({ ...actionForm, status: v })
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="pending">Pending</SelectItem>
-                              <SelectItem value="in_progress">In Progress</SelectItem>
-                              <SelectItem value="completed">Completed</SelectItem>
-                              <SelectItem value="cancelled">Cancelled</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="action_desc">Description</Label>
-                        <Textarea
-                          id="action_desc"
-                          value={actionForm.description}
-                          onChange={(e) =>
-                            setActionForm({ ...actionForm, description: e.target.value })
-                          }
-                          rows={3}
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="action_due">Due Date</Label>
-                          <Input
-                            id="action_due"
-                            type="date"
-                            value={actionForm.due_date}
-                            onChange={(e) =>
-                              setActionForm({ ...actionForm, due_date: e.target.value })
-                            }
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Universe</Label>
-                          <Select
-                            value={actionForm.universe_id}
-                            onValueChange={(v) =>
-                              setActionForm({ ...actionForm, universe_id: v })
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select universe" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {universes.map((u) => (
-                                <SelectItem
-                                  key={u.universe_id}
-                                  value={String(u.universe_id)}
-                                >
-                                  {u.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setActionDialogOpen(false)}>
-                        Cancel
-                      </Button>
-                      <Button
-                        onClick={() => createActionMutation.mutate()}
-                        disabled={!actionForm.title || createActionMutation.isPending}
-                      >
-                        {createActionMutation.isPending ? "Creating…" : "Add Action"}
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              )}
-            </CardHeader>
-            <CardContent>
-              {actions.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No actions created for this campaign.
-                </p>
-              ) : (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Title</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Due Date</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {actions.map((a) => (
-                        <TableRow key={a.action_id}>
-                          <TableCell className="font-medium">{a.title}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">
-                              {a.action_type.replace(/_/g, " ")}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{formatDate(a.due_date)}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={ACTION_STATUS_VARIANT[a.status] ?? "default"}
-                            >
-                              {a.status.replace(/_/g, " ")}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </TabsContent>
 
         <TabsContent value="library">

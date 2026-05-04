@@ -30,6 +30,8 @@ export const VALID_TABS = [
   "workforce",
   "outreach",
   "outcomes",
+  // Phase F:
+  "library",
 ] as const;
 
 export type ValidTab = (typeof VALID_TABS)[number];

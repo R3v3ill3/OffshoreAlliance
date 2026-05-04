@@ -74,6 +74,7 @@ import { BargainingInsightsWidget } from "@/components/campaigns/bargaining/Barg
 import { Phase2WizardLaunchCard } from "@/components/campaigns/bargaining/wizard/Phase2WizardLaunchCard";
 import { FoundationalReadinessPanel } from "@/components/campaigns/bargaining/FoundationalReadinessPanel";
 import { CampaignResultsSection } from "@/components/campaigns/campaign-results-section";
+import { LibrarySection } from "@/components/campaigns/library/campaign-library";
 import {
   VALID_TABS,
   resolveTabParams,
@@ -481,6 +482,7 @@ export default function CampaignDetailPage() {
           <TabsTrigger value="comms">Comms</TabsTrigger>
           <TabsTrigger value="phone">Phone Ops</TabsTrigger>
           <TabsTrigger value="actions">Actions</TabsTrigger>
+          <TabsTrigger value="library">Library</TabsTrigger>
           {campaign.current_phase === "bargaining_to_win" && (
             <TabsTrigger value="bargaining">Bargaining</TabsTrigger>
           )}
@@ -933,6 +935,10 @@ export default function CampaignDetailPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="library">
+          <LibrarySection campaignId={campaignId} canWrite={!!canWrite} />
         </TabsContent>
 
         <TabsContent value="bargaining">

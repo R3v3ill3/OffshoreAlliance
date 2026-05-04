@@ -456,8 +456,7 @@ export default function CampaignDetailPage() {
           <TabsTrigger value="plan">Plan &amp; Execution</TabsTrigger>
           <TabsTrigger value="workforce">Workforce</TabsTrigger>
           <TabsTrigger value="outcomes">Outcomes</TabsTrigger>
-          <TabsTrigger value="comms">Comms</TabsTrigger>
-          <TabsTrigger value="phone">Phone Ops</TabsTrigger>
+          <TabsTrigger value="outreach">Outreach</TabsTrigger>
           <TabsTrigger value="library">Library</TabsTrigger>
           {campaign.current_phase === "bargaining_to_win" && (
             <TabsTrigger value="bargaining">Bargaining</TabsTrigger>
@@ -752,12 +751,46 @@ export default function CampaignDetailPage() {
           </Tabs>
         </TabsContent>
 
-        <TabsContent value="comms">
-          <CampaignCommsSection campaignId={id} canWrite={!!canWrite} />
-        </TabsContent>
+        <TabsContent value="outreach">
+          <Tabs
+            value={activeSub ?? "comms"}
+            onValueChange={handleSubChange}
+          >
+            <TabsList className="mb-4">
+              <TabsTrigger value="comms">Comms</TabsTrigger>
+              <TabsTrigger value="phone">Phone Ops</TabsTrigger>
+              <TabsTrigger value="soc">SOC</TabsTrigger>
+            </TabsList>
 
-        <TabsContent value="phone">
-          <InlinePhoneOpsPanel campaignId={id} />
+            <TabsContent value="comms">
+              {/* CampaignCommsSection has its own internal sub-tabs (Drafts & Send /
+                  List Builder) — intentional two-level nesting; do not flatten. */}
+              <CampaignCommsSection campaignId={id} canWrite={!!canWrite} />
+            </TabsContent>
+
+            <TabsContent value="phone">
+              <InlinePhoneOpsPanel campaignId={id} />
+            </TabsContent>
+
+            <TabsContent value="soc">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Structure of Concern (SOC)</CardTitle>
+                  <CardDescription>
+                    Build and manage the Structure of Concern diagram for this campaign using
+                    the dedicated SOC wizard.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button asChild>
+                    <a href={`/campaigns/soc-wizard?cid=${campaignId}`}>
+                      Open SOC Wizard
+                    </a>
+                  </Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="library">

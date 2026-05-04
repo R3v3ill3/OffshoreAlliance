@@ -21,9 +21,10 @@ import {
 } from '@/components/ui/alert-dialog'
 import {
   Phone, Plus, Play, Pause, FileText, Users, ArrowLeft,
-  Loader2, Edit, Trash2,
+  Loader2, Edit, Trash2, BarChart3,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { CallActionReport } from '@/components/phone/CallActionReport'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-700',
@@ -229,6 +230,15 @@ export default function PhoneOpsPage() {
           </div>
         </div>
       )}
+
+      {/* Report section */}
+      <div>
+        <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+          <BarChart3 className="h-4 w-4" />
+          Report
+        </h3>
+        <CallActionReport campaignId={Number(campaignId)} />
+      </div>
 
       {/* Other lists */}
       <div>

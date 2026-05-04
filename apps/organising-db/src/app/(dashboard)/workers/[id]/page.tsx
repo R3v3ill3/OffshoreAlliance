@@ -37,6 +37,9 @@ import {
   type NonOaUnionOptionRow,
   type UnionMembershipTypeOption,
 } from "@/components/workers/membership-non-oa-fields";
+import { WorkerCallHistoryPanel } from "@/components/workers/WorkerCallHistoryPanel";
+import { WorkerObjectionsPanel } from "@/components/workers/WorkerObjectionsPanel";
+import { WorkerIssueObservationsPanel } from "@/components/workers/WorkerIssueObservationsPanel";
 
 const AU_STATES = ["WA", "NT", "QLD", "SA", "NSW", "VIC", "TAS", "ACT"];
 const NONE_VALUE = "__none__";
@@ -1822,27 +1825,15 @@ export default function WorkerDetailPage() {
         </TabsContent>
 
         {/* ── Activity tab ─────────────────────────────────────────────── */}
-        <TabsContent value="activity" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Campaign Activity</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Campaign activity will appear here.</p>
-            </CardContent>
-          </Card>
+        <TabsContent value="activity" className="mt-4 space-y-4">
+          <WorkerCallHistoryPanel workerId={workerId} />
+          <WorkerIssueObservationsPanel workerId={workerId} />
         </TabsContent>
 
         {/* ── Communications tab ───────────────────────────────────────── */}
-        <TabsContent value="communications" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Communications Log</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Communication log will appear here.</p>
-            </CardContent>
-          </Card>
+        <TabsContent value="communications" className="mt-4 space-y-4">
+          <WorkerCallHistoryPanel workerId={workerId} />
+          <WorkerObjectionsPanel workerId={workerId} />
         </TabsContent>
 
         <TabsContent value="relationships" className="mt-4">

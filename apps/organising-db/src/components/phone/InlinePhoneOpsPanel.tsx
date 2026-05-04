@@ -24,6 +24,14 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { CallListWithStats } from '@/types/planner-types'
+import { CreatePhoneCallOrchestrator } from './CreatePhoneCallOrchestrator'
+import { CallActionReport } from './CallActionReport'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-700',
@@ -48,12 +56,17 @@ export function InlinePhoneOpsPanel({ campaignId }: InlinePhoneOpsPanelProps) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="font-semibold">Phone Call Operations</h3>
-          <p className="text-sm text-muted-foreground">Manage scripts, call lists, and track outcomes</p>
-        </div>
+      {/* Primary CTA */}
+      <div className="flex items-center justify-between gap-3">
+        <CreatePhoneCallOrchestrator
+          campaignId={id}
+          trigger={
+            <Button size="lg">
+              <Phone className="h-5 w-5 mr-2" />
+              Create Phone Call
+            </Button>
+          }
+        />
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
@@ -72,6 +85,12 @@ export function InlinePhoneOpsPanel({ campaignId }: InlinePhoneOpsPanelProps) {
             Full Phone Ops
           </Button>
         </div>
+      </div>
+
+      {/* Header */}
+      <div>
+        <h3 className="font-semibold">Phone Call Operations</h3>
+        <p className="text-sm text-muted-foreground">Manage scripts, call lists, and track outcomes</p>
       </div>
 
       {/* Scripts */}
@@ -165,6 +184,18 @@ export function InlinePhoneOpsPanel({ campaignId }: InlinePhoneOpsPanelProps) {
 
       {/* Reporting — only shown when there is data */}
       <CallCampaignReporting campaignId={campaignId} />
+
+      {/* Phone Call Report — collapsible */}
+      <Accordion type="single" collapsible>
+        <AccordionItem value="call-report" className="border rounded-lg px-3">
+          <AccordionTrigger className="text-sm font-semibold py-3 hover:no-underline">
+            Phone Call Report
+          </AccordionTrigger>
+          <AccordionContent className="pb-4">
+            <CallActionReport campaignId={Number(id)} />
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
 
       <AlertDialog
         open={listPendingDelete != null}

@@ -1,5 +1,23 @@
 import type { DialDisposition, CallDisposition } from '@/types/planner-types'
 
+// ─── Live-capture types ───────────────────────────────────────────────────────
+
+export interface CapturedObjection {
+  objection_id: number | null
+  custom_label?: string
+  outcome: 'fully_resolved' | 'partially_resolved' | 'not_resolved'
+  notes?: string
+}
+
+export interface CapturedIssue {
+  issue_label: string
+  heat: 1 | 2 | 3 | 4 | 5
+  source_top_issue_index?: number | null
+  notes?: string
+}
+
+// ─── Phase / action / state ───────────────────────────────────────────────────
+
 export type CallFlowPhase =
   | 'idle'
   | 'loading_contact'
@@ -26,6 +44,12 @@ export type CallFlowAction =
   | { type: 'SKIP_CONTACT' }
   | { type: 'END_SESSION' }
   | { type: 'RESET' }
+  | { type: 'ADD_OBJECTION'; objection: CapturedObjection }
+  | { type: 'UPDATE_OBJECTION'; index: number; objection: CapturedObjection }
+  | { type: 'REMOVE_OBJECTION'; index: number }
+  | { type: 'ADD_ISSUE'; issue: CapturedIssue }
+  | { type: 'UPDATE_ISSUE'; index: number; issue: CapturedIssue }
+  | { type: 'REMOVE_ISSUE'; index: number }
 
 export interface CallFlowState {
   phase: CallFlowPhase
@@ -33,6 +57,8 @@ export interface CallFlowState {
   dialDisposition: DialDisposition | null
   callDisposition: CallDisposition | null
   callStartedAt: Date | null
+  capturedObjections: CapturedObjection[]
+  capturedIssues: CapturedIssue[]
 }
 
 const INITIAL_STATE: CallFlowState = {
@@ -41,6 +67,8 @@ const INITIAL_STATE: CallFlowState = {
   dialDisposition: null,
   callDisposition: null,
   callStartedAt: null,
+  capturedObjections: [],
+  capturedIssues: [],
 }
 
 export function callFlowReducer(state: CallFlowState, action: CallFlowAction): CallFlowState {
@@ -84,6 +112,36 @@ export function callFlowReducer(state: CallFlowState, action: CallFlowAction): C
 
     case 'RESET':
       return INITIAL_STATE
+
+    case 'ADD_OBJECTION':
+      return { ...state, capturedObjections: [...state.capturedObjections, action.objection] }
+
+    case 'UPDATE_OBJECTION': {
+      const next = [...state.capturedObjections]
+      next[action.index] = action.objection
+      return { ...state, capturedObjections: next }
+    }
+
+    case 'REMOVE_OBJECTION':
+      return {
+        ...state,
+        capturedObjections: state.capturedObjections.filter((_, i) => i !== action.index),
+      }
+
+    case 'ADD_ISSUE':
+      return { ...state, capturedIssues: [...state.capturedIssues, action.issue] }
+
+    case 'UPDATE_ISSUE': {
+      const next = [...state.capturedIssues]
+      next[action.index] = action.issue
+      return { ...state, capturedIssues: next }
+    }
+
+    case 'REMOVE_ISSUE':
+      return {
+        ...state,
+        capturedIssues: state.capturedIssues.filter((_, i) => i !== action.index),
+      }
 
     default:
       return state

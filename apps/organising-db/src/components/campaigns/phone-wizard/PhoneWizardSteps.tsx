@@ -47,7 +47,13 @@ import {
   PlayCircle,
   GitBranch,
   AlertCircle,
+  ListChecks,
 } from 'lucide-react'
+import { Separator } from '@/components/ui/separator'
+import { CallCtaAmbitionsEditor } from '@/components/phone/setup/CallCtaAmbitionsEditor'
+import { ObjectionsEditor } from '@/components/phone/setup/ObjectionsEditor'
+import { IssueIdentificationEditor } from '@/components/phone/setup/IssueIdentificationEditor'
+import type { CallCtaAmbition, SelectedObjection, ExpectedIssue, TopIssueForSeeding } from '@/components/phone/setup/types'
 
 interface WorkerPreview {
   worker_id: number
@@ -158,7 +164,8 @@ const STEPS = [
   { id: 2, title: 'Tone & Audience', icon: Target },
   { id: 3, title: 'Create Script', icon: FileText },
   { id: 4, title: 'Script Variations', icon: GitBranch },
-  { id: 5, title: 'Build List & Call', icon: Phone },
+  { id: 5, title: 'CTA Ambitions & Objections', icon: ListChecks },
+  { id: 6, title: 'Build List & Call', icon: Phone },
 ]
 
 const TONE_OPTIONS = [
@@ -278,6 +285,13 @@ export function PhoneWizardSteps() {
   const [bulkSelectOccupation, setBulkSelectOccupation] = useState('')
   const [bulkSelectRole, setBulkSelectRole] = useState('')
 
+  // Step 5: CTA ambitions, objections, issues
+  const [ctaAmbitions, setCtaAmbitions] = useState<CallCtaAmbition[]>([])
+  const [selectedObjections, setSelectedObjections] = useState<SelectedObjection[]>([])
+  const [expectedIssues, setExpectedIssues] = useState<ExpectedIssue[]>([])
+  const [showCtaCollapsible, setShowCtaCollapsible] = useState(false)
+  const [isPersistingStep5, setIsPersistingStep5] = useState(false)
+
   // Script variations (step 4)
   const [useVariations, setUseVariations] = useState(false)
   const [segmentVariable, setSegmentVariable] = useState<SegmentVariable | null>(null)
@@ -287,7 +301,7 @@ export function PhoneWizardSteps() {
   const [isCreatingSegmentLists, setIsCreatingSegmentLists] = useState(false)
   const [createBaseListForUnmatched, setCreateBaseListForUnmatched] = useState(false)
 
-  // Step 5: choose between creating a new list or linking to an existing one.
+  // Step 6: choose between creating a new list or linking to an existing one.
   const [listMode, setListMode] = useState<'new' | 'existing'>('new')
   const [existingListId, setExistingListId] = useState<number | null>(null)
   const [existingLists, setExistingLists] = useState<Array<{ list_id: number; name: string; total_items: number; previously_linked?: boolean; is_current_for_script?: boolean }>>([])
@@ -928,7 +942,7 @@ export function PhoneWizardSteps() {
       const allowed = new Set((mem ?? []).map((m) => m.worker_id))
       return rows.filter((w) => allowed.has(w.worker_id))
     },
-    enabled: step === 5 && addSearchDebounced.length >= 3,
+    enabled: step === 6 && addSearchDebounced.length >= 3,
   })
   const addSearchResults = addSearchResultsData ?? EMPTY_WORKER_LIST
 
@@ -951,7 +965,7 @@ export function PhoneWizardSteps() {
       if (error) throw error
       return data ?? []
     },
-    enabled: !!user && step === 5 && !!addFilterEmployerId,
+    enabled: !!user && step === 6 && !!addFilterEmployerId,
   })
   const addFilterWorksites = addFilterWorksitesData ?? EMPTY_WORKSITES
 
@@ -961,7 +975,7 @@ export function PhoneWizardSteps() {
     .join(',')
 
   const bulkAddFiltersEnabled =
-    step === 5 &&
+    step === 6 &&
     showBulkAdd &&
     (!!addFilterEmployerId || !!addFilterWorksiteId || addFilterOccupation.trim().length > 0)
 
@@ -1189,6 +1203,49 @@ export function PhoneWizardSteps() {
     }
   }
 
+  async function handleProceedFromStep5() {
+    setIsPersistingStep5(true)
+    try {
+      // Persist CTA ambitions if we have a saved script
+      if (state.savedScriptId && ctaAmbitions.length > 0) {
+        for (const ambition of ctaAmbitions) {
+          const { error } = await supabase.from('call_script_cta_ambitions').insert({
+            script_id: state.savedScriptId,
+            outcome_definition_id: ambition.outcome_definition_id ?? null,
+            cta_label: ambition.cta_label,
+            target_response: ambition.target_response ?? null,
+            target_min_rating: ambition.target_min_rating ?? null,
+            target_binary: ambition.target_binary ?? null,
+            target_support_level: ambition.target_support_level ?? null,
+            min_call_threshold_pct: ambition.min_call_threshold_pct ?? null,
+            notes: ambition.notes ?? null,
+          })
+          if (error) throw error
+        }
+        toast.success(`${ctaAmbitions.length} CTA ambition${ctaAmbitions.length !== 1 ? 's' : ''} saved`)
+      }
+
+      // Seed top issues if campaign has no current situation analysis
+      if (state.campaignId && expectedIssues.length > 0) {
+        const seedPayload: TopIssueForSeeding[] = expectedIssues.map((i) => ({
+          label: i.issue_label,
+          heat: i.heat,
+          notes: i.notes,
+        }))
+        const { error } = await supabase.rpc('seed_campaign_top_issues_from_call', {
+          p_campaign_id: state.campaignId,
+          p_issues: seedPayload,
+        })
+        if (error) console.warn('seed_campaign_top_issues_from_call:', error.message)
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save setup data')
+    } finally {
+      setIsPersistingStep5(false)
+      setStep(6)
+    }
+  }
+
   async function handleCreateListAndCall() {
     if (selectedWorkerIds.size === 0) {
       toast.error('Select at least one worker to call')
@@ -1245,6 +1302,34 @@ export function PhoneWizardSteps() {
 
       setState((prev) => ({ ...prev, savedListId: listId }))
 
+      // Lifecycle: mark the orchestration action as completed once both
+      // script and list are linked, so ResumeBanner stops surfacing it.
+      const actionIdParam = searchParams.get('action_id')
+      const actionId = actionIdParam ? parseInt(actionIdParam, 10) : null
+      if (actionId && Number.isFinite(actionId) && state.savedScriptId) {
+        try {
+          const { data: existingAction } = await supabase
+            .from('phone_call_actions' as never)
+            .select('list_ids, script_id, status')
+            .eq('action_id', actionId)
+            .single()
+          const prev: number[] =
+            ((existingAction as { list_ids?: number[] | null } | null)
+              ?.list_ids as number[] | null) ?? []
+          const merged = [...new Set([...prev, listId])]
+          await supabase
+            .from('phone_call_actions' as never)
+            .update({
+              list_ids: merged,
+              script_id: state.savedScriptId,
+              status: 'completed',
+            })
+            .eq('action_id', actionId)
+        } catch {
+          // Non-fatal: do not block the wizard on lifecycle bookkeeping.
+        }
+      }
+
       // Populate the list (both modes — adds workers, skipping duplicates).
       const workerIds = [...selectedWorkerIds]
       const populateUrl = state.campaignId
@@ -1281,10 +1366,10 @@ export function PhoneWizardSteps() {
     }
   }
 
-  // Fetch existing call lists in the campaign when the user reaches step 5
+  // Fetch existing call lists in the campaign when the user reaches step 6
   // with a campaign selected. Include previously_linked flag for the active script.
   useEffect(() => {
-    if (step !== 5) return
+    if (step !== 6) return
     if (!state.campaignId) return
     if (useVariations && segmentVariable) return
     let cancelled = false
@@ -1310,9 +1395,10 @@ export function PhoneWizardSteps() {
   const canProceed: Record<number, boolean> = {
     1: true,
     2: state.tone.length > 0 && state.audience.length > 0,
-       3: wizardSections != null && wizardSections.some((s) => s.body_text.trim().length > 0),
+    3: wizardSections != null && wizardSections.some((s) => s.body_text.trim().length > 0),
     4: true,
     5: true,
+    6: true,
   }
 
   const stageName = state.stageNumber
@@ -1704,6 +1790,34 @@ export function PhoneWizardSteps() {
                     />
                   </div>
                 )}
+
+                {/* CTA Ambitions collapsible — gentle reminder in step 3 */}
+                {state.savedScriptId && (
+                  <div className="mt-4 border-t pt-4">
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowCtaCollapsible((v) => !v)}
+                    >
+                      <ListChecks className="h-3.5 w-3.5" />
+                      CTA Ambitions
+                      {ctaAmbitions.length > 0 && (
+                        <Badge variant="secondary" className="text-[10px] ml-1">{ctaAmbitions.length}</Badge>
+                      )}
+                      {showCtaCollapsible ? <ChevronUp className="h-3 w-3 ml-auto" /> : <ChevronDown className="h-3 w-3 ml-auto" />}
+                    </button>
+                    {showCtaCollapsible && (
+                      <div className="mt-3">
+                        <CallCtaAmbitionsEditor
+                          scriptId={state.savedScriptId}
+                          campaignId={state.campaignId ?? 0}
+                          value={ctaAmbitions}
+                          onChange={setCtaAmbitions}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -1871,7 +1985,7 @@ export function PhoneWizardSteps() {
                   return (
                     <p className="text-xs text-muted-foreground p-2 rounded bg-amber-50 border border-amber-200 text-amber-700">
                       {unmatched} worker{unmatched !== 1 ? 's' : ''} with phone do not match any selected segment.
-                      You can create a base-script list for them in step 5.
+                      You can create a base-script list for them in step 6.
                     </p>
                   )
                 })()}
@@ -1991,8 +2105,70 @@ export function PhoneWizardSteps() {
         </Card>
       )}
 
-      {/* ── Step 5: Build List & Call ── */}
+      {/* ── Step 5: CTA Ambitions & Objections ── */}
       {step === 5 && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ListChecks className="h-5 w-5 text-blue-500" />
+                CTA Ambitions
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CallCtaAmbitionsEditor
+                scriptId={state.savedScriptId}
+                campaignId={state.campaignId ?? 0}
+                value={ctaAmbitions}
+                onChange={setCtaAmbitions}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                Objections
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ObjectionsEditor
+                campaignId={state.campaignId ?? 0}
+                value={selectedObjections}
+                onChange={setSelectedObjections}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                Issue Identification
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <IssueIdentificationEditor
+                campaignId={state.campaignId ?? 0}
+                value={expectedIssues}
+                onChange={setExpectedIssues}
+                onSeedRequest={(_issues) => {
+                  // Seeding happens on Next click via handleProceedFromStep5
+                }}
+              />
+            </CardContent>
+          </Card>
+
+          {!state.campaignId && (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>Objections and issue data require a campaign to be selected (Step 1).</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Step 6: Build List & Call ── */}
+      {step === 6 && (
         <Card>
           <CardHeader>
             <CardTitle>Build Call List & Start Calling</CardTitle>
@@ -2703,11 +2879,14 @@ export function PhoneWizardSteps() {
           <ChevronLeft className="h-4 w-4 mr-1" />
           Back
         </Button>
-        {step < 5 && (
+        {step < 6 && (
           <Button
-            onClick={() => setStep(step + 1)}
-            disabled={!canProceed[step]}
+            onClick={step === 5 ? () => void handleProceedFromStep5() : () => setStep(step + 1)}
+            disabled={!canProceed[step] || (step === 5 && isPersistingStep5)}
           >
+            {step === 5 && isPersistingStep5 ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+            ) : null}
             Next
             <ChevronRight className="h-4 w-4 ml-1" />
           </Button>

@@ -52,6 +52,8 @@ import { CampaignUniverseSection } from "@/components/campaigns/campaign-univers
 import { CampaignCommsSection } from "@/components/campaigns/campaign-comms-section";
 import { CampaignOverviewMetrics } from "@/components/campaigns/CampaignOverviewMetrics";
 import { InlinePhoneOpsPanel } from "@/components/phone/InlinePhoneOpsPanel";
+import { CreatePhoneCallOrchestrator } from "@/components/phone/CreatePhoneCallOrchestrator";
+import { ResumeBanner } from "@/components/phone/orchestrator/ResumeBanner";
 import { SituationAnalysisCard } from "@/components/campaigns/planning/SituationAnalysisCard";
 import { SituationAnalysisEditSheet } from "@/components/campaigns/situation-analysis/SituationAnalysisEditSheet";
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
@@ -449,6 +451,18 @@ export default function CampaignDetailPage() {
           </DropdownMenu>
         )}
       </div>
+
+      {/* Phone call CTA — persists across all tabs */}
+      {campaignIdValid && (
+        <div className="space-y-2">
+          <ResumeBanner campaignId={campaignId} />
+          {canWrite && (
+            <div className="flex justify-end">
+              <CreatePhoneCallOrchestrator campaignId={campaignId} />
+            </div>
+          )}
+        </div>
+      )}
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="flex flex-wrap h-auto gap-1">

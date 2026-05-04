@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils/cn'
 import {
   fetchApi,
@@ -30,6 +31,7 @@ import {
   Variable,
   BookMarked,
   X,
+  Settings2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { TemplatePicker } from './TemplatePicker'
@@ -40,6 +42,10 @@ import {
 } from '@/lib/comms/template-variables'
 import type { TemplateRow } from '@/lib/hooks/useTemplateLibrary'
 import type { CommsPlatform, CommsDraftRequest, CommsDraftResponse } from '@/types/planner-types'
+import { CallCtaAmbitionsEditor } from '@/components/phone/setup/CallCtaAmbitionsEditor'
+import { ObjectionsEditor } from '@/components/phone/setup/ObjectionsEditor'
+import { IssueIdentificationEditor } from '@/components/phone/setup/IssueIdentificationEditor'
+import type { CallCtaAmbition, SelectedObjection, ExpectedIssue, TopIssueForSeeding } from '@/components/phone/setup/types'
 
 const PLATFORM_CONFIG: Record<CommsPlatform, { label: string; icon: React.ReactNode; color: string }> = {
   email: {
@@ -161,6 +167,13 @@ export function DraftGeneratorCard({
   const [templateTitle, setTemplateTitle] = useState('')
   const [templateTones, setTemplateTones] = useState<string[]>([])
   const [templateAudience, setTemplateAudience] = useState('')
+
+  // Phone call setup state (phone_script only)
+  const [ctaAmbitions, setCtaAmbitions] = useState<CallCtaAmbition[]>([])
+  const [selectedObjections, setSelectedObjections] = useState<SelectedObjection[]>([])
+  const [expectedIssues, setExpectedIssues] = useState<ExpectedIssue[]>([])
+  const [showPhoneSetup, setShowPhoneSetup] = useState(false)
+  const [savedCallScriptId, setSavedCallScriptId] = useState<number | null>(null)
 
   const bodyRef = useRef<HTMLTextAreaElement>(null)
 
@@ -343,10 +356,78 @@ export function DraftGeneratorCard({
         toast.success('Draft saved successfully')
         onSaved?.()
       }
+
     } catch {
       toast.error('Failed to save draft')
     } finally {
       setIsSaving(false)
+    }
+
+    // ── Phone-script setup persistence (separate from draft save) ─────────
+    if (platform === 'phone_script') {
+      try {
+        const supabase = createClient()
+        let scriptId = savedCallScriptId
+
+        // Create a call_scripts row if we have CTA ambitions but no script yet
+        if (!scriptId && ctaAmbitions.length > 0 && bodyText.trim()) {
+          const scriptRes = await fetchApi(`/api/campaigns/${campaignId}/call-scripts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: `${config.label} – ${stageName}`,
+              call_objective: null,
+              sections: [{
+                sort_order: 0,
+                section_type: 'custom',
+                title: 'Script',
+                body_text: bodyText,
+                talking_points: [],
+                prompt_text: null,
+                expected_outcomes: [],
+                is_optional: false,
+              }],
+            }),
+          })
+          if (scriptRes.ok) {
+            const scriptData = await scriptRes.json() as { script_id: number }
+            scriptId = scriptData.script_id
+            setSavedCallScriptId(scriptId)
+          }
+        }
+
+        // Persist CTA ambitions
+        if (scriptId && ctaAmbitions.length > 0) {
+          for (const ambition of ctaAmbitions) {
+            await supabase.from('call_script_cta_ambitions').insert({
+              script_id: scriptId,
+              outcome_definition_id: ambition.outcome_definition_id ?? null,
+              cta_label: ambition.cta_label,
+              target_response: ambition.target_response ?? null,
+              target_min_rating: ambition.target_min_rating ?? null,
+              target_binary: ambition.target_binary ?? null,
+              target_support_level: ambition.target_support_level ?? null,
+              min_call_threshold_pct: ambition.min_call_threshold_pct ?? null,
+              notes: ambition.notes ?? null,
+            })
+          }
+        }
+
+        // Seed top issues (only if campaign has no current situation analysis)
+        if (expectedIssues.length > 0) {
+          const seedPayload: TopIssueForSeeding[] = expectedIssues.map((i) => ({
+            label: i.issue_label,
+            heat: i.heat,
+            notes: i.notes,
+          }))
+          await supabase.rpc('seed_campaign_top_issues_from_call', {
+            p_campaign_id: campaignId,
+            p_issues: seedPayload,
+          })
+        }
+      } catch (err) {
+        console.warn('Phone-call setup persistence failed:', err)
+      }
     }
   }
 
@@ -705,6 +786,54 @@ export function DraftGeneratorCard({
                 className="text-sm font-mono whitespace-pre-wrap"
               />
               <p className="text-xs text-muted-foreground text-right">{charCount} characters</p>
+            </div>
+
+            {/* Phone-call setup section */}
+            <div className="border rounded-lg overflow-hidden">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm font-medium hover:bg-muted/40 transition-colors"
+                onClick={() => setShowPhoneSetup((v) => !v)}
+              >
+                <div className="flex items-center gap-2">
+                  <Settings2 className="h-4 w-4 text-purple-500" />
+                  <span>Phone-call setup</span>
+                  <span className="text-xs text-muted-foreground font-normal">
+                    CTA ambitions, objections &amp; issues
+                  </span>
+                  {(ctaAmbitions.length > 0 || selectedObjections.length > 0 || expectedIssues.length > 0) && (
+                    <Badge variant="secondary" className="text-[10px]">
+                      {ctaAmbitions.length + selectedObjections.length + expectedIssues.length} configured
+                    </Badge>
+                  )}
+                </div>
+                {showPhoneSetup
+                  ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
+                  : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
+              </button>
+
+              {showPhoneSetup && (
+                <div className="border-t px-3 py-4 space-y-6">
+                  <CallCtaAmbitionsEditor
+                    scriptId={savedCallScriptId}
+                    campaignId={campaignId}
+                    value={ctaAmbitions}
+                    onChange={setCtaAmbitions}
+                  />
+                  <Separator />
+                  <ObjectionsEditor
+                    campaignId={campaignId}
+                    value={selectedObjections}
+                    onChange={setSelectedObjections}
+                  />
+                  <Separator />
+                  <IssueIdentificationEditor
+                    campaignId={campaignId}
+                    value={expectedIssues}
+                    onChange={setExpectedIssues}
+                  />
+                </div>
+              )}
             </div>
           </div>
         )}

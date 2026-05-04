@@ -20,6 +20,8 @@ import {
   CheckCircle,
   AlertCircle,
   Send,
+  ListPlus,
+  ArrowUpDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +55,15 @@ interface CampaignListBuilderProps {
     contacts_tagged: number;
     contacts_created: number;
   }) => void;
+  /** When provided, the component switches to variation-aware multi-list creation mode. */
+  variationMode?: {
+    dimension: "membership_status" | "organising_role" | "occupation" | "rating_band";
+    segments: Array<{ key: string; label: string }>;
+  };
+  /** Script ID to link when creating call lists. */
+  scriptId?: number | null;
+  /** phone_call_actions.action_id to update list_ids after bulk creation. */
+  actionId?: number | null;
 }
 
 interface WorkerRow {
@@ -114,6 +125,9 @@ export function CampaignListBuilder({
   campaignId,
   canWrite,
   onListPrepared,
+  variationMode,
+  scriptId,
+  actionId,
 }: CampaignListBuilderProps) {
   const supabase = createClient();
   const { user } = useAuth();
@@ -141,6 +155,17 @@ export function CampaignListBuilder({
   } | null>(null);
   const [pushingList, setPushingList] = useState(false);
   const [pushResult, setPushResult] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  // Sort state
+  const [sortKey, setSortKey] = useState<string>("name_asc");
+
+  // Call list creation state
+  const [listBaseName, setListBaseName] = useState("");
+  const [creatingLists, setCreatingLists] = useState(false);
+  const [createListResult, setCreateListResult] = useState<{
     type: "success" | "error";
     message: string;
   } | null>(null);
@@ -264,6 +289,7 @@ export function CampaignListBuilder({
       occupationSearch,
       includeAnTags,
       excludeAnTags,
+      sortKey,
     ],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -281,6 +307,7 @@ export function CampaignListBuilder({
         params.set("an_tags", includeAnTags.join(","));
       if (excludeAnTags.length)
         params.set("exclude_an_tags", excludeAnTags.join(","));
+      params.set("sort", sortKey);
 
       const res = await fetchApi(
         `/api/campaigns/${numericId}/list-builder?${params.toString()}`
@@ -393,6 +420,119 @@ export function CampaignListBuilder({
     () => workers.filter((w) => w.phone).length,
     [workers]
   );
+
+  /** Build a filter object matching what list-builder + populate routes accept */
+  function buildCurrentFilters(): Record<string, string | string[] | boolean | undefined> {
+    return {
+      membership: membershipFilter.length > 0 ? membershipFilter.join(",") : undefined,
+      roles: roleFilter.length > 0 ? roleFilter.join(",") : undefined,
+      employer_id: employerFilter || undefined,
+      worksite_id: worksiteFilter || undefined,
+      ou_id: ouFilter || undefined,
+      ou_type: ouTypeFilter || undefined,
+      multi_unit_only: multiUnitOnly || undefined,
+      occupation: occupationSearch.trim() || undefined,
+      an_tags: includeAnTags.length > 0 ? includeAnTags.join(",") : undefined,
+      exclude_an_tags: excludeAnTags.length > 0 ? excludeAnTags.join(",") : undefined,
+    };
+  }
+
+  const handleCreateVariationLists = useCallback(async () => {
+    if (!variationMode || variationMode.segments.length === 0) return;
+    const baseName = listBaseName.trim() || `Call list`;
+    setCreatingLists(true);
+    setCreateListResult(null);
+    try {
+      const baseFilters = buildCurrentFilters();
+      const segments = variationMode.segments.map((seg) => {
+        // Merge the segment filter on top of base filters
+        const segFilters: Record<string, string | string[] | boolean | undefined> = {
+          ...baseFilters,
+          [variationMode.dimension === "membership_status" ? "membership" : variationMode.dimension]: seg.key,
+        };
+        return { key: seg.key, label: seg.label, filters: segFilters };
+      });
+
+      const res = await fetchApi(`/api/campaigns/${numericId}/call-lists/bulk-create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          base_name: baseName,
+          script_id: scriptId ?? null,
+          action_id: actionId ?? null,
+          segments,
+        }),
+        timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Bulk create failed");
+      }
+      const count = (data.list_ids as number[]).length;
+      setCreateListResult({
+        type: "success",
+        message: `Created ${count} variation call list${count !== 1 ? "s" : ""}`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["call-lists", numericId] });
+    } catch (err) {
+      setCreateListResult({
+        type: "error",
+        message: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setCreatingLists(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [variationMode, listBaseName, numericId, scriptId, actionId, membershipFilter, roleFilter, employerFilter, worksiteFilter, ouFilter, ouTypeFilter, multiUnitOnly, occupationSearch, includeAnTags, excludeAnTags, queryClient]);
+
+  const handleCreateSingleList = useCallback(async () => {
+    const name = listBaseName.trim() || `Call list`;
+    setCreatingLists(true);
+    setCreateListResult(null);
+    try {
+      const baseFilters = buildCurrentFilters();
+      // Create list
+      const createRes = await fetchApi(`/api/campaigns/${numericId}/call-lists`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          script_id: scriptId ?? null,
+          source_filters: baseFilters,
+        }),
+      });
+      const createData = await createRes.json();
+      if (!createRes.ok) throw new Error(createData.error || "Create failed");
+
+      // Populate
+      const listId = createData.list_id as number;
+      const popRes = await fetchApi(
+        `/api/campaigns/${numericId}/call-lists/${listId}/populate`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filters: baseFilters }),
+          timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
+        }
+      );
+      const popData = await popRes.json();
+      if (!popRes.ok) throw new Error(popData.error || "Populate failed");
+
+      setCreateListResult({
+        type: "success",
+        message: `Created call list "${name}" with ${(popData.added as number) ?? 0} contacts`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["call-lists", numericId] });
+    } catch (err) {
+      setCreateListResult({
+        type: "error",
+        message: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setCreatingLists(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listBaseName, numericId, scriptId, membershipFilter, roleFilter, employerFilter, worksiteFilter, ouFilter, ouTypeFilter, multiUnitOnly, occupationSearch, includeAnTags, excludeAnTags, queryClient]);
 
   return (
     <div className="space-y-4">
@@ -661,6 +801,24 @@ export function CampaignListBuilder({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Sort selector */}
+            <div className="flex items-center gap-1">
+              <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
+              <Select value={sortKey} onValueChange={setSortKey}>
+                <SelectTrigger className="h-8 w-[160px] text-xs">
+                  <SelectValue placeholder="Sort…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name_asc">Name A→Z</SelectItem>
+                  <SelectItem value="name_desc">Name Z→A</SelectItem>
+                  <SelectItem value="worksite">Worksite</SelectItem>
+                  <SelectItem value="employer">Employer</SelectItem>
+                  <SelectItem value="membership">Membership</SelectItem>
+                  <SelectItem value="recent_contact">Recent contact</SelectItem>
+                  <SelectItem value="priority_score_desc">Priority score</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -756,6 +914,70 @@ export function CampaignListBuilder({
           )}
         </CardHeader>
         <CardContent>
+          {/* Call list creation row */}
+          {canWrite && (
+            <div className="mb-4 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder={
+                    variationMode
+                      ? `Base list name (e.g. "May call round")`
+                      : `List name (e.g. "May call round")`
+                  }
+                  value={listBaseName}
+                  onChange={(e) => setListBaseName(e.target.value)}
+                  className="h-8 text-xs max-w-xs"
+                />
+                {variationMode ? (
+                  <Button
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => void handleCreateVariationLists()}
+                    disabled={workers.length === 0 || creatingLists}
+                  >
+                    {creatingLists ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <ListPlus className="h-3 w-3" />
+                    )}
+                    {creatingLists
+                      ? "Creating…"
+                      : `Create ${variationMode.segments.length} variation list${variationMode.segments.length !== 1 ? "s" : ""}`}
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => void handleCreateSingleList()}
+                    disabled={workers.length === 0 || creatingLists}
+                  >
+                    {creatingLists ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <ListPlus className="h-3 w-3" />
+                    )}
+                    {creatingLists ? "Creating…" : "Save as call list"}
+                  </Button>
+                )}
+              </div>
+              {createListResult && (
+                <div
+                  className={`flex items-start gap-2 text-xs p-2 rounded ${
+                    createListResult.type === "success"
+                      ? "bg-green-50 text-green-700"
+                      : "bg-red-50 text-red-700"
+                  }`}
+                >
+                  {createListResult.type === "success" ? (
+                    <CheckCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  )}
+                  <span>{createListResult.message}</span>
+                </div>
+              )}
+            </div>
+          )}
           {workers.length === 0 && !workersLoading ? (
             <p className="text-sm text-muted-foreground text-center py-8">
               No contacts match the current filters.

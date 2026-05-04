@@ -36,6 +36,33 @@ export async function GET(
     const anTags = searchParams.get("an_tags")?.split(",").filter(Boolean) ?? [];
     const excludeAnTags = searchParams.get("exclude_an_tags")?.split(",").filter(Boolean) ?? [];
 
+    // Sorting params
+    type SortKey =
+      | "name_asc"
+      | "name_desc"
+      | "worksite"
+      | "employer"
+      | "membership"
+      | "recent_contact"
+      | "priority_score_desc";
+    const VALID_SORT_KEYS = new Set<string>([
+      "name_asc",
+      "name_desc",
+      "worksite",
+      "employer",
+      "membership",
+      "recent_contact",
+      "priority_score_desc",
+    ]);
+    const sortRaw = searchParams.get("sort") ?? "name_asc";
+    const sortKey: SortKey = VALID_SORT_KEYS.has(sortRaw)
+      ? (sortRaw as SortKey)
+      : "name_asc";
+    const sortDirRaw = searchParams.get("sort_dir");
+    // sort_dir overrides key-implied direction when supplied
+    const sortDirOverride: "asc" | "desc" | null =
+      sortDirRaw === "asc" || sortDirRaw === "desc" ? sortDirRaw : null;
+
     const query = supabase
       .from("campaign_worker_membership")
       .select(
@@ -263,6 +290,92 @@ export async function GET(
     if (multiUnitOnly) {
       results = results.filter((w) => w.is_multi_unit_member);
     }
+
+    // --- Sort ---
+    // For recent_contact / priority_score_desc we need last_contacted_at from
+    // worker_campaign_connections. Fetch it only when needed.
+    let connectionContactMap = new Map<number, string | null>();
+    const finalWorkerIds = results.map((w) => w.worker_id);
+    if (
+      (sortKey === "recent_contact" || sortKey === "priority_score_desc") &&
+      finalWorkerIds.length > 0
+    ) {
+      const { data: connRows } = await supabase
+        .from("worker_campaign_connections")
+        .select("worker_id, last_contacted_at")
+        .eq("campaign_id", campaignId)
+        .in("worker_id", finalWorkerIds);
+      if (connRows) {
+        connectionContactMap = new Map(
+          connRows.map((r) => [r.worker_id, r.last_contacted_at as string | null])
+        );
+      }
+    }
+
+    const MEMBERSHIP_SORT_ORDER: Record<string, number> = {
+      member_pending: 0,
+      member: 1,
+      lapsed: 2,
+      non_member: 3,
+    };
+
+    function strCmp(a: string | null, b: string | null): number {
+      if (a == null && b == null) return 0;
+      if (a == null) return 1;
+      if (b == null) return -1;
+      return a.localeCompare(b, undefined, { sensitivity: "base" });
+    }
+
+    results = results.sort((a, b) => {
+      switch (sortKey) {
+        case "name_desc": {
+          const dir = sortDirOverride ?? "desc";
+          const cmp = strCmp(
+            `${a.first_name} ${a.last_name}`,
+            `${b.first_name} ${b.last_name}`
+          );
+          return dir === "desc" ? -cmp : cmp;
+        }
+        case "worksite": {
+          const dir = sortDirOverride ?? "asc";
+          const cmp = strCmp(a.worksite_name, b.worksite_name);
+          return dir === "desc" ? -cmp : cmp;
+        }
+        case "employer": {
+          const dir = sortDirOverride ?? "asc";
+          const cmp = strCmp(a.employer_name, b.employer_name);
+          return dir === "desc" ? -cmp : cmp;
+        }
+        case "membership": {
+          const dir = sortDirOverride ?? "asc";
+          const ao = MEMBERSHIP_SORT_ORDER[a.membership_status ?? "non_member"] ?? 3;
+          const bo = MEMBERSHIP_SORT_ORDER[b.membership_status ?? "non_member"] ?? 3;
+          const cmp = ao - bo;
+          return dir === "desc" ? -cmp : cmp;
+        }
+        case "recent_contact":
+        case "priority_score_desc": {
+          const dir = sortDirOverride ?? "desc";
+          const at = connectionContactMap.get(a.worker_id) ?? null;
+          const bt = connectionContactMap.get(b.worker_id) ?? null;
+          // nulls last for recent_contact (never contacted goes to end)
+          if (at == null && bt == null) return 0;
+          if (at == null) return 1;
+          if (bt == null) return -1;
+          const cmp = at < bt ? -1 : at > bt ? 1 : 0;
+          return dir === "desc" ? -cmp : cmp;
+        }
+        case "name_asc":
+        default: {
+          const dir = sortDirOverride ?? "asc";
+          const cmp = strCmp(
+            `${a.first_name} ${a.last_name}`,
+            `${b.first_name} ${b.last_name}`
+          );
+          return dir === "desc" ? -cmp : cmp;
+        }
+      }
+    });
 
     return NextResponse.json({ success: true, data: results });
   } catch (err) {

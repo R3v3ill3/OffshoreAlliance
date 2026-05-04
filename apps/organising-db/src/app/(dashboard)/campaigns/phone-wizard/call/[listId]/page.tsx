@@ -4,9 +4,11 @@ import { useReducer, useState, useCallback, useRef, useEffect, useMemo } from 'r
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { callFlowReducer, getInitialCallFlowState, canAdvanceSection, canGoBack, isCallActive } from '@/lib/phone/call-flow-state'
+import { meetsCtaAmbition } from '@/lib/phone/cta-ambition-check'
 import { useCallOutcomeDefinitions } from '@/lib/hooks/useCallOutcomes'
 import { useCampaignPhoneScriptContext } from '@/lib/hooks/useCampaignPhoneScriptContext'
 import { mergePhoneScriptVariableContext } from '@/lib/comms/template-variables'
+import { createClient } from '@/lib/supabase/client'
 import { fetchApi } from '@/lib/api/fetch-api'
 import { ContactCard } from '@/components/phone/ContactCard'
 import { DialOutcomeBar } from '@/components/phone/DialOutcomeBar'
@@ -14,10 +16,23 @@ import { ConversationStepper } from '@/components/phone/ConversationStepper'
 import { ScriptSidePanel } from '@/components/phone/ScriptSidePanel'
 import { CallbackScheduler } from '@/components/phone/CallbackScheduler'
 import { WorkerEditDialog } from '@/components/phone/WorkerEditDialog'
+import { InCallObjectionsPanel } from '@/components/phone/InCallObjectionsPanel'
+import { InCallIssuesPanel } from '@/components/phone/InCallIssuesPanel'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import {
   Phone, ArrowLeft, SkipForward, Clock, LogOut,
   PhoneForwarded, Loader2, FileText, CheckCircle,
@@ -30,9 +45,14 @@ import type {
   CallScriptSection, RecordCallAttemptRequest, CallListWithStats,
   CallListItemWithWorker, CallOutcomeDefinition,
 } from '@/types/planner-types'
+import type { CallCtaAmbition } from '@/components/phone/setup/types'
 import { partitionCallOutcomeDefinitions } from '@/lib/phone/membership-outcomes'
 
-// Hooks that hit the standalone /api/phone-wizard/* routes
+// ─── Suppress unused warning ──────────────────────────────────────────────────
+void isCallActive
+void DIAL_DISPOSITIONS
+
+// ─── Wizard-scoped hooks ──────────────────────────────────────────────────────
 
 function useWizardCallList(listId: string) {
   return useQuery({
@@ -84,10 +104,13 @@ function useWizardRecordAttempt(listId: string) {
   })
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function PhoneWizardCallPage() {
   const params = useParams()
   const router = useRouter()
   const listId = params.listId as string
+  const supabase = createClient()
 
   const [flowState, dispatch] = useReducer(callFlowReducer, getInitialCallFlowState())
   const [notes, setNotes] = useState('')
@@ -100,6 +123,12 @@ export default function PhoneWizardCallPage() {
   const [shouldFetchNext, setShouldFetchNext] = useState(true)
   const [showWorkerEdit, setShowWorkerEdit] = useState(false)
   const [checkedOutcomes, setCheckedOutcomes] = useState<Map<number, string | null>>(new Map())
+  const [sidePanelTab, setSidePanelTab] = useState<'script' | 'objections' | 'issues'>('script')
+  const [showAmbitionGate, setShowAmbitionGate] = useState(false)
+  const pendingSubmitArgs = useRef<Partial<RecordCallAttemptRequest> | undefined>(undefined)
+
+  // Suppress unused: setShouldFetchNext is intentional for future use
+  void setShouldFetchNext
 
   const callStartTime = useRef<Date | null>(null)
   const queryClient = useQueryClient()
@@ -120,6 +149,25 @@ export default function PhoneWizardCallPage() {
   }, [list])
 
   const { data: campaignScriptCtx } = useCampaignPhoneScriptContext(scriptCampaignIdForContext)
+
+  // Load CTA ambitions for the pre-finalise gate
+  const activeScriptId = list?.script_id ?? null
+  const { data: ctaAmbitions = [] } = useQuery<CallCtaAmbition[]>({
+    queryKey: ['call-script-cta-ambitions', activeScriptId],
+    queryFn: async () => {
+      if (!activeScriptId) return []
+      const { data, error } = await supabase
+        .from('call_script_cta_ambitions')
+        .select('id, outcome_definition_id, cta_label, target_response, target_min_rating, target_binary, target_support_level, min_call_threshold_pct, notes')
+        .eq('script_id', activeScriptId)
+      if (error) throw error
+      return (data ?? []) as CallCtaAmbition[]
+    },
+    enabled: !!activeScriptId,
+  })
+
+  // Campaign id for side panels (may be null for standalone lists)
+  const panelCampaignId = scriptCampaignIdForContext ?? 0
 
   const { membershipHeroOutcomes, otherOutcomes, showingRecruitPrompt } = useMemo(
     () =>
@@ -193,7 +241,6 @@ export default function PhoneWizardCallPage() {
   })()
 
   const sortedSections = [...sections].sort((a, b) => a.sort_order - b.sort_order)
-  const currentSection = sortedSections[flowState.currentSectionIndex] || null
 
   const scriptContext = useMemo(() => {
     const w = contact?.worker
@@ -246,7 +293,8 @@ export default function PhoneWizardCallPage() {
     setStepReached((prev) => new Set([...prev, index]))
   }, [])
 
-  const submitAndLoadNext = useCallback(async (overrides?: Partial<RecordCallAttemptRequest>) => {
+  // Core submit
+  const doSubmit = useCallback(async (overrides?: Partial<RecordCallAttemptRequest>) => {
     if (!contact) return
 
     const duration = callStartTime.current
@@ -274,6 +322,8 @@ export default function PhoneWizardCallPage() {
       outcome_entries: flowState.dialDisposition === 'connected'
         ? [...checkedOutcomes.entries()].map(([id, val]) => ({ outcome_id: id, response_value: val }))
         : [],
+      objections: flowState.capturedObjections,
+      issues: flowState.capturedIssues,
       ...overrides,
     }
 
@@ -294,6 +344,27 @@ export default function PhoneWizardCallPage() {
     }
   }, [contact, list, flowState, notes, supportLevel, ctaResponse, sortedSections, stepReached, stepNotes, checkedOutcomes, recordAttempt, refetchNext])
 
+  // Gate wrapper
+  const submitAndLoadNext = useCallback(async (overrides?: Partial<RecordCallAttemptRequest>) => {
+    if (!contact) return
+
+    const isConnectedCall = flowState.dialDisposition === 'connected' && (flowState.callDisposition || overrides?.call_disposition)
+    if (isConnectedCall && ctaAmbitions.length > 0) {
+      const meets = meetsCtaAmbition(ctaAmbitions, {
+        ctaResponse: (overrides?.cta_response ?? ctaResponse) as CtaResponse | null,
+        supportLevel: (overrides?.support_level_assessed ?? supportLevel) as SupportLevel | null,
+        callDisposition: (overrides?.call_disposition ?? flowState.callDisposition) as string | null,
+      })
+      if (!meets && flowState.capturedObjections.length === 0) {
+        pendingSubmitArgs.current = overrides
+        setShowAmbitionGate(true)
+        return
+      }
+    }
+
+    await doSubmit(overrides)
+  }, [contact, flowState, ctaResponse, supportLevel, ctaAmbitions, doSubmit])
+
   const handleSkip = useCallback(async () => {
     if (!contact) return
     await submitAndLoadNext({
@@ -313,11 +384,6 @@ export default function PhoneWizardCallPage() {
 
   const isConnected = flowState.phase === 'connected' || flowState.phase === 'in_script'
   const showDispositionForm = flowState.phase === 'not_reached' || flowState.phase === 'call_complete' || flowState.phase === 'early_exit'
-
-  // Suppress unused variable warning — isCallActive kept for potential future use
-  void isCallActive
-  void currentSection
-  void DIAL_DISPOSITIONS
 
   if (!list) {
     return (
@@ -540,24 +606,106 @@ export default function PhoneWizardCallPage() {
           )}
         </div>
 
-        {/* Right: Script Side Panel (desktop only) */}
-        <div className="hidden lg:block flex-[2] border-l pl-4 overflow-y-auto">
-          {sortedSections.length > 0 ? (
-            <ScriptSidePanel
-              sections={sortedSections}
-              currentIndex={flowState.currentSectionIndex}
-              onGoToSection={handleGoToSection}
-              reachedSections={stepReached}
-              workerContext={scriptContext}
-            />
-          ) : (
-            <div className="text-center py-12">
-              <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No script attached to this list</p>
-            </div>
-          )}
+        {/* Right: Tabbed side panel (desktop only) */}
+        <div className="hidden lg:flex flex-[2] border-l pl-4 min-h-0 flex-col">
+          <Tabs
+            value={sidePanelTab}
+            onValueChange={(v) => setSidePanelTab(v as typeof sidePanelTab)}
+            className="flex flex-col h-full"
+          >
+            <TabsList className="grid grid-cols-3 w-full shrink-0 mb-3">
+              <TabsTrigger value="script" className="text-xs">Script</TabsTrigger>
+              <TabsTrigger value="objections" className="text-xs">
+                Objections
+                {flowState.capturedObjections.length > 0 && (
+                  <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 rounded-full px-1.5">
+                    {flowState.capturedObjections.length}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="issues" className="text-xs">
+                Issues
+                {flowState.capturedIssues.length > 0 && (
+                  <span className="ml-1 text-[9px] bg-orange-100 text-orange-700 rounded-full px-1.5">
+                    {flowState.capturedIssues.length}
+                  </span>
+                )}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="script" className="flex-1 overflow-y-auto mt-0">
+              {sortedSections.length > 0 ? (
+                <ScriptSidePanel
+                  sections={sortedSections}
+                  currentIndex={flowState.currentSectionIndex}
+                  onGoToSection={handleGoToSection}
+                  reachedSections={stepReached}
+                  workerContext={scriptContext}
+                />
+              ) : (
+                <div className="text-center py-12">
+                  <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No script attached to this list</p>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="objections" className="flex-1 overflow-y-auto mt-0">
+              <InCallObjectionsPanel
+                campaignId={panelCampaignId}
+                captured={flowState.capturedObjections}
+                onAdd={(obj) => dispatch({ type: 'ADD_OBJECTION', objection: obj })}
+                onUpdate={(i, obj) => dispatch({ type: 'UPDATE_OBJECTION', index: i, objection: obj })}
+                onRemove={(i) => dispatch({ type: 'REMOVE_OBJECTION', index: i })}
+              />
+            </TabsContent>
+
+            <TabsContent value="issues" className="flex-1 overflow-y-auto mt-0">
+              <InCallIssuesPanel
+                campaignId={panelCampaignId}
+                expectedIssues={null}
+                captured={flowState.capturedIssues}
+                onAdd={(issue) => dispatch({ type: 'ADD_ISSUE', issue })}
+                onUpdate={(i, issue) => dispatch({ type: 'UPDATE_ISSUE', index: i, issue })}
+                onRemove={(i) => dispatch({ type: 'REMOVE_ISSUE', index: i })}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
+
+      {/* Pre-finalise ambition gate dialog */}
+      <AlertDialog open={showAmbitionGate} onOpenChange={setShowAmbitionGate}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Did you encounter objections?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This call&apos;s outcome is below the ambition target for this script. Capturing
+              objections now will improve campaign learning and help the team prepare better
+              responses. Would you like to add objections before finalising?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setShowAmbitionGate(false)
+                setSidePanelTab('objections')
+              }}
+            >
+              Add objections
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                setShowAmbitionGate(false)
+                await doSubmit(pendingSubmitArgs.current)
+                pendingSubmitArgs.current = undefined
+              }}
+            >
+              Finalise anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <CallbackScheduler
         open={showCallbackDialog}

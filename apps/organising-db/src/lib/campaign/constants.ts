@@ -44,15 +44,29 @@ export const UNION_MEMBER_LIKE_TYPE_NAMES = new Set([
   "member_pending",
 ]);
 
+/**
+ * Union membership type_name values that map to the `lapsed` filter bucket.
+ * These are former/resigned members who have left but remain in the system.
+ */
+export const LAPSED_MEMBERSHIP_TYPE_NAMES = new Set([
+  "resigned_member",
+  "lapsed",
+  "lapsed_member",
+  "former_member",
+]);
+
 /** Collapsed campaign list / filter bucket (list-builder, wizards, assign dialogs). */
 export type CampaignMembershipStatus =
   | "member"
   | "member_pending"
+  | "lapsed"
   | "non_member";
 
 /**
  * Distinct filter bucket for organisers: pending is its own slice even though
  * `isWorkerMemberLike` is true for `member_pending` union type.
+ * Order: member_pending first; then lapsed if type_name matches a lapsed token;
+ * then member if member-like; else non_member.
  */
 export function getCampaignMembershipStatus(args: {
   unionMembershipTypeName: string | null | undefined;
@@ -61,6 +75,7 @@ export function getCampaignMembershipStatus(args: {
 }): CampaignMembershipStatus {
   const u = args.unionMembershipTypeName;
   if (u === "member_pending") return "member_pending";
+  if (u && LAPSED_MEMBERSHIP_TYPE_NAMES.has(u)) return "lapsed";
   if (isWorkerMemberLike(args)) return "member";
   return "non_member";
 }

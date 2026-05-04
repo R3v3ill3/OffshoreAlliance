@@ -660,6 +660,20 @@ export interface CallListItemWithWorker extends CallListItem {
   recent_attempts?: CallAttempt[]
 }
 
+export interface CapturedObjectionPayload {
+  objection_id: number | null
+  custom_label?: string
+  outcome: 'fully_resolved' | 'partially_resolved' | 'not_resolved'
+  notes?: string
+}
+
+export interface CapturedIssuePayload {
+  issue_label: string
+  heat: 1 | 2 | 3 | 4 | 5
+  source_top_issue_index?: number | null
+  notes?: string
+}
+
 export interface RecordCallAttemptRequest {
   list_item_id: number
   script_id: number | null
@@ -681,6 +695,8 @@ export interface RecordCallAttemptRequest {
   }[]
   outcome_ids?: number[]
   outcome_entries?: OutcomeEntry[]
+  objections?: CapturedObjectionPayload[]
+  issues?: CapturedIssuePayload[]
 }
 
 export interface CallOutcomeSummary {

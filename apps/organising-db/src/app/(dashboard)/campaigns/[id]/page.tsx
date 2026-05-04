@@ -1,11 +1,17 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { format } from "date-fns";
-import { ArrowLeft, Pencil, Plus, Settings as SettingsIcon } from "lucide-react";
+import { ArrowLeft, ChevronDown, Pencil, Plus, Settings as SettingsIcon } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -17,13 +23,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -32,14 +31,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import type {
   CampaignType,
   CampaignStatus,
@@ -66,6 +57,15 @@ import { SituationAnalysisEditSheet } from "@/components/campaigns/situation-ana
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
 import { BargainingInsightsWidget } from "@/components/campaigns/bargaining/BargainingInsightsWidget";
 import { Phase2WizardLaunchCard } from "@/components/campaigns/bargaining/wizard/Phase2WizardLaunchCard";
+import { FoundationalReadinessPanel } from "@/components/campaigns/bargaining/FoundationalReadinessPanel";
+import { CampaignResultsSection } from "@/components/campaigns/campaign-results-section";
+import { CampaignActionsSection } from "@/components/campaigns/campaign-actions-section";
+import { LibrarySection } from "@/components/campaigns/library/campaign-library";
+import {
+  VALID_TABS,
+  resolveTabParams,
+  needsRedirect,
+} from "@/lib/campaign-tabs";
 
 interface CampaignDetail {
   campaign_id: number;
@@ -136,25 +136,6 @@ const TYPE_VARIANT: Record<CampaignType, "default" | "info" | "warning" | "secon
   political: "secondary",
 };
 
-const ACTION_STATUS_VARIANT: Record<string, "secondary" | "success" | "info" | "warning" | "default"> = {
-  pending: "secondary",
-  in_progress: "info",
-  completed: "success",
-  cancelled: "warning",
-};
-
-const RESULT_TYPE_VARIANT: Record<ActionResultType, "success" | "secondary" | "destructive" | "info" | "warning" | "default"> = {
-  contacted: "success",
-  not_home: "secondary",
-  refused: "destructive",
-  signed: "success",
-  attended: "info",
-  left_message: "warning",
-  wrong_number: "secondary",
-  moved: "secondary",
-  other: "default",
-};
-
 function formatDate(d: string | null) {
   if (!d) return "—";
   try {
@@ -183,34 +164,69 @@ export default function CampaignDetailPage() {
 
   // Phase 5: persist the selected tab in the URL so back/forward + reload land
   // on the same view, and direct links can deep-link into a tab.
-  const validTabs = [
-    "overview",
-    "campaign-plan",
-    "workplan",
-    "universe",
-    "assessments",
-    "reporting",
-    "insights",
-    "wall",
-    "tasklists",
-    "comms",
-    "phone",
-    "actions",
-    "results",
-    "bargaining",
-  ] as const;
-  const tabFromUrl = searchParams.get("tab");
-  const activeTab = (validTabs as readonly string[]).includes(tabFromUrl ?? "")
-    ? (tabFromUrl as (typeof validTabs)[number])
-    : "overview";
+  // Phase A extension: also read/write a ?sub= param and apply legacy redirects
+  // via resolveTabParams so old ?tab=workplan URLs rewrite to ?tab=plan&sub=workplan.
+  const rawTab = searchParams.get("tab");
+  const rawSub = searchParams.get("sub");
+
+  const resolved = resolveTabParams(
+    (VALID_TABS as readonly string[]).includes(rawTab ?? "")
+      ? rawTab
+      : rawTab
+        ? null // unknown tab value → fall back to overview
+        : null,
+    rawSub
+  );
+
+  const activeTab = resolved.tab;
+  const activeSub = resolved.sub;
+
+  // Redirect legacy URLs (e.g. ?tab=workplan → ?tab=plan&sub=workplan).
+  useEffect(() => {
+    if (needsRedirect(rawTab, rawSub, resolved)) {
+      const params = new URLSearchParams(searchParams.toString());
+      if (resolved.tab === "overview") {
+        params.delete("tab");
+        params.delete("sub");
+      } else {
+        params.set("tab", resolved.tab);
+        if (resolved.sub) {
+          params.set("sub", resolved.sub);
+        } else {
+          params.delete("sub");
+        }
+      }
+      const qs = params.toString();
+      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+    }
+  // Only run when the raw URL params change, not on every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawTab, rawSub]);
 
   const handleTabChange = useCallback(
     (next: string) => {
       const params = new URLSearchParams(searchParams.toString());
       if (next === "overview") {
         params.delete("tab");
+        params.delete("sub");
       } else {
         params.set("tab", next);
+        // Clear sub so the cluster default kicks in on next render.
+        params.delete("sub");
+      }
+      const qs = params.toString();
+      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
+  const handleSubChange = useCallback(
+    (nextSub: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (nextSub) {
+        params.set("sub", nextSub);
+      } else {
+        params.delete("sub");
       }
       const qs = params.toString();
       router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
@@ -398,42 +414,50 @@ export default function CampaignDetailPage() {
           </p>
         </div>
         {canWrite && (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => router.push(`/campaigns/${campaignId}/settings`)}
-            >
-              <SettingsIcon className="h-4 w-4" />
-              All settings
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() =>
-                router.push(`/campaigns/new?cid=${campaignId}&edit=1`)
-              }
-            >
-              <Pencil className="h-4 w-4" />
-              Re-run wizard
-            </Button>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                Actions
+                <ChevronDown className="h-4 w-4 ml-1" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() =>
+                  router.push(`/campaigns/new?cid=${campaignId}&edit=1`)
+                }
+              >
+                <Pencil className="h-4 w-4 mr-2" />
+                Re-run wizard
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() =>
+                  router.push(`/campaigns/${campaignId}/settings`)
+                }
+              >
+                <SettingsIcon className="h-4 w-4 mr-2" />
+                All settings
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() =>
+                  router.push(`/campaigns/${campaignId}/plan`)
+                }
+              >
+                View full plan
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="campaign-plan">Campaign Plan</TabsTrigger>
-          <TabsTrigger value="workplan">Workplan</TabsTrigger>
-          <TabsTrigger value="universe">Universe</TabsTrigger>
-          <TabsTrigger value="assessments">Assessments</TabsTrigger>
-          <TabsTrigger value="reporting">Reporting</TabsTrigger>
-          <TabsTrigger value="insights">Insights</TabsTrigger>
-          <TabsTrigger value="wall">Wall chart</TabsTrigger>
-          <TabsTrigger value="tasklists">Task lists</TabsTrigger>
-          <TabsTrigger value="comms">Comms</TabsTrigger>
-          <TabsTrigger value="phone">Phone Ops</TabsTrigger>
-          <TabsTrigger value="actions">Actions</TabsTrigger>
-          <TabsTrigger value="results">Results</TabsTrigger>
+          <TabsTrigger value="plan">Plan &amp; Execution</TabsTrigger>
+          <TabsTrigger value="workforce">Workforce</TabsTrigger>
+          <TabsTrigger value="outcomes">Outcomes</TabsTrigger>
+          <TabsTrigger value="outreach">Outreach</TabsTrigger>
+          <TabsTrigger value="library">Library</TabsTrigger>
           {campaign.current_phase === "bargaining_to_win" && (
             <TabsTrigger value="bargaining">Bargaining</TabsTrigger>
           )}
@@ -521,388 +545,256 @@ export default function CampaignDetailPage() {
           />
         </TabsContent>
 
-        <TabsContent value="campaign-plan">
-          <CampaignPlanPanel campaignId={Number(id)} organiserId={campaign?.organiser_id} />
-          {(!campaign.current_phase || campaign.current_phase === "preparing_to_bargain") && (
-            <div className="mt-6 pt-6 border-t border-slate-200">
-              <Phase2WizardLaunchCard campaignId={campaignId} mode="continuation" />
-            </div>
-          )}
-        </TabsContent>
+        <TabsContent value="plan">
+          <Tabs
+            value={activeSub ?? "strategy"}
+            onValueChange={handleSubChange}
+          >
+            <TabsList className="mb-4">
+              <TabsTrigger value="strategy">Strategy</TabsTrigger>
+              <TabsTrigger value="workplan">Workplan</TabsTrigger>
+              <TabsTrigger value="actions">Actions</TabsTrigger>
+              <TabsTrigger value="task-lists">Task Lists</TabsTrigger>
+            </TabsList>
 
-        <TabsContent value="workplan">
-          <CampaignWorkplanSection campaignId={id} canWrite={!!canWrite} />
-        </TabsContent>
-
-        <TabsContent value="assessments">
-          <CampaignAssessmentsSection campaignId={id} canWrite={!!canWrite} />
-        </TabsContent>
-
-        <TabsContent value="reporting">
-          <CampaignReportingCharts campaignId={id} />
-        </TabsContent>
-
-        <TabsContent value="insights" className="space-y-6">
-          {campaign.current_phase === "bargaining_to_win" && (
-            <BargainingInsightsWidget campaignId={campaignId} />
-          )}
-          <CampaignProgressReport campaignId={campaignId} embedded />
-        </TabsContent>
-
-        <TabsContent value="wall">
-          <CampaignWallChart campaignId={id} canWrite={!!canWrite} />
-        </TabsContent>
-
-        <TabsContent value="tasklists">
-          <CampaignTaskListsSection campaignId={id} canWrite={!!canWrite} />
-        </TabsContent>
-
-        <TabsContent value="universe" className="space-y-6">
-          <CampaignUniverseSection campaignId={id} canWrite={!!canWrite} />
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-4">
-              <div className="space-y-1 min-w-0">
-                <CardTitle className="text-lg">Named universes (optional)</CardTitle>
-                <CardDescription>
-                  Labels for the Actions tab only. Campaign scope (employers, worksites, workers) is
-                  managed above.
-                </CardDescription>
-              </div>
-              {canWrite && (
-                <Dialog open={universeDialogOpen} onOpenChange={setUniverseDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" variant="outline">
-                      <Plus className="h-4 w-4" />
-                      Add named universe
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Add named universe</DialogTitle>
-                      <DialogDescription>
-                        Optional grouping you can attach when creating a campaign action.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="universe_name">Name *</Label>
-                        <Input
-                          id="universe_name"
-                          value={universeForm.name}
-                          onChange={(e) =>
-                            setUniverseForm({ ...universeForm, name: e.target.value })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="universe_desc">Description</Label>
-                        <Textarea
-                          id="universe_desc"
-                          value={universeForm.description}
-                          onChange={(e) =>
-                            setUniverseForm({ ...universeForm, description: e.target.value })
-                          }
-                          rows={3}
-                        />
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setUniverseDialogOpen(false)}>
-                        Cancel
-                      </Button>
-                      <Button
-                        onClick={() => createUniverseMutation.mutate()}
-                        disabled={!universeForm.name || createUniverseMutation.isPending}
-                      >
-                        {createUniverseMutation.isPending ? "Creating…" : "Create Universe"}
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+            <TabsContent value="strategy">
+              <CampaignPlanPanel campaignId={Number(id)} organiserId={campaign?.organiser_id} />
+              {(!campaign.current_phase || campaign.current_phase === "preparing_to_bargain") && (
+                <div className="mt-6 pt-6 border-t border-slate-200">
+                  <Phase2WizardLaunchCard campaignId={campaignId} mode="continuation" />
+                </div>
               )}
-            </CardHeader>
-            <CardContent>
-              {universes.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No named universes. Actions can still be created without one.
-                </p>
-              ) : (
-                <div className="space-y-4">
-                  {universes.map((u) => {
-                    const rules = rulesByUniverse[u.universe_id] ?? [];
-                    return (
-                      <div key={u.universe_id} className="rounded-md border p-4 space-y-3">
-                        <div>
-                          <h4 className="font-medium">{u.name}</h4>
-                          {u.description && (
-                            <p className="text-sm text-muted-foreground mt-0.5">
-                              {u.description}
-                            </p>
-                          )}
-                        </div>
-                        {rules.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5">
-                            {rules.map((r) => (
-                              <Badge
-                                key={r.rule_id}
-                                variant={r.include ? "info" : "destructive"}
-                              >
-                                {r.include ? "Include" : "Exclude"}{" "}
-                                {RULE_TYPE_LABELS[r.rule_type]}: #{r.rule_entity_id}
-                              </Badge>
-                            ))}
+            </TabsContent>
+
+            <TabsContent value="workplan">
+              <CampaignWorkplanSection campaignId={id} canWrite={!!canWrite} />
+            </TabsContent>
+
+            <TabsContent value="actions">
+              <CampaignActionsSection
+                campaignId={campaignId}
+                canWrite={!!canWrite}
+                actions={actions}
+                universes={universes}
+                actionDialogOpen={actionDialogOpen}
+                setActionDialogOpen={setActionDialogOpen}
+                actionForm={actionForm}
+                setActionForm={setActionForm}
+                onCreateAction={() => createActionMutation.mutate()}
+                isCreatingAction={createActionMutation.isPending}
+              />
+            </TabsContent>
+
+            <TabsContent value="task-lists">
+              <CampaignTaskListsSection campaignId={id} canWrite={!!canWrite} />
+            </TabsContent>
+          </Tabs>
+        </TabsContent>
+
+        <TabsContent value="outcomes">
+          <Tabs
+            value={activeSub ?? "reports"}
+            onValueChange={handleSubChange}
+          >
+            <TabsList className="mb-4">
+              <TabsTrigger value="reports">Reports</TabsTrigger>
+              <TabsTrigger value="results">Results</TabsTrigger>
+              <TabsTrigger value="insights">Insights</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="reports">
+              <CampaignReportingCharts campaignId={id} />
+            </TabsContent>
+
+            <TabsContent value="results">
+              <CampaignResultsSection results={results} />
+            </TabsContent>
+
+            <TabsContent value="insights" className="space-y-6">
+              {campaign.current_phase === "bargaining_to_win" && (
+                <BargainingInsightsWidget campaignId={campaignId} />
+              )}
+              <CampaignProgressReport campaignId={campaignId} embedded />
+            </TabsContent>
+          </Tabs>
+        </TabsContent>
+
+        <TabsContent value="workforce">
+          <Tabs
+            value={activeSub ?? "universe"}
+            onValueChange={handleSubChange}
+          >
+            <TabsList className="mb-4">
+              <TabsTrigger value="universe">Universe</TabsTrigger>
+              <TabsTrigger value="assessments">Assessments</TabsTrigger>
+              <TabsTrigger value="wall-chart">Wall Chart</TabsTrigger>
+              <TabsTrigger value="foundational-readiness">Foundational Readiness</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="universe" className="space-y-6">
+              <CampaignUniverseSection campaignId={id} canWrite={!!canWrite} />
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-4">
+                  <div className="space-y-1 min-w-0">
+                    <CardTitle className="text-lg">Named universes (optional)</CardTitle>
+                    <CardDescription>
+                      Labels for the Actions tab only. Campaign scope (employers, worksites, workers) is
+                      managed above.
+                    </CardDescription>
+                  </div>
+                  {canWrite && (
+                    <Dialog open={universeDialogOpen} onOpenChange={setUniverseDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button size="sm" variant="outline">
+                          <Plus className="h-4 w-4" />
+                          Add named universe
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Add named universe</DialogTitle>
+                          <DialogDescription>
+                            Optional grouping you can attach when creating a campaign action.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="universe_name">Name *</Label>
+                            <Input
+                              id="universe_name"
+                              value={universeForm.name}
+                              onChange={(e) =>
+                                setUniverseForm({ ...universeForm, name: e.target.value })
+                              }
+                            />
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="comms">
-          <CampaignCommsSection campaignId={id} canWrite={!!canWrite} />
-        </TabsContent>
-
-        <TabsContent value="phone">
-          <InlinePhoneOpsPanel campaignId={id} />
-        </TabsContent>
-
-        <TabsContent value="actions">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-lg">Campaign Actions</CardTitle>
-              {canWrite && (
-                <Dialog open={actionDialogOpen} onOpenChange={setActionDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="sm">
-                      <Plus className="h-4 w-4" />
-                      Add Action
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Add Action</DialogTitle>
-                      <DialogDescription>
-                        Create a new action for this campaign.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="action_title">Title *</Label>
-                        <Input
-                          id="action_title"
-                          value={actionForm.title}
-                          onChange={(e) =>
-                            setActionForm({ ...actionForm, title: e.target.value })
-                          }
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label>Action Type *</Label>
-                          <Select
-                            value={actionForm.action_type}
-                            onValueChange={(v) =>
-                              setActionForm({ ...actionForm, action_type: v as ActionType })
-                            }
+                          <div className="space-y-2">
+                            <Label htmlFor="universe_desc">Description</Label>
+                            <Textarea
+                              id="universe_desc"
+                              value={universeForm.description}
+                              onChange={(e) =>
+                                setUniverseForm({ ...universeForm, description: e.target.value })
+                              }
+                              rows={3}
+                            />
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button variant="outline" onClick={() => setUniverseDialogOpen(false)}>
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={() => createUniverseMutation.mutate()}
+                            disabled={!universeForm.name || createUniverseMutation.isPending}
                           >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="door_knock">Door Knock</SelectItem>
-                              <SelectItem value="phone_call">Phone Call</SelectItem>
-                              <SelectItem value="text_blast">Text Blast</SelectItem>
-                              <SelectItem value="meeting">Meeting</SelectItem>
-                              <SelectItem value="petition">Petition</SelectItem>
-                              <SelectItem value="rally">Rally</SelectItem>
-                              <SelectItem value="worksite_visit">Worksite Visit</SelectItem>
-                              <SelectItem value="sign_up">Sign Up</SelectItem>
-                              <SelectItem value="survey">Survey</SelectItem>
-                              <SelectItem value="custom">Custom</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Status</Label>
-                          <Select
-                            value={actionForm.status}
-                            onValueChange={(v) =>
-                              setActionForm({ ...actionForm, status: v })
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="pending">Pending</SelectItem>
-                              <SelectItem value="in_progress">In Progress</SelectItem>
-                              <SelectItem value="completed">Completed</SelectItem>
-                              <SelectItem value="cancelled">Cancelled</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="action_desc">Description</Label>
-                        <Textarea
-                          id="action_desc"
-                          value={actionForm.description}
-                          onChange={(e) =>
-                            setActionForm({ ...actionForm, description: e.target.value })
-                          }
-                          rows={3}
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="action_due">Due Date</Label>
-                          <Input
-                            id="action_due"
-                            type="date"
-                            value={actionForm.due_date}
-                            onChange={(e) =>
-                              setActionForm({ ...actionForm, due_date: e.target.value })
-                            }
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Universe</Label>
-                          <Select
-                            value={actionForm.universe_id}
-                            onValueChange={(v) =>
-                              setActionForm({ ...actionForm, universe_id: v })
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select universe" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {universes.map((u) => (
-                                <SelectItem
-                                  key={u.universe_id}
-                                  value={String(u.universe_id)}
-                                >
-                                  {u.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
+                            {createUniverseMutation.isPending ? "Creating…" : "Create Universe"}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  {universes.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">
+                      No named universes. Actions can still be created without one.
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {universes.map((u) => {
+                        const rules = rulesByUniverse[u.universe_id] ?? [];
+                        return (
+                          <div key={u.universe_id} className="rounded-md border p-4 space-y-3">
+                            <div>
+                              <h4 className="font-medium">{u.name}</h4>
+                              {u.description && (
+                                <p className="text-sm text-muted-foreground mt-0.5">
+                                  {u.description}
+                                </p>
+                              )}
+                            </div>
+                            {rules.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5">
+                                {rules.map((r) => (
+                                  <Badge
+                                    key={r.rule_id}
+                                    variant={r.include ? "info" : "destructive"}
+                                  >
+                                    {r.include ? "Include" : "Exclude"}{" "}
+                                    {RULE_TYPE_LABELS[r.rule_type]}: #{r.rule_entity_id}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setActionDialogOpen(false)}>
-                        Cancel
-                      </Button>
-                      <Button
-                        onClick={() => createActionMutation.mutate()}
-                        disabled={!actionForm.title || createActionMutation.isPending}
-                      >
-                        {createActionMutation.isPending ? "Creating…" : "Add Action"}
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              )}
-            </CardHeader>
-            <CardContent>
-              {actions.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No actions created for this campaign.
-                </p>
-              ) : (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Title</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Due Date</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {actions.map((a) => (
-                        <TableRow key={a.action_id}>
-                          <TableCell className="font-medium">{a.title}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">
-                              {a.action_type.replace(/_/g, " ")}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{formatDate(a.due_date)}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={ACTION_STATUS_VARIANT[a.status] ?? "default"}
-                            >
-                              {a.status.replace(/_/g, " ")}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="assessments">
+              <CampaignAssessmentsSection campaignId={id} canWrite={!!canWrite} />
+            </TabsContent>
+
+            <TabsContent value="wall-chart">
+              <CampaignWallChart campaignId={id} canWrite={!!canWrite} />
+            </TabsContent>
+
+            <TabsContent value="foundational-readiness">
+              <FoundationalReadinessPanel campaignId={campaignId} />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
-        <TabsContent value="results">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Campaign Results</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {results.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No results recorded yet.
-                </p>
-              ) : (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Worker</TableHead>
-                        <TableHead>Action</TableHead>
-                        <TableHead>Result</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Notes</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {results.map((r) => (
-                        <TableRow key={r.result_id}>
-                          <TableCell className="font-medium">
-                            {r.worker
-                              ? `${r.worker.first_name} ${r.worker.last_name}`
-                              : "—"}
-                          </TableCell>
-                          <TableCell>{r.action?.title ?? "—"}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={RESULT_TYPE_VARIANT[r.result_type] ?? "default"}
-                            >
-                              {r.result_type.replace(/_/g, " ")}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{formatDate(r.action_date)}</TableCell>
-                          <TableCell className="max-w-xs truncate">
-                            {r.notes ?? "—"}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        <TabsContent value="outreach">
+          <Tabs
+            value={activeSub ?? "comms"}
+            onValueChange={handleSubChange}
+          >
+            <TabsList className="mb-4">
+              <TabsTrigger value="comms">Comms</TabsTrigger>
+              <TabsTrigger value="phone">Phone Ops</TabsTrigger>
+              <TabsTrigger value="soc">SOC</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="comms">
+              {/* CampaignCommsSection has its own internal sub-tabs (Drafts & Send /
+                  List Builder) — intentional two-level nesting; do not flatten. */}
+              <CampaignCommsSection campaignId={id} canWrite={!!canWrite} />
+            </TabsContent>
+
+            <TabsContent value="phone">
+              <InlinePhoneOpsPanel campaignId={id} />
+            </TabsContent>
+
+            <TabsContent value="soc">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Structure of Concern (SOC)</CardTitle>
+                  <CardDescription>
+                    Build and manage the Structure of Concern diagram for this campaign using
+                    the dedicated SOC wizard.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button asChild>
+                    <a href={`/campaigns/soc-wizard?cid=${campaignId}`}>
+                      Open SOC Wizard
+                    </a>
+                  </Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </TabsContent>
+
+        <TabsContent value="library">
+          <LibrarySection campaignId={campaignId} canWrite={!!canWrite} />
         </TabsContent>
 
         <TabsContent value="bargaining">

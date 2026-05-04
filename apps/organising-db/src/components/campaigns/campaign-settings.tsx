@@ -42,10 +42,6 @@ import {
   StepAllocateWorkers,
   type WorkerUnitAllocation,
 } from "@/components/campaigns/step-allocate-workers";
-import {
-  StepAgreements,
-  type CampaignAgreementSelection,
-} from "@/components/campaigns/step-agreements";
 import { StepWorkerEstimate } from "@/components/campaigns/step-worker-estimate";
 import {
   StepCampaignUnits,
@@ -136,9 +132,6 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
   const [selectedEmployers, setSelectedEmployers] = useState<number[]>([]);
   const [selectedWorksites, setSelectedWorksites] = useState<number[]>([]);
   const [worksiteSectorWide, setWorksiteSectorWide] = useState(false);
-  const [agreementSelections, setAgreementSelections] = useState<
-    CampaignAgreementSelection[]
-  >([]);
   const [units, setUnits] = useState<CampaignUnitDraft[]>([]);
   const [selectedWorkers, setSelectedWorkers] = useState<number[]>([]);
   const [workerUnitAllocations, setWorkerUnitAllocations] =
@@ -166,7 +159,7 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
   const { data: scope, isLoading: scopeLoading } = useQuery({
     queryKey: ["campaign-settings-scope", campaignId],
     queryFn: async () => {
-      const [ce, cw, cw2, ca, cou, cwo, cam] = await Promise.all([
+      const [ce, cw, cw2, cou, cwo, cam] = await Promise.all([
         supabase.from("campaign_employers").select("employer_id").eq("campaign_id", campaignId),
         supabase
           .from("campaign_worksites")
@@ -176,11 +169,6 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
           .from("campaign_worker_membership")
           .select("worker_id")
           .eq("campaign_id", campaignId),
-        supabase
-          .from("campaign_agreements")
-          .select("agreement_id, relationship_type, is_primary, sort_order")
-          .eq("campaign_id", campaignId)
-          .order("sort_order", { ascending: true }),
         supabase
           .from("campaign_organising_units")
           .select("ou_id, ou_type, name, total_workers_estimated, unit_basis")
@@ -201,7 +189,6 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
       if (ce.error) throw ce.error;
       if (cw.error) throw cw.error;
       if (cw2.error) throw cw2.error;
-      const agreementRows = ca.error ? [] : (ca.data ?? []);
       const ouRows = cou.error ? [] : (cou.data ?? []);
       const cwoRows = cwo.error ? [] : (cwo.data ?? []);
       const camRows = cam.error ? [] : (cam.data ?? []);
@@ -216,17 +203,6 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
           .filter((w) => w.worksite_id != null)
           .map((w) => w.worksite_id!),
         workers: (cw2.data ?? []).map((r) => r.worker_id),
-        agreements: (agreementRows as Array<{
-          agreement_id: number;
-          relationship_type: string;
-          is_primary: boolean;
-          sort_order: number;
-        }>).map((r) => ({
-          agreement_id: r.agreement_id,
-          relationship_type:
-            r.relationship_type as CampaignAgreementSelection["relationship_type"],
-          is_primary: r.is_primary,
-        })),
         units: (ouRows as Array<{
           ou_id: number;
           ou_type: string;
@@ -356,7 +332,6 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
     setWorksiteSectorWide(scope.sectorWide);
     setSelectedWorksites(scope.worksites);
     setSelectedWorkers(scope.workers);
-    setAgreementSelections(scope.agreements);
     setUnits(scope.units);
     setWorkerUnitAllocations(scope.workerUnitAllocations);
     setCampaignAmbitions(scope.ambitions);
@@ -455,28 +430,6 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
           );
           if (error) throw error;
         }
-      });
-    },
-    onSuccess: invalidateScope,
-  });
-
-  const saveAgreementsMutation = useAuthAwareMutation({
-    mutationFn: async () => {
-      await withSessionGuard("settings:saveAgreements", async () => {
-        await supabase
-          .from("campaign_agreements")
-          .delete()
-          .eq("campaign_id", campaignId);
-        if (agreementSelections.length === 0) return;
-        const rows = agreementSelections.map((s, i) => ({
-          campaign_id: campaignId,
-          agreement_id: s.agreement_id,
-          relationship_type: s.relationship_type,
-          is_primary: s.is_primary,
-          sort_order: i,
-        }));
-        const { error } = await supabase.from("campaign_agreements").insert(rows);
-        if (error) throw error;
       });
     },
     onSuccess: invalidateScope,
@@ -1032,30 +985,7 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
           </AccordionContent>
         </AccordionItem>
 
-        {/* ── Section 3: Agreements ─────────────────────────────────────── */}
-        <AccordionItem value="agreements" className="border rounded-md px-4">
-          <AccordionTrigger>
-            <div className="flex items-center gap-2">
-              <span className="font-medium">Agreements</span>
-              <Badge variant="outline" className="text-[10px] h-4 px-1">
-                {agreementSelections.length}
-              </Badge>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent>
-            <StepAgreements
-              selectedEmployers={selectedEmployers}
-              selectedWorksites={selectedWorksites}
-              selections={agreementSelections}
-              setSelections={setAgreementSelections}
-              isPending={saveAgreementsMutation.isPending}
-              onBack={() => undefined}
-              onContinue={() => saveAgreementsMutation.mutate()}
-            />
-          </AccordionContent>
-        </AccordionItem>
-
-        {/* ── Section 4: Worker estimate ─────────────────────────────────── */}
+        {/* ── Section 3: Worker estimate ─────────────────────────────────── */}
         <AccordionItem value="estimate" className="border rounded-md px-4">
           <AccordionTrigger>
             <div className="flex items-center gap-2">

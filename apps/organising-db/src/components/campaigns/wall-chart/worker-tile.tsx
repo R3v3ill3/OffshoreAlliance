@@ -2,10 +2,11 @@
 
 import Image from "next/image";
 import { Mail, Phone } from "lucide-react";
-import type { DragEvent, KeyboardEvent, MouseEvent } from "react";
+import type { DragEvent, MouseEvent } from "react";
 import { cn } from "@/lib/utils/cn";
 import { getWallChartDefaultCumulative, isWorkerMemberLike } from "@/lib/campaign/constants";
 import {
+  isNonOaMembershipType,
   otherUnionLabel,
   shouldShowOtherUnionBadge,
 } from "@/lib/workers/other-union-display";
@@ -127,6 +128,7 @@ export function WorkerTile({
     memberRoleName: mt?.role_name,
     isBargainingRep: worker.is_bargaining_rep,
   });
+  const isNonOaMember = isNonOaMembershipType(um?.type_name);
 
   const displayName = `${worker.first_name} ${worker.last_name}`;
   const titleRatings = `Cumulative ${storedCum ?? "—"}, last activity ${last ?? "—"}`;
@@ -188,7 +190,7 @@ export function WorkerTile({
 
   return (
     <div
-      className="relative"
+      className="relative h-full"
       data-worker-id={worker.worker_id}
       data-ou-id={ouId ?? ""}
       draggable={canWrite && !!onDragStartRefs}
@@ -206,7 +208,7 @@ export function WorkerTile({
         title={`${displayName}. ${titleRatings}.${titleAssessment}${titleDefaultHint}${titleMultiUnit}${titleHsr}${titleOtherUnion}${titleHints}`}
         aria-pressed={isSelected ? true : undefined}
         onClick={handleClick}
-        className={`w-full text-left text-[11px] leading-tight p-1.5 pb-5 rounded border min-h-[3.25rem] flex flex-col gap-0.5 justify-between ${ratingBgClass(
+        className={`w-full h-full text-left text-[11px] leading-tight p-1.5 rounded border min-h-[3.25rem] flex flex-col gap-0.5 justify-between ${ratingBgClass(
           colourSource
         )} ${canWrite ? "cursor-pointer hover:opacity-90" : ""} ${
           isSelected ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : ""
@@ -251,7 +253,7 @@ export function WorkerTile({
               {worker.non_oa_union_option.badge_initials}
             </span>
           )}
-          {isMemberLike && (
+          {isMemberLike && !isNonOaMember && (
             <Image
               src="/eurekaflag.gif"
               alt="Member"
@@ -261,24 +263,31 @@ export function WorkerTile({
               unoptimized
             />
           )}
+          {isNonOaMember && isMemberLike && (
+            <span
+              aria-label="Union member (other union)"
+              title="Union member (other union)"
+              className="inline-flex items-center justify-center h-[10px] w-[10px] rounded-full bg-red-600 text-white text-[7px] font-bold leading-none shrink-0"
+            >
+              U
+            </span>
+          )}
+          <WorkerContactBadge
+            kind="phone"
+            hasValue={hasPhone}
+            canWrite={canWrite}
+            workerId={worker.worker_id}
+            onContactBadgeClick={onContactBadgeClick}
+          />
+          <WorkerContactBadge
+            kind="email"
+            hasValue={hasEmail}
+            canWrite={canWrite}
+            workerId={worker.worker_id}
+            onContactBadgeClick={onContactBadgeClick}
+          />
         </div>
       </button>
-      <div className="pointer-events-none absolute bottom-1 left-1 z-[1] flex items-center gap-0.5">
-        <WorkerContactBadge
-          kind="phone"
-          hasValue={hasPhone}
-          canWrite={canWrite}
-          workerId={worker.worker_id}
-          onContactBadgeClick={onContactBadgeClick}
-        />
-        <WorkerContactBadge
-          kind="email"
-          hasValue={hasEmail}
-          canWrite={canWrite}
-          workerId={worker.worker_id}
-          onContactBadgeClick={onContactBadgeClick}
-        />
-      </div>
       {inMultipleUnits && (
         <span
           aria-label="In multiple organising units"
@@ -312,40 +321,35 @@ function WorkerContactBadge({
   const title = `${shortTitle}.${actionHint}`;
 
   const shellClass = cn(
-    "inline-flex shrink-0 items-center justify-center rounded-sm border shadow-sm",
+    "inline-flex shrink-0 items-center justify-center rounded-sm",
+    "h-[10px] w-[10px]",
     hasValue
-      ? "h-[18px] min-w-[18px] border-primary/30 bg-primary/20 text-primary"
-      : "h-[14px] min-w-[14px] border-muted-foreground/25 bg-muted/50 text-muted-foreground opacity-75"
+      ? "border border-primary/30 bg-primary/20 text-primary"
+      : "border border-muted-foreground/25 bg-muted/50 text-muted-foreground opacity-60"
   );
 
-  const iconClass = hasValue ? "h-3.5 w-3.5" : "h-2.5 w-2.5";
-
-  const stopKeyBubble = (e: KeyboardEvent) => {
-    if (e.key === "Enter" || e.key === " ") e.stopPropagation();
-  };
-
-  if (!canWrite) {
-    return (
-      <span className={shellClass} title={shortTitle} aria-label={shortTitle}>
-        <Icon className={cn(iconClass, "mx-auto")} aria-hidden />
-      </span>
-    );
-  }
+  const iconClass = hasValue ? "h-2.5 w-2.5" : "h-2 w-2";
 
   return (
-    <button
-      type="button"
+    <span
+      role={canWrite ? "button" : undefined}
+      tabIndex={canWrite ? 0 : -1}
       title={title.trim()}
       aria-label={title.trim()}
-      className={cn(shellClass, "pointer-events-auto hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring")}
-      onClick={(e) => {
+      className={cn(shellClass, canWrite ? "cursor-pointer hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" : "cursor-default")}
+      onClick={canWrite ? (e) => {
         e.stopPropagation();
         onContactBadgeClick?.(workerId, kind);
-      }}
-      onKeyDown={stopKeyBubble}
+      } : undefined}
+      onKeyDown={canWrite ? (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.stopPropagation();
+          onContactBadgeClick?.(workerId, kind);
+        }
+      } : undefined}
     >
       <Icon className={cn(iconClass, "mx-auto")} aria-hidden />
-    </button>
+    </span>
   );
 }
 

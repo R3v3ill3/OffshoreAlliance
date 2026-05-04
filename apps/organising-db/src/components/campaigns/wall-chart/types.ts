@@ -18,9 +18,15 @@ export type WallChartWorker = {
   is_bargaining_rep: boolean | null;
   is_hsr: boolean | null;
   union_membership_type_id: number | null;
+  non_oa_union_option_id: number | null;
   canonical_occupation_id: number | null;
   member_role_type: { role_name: string; role_type_id: number; display_name: string } | null;
   union_membership_type: { type_name: string; display_name?: string | null } | null;
+  non_oa_union_option: {
+    non_oa_union_option_id: number;
+    badge_initials: string;
+    display_name: string;
+  } | null;
   canonical_occupation: { occupation_id: number; canonical_name: string } | null;
 };
 

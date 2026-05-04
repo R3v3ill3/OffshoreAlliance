@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { lookupNonOaUnionOptionId } from "@/lib/workers/other-union-display";
 
 export interface WorkerImportAssessmentColumn {
   columnHeader: string;
@@ -53,6 +54,8 @@ export interface WorkerImportRow {
   createSpecialisationNames?: string[];
   /** Assessment values derived from mapped spreadsheet columns */
   assessmentEvents?: WorkerImportAssessmentEvent[];
+  /** When membership resolves to non_oa_member, matched to non_oa_union_options.badge_initials */
+  nonOaUnionBadgeInitials?: string | null;
   // Dedup decision
   action: "create" | "update" | "skip";
   existingWorkerId?: number;
@@ -321,6 +324,22 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const { data: nonOaUnionCatalog, error: nonOaCatError } = await supabase
+    .from("non_oa_union_options")
+    .select("non_oa_union_option_id, badge_initials");
+
+  if (nonOaCatError) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: `Could not load non-OA union options: ${nonOaCatError.message}`,
+      },
+      { status: 500 }
+    );
+  }
+
+  const nonOaCatalogRows = nonOaUnionCatalog ?? [];
+
   if (errors.length > 0) {
     return NextResponse.json(
       {
@@ -387,6 +406,38 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
+    const nonOaMembershipId = membershipIdByTypeName.get("non_oa_member") ?? null;
+    const isNonOa =
+      nonOaMembershipId != null &&
+      unionMembershipTypeId != null &&
+      unionMembershipTypeId === nonOaMembershipId;
+
+    let non_oa_union_option_id: number | null = null;
+    if (isNonOa && row.nonOaUnionBadgeInitials?.trim()) {
+      const rid = lookupNonOaUnionOptionId(row.nonOaUnionBadgeInitials, nonOaCatalogRows);
+      if (rid == null) {
+        rowErrors.push(
+          `Unknown other-union initials "${row.nonOaUnionBadgeInitials.trim()}" — add it in Administration or correct the badge text`
+        );
+      } else {
+        non_oa_union_option_id = rid;
+      }
+    }
+
+    if (rowErrors.length > 0) {
+      for (const error of rowErrors) {
+        errors.push(`Row ${row.rowIndex}: ${error}`);
+      }
+      rowResults.push({
+        rowIndex: row.rowIndex,
+        action: row.action,
+        workerId: null,
+        status: "error",
+        errors: rowErrors,
+      });
+      continue;
+    }
+
     const workerData: Record<string, unknown> = {
       first_name: row.firstName.trim(),
       last_name: row.lastName.trim(),
@@ -405,6 +456,7 @@ export async function POST(request: NextRequest) {
       notes: row.notes || null,
       is_active: !isResigned,
       updated_at: new Date().toISOString(),
+      non_oa_union_option_id: isNonOa ? non_oa_union_option_id : null,
     };
 
     let workerId: number | null = null;

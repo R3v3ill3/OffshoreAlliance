@@ -131,6 +131,23 @@ export function UnitSummaryMetrics({
           />
         ))}
       </div>
+      {metrics.nonOaUnionCounts.length > 0 && (
+        <div className={compact ? "flex flex-wrap gap-1" : "flex flex-wrap gap-1.5"}>
+          {metrics.nonOaUnionCounts.map((e) => (
+            <span
+              key={e.initials}
+              title="Non-OA members with union recorded"
+              className={`inline-flex items-baseline gap-1 rounded border border-sky-800/40 bg-sky-950/20 px-1.5 py-0.5 tabular-nums ${
+                compact ? "text-[10px]" : "text-xs"
+              }`}
+            >
+              <span className="font-semibold text-sky-100">{e.initials}</span>
+              <span className="text-muted-foreground">—</span>
+              <span className="font-medium">{e.count}</span>
+            </span>
+          ))}
+        </div>
+      )}
       <div className={compact ? "flex flex-wrap gap-1.5" : "grid grid-cols-2 sm:grid-cols-3 gap-2"}>
         <MetricChip
           label="Avg rating"

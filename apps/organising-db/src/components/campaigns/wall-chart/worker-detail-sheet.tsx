@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { useSaveActivityRating } from "@/lib/hooks/useSaveActivityRating";
@@ -20,6 +20,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { isWorkerMemberLike } from "@/lib/campaign/constants";
+import {
+  MembershipNonOaFields,
+  type NonOaUnionOptionRow,
+  type UnionMembershipTypeOption,
+} from "@/components/workers/membership-non-oa-fields";
 import { WorkerRelationshipsTab } from "./worker-relationships-tab";
 import { RatingPicker } from "../assessments/rating-picker";
 import type { WallChartOU, WallChartRoleType, WallChartWorker } from "./types";
@@ -131,6 +136,7 @@ function DetailsTab({
 }) {
   const supabase = createClient();
   const qc = useQueryClient();
+  const cid = Number(campaignId);
   const [first, setFirst] = useState(worker.first_name);
   const [last, setLast] = useState(worker.last_name);
   const [email, setEmail] = useState(worker.email ?? "");
@@ -138,11 +144,80 @@ function DetailsTab({
   const [roleId, setRoleId] = useState(String(worker.member_role_type?.role_type_id ?? ""));
   const [isHsr, setIsHsr] = useState(!!worker.is_hsr);
   const [isBargainingRep, setIsBargainingRep] = useState(!!worker.is_bargaining_rep);
+  const [unionMembershipTypeId, setUnionMembershipTypeId] = useState<number | null>(
+    worker.union_membership_type_id
+  );
+  const [nonOaUnionOptionId, setNonOaUnionOptionId] = useState<number | null>(
+    worker.non_oa_union_option_id
+  );
+
+  const { data: unionMembershipTypes = [] } = useQuery({
+    queryKey: ["union-membership-types"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("union_membership_types")
+        .select("union_membership_type_id, display_name, type_name")
+        .eq("is_active", true)
+        .order("sort_order");
+      if (error) throw error;
+      return (data ?? []) as UnionMembershipTypeOption[];
+    },
+    enabled: !!canWrite,
+    staleTime: 60_000,
+  });
+
+  const { data: nonOaUnionOptionsList = [] } = useQuery({
+    queryKey: ["non-oa-union-options"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("non_oa_union_options")
+        .select("non_oa_union_option_id, badge_initials, display_name")
+        .order("sort_order");
+      if (error) throw error;
+      return (data ?? []) as NonOaUnionOptionRow[];
+    },
+    enabled: !!canWrite,
+    staleTime: 60_000,
+  });
+
+  const selectedMembershipTypeName = useMemo(
+    () => unionMembershipTypes.find((t) => t.union_membership_type_id === unionMembershipTypeId)?.type_name,
+    [unionMembershipTypes, unionMembershipTypeId]
+  );
+
+  useEffect(() => {
+    setFirst(worker.first_name);
+    setLast(worker.last_name);
+    setEmail(worker.email ?? "");
+    setPhone(worker.phone ?? "");
+    setRoleId(String(worker.member_role_type?.role_type_id ?? ""));
+    setIsHsr(!!worker.is_hsr);
+    setIsBargainingRep(!!worker.is_bargaining_rep);
+    setUnionMembershipTypeId(worker.union_membership_type_id);
+    setNonOaUnionOptionId(worker.non_oa_union_option_id ?? null);
+  }, [
+    worker.worker_id,
+    worker.first_name,
+    worker.last_name,
+    worker.email,
+    worker.phone,
+    worker.member_role_type?.role_type_id,
+    worker.is_hsr,
+    worker.is_bargaining_rep,
+    worker.union_membership_type_id,
+    worker.non_oa_union_option_id,
+  ]);
+
+  const resolvedRoleName = useMemo(() => {
+    if (!roleId || roleId === "__none__") return null;
+    return roleTypes.find((r) => r.role_type_id === Number(roleId))?.role_name ?? null;
+  }, [roleId, roleTypes]);
 
   const delegateOk = isWorkerMemberLike({
-    unionMembershipTypeName: worker.union_membership_type?.type_name,
-    memberRoleName: worker.member_role_type?.role_name,
-    isBargainingRep: isBargainingRep,
+    unionMembershipTypeName:
+      selectedMembershipTypeName ?? worker.union_membership_type?.type_name,
+    memberRoleName: resolvedRoleName ?? worker.member_role_type?.role_name,
+    isBargainingRep,
   });
 
   const updateWorker = useAuthAwareMutation({
@@ -157,15 +232,18 @@ function DetailsTab({
           member_role_type_id: roleId && roleId !== "__none__" ? Number(roleId) : null,
           is_hsr: isHsr,
           is_bargaining_rep: isBargainingRep,
+          union_membership_type_id: unionMembershipTypeId,
+          non_oa_union_option_id: nonOaUnionOptionId,
         })
         .eq("worker_id", workerId);
       if (error) throw error;
     },
     onSuccess: () => {
-      // Invalidate both queries: members for the new role label on tiles, and
-      // rating-summary because cumulative_rating is VIEW-computed from the role.
       qc.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
       qc.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
+      qc.invalidateQueries({ queryKey: ["campaign-list-stats-members", cid] });
+      qc.invalidateQueries({ queryKey: ["worker", String(workerId)] });
+      qc.invalidateQueries({ queryKey: ["workers"] });
     },
   });
 
@@ -212,6 +290,38 @@ function DetailsTab({
         </Select>
       </Field>
 
+      {canWrite && unionMembershipTypes.length > 0 && (
+        <MembershipNonOaFields
+          disabled={updateWorker.isPending}
+          membershipTypes={unionMembershipTypes}
+          nonOaUnionOptions={nonOaUnionOptionsList}
+          invalidateQueryKeys={[
+            ["non-oa-union-options"],
+            ["campaign-members-full", campaignId],
+            ["campaign-list-stats-members", cid],
+            ["worker", String(workerId)],
+          ]}
+          unionMembershipTypeId={unionMembershipTypeId}
+          nonOaUnionOptionId={nonOaUnionOptionId}
+          onUnionMembershipChange={(id) => {
+            const prevIsNonOa = unionMembershipTypes.some(
+              (t) =>
+                t.union_membership_type_id === unionMembershipTypeId &&
+                t.type_name === "non_oa_member"
+            );
+            const nextIsNonOa = unionMembershipTypes.some(
+              (t) =>
+                t.union_membership_type_id === id &&
+                t.type_name === "non_oa_member"
+            );
+            setUnionMembershipTypeId(id);
+            if (!nextIsNonOa) setNonOaUnionOptionId(null);
+            else if (!prevIsNonOa && nextIsNonOa) setNonOaUnionOptionId(null);
+          }}
+          onNonOaUnionChange={setNonOaUnionOptionId}
+        />
+      )}
+
       <div className="grid grid-cols-2 gap-2">
         <ToggleRow
           label="HSR"
@@ -254,6 +364,11 @@ function CampaignTab({ worker }: { worker: WallChartWorker }) {
           worker.union_membership_type?.type_name ??
           "—"}
       </KV>
+      {worker.union_membership_type?.type_name === "non_oa_member" && worker.non_oa_union_option && (
+        <KV k="Other union">
+          {worker.non_oa_union_option.badge_initials} — {worker.non_oa_union_option.display_name}
+        </KV>
+      )}
       <KV k="Role (enduring)">
         {worker.member_role_type?.display_name ?? worker.member_role_type?.role_name ?? "None"}
       </KV>

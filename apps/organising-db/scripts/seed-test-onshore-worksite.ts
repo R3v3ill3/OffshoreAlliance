@@ -410,6 +410,11 @@ async function seed() {
     resigned_member: membershipMap.get("resigned_member") ?? null,
   };
 
+  const { data: nonOaRows } = await supabase.from("non_oa_union_options").select("non_oa_union_option_id");
+  const nonOaCatalogIds = (nonOaRows ?? [])
+    .map((r: { non_oa_union_option_id: number }) => r.non_oa_union_option_id)
+    .filter((id: number) => Number.isFinite(id));
+
   const engagementLevels: Array<{ level: string; score: number }> = [
     { level: "contact", score: 5 },
     { level: "contact", score: 10 },
@@ -442,6 +447,7 @@ async function seed() {
       let unionMembershipTypeId: number | null;
       let unionId: number | null = null;
       let memberNumber: string | null = null;
+      let non_oa_union_option_id: number | null = null;
 
       if (membershipRoll < 0.45) {
         unionMembershipTypeId = membershipTypeIds.financial_member;
@@ -449,6 +455,8 @@ async function seed() {
         memberNumber = `T${String(100000 + workerSeq)}`;
       } else if (membershipRoll < 0.50) {
         unionMembershipTypeId = membershipTypeIds.non_oa_member;
+        non_oa_union_option_id =
+          nonOaCatalogIds.length > 0 && rand() < 0.75 ? pick(nonOaCatalogIds) : null;
       } else if (membershipRoll < 0.55) {
         unionMembershipTypeId = membershipTypeIds.resigned_member;
       } else {
@@ -473,6 +481,7 @@ async function seed() {
         union_membership_type_id: unionMembershipTypeId,
         union_id: unionId,
         member_number: memberNumber,
+        non_oa_union_option_id,
         is_active: true,
         state,
         is_hsr: rand() < 0.03 ? true : null,

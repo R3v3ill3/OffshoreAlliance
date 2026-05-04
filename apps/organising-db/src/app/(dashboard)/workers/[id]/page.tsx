@@ -32,9 +32,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { WorkerRelationshipsTab } from "@/components/campaigns/wall-chart/worker-relationships-tab";
+import {
+  MembershipNonOaFields,
+  type NonOaUnionOptionRow,
+  type UnionMembershipTypeOption,
+} from "@/components/workers/membership-non-oa-fields";
 
 const AU_STATES = ["WA", "NT", "QLD", "SA", "NSW", "VIC", "TAS", "ACT"];
 const NONE_VALUE = "__none__";
+
+function relOne<T>(v: unknown): T | null {
+  if (v == null || v === undefined) return null;
+  return (Array.isArray(v) ? v[0] : v) as T | null;
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -78,13 +88,19 @@ interface WorkerDetail {
   project_id: number | null;
   member_role_type_id: number | null;
   union_membership_type_id: number | null;
+  non_oa_union_option_id: number | null;
   union_id: number | null;
   is_hsr: boolean | null;
   employer: { employer_name: string } | null;
   worksite: { worksite_name: string } | null;
   project: { project_id: number; project_name: string } | null;
   member_role_type: { display_name: string } | null;
-  union_membership_type: { display_name: string } | null;
+  union_membership_type: { display_name: string; type_name: string } | null;
+  non_oa_union_option: {
+    badge_initials: string;
+    display_name: string;
+    non_oa_union_option_id: number;
+  } | null;
   union: { union_code: string; union_name: string } | null;
   canonical_occupation: {
     occupation_id: number;
@@ -113,6 +129,7 @@ type WorkerEditForm = {
   project_id: number | null;
   member_role_type_id: number | null;
   union_membership_type_id: number | null;
+  non_oa_union_option_id: number | null;
   union_id: number | null;
   member_number: string;
   join_date: string;
@@ -352,6 +369,7 @@ function workerToEditForm(
     project_id: w.project_id,
     member_role_type_id: w.member_role_type_id,
     union_membership_type_id: w.union_membership_type_id,
+    non_oa_union_option_id: w.non_oa_union_option_id,
     union_id: w.union_id,
     member_number: w.member_number ?? "",
     join_date: dateInputValue(w.join_date),
@@ -397,7 +415,10 @@ export default function WorkerDetailPage() {
            worksite:worksites!workers_worksite_id_fkey(worksite_name),
            project:projects!workers_project_id_fkey(project_id, project_name),
            member_role_type:member_role_types!workers_member_role_type_id_fkey(display_name),
-           union_membership_type:union_membership_types!workers_union_membership_type_id_fkey(display_name),
+           union_membership_type:union_membership_types!workers_union_membership_type_id_fkey(display_name, type_name),
+           non_oa_union_option:non_oa_union_options!workers_non_oa_union_option_id_fkey(
+             non_oa_union_option_id, badge_initials, display_name
+           ),
            union:unions!workers_union_id_fkey(union_code, union_name),
            canonical_occupation:occupations!workers_canonical_occupation_id_fkey(
              occupation_id,
@@ -409,7 +430,12 @@ export default function WorkerDetailPage() {
         .single();
 
       if (error) throw error;
-      return data as unknown as WorkerDetail;
+      const d = data as Record<string, unknown> & Omit<WorkerDetail, "union_membership_type" | "non_oa_union_option">;
+      return {
+        ...d,
+        union_membership_type: relOne<WorkerDetail["union_membership_type"]>(d.union_membership_type),
+        non_oa_union_option: relOne<WorkerDetail["non_oa_union_option"]>(d.non_oa_union_option),
+      } as WorkerDetail;
     },
     enabled: !!user && workerIdValid,
   });
@@ -500,11 +526,11 @@ export default function WorkerDetailPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("union_membership_types")
-        .select("union_membership_type_id, display_name")
+        .select("union_membership_type_id, display_name, type_name")
         .eq("is_active", true)
         .order("sort_order");
       if (error) throw error;
-      return data as { union_membership_type_id: number; display_name: string }[];
+      return data as UnionMembershipTypeOption[];
     },
     enabled: !!user && editing,
   });
@@ -518,6 +544,19 @@ export default function WorkerDetailPage() {
         .order("union_name");
       if (error) throw error;
       return data as { union_id: number; union_code: string; union_name: string }[];
+    },
+    enabled: !!user && editing,
+  });
+
+  const { data: nonOaUnionOptionsList = [] } = useQuery({
+    queryKey: ["non-oa-union-options"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("non_oa_union_options")
+        .select("non_oa_union_option_id, badge_initials, display_name")
+        .order("sort_order");
+      if (error) throw error;
+      return (data ?? []) as NonOaUnionOptionRow[];
     },
     enabled: !!user && editing,
   });
@@ -788,6 +827,7 @@ export default function WorkerDetailPage() {
       project_id: editForm.project_id,
       member_role_type_id: editForm.member_role_type_id,
       union_membership_type_id: editForm.union_membership_type_id,
+      non_oa_union_option_id: editForm.non_oa_union_option_id,
       union_id: editForm.union_id,
       is_hsr: editForm.is_hsr,
       member_number: emptyToNull(editForm.member_number),
@@ -835,6 +875,7 @@ export default function WorkerDetailPage() {
     }
 
     await queryClient.invalidateQueries({ queryKey: ["worker", params.id] });
+    await queryClient.invalidateQueries({ queryKey: ["non-oa-union-options"] });
     await queryClient.invalidateQueries({ queryKey: ["worker-additional-occupations", params.id] });
     await queryClient.invalidateQueries({ queryKey: ["worker-specialisations", params.id] });
     await queryClient.invalidateQueries({ queryKey: ["workers"] });
@@ -1266,36 +1307,32 @@ export default function WorkerDetailPage() {
                   <CardTitle>Membership</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Member type</Label>
-                    <Select
-                      value={
-                        f.union_membership_type_id != null
-                          ? String(f.union_membership_type_id)
-                          : NONE_VALUE
-                      }
-                      onValueChange={(v) =>
-                        patchForm({
-                          union_membership_type_id: v === NONE_VALUE ? null : Number(v),
-                        })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select member type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NONE_VALUE}>—</SelectItem>
-                        {unionMembershipTypes.map((r) => (
-                          <SelectItem
-                            key={r.union_membership_type_id}
-                            value={String(r.union_membership_type_id)}
-                          >
-                            {r.display_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <MembershipNonOaFields
+                    disabled={saving || !canWrite}
+                    membershipTypes={unionMembershipTypes}
+                    nonOaUnionOptions={nonOaUnionOptionsList}
+                    invalidateQueryKeys={[["non-oa-union-options"], ["worker", params.id]]}
+                    unionMembershipTypeId={f.union_membership_type_id}
+                    nonOaUnionOptionId={f.non_oa_union_option_id}
+                    onUnionMembershipChange={(id) => {
+                      const prevIsNonOa = unionMembershipTypes.some(
+                        (t) =>
+                          t.union_membership_type_id === f.union_membership_type_id &&
+                          t.type_name === "non_oa_member"
+                      );
+                      const nextIsNonOa = unionMembershipTypes.some(
+                        (t) =>
+                          t.union_membership_type_id === id &&
+                          t.type_name === "non_oa_member"
+                      );
+                      patchForm({
+                        union_membership_type_id: id,
+                        non_oa_union_option_id:
+                          !nextIsNonOa ? null : prevIsNonOa ? f.non_oa_union_option_id : null,
+                      });
+                    }}
+                    onNonOaUnionChange={(id) => patchForm({ non_oa_union_option_id: id })}
+                  />
                   <div className="space-y-2">
                     <Label>Organising role</Label>
                     <Select
@@ -1527,6 +1564,13 @@ export default function WorkerDetailPage() {
                       label="Member type"
                       value={worker.union_membership_type?.display_name}
                     />
+                    {worker.union_membership_type?.type_name === "non_oa_member" &&
+                      worker.non_oa_union_option && (
+                        <FieldRow
+                          label="Other union (non-OA)"
+                          value={`${worker.non_oa_union_option.badge_initials} — ${worker.non_oa_union_option.display_name}`}
+                        />
+                      )}
                     <FieldRow
                       label="Organising role"
                       value={worker.member_role_type?.display_name}

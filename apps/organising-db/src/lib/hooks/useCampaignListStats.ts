@@ -26,6 +26,7 @@ export type CampaignListMemberRow = {
     is_bargaining_rep?: boolean | null
     member_role_type: { role_name: string } | null
     union_membership_type: { type_name: string } | null
+    non_oa_union_option: { badge_initials: string } | null
   } | null
 }
 
@@ -182,7 +183,8 @@ export function useCampaignListStats(campaignId: number): {
            worker:workers(
              worker_id, phone, email, is_bargaining_rep,
              member_role_type:member_role_types(role_name),
-             union_membership_type:union_membership_types(type_name)
+             union_membership_type:union_membership_types(type_name),
+             non_oa_union_option:non_oa_union_options!workers_non_oa_union_option_id_fkey(badge_initials)
            )`
         )
         .eq('campaign_id', cid)

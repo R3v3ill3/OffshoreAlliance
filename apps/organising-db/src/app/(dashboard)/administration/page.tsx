@@ -958,6 +958,321 @@ function UnionMembershipTypesTab() {
   );
 }
 
+// ---------- Non-OA union catalogue ----------
+interface NonOaUnionOptionAdminRow extends Record<string, unknown> {
+  non_oa_union_option_id: number;
+  badge_initials: string;
+  display_name: string;
+  sort_order: number;
+  is_builtin: boolean;
+}
+
+function EditNonOaForm({
+  row,
+  pending,
+  onSave,
+  onCancel,
+}: {
+  row: NonOaUnionOptionAdminRow;
+  pending: boolean;
+  onSave: (patch: { badge_initials?: string; display_name: string; sort_order: number }) => void;
+  onCancel: () => void;
+}) {
+  const [badge, setBadge] = useState(row.badge_initials);
+  const [label, setLabel] = useState(row.display_name);
+  const [order, setOrder] = useState(String(row.sort_order));
+
+  return (
+    <>
+      <div className="space-y-4 py-2">
+        {!row.is_builtin && (
+          <div className="space-y-1.5">
+            <Label>Badge initials</Label>
+            <Input value={badge} onChange={(e) => setBadge(e.target.value)} maxLength={32} />
+          </div>
+        )}
+        <div className="space-y-1.5">
+          <Label>Display name</Label>
+          <Input value={label} onChange={(e) => setLabel(e.target.value)} />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Sort order</Label>
+          <Input type="number" value={order} onChange={(e) => setOrder(e.target.value)} />
+        </div>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" type="button" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          disabled={pending || !label.trim()}
+          onClick={() =>
+            onSave({
+              ...(!row.is_builtin ? { badge_initials: badge } : {}),
+              display_name: label,
+              sort_order: parseInt(order, 10) || 0,
+            })
+          }
+        >
+          {pending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+          Save
+        </Button>
+      </DialogFooter>
+    </>
+  );
+}
+
+function NonOaUnionOptionsTab() {
+  const supabase = createClient();
+  const queryClient = useQueryClient();
+  const [openAdd, setOpenAdd] = useState(false);
+  const [badgeInitialsInput, setBadgeInitialsInput] = useState("");
+  const [displayNameInput, setDisplayNameInput] = useState("");
+  const [sortOrderInput, setSortOrderInput] = useState("100");
+  const [editRow, setEditRow] = useState<NonOaUnionOptionAdminRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<NonOaUnionOptionAdminRow | null>(null);
+
+  const { data: rows = [], isLoading } = useQuery({
+    queryKey: ["admin-non-oa-union-options"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("non_oa_union_options")
+        .select("non_oa_union_option_id, badge_initials, display_name, sort_order, is_builtin")
+        .order("sort_order");
+      if (error) throw error;
+      return data as NonOaUnionOptionAdminRow[];
+    },
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["admin-non-oa-union-options"] });
+    queryClient.invalidateQueries({ queryKey: ["non-oa-union-options"] });
+  };
+
+  const addMutation = useAuthAwareMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("non_oa_union_options").insert({
+        badge_initials: badgeInitialsInput.trim(),
+        display_name: displayNameInput.trim(),
+        sort_order: parseInt(sortOrderInput, 10) || 0,
+        is_builtin: false,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      invalidate();
+      setOpenAdd(false);
+      setBadgeInitialsInput("");
+      setDisplayNameInput("");
+      setSortOrderInput("100");
+    },
+  });
+
+  const updateMutation = useAuthAwareMutation({
+    mutationFn: async (payload: {
+      id: number;
+      badge_initials?: string;
+      display_name: string;
+      sort_order: number;
+    }) => {
+      const patch: Record<string, unknown> = {
+        display_name: payload.display_name.trim(),
+        sort_order: payload.sort_order,
+        updated_at: new Date().toISOString(),
+      };
+      if (payload.badge_initials != null) {
+        patch.badge_initials = payload.badge_initials.trim();
+      }
+      const { error } = await supabase
+        .from("non_oa_union_options")
+        .update(patch)
+        .eq("non_oa_union_option_id", payload.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      invalidate();
+      setEditRow(null);
+    },
+  });
+
+  const deleteMutation = useAuthAwareMutation({
+    mutationFn: async (id: number) => {
+      const { error } = await supabase
+        .from("non_oa_union_options")
+        .delete()
+        .eq("non_oa_union_option_id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      invalidate();
+      setDeleteTarget(null);
+    },
+  });
+
+  const columns: Column<NonOaUnionOptionAdminRow>[] = [
+    { key: "badge_initials", header: "Badge" },
+    { key: "display_name", header: "Display name" },
+    { key: "sort_order", header: "Order" },
+    {
+      key: "is_builtin",
+      header: "Kind",
+      render: (row) =>
+        row.is_builtin ? (
+          <Badge variant="secondary">Built-in</Badge>
+        ) : (
+          <span className="text-muted-foreground">Custom</span>
+        ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      sortable: false,
+      render: (row) => (
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" type="button" onClick={() => setEditRow(row)}>
+            <Pencil className="h-4 w-4" />
+            Edit
+          </Button>
+          {!row.is_builtin && (
+            <Button variant="ghost" size="sm" type="button" onClick={() => setDeleteTarget(row)}>
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">Non-OA union catalogue</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Badge initials on non-OA members (imports, wall chart, CSV, unit metrics).
+          </p>
+        </div>
+        <Dialog open={openAdd} onOpenChange={setOpenAdd}>
+          <DialogTrigger asChild>
+            <Button size="sm" type="button">
+              <Plus className="h-4 w-4" />
+              Add union
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add other union option</DialogTitle>
+              <DialogDescription>
+                Initials are unique identifiers; display names appear in dropdowns.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-1.5">
+                <Label>Badge initials</Label>
+                <Input
+                  value={badgeInitialsInput}
+                  onChange={(e) => setBadgeInitialsInput(e.target.value)}
+                  placeholder="e.g. ETU-C"
+                  maxLength={32}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Display name</Label>
+                <Input
+                  value={displayNameInput}
+                  onChange={(e) => setDisplayNameInput(e.target.value)}
+                  placeholder="Full label shown in the worker profile"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Sort order</Label>
+                <Input
+                  type="number"
+                  value={sortOrderInput}
+                  onChange={(e) => setSortOrderInput(e.target.value)}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                onClick={() => addMutation.mutate()}
+                disabled={
+                  !badgeInitialsInput.trim() || !displayNameInput.trim() || addMutation.isPending
+                }
+              >
+                {addMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                Add
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <DataTable<NonOaUnionOptionAdminRow>
+        data={rows}
+        columns={columns}
+        searchPlaceholder="Search initials or labels..."
+        searchKeys={["badge_initials", "display_name"]}
+        loading={isLoading}
+      />
+
+      <Dialog open={editRow != null} onOpenChange={(o) => !o && setEditRow(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit union option</DialogTitle>
+          </DialogHeader>
+          {editRow && (
+            <EditNonOaForm
+              key={editRow.non_oa_union_option_id}
+              row={editRow}
+              pending={updateMutation.isPending}
+              onSave={(patch) =>
+                updateMutation.mutate({ id: editRow.non_oa_union_option_id, ...patch })
+              }
+              onCancel={() => setEditRow(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteTarget != null} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete union option</DialogTitle>
+            <DialogDescription>
+              Workers lose this linkage when deleted. Builtin rows cannot be removed from here.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteTarget && (
+            <>
+              <p className="text-sm py-2">
+                Delete <strong>{deleteTarget.badge_initials}</strong> — {deleteTarget.display_name}?
+              </p>
+              <DialogFooter>
+                <Button variant="outline" type="button" onClick={() => setDeleteTarget(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  type="button"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => deleteMutation.mutate(deleteTarget.non_oa_union_option_id)}
+                >
+                  {deleteMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  Delete
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 // ---------- Organising role types (delegate / rep / contact) ----------
 
 interface RoleRow extends MemberRoleType {
@@ -1613,6 +1928,7 @@ export default function AdministrationPage() {
             <TabsContent value="roles">
               <div className="space-y-12">
                 <UnionMembershipTypesTab />
+                <NonOaUnionOptionsTab />
                 <MemberRolesTab />
               </div>
             </TabsContent>

@@ -206,9 +206,14 @@ export function CampaignWallChart({
            worker:workers(
              worker_id, first_name, last_name, email, phone,
              member_role_type_id, is_bargaining_rep, is_hsr,
-             union_membership_type_id, canonical_occupation_id,
+             union_membership_type_id,
+             non_oa_union_option_id,
+             canonical_occupation_id,
              member_role_type:member_role_types(role_name, role_type_id, display_name),
              union_membership_type:union_membership_types(type_name, display_name),
+             non_oa_union_option:non_oa_union_options!workers_non_oa_union_option_id_fkey(
+               non_oa_union_option_id, badge_initials, display_name
+             ),
              canonical_occupation:occupations!workers_canonical_occupation_id_fkey(occupation_id, canonical_name)
            )`
         )
@@ -349,8 +354,8 @@ export function CampaignWallChart({
       const mt = (Array.isArray(mtRaw) ? mtRaw[0] : mtRaw) ?? null;
       const umRaw = w?.union_membership_type;
       const um = (Array.isArray(umRaw) ? umRaw[0] : umRaw) ?? null;
-      const occRaw = w?.canonical_occupation;
-      const occ = (Array.isArray(occRaw) ? occRaw[0] : occRaw) ?? null;
+      const nauoRaw = w?.non_oa_union_option;
+      const nauo = (Array.isArray(nauoRaw) ? nauoRaw[0] : nauoRaw) ?? null;
       return {
         membership_id: row.membership_id,
         worker_id: row.worker_id,
@@ -365,9 +370,21 @@ export function CampaignWallChart({
               is_bargaining_rep: w.is_bargaining_rep,
               is_hsr: w.is_hsr,
               union_membership_type_id: w.union_membership_type_id,
+              non_oa_union_option_id: w.non_oa_union_option_id ?? null,
               canonical_occupation_id: w.canonical_occupation_id,
               member_role_type: mt,
               union_membership_type: um,
+              non_oa_union_option:
+                nauo &&
+                typeof nauo === "object" &&
+                "badge_initials" in nauo &&
+                typeof (nauo as { badge_initials: unknown }).badge_initials === "string"
+                  ? (nauo as {
+                      non_oa_union_option_id: number;
+                      badge_initials: string;
+                      display_name: string;
+                    })
+                  : null,
               canonical_occupation: occ,
             }
           : null,
@@ -1349,9 +1366,11 @@ type RawWorker = {
   is_bargaining_rep: boolean | null;
   is_hsr: boolean | null;
   union_membership_type_id: number | null;
+  non_oa_union_option_id: number | null;
   canonical_occupation_id: number | null;
   member_role_type: unknown;
   union_membership_type: unknown;
+  non_oa_union_option: unknown;
   canonical_occupation: unknown;
 };
 

@@ -11,6 +11,7 @@ import {
 import { matchWorksiteCandidates } from "@/lib/utils/worksite-fuzzy";
 import type { WorksiteCandidate } from "@/lib/utils/worksite-fuzzy";
 import type { ParsedWorkerRow, ParsedWorkerGroup } from "@/app/api/worker-import/parse/route";
+import { parseMembershipStatus } from "@/lib/workers/worker-import-membership";
 import type {
   WorkerImportAssessmentColumn,
   WorkerImportRow,
@@ -93,6 +94,7 @@ type MappableField =
   | "join_date"
   | "rejoin_date"
   | "notes"
+  | "other_union"
   | "ignore";
 
 interface ColumnMapping {
@@ -275,6 +277,7 @@ const MAPPABLE_FIELDS: { value: MappableField; label: string }[] = [
   { value: "occupation", label: "Occupation / Job Title" },
   { value: "assessment", label: "Assessment Column (map values)" },
   { value: "membership_status", label: "Membership Status (map values)" },
+  { value: "other_union", label: "Other union badge (optional initials)" },
   { value: "member_role_type", label: "Role Type (map values)" },
   { value: "join_date", label: "Join Date" },
   { value: "rejoin_date", label: "Re-join Date" },
@@ -318,6 +321,10 @@ function autoMapHeader(header: string): MappableField {
     ].includes(h)
   )
     return "occupation";
+  if (
+    ["otherunion", "unionbadge", "nonoaunion", "otherunioninitials"].includes(h)
+  )
+    return "other_union";
   if (["membership", "membershipstatus", "status", "memberstatus", "membertype"].includes(h))
     return "membership_status";
   if (["roletype", "role", "memberroletype"].includes(h)) return "member_role_type";
@@ -972,19 +979,6 @@ export function WorkerImportWizard({
 
   // ─── Navigation handlers ──────────────────────────────────────────────────
 
-  // Membership auto-match patterns (mirrors server MEMBERSHIP_PATTERNS)
-  const MEMBERSHIP_AUTO_PATTERNS: { pattern: RegExp; key: string }[] = [
-    { pattern: /financial\s+(awu|mua|cfmeu|amwu|amou|aimpe)\s+member/i, key: "non_oa_member" },
-    {
-      pattern: /member[\s_-]+pending|pending[\s_-]+member|member\s*[–-]\s*pending/i,
-      key: "member_pending",
-    },
-    { pattern: /financial\s+member/i, key: "financial_member" },
-    { pattern: /\bmember\b/i, key: "financial_member" },
-    { pattern: /not\s+a\s+member/i, key: "non_member" },
-    { pattern: /(membership\s+)?(archived|resigned)/i, key: "resigned_member" },
-  ];
-
   function buildValueResolutions(): ValueResolution[] {
     const resolutions: ValueResolution[] = [];
 
@@ -1007,16 +1001,13 @@ export function WorkerImportWizard({
         let confirmed = false;
 
         if (mapping.field === "membership_status") {
-          // Auto-match against membership patterns using type_name key
-          for (const { pattern, key } of MEMBERSHIP_AUTO_PATTERNS) {
-            if (pattern.test(raw)) {
-              const found = unionMembershipTypes.find((t) => t.type_name === key);
-              if (found) {
-                resolvedId = found.union_membership_type_id;
-                resolvedLabel = found.display_name;
-                confirmed = true;
-              }
-              break;
+          const parsed = parseMembershipStatus(raw);
+          if (parsed.membershipKey) {
+            const found = unionMembershipTypes.find((t) => t.type_name === parsed.membershipKey);
+            if (found) {
+              resolvedId = found.union_membership_type_id;
+              resolvedLabel = found.display_name;
+              confirmed = true;
             }
           }
         } else {
@@ -1218,6 +1209,7 @@ export function WorkerImportWizard({
       const joinDateCol = columnMappings.find((m) => m.field === "join_date")?.header ?? "";
       const rejoinDateCol = columnMappings.find((m) => m.field === "rejoin_date")?.header ?? "";
       const notesCol = columnMappings.find((m) => m.field === "notes")?.header ?? "";
+      const otherUnionCol = columnMappings.find((m) => m.field === "other_union")?.header ?? "";
 
       const rows: ReviewRow[] = headerRows
         .map((row, i) => {
@@ -1250,15 +1242,35 @@ export function WorkerImportWizard({
 
           const rawPhone = phoneCol ? String(row[phoneCol] ?? "").trim() : "";
 
+          const rawMembership = membershipCol ? String(row[membershipCol] ?? "").trim() : "";
+          const parsedMembership = parseMembershipStatus(rawMembership);
+
           // Resolve membership status from value mapping
-          let unionMembershipTypeKey: ReviewRow["unionMembershipTypeKey"] = null;
+          let unionMembershipTypeKey: ReviewRow["unionMembershipTypeKey"] =
+            parsedMembership.membershipKey;
           let overrideUnionMembershipTypeId: number | null | undefined = undefined;
           if (membershipCol) {
-            const rawMembership = String(row[membershipCol] ?? "").trim();
             const res = membershipResMap.get(`${membershipCol}|${rawMembership}`);
             if (res?.confirmed) {
               overrideUnionMembershipTypeId = res.resolvedId;
             }
+          }
+
+          let nonOaUnionBadgeInitials: string | null = null;
+          if (otherUnionCol) {
+            const v = String(row[otherUnionCol] ?? "").trim();
+            if (v) nonOaUnionBadgeInitials = v;
+          }
+          if (!nonOaUnionBadgeInitials) {
+            nonOaUnionBadgeInitials = parsedMembership.nonOaUnionBadgeInitials ?? null;
+          }
+
+          if (
+            rawMembership &&
+            parsedMembership.membershipKey == null &&
+            overrideUnionMembershipTypeId === undefined
+          ) {
+            parseWarnings.push(`Unknown membership status: "${rawMembership}"`);
           }
 
           // Resolve role type from value mapping
@@ -1303,7 +1315,7 @@ export function WorkerImportWizard({
             notes: notesCol ? String(row[notesCol] ?? "").trim() || null : null,
             joinDate: joinDateCol ? parseIsoDate(String(row[joinDateCol] ?? "").trim()) : null,
             rejoinDate: rejoinDateCol ? parseIsoDate(String(row[rejoinDateCol] ?? "").trim()) : null,
-            rawMembershipStatus: membershipCol ? String(row[membershipCol] ?? "").trim() : "",
+            rawMembershipStatus: rawMembership,
             unionMembershipTypeKey,
             ...(overrideUnionMembershipTypeId !== undefined
               ? { overrideUnionMembershipTypeId }
@@ -1311,12 +1323,13 @@ export function WorkerImportWizard({
             ...(resolvedMemberRoleTypeId !== undefined
               ? { resolvedMemberRoleTypeId }
               : {}),
-            unionId: null,
-            resignationDate: null,
+            unionId: parsedMembership.unionId,
+            resignationDate: parsedMembership.resignationDate,
             rawPhone,
             phone: normalisePhoneClient(rawPhone),
             email: emailCol ? String(row[emailCol] ?? "").trim() || null : null,
             parseWarnings,
+            nonOaUnionBadgeInitials,
             groupName: rawWorksiteVal,
             resolvedWorksiteId: resolution?.worksiteId ?? null,
             resolvedWorksiteName: resolution?.worksiteName ?? null,
@@ -1494,6 +1507,13 @@ export function WorkerImportWizard({
         if (dedup.action === "update") existingWorkerId = dedup.existingWorkerId;
       }
 
+      const nonOaPk = membershipIdByKey.get("non_oa_member") ?? null;
+      const resolvedForRow = resolvedUnionMembershipIdForApply(row);
+      const nonOaUnionBadgeInitials =
+        nonOaPk != null && resolvedForRow === nonOaPk
+          ? row.nonOaUnionBadgeInitials?.trim() || null
+          : null;
+
       return {
         rowIndex: row.rowIndex,
         referenceId: row.overrideReferenceId ?? row.referenceId ?? null,
@@ -1520,6 +1540,7 @@ export function WorkerImportWizard({
         specialisationIds: row.specialisationIds ?? [],
         createSpecialisationNames: row.createSpecialisationNames ?? [],
         assessmentEvents: row.assessmentEvents ?? [],
+        nonOaUnionBadgeInitials,
         action,
         existingWorkerId,
       };

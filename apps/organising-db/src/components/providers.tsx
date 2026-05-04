@@ -105,16 +105,24 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
         const { session, timedOut } = await getSessionWithTimeout("visibility");
 
         if (timedOut) {
-          // getSession itself hung beyond 6s — the auth client is stuck.
-          // Fall through to the null-session path which will attempt recovery
-          // and, on continued failure, force-logout to clear corrupted state.
-          logConnectionEvent({ type: "lock_timeout", detail: "visibility-getSession-timeout" });
+          // getSession exceeded the 12s budget. This is most often a sibling
+          // tab racing the same refresh — both tabs hit Supabase's auth
+          // service simultaneously, one wins, the other queues and is slow.
+          //
+          // CRITICAL: do NOT escalate to forceLogoutToLogin here. The
+          // underlying auth call may still complete after we've timed out;
+          // queries already running in this tab use the cached access token
+          // in headers and remain functional. If the cached token is
+          // genuinely invalid, the next real query will get a 401 and our
+          // existing query-cache recovery path handles it cleanly.
+          logConnectionEvent({ type: "lock_timeout", detail: "visibility-getSession-timeout (bailing, no force-logout)" });
+          return;
         }
 
         if (!session) {
-          // FIX: Previously this silently returned, leaving the user with an
-          // expired session and no recovery attempt. Now we trigger a refresh
-          // and, if that fails, force a clean login to clear corrupted state.
+          // Genuine null session (getSession returned null without timing
+          // out). This is a real session-loss signal — try to recover, and
+          // only force-logout on confirmed refresh failure.
           logConnectionEvent({ type: "session_lost", detail: "visibility-null-session" });
           logCookieDiagnostic("visibility-null-session");
 

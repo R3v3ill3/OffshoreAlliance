@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
@@ -162,6 +163,12 @@ export function CampaignWallChart({
   const [addWorkerContextOu, setAddWorkerContextOu] = useState<WallChartOU | null>(null);
   const unitVisibility = useWallChartUnitVisibility(campaignId);
 
+  // Scroll to + briefly highlight a specific OU when arriving from the
+  // overview summaries table (URL param: ?tab=wall&ou=<ou_id>).
+  const searchParams = useSearchParams();
+  const focusOuId = searchParams.get("ou") ? Number(searchParams.get("ou")) : null;
+  const [highlightedOuId, setHighlightedOuId] = useState<number | null>(null);
+
   // Multi-select state for bulk Move/Copy/Link/Remove actions.
   const selection = useWallChartSelection();
   const [bulkDialog, setBulkDialog] = useState<{ mode: MoveMode } | null>(null);
@@ -297,6 +304,23 @@ export function CampaignWallChart({
     () => ous.filter((ou) => !unitVisibility.hiddenOuIds.has(ou.ou_id)),
     [ous, unitVisibility.hiddenOuIds]
   );
+
+  // When ous have loaded and a focusOuId param is present, scroll the target
+  // unit card into view and apply a brief highlight ring.
+  useEffect(() => {
+    if (!focusOuId || ous.length === 0) return;
+    const el = document.querySelector<HTMLElement>(`[data-ou-id="${focusOuId}"]`);
+    if (!el) return;
+    // Small delay so the tab transition / layout paint settles first.
+    const t = window.setTimeout(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      setHighlightedOuId(focusOuId);
+      window.setTimeout(() => setHighlightedOuId(null), 2500);
+    }, 150);
+    return () => window.clearTimeout(t);
+    // We intentionally run this only when ous first loads (length change) or focusOuId changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusOuId, ous.length]);
 
   const nextDisplayOrder = useMemo(() => {
     if (ous.length === 0) return 0;
@@ -1116,8 +1140,16 @@ export function CampaignWallChart({
                   const assessmentLabelForCard =
                     effScope.kind === "assessment" ? effScope.title : "Cumulative";
                   return (
-                    <CampaignUnitCard
+                    <div
                       key={ou.ou_id}
+                      data-ou-id={ou.ou_id}
+                      className={
+                        highlightedOuId === ou.ou_id
+                          ? "rounded-lg ring-2 ring-primary ring-offset-2 transition-shadow duration-300"
+                          : "transition-shadow duration-300"
+                      }
+                    >
+                    <CampaignUnitCard
                       ou={ou}
                       workerCount={sorted.length}
                       estimate={est}
@@ -1204,6 +1236,7 @@ export function CampaignWallChart({
                     >
                       {sorted.map((wid) => renderTile(wid, ou.ou_id, ou.ou_id))}
                     </CampaignUnitCard>
+                    </div>
                   );
                 })}
               </div>

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -97,6 +98,7 @@ export function CampaignUnitMetricsTable({
   isLoadingParent,
 }: CampaignUnitMetricsTableProps) {
   const supabase = createClient()
+  const router = useRouter()
 
   const { data: unitSummary = [], isLoading: summaryLoading } = useQuery({
     queryKey: ['campaign-unit-overview-summary', campaignId],
@@ -296,7 +298,14 @@ export function CampaignUnitMetricsTable({
                   const rest = ambList.length - showAmb.length
 
                   return (
-                    <tr key={ou.ou_id} className="border-b transition-colors hover:bg-muted/30">
+                    <tr
+                      key={ou.ou_id}
+                      className="border-b transition-colors hover:bg-muted/30 cursor-pointer"
+                      title={`Open wall chart for ${ouDisplayName(ou)}`}
+                      onClick={() => {
+                        router.push(`/campaigns/${campaignId}?tab=wall&ou=${ou.ou_id}`)
+                      }}
+                    >
                       <MetricCell>
                         <div className="flex flex-col gap-1">
                           <span className="font-medium leading-tight">

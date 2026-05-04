@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 import Link from 'next/link'
-import { Award, BarChart3, ExternalLink, Network, UserCheck, Users } from 'lucide-react'
+import { Award, BarChart3, ExternalLink, LayoutGrid, Network, UserCheck, Users } from 'lucide-react'
 import { useCampaignListStats } from '@/lib/hooks/useCampaignListStats'
 import { useCampaignAmbitionsByStage } from '@/lib/hooks/useGateAssessment'
 import {
@@ -16,6 +16,7 @@ import { CampaignDashboardStatCard } from '@/components/campaigns/campaign-dashb
 import { CampaignPlanningVisual } from '@/components/campaigns/CampaignPlanningVisual'
 import { CampaignUnitMetricsTable } from '@/components/campaigns/CampaignUnitMetricsTable'
 import { OverviewMetricBar } from '@/components/campaigns/overview-metric-bar'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AssessmentsProgressFrame } from '@/components/campaigns/AssessmentsProgressFrame'
@@ -223,7 +224,15 @@ export function CampaignOverviewMetrics({
       <AssessmentsProgressFrame campaignId={campaignId} campaignLabel={campaignLabel} />
 
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-foreground">Organising unit summaries</h3>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold text-foreground">Organising unit summaries</h3>
+          <Button asChild>
+            <Link href={`/campaigns/${campaignId}?tab=wall`}>
+              <LayoutGrid className="h-4 w-4" />
+              Wall chart
+            </Link>
+          </Button>
+        </div>
         <CampaignUnitMetricsTable
           campaignId={campaignId}
           organisingUnits={organisingUnits}

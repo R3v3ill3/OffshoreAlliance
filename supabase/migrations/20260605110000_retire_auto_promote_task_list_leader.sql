@@ -1,0 +1,52 @@
+-- ============================================================
+-- Migration: Retire legacy fn_auto_promote_task_list_leader trigger
+--
+-- Phase 3 of the leader-tasking enhancement.
+--
+-- The trigger trg_auto_promote_task_list_leader and its function
+-- fn_auto_promote_task_list_leader were introduced in
+-- 20260416220000_fix_task_list_auto_behaviours.sql with two
+-- responsibilities on campaign_task_lists insert / update of
+-- leader_worker_id:
+--
+--   1. Globally promote the leader's workers.member_role_type_id
+--      to 8 (Activist) when their current role was NULL or 3
+--      (Contact).
+--   2. Insert a rating=1 row for the leader against the linked
+--      activity using ON CONFLICT (activity_id, worker_id) DO NOTHING.
+--
+-- Both behaviours conflict with the Phase 1 (20260605100000)
+-- design:
+--
+--   * The new tasking philosophy is campaign-scoped role marking
+--     via campaign_worker_membership.oa_leader_role rather than
+--     globally elevating workers.member_role_type_id (which
+--     affects every campaign the worker participates in). The
+--     re-introduced oa_leader_role column documents this in its
+--     COMMENT. Continuing to globally elevate the leader here
+--     undermines that contract.
+--
+--   * The legacy ON CONFLICT (activity_id, worker_id) clause has
+--     been silently broken since 20260424110000_ratings_phase_and_event.sql
+--     dropped the (activity_id, worker_id) unique constraint and
+--     replaced it with the 4-column car_worker_phase_event_uq.
+--     Any conflict during the legacy rating insert raises an error
+--     that is swallowed by the trigger function's
+--     EXCEPTION WHEN OTHERS THEN RETURN NEW handler — meaning the
+--     rating path effectively no-ops for any leader who already
+--     has any rating row, and works only by accident otherwise.
+--     The new trigger fn_task_list_item_side_effects() (Phase 1)
+--     uses the correct constraint and is the canonical writer.
+--
+-- Decision: drop the trigger and the function. Auto-rating of the
+-- leader as a member of their own task list can be re-added later
+-- in a focused migration if product wants it (e.g. by inserting a
+-- task-list-item for the leader themselves, which would then route
+-- through the Phase 1 trigger and benefit from its idempotent
+-- conflict-handling). The Phase 3 stepper UX is happy without it
+-- because staff explicitly choose the leader and can rate them
+-- through the normal assessment surfaces.
+-- ============================================================
+
+DROP TRIGGER IF EXISTS trg_auto_promote_task_list_leader ON campaign_task_lists;
+DROP FUNCTION IF EXISTS fn_auto_promote_task_list_leader();

@@ -18,9 +18,22 @@ export const ACTIVITY_TEMPLATE_OPTIONS: {
   { key: "visibility_action", label: "Visibility action" },
 ];
 
+/**
+ * Allowed values for `campaign_activity_ratings.binary_value` /
+ * `campaign_activities.supporter_outcome_value` on binary activities.
+ *
+ * Phase 4 of the leader-tasking work added `unsure` so leaders can flag
+ * ambiguity at the worker level (per the plan in
+ * `/Users/troyb/.claude/plans/create-a-plan-to-resilient-hedgehog.md`). The
+ * legacy `abstain` value is preserved for backward compatibility with vote-
+ * style activities recorded before Phase 4. There is NO database CHECK
+ * constraint on these values (binary_value is unconstrained at the DB level
+ * — see Phase 1 progress notes), so extending this list is safe.
+ */
 export const VOTE_SUPPORTER_OPTIONS = [
   { value: "yes", label: "Yes" },
   { value: "no", label: "No" },
+  { value: "unsure", label: "Unsure" },
   { value: "abstain", label: "Abstained" },
 ] as const;
 

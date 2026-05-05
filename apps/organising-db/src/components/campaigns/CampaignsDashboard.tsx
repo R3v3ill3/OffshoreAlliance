@@ -36,6 +36,7 @@ interface CampaignRowMin {
 
 interface CampaignsDashboardProps {
   campaigns: CampaignRowMin[]
+  organiserOptions: Array<{ id: number; label: string }>
   /** Controlled externally so the DataTable below can share the same filter */
   selectedOrganiserId: string
   onOrganiserChange: (value: string) => void
@@ -47,6 +48,7 @@ interface CampaignsDashboardProps {
 
 export function CampaignsDashboard({
   campaigns,
+  organiserOptions,
   selectedOrganiserId,
   onOrganiserChange,
   onRowClick,
@@ -55,14 +57,36 @@ export function CampaignsDashboard({
 }: CampaignsDashboardProps) {
   const router = useRouter()
 
-  // Collect unique organisers from the campaign list, plus current user when linked
-  const organisers = useMemo(() => {
-    const seen = new Map<string, string>()
-    for (const c of campaigns) {
-      if (c.organiser_id != null && c.organiser?.organiser_name) {
-        seen.set(String(c.organiser_id), c.organiser.organiser_name)
+  const activeCampaignCountsByOrganiser = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const campaign of campaigns) {
+      if (
+        campaign.organiser_id != null &&
+        (campaign.status === 'planning' || campaign.status === 'active')
+      ) {
+        const id = String(campaign.organiser_id)
+        counts.set(id, (counts.get(id) ?? 0) + 1)
       }
     }
+    return counts
+  }, [campaigns])
+
+  // Use the organiser roster, plus any legacy campaign organiser not in the active roster.
+  const organisers = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const organiser of organiserOptions) {
+      seen.set(String(organiser.id), organiser.label)
+    }
+
+    for (const c of campaigns) {
+      if (c.organiser_id != null && c.organiser?.organiser_name) {
+        const id = String(c.organiser_id)
+        if (!seen.has(id)) {
+          seen.set(id, c.organiser.organiser_name)
+        }
+      }
+    }
+
     if (currentUserOrganiser) {
       const idStr = String(currentUserOrganiser.id)
       if (!seen.has(idStr)) {
@@ -70,7 +94,7 @@ export function CampaignsDashboard({
       }
     }
     return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]))
-  }, [campaigns, currentUserOrganiser])
+  }, [campaigns, currentUserOrganiser, organiserOptions])
 
   // Filter campaigns by selected organiser
   const filteredCampaigns = useMemo(() => {
@@ -156,7 +180,7 @@ export function CampaignsDashboard({
             <SelectItem value="all">All organisers</SelectItem>
             {organisers.map(([id, name]) => (
               <SelectItem key={id} value={id}>
-                {name}
+                {name} ({activeCampaignCountsByOrganiser.get(id) ?? 0})
               </SelectItem>
             ))}
           </SelectContent>

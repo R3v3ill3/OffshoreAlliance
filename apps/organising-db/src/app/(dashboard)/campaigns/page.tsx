@@ -50,6 +50,22 @@ interface CampaignRow {
   [key: string]: unknown;
 }
 
+interface OrganiserOption {
+  organiser_id: number;
+  organiser_name: string;
+  user_profiles:
+    | Array<{
+        display_name: string | null;
+        work_role: string | null;
+      }>
+    | null;
+}
+
+function organiserDisplayName(organiser: OrganiserOption): string {
+  const profile = organiser.user_profiles?.find((p) => p.display_name?.trim());
+  return profile?.display_name?.trim() || organiser.organiser_name;
+}
+
 
 function PlanStatusBadge({ stagePlans }: { stagePlans: StagePlanSummary[] }) {
   if (!stagePlans || stagePlans.length === 0) {
@@ -132,10 +148,57 @@ export default function CampaignsPage() {
     enabled: !!user,
   });
 
+  const { data: organisers = [] } = useQuery({
+    queryKey: ["campaign-organiser-filter-options"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("organisers")
+        .select("organiser_id, organiser_name, user_profiles(display_name, work_role)")
+        .eq("is_active", true)
+        .order("organiser_name");
+
+      if (error) throw error;
+      return (data ?? []) as unknown as OrganiserOption[];
+    },
+    enabled: !!user,
+  });
+
+  const organiserLabelById = useMemo(() => {
+    return new Map(
+      organisers.map((organiser) => [
+        organiser.organiser_id,
+        organiserDisplayName(organiser),
+      ])
+    );
+  }, [organisers]);
+
+  const organiserOptions = useMemo(
+    () =>
+      organisers.map((organiser) => ({
+        id: organiser.organiser_id,
+        label: organiserDisplayName(organiser),
+      })),
+    [organisers]
+  );
+
+  const campaignsWithFreshOrganiserNames = useMemo(() => {
+    return campaigns.map((campaign) => {
+      if (campaign.organiser_id == null) return campaign;
+      const organiserName = organiserLabelById.get(campaign.organiser_id);
+      if (!organiserName) return campaign;
+      return {
+        ...campaign,
+        organiser: { organiser_name: organiserName },
+      };
+    });
+  }, [campaigns, organiserLabelById]);
+
   const filteredCampaigns = useMemo(() => {
-    if (selectedOrganiserId === "all") return campaigns;
-    return campaigns.filter((c) => String(c.organiser_id) === selectedOrganiserId);
-  }, [campaigns, selectedOrganiserId]);
+    if (selectedOrganiserId === "all") return campaignsWithFreshOrganiserNames;
+    return campaignsWithFreshOrganiserNames.filter(
+      (c) => String(c.organiser_id) === selectedOrganiserId
+    );
+  }, [campaignsWithFreshOrganiserNames, selectedOrganiserId]);
 
   const columns = useMemo<Column<CampaignRow>[]>(() => {
     const base: Column<CampaignRow>[] = [
@@ -312,7 +375,8 @@ export default function CampaignsPage() {
                   </p>
                 )}
                 <CampaignsDashboard
-                  campaigns={campaigns}
+                  campaigns={campaignsWithFreshOrganiserNames}
+                  organiserOptions={organiserOptions}
                   selectedOrganiserId={selectedOrganiserId}
                   onOrganiserChange={setOrganiserFilterOverride}
                   onRowClick={(id) => router.push(`/campaigns/${id}?tab=workforce&sub=wall-chart`)}
@@ -330,14 +394,16 @@ export default function CampaignsPage() {
             )}
 
             <div className="space-y-4">
-            <DataTable<CampaignRow>
-              data={filteredCampaigns}
-              columns={columns}
-              searchPlaceholder="Search campaigns…"
-              searchKeys={["name"]}
-              onRowClick={(row) => router.push(`/campaigns/${row.campaign_id}?tab=workforce&sub=wall-chart`)}
-              loading={isLoading}
-            />
+              <DataTable<CampaignRow>
+                data={filteredCampaigns}
+                columns={columns}
+                searchPlaceholder="Search campaigns…"
+                searchKeys={["name"]}
+                onRowClick={(row) =>
+                  router.push(`/campaigns/${row.campaign_id}?tab=workforce&sub=wall-chart`)
+                }
+                loading={isLoading}
+              />
             </div>
           </div>
         </TabsContent>

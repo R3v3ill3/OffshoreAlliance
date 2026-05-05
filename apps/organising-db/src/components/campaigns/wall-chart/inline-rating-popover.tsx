@@ -18,6 +18,8 @@ export type InlineRatingPopoverProps = {
   workerName: string;
   initial: RatingPickerValue;
   disabled?: boolean;
+  /** Optional callback to open worker details */
+  onOpenDetail?: () => void;
   /** The clickable anchor (typically a rating number chip inside a WorkerTile). */
   children: ReactNode;
 };
@@ -31,6 +33,7 @@ export function InlineRatingPopover({
   workerName,
   initial,
   disabled,
+  onOpenDetail,
   children,
 }: InlineRatingPopoverProps) {
   const [open, setOpen] = useState(false);
@@ -77,7 +80,22 @@ export function InlineRatingPopover({
           <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
             {activityTitle}
           </p>
-          <p className="text-sm font-semibold truncate">{workerName}</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold truncate">{workerName}</p>
+            {onOpenDetail && (
+              <button
+                type="button"
+                className="text-[10px] text-primary hover:underline shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOpen(false);
+                  onOpenDetail();
+                }}
+              >
+                View details
+              </button>
+            )}
+          </div>
         </div>
         <div className="space-y-1">
           <Label className="text-xs">Rating</Label>

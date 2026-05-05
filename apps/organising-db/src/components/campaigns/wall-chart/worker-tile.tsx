@@ -10,7 +10,7 @@ import {
   otherUnionLabel,
   shouldShowOtherUnionBadge,
 } from "@/lib/workers/other-union-display";
-import { assessmentNumericForWallChart, ratingBgClass } from "./rating-colour";
+import { assessmentNumericForWallChart, ratingBgClass, ratingBorderTextClass } from "./rating-colour";
 import type {
   ActivityRating,
   AssessmentSelection,
@@ -188,6 +188,65 @@ export function WorkerTile({
     );
   };
 
+  const largeBadgeDisplay = isAssessmentMode && assessment
+    ? (assessment.isBinary
+      ? binaryShortLabel(activityRating?.binary_value ?? null)
+      : activityRating?.rating != null
+        ? String(activityRating.rating)
+        : "—")
+    : (last ?? "—");
+
+  const largeBadgeAriaLabel = isAssessmentMode && assessment
+    ? `Rate ${displayName} on ${assessment.title}. Current: ${largeBadgeDisplay}.`
+    : `Latest rating: ${largeBadgeDisplay}`;
+
+  const largeBadgeClass = cn(
+    "inline-flex items-center justify-center shrink-0 w-6 h-6 rounded-full bg-white text-sm font-bold leading-none border shadow-sm",
+    ratingBorderTextClass(
+      isAssessmentMode ? assessmentColourNumeric : last
+    ),
+    canWrite && isAssessmentMode ? "cursor-pointer hover:bg-slate-50" : "cursor-default"
+  );
+
+  const largeBadge = (
+    <span
+      role={canWrite && isAssessmentMode ? "button" : undefined}
+      tabIndex={canWrite && isAssessmentMode ? 0 : -1}
+      aria-label={canWrite && isAssessmentMode ? largeBadgeAriaLabel : undefined}
+      onClick={(e) => {
+        if (!canWrite || !isAssessmentMode) return;
+        e.stopPropagation();
+      }}
+      onKeyDown={(e) => {
+        if (!canWrite || !isAssessmentMode) return;
+        if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+      }}
+      className={largeBadgeClass}
+    >
+      {largeBadgeDisplay}
+    </span>
+  );
+
+  const largeBadgeRendered = isAssessmentMode && assessment && campaignId != null && canWrite ? (
+    <InlineRatingPopover
+      campaignId={campaignId}
+      activityId={assessment.activityId}
+      activityTitle={assessment.title}
+      isBinary={assessment.isBinary}
+      workerId={worker.worker_id}
+      workerName={displayName}
+      initial={{
+        rating: activityRating?.rating ?? null,
+        binary_value: activityRating?.binary_value ?? null,
+      }}
+      onOpenDetail={() => onClick?.(worker.worker_id, ouId ?? null, "open")}
+    >
+      {largeBadge}
+    </InlineRatingPopover>
+  ) : (
+    largeBadge
+  );
+
   return (
     <div
       className="relative h-full"
@@ -214,22 +273,21 @@ export function WorkerTile({
           isSelected ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : ""
         }`}
       >
-        <span className="font-medium line-clamp-2 break-words">{displayName}</span>
-        {isAssessmentMode && assessment && campaignId != null ? (
-          <AssessmentRatingRow
-            campaignId={campaignId}
-            assessment={assessment}
-            workerId={worker.worker_id}
-            workerName={displayName}
-            activityRating={activityRating ?? null}
-            cumulative={storedCum}
-            canWrite={canWrite}
-          />
-        ) : (
-          <span className="text-[9px] text-muted-foreground tabular-nums">
-            c{storedCum ?? "—"} · L{last ?? "—"}
-          </span>
-        )}
+        <div className="flex items-start justify-between gap-1 w-full">
+          <div className="flex items-start gap-1 min-w-0 pt-0.5">
+            <span
+              title={`Cumulative ${storedCum ?? "—"}`}
+              className={cn(
+                "inline-flex items-center justify-center shrink-0 w-3.5 h-3.5 rounded-full bg-white text-[8px] font-bold leading-none border mt-[1px]",
+                ratingBorderTextClass(storedCum)
+              )}
+            >
+              {storedCum ?? "—"}
+            </span>
+            <span className="font-medium line-clamp-2 break-words">{displayName}</span>
+          </div>
+          <div className="shrink-0">{largeBadgeRendered}</div>
+        </div>
         <div className="flex items-center gap-0.5 flex-wrap">
           {mt?.role_name && (
             <span className="text-[9px] uppercase bg-background/60 px-0.5 rounded leading-none py-px">
@@ -350,89 +408,6 @@ function WorkerContactBadge({
     >
       <Icon className={cn(iconClass, "mx-auto")} aria-hidden />
     </span>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Assessment-mode rating row: clickable activity rating + small cumulative badge.
-// ---------------------------------------------------------------------------
-
-function AssessmentRatingRow({
-  campaignId,
-  assessment,
-  workerId,
-  workerName,
-  activityRating,
-  cumulative,
-  canWrite,
-}: {
-  campaignId: string | number;
-  assessment: Extract<AssessmentSelection, { kind: "assessment" }>;
-  workerId: number;
-  workerName: string;
-  activityRating: ActivityRating | null;
-  cumulative: number | null;
-  canWrite: boolean;
-}) {
-  const display = assessment.isBinary
-    ? binaryShortLabel(activityRating?.binary_value ?? null)
-    : activityRating?.rating != null
-      ? String(activityRating.rating)
-      : "—";
-
-  const ariaLabel = `Rate ${workerName} on ${assessment.title}. Current: ${display}.`;
-
-  const chip = (
-    <span
-      role={canWrite ? "button" : undefined}
-      tabIndex={canWrite ? 0 : -1}
-      aria-label={canWrite ? ariaLabel : undefined}
-      onClick={(e) => {
-        // Prevent the outer tile-button click (which opens the drawer).
-        e.stopPropagation();
-      }}
-      onKeyDown={(e) => {
-        // Stop the keydown from bubbling into the tile button; the popover
-        // trigger is the wrapping <PopoverTrigger asChild>.
-        if (e.key === "Enter" || e.key === " ") e.stopPropagation();
-      }}
-      className={`inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded bg-background/80 border text-[11px] font-semibold tabular-nums leading-none ${
-        canWrite ? "cursor-pointer hover:bg-background" : "cursor-default"
-      }`}
-    >
-      {display}
-    </span>
-  );
-
-  return (
-    <div className="flex items-center justify-between gap-1">
-      {canWrite ? (
-        <InlineRatingPopover
-          campaignId={campaignId}
-          activityId={assessment.activityId}
-          activityTitle={assessment.title}
-          isBinary={assessment.isBinary}
-          workerId={workerId}
-          workerName={workerName}
-          initial={{
-            rating: activityRating?.rating ?? null,
-            binary_value: activityRating?.binary_value ?? null,
-          }}
-        >
-          {chip}
-        </InlineRatingPopover>
-      ) : (
-        chip
-      )}
-      <span
-        title={`Cumulative ${cumulative ?? "—"}`}
-        className={`inline-flex items-center justify-center min-w-[1.25rem] h-4 px-1 rounded border border-white/70 text-[9px] tabular-nums leading-none ${ratingBgClass(
-          cumulative
-        )}`}
-      >
-        c{cumulative ?? "—"}
-      </span>
-    </div>
   );
 }
 

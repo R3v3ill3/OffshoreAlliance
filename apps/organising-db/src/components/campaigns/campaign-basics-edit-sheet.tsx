@@ -24,6 +24,11 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
+import { CampaignOrganiserSelect } from "@/components/campaigns/campaign-organiser-select";
+import {
+  campaignOrganiserPickerValueForUser,
+  resolveCampaignOrganiserId,
+} from "@/lib/campaign/resolve-campaign-organiser";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -34,6 +39,7 @@ interface CampaignBasics {
   end_date: string | null;
   plan_timeframe_weeks?: number | null;
   total_worker_estimate: number | null;
+  organiser_id: number | null;
 }
 
 interface FormState {
@@ -117,17 +123,48 @@ export function CampaignBasicsEditSheet({
   onSaved,
 }: CampaignBasicsEditSheetProps) {
   const supabase = createClient();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const queryClient = useQueryClient();
 
   const [form, setForm] = useState<FormState>(() => hydrateForm(campaign));
 
-  // Re-hydrate whenever the sheet opens or source campaign data changes.
+  // Organiser picker value is hydrated asynchronously (needs a user_profiles lookup
+  // to convert organiser_id → the user:uuid picker format).
+  const [organiserPickerValue, setOrganiserPickerValue] = useState("");
+  // Increment to reset CampaignOrganiserSelect's auto-default behaviour on reopen.
+  const [organiserResetKey, setOrganiserResetKey] = useState(0);
+
+  // Re-hydrate form fields whenever the sheet opens or source campaign data changes.
   useEffect(() => {
-    if (open) {
-      setForm(hydrateForm(campaign));
-    }
-  }, [open, campaign]);
+    if (!open) return;
+    setForm(hydrateForm(campaign));
+    setOrganiserResetKey((k) => k + 1);
+
+    let cancelled = false;
+    (async () => {
+      if (campaign.organiser_id == null) {
+        setOrganiserPickerValue("");
+        return;
+      }
+      const { data } = await supabase
+        .from("user_profiles")
+        .select("user_id")
+        .eq("organiser_id", campaign.organiser_id)
+        .limit(1)
+        .maybeSingle();
+      if (cancelled) return;
+      setOrganiserPickerValue(
+        data?.user_id
+          ? campaignOrganiserPickerValueForUser(data.user_id as string)
+          : String(campaign.organiser_id)
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, campaign.organiser_id]);
 
   // ── Compatibility data ─────────────────────────────────────────────────────
 
@@ -190,7 +227,15 @@ export function CampaignBasicsEditSheet({
 
   const saveMutation = useAuthAwareMutation({
     mutationFn: async () => {
+      if (!user) throw new Error("Not authenticated");
+
       const { weeks, endDate } = computeEndDate(form);
+
+      const resolvedOrganiserId = await resolveCampaignOrganiserId(
+        supabase,
+        organiserPickerValue,
+        { currentUserId: user.id, isAdmin: isAdmin ?? false }
+      );
 
       const payload: Record<string, unknown> = {
         name: form.name.trim(),
@@ -200,6 +245,7 @@ export function CampaignBasicsEditSheet({
         total_worker_estimate: form.total_worker_estimate
           ? Number(form.total_worker_estimate)
           : null,
+        organiser_id: resolvedOrganiserId,
       };
 
       const { error } = await supabase
@@ -228,8 +274,8 @@ export function CampaignBasicsEditSheet({
         <SheetHeader>
           <SheetTitle>Edit campaign basics</SheetTitle>
           <SheetDescription>
-            Update the campaign name, timeline and worker estimate. Changes take effect
-            immediately.
+            Update the campaign name, timeline, worker estimate and assigned organiser.
+            Changes take effect immediately.
           </SheetDescription>
         </SheetHeader>
 
@@ -244,6 +290,20 @@ export function CampaignBasicsEditSheet({
               placeholder="Campaign name"
             />
           </div>
+
+          {/* Organiser */}
+          <CampaignOrganiserSelect
+            id="basics-organiser"
+            label="Campaign organiser"
+            value={organiserPickerValue}
+            onChange={(v) =>
+              setOrganiserPickerValue(v === "__none__" ? "" : v)
+            }
+            allowNone
+            autoDefaultToCurrentUser={false}
+            resetKey={organiserResetKey}
+            showStaffHint={false}
+          />
 
           {/* Start date */}
           <div className="space-y-2">

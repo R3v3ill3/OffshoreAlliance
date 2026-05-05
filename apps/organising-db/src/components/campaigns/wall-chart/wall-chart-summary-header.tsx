@@ -69,7 +69,7 @@ export function WallChartSummaryHeader({
         </div>
       </CardHeader>
       <CardContent className="pt-0">
-        <UnitSummaryMetrics metrics={metrics} mode={mode} participationLabel={participationLabel} />
+        <UnitSummaryMetrics metrics={metrics} mode={mode} participationLabel={participationLabel} compact />
       </CardContent>
     </Card>
   );

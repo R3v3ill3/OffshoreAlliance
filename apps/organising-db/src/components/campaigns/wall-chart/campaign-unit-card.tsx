@@ -49,6 +49,12 @@ export type CampaignUnitCardProps = {
   headerBadges?: ReactNode;
   /** Visual nesting indent — used when this card is itself a sub-unit. */
   nested?: boolean;
+  /**
+   * Number of unfilled slots from the campaign estimate not yet assigned to any
+   * named worker (campaign estimate minus total named members). When provided
+   * and > 0, shown as "· N unfilled" in the subtitle. Tiles are NOT rendered.
+   */
+  unfilledSlots?: number;
 };
 
 const PLACEHOLDER_CAP = 24;
@@ -68,6 +74,7 @@ export function CampaignUnitCard({
   subUnits,
   headerBadges,
   nested,
+  unfilledSlots,
 }: CampaignUnitCardProps) {
   const title = ou ? ouDisplayName(ou) : (fallbackTitle ?? "Unit");
   const typeChip = ou?.ou_type ? humanizeOuType(ou.ou_type) : null;
@@ -128,7 +135,7 @@ export function CampaignUnitCard({
               {headerBadges}
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {workerCount} named{est > 0 && ` / ${est} est.`}
+              {workerCount} named{est > 0 && ` / ${est} est.`}{unfilledSlots != null && unfilledSlots > 0 && ` · ${unfilledSlots} unfilled`}
             </p>
             {assessmentLabel && (
               <p className="text-[10px] text-muted-foreground mt-0.5">

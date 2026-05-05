@@ -1079,32 +1079,6 @@ export function CampaignWallChart({
           }
         />
 
-        {campaignGreySlots > 0 && (
-          <Card className="print:break-inside-avoid print:shadow-none">
-            <CardHeader className="pb-2">
-              <h3 className="text-sm font-semibold">Campaign-level unmapped</h3>
-              <p className="text-xs text-muted-foreground">{campaignGreySlots} unfilled slots</p>
-            </CardHeader>
-            <CardContent>
-              <div className={WALL_CHART_GRID_CLASS}>
-                {Array.from({ length: Math.min(campaignGreySlots, 40) }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="min-h-[3.25rem] rounded border border-dashed bg-zinc-300/50 dark:bg-zinc-600/50 text-[10px] flex items-center justify-center text-muted-foreground"
-                  >
-                    —
-                  </div>
-                ))}
-              </div>
-              {campaignGreySlots > 40 && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  +{campaignGreySlots - 40} more slots not shown (display capped at 40)
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
         <div ref={unitsContainerRef} className="relative space-y-4 print:space-y-2">
         {unassignedWorkerIds.length > 0 && (() => {
           const filter = getFilter(UNASSIGNED_KEY);
@@ -1144,6 +1118,7 @@ export function CampaignWallChart({
               fallbackTitle="Unassigned workers"
               workerCount={sorted.length}
               assessmentLabel={assessmentLabelForCard}
+              unfilledSlots={campaignGreySlots > 0 ? campaignGreySlots : undefined}
               onWorkerDrop={handleWorkerDrop}
               dropDisabled={!canWrite}
               summary={

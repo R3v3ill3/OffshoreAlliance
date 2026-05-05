@@ -49,6 +49,7 @@ import { VOTE_SUPPORTER_OPTIONS } from "@/lib/campaign/constants";
 import { formatWorkerLabel } from "@/lib/workers/format-worker-label";
 import type { CampaignActivity } from "@/types/database";
 import { CreateAssessmentDialog } from "./assessments/create-assessment-dialog";
+import { CreateTaskListDialog } from "./task-lists/create-task-list-dialog";
 import { AssessmentsTabCharts } from "./AssessmentsTabCharts";
 
 type PrimitiveValue = string | number | boolean | null;
@@ -125,6 +126,7 @@ export function CampaignAssessmentsSection({
   const supabase = createClient();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [taskListDialogOpen, setTaskListDialogOpen] = useState(false);
   const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null);
   const [activityPendingDelete, setActivityPendingDelete] = useState<CampaignActivity | null>(null);
 
@@ -599,9 +601,14 @@ export function CampaignAssessmentsSection({
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg">Tasks & assessments</CardTitle>
           {canWrite && (
-            <Button size="sm" onClick={() => setDialogOpen(true)}>
-              Add activity
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setTaskListDialogOpen(true)}>
+                New task list
+              </Button>
+              <Button size="sm" onClick={() => setDialogOpen(true)}>
+                Add assessment
+              </Button>
+            </div>
           )}
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1057,6 +1064,12 @@ export function CampaignAssessmentsSection({
         campaignId={campaignId}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
+      />
+
+      <CreateTaskListDialog
+        campaignId={campaignId}
+        open={taskListDialogOpen}
+        onOpenChange={setTaskListDialogOpen}
       />
 
       <AlertDialog

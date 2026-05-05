@@ -91,6 +91,7 @@ import { WallChartUnitManager } from "./wall-chart/wall-chart-unit-manager";
 import { CreateOrganisingUnitDialog } from "./wall-chart/create-organising-unit-dialog";
 import { useWallChartUnitVisibility } from "./wall-chart/use-wall-chart-unit-visibility";
 import { CreateAssessmentDialog } from "./assessments/create-assessment-dialog";
+import { CreateTaskListDialog } from "./task-lists/create-task-list-dialog";
 import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 import { AddCampaignWorkerDialog } from "./wall-chart/add-campaign-worker-dialog";
 import { WallChartAssessmentCharts } from "./WallChartAssessmentCharts";
@@ -167,6 +168,7 @@ export function CampaignWallChart({
   const [copyWorkerId, setCopyWorkerId] = useState<number | null>(null);
   const [createUnitOpen, setCreateUnitOpen] = useState(false);
   const [createAssessmentOpen, setCreateAssessmentOpen] = useState(false);
+  const [createTaskListOpen, setCreateTaskListOpen] = useState(false);
   const [importWizardOpen, setImportWizardOpen] = useState(false);
   const [addWorkerOpen, setAddWorkerOpen] = useState(false);
   const [addWorkerFormKey, setAddWorkerFormKey] = useState(0);
@@ -1057,6 +1059,17 @@ export function CampaignWallChart({
                   Add assessment
                 </Button>
               )}
+              {canWrite && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs print:hidden"
+                  onClick={() => setCreateTaskListOpen(true)}
+                >
+                  New task list
+                </Button>
+              )}
               <WallChartUnitManager
                 ous={ous}
                 canWrite={canWrite}
@@ -1605,6 +1618,12 @@ export function CampaignWallChart({
           queryClient.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
           queryClient.invalidateQueries({ queryKey: ["campaign-assessments-rated", campaignId] });
         }}
+      />
+
+      <CreateTaskListDialog
+        campaignId={campaignId}
+        open={createTaskListOpen}
+        onOpenChange={setCreateTaskListOpen}
       />
 
       <WorkerImportWizard

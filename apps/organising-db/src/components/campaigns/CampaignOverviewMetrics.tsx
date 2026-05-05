@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 import Link from 'next/link'
-import { Award, BarChart3, ExternalLink, LayoutGrid, Network, UserCheck, Users } from 'lucide-react'
+import { Award, BarChart3, ExternalLink, LayoutGrid, Network, ShieldCheck, UserCheck, Users } from 'lucide-react'
 import { useCampaignListStats } from '@/lib/hooks/useCampaignListStats'
 import { useCampaignAmbitionsByStage } from '@/lib/hooks/useGateAssessment'
 import {
@@ -82,6 +82,7 @@ export function CampaignOverviewMetrics({
     const totalEstimate = totalWorkerEstimate
     const totalNamed = stats.namedWorkers
     const totalMembers = stats.memberLikeCount
+    const totalOaMembers = stats.oaMemberCount
     const totalLeaders = stats.leadershipTotal
     const totalRated = stats.participationCount
 
@@ -89,6 +90,8 @@ export function CampaignOverviewMetrics({
       totalEstimate > 0 ? Math.round((totalNamed / totalEstimate) * 1000) / 10 : null
     const membershipPct =
       totalEstimate > 0 ? Math.round((totalMembers / totalEstimate) * 1000) / 10 : null
+    const oaMembershipPct =
+      totalEstimate > 0 ? Math.round((totalOaMembers / totalEstimate) * 1000) / 10 : null
     const participationPct =
       totalEstimate > 0 ? Math.round((totalRated / totalEstimate) * 1000) / 10 : null
     const leaderRatio =
@@ -103,6 +106,8 @@ export function CampaignOverviewMetrics({
       totalNamed,
       mappingPct,
       membershipPct,
+      oaMembershipPct,
+      totalOaMembers,
       participationPct,
       leaderRatio,
       totalLeaders,
@@ -179,6 +184,13 @@ export function CampaignOverviewMetrics({
               label="Membership"
               value={summary.membershipPct != null ? `${summary.membershipPct}%` : '—'}
               sub="members of estimated workers"
+            />
+            <CampaignDashboardStatCard
+              icon={ShieldCheck}
+              label="OA Members"
+              value={summary.oaMembershipPct != null ? `${summary.oaMembershipPct}%` : '—'}
+              sub={`${summary.totalOaMembers.toLocaleString()} financial & pending`}
+              highlight
             />
             <CampaignDashboardStatCard
               icon={Network}
@@ -264,6 +276,14 @@ export function CampaignOverviewMetrics({
             label="Membership"
             percent={summary.membershipPct}
             fractionLabel={`${stats.memberLikeCount} / ${summary.totalEstimate > 0 ? summary.totalEstimate.toLocaleString() : '—'}`}
+            targetLabel="Target: 100%"
+            targetMarkerPercent={100}
+            variant="green"
+          />
+          <OverviewMetricBar
+            label="OA Members (financial & pending)"
+            percent={summary.oaMembershipPct}
+            fractionLabel={`${stats.oaMemberCount} / ${summary.totalEstimate > 0 ? summary.totalEstimate.toLocaleString() : '—'}`}
             targetLabel="Target: 100%"
             targetMarkerPercent={100}
             variant="green"

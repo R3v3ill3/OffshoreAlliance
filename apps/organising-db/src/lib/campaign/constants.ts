@@ -45,6 +45,22 @@ export const UNION_MEMBER_LIKE_TYPE_NAMES = new Set([
 ]);
 
 /**
+ * OA-specific membership types — financial or pending members of the union itself.
+ * Excludes non-OA union members and role/bargaining-rep overrides.
+ */
+export const OA_MEMBER_TYPE_NAMES = new Set([
+  "financial_member",
+  "member_pending",
+]);
+
+/** Returns true only for workers who hold an active OA membership (financial or pending). */
+export function isWorkerOaMember(args: {
+  unionMembershipTypeName: string | null | undefined;
+}): boolean {
+  return !!(args.unionMembershipTypeName && OA_MEMBER_TYPE_NAMES.has(args.unionMembershipTypeName));
+}
+
+/**
  * Union membership type_name values that map to the `lapsed` filter bucket.
  * These are former/resigned members who have left but remain in the system.
  */

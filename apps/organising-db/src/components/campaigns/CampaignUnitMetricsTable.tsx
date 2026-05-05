@@ -354,6 +354,9 @@ export function CampaignUnitMetricsTable({
                             <span className="text-[10px] text-muted-foreground">
                               {subStats.memberLikeCount} members
                             </span>
+                            <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                              {subStats.oaMemberCount} OA members
+                            </span>
                             {nonOaUnionBreakdown.length > 0 && (
                               <div className="flex flex-col gap-0.5 mt-0.5">
                                 {nonOaUnionBreakdown.map((row) => (
@@ -486,6 +489,9 @@ export function CampaignUnitMetricsTable({
                             value={dimStats.memberLikeCount}
                             denominator={dimWorkerCount || null}
                           />
+                          <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                            {dimStats.oaMemberCount} OA members
+                          </span>
                           {dimNonOaBreakdown.length > 0 && (
                             <div className="flex flex-col gap-0.5 mt-0.5">
                               {dimNonOaBreakdown.map((row) => (

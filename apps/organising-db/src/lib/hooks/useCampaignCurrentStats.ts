@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
-import { isWorkerMemberLike } from '@/lib/campaign/constants'
+import { isWorkerMemberLike, isWorkerOaMember } from '@/lib/campaign/constants'
 
 export interface CampaignCurrentStats {
   totalWorkerEstimate: number
@@ -12,6 +12,12 @@ export interface CampaignCurrentStats {
   memberLikeCount: number
   densityOfNamed: number
   densityOfEstimate: number
+  /** OA-specific members: financial_member or member_pending only. */
+  oaMemberCount: number
+  /** OA member density as % of named workers. */
+  oaDensityOfNamed: number
+  /** OA member density as % of estimated workers. */
+  oaDensityOfEstimate: number
   delegates: number
   activists: number
   contacts: number
@@ -39,6 +45,9 @@ const EMPTY_STATS: CampaignCurrentStats = {
   memberLikeCount: 0,
   densityOfNamed: 0,
   densityOfEstimate: 0,
+  oaMemberCount: 0,
+  oaDensityOfNamed: 0,
+  oaDensityOfEstimate: 0,
   delegates: 0,
   activists: 0,
   contacts: 0,
@@ -187,6 +196,7 @@ export function useCampaignCurrentStats(campaignId: number | string) {
     const named = members.length
 
     let memberLike = 0
+    let oaMember = 0
     let delegates = 0
     let activists = 0
     let contacts = 0
@@ -208,6 +218,12 @@ export function useCampaignCurrentStats(campaignId: number | string) {
         isBargainingRep: isBargRep,
       })) {
         memberLike++
+      }
+
+      if (isWorkerOaMember({
+        unionMembershipTypeName: (um as { type_name?: string } | null)?.type_name,
+      })) {
+        oaMember++
       }
 
       if (roleName === 'delegate') delegates++
@@ -238,6 +254,9 @@ export function useCampaignCurrentStats(campaignId: number | string) {
       memberLikeCount: memberLike,
       densityOfNamed: pct1(memberLike, named),
       densityOfEstimate: pct1(memberLike, estimate),
+      oaMemberCount: oaMember,
+      oaDensityOfNamed: pct1(oaMember, named),
+      oaDensityOfEstimate: pct1(oaMember, estimate),
       delegates,
       activists,
       contacts,

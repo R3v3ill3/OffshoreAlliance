@@ -52,6 +52,12 @@ export function CampaignReportingCharts({ campaignId }: { campaignId: string }) 
             <p className="text-2xl font-semibold">{stats.densityOfNamed}%</p>
             <p className="text-xs text-muted-foreground">of named workers are members / contacts</p>
             <p className="text-xs text-muted-foreground mt-1">{stats.densityOfEstimate}% of estimated</p>
+            <div className="mt-3 pt-3 border-t border-emerald-500/30">
+              <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">{stats.oaDensityOfNamed}%</p>
+              <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">OA members of named workers</p>
+              <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-0.5">{stats.oaDensityOfEstimate}% of estimated</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">financial &amp; pending members only</p>
+            </div>
           </CardContent>
         </Card>
         <Card>

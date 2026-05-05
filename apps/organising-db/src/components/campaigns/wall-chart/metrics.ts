@@ -1,5 +1,5 @@
 import type { NonOaUnionCountEntry } from "@/lib/workers/other-union-display";
-import { isWorkerMemberLike } from "@/lib/campaign/constants";
+import { isWorkerMemberLike, isWorkerOaMember } from "@/lib/campaign/constants";
 import type { ActivityRating, WallChartRatingSummary, WallChartWorker } from "./types";
 
 // Role-type ids confirmed active in member_role_types:
@@ -14,6 +14,8 @@ export const ROLE_IDS = {
 export type WallChartMetrics = {
   total: number;
   members: number;
+  /** OA-specific members: financial_member or member_pending only. */
+  oaMembers: number;
   delegates: number;
   activists: number;
   contacts: number;
@@ -86,6 +88,7 @@ export function computeMetrics(
   const out: WallChartMetrics = {
     total: workerIds.length,
     members: 0,
+    oaMembers: 0,
     delegates: 0,
     activists: 0,
     contacts: 0,
@@ -118,6 +121,10 @@ export function computeMetrics(
       })
     ) {
       out.members += 1;
+    }
+
+    if (isWorkerOaMember({ unionMembershipTypeName: w.union_membership_type?.type_name })) {
+      out.oaMembers += 1;
     }
 
     if (w.union_membership_type?.type_name === "non_oa_member") {

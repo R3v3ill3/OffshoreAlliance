@@ -19,6 +19,8 @@ type MetricCell = {
   value: number;
   /** When null, use `total` as denominator for % display. */
   denominator?: number;
+  /** Render with emerald OA-member styling. */
+  highlight?: boolean;
 };
 
 function formatLeadershipRatioCompact(leadershipTotal: number, total: number): string {
@@ -158,6 +160,7 @@ export function UnitSummaryMetrics({
 
   const cells: MetricCell[] = [
     { label: "Members", value: metrics.members },
+    { label: "OA Members", value: metrics.oaMembers, highlight: true },
     { label: "Delegates", value: metrics.delegates },
     { label: "Activists", value: metrics.activists },
     { label: "Contacts", value: metrics.contacts },
@@ -181,6 +184,8 @@ export function UnitSummaryMetrics({
             value={formatValue(c.value, c.denominator ?? metrics.total)}
             raw={c.value}
             compact={compact}
+            highlight={c.highlight}
+            hint={c.label === "OA Members" ? `${c.value} financial or pending OA members` : undefined}
           />
         ))}
       </div>
@@ -279,21 +284,27 @@ function MetricChip({
   raw,
   compact,
   hint,
+  highlight,
 }: {
   label: string;
   value: string;
   raw: number;
   compact?: boolean;
   hint?: string;
+  highlight?: boolean;
 }) {
   const tooltip = hint ?? `${raw}`;
   if (compact) {
     return (
       <span
         title={tooltip}
-        className="inline-flex items-baseline gap-1 rounded border bg-background px-1.5 py-0.5 text-[11px]"
+        className={`inline-flex items-baseline gap-1 rounded border px-1.5 py-0.5 text-[11px] ${
+          highlight
+            ? "border-emerald-500/60 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300"
+            : "bg-background"
+        }`}
       >
-        <span className="text-muted-foreground">{label}</span>
+        <span className={highlight ? "text-emerald-700 dark:text-emerald-400 font-medium" : "text-muted-foreground"}>{label}</span>
         <span className="font-semibold tabular-nums">{value}</span>
       </span>
     );
@@ -301,10 +312,14 @@ function MetricChip({
   return (
     <div
       title={tooltip}
-      className="rounded border bg-background px-2 py-1.5 flex flex-col gap-0.5"
+      className={`rounded border px-2 py-1.5 flex flex-col gap-0.5 ${
+        highlight
+          ? "border-emerald-500/60 bg-emerald-50 dark:bg-emerald-950/30"
+          : "bg-background"
+      }`}
     >
-      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
-      <span className="text-sm font-semibold tabular-nums">{value}</span>
+      <span className={`text-[10px] uppercase tracking-wide ${highlight ? "text-emerald-700 dark:text-emerald-400 font-semibold" : "text-muted-foreground"}`}>{label}</span>
+      <span className={`text-sm font-semibold tabular-nums ${highlight ? "text-emerald-900 dark:text-emerald-200" : ""}`}>{value}</span>
     </div>
   );
 }

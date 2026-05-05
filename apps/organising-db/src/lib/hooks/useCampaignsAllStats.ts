@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
-import { isWorkerMemberLike } from '@/lib/campaign/constants'
+import { isWorkerMemberLike, isWorkerOaMember } from '@/lib/campaign/constants'
 import { useP2wCompletionByPlanIds } from '@/lib/hooks/useP2wCompletionByPlanIds'
 
 export interface P2wCompletion {
@@ -27,6 +27,8 @@ export interface CampaignAggStats {
   phoneCount: number
   emailCount: number
   memberLikeCount: number
+  /** OA-specific members: financial_member or member_pending only. */
+  oaMemberCount: number
   ouCount: number
   workersInAnyOu: number
   leadershipTotal: number
@@ -40,6 +42,7 @@ const EMPTY_STATS: CampaignAggStats = {
   phoneCount: 0,
   emailCount: 0,
   memberLikeCount: 0,
+  oaMemberCount: 0,
   ouCount: 0,
   workersInAnyOu: 0,
   leadershipTotal: 0,
@@ -195,6 +198,10 @@ export function useCampaignsAllStats(planIds: number[]): {
 
       if (isWorkerMemberLike({ unionMembershipTypeName: typeName, memberRoleName: roleName, isBargainingRep: isBargRep })) {
         s.memberLikeCount++
+      }
+
+      if (isWorkerOaMember({ unionMembershipTypeName: typeName })) {
+        s.oaMemberCount++
       }
 
       if (roleName === 'delegate' || roleName === 'Activist' || roleName === 'contact') {

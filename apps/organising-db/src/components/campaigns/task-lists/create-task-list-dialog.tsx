@@ -43,6 +43,7 @@ import { resolveCampaignOrganiserId } from "@/lib/campaign/resolve-campaign-orga
 import { CampaignOrganiserSelect } from "@/components/campaigns/campaign-organiser-select";
 import { CreateAssessmentDialog } from "@/components/campaigns/assessments/create-assessment-dialog";
 import { WorkerPicker } from "@/components/campaigns/shared/worker-picker";
+import { useLeaderUnitContext } from "@/components/campaigns/wall-chart/leader-unit-context";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -80,6 +81,8 @@ import {
   Crown,
   Settings,
   CircleDot,
+  Search,
+  UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -101,7 +104,7 @@ const ASSESSMENT_TYPE_LABELS: Record<AssessmentType, string> = {
 };
 
 const ASSESSMENT_TYPE_HELP =
-  "Provenance for ratings on this activity. " +
+  "Provenance for ratings on this assessment. " +
   "Hard = directly observed (e.g. signed petition). " +
   "Self assessed = the worker rated themselves. " +
   "Organiser assessed = staff rated (default). " +
@@ -303,34 +306,9 @@ export function CreateTaskListDialog({
     },
   });
 
-  const { data: members = [] } = useQuery({
-    queryKey: ["campaign-members", campaignId],
-    enabled: open,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("campaign_worker_membership")
-        .select(`worker_id, worker:workers(worker_id, first_name, last_name)`)
-        .eq("campaign_id", campaignId);
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-
-  const memberOptions = useMemo(() => {
-    const out: { worker_id: number; label: string }[] = [];
-    for (const row of members) {
-      const wr = (row as { worker: unknown }).worker;
-      const w = (Array.isArray(wr) ? wr[0] : wr) as
-        | { worker_id: number; first_name: string; last_name: string }
-        | null;
-      if (!w) continue;
-      out.push({
-        worker_id: w.worker_id,
-        label: `${w.first_name} ${w.last_name}`,
-      });
-    }
-    return out.sort((a, b) => a.label.localeCompare(b.label));
-  }, [members]);
+  // The leader picker (LeaderPickerWidget below) fetches its own data with a
+  // richer schema (role, occupation, OU). The flat `campaign-members` query
+  // and `memberOptions` derivation that used to live here have been removed.
 
   const leaderWorkerId = leaderWorkerLock
     ? leaderWorkerLock.workerId
@@ -452,7 +430,7 @@ export function CreateTaskListDialog({
       const targetStatus = state.activate_now ? "active" : "draft";
       if (targetStatus === "active" && !canActivate) {
         throw new Error(
-          "Activation requires both a leader and an activity. Save as draft instead."
+          "Activation requires both a leader and an assessment. Save as draft instead."
         );
       }
 
@@ -562,7 +540,7 @@ export function CreateTaskListDialog({
   const STEPS: { id: Step; label: string; icon: typeof Crown }[] = [
     { id: "anchor", label: "Start", icon: CircleDot },
     { id: "leader", label: "Leader", icon: Crown },
-    { id: "activity", label: "Activity", icon: ListChecks },
+    { id: "activity", label: "Assessment", icon: ListChecks },
     { id: "workers", label: "Workers", icon: Users },
     { id: "options", label: "Options", icon: Settings },
   ];
@@ -656,7 +634,7 @@ export function CreateTaskListDialog({
 
             {currentStep === "leader" && (
               <LeaderStep
-                memberOptions={memberOptions}
+                campaignId={campaignId}
                 state={state}
                 dispatch={dispatch}
                 organiserFieldKey={organiserFieldKey}
@@ -793,14 +771,14 @@ function AnchorStep({
         />
         <AnchorOption
           value="activity"
-          label="Start with an Activity"
-          description="Pick or create the activity first, then choose a leader and the workers to assess."
+          label="Start with an Assessment"
+          description="Pick or create the assessment first, then choose a leader and the workers to assess."
           icon={<ListChecks size={16} />}
         />
         <AnchorOption
           value="workers"
           label="Start with Workers"
-          description="Pick the workers first, then attach a leader and activity later."
+          description="Pick the workers first, then attach a leader and assessment later."
           icon={<Users size={16} />}
         />
       </RadioGroup>
@@ -838,14 +816,14 @@ function AnchorOption({
 }
 
 function LeaderStep({
-  memberOptions,
+  campaignId,
   state,
   dispatch,
   organiserFieldKey,
   leaderWorkerLock,
   followersCount,
 }: {
-  memberOptions: { worker_id: number; label: string }[];
+  campaignId: string;
   state: FormState;
   dispatch: React.Dispatch<Action>;
   organiserFieldKey: number;
@@ -862,27 +840,13 @@ function LeaderStep({
       {!leaderWorkerLock && (
         <div className="space-y-2">
           <Label>Worker leader</Label>
-          <Select
-            value={state.leader_worker_id || NONE}
-            onValueChange={(v) =>
-              dispatch({
-                type: "SET_LEADER_WORKER",
-                value: v === NONE ? "" : v,
-              })
+          <LeaderPickerWidget
+            campaignId={campaignId}
+            value={state.leader_worker_id}
+            onChange={(v) =>
+              dispatch({ type: "SET_LEADER_WORKER", value: v })
             }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Pick a worker leader" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NONE}>None — use organiser instead</SelectItem>
-              {memberOptions.map((m) => (
-                <SelectItem key={m.worker_id} value={String(m.worker_id)}>
-                  {m.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          />
         </div>
       )}
 
@@ -943,6 +907,223 @@ function LeaderStep({
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* LeaderPickerWidget — campaign-scoped, role-filtered worker picker.  */
+/*                                                                     */
+/* Default view: workers in this campaign whose member_role_type_id    */
+/* maps to contact / activist / delegate. Columns: name, role,         */
+/* occupation, organising unit. Search across all those fields. The    */
+/* "Add new leader" toggle widens the candidate pool to every worker   */
+/* in campaign_worker_membership so a non-leader can be promoted on    */
+/* the spot (the Phase 1 trigger will mark them as activist when the   */
+/* task list activates and they're added to it).                       */
+/* ------------------------------------------------------------------ */
+
+const LEADER_ROLE_NAMES = new Set(["contact", "activist", "delegate"]);
+
+type LeaderCandidate = {
+  worker_id: number;
+  first_name: string;
+  last_name: string;
+  occupation: string | null;
+  role_name: string | null;
+  role_display_name: string | null;
+};
+
+function LeaderPickerWidget({
+  campaignId,
+  value,
+  onChange,
+}: {
+  campaignId: string;
+  /** "" or stringified worker_id */
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const supabase = createClient();
+  const [search, setSearch] = useState("");
+  const [showAll, setShowAll] = useState(false);
+
+  const { data: candidates = [] } = useQuery({
+    queryKey: ["task-list-leader-picker", campaignId],
+    queryFn: async (): Promise<LeaderCandidate[]> => {
+      const { data, error } = await supabase
+        .from("campaign_worker_membership")
+        .select(
+          `worker_id,
+           worker:workers(
+             worker_id, first_name, last_name, occupation,
+             member_role_type:member_role_types(role_name, display_name)
+           )`
+        )
+        .eq("campaign_id", campaignId);
+      if (error) throw error;
+      const out: LeaderCandidate[] = [];
+      for (const row of data ?? []) {
+        const wr = (row as { worker: unknown }).worker;
+        const w = (Array.isArray(wr) ? wr[0] : wr) as
+          | {
+              worker_id: number;
+              first_name: string;
+              last_name: string;
+              occupation: string | null;
+              member_role_type: unknown;
+            }
+          | null;
+        if (!w) continue;
+        const mt = (Array.isArray(w.member_role_type)
+          ? w.member_role_type[0]
+          : w.member_role_type) as { role_name: string; display_name: string } | null;
+        out.push({
+          worker_id: w.worker_id,
+          first_name: w.first_name,
+          last_name: w.last_name,
+          occupation: w.occupation ?? null,
+          role_name: mt?.role_name ?? null,
+          role_display_name: mt?.display_name ?? null,
+        });
+      }
+      return out;
+    },
+  });
+
+  const ctx = useLeaderUnitContext({ campaignId, leaderWorkerId: 0 });
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return candidates
+      .filter((c) =>
+        showAll
+          ? true
+          : c.role_name != null && LEADER_ROLE_NAMES.has(c.role_name.toLowerCase())
+      )
+      .filter((c) => {
+        if (!q) return true;
+        const fields = [
+          `${c.first_name} ${c.last_name}`,
+          c.role_display_name ?? "",
+          c.role_name ?? "",
+          c.occupation ?? "",
+          ctx.allWorkerOuNames(c.worker_id).join(" "),
+        ].join(" ").toLowerCase();
+        return fields.includes(q);
+      })
+      .sort(
+        (a, b) =>
+          a.last_name.localeCompare(b.last_name) ||
+          a.first_name.localeCompare(b.first_name)
+      );
+  }, [candidates, showAll, search, ctx]);
+
+  const selectedId = value !== "" ? Number(value) : null;
+  const selected = candidates.find((c) => c.worker_id === selectedId) ?? null;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search
+            size={14}
+            className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            placeholder={
+              showAll
+                ? "Search all campaign workers…"
+                : "Search by name, role, occupation, unit…"
+            }
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-8 pl-7 text-xs"
+          />
+        </div>
+        <Button
+          type="button"
+          variant={showAll ? "default" : "outline"}
+          size="sm"
+          onClick={() => setShowAll((s) => !s)}
+        >
+          <UserPlus size={14} className="mr-1" />
+          {showAll ? "Leaders only" : "Add new leader"}
+        </Button>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        {showAll
+          ? "Showing all workers in this campaign. Picking one will promote them to activist on save (unless they're already a delegate)."
+          : "Showing workers with role contact, activist, or delegate. Switch to \"Add new leader\" to widen the list."}
+      </p>
+      <div className="max-h-72 overflow-y-auto rounded border divide-y">
+        {filtered.length === 0 ? (
+          <p className="p-3 text-xs text-muted-foreground">
+            {showAll
+              ? "No matching workers."
+              : "No leaders yet in this campaign. Click \"Add new leader\" to pick from the wider workforce."}
+          </p>
+        ) : (
+          filtered.map((c) => {
+            const isSelected = c.worker_id === selectedId;
+            const ous = ctx.allWorkerOuNames(c.worker_id).join(", ");
+            const role = c.role_display_name ?? c.role_name ?? "—";
+            return (
+              <button
+                key={c.worker_id}
+                type="button"
+                className={`w-full text-left px-2 py-1.5 text-xs flex items-start gap-2 hover:bg-muted/40 ${
+                  isSelected ? "bg-primary/10" : ""
+                }`}
+                onClick={() => onChange(String(c.worker_id))}
+              >
+                <span className="flex-1 min-w-0">
+                  <span className="block font-medium truncate">
+                    {c.last_name}, {c.first_name}
+                  </span>
+                  {c.occupation && (
+                    <span className="block text-[10px] text-muted-foreground truncate">
+                      {c.occupation}
+                    </span>
+                  )}
+                </span>
+                <span className="flex flex-col items-end gap-0.5 shrink-0">
+                  <span className="text-[10px] uppercase bg-background border px-1 rounded">
+                    {role}
+                  </span>
+                  {ous && (
+                    <span
+                      title={`Unit(s): ${ous}`}
+                      className="text-[10px] rounded px-1 truncate max-w-[10rem] bg-muted text-muted-foreground"
+                    >
+                      {ous}
+                    </span>
+                  )}
+                </span>
+                {isSelected && (
+                  <Check size={14} className="text-primary mt-0.5 shrink-0" />
+                )}
+              </button>
+            );
+          })
+        )}
+      </div>
+      {selected && (
+        <p className="text-[11px] text-muted-foreground">
+          Selected:{" "}
+          <span className="font-medium">
+            {selected.first_name} {selected.last_name}
+          </span>{" "}
+          ·{" "}
+          <button
+            type="button"
+            className="underline"
+            onClick={() => onChange("")}
+          >
+            Clear
+          </button>
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ActivityStep({
   activities,
   state,
@@ -977,21 +1158,21 @@ function ActivityStep({
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Pick an existing activity or create one inline. Linking an activity is
-        required before the task list can be activated; drafts can leave it
+        Pick an existing assessment or create one inline. Linking an assessment
+        is required before the task list can be activated; drafts can leave it
         blank for now.
       </p>
 
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <Label>Linked activity</Label>
+          <Label>Linked assessment</Label>
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={onCreateNew}
           >
-            <Plus size={14} className="mr-1" /> New activity
+            <Plus size={14} className="mr-1" /> New assessment
           </Button>
         </div>
         <Select
@@ -1001,7 +1182,7 @@ function ActivityStep({
           }
         >
           <SelectTrigger>
-            <SelectValue placeholder="Select activity (or leave blank for draft)" />
+            <SelectValue placeholder="Select assessment (or leave blank for draft)" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={NONE}>None (save as draft)</SelectItem>
@@ -1019,7 +1200,7 @@ function ActivityStep({
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Selected activity
+                Selected assessment
               </p>
               <p className="text-sm font-medium">{selectedActivity.title}</p>
             </div>
@@ -1074,7 +1255,7 @@ function ActivityStep({
             <p className="text-[11px] text-muted-foreground">
               The leader webform always tags its own ratings as
               &quot;activist_assessed&quot; via the per-rating override; this
-              setting is the activity-level default.
+              setting is the assessment-level default.
             </p>
           </div>
         </div>
@@ -1194,7 +1375,7 @@ function OptionsStep({
                   <span className="flex-1">
                     <span className="block font-medium text-sm">Activate now</span>
                     <span className="block text-xs text-muted-foreground">
-                      Available once both a leader and an activity are set.
+                      Available once both a leader and an assessment are set.
                     </span>
                   </span>
                 </label>
@@ -1203,7 +1384,7 @@ function OptionsStep({
                 <TooltipContent>
                   <p className="text-xs">
                     Activation requires both a leader{" "}
-                    {hasLeader ? "(set)" : "(missing)"} and an activity{" "}
+                    {hasLeader ? "(set)" : "(missing)"} and an assessment{" "}
                     {hasActivity ? "(set)" : "(missing)"}.
                   </p>
                 </TooltipContent>

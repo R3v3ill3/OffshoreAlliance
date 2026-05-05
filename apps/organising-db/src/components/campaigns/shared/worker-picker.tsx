@@ -86,7 +86,7 @@ export type WorkerPickerProps = {
   onNotesChange?: (notes: string) => void;
 };
 
-const EMPTY_SET: ReadonlySet<number> = new Set<number>();
+const EMPTY_NUMBER_ARRAY: ReadonlyArray<number> = Object.freeze([]);
 
 export function WorkerPicker({
   campaignId,
@@ -180,23 +180,32 @@ export function WorkerPicker({
     },
   });
 
-  const { data: existingFollowerIds = EMPTY_SET } = useQuery({
+  // Returns a plain number[] (not a Set). TanStack Query's structuralSharing
+  // walks objects and strips non-plain prototypes — returning a Set caused a
+  // production crash with "W.has is not a function" on the second render. Build
+  // the Set on the consumer side in a useMemo.
+  const { data: existingFollowerArray = EMPTY_NUMBER_ARRAY } = useQuery({
     queryKey: [
       "leader-links-existing-followers",
       campaignId,
       leaderWorkerId ?? 0,
     ],
     enabled: leaderWorkerId != null,
-    queryFn: async () => {
+    queryFn: async (): Promise<number[]> => {
       const { data, error } = await supabase
         .from("campaign_leader_worker_links")
         .select("follower_worker_id")
         .eq("campaign_id", Number(campaignId))
         .eq("leader_worker_id", leaderWorkerId as number);
       if (error) throw error;
-      return new Set((data ?? []).map((r) => r.follower_worker_id as number)) as ReadonlySet<number>;
+      return (data ?? []).map((r) => r.follower_worker_id as number);
     },
   });
+
+  const existingFollowerIds = useMemo(
+    () => new Set<number>(existingFollowerArray),
+    [existingFollowerArray]
+  );
 
   const exclusionSet = useMemo(() => {
     const s = new Set<number>(excludeWorkerIds ?? []);

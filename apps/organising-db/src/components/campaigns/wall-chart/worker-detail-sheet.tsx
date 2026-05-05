@@ -27,6 +27,7 @@ import {
 } from "@/components/workers/membership-non-oa-fields";
 import { WorkerRelationshipsTab } from "./worker-relationships-tab";
 import { RatingPicker } from "../assessments/rating-picker";
+import { CreateTaskListDialog } from "../task-lists/create-task-list-dialog";
 import type {
   WallChartOU,
   WallChartRoleType,
@@ -89,7 +90,12 @@ export function WorkerDetailSheet({
       </TabsContent>
 
       <TabsContent value="ratings">
-        <RatingsTab campaignId={campaignId} workerId={workerId} canWrite={canWrite} />
+        <RatingsTab
+          campaignId={campaignId}
+          workerId={workerId}
+          workerName={`${worker.first_name} ${worker.last_name}`}
+          canWrite={canWrite}
+        />
       </TabsContent>
 
       <TabsContent value="units">
@@ -417,10 +423,12 @@ function CampaignTab({ worker }: { worker: WallChartWorker }) {
 function RatingsTab({
   campaignId,
   workerId,
+  workerName,
   canWrite,
 }: {
   campaignId: string;
   workerId: number;
+  workerName: string;
   canWrite: boolean;
 }) {
   const supabase = createClient();
@@ -432,6 +440,7 @@ function RatingsTab({
     binary_value: string | null;
   }>({ rating: null, binary_value: null });
   const [notes, setNotes] = useState("");
+  const [taskListDialogOpen, setTaskListDialogOpen] = useState(false);
 
   const { data: assessments = [] } = useQuery({
     queryKey: ["campaign-activities", campaignId, "assessment"],
@@ -515,6 +524,21 @@ function RatingsTab({
 
   return (
     <div className="py-3 space-y-4">
+      {canWrite && (
+        <div className="flex items-center justify-between rounded border bg-muted/20 px-3 py-2">
+          <span className="text-xs text-muted-foreground">
+            Build a leader task list with {workerName} as the leader.
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setTaskListDialogOpen(true)}
+          >
+            New task list
+          </Button>
+        </div>
+      )}
+
       {canWrite && (
         <div className="rounded border p-3 space-y-2 bg-muted/30">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -631,6 +655,13 @@ function RatingsTab({
           </div>
         )}
       </div>
+
+      <CreateTaskListDialog
+        campaignId={campaignId}
+        open={taskListDialogOpen}
+        onOpenChange={setTaskListDialogOpen}
+        leaderWorkerLock={{ workerId, workerName }}
+      />
     </div>
   );
 }

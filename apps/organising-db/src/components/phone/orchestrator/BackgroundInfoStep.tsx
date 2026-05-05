@@ -41,7 +41,7 @@ const VARIATION_DIMENSION_OPTIONS: { value: VariationDimension; label: string; h
 
 interface Assessment {
   assessment_id: number
-  title: string
+  assessed_at: string
 }
 
 export interface BackgroundInfoValue {
@@ -66,11 +66,11 @@ export function BackgroundInfoStep({ campaignId, value, onChange, onNext, onCanc
     queryKey: ['bargaining-strength-assessments', String(campaignId)],
     queryFn: async () => {
       try {
-        const { data, error } = await supabase
+          const { data, error } = await supabase
           .from('bargaining_strength_assessments' as never)
-          .select('assessment_id, title')
+          .select('assessment_id, assessed_at')
           .eq('campaign_id', Number(campaignId))
-          .order('created_at', { ascending: false })
+          .order('assessed_at', { ascending: false })
         if (error) return []
         return (data ?? []) as Assessment[]
       } catch {
@@ -124,7 +124,7 @@ export function BackgroundInfoStep({ campaignId, value, onChange, onNext, onCanc
               <SelectItem value="none">None</SelectItem>
               {assessments.map((a) => (
                 <SelectItem key={a.assessment_id} value={String(a.assessment_id)}>
-                  {a.title}
+                  {`Assessment ${new Date(a.assessed_at).toLocaleDateString()}`}
                 </SelectItem>
               ))}
             </SelectContent>

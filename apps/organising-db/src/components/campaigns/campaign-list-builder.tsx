@@ -107,11 +107,6 @@ interface UnitOption {
   ou_type: string;
 }
 
-interface NamedOption {
-  id: number;
-  name: string;
-}
-
 const MEMBERSHIP_OPTIONS = [
   { value: "member", label: "Members" },
   { value: "member_pending", label: "Member – pending" },
@@ -150,10 +145,6 @@ export function CampaignListBuilder({
   const [includeAnTags, setIncludeAnTags] = useState<string[]>([]);
   const [excludeAnTags, setExcludeAnTags] = useState<string[]>([]);
   const [showAnTags, setShowAnTags] = useState(false);
-  const [shiftFilterIds, setShiftFilterIds] = useState<number[]>([]);
-  const [workAreaFilterIds, setWorkAreaFilterIds] = useState<number[]>([]);
-  const [rosterPanelFilterIds, setRosterPanelFilterIds] = useState<number[]>([]);
-  const [showWorkerDimensions, setShowWorkerDimensions] = useState(false);
   const [selectedWorkers, setSelectedWorkers] = useState<Set<number>>(
     new Set()
   );
@@ -211,51 +202,6 @@ export function CampaignListBuilder({
           row.worksites as { worksite_name: string } | null
         )?.worksite_name ?? "Unknown",
       })) as WorksiteOption[];
-    },
-    enabled: !!user,
-  });
-
-  const { data: shiftOptions = [] } = useQuery({
-    queryKey: ["worker-shift-options"],
-    queryFn: async (): Promise<NamedOption[]> => {
-      const { data, error } = await supabase
-        .from("worker_shift_options")
-        .select("id, name")
-        .eq("is_active", true)
-        .order("sort_order")
-        .order("name");
-      if (error) throw error;
-      return (data ?? []) as NamedOption[];
-    },
-    enabled: !!user,
-  });
-
-  const { data: workAreaOptions = [] } = useQuery({
-    queryKey: ["worker-work-area-options"],
-    queryFn: async (): Promise<NamedOption[]> => {
-      const { data, error } = await supabase
-        .from("worker_work_area_options")
-        .select("id, name")
-        .eq("is_active", true)
-        .order("sort_order")
-        .order("name");
-      if (error) throw error;
-      return (data ?? []) as NamedOption[];
-    },
-    enabled: !!user,
-  });
-
-  const { data: rosterPanelOptions = [] } = useQuery({
-    queryKey: ["worker-roster-panel-options"],
-    queryFn: async (): Promise<NamedOption[]> => {
-      const { data, error } = await supabase
-        .from("worker_roster_panel_options")
-        .select("id, name")
-        .eq("is_active", true)
-        .order("sort_order")
-        .order("name");
-      if (error) throw error;
-      return (data ?? []) as NamedOption[];
     },
     enabled: !!user,
   });
@@ -343,9 +289,6 @@ export function CampaignListBuilder({
       occupationSearch,
       includeAnTags,
       excludeAnTags,
-      shiftFilterIds,
-      workAreaFilterIds,
-      rosterPanelFilterIds,
       sortKey,
     ],
     queryFn: async () => {
@@ -364,12 +307,6 @@ export function CampaignListBuilder({
         params.set("an_tags", includeAnTags.join(","));
       if (excludeAnTags.length)
         params.set("exclude_an_tags", excludeAnTags.join(","));
-      if (shiftFilterIds.length)
-        params.set("shift_ids", shiftFilterIds.join(","));
-      if (workAreaFilterIds.length)
-        params.set("work_area_ids", workAreaFilterIds.join(","));
-      if (rosterPanelFilterIds.length)
-        params.set("roster_panel_ids", rosterPanelFilterIds.join(","));
       params.set("sort", sortKey);
 
       const res = await fetchApi(
@@ -497,13 +434,6 @@ export function CampaignListBuilder({
       occupation: occupationSearch.trim() || undefined,
       an_tags: includeAnTags.length > 0 ? includeAnTags.join(",") : undefined,
       exclude_an_tags: excludeAnTags.length > 0 ? excludeAnTags.join(",") : undefined,
-      shift_ids: shiftFilterIds.length > 0 ? shiftFilterIds.join(",") : undefined,
-      work_area_ids:
-        workAreaFilterIds.length > 0 ? workAreaFilterIds.join(",") : undefined,
-      roster_panel_ids:
-        rosterPanelFilterIds.length > 0
-          ? rosterPanelFilterIds.join(",")
-          : undefined,
     };
   }
 
@@ -850,91 +780,6 @@ export function CampaignListBuilder({
             )}
           </div>
 
-          {/* Tier 3: Worker dimensions (shift / work area / roster panel) */}
-          {(shiftOptions.length > 0 ||
-            workAreaOptions.length > 0 ||
-            rosterPanelOptions.length > 0) && (
-            <div className="border rounded-md">
-              <button
-                type="button"
-                className="flex items-center gap-2 w-full px-3 py-2 text-sm font-medium hover:bg-muted/50 transition-colors"
-                onClick={() => setShowWorkerDimensions(!showWorkerDimensions)}
-              >
-                {showWorkerDimensions ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-                Worker dimensions (shift / work area / roster panel)
-                {(shiftFilterIds.length +
-                  workAreaFilterIds.length +
-                  rosterPanelFilterIds.length) > 0 && (
-                  <Badge variant="secondary" className="ml-auto text-xs">
-                    {shiftFilterIds.length +
-                      workAreaFilterIds.length +
-                      rosterPanelFilterIds.length}{" "}
-                    selected
-                  </Badge>
-                )}
-              </button>
-              {showWorkerDimensions && (
-                <div className="px-3 pb-3 pt-1 border-t grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {[
-                    {
-                      label: "Shift",
-                      options: shiftOptions,
-                      selected: shiftFilterIds,
-                      setSelected: setShiftFilterIds,
-                    },
-                    {
-                      label: "Work area",
-                      options: workAreaOptions,
-                      selected: workAreaFilterIds,
-                      setSelected: setWorkAreaFilterIds,
-                    },
-                    {
-                      label: "Roster panel",
-                      options: rosterPanelOptions,
-                      selected: rosterPanelFilterIds,
-                      setSelected: setRosterPanelFilterIds,
-                    },
-                  ].map((group) => (
-                    <div key={group.label} className="space-y-1.5">
-                      <Label className="text-xs font-medium">
-                        {group.label}
-                      </Label>
-                      {group.options.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">
-                          No options.
-                        </p>
-                      ) : (
-                        <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
-                          {group.options.map((opt) => (
-                            <label
-                              key={opt.id}
-                              className="flex items-center gap-2 text-xs cursor-pointer"
-                            >
-                              <Checkbox
-                                checked={group.selected.includes(opt.id)}
-                                onCheckedChange={(v) => {
-                                  group.setSelected((prev) =>
-                                    v === true
-                                      ? [...prev, opt.id]
-                                      : prev.filter((x) => x !== opt.id)
-                                  );
-                                }}
-                              />
-                              <span className="truncate">{opt.name}</span>
-                            </label>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -1016,11 +861,6 @@ export function CampaignListBuilder({
                           occupation: occupationSearch || undefined,
                           an_tags: includeAnTags.length > 0 ? includeAnTags : undefined,
                           exclude_an_tags: excludeAnTags.length > 0 ? excludeAnTags : undefined,
-                          shift_ids: shiftFilterIds.length > 0 ? shiftFilterIds : undefined,
-                          work_area_ids:
-                            workAreaFilterIds.length > 0 ? workAreaFilterIds : undefined,
-                          roster_panel_ids:
-                            rosterPanelFilterIds.length > 0 ? rosterPanelFilterIds : undefined,
                         },
                       }),
                       timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,

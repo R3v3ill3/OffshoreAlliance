@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -115,6 +116,9 @@ export function CreatePhoneCallOrchestrator({ campaignId, trigger, defaultOpen }
           <DialogTitle>
             {step === 'background_info' ? 'Phone Call Setup' : 'How do you want to start?'}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Set up a phone call action for this campaign.
+          </DialogDescription>
         </DialogHeader>
 
         {step === 'background_info' && (

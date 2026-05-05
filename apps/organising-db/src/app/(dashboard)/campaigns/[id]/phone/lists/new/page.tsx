@@ -105,6 +105,9 @@ export default function NewCallListPage() {
   const preselectedScriptId = searchParams.get('script_id')
     ? parseInt(searchParams.get('script_id')!, 10)
     : null
+  const actionId = searchParams.get('action_id')
+    ? parseInt(searchParams.get('action_id')!, 10)
+    : null
 
   const [step, setStep] = useState<WizardStep>('details')
   const [name, setName] = useState('')
@@ -334,6 +337,19 @@ export default function NewCallListPage() {
         toast.success(`Call list created with ${result.added} contacts`)
       } else {
         toast.success('Call list created (no contacts matched filters)')
+      }
+
+      // If this list was created via the phone call orchestrator, link it to the action
+      if (actionId) {
+        try {
+          const supabase = createClient()
+          await supabase
+            .from('phone_call_actions' as never)
+            .update({ list_ids: [list.list_id] } as never)
+            .eq('action_id', actionId)
+        } catch {
+          // Non-fatal: action linking failure should not block the user
+        }
       }
 
       setStep('confirm')
@@ -936,9 +952,26 @@ export default function NewCallListPage() {
                 </>
               )}
             </div>
-            <div className="flex gap-2">
+            {actionId && (
+              <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+                <strong>Next step:</strong> Create a phone script so callers have a guide to follow.
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {actionId && (
+                <Button
+                  onClick={() =>
+                    router.push(
+                      `/campaigns/phone-wizard?campaign_id=${campaignId}&action_id=${actionId}`
+                    )
+                  }
+                >
+                  <Phone className="h-4 w-4 mr-1" />
+                  Create Script Now
+                </Button>
+              )}
               {createdListId && (
-                <Button onClick={() => router.push(`/campaigns/${campaignId}/phone/call/${createdListId}`)}>
+                <Button variant={actionId ? 'outline' : 'default'} onClick={() => router.push(`/campaigns/${campaignId}/phone/call/${createdListId}`)}>
                   <Phone className="h-4 w-4 mr-1" />
                   Start Calling
                 </Button>

@@ -53,6 +53,7 @@ export function InlinePhoneOpsPanel({ campaignId }: InlinePhoneOpsPanelProps) {
   const { data: lists, isLoading: listsLoading } = useCallLists(id)
   const deleteList = useDeleteCallList(id)
   const [listPendingDelete, setListPendingDelete] = useState<CallListWithStats | null>(null)
+  const [openAccordion, setOpenAccordion] = useState<string>()
 
   return (
     <div className="space-y-6">
@@ -185,14 +186,21 @@ export function InlinePhoneOpsPanel({ campaignId }: InlinePhoneOpsPanelProps) {
       {/* Reporting — only shown when there is data */}
       <CallCampaignReporting campaignId={campaignId} />
 
-      {/* Phone Call Report — collapsible */}
-      <Accordion type="single" collapsible>
+      {/* Phone Call Report — collapsible; only mount when open to avoid chart rendering at 0 size */}
+      <Accordion
+        type="single"
+        collapsible
+        value={openAccordion}
+        onValueChange={setOpenAccordion}
+      >
         <AccordionItem value="call-report" className="border rounded-lg px-3">
           <AccordionTrigger className="text-sm font-semibold py-3 hover:no-underline">
             Phone Call Report
           </AccordionTrigger>
           <AccordionContent className="pb-4">
-            <CallActionReport campaignId={Number(id)} />
+            {openAccordion === 'call-report' && (
+              <CallActionReport campaignId={Number(id)} />
+            )}
           </AccordionContent>
         </AccordionItem>
       </Accordion>

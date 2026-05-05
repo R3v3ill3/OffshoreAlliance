@@ -315,7 +315,7 @@ export default function CampaignsPage() {
                   campaigns={campaigns}
                   selectedOrganiserId={selectedOrganiserId}
                   onOrganiserChange={setOrganiserFilterOverride}
-                  onRowClick={(id) => router.push(`/campaigns/${id}`)}
+                  onRowClick={(id) => router.push(`/campaigns/${id}?tab=workforce&sub=wall-chart`)}
                   currentUserOrganiser={
                     profile?.organiser_id != null
                       ? {
@@ -335,7 +335,7 @@ export default function CampaignsPage() {
               columns={columns}
               searchPlaceholder="Search campaigns…"
               searchKeys={["name"]}
-              onRowClick={(row) => router.push(`/campaigns/${row.campaign_id}`)}
+              onRowClick={(row) => router.push(`/campaigns/${row.campaign_id}?tab=workforce&sub=wall-chart`)}
               loading={isLoading}
             />
             </div>

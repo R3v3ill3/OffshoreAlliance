@@ -53,6 +53,7 @@ export function WorkerRelationshipsTab({
   const asLeader = useLeaderLinksAsLeader({ campaignId, workerId });
   const deleteLink = useDeleteLeaderLink();
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [ledByOpen, setLedByOpen] = useState(false);
   const [createTaskListOpen, setCreateTaskListOpen] = useState(false);
   const [reassessOpen, setReassessOpen] = useState(false);
   // Unit context keyed to the viewer — used to chip each link row with whether
@@ -90,9 +91,21 @@ export function WorkerRelationshipsTab({
   return (
     <div className="space-y-5 py-3">
       <section>
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-          Led by
-        </h4>
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Led by
+          </h4>
+          {campaignId && canWrite && (
+            <Button
+              type="button"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => setLedByOpen(true)}
+            >
+              Add leader…
+            </Button>
+          )}
+        </div>
         {asFollower.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : (asFollower.data ?? []).length === 0 ? (
@@ -208,6 +221,19 @@ export function WorkerRelationshipsTab({
             </div>
           )}
         </section>
+      )}
+
+      {campaignId && ledByOpen && (
+        <LinkToLeaderDialog
+          key={`led-by-${workerId}`}
+          open
+          onOpenChange={(v) => {
+            if (!v) setLedByOpen(false);
+          }}
+          campaignId={campaignId}
+          followerWorkerIds={[workerId]}
+          onCompleted={() => setLedByOpen(false)}
+        />
       )}
 
       {campaignId && bulkOpen && (

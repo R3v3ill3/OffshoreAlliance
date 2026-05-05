@@ -9,12 +9,18 @@ export type LeaderUnitContext = {
   leaderOuIds: Set<number>;
   /** OU display names keyed by id (matches the wall chart's fallback logic). */
   ouNames: Map<number, string>;
+  /** All OUs in the campaign, sorted by name — for populating filter dropdowns. */
+  allOuEntries: Array<{ id: number; name: string }>;
   /** Worker ids who share at least one OU with the leader. */
   candidatesInLeaderUnits: Set<number>;
   /** True if the worker shares at least one OU with the leader. */
   isSharedUnit: (workerId: number) => boolean;
   /** Names of the OUs this worker shares with the leader (may be empty). */
   sharedUnitNames: (workerId: number) => string[];
+  /** All OU ids this worker belongs to in this campaign (not limited to leader's OUs). */
+  allWorkerOuIds: (workerId: number) => number[];
+  /** All OU names this worker belongs to in this campaign. */
+  allWorkerOuNames: (workerId: number) => string[];
 };
 
 const EMPTY_SET = new Set<number>();
@@ -70,9 +76,12 @@ export function useLeaderUnitContext(args: {
     return {
       leaderOuIds: EMPTY_SET,
       ouNames: new Map(),
+      allOuEntries: [],
       candidatesInLeaderUnits: EMPTY_SET,
       isSharedUnit: () => false,
       sharedUnitNames: () => [],
+      allWorkerOuIds: () => [],
+      allWorkerOuNames: () => [],
     };
   }
 
@@ -117,5 +126,35 @@ export function useLeaderUnitContext(args: {
     return out;
   };
 
-  return { leaderOuIds, ouNames, candidatesInLeaderUnits, isSharedUnit, sharedUnitNames };
+  const allWorkerOuIds = (workerId: number): number[] => {
+    const units = workerOus.get(workerId);
+    if (!units) return [];
+    return [...units];
+  };
+
+  const allWorkerOuNames = (workerId: number): string[] => {
+    const units = workerOus.get(workerId);
+    if (!units) return [];
+    const out: string[] = [];
+    for (const id of units) {
+      const name = ouNames.get(id);
+      if (name) out.push(name);
+    }
+    return out.sort((a, b) => a.localeCompare(b));
+  };
+
+  const allOuEntries = ous
+    .map((ou) => ({ id: ou.ou_id, name: ouDisplayName(ou) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return {
+    leaderOuIds,
+    ouNames,
+    allOuEntries,
+    candidatesInLeaderUnits,
+    isSharedUnit,
+    sharedUnitNames,
+    allWorkerOuIds,
+    allWorkerOuNames,
+  };
 }

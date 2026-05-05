@@ -132,7 +132,7 @@ export function CampaignsMetricsTable({
                 <MetricCell>
                   <div className="flex flex-col gap-1">
                     <Link
-                      href={`/campaigns/${c.campaign_id}`}
+                      href={`/campaigns/${c.campaign_id}?tab=workforce&sub=wall-chart`}
                       className="font-medium hover:underline text-foreground leading-tight"
                       onClick={(e) => e.stopPropagation()}
                     >

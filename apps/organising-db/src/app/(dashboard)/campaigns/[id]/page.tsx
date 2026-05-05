@@ -675,7 +675,7 @@ export default function CampaignDetailPage() {
 
         <TabsContent value="workforce">
           <Tabs
-            value={activeSub ?? "universe"}
+            value={activeSub ?? "wall-chart"}
             onValueChange={handleSubChange}
           >
             <TabsList className="mb-4">

@@ -22,6 +22,7 @@ import { CampaignsByStageChart } from "@/components/dashboard/campaigns-by-stage
 import { CampaignProgressCard } from "@/components/dashboard/campaign-progress-card";
 import { CampaignEntitiesCard } from "@/components/dashboard/campaign-entities-card";
 import { CampaignActivitiesCard } from "@/components/dashboard/campaign-activities-card";
+import { PendingReviewWidget } from "@/components/dashboard/pending-review-widget";
 import type { PrincipalEmployerEbaSummary } from "@/types/database";
 import { useRouter } from "next/navigation";
 import { fetchWorkloadDashboard } from "@/lib/api/fetch-workload-dashboard";
@@ -516,8 +517,11 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Grid: Active Campaigns & Worksite Distribution */}
-      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
+      {/* Grid: Active Campaigns, Pending Review widget & Worksite Distribution */}
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
+        {/* Pending leader-form submissions (Phase 5) */}
+        <PendingReviewWidget />
+
         {/* Active Campaigns */}
         <Card>
           <CardHeader>

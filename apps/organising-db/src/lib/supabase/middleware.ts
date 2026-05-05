@@ -50,7 +50,10 @@ export async function updateSession(request: NextRequest) {
   if (
     !user &&
     !pathname.startsWith("/login") &&
-    !pathname.startsWith("/auth")
+    !pathname.startsWith("/auth") &&
+    // Leader-form pages are token-gated (URL token + password session cookie);
+    // they must remain accessible without a Supabase user session.
+    !pathname.startsWith("/leader/task")
   ) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";

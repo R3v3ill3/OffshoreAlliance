@@ -2899,6 +2899,7 @@ export type Database = {
         Row: {
           activity_id: number
           activity_kind: string
+          assessment_type: string
           campaign_id: number
           created_at: string
           description: string | null
@@ -2911,6 +2912,7 @@ export type Database = {
         Insert: {
           activity_id?: number
           activity_kind?: string
+          assessment_type?: string
           campaign_id: number
           created_at?: string
           description?: string | null
@@ -2923,6 +2925,7 @@ export type Database = {
         Update: {
           activity_id?: number
           activity_kind?: string
+          assessment_type?: string
           campaign_id?: number
           created_at?: string
           description?: string | null
@@ -3008,6 +3011,7 @@ export type Database = {
       campaign_activity_ratings: {
         Row: {
           activity_id: number
+          assessment_type_override: string | null
           binary_value: string | null
           event_id: number | null
           notes: string | null
@@ -3021,6 +3025,7 @@ export type Database = {
         }
         Insert: {
           activity_id: number
+          assessment_type_override?: string | null
           binary_value?: string | null
           event_id?: number | null
           notes?: string | null
@@ -3034,6 +3039,7 @@ export type Database = {
         }
         Update: {
           activity_id?: number
+          assessment_type_override?: string | null
           binary_value?: string | null
           event_id?: number | null
           notes?: string | null
@@ -3812,11 +3818,68 @@ export type Database = {
           },
         ]
       }
+      campaign_leader_form_events: {
+        Row: {
+          created_at: string
+          event_id: number
+          event_type: string
+          ip_hash: string | null
+          payload: Json | null
+          token_id: number
+          worker_id: number | null
+        }
+        Insert: {
+          created_at?: string
+          event_id?: number
+          event_type: string
+          ip_hash?: string | null
+          payload?: Json | null
+          token_id: number
+          worker_id?: number | null
+        }
+        Update: {
+          created_at?: string
+          event_id?: number
+          event_type?: string
+          ip_hash?: string | null
+          payload?: Json | null
+          token_id?: number
+          worker_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_leader_form_events_token_id_fkey"
+            columns: ["token_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_leader_tokens"
+            referencedColumns: ["token_id"]
+          },
+          {
+            foreignKeyName: "campaign_leader_form_events_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "campaign_leader_form_events_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers_view"
+            referencedColumns: ["worker_id"]
+          },
+        ]
+      }
       campaign_leader_tokens: {
         Row: {
           created_at: string
           expires_at: string | null
+          failed_attempts: number
+          issued_by: string | null
           last_used_at: string | null
+          locked_until: string | null
+          password_algo: string
+          password_hash: string
           revoked_at: string | null
           task_list_id: number
           token_hash: string
@@ -3825,7 +3888,12 @@ export type Database = {
         Insert: {
           created_at?: string
           expires_at?: string | null
+          failed_attempts?: number
+          issued_by?: string | null
           last_used_at?: string | null
+          locked_until?: string | null
+          password_algo?: string
+          password_hash: string
           revoked_at?: string | null
           task_list_id: number
           token_hash: string
@@ -3834,7 +3902,12 @@ export type Database = {
         Update: {
           created_at?: string
           expires_at?: string | null
+          failed_attempts?: number
+          issued_by?: string | null
           last_used_at?: string | null
+          locked_until?: string | null
+          password_algo?: string
+          password_hash?: string
           revoked_at?: string | null
           task_list_id?: number
           token_hash?: string
@@ -4104,7 +4177,6 @@ export type Database = {
           name: string
           ou_id: number
           ou_type: string
-          parent_ou_id: number | null
           source: string | null
           source_metadata: Json | null
           target_size: number | null
@@ -4121,7 +4193,6 @@ export type Database = {
           name: string
           ou_id?: number
           ou_type: string
-          parent_ou_id?: number | null
           source?: string | null
           source_metadata?: Json | null
           target_size?: number | null
@@ -4138,7 +4209,6 @@ export type Database = {
           name?: string
           ou_id?: number
           ou_type?: string
-          parent_ou_id?: number | null
           source?: string | null
           source_metadata?: Json | null
           target_size?: number | null
@@ -4506,6 +4576,12 @@ export type Database = {
           phone: string | null
           prospective_id: number
           rating: number | null
+          review_notes: string | null
+          review_status: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          source_leader_worker_id: number | null
+          source_token_id: number | null
           task_list_id: number | null
         }
         Insert: {
@@ -4519,6 +4595,12 @@ export type Database = {
           phone?: string | null
           prospective_id?: number
           rating?: number | null
+          review_notes?: string | null
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_leader_worker_id?: number | null
+          source_token_id?: number | null
           task_list_id?: number | null
         }
         Update: {
@@ -4532,6 +4614,12 @@ export type Database = {
           phone?: string | null
           prospective_id?: number
           rating?: number | null
+          review_notes?: string | null
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_leader_worker_id?: number | null
+          source_token_id?: number | null
           task_list_id?: number | null
         }
         Relationships: [
@@ -4618,6 +4706,27 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "workers_view"
             referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "campaign_prospective_workers_source_leader_worker_id_fkey"
+            columns: ["source_leader_worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "campaign_prospective_workers_source_leader_worker_id_fkey"
+            columns: ["source_leader_worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers_view"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "campaign_prospective_workers_source_token_id_fkey"
+            columns: ["source_token_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_leader_tokens"
+            referencedColumns: ["token_id"]
           },
           {
             foreignKeyName: "campaign_prospective_workers_task_list_id_fkey"
@@ -5279,6 +5388,8 @@ export type Database = {
           activity_id: number | null
           campaign_id: number
           created_at: string
+          draft_notes: string | null
+          include_membership_ask: boolean
           leader_organiser_id: number | null
           leader_worker_id: number | null
           status: string
@@ -5289,6 +5400,8 @@ export type Database = {
           activity_id?: number | null
           campaign_id: number
           created_at?: string
+          draft_notes?: string | null
+          include_membership_ask?: boolean
           leader_organiser_id?: number | null
           leader_worker_id?: number | null
           status?: string
@@ -5299,6 +5412,8 @@ export type Database = {
           activity_id?: number | null
           campaign_id?: number
           created_at?: string
+          draft_notes?: string | null
+          include_membership_ask?: boolean
           leader_organiser_id?: number | null
           leader_worker_id?: number | null
           status?: string
@@ -6368,6 +6483,7 @@ export type Database = {
       documents: {
         Row: {
           agreement_id: number | null
+          campaign_id: number | null
           created_at: string
           document_id: number
           document_type: string
@@ -6378,6 +6494,7 @@ export type Database = {
         }
         Insert: {
           agreement_id?: number | null
+          campaign_id?: number | null
           created_at?: string
           document_id?: number
           document_type?: string
@@ -6388,6 +6505,7 @@ export type Database = {
         }
         Update: {
           agreement_id?: number | null
+          campaign_id?: number | null
           created_at?: string
           document_id?: number
           document_type?: string
@@ -6417,6 +6535,76 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organising_universe_view"
             referencedColumns: ["agreement_id"]
+          },
+          {
+            foreignKeyName: "documents_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "documents_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "documents_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "documents_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_bargaining_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "documents_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "documents_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "documents_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "documents_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "documents_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "documents_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
           },
           {
             foreignKeyName: "documents_employer_id_fkey"
@@ -10989,105 +11177,6 @@ export type Database = {
           },
         ]
       }
-      worker_shift_options: {
-        Row: {
-          id: number
-          name: string
-          employer_id: number | null
-          worksite_id: number | null
-          is_active: boolean
-          sort_order: number
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: number
-          name: string
-          employer_id?: number | null
-          worksite_id?: number | null
-          is_active?: boolean
-          sort_order?: number
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: number
-          name?: string
-          employer_id?: number | null
-          worksite_id?: number | null
-          is_active?: boolean
-          sort_order?: number
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      worker_work_area_options: {
-        Row: {
-          id: number
-          name: string
-          employer_id: number | null
-          worksite_id: number | null
-          is_active: boolean
-          sort_order: number
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: number
-          name: string
-          employer_id?: number | null
-          worksite_id?: number | null
-          is_active?: boolean
-          sort_order?: number
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: number
-          name?: string
-          employer_id?: number | null
-          worksite_id?: number | null
-          is_active?: boolean
-          sort_order?: number
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      worker_roster_panel_options: {
-        Row: {
-          id: number
-          name: string
-          employer_id: number | null
-          worksite_id: number | null
-          is_active: boolean
-          sort_order: number
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: number
-          name: string
-          employer_id?: number | null
-          worksite_id?: number | null
-          is_active?: boolean
-          sort_order?: number
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: number
-          name?: string
-          employer_id?: number | null
-          worksite_id?: number | null
-          is_active?: boolean
-          sort_order?: number
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
       workers: {
         Row: {
           action_network_id: string | null
@@ -11118,14 +11207,11 @@ export type Database = {
           rejoin_date: string | null
           resignation_date: string | null
           resignation_reason: string | null
-          roster_panel_id: number | null
-          shift_id: number | null
           state: string | null
           suburb: string | null
           union_id: number | null
           union_membership_type_id: number | null
           updated_at: string
-          work_area_id: number | null
           worker_id: number
           worksite_id: number | null
         }
@@ -11158,14 +11244,11 @@ export type Database = {
           rejoin_date?: string | null
           resignation_date?: string | null
           resignation_reason?: string | null
-          roster_panel_id?: number | null
-          shift_id?: number | null
           state?: string | null
           suburb?: string | null
           union_id?: number | null
           union_membership_type_id?: number | null
           updated_at?: string
-          work_area_id?: number | null
           worker_id?: number
           worksite_id?: number | null
         }
@@ -11198,14 +11281,11 @@ export type Database = {
           rejoin_date?: string | null
           resignation_date?: string | null
           resignation_reason?: string | null
-          roster_panel_id?: number | null
-          shift_id?: number | null
           state?: string | null
           suburb?: string | null
           union_id?: number | null
           union_membership_type_id?: number | null
           updated_at?: string
-          work_area_id?: number | null
           worker_id?: number
           worksite_id?: number | null
         }
@@ -12959,7 +13039,6 @@ export type Database = {
           ou_id: number | null
           ou_name: string | null
           ou_type: string | null
-          parent_ou_id: number | null
           total_workers_estimated: number | null
         }
         Relationships: [
@@ -13034,18 +13113,6 @@ export type Database = {
             referencedColumns: ["campaign_id"]
           },
         ]
-      }
-      campaign_unit_hierarchy_summary: {
-        Row: {
-          aggregate_assigned_workers: number | null
-          campaign_id: number | null
-          child_count: number | null
-          child_ou_ids: number[] | null
-          parent_name: string | null
-          parent_ou_id: number | null
-          parent_ou_type: string | null
-        }
-        Relationships: []
       }
       campaign_worker_rating_summary: {
         Row: {
@@ -15254,15 +15321,6 @@ export type Database = {
         Args: { p_campaign_id: number; p_phase: string }
         Returns: undefined
       }
-      split_campaign_organising_unit: {
-        Args: {
-          p_parent_ou_id: number
-          p_sub_units: Json
-          p_assignments: Json
-          p_keep_in_parent?: boolean
-        }
-        Returns: { sub_index: number; ou_id: number }[]
-      }
       sync_agreement_expired_status_by_date: { Args: never; Returns: number }
       transition_to_post_settlement: {
         Args: { p_campaign_id: number }
@@ -15409,3 +15467,4 @@ export const Constants = {
     },
   },
 } as const
+

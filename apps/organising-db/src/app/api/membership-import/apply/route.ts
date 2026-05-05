@@ -7,12 +7,22 @@ interface ApplyRow extends ParsedMembershipRow {
   resolvedWorksiteId: number | null;
   resolvedOccupationId: number | null;
   resolvedMembershipTypeId: number | null;
+  /** Resolved option ids for the new typed worker dimensions, when the
+   *  mapping wizard chose to apply them. Null = leave the existing value
+   *  alone; a number = upsert that FK on the worker. */
+  resolvedShiftId?: number | null;
+  resolvedWorkAreaId?: number | null;
+  resolvedRosterPanelId?: number | null;
   dedupAction: "create" | "update" | "skip";
   existingWorkerId: number | null;
 }
 
 interface ApplyRequest {
   rows: ApplyRow[];
+  /** Optional flag from the wizard: when true, any unrecognised shift / work
+   *  area / roster panel string values are inserted into the corresponding
+   *  worker_*_options table on the fly and their new id is used. */
+  createMissingDimensionOptions?: boolean;
 }
 
 export async function POST(request: NextRequest) {
@@ -36,9 +46,107 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { rows } = body;
+  const { rows, createMissingDimensionOptions } = body;
   if (!rows || !Array.isArray(rows)) {
     return NextResponse.json({ success: false, error: "rows array is required" }, { status: 400 });
+  }
+
+  // ── Resolve shift / work_area / roster_panel raw values to option ids. ──
+  // We collect every unique non-null label across the batch, look them up in
+  // their respective options table, and (when allowed) insert any missing
+  // ones in a single upsert call so per-row apply stays cheap.
+  type OptionTable =
+    | "worker_shift_options"
+    | "worker_work_area_options"
+    | "worker_roster_panel_options";
+
+  async function buildOptionMap(
+    table: OptionTable,
+    rawValues: (string | null | undefined)[]
+  ): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    const distinct = Array.from(
+      new Set(
+        rawValues
+          .map((v) => (v ?? "").trim())
+          .filter((v) => v.length > 0)
+          .map((v) => v.toLowerCase())
+      )
+    );
+    if (distinct.length === 0) return out;
+
+    const { data: existing, error } = await supabase
+      .from(table)
+      .select("id, name")
+      .in(
+        "name",
+        distinct
+          .map((v) => v) // case-insensitive match handled below
+          .concat(distinct.map((v) => v.replace(/\b\w/g, (c) => c.toUpperCase())))
+      );
+    if (error) {
+      // If the table doesn't exist on this environment yet, fall back to an
+      // empty map and let row-level apply leave the FK null.
+      return out;
+    }
+    for (const r of existing ?? []) {
+      const key = String((r as { name: string }).name).trim().toLowerCase();
+      if (!out.has(key)) out.set(key, (r as { id: number }).id);
+    }
+
+    if (createMissingDimensionOptions) {
+      const missing = distinct.filter((v) => !out.has(v));
+      if (missing.length > 0) {
+        // Insert with the original casing where possible (using the first raw
+        // string we saw in the batch).
+        const firstByLower = new Map<string, string>();
+        for (const v of rawValues) {
+          const trimmed = (v ?? "").trim();
+          if (!trimmed) continue;
+          const k = trimmed.toLowerCase();
+          if (!firstByLower.has(k)) firstByLower.set(k, trimmed);
+        }
+        const { data: inserted, error: insErr } = await supabase
+          .from(table)
+          .insert(
+            missing.map((m) => ({
+              name: firstByLower.get(m) ?? m,
+              is_active: true,
+            }))
+          )
+          .select("id, name");
+        if (!insErr) {
+          for (const r of inserted ?? []) {
+            const key = String((r as { name: string }).name).trim().toLowerCase();
+            out.set(key, (r as { id: number }).id);
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  const shiftMap = await buildOptionMap(
+    "worker_shift_options",
+    rows.map((r) => r.shiftRaw)
+  );
+  const workAreaMap = await buildOptionMap(
+    "worker_work_area_options",
+    rows.map((r) => r.workAreaRaw)
+  );
+  const rosterPanelMap = await buildOptionMap(
+    "worker_roster_panel_options",
+    rows.map((r) => r.rosterPanelRaw)
+  );
+
+  function resolveOption(
+    map: Map<string, number>,
+    raw: string | null | undefined,
+    explicit: number | null | undefined
+  ): number | null {
+    if (typeof explicit === "number") return explicit;
+    if (!raw) return null;
+    return map.get(raw.trim().toLowerCase()) ?? null;
   }
 
   let created = 0;
@@ -77,6 +185,17 @@ export async function POST(request: NextRequest) {
         if (row.resolvedOccupationId) patch.canonical_occupation_id = row.resolvedOccupationId;
         if (row.email) patch.email = row.email;
         if (row.phone) patch.phone = row.phone;
+
+        const resolvedShift = resolveOption(shiftMap, row.shiftRaw, row.resolvedShiftId);
+        const resolvedWorkArea = resolveOption(workAreaMap, row.workAreaRaw, row.resolvedWorkAreaId);
+        const resolvedRosterPanel = resolveOption(
+          rosterPanelMap,
+          row.rosterPanelRaw,
+          row.resolvedRosterPanelId
+        );
+        if (resolvedShift != null) patch.shift_id = resolvedShift;
+        if (resolvedWorkArea != null) patch.work_area_id = resolvedWorkArea;
+        if (resolvedRosterPanel != null) patch.roster_panel_id = resolvedRosterPanel;
 
         if (importType === "new_joins") {
           if (row.joinDate) patch.join_date = row.joinDate;
@@ -165,6 +284,17 @@ export async function POST(request: NextRequest) {
           employer_id: row.resolvedEmployerId || null,
           worksite_id: row.resolvedWorksiteId || null,
           canonical_occupation_id: row.resolvedOccupationId || null,
+          shift_id:
+            resolveOption(shiftMap, row.shiftRaw, row.resolvedShiftId) ?? null,
+          work_area_id:
+            resolveOption(workAreaMap, row.workAreaRaw, row.resolvedWorkAreaId) ??
+            null,
+          roster_panel_id:
+            resolveOption(
+              rosterPanelMap,
+              row.rosterPanelRaw,
+              row.resolvedRosterPanelId
+            ) ?? null,
           updated_at: new Date().toISOString(),
         };
 

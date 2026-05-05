@@ -25,6 +25,16 @@ import {
 } from "@/components/ui/sheet";
 import { CampaignUnitCard } from "./wall-chart/campaign-unit-card";
 import { WorkerTile } from "./wall-chart/worker-tile";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
+import { MoreVertical, Layers } from "lucide-react";
+import { SplitUnitDialog, type SplitMember } from "./wall-chart/split-unit-dialog";
 import { WALL_CHART_GRID_CLASS } from "./wall-chart/rating-colour";
 import { humanizeOuType, ouDisplayName } from "./wall-chart/types";
 import { collapseActivityRatingsToWorkerMap } from "@/lib/utils/collapse-activity-ratings";
@@ -174,6 +184,7 @@ export function CampaignWallChart({
   const [bulkDialog, setBulkDialog] = useState<{ mode: MoveMode } | null>(null);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+  const [splitTargetOu, setSplitTargetOu] = useState<WallChartOU | null>(null);
   const moveWorkers = useMoveWorkersMutation(campaignId);
 
   // Esc clears selection.
@@ -501,6 +512,51 @@ export function CampaignWallChart({
     return map;
   }, [ous, ouAssign, compareWorkerIds]);
 
+  // ---- OU hierarchy (parent -> direct children) -----------------------------
+  const childrenByParent = useMemo(() => {
+    const m = new Map<number, WallChartOU[]>();
+    for (const ou of ous) {
+      const parentId = (ou as WallChartOU & { parent_ou_id?: number | null }).parent_ou_id;
+      if (parentId == null) continue;
+      const list = m.get(parentId) ?? [];
+      list.push(ou);
+      m.set(parentId, list);
+    }
+    return m;
+  }, [ous]);
+
+  /**
+   * For roll-up rendering: a worker assigned to BOTH a parent and one of its
+   * sub-units should be displayed under the sub-unit only (not also under the
+   * parent's own grid). Parent-level metrics still see them via metricsByOu
+   * (which uses workersByOu including parent rows). The display dedupe only
+   * affects the worker tile grid inside the parent card.
+   */
+  const parentExclusiveWorkersByOu = useMemo(() => {
+    const m = new Map<number, number[]>();
+    for (const ou of ous) {
+      const childList = childrenByParent.get(ou.ou_id);
+      if (!childList || childList.length === 0) continue;
+      const childMembers = new Set<number>();
+      for (const child of childList) {
+        for (const wid of workersByOu.get(child.ou_id) ?? []) childMembers.add(wid);
+      }
+      const filtered = (workersByOu.get(ou.ou_id) ?? []).filter(
+        (id) => !childMembers.has(id)
+      );
+      m.set(ou.ou_id, filtered);
+    }
+    return m;
+  }, [ous, childrenByParent, workersByOu]);
+
+  /** Resolve the visible worker list inside a card, applying parent-dedupe when applicable. */
+  const visibleWorkersForOu = useCallback(
+    (ouId: number): number[] => {
+      return parentExclusiveWorkersByOu.get(ouId) ?? workersByOu.get(ouId) ?? [];
+    },
+    [parentExclusiveWorkersByOu, workersByOu]
+  );
+
   const selectedRow = useMemo(() => {
     if (selectedWorkerId == null) return undefined;
     return memberRows.find((r) => r.worker_id === selectedWorkerId);
@@ -731,6 +787,71 @@ export function CampaignWallChart({
 
   const copyWorker = copyWorkerId != null ? workerById.get(copyWorkerId) : undefined;
   const copyWorkerOuIds = copyWorkerId != null ? unitsByWorker.get(copyWorkerId) ?? [] : [];
+
+  // ── Split: members for the targeted OU ─────────────────────────────────
+  // Lazy-loaded only when a split dialog is open; pulls dimension columns +
+  // tag names so the dialog can group on them.
+  const splitMemberWorkerIds = useMemo(() => {
+    if (!splitTargetOu) return [] as number[];
+    return workersByOu.get(splitTargetOu.ou_id) ?? [];
+  }, [splitTargetOu, workersByOu]);
+
+  const { data: splitMembers = [] } = useQuery({
+    queryKey: [
+      "split-unit-members",
+      splitTargetOu?.ou_id ?? "none",
+      splitMemberWorkerIds.join(","),
+    ],
+    enabled: !!splitTargetOu && splitMemberWorkerIds.length > 0,
+    queryFn: async (): Promise<SplitMember[]> => {
+      if (splitMemberWorkerIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from("workers")
+        .select(
+          `worker_id, first_name, last_name,
+           shift_id, work_area_id, roster_panel_id,
+           canonical_occupation_id,
+           canonical_occupation:occupations!workers_canonical_occupation_id_fkey(canonical_name)`
+        )
+        .in("worker_id", splitMemberWorkerIds);
+      if (error) throw error;
+      const { data: tagRows, error: tagErr } = await supabase
+        .from("worker_tags")
+        .select("worker_id, tag:tags(tag_name)")
+        .in("worker_id", splitMemberWorkerIds);
+      if (tagErr) throw tagErr;
+      const tagsByWorker = new Map<number, string[]>();
+      for (const row of (tagRows ?? []) as Array<{
+        worker_id: number;
+        tag: { tag_name?: string } | { tag_name?: string }[] | null;
+      }>) {
+        const t = Array.isArray(row.tag) ? row.tag[0] : row.tag;
+        const name = t?.tag_name?.trim().toLowerCase();
+        if (!name) continue;
+        const list = tagsByWorker.get(row.worker_id) ?? [];
+        list.push(name);
+        tagsByWorker.set(row.worker_id, list);
+      }
+      return (data ?? []).map((row) => {
+        const r = row as Record<string, unknown>;
+        const occRel = r.canonical_occupation;
+        const occ = (Array.isArray(occRel) ? occRel[0] : occRel) as
+          | { canonical_name: string }
+          | null;
+        return {
+          worker_id: r.worker_id as number,
+          first_name: r.first_name as string,
+          last_name: r.last_name as string,
+          canonical_occupation_id: (r.canonical_occupation_id as number | null) ?? null,
+          canonical_occupation_name: occ?.canonical_name ?? null,
+          shift_id: (r.shift_id as number | null) ?? null,
+          work_area_id: (r.work_area_id as number | null) ?? null,
+          roster_panel_id: (r.roster_panel_id as number | null) ?? null,
+          tag_names: tagsByWorker.get(r.worker_id as number) ?? [],
+        };
+      });
+    },
+  });
 
   const handleWorkerDrop = useCallback(
     ({
@@ -1082,11 +1203,16 @@ export function CampaignWallChart({
           // Group visible units by ou_type so each "dimension" is visually
           // distinct. This also reinforces the cross-dimension DnD restriction:
           // workers can only be moved within a group.
-          const distinctTypes = [...new Set(visibleOus.map((o) => o.ou_type))];
+          // Top-level OUs only — sub-units render nested inside their parent's card.
+          const topLevelOus = visibleOus.filter(
+            (o) =>
+              (o as WallChartOU & { parent_ou_id?: number | null }).parent_ou_id == null
+          );
+          const distinctTypes = [...new Set(topLevelOus.map((o) => o.ou_type))];
           const showGroupHeaders = distinctTypes.length > 1;
 
           return distinctTypes.map((ouType) => {
-            const groupOus = visibleOus.filter((o) => o.ou_type === ouType);
+            const groupOus = topLevelOus.filter((o) => o.ou_type === ouType);
             return (
               <div key={ouType} className="space-y-4">
                 {showGroupHeaders && (
@@ -1101,7 +1227,7 @@ export function CampaignWallChart({
                   </div>
                 )}
                 {groupOus.map((ou) => {
-                  const ids = workersByOu.get(ou.ou_id) ?? [];
+                  const ids = visibleWorkersForOu(ou.ou_id);
                   const est = ou.total_workers_estimated ?? 0;
                   const filter = getFilter(ou.ou_id);
                   const fa = scopeAssessmentFilterAndSort(
@@ -1157,6 +1283,15 @@ export function CampaignWallChart({
                       assessmentLabel={assessmentLabelForCard}
                       onWorkerDrop={handleWorkerDrop}
                       dropDisabled={!canWrite}
+                      headerBadges={
+                        (childrenByParent.get(ou.ou_id)?.length ?? 0) > 0 ? (
+                          <Badge variant="secondary" className="text-[10px] gap-1">
+                            <Layers className="h-3 w-3" />
+                            {childrenByParent.get(ou.ou_id)!.length} sub-unit
+                            {childrenByParent.get(ou.ou_id)!.length === 1 ? "" : "s"}
+                          </Badge>
+                        ) : null
+                      }
                       summary={
                         unitMetrics && ids.length > 0 ? (
                           <UnitSummaryMetrics
@@ -1231,7 +1366,109 @@ export function CampaignWallChart({
                               setFilterByScope(next);
                             }}
                           />
+                          {canWrite && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7 print:hidden"
+                                  aria-label="Unit actions"
+                                  title="More actions"
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-56">
+                                <DropdownMenuItem
+                                  onClick={() => setSplitTargetOu(ou)}
+                                  disabled={(workersByOu.get(ou.ou_id) ?? []).length === 0}
+                                >
+                                  <Layers className="h-4 w-4 mr-2" /> Split into sub-units
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setAddWorkerContextOu(ou);
+                                    setAddWorkerFormKey((k) => k + 1);
+                                    setAddWorkerOpen(true);
+                                  }}
+                                >
+                                  Add worker to unit
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
                         </div>
+                      }
+                      subUnits={
+                        (childrenByParent.get(ou.ou_id)?.length ?? 0) > 0 ? (
+                          <div className="space-y-3">
+                            {(childrenByParent.get(ou.ou_id) ?? []).map((child) => {
+                              const childIds = workersByOu.get(child.ou_id) ?? [];
+                              const childFilter = getFilter(child.ou_id);
+                              const childFa = scopeAssessmentFilterAndSort(
+                                child.ou_id,
+                                campaignAssessmentDefault,
+                                unitAssessmentOverride,
+                                activityRatingsByActivityId
+                              );
+                              const childFiltered = applyFilters(
+                                childIds,
+                                workerById,
+                                ratingByWorker,
+                                childFilter,
+                                childFa.activityRatings,
+                                childFa.ratingCtx
+                              );
+                              const childSorted = applySort(
+                                childFiltered,
+                                workerById,
+                                ratingByWorker,
+                                childFilter.sort,
+                                childFa.sortAssessment ? { assessmentSort: childFa.sortAssessment } : undefined
+                              );
+                              const childMetrics = metricsByOu.get(child.ou_id);
+                              const childEffScope = effectiveAssessmentForScope(
+                                child.ou_id,
+                                campaignAssessmentDefault,
+                                unitAssessmentOverride
+                              );
+                              const childAssessmentTitle =
+                                childEffScope.kind === "assessment" ? childEffScope.title : null;
+                              const childAssessmentLabel =
+                                childEffScope.kind === "assessment" ? childEffScope.title : "Cumulative";
+                              return (
+                                <div key={child.ou_id} data-ou-id={child.ou_id}>
+                                  <CampaignUnitCard
+                                    ou={child}
+                                    workerCount={childSorted.length}
+                                    estimate={child.total_workers_estimated ?? 0}
+                                    placeholders={0}
+                                    assessmentLabel={childAssessmentLabel}
+                                    onWorkerDrop={handleWorkerDrop}
+                                    dropDisabled={!canWrite}
+                                    nested
+                                    summary={
+                                      childMetrics && childIds.length > 0 ? (
+                                        <UnitSummaryMetrics
+                                          metrics={childMetrics}
+                                          mode={displayMode}
+                                          compact
+                                          assessmentTitle={childAssessmentTitle}
+                                          participationLabel={participationSourceLabel(participationSource)}
+                                        />
+                                      ) : null
+                                    }
+                                  >
+                                    {childSorted.map((wid) => renderTile(wid, child.ou_id, child.ou_id))}
+                                  </CampaignUnitCard>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : null
                       }
                     >
                       {sorted.map((wid) => renderTile(wid, ou.ou_id, ou.ou_id))}
@@ -1417,6 +1654,18 @@ export function CampaignWallChart({
         organisingUnits={ous}
         formResetKey={addWorkerFormKey}
       />
+
+      {splitTargetOu && (
+        <SplitUnitDialog
+          open
+          onOpenChange={(v) => {
+            if (!v) setSplitTargetOu(null);
+          }}
+          campaignId={campaignId}
+          parent={splitTargetOu}
+          members={splitMembers}
+        />
+      )}
     </Card>
   );
 }

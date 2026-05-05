@@ -255,7 +255,9 @@ export function CampaignWizard() {
           .order("sort_order", { ascending: true }),
         supabase
           .from("campaign_organising_units")
-          .select("ou_id, ou_type, name, total_workers_estimated, unit_basis")
+          .select(
+            "ou_id, ou_type, name, total_workers_estimated, unit_basis, parent_ou_id"
+          )
           .eq("campaign_id", cid)
           .order("display_order", { ascending: true }),
         supabase
@@ -319,6 +321,7 @@ export function CampaignWizard() {
           name: string;
           total_workers_estimated: number | null;
           unit_basis: CampaignOuUnitBasis | null;
+          parent_ou_id: number | null;
         }>).map((r) => ({
           draft_id: `srv_${r.ou_id}`,
           ou_id: r.ou_id,
@@ -326,6 +329,9 @@ export function CampaignWizard() {
           name: r.name,
           total_workers_estimated: r.total_workers_estimated,
           unit_basis: r.unit_basis,
+          parent_ou_id: r.parent_ou_id ?? null,
+          parent_draft_id:
+            r.parent_ou_id != null ? `srv_${r.parent_ou_id}` : null,
         })) satisfies CampaignUnitDraft[],
         workerUnitAllocations: (() => {
           const out: WorkerUnitAllocation = {};
@@ -775,9 +781,18 @@ export function CampaignWizard() {
           if (error) throw error;
         }
 
-        // Update existing units that are still present.
+        // Update existing units that are still present. Resolve parent_ou_id
+        // through the local draft graph when a sub-unit's parent was created
+        // in this same wizard session.
+        const draftIdToOuId = new Map<string, number>();
+        for (const u of units) {
+          if (u.ou_id != null) draftIdToOuId.set(u.draft_id, u.ou_id);
+        }
         for (const u of units) {
           if (u.ou_id == null) continue;
+          const resolvedParent =
+            u.parent_ou_id ??
+            (u.parent_draft_id ? (draftIdToOuId.get(u.parent_draft_id) ?? null) : null);
           const { error } = await supabase
             .from("campaign_organising_units")
             .update({
@@ -785,43 +800,100 @@ export function CampaignWizard() {
               name: u.name,
               total_workers_estimated: u.total_workers_estimated,
               unit_basis: u.unit_basis,
+              parent_ou_id: resolvedParent,
             })
             .eq("ou_id", u.ou_id);
           if (error) throw error;
         }
 
-        // Insert brand-new units, then map draft_id → server ou_id.
-        const drafts = units.filter((u) => u.ou_id == null);
-        if (drafts.length > 0) {
+        // Insert brand-new units in two passes so parents exist before any
+        // sub-unit row references them. Pass 1 = top-level drafts (no parent).
+        // Pass 2 = sub-unit drafts (have parent_draft_id), with their
+        // parent_ou_id resolved from the draft_id → ou_id map.
+        const allDrafts = units.filter((u) => u.ou_id == null);
+        const parentDrafts = allDrafts.filter((u) => !u.parent_draft_id);
+        const childDrafts = allDrafts.filter((u) => !!u.parent_draft_id);
+
+        if (parentDrafts.length > 0) {
           const { data: inserted, error } = await supabase
             .from("campaign_organising_units")
             .insert(
-              drafts.map((u, i) => ({
+              parentDrafts.map((u, i) => ({
                 campaign_id: campaignId,
                 ou_type: u.ou_type,
                 name: u.name,
                 total_workers_estimated: u.total_workers_estimated,
                 unit_basis: u.unit_basis,
                 display_order: (existingIds.size + i) as number,
+                parent_ou_id: null,
               }))
             )
             .select("ou_id");
           if (error) throw error;
-          // Splice the returned ou_ids back into local state by index.
           const insertedIds = (inserted ?? []).map((r) => r.ou_id as number);
-          const draftIdToOuId = new Map<string, number>();
-          drafts.forEach((d, i) => {
+          parentDrafts.forEach((d, i) => {
             const id = insertedIds[i];
             if (id != null) draftIdToOuId.set(d.draft_id, id);
           });
-          // Build the updated array but do NOT call setUnits here — defer to
-          // onSuccess so this update is batched with setStep(6).
-          updatedUnits = units.map((u) =>
-            u.ou_id == null && draftIdToOuId.has(u.draft_id)
-              ? { ...u, ou_id: draftIdToOuId.get(u.draft_id)! }
-              : u
-          );
         }
+
+        if (childDrafts.length > 0) {
+          // Resolve each child's parent_ou_id from the map (or its existing
+          // parent_ou_id if the parent was already saved previously).
+          const childRows = childDrafts.map((u, i) => {
+            const resolvedParent =
+              (u.parent_draft_id && draftIdToOuId.get(u.parent_draft_id)) ??
+              u.parent_ou_id ??
+              null;
+            return {
+              campaign_id: campaignId,
+              ou_type: u.ou_type,
+              name: u.name,
+              total_workers_estimated: u.total_workers_estimated,
+              unit_basis: u.unit_basis,
+              display_order: (existingIds.size + parentDrafts.length + i) as number,
+              parent_ou_id: resolvedParent,
+            };
+          });
+          // Drop any child whose parent could not be resolved (shouldn't
+          // happen in practice — guards against a corrupted draft graph).
+          const safeChildRows = childRows.filter((r) => r.parent_ou_id != null);
+          if (safeChildRows.length > 0) {
+            const { data: insertedChildren, error } = await supabase
+              .from("campaign_organising_units")
+              .insert(safeChildRows)
+              .select("ou_id");
+            if (error) throw error;
+            const insertedChildIds = (insertedChildren ?? []).map(
+              (r) => r.ou_id as number
+            );
+            // Map back only the children we actually inserted, in order.
+            let cursor = 0;
+            childDrafts.forEach((d) => {
+              const resolvedParent =
+                (d.parent_draft_id && draftIdToOuId.get(d.parent_draft_id)) ??
+                d.parent_ou_id ??
+                null;
+              if (resolvedParent == null) return;
+              const id = insertedChildIds[cursor++];
+              if (id != null) draftIdToOuId.set(d.draft_id, id);
+            });
+          }
+        }
+
+        // Build the updated array (resolving both ou_id and parent_ou_id
+        // for every draft). Defer setUnits to onSuccess so it's batched
+        // with setStep(6).
+        updatedUnits = units.map((u) => {
+          const next = { ...u };
+          if (next.ou_id == null && draftIdToOuId.has(next.draft_id)) {
+            next.ou_id = draftIdToOuId.get(next.draft_id)!;
+          }
+          if (next.parent_draft_id && next.parent_ou_id == null) {
+            next.parent_ou_id = draftIdToOuId.get(next.parent_draft_id) ?? null;
+          }
+          return next;
+        });
       });
 
       // Auto-allocate workers to units that were created from the campaign

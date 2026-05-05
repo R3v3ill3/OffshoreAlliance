@@ -127,6 +127,9 @@ type WorkerEditForm = {
   occupation: string;
   classification: string;
   canonical_occupation_id: number | null;
+  shift_id: number | null;
+  work_area_id: number | null;
+  roster_panel_id: number | null;
   employer_id: number | null;
   worksite_id: number | null;
   project_id: number | null;
@@ -367,6 +370,10 @@ function workerToEditForm(
     occupation: w.occupation ?? "",
     classification: w.classification ?? "",
     canonical_occupation_id: w.canonical_occupation_id,
+    shift_id: (w as { shift_id?: number | null }).shift_id ?? null,
+    work_area_id: (w as { work_area_id?: number | null }).work_area_id ?? null,
+    roster_panel_id:
+      (w as { roster_panel_id?: number | null }).roster_panel_id ?? null,
     employer_id: w.employer_id,
     worksite_id: w.worksite_id,
     project_id: w.project_id,
@@ -547,6 +554,51 @@ export default function WorkerDetailPage() {
         .order("union_name");
       if (error) throw error;
       return data as { union_id: number; union_code: string; union_name: string }[];
+    },
+    enabled: !!user && editing,
+  });
+
+  const { data: shiftOptions = [] } = useQuery({
+    queryKey: ["worker-shift-options"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worker_shift_options")
+        .select("id, name")
+        .eq("is_active", true)
+        .order("sort_order")
+        .order("name");
+      if (error) throw error;
+      return (data ?? []) as { id: number; name: string }[];
+    },
+    enabled: !!user && editing,
+  });
+
+  const { data: workAreaOptions = [] } = useQuery({
+    queryKey: ["worker-work-area-options"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worker_work_area_options")
+        .select("id, name")
+        .eq("is_active", true)
+        .order("sort_order")
+        .order("name");
+      if (error) throw error;
+      return (data ?? []) as { id: number; name: string }[];
+    },
+    enabled: !!user && editing,
+  });
+
+  const { data: rosterPanelOptions = [] } = useQuery({
+    queryKey: ["worker-roster-panel-options"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worker_roster_panel_options")
+        .select("id, name")
+        .eq("is_active", true)
+        .order("sort_order")
+        .order("name");
+      if (error) throw error;
+      return (data ?? []) as { id: number; name: string }[];
     },
     enabled: !!user && editing,
   });
@@ -825,6 +877,9 @@ export default function WorkerDetailPage() {
       occupation: emptyToNull(editForm.occupation),
       classification: emptyToNull(editForm.classification),
       canonical_occupation_id: editForm.canonical_occupation_id,
+      shift_id: editForm.shift_id,
+      work_area_id: editForm.work_area_id,
+      roster_panel_id: editForm.roster_panel_id,
       employer_id: editForm.employer_id,
       worksite_id: editForm.worksite_id,
       project_id: editForm.project_id,
@@ -1300,6 +1355,94 @@ export default function WorkerDetailPage() {
                       value={f.classification}
                       onChange={(e) => patchForm({ classification: e.target.value })}
                     />
+                  </div>
+
+                  {/* Worker dimensions: typed shift / work area / roster
+                      panel labels. Drive the campaign sub-unit splits and
+                      the list-builder filters; managed under
+                      Administration → Worker dimensions. */}
+                  <div className="grid gap-3 sm:grid-cols-3 pt-2 border-t">
+                    <div className="space-y-1.5">
+                      <Label>Shift</Label>
+                      <Select
+                        value={
+                          f.shift_id != null ? String(f.shift_id) : NONE_VALUE
+                        }
+                        onValueChange={(v) =>
+                          patchForm({
+                            shift_id: v === NONE_VALUE ? null : Number(v),
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="—" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE_VALUE}>—</SelectItem>
+                          {shiftOptions.map((o) => (
+                            <SelectItem key={o.id} value={String(o.id)}>
+                              {o.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Work area</Label>
+                      <Select
+                        value={
+                          f.work_area_id != null
+                            ? String(f.work_area_id)
+                            : NONE_VALUE
+                        }
+                        onValueChange={(v) =>
+                          patchForm({
+                            work_area_id:
+                              v === NONE_VALUE ? null : Number(v),
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="—" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE_VALUE}>—</SelectItem>
+                          {workAreaOptions.map((o) => (
+                            <SelectItem key={o.id} value={String(o.id)}>
+                              {o.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Roster panel</Label>
+                      <Select
+                        value={
+                          f.roster_panel_id != null
+                            ? String(f.roster_panel_id)
+                            : NONE_VALUE
+                        }
+                        onValueChange={(v) =>
+                          patchForm({
+                            roster_panel_id:
+                              v === NONE_VALUE ? null : Number(v),
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="—" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE_VALUE}>—</SelectItem>
+                          {rosterPanelOptions.map((o) => (
+                            <SelectItem key={o.id} value={String(o.id)}>
+                              {o.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </CardContent>
               </Card>

@@ -40,6 +40,15 @@ export type CampaignUnitCardProps = {
   }) => void;
   /** Disable drop (e.g. read-only viewer). */
   dropDisabled?: boolean;
+  /**
+   * Optional sub-unit content rendered below the worker grid. Used to show
+   * nested sub-unit cards under a parent OU (one level of nesting).
+   */
+  subUnits?: ReactNode;
+  /** Optional chips/badges shown next to the unit name (e.g. sub-unit count). */
+  headerBadges?: ReactNode;
+  /** Visual nesting indent — used when this card is itself a sub-unit. */
+  nested?: boolean;
 };
 
 const PLACEHOLDER_CAP = 24;
@@ -56,6 +65,9 @@ export function CampaignUnitCard({
   assessmentLabel,
   onWorkerDrop,
   dropDisabled,
+  subUnits,
+  headerBadges,
+  nested,
 }: CampaignUnitCardProps) {
   const title = ou ? ouDisplayName(ou) : (fallbackTitle ?? "Unit");
   const typeChip = ou?.ou_type ? humanizeOuType(ou.ou_type) : null;
@@ -98,7 +110,7 @@ export function CampaignUnitCard({
     <Card
       className={`print:break-inside-avoid print:shadow-none transition-[box-shadow,ring] ${
         isDragOver ? "ring-2 ring-primary" : ""
-      }`}
+      } ${nested ? "border-l-4 border-l-primary/40" : ""}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -113,6 +125,7 @@ export function CampaignUnitCard({
                   {typeChip}
                 </span>
               )}
+              {headerBadges}
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
               {workerCount} named{est > 0 && ` / ${est} est.`}
@@ -142,6 +155,14 @@ export function CampaignUnitCard({
           <p className="text-xs text-muted-foreground mt-2">
             +{cappedPlaceholders - PLACEHOLDER_CAP} more placeholder cells
           </p>
+        )}
+        {subUnits && (
+          <div className="mt-3 ml-3 pl-3 border-l-2 border-muted space-y-3">
+            <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+              Sub-units
+            </div>
+            {subUnits}
+          </div>
         )}
       </CardContent>
     </Card>

@@ -64,6 +64,7 @@ import { EmployerWizard } from "@/components/administration/employer-wizard";
 import { ReferenceDataWizard } from "@/components/import/reference-data-wizard";
 import { MembershipImportWizard } from "@/components/import/membership-import-wizard";
 import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
+import { WorkerDimensionsTab } from "@/components/administration/worker-dimensions-tab";
 
 const WorkloadTab = dynamic(() => import("@/components/administration/workload-tab").then((m) => ({ default: m.WorkloadTab })), { ssr: false });
 const OrganiserPatchesTab = dynamic(() => import("@/components/administration/organiser-patches-tab").then((m) => ({ default: m.OrganiserPatchesTab })), { ssr: false });
@@ -1919,6 +1920,7 @@ export default function AdministrationPage() {
               <TabsTrigger value="users">Users</TabsTrigger>
               <TabsTrigger value="roles">Roles &amp; membership</TabsTrigger>
               <TabsTrigger value="sectors">Sectors</TabsTrigger>
+              <TabsTrigger value="worker_dimensions">Worker dimensions</TabsTrigger>
               <TabsTrigger value="workload">Workload</TabsTrigger>
               <TabsTrigger value="patches">Organiser Patches</TabsTrigger>
             </TabsList>
@@ -1934,6 +1936,9 @@ export default function AdministrationPage() {
             </TabsContent>
             <TabsContent value="sectors">
               <SectorsTab />
+            </TabsContent>
+            <TabsContent value="worker_dimensions">
+              <WorkerDimensionsTab />
             </TabsContent>
             <TabsContent value="workload">
               <WorkloadTab />

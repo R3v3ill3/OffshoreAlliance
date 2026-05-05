@@ -35,6 +35,15 @@ export async function GET(
     const multiUnitOnly = searchParams.get("multi_unit_only") === "true";
     const anTags = searchParams.get("an_tags")?.split(",").filter(Boolean) ?? [];
     const excludeAnTags = searchParams.get("exclude_an_tags")?.split(",").filter(Boolean) ?? [];
+    const shiftIds = (searchParams.get("shift_ids")?.split(",").filter(Boolean) ?? [])
+      .map((v) => Number(v))
+      .filter((n) => Number.isFinite(n));
+    const workAreaIds = (searchParams.get("work_area_ids")?.split(",").filter(Boolean) ?? [])
+      .map((v) => Number(v))
+      .filter((n) => Number.isFinite(n));
+    const rosterPanelIds = (searchParams.get("roster_panel_ids")?.split(",").filter(Boolean) ?? [])
+      .map((v) => Number(v))
+      .filter((n) => Number.isFinite(n));
 
     // Sorting params
     type SortKey =
@@ -77,6 +86,9 @@ export async function GET(
           occupation,
           employer_id,
           worksite_id,
+          shift_id,
+          work_area_id,
+          roster_panel_id,
           member_role_type_id,
           is_bargaining_rep,
           action_network_id,
@@ -103,6 +115,9 @@ export async function GET(
         occupation: string | null;
         employer_id: number | null;
         worksite_id: number | null;
+        shift_id: number | null;
+        work_area_id: number | null;
+        roster_panel_id: number | null;
         member_role_type_id: number | null;
         is_bargaining_rep: boolean | null;
         action_network_id: string | null;
@@ -147,6 +162,9 @@ export async function GET(
         action_network_id: worker.action_network_id,
         employer_id: worker.employer_id,
         worksite_id: worker.worksite_id,
+        shift_id: worker.shift_id,
+        work_area_id: worker.work_area_id,
+        roster_panel_id: worker.roster_panel_id,
         unit_count: 0,
         is_multi_unit_member: false,
       };
@@ -168,6 +186,23 @@ export async function GET(
     if (worksiteId && worksiteId !== "__all__") {
       const wid = Number(worksiteId);
       results = results.filter((w) => w.worksite_id === wid);
+    }
+
+    if (shiftIds.length > 0) {
+      const set = new Set(shiftIds);
+      results = results.filter((w) => w.shift_id != null && set.has(w.shift_id));
+    }
+    if (workAreaIds.length > 0) {
+      const set = new Set(workAreaIds);
+      results = results.filter(
+        (w) => w.work_area_id != null && set.has(w.work_area_id)
+      );
+    }
+    if (rosterPanelIds.length > 0) {
+      const set = new Set(rosterPanelIds);
+      results = results.filter(
+        (w) => w.roster_panel_id != null && set.has(w.roster_panel_id)
+      );
     }
 
     if (occupation) {

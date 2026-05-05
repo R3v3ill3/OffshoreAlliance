@@ -68,6 +68,12 @@ export interface ParsedMembershipRow {
   resignationReason: string | null;
   /** Raw membership type text (recommencing only) */
   membershipTypeRaw: string | null;
+  /** Raw shift label from file (any import type), if a matching column was found */
+  shiftRaw: string | null;
+  /** Raw work area label from file (any import type), if a matching column was found */
+  workAreaRaw: string | null;
+  /** Raw roster panel label from file (any import type), if a matching column was found */
+  rosterPanelRaw: string | null;
   /** Any parse warnings */
   warnings: string[];
 }
@@ -158,6 +164,24 @@ function buildRow(
   const emailRaw = str(raw["email"] ?? raw["email address"]) || null;
   const phoneRaw = str(raw["phone"] ?? raw["mobile"] ?? raw["mobile number"]) || null;
 
+  // Optional new typed dimensions. We try a handful of likely header names so
+  // that imports from different operators (mining vs. construction vs. catering)
+  // all land on the same workers.shift_id / work_area_id / roster_panel_id.
+  const shiftRaw =
+    str(raw["shift"] ?? raw["shift name"] ?? raw["shift pattern"]) || null;
+  const workAreaRaw =
+    str(
+      raw["work area"] ?? raw["workarea"] ?? raw["area"] ?? raw["department"]
+    ) || null;
+  const rosterPanelRaw =
+    str(
+      raw["roster panel"] ??
+        raw["rosterpanel"] ??
+        raw["panel"] ??
+        raw["roster"] ??
+        raw["crew"]
+    ) || null;
+
   let joinDate: string | null = null;
   let rejoinDate: string | null = null;
   let resignationDate: string | null = null;
@@ -193,6 +217,9 @@ function buildRow(
     resignationDate,
     resignationReason,
     membershipTypeRaw,
+    shiftRaw,
+    workAreaRaw,
+    rosterPanelRaw,
     warnings,
   };
 }

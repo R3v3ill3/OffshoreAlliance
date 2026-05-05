@@ -14,6 +14,18 @@ export type MoveWorkerVars = {
   /** Target OU; null = Unassigned (remove from all units in this campaign). */
   toOuId: number | null;
   mode: "move" | "copy";
+  /**
+   * When true (default), moving a worker INTO a sub-unit also keeps any
+   * existing assignment in the sub-unit's parent OU intact, AND inserts a
+   * parent-OU assignment if missing. When moving between siblings of the
+   * same parent, the parent assignment is preserved unconditionally.
+   *
+   * When false, the move strips the worker from the source OU only, with
+   * no special handling for parent/child relationships.
+   *
+   * Has no effect when toOuId is null or the target is a top-level OU.
+   */
+  keepInParent?: boolean;
 };
 
 export type MoveWorkerResult = {
@@ -84,6 +96,30 @@ export function useMoveWorkersMutation(campaignId: string | number) {
         const toInsertIds = workerIds.filter((w) => !alreadyAtTarget.has(w));
         skipped = workerIds.length - toInsertIds.length;
 
+        // Look up the target OU to detect sub-unit hierarchy. When the target
+        // is a sub-unit (parent_ou_id != null), `keepInParent` controls whether
+        // we also preserve / create assignments to the parent OU.
+        const keepInParent = vars.keepInParent ?? true;
+        let targetParentOuId: number | null = null;
+        let siblingOuIds: number[] = [];
+        {
+          const { data: targetOuRow, error: targetOuErr } = await supabase
+            .from("campaign_organising_units")
+            .select("ou_id, parent_ou_id, campaign_id")
+            .eq("ou_id", vars.toOuId)
+            .single();
+          if (targetOuErr) throw targetOuErr;
+          targetParentOuId = (targetOuRow?.parent_ou_id as number | null) ?? null;
+          if (targetParentOuId != null) {
+            const { data: siblings, error: sibErr } = await supabase
+              .from("campaign_organising_units")
+              .select("ou_id")
+              .eq("parent_ou_id", targetParentOuId);
+            if (sibErr) throw sibErr;
+            siblingOuIds = (siblings ?? []).map((r) => r.ou_id as number);
+          }
+        }
+
         if (vars.mode === "move") {
           // Check which source rows are currently primary — migrate that flag.
           const fromPairs = vars.refs
@@ -119,10 +155,47 @@ export function useMoveWorkersMutation(campaignId: string | number) {
             inserted = rows.length;
           }
 
+          // When the target is a sub-unit, ensure each affected worker is also
+          // assigned to the parent (idempotent — uniqueness is enforced).
+          if (targetParentOuId != null && keepInParent && workerIds.length > 0) {
+            const { data: existingParent, error: pExErr } = await supabase
+              .from("campaign_worker_ou")
+              .select("worker_id")
+              .eq("ou_id", targetParentOuId)
+              .in("worker_id", workerIds);
+            if (pExErr) throw pExErr;
+            const alreadyInParent = new Set(
+              (existingParent ?? []).map((r) => r.worker_id as number)
+            );
+            const parentMissing = workerIds.filter((w) => !alreadyInParent.has(w));
+            if (parentMissing.length > 0) {
+              const parentRows = parentMissing.map((wid) => ({
+                ou_id: targetParentOuId as number,
+                worker_id: wid,
+                is_primary: false,
+              }));
+              const { error: pInsErr } = await supabase
+                .from("campaign_worker_ou")
+                .insert(parentRows);
+              if (pInsErr) throw pInsErr;
+              inserted += parentRows.length;
+            }
+          }
+
           // Delete source rows — one pair at a time to avoid nuking unrelated memberships.
+          // Skip deletion if the source happens to be the target's parent (when
+          // we're keeping the worker in the parent), so the worker remains rolled-up.
           for (const ref of vars.refs) {
             if (ref.fromOuId == null) continue; // drag-from-unassigned — no row to delete
             if (ref.fromOuId === vars.toOuId) continue;
+            if (
+              keepInParent &&
+              targetParentOuId != null &&
+              ref.fromOuId === targetParentOuId
+            ) {
+              // Moving from parent → its own sub-unit: preserve parent membership.
+              continue;
+            }
             const { error: delErr, count } = await supabase
               .from("campaign_worker_ou")
               .delete({ count: "exact" })
@@ -151,6 +224,8 @@ export function useMoveWorkersMutation(campaignId: string | number) {
               if (clrErr) throw clrErr;
             }
           }
+          // Suppress unused warning for siblingOuIds (kept for future cross-sibling move policy).
+          void siblingOuIds;
         } else {
           // copy: insert only, is_primary=false.
           if (toInsertIds.length > 0) {
@@ -162,6 +237,31 @@ export function useMoveWorkersMutation(campaignId: string | number) {
             const { error: insErr } = await supabase.from("campaign_worker_ou").insert(rows);
             if (insErr) throw insErr;
             inserted = rows.length;
+          }
+          // For copy + sub-unit target, also ensure parent membership.
+          if (targetParentOuId != null && keepInParent && workerIds.length > 0) {
+            const { data: existingParent, error: pExErr } = await supabase
+              .from("campaign_worker_ou")
+              .select("worker_id")
+              .eq("ou_id", targetParentOuId)
+              .in("worker_id", workerIds);
+            if (pExErr) throw pExErr;
+            const alreadyInParent = new Set(
+              (existingParent ?? []).map((r) => r.worker_id as number)
+            );
+            const parentMissing = workerIds.filter((w) => !alreadyInParent.has(w));
+            if (parentMissing.length > 0) {
+              const parentRows = parentMissing.map((wid) => ({
+                ou_id: targetParentOuId as number,
+                worker_id: wid,
+                is_primary: false,
+              }));
+              const { error: pInsErr } = await supabase
+                .from("campaign_worker_ou")
+                .insert(parentRows);
+              if (pInsErr) throw pInsErr;
+              inserted += parentRows.length;
+            }
           }
         }
       }

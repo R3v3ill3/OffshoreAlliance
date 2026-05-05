@@ -45,7 +45,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { CheckCircle2, XCircle, Pencil, Lightbulb, RefreshCw, Trash2 } from "lucide-react";
+import { CheckCircle2, XCircle, Pencil, Lightbulb, RefreshCw, Trash2, Layers, MoreVertical } from "lucide-react";
 import type { CampaignOuType, OuCandidateStatus } from "@/types/database";
 import { generateOuCandidatesFromWtp } from "@/lib/campaign/generate-ou-candidates";
 import { recomputeOuAssignments } from "@/lib/campaign/recompute-ou-assignments";
@@ -53,6 +53,15 @@ import {
   getCampaignMembershipStatus,
   type CampaignMembershipStatus,
 } from "@/lib/campaign/constants";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { SplitUnitDialog, type SplitMember } from "./wall-chart/split-unit-dialog";
+import type { WallChartOU } from "./wall-chart/types";
 
 const OU_TYPES: CampaignOuType[] = [
   "shift",
@@ -210,6 +219,9 @@ export function CampaignUnitsSection({
     ouId: number;
     workerIds: number[];
   } | null>(null);
+
+  // OU currently being split into sub-units.
+  const [splitTargetOu, setSplitTargetOu] = useState<WallChartOU | null>(null);
 
   const { data: members = [], isLoading: membersLoading } = useQuery({
     queryKey: ["campaign-members", campaignId],
@@ -766,6 +778,98 @@ export function CampaignUnitsSection({
     return map;
   }, [rules]);
 
+  // Group OUs into a parent → children tree (one level deep).
+  type AnyOu = {
+    ou_id: number;
+    name: string;
+    ou_type: string;
+    total_workers_estimated: number | null;
+    commonality_logic?: string | null;
+    source?: string | null;
+    parent_ou_id?: number | null;
+    unit_basis?: Record<string, unknown> | null;
+  };
+  const ousTyped = ous as AnyOu[];
+  const childrenByParent = useMemo(() => {
+    const m = new Map<number, AnyOu[]>();
+    for (const o of ousTyped) {
+      if (o.parent_ou_id == null) continue;
+      const list = m.get(o.parent_ou_id) ?? [];
+      list.push(o);
+      m.set(o.parent_ou_id, list);
+    }
+    return m;
+  }, [ousTyped]);
+  const topLevelOus = useMemo(
+    () => ousTyped.filter((o) => o.parent_ou_id == null),
+    [ousTyped]
+  );
+
+  // ── Split dialog: members for the targeted OU ─────────────────────────
+  const splitMemberWorkerIds = useMemo(() => {
+    if (!splitTargetOu) return [] as number[];
+    return (ouAssignments as { ou_id: number; worker_id: number }[])
+      .filter((r) => r.ou_id === splitTargetOu.ou_id)
+      .map((r) => r.worker_id);
+  }, [splitTargetOu, ouAssignments]);
+
+  const { data: splitMembers = [] } = useQuery({
+    queryKey: [
+      "split-unit-members-universe",
+      splitTargetOu?.ou_id ?? "none",
+      splitMemberWorkerIds.join(","),
+    ],
+    enabled: !!splitTargetOu && splitMemberWorkerIds.length > 0,
+    queryFn: async (): Promise<SplitMember[]> => {
+      if (splitMemberWorkerIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from("workers")
+        .select(
+          `worker_id, first_name, last_name,
+           shift_id, work_area_id, roster_panel_id,
+           canonical_occupation_id,
+           canonical_occupation:occupations!workers_canonical_occupation_id_fkey(canonical_name)`
+        )
+        .in("worker_id", splitMemberWorkerIds);
+      if (error) throw error;
+      const { data: tagRows, error: tagErr } = await supabase
+        .from("worker_tags")
+        .select("worker_id, tag:tags(tag_name)")
+        .in("worker_id", splitMemberWorkerIds);
+      if (tagErr) throw tagErr;
+      const tagsByWorker = new Map<number, string[]>();
+      for (const row of (tagRows ?? []) as Array<{
+        worker_id: number;
+        tag: { tag_name?: string } | { tag_name?: string }[] | null;
+      }>) {
+        const t = Array.isArray(row.tag) ? row.tag[0] : row.tag;
+        const name = t?.tag_name?.trim().toLowerCase();
+        if (!name) continue;
+        const list = tagsByWorker.get(row.worker_id) ?? [];
+        list.push(name);
+        tagsByWorker.set(row.worker_id, list);
+      }
+      return (data ?? []).map((row) => {
+        const r = row as Record<string, unknown>;
+        const occRel = r.canonical_occupation;
+        const occ = (Array.isArray(occRel) ? occRel[0] : occRel) as
+          | { canonical_name: string }
+          | null;
+        return {
+          worker_id: r.worker_id as number,
+          first_name: r.first_name as string,
+          last_name: r.last_name as string,
+          canonical_occupation_id: (r.canonical_occupation_id as number | null) ?? null,
+          canonical_occupation_name: occ?.canonical_name ?? null,
+          shift_id: (r.shift_id as number | null) ?? null,
+          work_area_id: (r.work_area_id as number | null) ?? null,
+          roster_panel_id: (r.roster_panel_id as number | null) ?? null,
+          tag_names: tagsByWorker.get(r.worker_id as number) ?? [],
+        };
+      });
+    },
+  });
+
   const selectedCount = selectedAssignWorkerIds.size;
   const allFilteredSelected =
     filteredAssignableWorkers.length > 0 &&
@@ -1004,18 +1108,32 @@ export function CampaignUnitsSection({
           {ous.length === 0 ? (
             <p className="text-sm text-muted-foreground">No organising units.</p>
           ) : (
-            ous.map((ou: {
-              ou_id: number;
-              name: string;
-              ou_type: string;
-              total_workers_estimated: number | null;
-              commonality_logic?: string | null;
-              source?: string | null;
-            }) => (
-              <div key={ou.ou_id} className="rounded-md border p-3 space-y-3">
+            (() => {
+              const renderOuRow = (ou: AnyOu, nested: boolean) => {
+                const childList = childrenByParent.get(ou.ou_id) ?? [];
+                return (
+              <div
+                key={ou.ou_id}
+                className={`rounded-md border p-3 space-y-3 ${
+                  nested ? "border-l-4 border-l-primary/40 bg-muted/20" : ""
+                }`}
+              >
                 <div className="flex justify-between items-start gap-2">
                   <div>
-                    <p className="font-medium">{ou.name}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium">{ou.name}</p>
+                      {childList.length > 0 && (
+                        <Badge variant="secondary" className="text-[10px] gap-1">
+                          <Layers className="h-3 w-3" />
+                          {childList.length} sub-unit{childList.length === 1 ? "" : "s"}
+                        </Badge>
+                      )}
+                      {nested && (
+                        <Badge variant="outline" className="text-[10px]">
+                          sub-unit
+                        </Badge>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       {ou.ou_type?.replace(/_/g, " ")}
                       {ou.total_workers_estimated != null && ` · est. ${ou.total_workers_estimated}`}
@@ -1062,6 +1180,52 @@ export function CampaignUnitsSection({
                     >
                       Assign worker
                     </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          title="More actions"
+                          aria-label="Unit actions"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-56">
+                        {!nested && (
+                          <DropdownMenuItem
+                            onClick={() =>
+                              setSplitTargetOu({
+                                ou_id: ou.ou_id,
+                                campaign_id: Number(campaignId),
+                                name: ou.name,
+                                ou_type: ou.ou_type,
+                                total_workers_estimated: ou.total_workers_estimated,
+                                unit_basis: (ou.unit_basis ?? null) as WallChartOU["unit_basis"],
+                              })
+                            }
+                            disabled={
+                              (ouAssignments as { ou_id: number }[]).filter(
+                                (r) => r.ou_id === ou.ou_id
+                              ).length === 0
+                            }
+                          >
+                            <Layers className="h-4 w-4 mr-2" /> Split into sub-units
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setAssignDialog({ ou_id: ou.ou_id, name: ou.name });
+                            resetAssignDialogState();
+                            setAssignFeedback(null);
+                          }}
+                        >
+                          Assign workers
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                     </div>
                   )}
                 </div>
@@ -1342,8 +1506,18 @@ export function CampaignUnitsSection({
                     </div>
                   )}
                 </div>
+
+                {/* Render children (sub-units) nested under their parent */}
+                {!nested && childList.length > 0 && (
+                  <div className="space-y-3 pl-4 border-l-2 border-muted">
+                    {childList.map((c) => renderOuRow(c, true))}
+                  </div>
+                )}
               </div>
-            ))
+                );
+              };
+              return topLevelOus.map((ou) => renderOuRow(ou, false));
+            })()
           )}
 
           {/* Unallocated pseudo-unit — workers in campaign with no unit assignment */}
@@ -1856,12 +2030,20 @@ export function CampaignUnitsSection({
       {reallocateTarget && (() => {
         const fromOuType = reallocateTarget.fromOuType;
         const isFromUnallocated = reallocateTarget.fromOuId === null;
-        const candidateOus = (ous as { ou_id: number; name: string; ou_type: string }[]).filter(
+        const sourceOu = !isFromUnallocated
+          ? ousTyped.find((o) => o.ou_id === reallocateTarget.fromOuId)
+          : null;
+        const sourceParentId = sourceOu?.parent_ou_id ?? null;
+        const isFromSubUnit = sourceParentId != null;
+        const candidateOus = (ous as { ou_id: number; name: string; ou_type: string; parent_ou_id?: number | null }[]).filter(
           (o) => {
-            // Exclude source unit (null never matches any ou_id, so all OUs are candidates)
             if (o.ou_id === reallocateTarget.fromOuId) return false;
-            // When assigning from Unallocated, all OUs are valid targets
             if (isFromUnallocated) return true;
+            // If reallocating from a sub-unit, restrict targets to its siblings
+            // (same parent_ou_id) so workers stay within the parent OU's roll-up.
+            if (isFromSubUnit) {
+              return (o.parent_ou_id ?? null) === sourceParentId;
+            }
             if (!fromOuType || fromOuType === "custom") return true;
             return o.ou_type === fromOuType;
           }
@@ -1892,7 +2074,11 @@ export function CampaignUnitsSection({
                     <>
                       Move {workerCount} {workerCount === 1 ? "worker" : "workers"} to a different
                       unit. They will be removed from the current unit.
-                      {fromOuType && fromOuType !== "custom" && (
+                      {isFromSubUnit && (
+                        <> Only <strong>sibling sub-units</strong> are shown — moves stay
+                        within the parent unit&apos;s roll-up.</>
+                      )}
+                      {!isFromSubUnit && fromOuType && fromOuType !== "custom" && (
                         <> Only <strong>{fromOuType.replace(/_/g, " ")}</strong> units are shown
                         — moves are restricted to the same dimension.</>
                       )}
@@ -1963,6 +2149,24 @@ export function CampaignUnitsSection({
           </Dialog>
         );
       })()}
+
+      {/* Split a unit into sub-units */}
+      {splitTargetOu && (
+        <SplitUnitDialog
+          open={!!splitTargetOu}
+          onOpenChange={(o) => {
+            if (!o) setSplitTargetOu(null);
+          }}
+          campaignId={Number(campaignId)}
+          parent={splitTargetOu}
+          members={splitMembers}
+          onSplit={() => {
+            queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignId] });
+            queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou"] });
+            setSplitTargetOu(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
   type LinkedWorker,
 } from "./use-leader-links";
 import { BulkAddFollowersDialog } from "./bulk-add-followers-dialog";
+import { LinkToLeaderDialog } from "./link-to-leader-dialog";
 import { useLeaderUnitContext } from "./leader-unit-context";
 import { CreateTaskListDialog } from "../task-lists/create-task-list-dialog";
 import { RoleReassessPrompt } from "./role-reassess-prompt";

@@ -276,6 +276,13 @@ export function MembershipImportWizard({
     errors: string[];
   } | null>(null);
 
+  // When the parsed file has any shift / work area / roster panel values,
+  // the apply route can auto-create matching options on the fly. We expose
+  // this as a toggle on the confirm step so admins can opt out for a
+  // cautious initial import.
+  const [createMissingDimensionOptions, setCreateMissingDimensionOptions] =
+    useState(true);
+
   // ── Data queries ─────────────────────────────────────────────────────────
   const { data: employers = [] } = useQuery<Employer[]>({
     queryKey: ["employers-active"],
@@ -786,7 +793,10 @@ export function MembershipImportWizard({
       const res = await fetchApi(`/api/membership-import/apply?type=${importType}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: applyRows }),
+        body: JSON.stringify({
+          rows: applyRows,
+          createMissingDimensionOptions,
+        }),
         timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
       });
       const json = await res.json();
@@ -1781,6 +1791,13 @@ export function MembershipImportWizard({
       resignations: "Resignations",
       recommencing: "Recommencing Members",
     };
+
+    // Detect whether the file carries any shift / work area / roster panel
+    // columns so we can show the "create missing options" toggle.
+    const shiftCount = rows.filter((r) => !!r.shiftRaw).length;
+    const workAreaCount = rows.filter((r) => !!r.workAreaRaw).length;
+    const rosterCount = rows.filter((r) => !!r.rosterPanelRaw).length;
+    const hasDimensions = shiftCount + workAreaCount + rosterCount > 0;
     return (
       <div className="space-y-4">
         <div className="rounded-lg border p-4 space-y-3">
@@ -1800,6 +1817,45 @@ export function MembershipImportWizard({
             </div>
           </div>
         </div>
+
+        {hasDimensions && (
+          <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
+            <p className="text-xs font-medium">Worker dimension columns detected</p>
+            <p className="text-xs text-muted-foreground">
+              {shiftCount > 0 && (
+                <>
+                  Shift on <strong>{shiftCount}</strong> row
+                  {shiftCount === 1 ? "" : "s"}
+                  {workAreaCount + rosterCount > 0 ? " · " : ""}
+                </>
+              )}
+              {workAreaCount > 0 && (
+                <>
+                  Work area on <strong>{workAreaCount}</strong> row
+                  {workAreaCount === 1 ? "" : "s"}
+                  {rosterCount > 0 ? " · " : ""}
+                </>
+              )}
+              {rosterCount > 0 && (
+                <>
+                  Roster panel on <strong>{rosterCount}</strong> row
+                  {rosterCount === 1 ? "" : "s"}
+                </>
+              )}
+            </p>
+            <label className="flex items-center gap-2 text-xs cursor-pointer pt-1">
+              <input
+                type="checkbox"
+                checked={createMissingDimensionOptions}
+                onChange={(e) =>
+                  setCreateMissingDimensionOptions(e.target.checked)
+                }
+              />
+              Create missing options on the fly (otherwise unmatched values
+              are left blank on the worker)
+            </label>
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => setStep("dedup_review")} disabled={isLoading}>
             <ArrowLeft className="h-4 w-4 mr-1" /> Back

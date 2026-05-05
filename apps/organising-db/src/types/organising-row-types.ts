@@ -111,12 +111,39 @@ export type CampaignOuType =
   | "work_area"
   | "custom";
 
+/**
+ * Dimension a sub-unit was split out of (stored on CampaignOuUnitBasis.dimension).
+ * Maps loosely to ou_type but tracked separately so the SplitUnitDialog can
+ * suggest sensible names from the parent's worker pool.
+ */
+export type CampaignOuSplitDimension =
+  | "occupation"
+  | "shift"
+  | "work_area"
+  | "roster_panel"
+  | "tag"
+  | "activist"
+  | "custom";
+
 /** Optional JSONB on campaign_organising_units recording the filter that built the unit. */
 export interface CampaignOuUnitBasis {
   employer_id?: number;
   worksite_id?: number;
   canonical_occupation_id?: number;
   occupation_group_id?: number;
+  shift_id?: number;
+  work_area_id?: number;
+  roster_panel_id?: number;
+  /** When this OU is a sub-unit, the parent OU it was split out of. */
+  parent_ou_id?: number;
+  /** Categorical dimension this sub-unit was split on. */
+  dimension?: CampaignOuSplitDimension;
+  /** The literal value (or option id) the dimension matched. */
+  value?: string | number | null;
+  /** When dimension = "tag", the tag category we grouped on. */
+  tag_category?: string | null;
+  /** When dimension = "activist", the leader worker id this network rolls under. */
+  leader_worker_id?: number;
   custom?: boolean;
 }
 
@@ -407,6 +434,12 @@ export interface Worker {
   is_active: boolean;
   is_hsr: boolean | null;
   is_bargaining_rep: boolean | null;
+  /** FK to worker_shift_options.id (nullable). */
+  shift_id: number | null;
+  /** FK to worker_work_area_options.id (nullable). */
+  work_area_id: number | null;
+  /** FK to worker_roster_panel_options.id (nullable). */
+  roster_panel_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -530,8 +563,85 @@ export interface CampaignOrganisingUnit {
   commonality_logic: string | null;
   target_size: number | null;
   source: OuSource;
+  /** When set, this OU is a sub-unit nested under another OU (one level only). */
+  parent_ou_id: number | null;
+  display_order: number;
+  unit_basis: CampaignOuUnitBasis | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Reusable shift label assignable to workers.shift_id. */
+export interface WorkerShiftOption {
+  id: number;
+  name: string;
+  employer_id: number | null;
+  worksite_id: number | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Reusable work area / department label assignable to workers.work_area_id. */
+export interface WorkerWorkAreaOption {
+  id: number;
+  name: string;
+  employer_id: number | null;
+  worksite_id: number | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Reusable roster / panel / crew label assignable to workers.roster_panel_id. */
+export interface WorkerRosterPanelOption {
+  id: number;
+  name: string;
+  employer_id: number | null;
+  worksite_id: number | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Per-parent roll-up from campaign_unit_hierarchy_summary view. */
+export interface CampaignUnitHierarchySummaryRow {
+  campaign_id: number;
+  parent_ou_id: number;
+  parent_name: string;
+  parent_ou_type: CampaignOuType;
+  child_count: number;
+  child_ou_ids: number[];
+  aggregate_assigned_workers: number;
+}
+
+/** Argument shape for the split_campaign_organising_unit RPC. */
+export interface SplitOuSubUnitInput {
+  name: string;
+  ou_type: CampaignOuType;
+  unit_basis?: CampaignOuUnitBasis | null;
+  total_workers_estimated?: number | null;
+}
+
+export interface SplitOuAssignmentInput {
+  /** Index into the parallel SplitOuSubUnitInput[] array passed alongside. */
+  sub_index: number;
+  worker_id: number;
+}
+
+export interface SplitOuRpcArgs {
+  p_parent_ou_id: number;
+  p_sub_units: SplitOuSubUnitInput[];
+  p_assignments: SplitOuAssignmentInput[];
+  p_keep_in_parent?: boolean;
+}
+
+export interface SplitOuRpcResultRow {
+  sub_index: number;
+  ou_id: number;
 }
 
 export interface CampaignWorkerOu {

@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Plus, Trash2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, AlertTriangle, Layers } from "lucide-react";
 import type {
   CampaignOuType,
   CampaignOuUnitBasis,
@@ -37,6 +37,10 @@ export interface CampaignUnitDraft {
   name: string;
   total_workers_estimated: number | null;
   unit_basis: CampaignOuUnitBasis | null;
+  /** Local draft id of the parent unit, when this draft is a sub-unit. */
+  parent_draft_id?: string | null;
+  /** Server id of the parent unit, set after the parent has been saved. */
+  parent_ou_id?: number | null;
 }
 
 interface StepCampaignUnitsProps {
@@ -316,7 +320,12 @@ export function StepCampaignUnits({
   }
 
   function removeUnit(draftId: string) {
-    setUnits(units.filter((u) => u.draft_id !== draftId));
+    // Cascade: remove the unit and any sub-unit drafts that reference it.
+    setUnits(
+      units.filter(
+        (u) => u.draft_id !== draftId && u.parent_draft_id !== draftId
+      )
+    );
   }
 
   function updateUnit(draftId: string, partial: Partial<CampaignUnitDraft>) {
@@ -325,6 +334,26 @@ export function StepCampaignUnits({
         u.draft_id === draftId ? { ...u, ...partial } : u
       )
     );
+  }
+
+  function addSubUnit(parentDraftId: string) {
+    const parent = units.find((u) => u.draft_id === parentDraftId);
+    if (!parent) return;
+    setUnits([
+      ...units,
+      {
+        draft_id: newDraftId(),
+        ou_id: null,
+        ou_type: "custom",
+        name: `${parent.name || "Unit"} – sub-unit`,
+        total_workers_estimated: null,
+        unit_basis: parent.ou_id
+          ? { parent_ou_id: parent.ou_id, dimension: "custom" }
+          : { dimension: "custom" },
+        parent_draft_id: parentDraftId,
+        parent_ou_id: parent.ou_id ?? null,
+      },
+    ]);
   }
 
   // ── Estimate sum + unallocated remainder (per-dimension) ─────────────────
@@ -553,72 +582,118 @@ export function StepCampaignUnits({
             </div>
           )}
 
-          {units.map((u) => (
-            <div
-              key={u.draft_id}
-              className="flex items-center gap-2 rounded-md border p-3"
-            >
-              <div className="flex-1 min-w-0">
-                <Input
-                  value={u.name}
-                  onChange={(e) => updateUnit(u.draft_id, { name: e.target.value })}
-                  className="text-sm font-medium"
-                />
-                <div className="mt-1 flex items-center gap-2 flex-wrap">
-                  <Badge variant="outline" className="text-[10px] h-4 px-1">
-                    {u.ou_type}
-                  </Badge>
-                  {u.unit_basis?.employer_id && (
-                    <span className="text-xs text-muted-foreground">
-                      employer #{u.unit_basis.employer_id}
-                    </span>
+          {(() => {
+            const topLevel = units.filter((u) => !u.parent_draft_id);
+            const childrenByParent = new Map<string, CampaignUnitDraft[]>();
+            for (const u of units) {
+              if (!u.parent_draft_id) continue;
+              const list = childrenByParent.get(u.parent_draft_id) ?? [];
+              list.push(u);
+              childrenByParent.set(u.parent_draft_id, list);
+            }
+
+            const renderUnitRow = (u: CampaignUnitDraft, isSubUnit: boolean) => (
+              <div
+                key={u.draft_id}
+                className={`flex items-center gap-2 rounded-md border p-3 ${
+                  isSubUnit ? "border-l-4 border-l-primary/40 bg-muted/20" : ""
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <Input
+                    value={u.name}
+                    onChange={(e) => updateUnit(u.draft_id, { name: e.target.value })}
+                    className="text-sm font-medium"
+                  />
+                  <div className="mt-1 flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline" className="text-[10px] h-4 px-1">
+                      {u.ou_type}
+                    </Badge>
+                    {isSubUnit && (
+                      <Badge variant="secondary" className="text-[10px] h-4 px-1 gap-1">
+                        <Layers className="h-3 w-3" />
+                        sub-unit
+                      </Badge>
+                    )}
+                    {u.unit_basis?.employer_id && (
+                      <span className="text-xs text-muted-foreground">
+                        employer #{u.unit_basis.employer_id}
+                      </span>
+                    )}
+                    {u.unit_basis?.worksite_id && (
+                      <span className="text-xs text-muted-foreground">
+                        worksite #{u.unit_basis.worksite_id}
+                      </span>
+                    )}
+                    {u.unit_basis?.canonical_occupation_id && (
+                      <span className="text-xs text-muted-foreground">
+                        occupation #{u.unit_basis.canonical_occupation_id}
+                      </span>
+                    )}
+                    {u.unit_basis?.occupation_group_id && (
+                      <span className="text-xs text-muted-foreground">
+                        group #{u.unit_basis.occupation_group_id}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Input
+                    type="number"
+                    min={0}
+                    className="w-20 text-sm"
+                    value={u.total_workers_estimated ?? ""}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const n = raw === "" ? null : Number(raw);
+                      updateUnit(u.draft_id, {
+                        total_workers_estimated:
+                          n != null && !Number.isNaN(n) && n >= 0 ? n : null,
+                      });
+                    }}
+                    placeholder="—"
+                  />
+                  <span className="text-xs text-muted-foreground">est.</span>
+                  {!isSubUnit && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-1.5 text-xs gap-1"
+                      onClick={() => addSubUnit(u.draft_id)}
+                      title="Add a sub-unit beneath this unit"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Sub-unit
+                    </Button>
                   )}
-                  {u.unit_basis?.worksite_id && (
-                    <span className="text-xs text-muted-foreground">
-                      worksite #{u.unit_basis.worksite_id}
-                    </span>
-                  )}
-                  {u.unit_basis?.canonical_occupation_id && (
-                    <span className="text-xs text-muted-foreground">
-                      occupation #{u.unit_basis.canonical_occupation_id}
-                    </span>
-                  )}
-                  {u.unit_basis?.occupation_group_id && (
-                    <span className="text-xs text-muted-foreground">
-                      group #{u.unit_basis.occupation_group_id}
-                    </span>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeUnit(u.draft_id)}
+                    className="text-muted-foreground hover:text-foreground"
+                    title="Remove unit"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
+            );
 
-              <div className="flex items-center gap-1.5 shrink-0">
-                <Input
-                  type="number"
-                  min={0}
-                  className="w-20 text-sm"
-                  value={u.total_workers_estimated ?? ""}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    const n = raw === "" ? null : Number(raw);
-                    updateUnit(u.draft_id, {
-                      total_workers_estimated:
-                        n != null && !Number.isNaN(n) && n >= 0 ? n : null,
-                    });
-                  }}
-                  placeholder="—"
-                />
-                <span className="text-xs text-muted-foreground">est.</span>
-                <button
-                  type="button"
-                  onClick={() => removeUnit(u.draft_id)}
-                  className="text-muted-foreground hover:text-foreground"
-                  title="Remove unit"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          ))}
+            return topLevel.map((parent) => {
+              const children = childrenByParent.get(parent.draft_id) ?? [];
+              return (
+                <div key={parent.draft_id} className="space-y-2">
+                  {renderUnitRow(parent, false)}
+                  {children.length > 0 && (
+                    <div className="space-y-2 pl-4 border-l-2 border-muted">
+                      {children.map((c) => renderUnitRow(c, true))}
+                    </div>
+                  )}
+                </div>
+              );
+            });
+          })()}
 
           {/* Synthetic unallocated row — only shown for single-dimension campaigns.
               In multi-dimension campaigns each dimension has its own remainder. */}

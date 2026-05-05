@@ -12,6 +12,7 @@ type RuleRow = {
     | "occupation_grouping"
     | "shift"
     | "work_area"
+    | "roster_panel"
     | "relational";
   operator: "equals" | "contains";
   value_int: number | null;
@@ -24,6 +25,9 @@ type WorkerRow = {
   worksite_id: number | null;
   occupation: string | null;
   classification: string | null;
+  shift_id: number | null;
+  work_area_id: number | null;
+  roster_panel_id: number | null;
 };
 
 function matchText(
@@ -38,6 +42,16 @@ function matchText(
   return operator === "equals" ? source === needle : source.includes(needle);
 }
 
+/**
+ * Match a worker against a single rule.
+ *
+ * For typed-dimension rules (shift / work_area / roster_panel) the rule may
+ * carry either:
+ *   - `value_int` → match against the typed FK on the workers table
+ *     (the canonical / preferred storage), OR
+ *   - `value_text` → fall back to the legacy worker_tags lookup so older
+ *     rules created before the typed columns existed keep working.
+ */
 function matchesRule(worker: WorkerRow, rule: RuleRow, tagSet: Set<string>) {
   switch (rule.dimension_type) {
     case "employer":
@@ -49,7 +63,14 @@ function matchesRule(worker: WorkerRow, rule: RuleRow, tagSet: Set<string>) {
     case "occupation_grouping":
       return matchText(worker.classification, rule.value_text, rule.operator);
     case "shift":
+      if (rule.value_int != null) return worker.shift_id === rule.value_int;
+      return rule.value_text ? tagSet.has(rule.value_text.trim().toLowerCase()) : false;
     case "work_area":
+      if (rule.value_int != null) return worker.work_area_id === rule.value_int;
+      return rule.value_text ? tagSet.has(rule.value_text.trim().toLowerCase()) : false;
+    case "roster_panel":
+      if (rule.value_int != null) return worker.roster_panel_id === rule.value_int;
+      return rule.value_text ? tagSet.has(rule.value_text.trim().toLowerCase()) : false;
     case "relational":
       return rule.value_text ? tagSet.has(rule.value_text.trim().toLowerCase()) : false;
     default:
@@ -90,7 +111,7 @@ export async function recomputeOuAssignments(
   const { data: members, error: membersError } = await scoped
     .from("campaign_worker_membership")
     .select(
-      "worker_id, worker:workers(worker_id, employer_id, worksite_id, occupation, classification)"
+      "worker_id, worker:workers(worker_id, employer_id, worksite_id, occupation, classification, shift_id, work_area_id, roster_panel_id)"
     )
     .eq("campaign_id", campaignId);
   if (membersError) throw membersError;

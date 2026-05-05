@@ -4104,6 +4104,7 @@ export type Database = {
           name: string
           ou_id: number
           ou_type: string
+          parent_ou_id: number | null
           source: string | null
           source_metadata: Json | null
           target_size: number | null
@@ -4120,6 +4121,7 @@ export type Database = {
           name: string
           ou_id?: number
           ou_type: string
+          parent_ou_id?: number | null
           source?: string | null
           source_metadata?: Json | null
           target_size?: number | null
@@ -4136,6 +4138,7 @@ export type Database = {
           name?: string
           ou_id?: number
           ou_type?: string
+          parent_ou_id?: number | null
           source?: string | null
           source_metadata?: Json | null
           target_size?: number | null
@@ -10986,6 +10989,105 @@ export type Database = {
           },
         ]
       }
+      worker_shift_options: {
+        Row: {
+          id: number
+          name: string
+          employer_id: number | null
+          worksite_id: number | null
+          is_active: boolean
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          employer_id?: number | null
+          worksite_id?: number | null
+          is_active?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          employer_id?: number | null
+          worksite_id?: number | null
+          is_active?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      worker_work_area_options: {
+        Row: {
+          id: number
+          name: string
+          employer_id: number | null
+          worksite_id: number | null
+          is_active: boolean
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          employer_id?: number | null
+          worksite_id?: number | null
+          is_active?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          employer_id?: number | null
+          worksite_id?: number | null
+          is_active?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      worker_roster_panel_options: {
+        Row: {
+          id: number
+          name: string
+          employer_id: number | null
+          worksite_id: number | null
+          is_active: boolean
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          employer_id?: number | null
+          worksite_id?: number | null
+          is_active?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          employer_id?: number | null
+          worksite_id?: number | null
+          is_active?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       workers: {
         Row: {
           action_network_id: string | null
@@ -11016,11 +11118,14 @@ export type Database = {
           rejoin_date: string | null
           resignation_date: string | null
           resignation_reason: string | null
+          roster_panel_id: number | null
+          shift_id: number | null
           state: string | null
           suburb: string | null
           union_id: number | null
           union_membership_type_id: number | null
           updated_at: string
+          work_area_id: number | null
           worker_id: number
           worksite_id: number | null
         }
@@ -11053,11 +11158,14 @@ export type Database = {
           rejoin_date?: string | null
           resignation_date?: string | null
           resignation_reason?: string | null
+          roster_panel_id?: number | null
+          shift_id?: number | null
           state?: string | null
           suburb?: string | null
           union_id?: number | null
           union_membership_type_id?: number | null
           updated_at?: string
+          work_area_id?: number | null
           worker_id?: number
           worksite_id?: number | null
         }
@@ -11090,11 +11198,14 @@ export type Database = {
           rejoin_date?: string | null
           resignation_date?: string | null
           resignation_reason?: string | null
+          roster_panel_id?: number | null
+          shift_id?: number | null
           state?: string | null
           suburb?: string | null
           union_id?: number | null
           union_membership_type_id?: number | null
           updated_at?: string
+          work_area_id?: number | null
           worker_id?: number
           worksite_id?: number | null
         }
@@ -12848,6 +12959,7 @@ export type Database = {
           ou_id: number | null
           ou_name: string | null
           ou_type: string | null
+          parent_ou_id: number | null
           total_workers_estimated: number | null
         }
         Relationships: [
@@ -12922,6 +13034,18 @@ export type Database = {
             referencedColumns: ["campaign_id"]
           },
         ]
+      }
+      campaign_unit_hierarchy_summary: {
+        Row: {
+          aggregate_assigned_workers: number | null
+          campaign_id: number | null
+          child_count: number | null
+          child_ou_ids: number[] | null
+          parent_name: string | null
+          parent_ou_id: number | null
+          parent_ou_type: string | null
+        }
+        Relationships: []
       }
       campaign_worker_rating_summary: {
         Row: {
@@ -15129,6 +15253,15 @@ export type Database = {
       set_campaign_phase: {
         Args: { p_campaign_id: number; p_phase: string }
         Returns: undefined
+      }
+      split_campaign_organising_unit: {
+        Args: {
+          p_parent_ou_id: number
+          p_sub_units: Json
+          p_assignments: Json
+          p_keep_in_parent?: boolean
+        }
+        Returns: { sub_index: number; ou_id: number }[]
       }
       sync_agreement_expired_status_by_date: { Args: never; Returns: number }
       transition_to_post_settlement: {

@@ -63,6 +63,7 @@ import { FoundationalReadinessPanel } from "@/components/campaigns/bargaining/Fo
 import { CampaignResultsSection } from "@/components/campaigns/campaign-results-section";
 import { CampaignActionsSection } from "@/components/campaigns/campaign-actions-section";
 import { LibrarySection } from "@/components/campaigns/library/campaign-library";
+import { CampaignBasicsEditSheet } from "@/components/campaigns/campaign-basics-edit-sheet";
 import {
   VALID_TABS,
   resolveTabParams,
@@ -247,6 +248,7 @@ export default function CampaignDetailPage() {
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [actionForm, setActionForm] = useState(INITIAL_ACTION_FORM);
   const [situationSheetOpen, setSituationSheetOpen] = useState(false);
+  const [basicsSheetOpen, setBasicsSheetOpen] = useState(false);
 
   const { data: campaign, isLoading } = useQuery({
     queryKey: ["campaign", id],
@@ -404,6 +406,17 @@ export default function CampaignDetailPage() {
         <div className="flex-1">
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold">{campaign.name}</h1>
+            {canWrite && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => setBasicsSheetOpen(true)}
+                title="Edit campaign basics"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            )}
             <Badge variant={TYPE_VARIANT[campaign.campaign_type]}>
               {campaign.campaign_type}
             </Badge>
@@ -451,6 +464,15 @@ export default function CampaignDetailPage() {
           </DropdownMenu>
         )}
       </div>
+
+      {/* Campaign basics edit sheet */}
+      <CampaignBasicsEditSheet
+        open={basicsSheetOpen}
+        onOpenChange={setBasicsSheetOpen}
+        campaign={campaign}
+        campaignId={campaignId}
+        onSaved={() => queryClient.invalidateQueries({ queryKey: ["campaign", id] })}
+      />
 
       {/* Phone call CTA — persists across all tabs */}
       {campaignIdValid && (

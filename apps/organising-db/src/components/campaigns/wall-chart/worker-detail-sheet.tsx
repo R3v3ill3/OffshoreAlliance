@@ -553,7 +553,13 @@ function RatingsTab({
             <>
               <div className="space-y-1">
                 <Label className="text-xs">Assessment</Label>
-                <Select value={selectedActivityId} onValueChange={setSelectedActivityId}>
+                <Select
+                  value={selectedActivityId}
+                  onValueChange={(v) => {
+                    setSelectedActivityId(v);
+                    setPickerValue({ rating: null, binary_value: null });
+                  }}
+                >
                   <SelectTrigger className="h-8">
                     <SelectValue placeholder="Pick an assessment…" />
                   </SelectTrigger>
@@ -588,9 +594,14 @@ function RatingsTab({
               <div className="flex justify-end">
                 <Button
                   size="sm"
-                  disabled={!selectedActivity || saveRating.isPending}
+                  disabled={
+                    !selectedActivity ||
+                    saveRating.isPending ||
+                    (pickerValue.rating == null && pickerValue.binary_value == null)
+                  }
                   onClick={() => {
                     if (!selectedActivity) return;
+                    if (pickerValue.rating == null && pickerValue.binary_value == null) return;
                     saveRating.mutate({
                       activityId: selectedActivity.activity_id,
                       workerId,

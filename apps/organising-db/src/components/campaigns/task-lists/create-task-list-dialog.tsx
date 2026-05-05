@@ -21,10 +21,17 @@
  *
  * The mutation:
  *   - INSERTs campaign_task_lists with status = 'active' or 'draft'.
+ *     If the row is created/updated in status='active' with a
+ *     leader_worker_id, the trigger fn_auto_rate_promote_task_list_leader()
+ *     auto-rates the LEADER as 1 (when an activity is linked) and ensures
+ *     the leader's union role is activist or delegate — promoting to
+ *     activist if it is anything else. Drafts are no-ops on this path.
  *   - Bulk-INSERTs campaign_task_list_items for the selected workers.
- *     The Phase 1 trigger fn_task_list_item_side_effects() handles the
- *     auto-rate / auto-activist / auto-link side effects — we MUST NOT
- *     replicate that logic in JS.
+ *     The trigger fn_task_list_item_side_effects() ensures a campaign
+ *     membership shell row exists and links each assignee as a follower
+ *     of the leader. It does NOT auto-rate the assignee and does NOT
+ *     change their union role — workers on the list are there to be
+ *     assessed by the leader.
  *   - Persists `include_membership_ask`. Phase 4 reads this flag from the
  *     leader webform; no extra inserts are produced here.
  *
@@ -1049,7 +1056,7 @@ function LeaderPickerWidget({
       </div>
       <p className="text-[11px] text-muted-foreground">
         {showAll
-          ? "Showing all workers in this campaign. Picking one will promote them to activist on save (unless they're already a delegate)."
+          ? "Showing all workers in this campaign. Picking one will promote them to activist when the list is activated, unless their role is already activist or delegate."
           : "Showing workers with role contact, activist, or delegate. Switch to \"Add new leader\" to widen the list."}
       </p>
       <div className="max-h-72 overflow-y-auto rounded border divide-y">
@@ -1278,10 +1285,12 @@ function WorkersStep({
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
-        Pick the workers the leader will rate. Inserting workers fires the
-        Phase 1 trigger which auto-rates them at 1, marks them as activists in
-        this campaign, and links them as followers of the chosen leader (when
-        a worker leader is set).
+        Pick the workers the leader will rate. These workers are added to
+        the list for assessment by the leader — their assessment ratings
+        and union role are not changed by this step. When a worker leader
+        is set, each assignee is automatically linked as a follower of
+        that leader. The leader themselves is auto-rated 1 and (if needed)
+        promoted to activist when the list is activated.
       </p>
       <WorkerPicker
         campaignId={campaignId}

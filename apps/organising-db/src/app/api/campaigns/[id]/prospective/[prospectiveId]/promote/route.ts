@@ -16,11 +16,13 @@ import { requireStaffUser } from "@/lib/campaign/auth-api";
  *   2. INSERT INTO campaign_worker_membership (campaign_id, worker_id). Union
  *      role lives globally on `workers.member_role_type_id` and is left
  *      untouched here — promoting someone out of the review queue is not the
- *      same as them taking a task. Role only changes via task-list assignment
- *      (which fires the auto-promote trigger) or explicit user action. We
- *      deliberately do NOT insert into `campaign_task_list_items` either, to
- *      avoid firing the auto-rate / auto-activist side-effect trigger for
- *      someone who hasn't actually been assigned a task.
+ *      same as them taking a task. Role only changes when a task list is
+ *      activated with this worker as its `leader_worker_id` (the
+ *      `fn_auto_rate_promote_task_list_leader` trigger handles that for the
+ *      leader only) or via an explicit user action. We deliberately do NOT
+ *      insert into `campaign_task_list_items` here — being a list assignee
+ *      no longer triggers role/rating side effects, but conceptually a
+ *      prospective promotion is not a task assignment.
  *   3. If the prospective row carried a rating AND the source task list has an
  *      activity, write it via `record_assessment_event` with
  *      `source='leader_form'` and patch `assessment_type_override`.

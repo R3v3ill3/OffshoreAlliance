@@ -18,7 +18,9 @@
         "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN",
         "NEXT_PUBLIC_POSTHOG_HOST",
         "SENTRY_ORG",
-        "SENTRY_PROJECT"
+        "SENTRY_PROJECT",
+        "RAILWAY_SCRAPER_URL",
+        "SCRAPER_SHARED_SECRET"
       ],
       "outputs": [".next/**", "!.next/cache/**"]
     },

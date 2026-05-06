@@ -1,0 +1,27 @@
+{
+  "name": "@oa/scraper",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "scrape:once": "tsx src/cron.ts",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "@oa/employer-matching": "workspace:*",
+    "@supabase/supabase-js": "^2.104.1",
+    "cheerio": "^1.0.0",
+    "pino": "^9.5.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "eslint": "^9",
+    "tsx": "^4.21.0",
+    "typescript": "^5"
+  }
+}

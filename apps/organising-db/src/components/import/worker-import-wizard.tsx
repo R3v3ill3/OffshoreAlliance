@@ -350,6 +350,10 @@ function parseIsoDate(raw: string | null | undefined): string | null {
     const d = new Date(`${fullYear}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`);
     if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
   }
+  // ISO date-only YYYY-MM-DD — return as-is to avoid timezone re-parsing shift
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // Reject bare numeric strings (e.g. Excel serial numbers like "44591")
+  if (/^\d+$/.test(s)) return null;
   // Try ISO / other standard formats
   const d = new Date(s);
   if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];

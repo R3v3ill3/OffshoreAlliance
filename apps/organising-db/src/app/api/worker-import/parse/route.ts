@@ -64,8 +64,19 @@ const KNOWN_HEADER_PATTERNS = [
   /^(other[\s_-]?union|union[\s_-]?badge|non[\s_-]?oa[\s_-]?union)$/i,
 ];
 
+function cellToString(v: string | number | Date | null | undefined): string {
+  if (v === null || v === undefined) return "";
+  if (v instanceof Date) {
+    const y = v.getUTCFullYear();
+    const m = String(v.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(v.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return String(v).trim();
+}
+
 function detectHeaderRow(
-  row: (string | number | null | undefined)[],
+  row: (string | number | Date | null | undefined)[],
   forceHeader = false
 ): boolean {
   if (forceHeader) return true;
@@ -171,7 +182,7 @@ function normalisePhone(raw: string | number | null | undefined): {
   return { phone: String(raw).trim(), warnings };
 }
 
-function isGroupHeader(row: (string | number | null | undefined)[]): boolean {
+function isGroupHeader(row: (string | number | Date | null | undefined)[]): boolean {
   // All columns except col 0 must be blank
   const otherCols = row.slice(1);
   const allBlank = otherCols.every(
@@ -218,12 +229,12 @@ export async function POST(request: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const workbook = XLSX.read(buffer, { type: "buffer" });
+    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
 
     // Use the first sheet
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-    const rawRows = XLSX.utils.sheet_to_json<(string | number | null)[]>(sheet, {
+    const rawRows = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(sheet, {
       header: 1,
       defval: null,
     });
@@ -299,7 +310,7 @@ export async function POST(request: NextRequest) {
         }
         const obj: Record<string, string> = {};
         headers.forEach((h, idx) => {
-          obj[h] = String(row[idx] ?? "").trim();
+          obj[h] = cellToString(row[idx]);
         });
         if (Object.values(obj).some((v) => v !== "")) {
           dataRows.push(obj);

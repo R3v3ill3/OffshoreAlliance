@@ -6,8 +6,19 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { RatingPicker, type RatingPickerValue } from "@/components/campaigns/assessments/rating-picker";
 import { useSaveActivityRating } from "@/lib/hooks/useSaveActivityRating";
+import { useWallChartAssessmentOptions } from "./assessment-selector";
+import type { WallChartAssessmentOption } from "./types";
 
 export type InlineRatingPopoverProps = {
   campaignId: string | number;
@@ -137,6 +148,197 @@ export function InlineRatingPopover({
                 notes: notes || null,
               })
             }
+          >
+            {save.isPending ? "Saving…" : "Save"}
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CumulativeRatingPopover — for cumulative-mode tiles.
+// Lets the user pick an assessment then set a rating, without opening the
+// full worker detail sheet.
+// ---------------------------------------------------------------------------
+
+export type CumulativeRatingPopoverProps = {
+  campaignId: string | number;
+  workerId: number;
+  workerName: string;
+  onOpenDetail?: () => void;
+  /** The clickable trigger (the large rating badge on the tile). */
+  children: ReactNode;
+};
+
+export function CumulativeRatingPopover({
+  campaignId,
+  workerId,
+  workerName,
+  onOpenDetail,
+  children,
+}: CumulativeRatingPopoverProps) {
+  const [open, setOpen] = useState(false);
+  const [selectedActivityId, setSelectedActivityId] = useState<string>("");
+  const [value, setValue] = useState<RatingPickerValue>({ rating: null, binary_value: null });
+  const [notes, setNotes] = useState("");
+
+  const { data: options = [], isLoading } = useWallChartAssessmentOptions(String(campaignId));
+
+  const selectedOption: WallChartAssessmentOption | undefined = options.find(
+    (o) => String(o.activity_id) === selectedActivityId
+  );
+
+  const save = useSaveActivityRating({
+    campaignId,
+    onSuccess: () => {
+      toast.success(`Rating saved for ${workerName}`);
+      setOpen(false);
+    },
+    onError: (err) => {
+      toast.error(`Failed to save rating: ${err.message}`);
+    },
+  });
+
+  const onOpenChange = (next: boolean) => {
+    if (next) {
+      setSelectedActivityId("");
+      setValue({ rating: null, binary_value: null });
+      setNotes("");
+    }
+    setOpen(next);
+  };
+
+  const handleActivityChange = (val: string) => {
+    setSelectedActivityId(val);
+    setValue({ rating: null, binary_value: null });
+    setNotes("");
+  };
+
+  const isBinary = selectedOption?.is_binary ?? false;
+
+  const canSave =
+    !save.isPending &&
+    selectedOption != null &&
+    (isBinary ? value.binary_value !== null : true);
+
+  const withRatings = options.filter((o) => o.last_rated_at != null);
+  const withoutRatings = options.filter((o) => o.last_rated_at == null);
+
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        {children}
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-72 space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold truncate">{workerName}</p>
+          {onOpenDetail && (
+            <button
+              type="button"
+              className="text-[10px] text-primary hover:underline shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(false);
+                onOpenDetail();
+              }}
+            >
+              View details
+            </button>
+          )}
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Assessment</Label>
+          <Select
+            value={selectedActivityId}
+            onValueChange={handleActivityChange}
+            disabled={isLoading || options.length === 0}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue
+                placeholder={
+                  isLoading
+                    ? "Loading…"
+                    : options.length === 0
+                      ? "No assessments"
+                      : "Select assessment…"
+                }
+              />
+            </SelectTrigger>
+            <SelectContent>
+              {withRatings.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel className="text-[10px]">Assessments</SelectLabel>
+                  {withRatings.map((opt) => (
+                    <SelectItem key={opt.activity_id} value={String(opt.activity_id)}>
+                      {opt.title}{opt.is_binary ? " (binary)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
+              {withoutRatings.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel className="text-[10px]">Not yet rated</SelectLabel>
+                  {withoutRatings.map((opt) => (
+                    <SelectItem key={opt.activity_id} value={String(opt.activity_id)}>
+                      {opt.title}{opt.is_binary ? " (binary)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+        {selectedOption && (
+          <>
+            <div className="space-y-1">
+              <Label className="text-xs">Rating</Label>
+              <RatingPicker
+                value={value}
+                onChange={setValue}
+                isBinary={isBinary}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Notes (optional)</Label>
+              <Textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={2}
+                className="text-xs"
+              />
+            </div>
+          </>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => setOpen(false)}
+            disabled={save.isPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={!canSave}
+            onClick={() => {
+              if (!selectedOption) return;
+              save.mutate({
+                activityId: selectedOption.activity_id,
+                workerId,
+                rating: value.rating,
+                binary_value: value.binary_value,
+                notes: notes || null,
+              });
+            }}
           >
             {save.isPending ? "Saving…" : "Save"}
           </Button>

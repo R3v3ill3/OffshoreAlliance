@@ -18,7 +18,7 @@ import type {
   WallChartWorker,
   WallChartWorkerContactFocusField,
 } from "./types";
-import { InlineRatingPopover } from "./inline-rating-popover";
+import { CumulativeRatingPopover, InlineRatingPopover } from "./inline-rating-popover";
 import {
   DND_MIME_TYPE,
   serializeDragPayload,
@@ -243,6 +243,15 @@ export function WorkerTile({
     >
       {largeBadge}
     </InlineRatingPopover>
+  ) : !isAssessmentMode && campaignId != null && canWrite ? (
+    <CumulativeRatingPopover
+      campaignId={campaignId}
+      workerId={worker.worker_id}
+      workerName={displayName}
+      onOpenDetail={() => onClick?.(worker.worker_id, ouId ?? null, "open")}
+    >
+      {largeBadge}
+    </CumulativeRatingPopover>
   ) : (
     largeBadge
   );

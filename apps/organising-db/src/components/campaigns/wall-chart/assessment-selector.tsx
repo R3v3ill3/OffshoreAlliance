@@ -105,7 +105,7 @@ export async function fetchWallChartAssessmentOptions(
   });
 }
 
-function useWallChartAssessmentOptions(campaignId: string) {
+export function useWallChartAssessmentOptions(campaignId: string) {
   const supabase = createClient();
   return useQuery({
     queryKey: ["campaign-assessments-rated", campaignId],

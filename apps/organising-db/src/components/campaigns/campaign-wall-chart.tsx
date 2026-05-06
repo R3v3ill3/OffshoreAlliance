@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
@@ -1068,9 +1069,13 @@ export function CampaignWallChart({
                   size="sm"
                   variant="outline"
                   className="h-7 px-2 text-xs print:hidden"
-                  onClick={() => setCreateTaskListOpen(true)}
+                  asChild
                 >
-                  New task list
+                  <Link
+                    href={`/campaigns/${campaignId}?tab=plan&sub=task-lists&from=wall-chart`}
+                  >
+                    Task management
+                  </Link>
                 </Button>
               )}
               <WallChartUnitManager

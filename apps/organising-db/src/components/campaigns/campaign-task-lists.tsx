@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
@@ -99,6 +101,8 @@ export function CampaignTaskListsSection({
 }) {
   const supabase = createClient();
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const fromWallChart = searchParams.get("from") === "wall-chart";
   const [dialogOpen, setDialogOpen] = useState(false);
   const [issueTarget, setIssueTarget] = useState<IssueDialogTarget | null>(null);
   const [issueResult, setIssueResult] = useState<IssueResult | null>(null);
@@ -194,7 +198,16 @@ export function CampaignTaskListsSection({
     <div className="space-y-6">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Leader task lists</CardTitle>
+          <div className="flex items-center gap-3">
+            {fromWallChart && (
+              <Button size="sm" variant="outline" asChild>
+                <Link href={`/campaigns/${campaignId}?tab=workforce&sub=wall-chart`}>
+                  ← Wall chart
+                </Link>
+              </Button>
+            )}
+            <CardTitle className="text-lg">Leader task lists</CardTitle>
+          </div>
           {canWrite && (
             <Button size="sm" onClick={() => setDialogOpen(true)}>
               New task list

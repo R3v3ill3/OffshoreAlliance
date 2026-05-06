@@ -111,6 +111,7 @@ type FormPayload = {
     title: string | null;
     include_membership_ask: boolean;
     leader_worker_id: number | null;
+    leader_instructions: string | null;
   };
   activity: {
     activity_id: number;
@@ -662,6 +663,27 @@ function LeaderForm({
 
   return (
     <div className="space-y-6 px-4 py-6 max-w-6xl mx-auto print:text-black">
+      {/* Video header — mobile-optimised. max-h caps height on small screens so
+          the video doesn't dominate the viewport before the leader sees content.
+          playsInline is required on iOS to prevent fullscreen takeover. */}
+      <div className="w-full aspect-video overflow-hidden rounded-md bg-black max-h-48 sm:max-h-64 print:hidden">
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="h-full w-full object-cover"
+        >
+          <source src="/heritage_Eureka.mp4" type="video/mp4" />
+        </video>
+      </div>
+
+      {payload.task_list?.leader_instructions ? (
+        <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm whitespace-pre-wrap">
+          {payload.task_list.leader_instructions}
+        </div>
+      ) : null}
+
       <header>
         <h1 className="text-2xl font-bold">{payload.task_list?.title ?? "Task list"}</h1>
         <p className="text-muted-foreground">{payload.campaign?.name}</p>

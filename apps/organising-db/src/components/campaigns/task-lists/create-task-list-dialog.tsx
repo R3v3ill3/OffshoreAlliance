@@ -61,6 +61,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -133,6 +134,7 @@ export type CreateTaskListDraft = {
   leader_worker_id: number | null;
   leader_organiser_id: number | null;
   include_membership_ask: boolean;
+  leader_instructions: string | null;
   worker_ids: number[];
 };
 
@@ -158,6 +160,7 @@ type FormState = {
   use_followers: boolean;         // toggle in Leader step
   followers_seeded_for_leader: number | null;
   title: string;
+  leader_instructions: string;
   include_membership_ask: boolean;
   activate_now: boolean;
 };
@@ -171,6 +174,7 @@ type Action =
   | { type: "SET_USE_FOLLOWERS"; value: boolean }
   | { type: "MARK_FOLLOWERS_SEEDED"; leaderId: number | null }
   | { type: "SET_TITLE"; value: string }
+  | { type: "SET_LEADER_INSTRUCTIONS"; value: string }
   | { type: "SET_MEMBERSHIP_ASK"; value: boolean }
   | { type: "SET_ACTIVATE_NOW"; value: boolean }
   | { type: "RESET"; value: FormState };
@@ -184,6 +188,7 @@ const EMPTY_STATE: FormState = {
   use_followers: true,
   followers_seeded_for_leader: null,
   title: "",
+  leader_instructions: "",
   include_membership_ask: false,
   activate_now: false,
 };
@@ -228,6 +233,8 @@ function reducer(state: FormState, action: Action): FormState {
       return { ...state, followers_seeded_for_leader: action.leaderId };
     case "SET_TITLE":
       return { ...state, title: action.value };
+    case "SET_LEADER_INSTRUCTIONS":
+      return { ...state, leader_instructions: action.value };
     case "SET_MEMBERSHIP_ASK":
       return { ...state, include_membership_ask: action.value };
     case "SET_ACTIVATE_NOW":
@@ -266,6 +273,7 @@ export function CreateTaskListDialog({
         use_followers: false,
         followers_seeded_for_leader: draft.leader_worker_id ?? null,
         title: draft.title ?? "",
+        leader_instructions: draft.leader_instructions ?? "",
         include_membership_ask: draft.include_membership_ask,
         activate_now: false,
       };
@@ -447,6 +455,7 @@ export function CreateTaskListDialog({
         leader_worker_id,
         leader_organiser_id,
         title: state.title || null,
+        leader_instructions: state.leader_instructions || null,
         status: targetStatus,
         include_membership_ask: state.include_membership_ask,
       };
@@ -1324,6 +1333,21 @@ function OptionsStep({
           onChange={(e) => dispatch({ type: "SET_TITLE", value: e.target.value })}
           placeholder="Defaults to a generated title if left blank"
         />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Instructions for the leader (optional)</Label>
+        <Textarea
+          value={state.leader_instructions}
+          onChange={(e) =>
+            dispatch({ type: "SET_LEADER_INSTRUCTIONS", value: e.target.value })
+          }
+          placeholder="These instructions appear at the top of the leader's webform, below the video. Use this to explain what you need the leader to do."
+          rows={4}
+        />
+        <p className="text-xs text-muted-foreground">
+          Displayed as plain text — formatting is not supported.
+        </p>
       </div>
 
       <label className="flex items-start gap-2 text-sm cursor-pointer rounded border bg-muted/10 px-3 py-2">

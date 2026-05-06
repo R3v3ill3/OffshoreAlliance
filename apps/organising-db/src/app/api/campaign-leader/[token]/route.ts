@@ -171,7 +171,8 @@ export async function GET(
     const { data: taskList, error: tlErr } = await admin
       .from("campaign_task_lists")
       .select(
-        `task_list_id, title, campaign_id, activity_id, leader_worker_id, include_membership_ask,
+        `task_list_id, title, campaign_id, activity_id, leader_worker_id,
+         include_membership_ask, leader_instructions,
          campaign:campaigns(campaign_id, name),
          activity:campaign_activities(activity_id, title, is_binary, supporter_outcome_value, assessment_type)`,
       )
@@ -384,6 +385,7 @@ export async function GET(
         title: taskList.title,
         include_membership_ask: !!taskList.include_membership_ask,
         leader_worker_id: taskList.leader_worker_id ?? null,
+        leader_instructions: (taskList as { leader_instructions?: string | null }).leader_instructions ?? null,
       },
       activity: activity
         ? {

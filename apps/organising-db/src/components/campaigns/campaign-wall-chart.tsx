@@ -63,6 +63,7 @@ import {
   type MoveMode,
 } from "./wall-chart/copy-worker-to-unit-dialog";
 import { WallChartSelectionBar } from "./wall-chart/wall-chart-selection-bar";
+import { ClearRatingsDialog } from "./wall-chart/clear-ratings-dialog";
 import { useWallChartSelection } from "./wall-chart/use-wall-chart-selection";
 import { useMoveWorkersMutation } from "./wall-chart/move-worker-mutation";
 import { LinkToLeaderDialog } from "./wall-chart/link-to-leader-dialog";
@@ -186,6 +187,7 @@ export function CampaignWallChart({
   const [bulkDialog, setBulkDialog] = useState<{ mode: MoveMode } | null>(null);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+  const [clearRatingsDialogOpen, setClearRatingsDialogOpen] = useState(false);
   const [splitTargetOu, setSplitTargetOu] = useState<WallChartOU | null>(null);
   const moveWorkers = useMoveWorkersMutation(campaignId);
 
@@ -974,6 +976,7 @@ export function CampaignWallChart({
               ? () => setRemoveConfirmOpen(true)
               : undefined
           }
+          onClearRatings={() => setClearRatingsDialogOpen(true)}
           onLinkToLeader={() => setLinkDialogOpen(true)}
           onClear={() => selection.clear()}
         />
@@ -1660,6 +1663,14 @@ export function CampaignWallChart({
           members={splitMembers}
         />
       )}
+
+      <ClearRatingsDialog
+        open={clearRatingsDialogOpen}
+        onOpenChange={setClearRatingsDialogOpen}
+        campaignId={campaignId}
+        workerIds={selection.workerIds()}
+        onSuccess={() => selection.clear()}
+      />
     </Card>
   );
 }

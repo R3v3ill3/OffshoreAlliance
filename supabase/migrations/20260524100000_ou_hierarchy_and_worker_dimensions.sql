@@ -197,7 +197,8 @@ CREATE INDEX IF NOT EXISTS idx_workers_roster_panel ON workers(roster_panel_id);
 -- 4. Updated views: parent_ou_id + hierarchy roll-up
 -- -------------------------------------------------------
 
-CREATE OR REPLACE VIEW campaign_unit_assignment_summary
+DROP VIEW IF EXISTS campaign_unit_assignment_summary CASCADE;
+CREATE VIEW campaign_unit_assignment_summary
 WITH (security_invoker = true)
 AS
 WITH membership AS (
@@ -238,6 +239,7 @@ COMMENT ON VIEW campaign_unit_assignment_summary IS
   'sub-units into their parent.';
 
 -- Per-parent roll-up: distinct workers across the parent itself plus all children.
+DROP VIEW IF EXISTS campaign_unit_hierarchy_summary;
 CREATE OR REPLACE VIEW campaign_unit_hierarchy_summary
 WITH (security_invoker = true)
 AS

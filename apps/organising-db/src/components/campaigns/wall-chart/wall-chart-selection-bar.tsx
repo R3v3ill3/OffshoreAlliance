@@ -13,6 +13,8 @@ export type WallChartSelectionBarProps = {
   linkDisabled?: boolean;
   /** When provided, shows a "Remove from unit" button. Pass undefined to hide (e.g. when all selected are already unassigned). */
   onRemove?: () => void;
+  /** When provided, shows a "Clear ratings…" button for bulk-removing ratings from selected workers. */
+  onClearRatings?: () => void;
 };
 
 export function WallChartSelectionBar({
@@ -24,6 +26,7 @@ export function WallChartSelectionBar({
   onClear,
   linkDisabled,
   onRemove,
+  onClearRatings,
 }: WallChartSelectionBarProps) {
   if (count === 0) return null;
 
@@ -70,6 +73,19 @@ export function WallChartSelectionBar({
             disabled={!canWrite}
           >
             Remove from unit
+          </Button>
+        )}
+        {onClearRatings && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+            onClick={onClearRatings}
+            disabled={!canWrite}
+            title="Remove ratings for the selected workers"
+          >
+            Clear ratings…
           </Button>
         )}
         <Button

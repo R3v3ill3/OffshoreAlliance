@@ -68,6 +68,7 @@ type TaskListRow = {
   leader_worker_id: number | null;
   leader_organiser_id: number | null;
   include_membership_ask: boolean;
+  leader_instructions: string | null;
   activity: { title: string } | { title: string }[] | null;
   campaign: { name: string } | { name: string }[] | null;
   leader_worker:
@@ -120,7 +121,7 @@ export function CampaignTaskListsSection({
         .from("campaign_task_lists")
         .select(
           `task_list_id, title, status, activity_id, leader_worker_id, leader_organiser_id,
-           include_membership_ask,
+           include_membership_ask, leader_instructions,
            activity:campaign_activities(title),
            campaign:campaigns(name),
            leader_worker:workers!campaign_task_lists_leader_worker_id_fkey(first_name, last_name),
@@ -306,6 +307,7 @@ export function CampaignTaskListsSection({
                                     leader_worker_id: row.leader_worker_id,
                                     leader_organiser_id: row.leader_organiser_id,
                                     include_membership_ask: !!row.include_membership_ask,
+                                    leader_instructions: row.leader_instructions ?? null,
                                     worker_ids: (row.items ?? []).map(
                                       (i) => i.worker_id
                                     ),

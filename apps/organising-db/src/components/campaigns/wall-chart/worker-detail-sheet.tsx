@@ -515,6 +515,26 @@ function RatingsTab({
     },
   });
 
+  const deleteRating = useAuthAwareMutation<void, Error, number>({
+    mutationFn: async (ratingId) => {
+      const { error } = await supabase
+        .from("campaign_activity_ratings")
+        .delete()
+        .eq("rating_id", ratingId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["worker-activity-ratings", campaignId, workerId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-activity-ratings", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-activity-ratings-dist", campaignId] });
+      toast.success("Rating removed");
+    },
+    onError: (err) => {
+      toast.error(`Failed to remove rating: ${(err as Error).message}`);
+    },
+  });
+
   function loadRowIntoForm(r: (typeof rows)[number]) {
     if (!r.activity) return;
     setSelectedActivityId(String(r.activity.activity_id));
@@ -658,6 +678,17 @@ function RatingsTab({
                       title="Load into form to edit"
                     >
                       Edit
+                    </button>
+                  )}
+                  {canWrite && (
+                    <button
+                      type="button"
+                      onClick={() => deleteRating.mutate(r.rating_id)}
+                      disabled={deleteRating.isPending}
+                      className="text-[10px] text-destructive/70 underline hover:text-destructive disabled:opacity-50"
+                      title="Remove this rating"
+                    >
+                      Remove
                     </button>
                   )}
                 </div>

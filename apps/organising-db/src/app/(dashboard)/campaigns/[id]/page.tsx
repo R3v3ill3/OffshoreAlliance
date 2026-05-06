@@ -72,6 +72,7 @@ import { CampaignResultsSection } from "@/components/campaigns/campaign-results-
 import { CampaignActionsSection } from "@/components/campaigns/campaign-actions-section";
 import { LibrarySection } from "@/components/campaigns/library/campaign-library";
 import { CampaignBasicsEditSheet } from "@/components/campaigns/campaign-basics-edit-sheet";
+import { SectionPlansTab } from "@/components/campaigns/section-planning/SectionPlansTab";
 import {
   VALID_TABS,
   resolveTabParams,
@@ -498,6 +499,7 @@ export default function CampaignDetailPage() {
         <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="plan">Plan &amp; Execution</TabsTrigger>
+          <TabsTrigger value="section-plans">Section Plans</TabsTrigger>
           <TabsTrigger value="workforce">Workforce</TabsTrigger>
           <TabsTrigger value="outcomes">Outcomes</TabsTrigger>
           <TabsTrigger value="outreach">Outreach</TabsTrigger>
@@ -850,6 +852,12 @@ export default function CampaignDetailPage() {
         <TabsContent value="library">
           {activeTab === "library" && (
             <LibrarySection campaignId={campaignId} canWrite={!!canWrite} />
+          )}
+        </TabsContent>
+
+        <TabsContent value="section-plans">
+          {activeTab === "section-plans" && (
+            <SectionPlansTab campaignId={campaignId} />
           )}
         </TabsContent>
 

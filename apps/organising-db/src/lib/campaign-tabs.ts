@@ -32,6 +32,10 @@ export const VALID_TABS = [
   "outcomes",
   // Phase F:
   "library",
+  // Section Planning module — Phase 1:
+  // Stripped-back, period-scoped sibling planner. Distinct from "plan"
+  // (the P2W stage planner cluster). Has no sub-tabs at present.
+  "section-plans",
 ] as const;
 
 export type ValidTab = (typeof VALID_TABS)[number];

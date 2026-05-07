@@ -2905,6 +2905,7 @@ export type Database = {
           description: string | null
           is_binary: boolean
           is_custom: boolean
+          rating_labels: Json | null
           supporter_outcome_value: string | null
           template_key: string | null
           title: string
@@ -2918,6 +2919,7 @@ export type Database = {
           description?: string | null
           is_binary?: boolean
           is_custom?: boolean
+          rating_labels?: Json | null
           supporter_outcome_value?: string | null
           template_key?: string | null
           title: string
@@ -2931,6 +2933,7 @@ export type Database = {
           description?: string | null
           is_binary?: boolean
           is_custom?: boolean
+          rating_labels?: Json | null
           supporter_outcome_value?: string | null
           template_key?: string | null
           title?: string
@@ -4174,7 +4177,9 @@ export type Database = {
           commonality_logic: string | null
           created_at: string
           display_order: number
+          is_group_container: boolean
           name: string
+          ou_group_id: number | null
           ou_id: number
           ou_type: string
           parent_ou_id: number | null
@@ -4191,7 +4196,9 @@ export type Database = {
           commonality_logic?: string | null
           created_at?: string
           display_order?: number
+          is_group_container?: boolean
           name: string
+          ou_group_id?: number | null
           ou_id?: number
           ou_type: string
           parent_ou_id?: number | null
@@ -4208,7 +4215,9 @@ export type Database = {
           commonality_logic?: string | null
           created_at?: string
           display_order?: number
+          is_group_container?: boolean
           name?: string
+          ou_group_id?: number | null
           ou_id?: number
           ou_type?: string
           parent_ou_id?: number | null
@@ -4303,6 +4312,27 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "workload_dashboard_summary"
             referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_ou_group_id_fkey"
+            columns: ["ou_group_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_organising_units"
+            referencedColumns: ["ou_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_ou_group_id_fkey"
+            columns: ["ou_group_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_unit_assignment_summary"
+            referencedColumns: ["ou_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_ou_group_id_fkey"
+            columns: ["ou_group_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_unit_hierarchy_summary"
+            referencedColumns: ["parent_ou_id"]
           },
           {
             foreignKeyName: "campaign_organising_units_parent_ou_id_fkey"
@@ -5428,6 +5458,7 @@ export type Database = {
           created_at: string
           draft_notes: string | null
           include_membership_ask: boolean
+          leader_instructions: string | null
           leader_organiser_id: number | null
           leader_worker_id: number | null
           status: string
@@ -5440,6 +5471,7 @@ export type Database = {
           created_at?: string
           draft_notes?: string | null
           include_membership_ask?: boolean
+          leader_instructions?: string | null
           leader_organiser_id?: number | null
           leader_worker_id?: number | null
           status?: string
@@ -5452,6 +5484,7 @@ export type Database = {
           created_at?: string
           draft_notes?: string | null
           include_membership_ask?: boolean
+          leader_instructions?: string | null
           leader_organiser_id?: number | null
           leader_worker_id?: number | null
           status?: string
@@ -8925,7 +8958,8 @@ export type Database = {
           is_system_default: boolean
           metric_type: string | null
           parent_campaign_ambition_id: number | null
-          plan_id: number
+          plan_id: number | null
+          section_plan_id: number | null
           sort_order: number | null
           target_date: string | null
           target_date_user_overridden: boolean
@@ -8949,7 +8983,8 @@ export type Database = {
           is_system_default?: boolean
           metric_type?: string | null
           parent_campaign_ambition_id?: number | null
-          plan_id: number
+          plan_id?: number | null
+          section_plan_id?: number | null
           sort_order?: number | null
           target_date?: string | null
           target_date_user_overridden?: boolean
@@ -8973,7 +9008,8 @@ export type Database = {
           is_system_default?: boolean
           metric_type?: string | null
           parent_campaign_ambition_id?: number | null
-          plan_id?: number
+          plan_id?: number | null
+          section_plan_id?: number | null
           sort_order?: number | null
           target_date?: string | null
           target_date_user_overridden?: boolean
@@ -9010,6 +9046,20 @@ export type Database = {
             referencedRelation: "campaign_stage_plans"
             referencedColumns: ["plan_id"]
           },
+          {
+            foreignKeyName: "plan_ambitions_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "section_plans"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "plan_ambitions_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_summary"
+            referencedColumns: ["section_plan_id"]
+          },
         ]
       }
       plan_capacities: {
@@ -9020,9 +9070,10 @@ export type Database = {
           created_at: string | null
           custom_text: string | null
           gap_description: string | null
-          plan_id: number
+          plan_id: number | null
           resolution_date: string | null
           resolution_plan: string | null
+          section_plan_id: number | null
           sort_order: number | null
           status: string
         }
@@ -9033,9 +9084,10 @@ export type Database = {
           created_at?: string | null
           custom_text?: string | null
           gap_description?: string | null
-          plan_id: number
+          plan_id?: number | null
           resolution_date?: string | null
           resolution_plan?: string | null
+          section_plan_id?: number | null
           sort_order?: number | null
           status?: string
         }
@@ -9046,9 +9098,10 @@ export type Database = {
           created_at?: string | null
           custom_text?: string | null
           gap_description?: string | null
-          plan_id?: number
+          plan_id?: number | null
           resolution_date?: string | null
           resolution_plan?: string | null
+          section_plan_id?: number | null
           sort_order?: number | null
           status?: string
         }
@@ -9073,6 +9126,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "campaign_stage_plans"
             referencedColumns: ["plan_id"]
+          },
+          {
+            foreignKeyName: "plan_capacities_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "section_plans"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "plan_capacities_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_summary"
+            referencedColumns: ["section_plan_id"]
           },
         ]
       }
@@ -9254,8 +9321,9 @@ export type Database = {
           if_then_statement: string
           is_current: boolean | null
           member_agency_assessment: string | null
-          plan_id: number
+          plan_id: number | null
           risk_assessment: Json | null
+          section_plan_id: number | null
           theory_id: number
           updated_at: string | null
           version: number | null
@@ -9272,8 +9340,9 @@ export type Database = {
           if_then_statement: string
           is_current?: boolean | null
           member_agency_assessment?: string | null
-          plan_id: number
+          plan_id?: number | null
           risk_assessment?: Json | null
+          section_plan_id?: number | null
           theory_id?: number
           updated_at?: string | null
           version?: number | null
@@ -9290,8 +9359,9 @@ export type Database = {
           if_then_statement?: string
           is_current?: boolean | null
           member_agency_assessment?: string | null
-          plan_id?: number
+          plan_id?: number | null
           risk_assessment?: Json | null
+          section_plan_id?: number | null
           theory_id?: number
           updated_at?: string | null
           version?: number | null
@@ -9304,6 +9374,20 @@ export type Database = {
             referencedRelation: "campaign_stage_plans"
             referencedColumns: ["plan_id"]
           },
+          {
+            foreignKeyName: "plan_theory_of_winning_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "section_plans"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "plan_theory_of_winning_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_summary"
+            referencedColumns: ["section_plan_id"]
+          },
         ]
       }
       plan_where_to_play: {
@@ -9312,9 +9396,10 @@ export type Database = {
           custom_text: string | null
           is_exclusion: boolean | null
           linked_ambition_id: number | null
-          plan_id: number
+          plan_id: number | null
           priority: number | null
           rationale: string | null
+          section_plan_id: number | null
           sort_order: number | null
           wtp_category_id: number
           wtp_id: number
@@ -9325,9 +9410,10 @@ export type Database = {
           custom_text?: string | null
           is_exclusion?: boolean | null
           linked_ambition_id?: number | null
-          plan_id: number
+          plan_id?: number | null
           priority?: number | null
           rationale?: string | null
+          section_plan_id?: number | null
           sort_order?: number | null
           wtp_category_id: number
           wtp_id?: number
@@ -9338,9 +9424,10 @@ export type Database = {
           custom_text?: string | null
           is_exclusion?: boolean | null
           linked_ambition_id?: number | null
-          plan_id?: number
+          plan_id?: number | null
           priority?: number | null
           rationale?: string | null
+          section_plan_id?: number | null
           sort_order?: number | null
           wtp_category_id?: number
           wtp_id?: number
@@ -9381,6 +9468,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "campaign_stage_plans"
             referencedColumns: ["plan_id"]
+          },
+          {
+            foreignKeyName: "plan_where_to_play_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "section_plans"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "plan_where_to_play_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_summary"
+            referencedColumns: ["section_plan_id"]
           },
           {
             foreignKeyName: "plan_where_to_play_wtp_category_id_fkey"
@@ -10690,6 +10791,221 @@ export type Database = {
           union_code?: string
           union_id?: number
           union_name?: string
+        }
+        Relationships: []
+      }
+      upcoming_project_employers: {
+        Row: {
+          candidate_proposals: Json
+          confirmed_at: string | null
+          confirmed_by: string | null
+          created_at: string
+          employer_id: number | null
+          id: number
+          is_primary: boolean
+          match_method: string | null
+          match_score: number | null
+          match_status: string
+          notes: string | null
+          role_type: string
+          upcoming_project_id: number
+          updated_at: string
+        }
+        Insert: {
+          candidate_proposals?: Json
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          employer_id?: number | null
+          id?: number
+          is_primary?: boolean
+          match_method?: string | null
+          match_score?: number | null
+          match_status: string
+          notes?: string | null
+          role_type?: string
+          upcoming_project_id: number
+          updated_at?: string
+        }
+        Update: {
+          candidate_proposals?: Json
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          employer_id?: number | null
+          id?: number
+          is_primary?: boolean
+          match_method?: string | null
+          match_score?: number | null
+          match_status?: string
+          notes?: string | null
+          role_type?: string
+          upcoming_project_id?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "upcoming_project_employers_employer_id_fkey"
+            columns: ["employer_id"]
+            isOneToOne: false
+            referencedRelation: "employers"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "upcoming_project_employers_employer_id_fkey"
+            columns: ["employer_id"]
+            isOneToOne: false
+            referencedRelation: "employers_view"
+            referencedColumns: ["employer_id"]
+          },
+          {
+            foreignKeyName: "upcoming_project_employers_employer_id_fkey"
+            columns: ["employer_id"]
+            isOneToOne: false
+            referencedRelation: "principal_employer_eba_summary"
+            referencedColumns: ["principal_employer_id"]
+          },
+          {
+            foreignKeyName: "upcoming_project_employers_upcoming_project_id_fkey"
+            columns: ["upcoming_project_id"]
+            isOneToOne: false
+            referencedRelation: "upcoming_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      upcoming_projects: {
+        Row: {
+          activity_type: string | null
+          associated_project: string | null
+          created_at: string
+          end_date: string | null
+          external_id: string
+          first_seen_at: string
+          id: number
+          is_active: boolean
+          jurisdiction: string | null
+          last_changed_at: string
+          last_seen_at: string
+          latitude: number | null
+          lifecycle_classification: string | null
+          location_text: string | null
+          longitude: number | null
+          organisation: string | null
+          project_name: string | null
+          raw_payload: Json
+          region_code: string | null
+          source: string
+          source_url: string
+          start_date: string | null
+          status: string | null
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          activity_type?: string | null
+          associated_project?: string | null
+          created_at?: string
+          end_date?: string | null
+          external_id: string
+          first_seen_at?: string
+          id?: number
+          is_active?: boolean
+          jurisdiction?: string | null
+          last_changed_at?: string
+          last_seen_at?: string
+          latitude?: number | null
+          lifecycle_classification?: string | null
+          location_text?: string | null
+          longitude?: number | null
+          organisation?: string | null
+          project_name?: string | null
+          raw_payload: Json
+          region_code?: string | null
+          source: string
+          source_url: string
+          start_date?: string | null
+          status?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          activity_type?: string | null
+          associated_project?: string | null
+          created_at?: string
+          end_date?: string | null
+          external_id?: string
+          first_seen_at?: string
+          id?: number
+          is_active?: boolean
+          jurisdiction?: string | null
+          last_changed_at?: string
+          last_seen_at?: string
+          latitude?: number | null
+          lifecycle_classification?: string | null
+          location_text?: string | null
+          longitude?: number | null
+          organisation?: string | null
+          project_name?: string | null
+          raw_payload?: Json
+          region_code?: string | null
+          source?: string
+          source_url?: string
+          start_date?: string | null
+          status?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      upcoming_projects_scrape_runs: {
+        Row: {
+          auto_matched: number
+          error_message: string | null
+          finished_at: string | null
+          id: number
+          needs_review: number
+          records_deactivated: number
+          records_inserted: number
+          records_seen: number
+          records_updated: number
+          source: string
+          started_at: string
+          status: string
+          triggered_by: string
+          unmatched: number
+        }
+        Insert: {
+          auto_matched?: number
+          error_message?: string | null
+          finished_at?: string | null
+          id?: number
+          needs_review?: number
+          records_deactivated?: number
+          records_inserted?: number
+          records_seen?: number
+          records_updated?: number
+          source: string
+          started_at?: string
+          status?: string
+          triggered_by?: string
+          unmatched?: number
+        }
+        Update: {
+          auto_matched?: number
+          error_message?: string | null
+          finished_at?: string | null
+          id?: number
+          needs_review?: number
+          records_deactivated?: number
+          records_inserted?: number
+          records_seen?: number
+          records_updated?: number
+          source?: string
+          started_at?: string
+          status?: string
+          triggered_by?: string
+          unmatched?: number
         }
         Relationships: []
       }
@@ -13375,14 +13691,14 @@ export type Database = {
           },
           {
             foreignKeyName: "user_profiles_organiser_id_fkey"
-            columns: ["granted_by_organiser_id"]
+            columns: ["granted_to_organiser_id"]
             isOneToOne: false
             referencedRelation: "organisers"
             referencedColumns: ["organiser_id"]
           },
           {
             foreignKeyName: "user_profiles_organiser_id_fkey"
-            columns: ["granted_to_organiser_id"]
+            columns: ["granted_by_organiser_id"]
             isOneToOne: false
             referencedRelation: "organisers"
             referencedColumns: ["organiser_id"]
@@ -13507,6 +13823,8 @@ export type Database = {
         Row: {
           allocated_worker_count: number | null
           campaign_id: number | null
+          is_group_container: boolean | null
+          ou_group_id: number | null
           ou_id: number | null
           ou_name: string | null
           ou_type: string | null
@@ -13514,6 +13832,27 @@ export type Database = {
           total_workers_estimated: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "campaign_organising_units_ou_group_id_fkey"
+            columns: ["ou_group_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_organising_units"
+            referencedColumns: ["ou_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_ou_group_id_fkey"
+            columns: ["ou_group_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_unit_assignment_summary"
+            referencedColumns: ["ou_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_ou_group_id_fkey"
+            columns: ["ou_group_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_unit_hierarchy_summary"
+            referencedColumns: ["parent_ou_id"]
+          },
           {
             foreignKeyName: "campaign_organising_units_parent_ou_id_fkey"
             columns: ["parent_ou_id"]
@@ -14565,6 +14904,96 @@ export type Database = {
           },
           {
             foreignKeyName: "pia_actions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
+          },
+        ]
+      }
+      v_section_plan_summary: {
+        Row: {
+          activities_count: number | null
+          ambitions_count: number | null
+          campaign_id: number | null
+          capacities_count: number | null
+          end_date: string | null
+          name: string | null
+          section_plan_id: number | null
+          start_date: string | null
+          status: string | null
+          theories_count: number | null
+          timeframe_kind:
+            | Database["public"]["Enums"]["section_plan_timeframe_kind"]
+            | null
+          wtp_count: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_bargaining_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "workload_dashboard_summary"
@@ -15678,6 +16107,31 @@ export type Database = {
       cleanup_old_rate_limit_usage: { Args: never; Returns: number }
       clear_all_ai_cache: { Args: never; Returns: number }
       clear_expired_ai_cache: { Args: never; Returns: number }
+      confirm_upcoming_project_match: {
+        Args: { payload: Json }
+        Returns: {
+          candidate_proposals: Json
+          confirmed_at: string | null
+          confirmed_by: string | null
+          created_at: string
+          employer_id: number | null
+          id: number
+          is_primary: boolean
+          match_method: string | null
+          match_score: number | null
+          match_status: string
+          notes: string | null
+          role_type: string
+          upcoming_project_id: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "upcoming_project_employers"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       delete_campaign: { Args: { p_campaign_id: number }; Returns: undefined }
       delete_old_import_logs: { Args: never; Returns: Json }
       deny_campaign_edit_permission: {

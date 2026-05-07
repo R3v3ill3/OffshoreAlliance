@@ -156,6 +156,182 @@ export type Database = {
           },
         ]
       }
+      activity_sequence_runs: {
+        Row: {
+          materialised_activity_id: number | null
+          notes: string | null
+          run_id: number
+          state: string
+          step_id: number
+          triggered_at: string
+        }
+        Insert: {
+          materialised_activity_id?: number | null
+          notes?: string | null
+          run_id?: number
+          state?: string
+          step_id: number
+          triggered_at?: string
+        }
+        Update: {
+          materialised_activity_id?: number | null
+          notes?: string | null
+          run_id?: number
+          state?: string
+          step_id?: number
+          triggered_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_sequence_runs_materialised_activity_id_fkey"
+            columns: ["materialised_activity_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_activities"
+            referencedColumns: ["activity_id"]
+          },
+          {
+            foreignKeyName: "activity_sequence_runs_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: false
+            referencedRelation: "activity_sequence_steps"
+            referencedColumns: ["step_id"]
+          },
+        ]
+      }
+      activity_sequence_steps: {
+        Row: {
+          created_at: string
+          delay_minutes: number
+          sequence_id: number
+          source_activity_id: number | null
+          step_id: number
+          step_order: number
+          target_activity_kind: string
+          target_activity_template_key: string
+          target_payload: Json
+        }
+        Insert: {
+          created_at?: string
+          delay_minutes?: number
+          sequence_id: number
+          source_activity_id?: number | null
+          step_id?: number
+          step_order: number
+          target_activity_kind: string
+          target_activity_template_key: string
+          target_payload?: Json
+        }
+        Update: {
+          created_at?: string
+          delay_minutes?: number
+          sequence_id?: number
+          source_activity_id?: number | null
+          step_id?: number
+          step_order?: number
+          target_activity_kind?: string
+          target_activity_template_key?: string
+          target_payload?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_sequence_steps_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "activity_sequences"
+            referencedColumns: ["sequence_id"]
+          },
+          {
+            foreignKeyName: "activity_sequence_steps_source_activity_id_fkey"
+            columns: ["source_activity_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_activities"
+            referencedColumns: ["activity_id"]
+          },
+        ]
+      }
+      activity_sequence_triggers: {
+        Row: {
+          created_at: string
+          event_kind: string
+          outcome: string | null
+          step_id: number
+          threshold_kind: string
+          threshold_value: number | null
+          trigger_id: number
+        }
+        Insert: {
+          created_at?: string
+          event_kind: string
+          outcome?: string | null
+          step_id: number
+          threshold_kind: string
+          threshold_value?: number | null
+          trigger_id?: number
+        }
+        Update: {
+          created_at?: string
+          event_kind?: string
+          outcome?: string | null
+          step_id?: number
+          threshold_kind?: string
+          threshold_value?: number | null
+          trigger_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_sequence_triggers_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: false
+            referencedRelation: "activity_sequence_steps"
+            referencedColumns: ["step_id"]
+          },
+        ]
+      }
+      activity_sequences: {
+        Row: {
+          created_at: string
+          description: string | null
+          is_active: boolean
+          name: string
+          section_plan_id: number
+          sequence_id: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          is_active?: boolean
+          name: string
+          section_plan_id: number
+          sequence_id?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          is_active?: boolean
+          name?: string
+          section_plan_id?: number
+          sequence_id?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_sequences_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "section_plans"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "activity_sequences_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_summary"
+            referencedColumns: ["section_plan_id"]
+          },
+        ]
+      }
       agreement_employers: {
         Row: {
           agreement_id: number
@@ -2906,6 +3082,7 @@ export type Database = {
           is_binary: boolean
           is_custom: boolean
           rating_labels: Json | null
+          section_plan_id: number | null
           supporter_outcome_value: string | null
           template_key: string | null
           title: string
@@ -2920,6 +3097,7 @@ export type Database = {
           is_binary?: boolean
           is_custom?: boolean
           rating_labels?: Json | null
+          section_plan_id?: number | null
           supporter_outcome_value?: string | null
           template_key?: string | null
           title: string
@@ -2934,6 +3112,7 @@ export type Database = {
           is_binary?: boolean
           is_custom?: boolean
           rating_labels?: Json | null
+          section_plan_id?: number | null
           supporter_outcome_value?: string | null
           template_key?: string | null
           title?: string
@@ -3008,6 +3187,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "workload_dashboard_summary"
             referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_activities_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "section_plans"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "campaign_activities_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_summary"
+            referencedColumns: ["section_plan_id"]
           },
         ]
       }
@@ -16584,6 +16777,7 @@ export type Database = {
         Args: { p_days_ago?: number }
         Returns: Json
       }
+      materialise_sequence_run: { Args: { p_run_id: number }; Returns: number }
       merge_employers: { Args: { payload: Json }; Returns: Json }
       record_assessment_event: {
         Args: {

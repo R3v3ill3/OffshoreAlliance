@@ -4335,6 +4335,13 @@ export type Database = {
             referencedColumns: ["parent_ou_id"]
           },
           {
+            foreignKeyName: "campaign_organising_units_ou_group_id_fkey"
+            columns: ["ou_group_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_workforce_mapping"
+            referencedColumns: ["worksite_ou_id"]
+          },
+          {
             foreignKeyName: "campaign_organising_units_parent_ou_id_fkey"
             columns: ["parent_ou_id"]
             isOneToOne: false
@@ -4354,6 +4361,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "campaign_unit_hierarchy_summary"
             referencedColumns: ["parent_ou_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_parent_ou_id_fkey"
+            columns: ["parent_ou_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_workforce_mapping"
+            referencedColumns: ["worksite_ou_id"]
           },
         ]
       }
@@ -4421,6 +4435,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "campaign_unit_hierarchy_summary"
             referencedColumns: ["parent_ou_id"]
+          },
+          {
+            foreignKeyName: "campaign_ou_candidates_accepted_ou_id_fkey"
+            columns: ["accepted_ou_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_workforce_mapping"
+            referencedColumns: ["worksite_ou_id"]
           },
           {
             foreignKeyName: "campaign_ou_candidates_campaign_id_fkey"
@@ -5292,6 +5313,13 @@ export type Database = {
             referencedColumns: ["parent_ou_id"]
           },
           {
+            foreignKeyName: "campaign_stage_workplan_tasks_assigned_ou_id_fkey"
+            columns: ["assigned_ou_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_workforce_mapping"
+            referencedColumns: ["worksite_ou_id"]
+          },
+          {
             foreignKeyName: "campaign_stage_workplan_tasks_assigned_worker_id_fkey"
             columns: ["assigned_worker_id"]
             isOneToOne: false
@@ -5852,6 +5880,13 @@ export type Database = {
             referencedRelation: "campaign_unit_hierarchy_summary"
             referencedColumns: ["parent_ou_id"]
           },
+          {
+            foreignKeyName: "campaign_unit_rules_ou_id_fkey"
+            columns: ["ou_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_workforce_mapping"
+            referencedColumns: ["worksite_ou_id"]
+          },
         ]
       }
       campaign_universe_rules: {
@@ -6143,6 +6178,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "campaign_unit_hierarchy_summary"
             referencedColumns: ["parent_ou_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_ou_ou_id_fkey"
+            columns: ["ou_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_workforce_mapping"
+            referencedColumns: ["worksite_ou_id"]
           },
           {
             foreignKeyName: "campaign_worker_ou_worker_id_fkey"
@@ -10087,6 +10129,145 @@ export type Database = {
           },
         ]
       }
+      section_plan_situation_snippets: {
+        Row: {
+          agreement_expiry_override: string | null
+          ai_generated: boolean
+          created_at: string
+          derived_from_campaign_situation: boolean
+          key_event: string | null
+          notes: string | null
+          section_plan_id: number
+          snippet_id: number
+          status_summary: string | null
+          strategic_context: string | null
+          updated_at: string
+          workforce_summary: string | null
+        }
+        Insert: {
+          agreement_expiry_override?: string | null
+          ai_generated?: boolean
+          created_at?: string
+          derived_from_campaign_situation?: boolean
+          key_event?: string | null
+          notes?: string | null
+          section_plan_id: number
+          snippet_id?: number
+          status_summary?: string | null
+          strategic_context?: string | null
+          updated_at?: string
+          workforce_summary?: string | null
+        }
+        Update: {
+          agreement_expiry_override?: string | null
+          ai_generated?: boolean
+          created_at?: string
+          derived_from_campaign_situation?: boolean
+          key_event?: string | null
+          notes?: string | null
+          section_plan_id?: number
+          snippet_id?: number
+          status_summary?: string | null
+          strategic_context?: string | null
+          updated_at?: string
+          workforce_summary?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "section_plan_situation_snippets_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: true
+            referencedRelation: "section_plans"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "section_plan_situation_snippets_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: true
+            referencedRelation: "v_section_plan_summary"
+            referencedColumns: ["section_plan_id"]
+          },
+        ]
+      }
+      section_plan_workforce_mapping_overrides: {
+        Row: {
+          created_at: string
+          density_override: number | null
+          members_override: number | null
+          note: string | null
+          override_id: number
+          section_plan_id: number
+          updated_at: string
+          workers_override: number | null
+          worksite_ou_id: number
+        }
+        Insert: {
+          created_at?: string
+          density_override?: number | null
+          members_override?: number | null
+          note?: string | null
+          override_id?: number
+          section_plan_id: number
+          updated_at?: string
+          workers_override?: number | null
+          worksite_ou_id: number
+        }
+        Update: {
+          created_at?: string
+          density_override?: number | null
+          members_override?: number | null
+          note?: string | null
+          override_id?: number
+          section_plan_id?: number
+          updated_at?: string
+          workers_override?: number | null
+          worksite_ou_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "section_plan_workforce_mapping_overrides_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "section_plans"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "section_plan_workforce_mapping_overrides_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_summary"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "section_plan_workforce_mapping_overrides_worksite_ou_id_fkey"
+            columns: ["worksite_ou_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_organising_units"
+            referencedColumns: ["ou_id"]
+          },
+          {
+            foreignKeyName: "section_plan_workforce_mapping_overrides_worksite_ou_id_fkey"
+            columns: ["worksite_ou_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_unit_assignment_summary"
+            referencedColumns: ["ou_id"]
+          },
+          {
+            foreignKeyName: "section_plan_workforce_mapping_overrides_worksite_ou_id_fkey"
+            columns: ["worksite_ou_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_unit_hierarchy_summary"
+            referencedColumns: ["parent_ou_id"]
+          },
+          {
+            foreignKeyName: "section_plan_workforce_mapping_overrides_worksite_ou_id_fkey"
+            columns: ["worksite_ou_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_workforce_mapping"
+            referencedColumns: ["worksite_ou_id"]
+          },
+        ]
+      }
       section_plans: {
         Row: {
           archived_at: string | null
@@ -13854,6 +14035,13 @@ export type Database = {
             referencedColumns: ["parent_ou_id"]
           },
           {
+            foreignKeyName: "campaign_organising_units_ou_group_id_fkey"
+            columns: ["ou_group_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_workforce_mapping"
+            referencedColumns: ["worksite_ou_id"]
+          },
+          {
             foreignKeyName: "campaign_organising_units_parent_ou_id_fkey"
             columns: ["parent_ou_id"]
             isOneToOne: false
@@ -13873,6 +14061,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "campaign_unit_hierarchy_summary"
             referencedColumns: ["parent_ou_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_parent_ou_id_fkey"
+            columns: ["parent_ou_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_workforce_mapping"
+            referencedColumns: ["worksite_ou_id"]
           },
           {
             foreignKeyName: "campaign_worker_membership_campaign_id_fkey"
@@ -15001,6 +15196,91 @@ export type Database = {
           },
         ]
       }
+      v_section_plan_workforce_mapping: {
+        Row: {
+          campaign_id: number | null
+          density_pct: number | null
+          members_count: number | null
+          non_member_count: number | null
+          total_workers_estimated: number | null
+          unrated_count: number | null
+          workers_count: number | null
+          worksite_name: string | null
+          worksite_ou_id: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_organising_units_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_bargaining_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
+          },
+        ]
+      }
       v_strength_assessment_inputs: {
         Row: {
           campaign_id: number | null
@@ -15312,6 +15592,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "campaign_unit_hierarchy_summary"
             referencedColumns: ["parent_ou_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_ou_ou_id_fkey"
+            columns: ["campaign_unit_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_workforce_mapping"
+            referencedColumns: ["worksite_ou_id"]
           },
           {
             foreignKeyName: "workers_worksite_id_fkey"
@@ -16326,6 +16613,10 @@ export type Database = {
         Returns: Json
       }
       run_import_log_retention: { Args: never; Returns: Json }
+      section_plan_resolved_agreement_expiry: {
+        Args: { p_section_plan_id: number }
+        Returns: string
+      }
       seed_bargaining_gates: {
         Args: { p_campaign_id: number }
         Returns: undefined
@@ -16349,6 +16640,29 @@ export type Database = {
       seed_pia_pack_shore_based_standard: {
         Args: { p_campaign_id: number }
         Returns: undefined
+      }
+      seed_section_situation_snippet: {
+        Args: { p_section_plan_id: number }
+        Returns: {
+          agreement_expiry_override: string | null
+          ai_generated: boolean
+          created_at: string
+          derived_from_campaign_situation: boolean
+          key_event: string | null
+          notes: string | null
+          section_plan_id: number
+          snippet_id: number
+          status_summary: string | null
+          strategic_context: string | null
+          updated_at: string
+          workforce_summary: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "section_plan_situation_snippets"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       set_ambition_review_due: {
         Args: { p_campaign_id: number }

@@ -9,6 +9,9 @@ import {
   SectionPlanShell,
   type SectionPlanStep,
 } from '@/components/campaigns/section-planning/SectionPlanShell'
+import { SectionSituationSnippetCard } from '@/components/campaigns/section-planning/SectionSituationSnippetCard'
+import { WorkforceMappingTable } from '@/components/campaigns/section-planning/WorkforceMappingTable'
+import { SectionAmbitionPanel } from '@/components/campaigns/section-planning/SectionAmbitionPanel'
 
 const STEP_VALUES: SectionPlanStep[] = [
   'situation',
@@ -97,14 +100,24 @@ interface StepRouterProps {
 }
 
 /**
- * Routes the active step to its panel. Each panel arrives in a later phase;
- * unfilled steps render a placeholder card. Phase 2 ships the shell only.
+ * Routes the active step to its panel. Panels arrive phase-by-phase; the
+ * remaining placeholder slots show what is still in flight.
  */
-function SectionPlanStepRouter({ step }: StepRouterProps) {
+function SectionPlanStepRouter({ step, sectionPlanId, campaignId }: StepRouterProps) {
+  if (step === 'situation') {
+    return <SectionSituationSnippetCard sectionPlanId={sectionPlanId} />
+  }
+  if (step === 'workforce') {
+    return <WorkforceMappingTable sectionPlanId={sectionPlanId} campaignId={campaignId} />
+  }
+  if (step === 'ambitions') {
+    return <SectionAmbitionPanel sectionPlanId={sectionPlanId} />
+  }
+
   const PLACEHOLDER: Record<SectionPlanStep, string> = {
-    situation: 'The situation snippet panel arrives in Phase 3.',
-    workforce: 'The workforce mapping table arrives in Phase 3.',
-    ambitions: 'The ambition panel wrapper arrives in Phase 3.',
+    situation: '',
+    workforce: '',
+    ambitions: '',
     'where-to-play': 'Where-to-play arrives in Phase 4.',
     capacities: 'Capacities arrive in Phase 4.',
     activities: 'Activities + sequences arrive in Phase 5.',

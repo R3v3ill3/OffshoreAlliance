@@ -30,7 +30,7 @@ export async function fetchWallChartAssessmentOptions(
   const { data: activities, error: actErr } = await supabase
     .from("campaign_activities")
     .select(
-      `activity_id, title, is_binary, supporter_outcome_value, created_at,
+      `activity_id, title, is_binary, supporter_outcome_value, created_at, rating_labels,
        activity_ambitions(plan_ambition_id)`
     )
     .eq("campaign_id", campaignId)
@@ -43,6 +43,7 @@ export async function fetchWallChartAssessmentOptions(
     is_binary: boolean | null;
     supporter_outcome_value: string | null;
     created_at: string | null;
+    rating_labels: Record<string, string> | null;
     activity_ambitions:
       | { plan_ambition_id: number }[]
       | { plan_ambition_id: number }
@@ -67,6 +68,7 @@ export async function fetchWallChartAssessmentOptions(
       created_at: r.created_at,
       last_rated_at: null,
       has_linked_ambition: hasLinked,
+      rating_labels: r.rating_labels ?? null,
     });
   }
 
@@ -147,6 +149,7 @@ export function AssessmentSelector({
       title: opt.title,
       isBinary: opt.is_binary,
       supporterOutcomeValue: opt.supporter_outcome_value,
+      ratingLabels: opt.rating_labels,
     });
   };
 
@@ -268,6 +271,7 @@ export function UnitAssessmentViewControl({
       title: opt.title,
       isBinary: opt.is_binary,
       supporterOutcomeValue: opt.supporter_outcome_value,
+      ratingLabels: opt.rating_labels,
     });
   };
 

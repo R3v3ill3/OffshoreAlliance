@@ -565,10 +565,38 @@ export interface CampaignOrganisingUnit {
   source: OuSource;
   /** When set, this OU is a sub-unit nested under another OU (one level only). */
   parent_ou_id: number | null;
+  /**
+   * When TRUE this OU is a named group header. Workers cannot be directly
+   * assigned to it; they belong to the member units within the group.
+   */
+  is_group_container: boolean;
+  /**
+   * FK to the group container OU that owns this member unit.
+   * Always equals parent_ou_id when set; NULL for containers and standalone units.
+   */
+  ou_group_id: number | null;
   display_order: number;
   unit_basis: CampaignOuUnitBasis | null;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Represents a named group of same-type units in the wizard draft graph.
+ * Used when the user selects "Create new group" for a unit type.
+ * On save the container OU is inserted first (with is_group_container=true)
+ * and member OUs reference it via parent_ou_id + ou_group_id.
+ * The member CampaignUnitDraft items are tracked in the same wizard units[]
+ * array; they identify their group via parent_draft_id = group_draft_id.
+ */
+export interface CampaignUnitGroupDraft {
+  /** Local-only id that identifies this group within the wizard session. */
+  group_draft_id: string;
+  /** Server id of the container OU once this group has been saved. */
+  group_ou_id: number | null;
+  ou_type: CampaignOuType;
+  /** Display name for the group (becomes the container OU's name). */
+  group_name: string;
 }
 
 /** Reusable shift label assignable to workers.shift_id. */

@@ -174,7 +174,7 @@ export async function GET(
         `task_list_id, title, campaign_id, activity_id, leader_worker_id,
          include_membership_ask, leader_instructions,
          campaign:campaigns(campaign_id, name),
-         activity:campaign_activities(activity_id, title, is_binary, supporter_outcome_value, assessment_type)`,
+         activity:campaign_activities(activity_id, title, is_binary, supporter_outcome_value, assessment_type, rating_labels)`,
       )
       .eq("task_list_id", tokenRow.task_list_id)
       .single();
@@ -373,6 +373,7 @@ export async function GET(
       is_binary: boolean;
       supporter_outcome_value: string | null;
       assessment_type: string | null;
+      rating_labels: Record<string, string> | null;
     } | null;
     const rawCamp = taskList.campaign;
     const campaignRow = Array.isArray(rawCamp) ? rawCamp[0] : rawCamp;
@@ -394,6 +395,7 @@ export async function GET(
             is_binary: !!activity.is_binary,
             supporter_outcome_value: activity.supporter_outcome_value,
             assessment_type: activity.assessment_type,
+            rating_labels: activity.rating_labels ?? null,
           }
         : null,
       workers: orderedWorkers,

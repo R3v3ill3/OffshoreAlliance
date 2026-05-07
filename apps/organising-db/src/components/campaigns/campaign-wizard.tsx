@@ -45,6 +45,7 @@ import { StepWorkerEstimate } from "@/components/campaigns/step-worker-estimate"
 import {
   StepCampaignUnits,
   type CampaignUnitDraft,
+  type PendingGroupAllocations,
 } from "@/components/campaigns/step-campaign-units";
 import {
   StepCampaignAmbitions,
@@ -206,6 +207,14 @@ export function CampaignWizard() {
   const [selectedWorkers, setSelectedWorkers] = useState<number[]>([]);
   const [workerUnitAllocations, setWorkerUnitAllocations] =
     useState<WorkerUnitAllocation>({});
+  /**
+   * Worker pre-allocations entered via the inline group allocation panel in
+   * step 5. Keyed by member unit draft_id → Set<worker_id>. In
+   * saveUnitsMutation.onSuccess these are resolved to real ou_ids and merged
+   * into workerUnitAllocations so step 6 starts pre-populated.
+   */
+  const [pendingGroupAllocations, setPendingGroupAllocations] =
+    useState<PendingGroupAllocations>({});
   const [campaignAmbitions, setCampaignAmbitions] = useState<
     CampaignAmbitionDraft[]
   >([]);
@@ -256,7 +265,7 @@ export function CampaignWizard() {
         supabase
           .from("campaign_organising_units")
           .select(
-            "ou_id, ou_type, name, total_workers_estimated, unit_basis, parent_ou_id"
+            "ou_id, ou_type, name, total_workers_estimated, unit_basis, parent_ou_id, is_group_container, ou_group_id"
           )
           .eq("campaign_id", cid)
           .order("display_order", { ascending: true }),
@@ -322,6 +331,8 @@ export function CampaignWizard() {
           total_workers_estimated: number | null;
           unit_basis: CampaignOuUnitBasis | null;
           parent_ou_id: number | null;
+          is_group_container: boolean;
+          ou_group_id: number | null;
         }>).map((r) => ({
           draft_id: `srv_${r.ou_id}`,
           ou_id: r.ou_id,
@@ -332,6 +343,8 @@ export function CampaignWizard() {
           parent_ou_id: r.parent_ou_id ?? null,
           parent_draft_id:
             r.parent_ou_id != null ? `srv_${r.parent_ou_id}` : null,
+          is_group_container: r.is_group_container ?? false,
+          ou_group_id: r.ou_group_id ?? null,
         })) satisfies CampaignUnitDraft[],
         workerUnitAllocations: (() => {
           const out: WorkerUnitAllocation = {};
@@ -782,8 +795,8 @@ export function CampaignWizard() {
         }
 
         // Update existing units that are still present. Resolve parent_ou_id
-        // through the local draft graph when a sub-unit's parent was created
-        // in this same wizard session.
+        // and ou_group_id through the local draft graph when a sub-unit's
+        // parent was created in this same wizard session.
         const draftIdToOuId = new Map<string, number>();
         for (const u of units) {
           if (u.ou_id != null) draftIdToOuId.set(u.draft_id, u.ou_id);
@@ -793,6 +806,8 @@ export function CampaignWizard() {
           const resolvedParent =
             u.parent_ou_id ??
             (u.parent_draft_id ? (draftIdToOuId.get(u.parent_draft_id) ?? null) : null);
+          const resolvedGroupId =
+            u.ou_group_id ?? (resolvedParent != null && u.is_group_container !== true ? resolvedParent : null);
           const { error } = await supabase
             .from("campaign_organising_units")
             .update({
@@ -801,15 +816,17 @@ export function CampaignWizard() {
               total_workers_estimated: u.total_workers_estimated,
               unit_basis: u.unit_basis,
               parent_ou_id: resolvedParent,
+              is_group_container: u.is_group_container ?? false,
+              ou_group_id: resolvedGroupId,
             })
             .eq("ou_id", u.ou_id);
           if (error) throw error;
         }
 
-        // Insert brand-new units in two passes so parents exist before any
-        // sub-unit row references them. Pass 1 = top-level drafts (no parent).
-        // Pass 2 = sub-unit drafts (have parent_draft_id), with their
-        // parent_ou_id resolved from the draft_id → ou_id map.
+        // Insert brand-new units in two passes so group containers (and other
+        // top-level parents) exist before child/member rows reference them.
+        // Pass 1 = top-level drafts (no parent_draft_id).
+        // Pass 2 = child drafts (have parent_draft_id), resolved from the map.
         const allDrafts = units.filter((u) => u.ou_id == null);
         const parentDrafts = allDrafts.filter((u) => !u.parent_draft_id);
         const childDrafts = allDrafts.filter((u) => !!u.parent_draft_id);
@@ -826,6 +843,8 @@ export function CampaignWizard() {
                 unit_basis: u.unit_basis,
                 display_order: (existingIds.size + i) as number,
                 parent_ou_id: null,
+                is_group_container: u.is_group_container ?? false,
+                ou_group_id: null,
               }))
             )
             .select("ou_id");
@@ -840,11 +859,17 @@ export function CampaignWizard() {
         if (childDrafts.length > 0) {
           // Resolve each child's parent_ou_id from the map (or its existing
           // parent_ou_id if the parent was already saved previously).
+          // For group members, ou_group_id = resolvedParent.
           const childRows = childDrafts.map((u, i) => {
             const resolvedParent =
               (u.parent_draft_id && draftIdToOuId.get(u.parent_draft_id)) ??
               u.parent_ou_id ??
               null;
+            // ou_group_id: set for group members (non-container children)
+            const resolvedGroupId =
+              u.is_group_container !== true && resolvedParent != null
+                ? resolvedParent
+                : null;
             return {
               campaign_id: campaignId,
               ou_type: u.ou_type,
@@ -853,6 +878,8 @@ export function CampaignWizard() {
               unit_basis: u.unit_basis,
               display_order: (existingIds.size + parentDrafts.length + i) as number,
               parent_ou_id: resolvedParent,
+              is_group_container: u.is_group_container ?? false,
+              ou_group_id: resolvedGroupId,
             };
           });
           // Drop any child whose parent could not be resolved (shouldn't
@@ -881,9 +908,9 @@ export function CampaignWizard() {
           }
         }
 
-        // Build the updated array (resolving both ou_id and parent_ou_id
-        // for every draft). Defer setUnits to onSuccess so it's batched
-        // with setStep(6).
+        // Build the updated array (resolving ou_id, parent_ou_id, and
+        // ou_group_id for every draft). Defer setUnits to onSuccess so it's
+        // batched with setStep(6).
         updatedUnits = units.map((u) => {
           const next = { ...u };
           if (next.ou_id == null && draftIdToOuId.has(next.draft_id)) {
@@ -891,6 +918,11 @@ export function CampaignWizard() {
           }
           if (next.parent_draft_id && next.parent_ou_id == null) {
             next.parent_ou_id = draftIdToOuId.get(next.parent_draft_id) ?? null;
+          }
+          // Resolve ou_group_id for group members (mirrors parent_ou_id when
+          // the parent is a group container).
+          if (next.is_group_container !== true && next.parent_ou_id != null && next.ou_group_id == null) {
+            next.ou_group_id = next.parent_ou_id;
           }
           return next;
         });
@@ -1004,10 +1036,40 @@ export function CampaignWizard() {
       // Apply all state updates together so step 6 renders with the correct
       // units (ou_ids resolved), allocations, and worker list in one pass.
       setUnits(result.updatedUnits);
-      if (Object.keys(result.autoAllocations).length > 0) {
-        setWorkerUnitAllocations(result.autoAllocations);
-        setSelectedWorkers(result.autoWorkerIds);
+
+      // Build the combined worker-unit allocations from:
+      //   1. Auto-allocations derived from scope (worksite/employer matches).
+      //   2. Group pre-allocations entered via the inline panel in step 5,
+      //      with draft_ids resolved to real ou_ids.
+      const baseAllocations =
+        Object.keys(result.autoAllocations).length > 0
+          ? result.autoAllocations
+          : workerUnitAllocations;
+
+      // Resolve pendingGroupAllocations: draft_id keys → real ou_id values.
+      // For each member draft that was pre-allocated, look up the resolved
+      // ou_id and merge into the allocation map.
+      const mergedAllocations: WorkerUnitAllocation = { ...baseAllocations };
+      const additionalWorkerIds = new Set<number>(result.autoWorkerIds);
+
+      for (const [memberDraftId, workerSet] of Object.entries(pendingGroupAllocations)) {
+        const ouId = result.updatedUnits.find(
+          (u) => u.draft_id === memberDraftId
+        )?.ou_id;
+        if (ouId == null) continue;
+        for (const workerId of workerSet) {
+          const existing = new Set(mergedAllocations[workerId] ?? new Set<number>());
+          existing.add(ouId);
+          mergedAllocations[workerId] = existing;
+          additionalWorkerIds.add(workerId);
+        }
       }
+
+      setWorkerUnitAllocations(mergedAllocations);
+      setSelectedWorkers(Array.from(additionalWorkerIds));
+      // Clear pending group allocations now that they've been merged.
+      setPendingGroupAllocations({});
+
       queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });
       queryClient.invalidateQueries({ queryKey: ["campaign-wizard-scope", campaignId] });
       setStep(6);
@@ -1762,6 +1824,7 @@ export function CampaignWizard() {
       {/* ── Step 5: Campaign units ──────────────────────────────────────── */}
       {step === 5 && campaignId && (
         <StepCampaignUnits
+          campaignId={campaignId}
           selectedEmployers={selectedEmployers}
           selectedWorksites={selectedWorksites}
           worksiteSectorWide={worksiteSectorWide}
@@ -1772,6 +1835,8 @@ export function CampaignWizard() {
           }
           units={units}
           setUnits={setUnits}
+          pendingGroupAllocations={pendingGroupAllocations}
+          setPendingGroupAllocations={setPendingGroupAllocations}
           isPending={saveUnitsMutation.isPending}
           onBack={() => setStep(4)}
           onContinue={() => saveUnitsMutation.mutate()}
@@ -1790,12 +1855,14 @@ export function CampaignWizard() {
           workerUnitAllocations={workerUnitAllocations}
           setWorkerUnitAllocations={setWorkerUnitAllocations}
           units={units
-            .filter((u) => u.ou_id != null)
+            .filter((u) => u.ou_id != null && !u.is_group_container)
             .map((u) => ({
               ou_id: u.ou_id as number,
               name: u.name,
               ou_type: u.ou_type,
               total_workers_estimated: u.total_workers_estimated,
+              parent_ou_id: u.parent_ou_id ?? null,
+              ou_group_id: u.ou_group_id ?? null,
             }))}
           isPending={saveWorkersMutation.isPending}
           onBack={() => setStep(5)}

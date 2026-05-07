@@ -21,6 +21,8 @@ export type RatingPickerProps = {
   isBinary: boolean;
   disabled?: boolean;
   placeholder?: string;
+  /** Per-level label overrides for the 1–5 scale. Keys "1"–"5"; missing keys fall back to global defaults. */
+  customLabels?: Record<string, string> | null;
 };
 
 const UNASSESSED_VALUE = "__unassessed__";
@@ -31,6 +33,7 @@ export function RatingPicker({
   isBinary,
   disabled,
   placeholder,
+  customLabels,
 }: RatingPickerProps) {
   if (isBinary) {
     const current = value.binary_value ?? UNASSESSED_VALUE;
@@ -79,11 +82,17 @@ export function RatingPicker({
         <SelectValue placeholder={placeholder ?? "Select rating…"} />
       </SelectTrigger>
       <SelectContent>
-        {RATING_LEVELS.map((lvl) => (
-          <SelectItem key={lvl.value} value={String(lvl.value)}>
-            {lvl.value === 0 ? "Unassessed" : `${lvl.value} — ${lvl.label}`}
-          </SelectItem>
-        ))}
+        {RATING_LEVELS.map((lvl) => {
+          const label =
+            lvl.value === 0
+              ? "Unassessed"
+              : `${lvl.value} — ${customLabels?.[String(lvl.value)] ?? lvl.label}`;
+          return (
+            <SelectItem key={lvl.value} value={String(lvl.value)}>
+              {label}
+            </SelectItem>
+          );
+        })}
       </SelectContent>
     </Select>
   );

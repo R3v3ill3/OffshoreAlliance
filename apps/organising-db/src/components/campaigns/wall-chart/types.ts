@@ -53,6 +53,8 @@ export type AssessmentSelection =
       isBinary: boolean;
       /** The binary_value that counts as a supportive outcome (e.g. 'attended', 'yes'). */
       supporterOutcomeValue: string | null;
+      /** Per-level label overrides for the 1–5 scale. Keys "1"–"5". */
+      ratingLabels: Record<string, string> | null;
     };
 
 /** A single worker's rating for a specific activity, collapsed to one row. */
@@ -78,6 +80,8 @@ export type WallChartAssessmentOption = {
   created_at: string | null;
   /** False when the activity has no rows in activity_ambitions (plan link). */
   has_linked_ambition: boolean;
+  /** Per-level label overrides for the 1–5 scale. Keys "1"–"5". */
+  rating_labels: Record<string, string> | null;
 };
 
 export type WallChartOU = {

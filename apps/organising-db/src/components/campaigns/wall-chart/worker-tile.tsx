@@ -239,6 +239,7 @@ export function WorkerTile({
         rating: activityRating?.rating ?? null,
         binary_value: activityRating?.binary_value ?? null,
       }}
+      customLabels={assessment.ratingLabels}
       onOpenDetail={() => onClick?.(worker.worker_id, ouId ?? null, "open")}
     >
       {largeBadge}

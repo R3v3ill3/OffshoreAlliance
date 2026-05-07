@@ -31,6 +31,8 @@ export type InlineRatingPopoverProps = {
   disabled?: boolean;
   /** Optional callback to open worker details */
   onOpenDetail?: () => void;
+  /** Per-level label overrides for the 1–5 scale. Keys "1"–"5". */
+  customLabels?: Record<string, string> | null;
   /** The clickable anchor (typically a rating number chip inside a WorkerTile). */
   children: ReactNode;
 };
@@ -45,6 +47,7 @@ export function InlineRatingPopover({
   initial,
   disabled,
   onOpenDetail,
+  customLabels,
   children,
 }: InlineRatingPopoverProps) {
   const [open, setOpen] = useState(false);
@@ -114,6 +117,7 @@ export function InlineRatingPopover({
             value={value}
             onChange={setValue}
             isBinary={isBinary}
+            customLabels={customLabels}
           />
         </div>
         <div className="space-y-1">
@@ -302,6 +306,7 @@ export function CumulativeRatingPopover({
                 value={value}
                 onChange={setValue}
                 isBinary={isBinary}
+                customLabels={selectedOption?.rating_labels}
               />
             </div>
             <div className="space-y-1">

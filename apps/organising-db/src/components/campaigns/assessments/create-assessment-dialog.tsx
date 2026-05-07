@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ACTIVITY_TEMPLATE_OPTIONS, VOTE_SUPPORTER_OPTIONS } from "@/lib/campaign/constants";
+import { RATING_LEVELS } from "@/types/planner-types";
 import { toast } from "sonner";
 import type { CampaignActivityTemplateKey } from "@/types/database";
 
@@ -69,6 +70,8 @@ export function CreateAssessmentDialog({
   });
   const [selectedAmbitionIds, setSelectedAmbitionIds] = useState<Set<number>>(new Set());
   const [primaryAmbitionId, setPrimaryAmbitionId] = useState<number | null>(null);
+  const [showCustomLabels, setShowCustomLabels] = useState(false);
+  const [customLabels, setCustomLabels] = useState<Record<string, string>>({});
 
   const { data: ambitions = [] } = useQuery({
     queryKey: ["campaign-ambitions-assessable", campaignId],
@@ -136,6 +139,8 @@ export function CreateAssessmentDialog({
     setTemplateChoice("__custom__");
     setSelectedAmbitionIds(new Set());
     setPrimaryAmbitionId(null);
+    setShowCustomLabels(false);
+    setCustomLabels({});
   }
 
   function toggleAmbition(id: number) {
@@ -175,6 +180,14 @@ export function CreateAssessmentDialog({
         payload.supporter_outcome_value = form.supporter_outcome_value;
       } else if (is_binary && templateKey === "vote") {
         payload.supporter_outcome_value = "yes";
+      }
+      if (!is_binary) {
+        const nonEmpty = Object.fromEntries(
+          Object.entries(customLabels).filter(([, v]) => v.trim() !== ""),
+        );
+        if (Object.keys(nonEmpty).length > 0) {
+          payload.rating_labels = nonEmpty;
+        }
       }
       const { data: inserted, error } = await supabase
         .from("campaign_activities")
@@ -309,6 +322,46 @@ export function CreateAssessmentDialog({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          )}
+
+          {!form.is_binary && templateChoice !== "vote" && (
+            <div className="border-t pt-3 space-y-2">
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setShowCustomLabels((v) => !v)}
+              >
+                <span>{showCustomLabels ? "▾" : "▸"}</span>
+                Custom rating labels
+                <span className="text-[10px] text-muted-foreground">(optional)</span>
+              </button>
+              {showCustomLabels && (
+                <div className="space-y-2 pl-1">
+                  <p className="text-xs text-muted-foreground">
+                    Override the default 1–5 label text for this specific assessment. Leave blank to
+                    keep the default.
+                  </p>
+                  {RATING_LEVELS.filter((lvl) => lvl.value > 0).map((lvl) => (
+                    <div key={lvl.value} className="flex items-center gap-2">
+                      <span className="w-4 text-xs font-medium text-muted-foreground shrink-0">
+                        {lvl.value}
+                      </span>
+                      <Input
+                        value={customLabels[String(lvl.value)] ?? ""}
+                        onChange={(e) =>
+                          setCustomLabels((prev) => ({
+                            ...prev,
+                            [String(lvl.value)]: e.target.value,
+                          }))
+                        }
+                        placeholder={lvl.label}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowUpDown,
   Upload,
@@ -40,6 +41,10 @@ interface UnitForAllocation {
   name: string;
   ou_type: string;
   total_workers_estimated: number | null;
+  /** FK to the group container OU, when this unit is part of a named group. */
+  parent_ou_id?: number | null;
+  /** Same as parent_ou_id for group members. NULL for standalone units. */
+  ou_group_id?: number | null;
 }
 
 interface StepAllocateWorkersProps {
@@ -327,6 +332,54 @@ export function StepAllocateWorkers({
     setWorkerUnitAllocations(next);
   }
 
+  /**
+   * Returns a map of worker_id → name of the conflicting group for workers in
+   * pageSelection that would violate group exclusivity if allocated to bulkUnitId.
+   * A conflict occurs when the target unit belongs to group X and the worker is
+   * already in a different unit whose group is Y (≠ X), and both share the same
+   * ou_type.
+   */
+  const crossGroupConflicts = useMemo<Map<number, string>>(() => {
+    const conflicts = new Map<number, string>();
+    if (!bulkUnitId || bulkUnitId === "__unallocated__" || pageSelection.size === 0) {
+      return conflicts;
+    }
+    const targetOuId = Number(bulkUnitId);
+    const targetUnit = units.find((u) => u.ou_id === targetOuId);
+    if (!targetUnit || !targetUnit.ou_group_id) return conflicts;
+
+    const targetGroupId = targetUnit.ou_group_id;
+    const targetType = targetUnit.ou_type;
+
+    // Build a lookup of ou_id → unit for fast access
+    const unitById = new Map(units.map((u) => [u.ou_id, u]));
+
+    for (const workerId of pageSelection) {
+      const allocated = workerUnitAllocations[workerId];
+      if (!allocated) continue;
+      for (const existingOuId of allocated) {
+        const existingUnit = unitById.get(existingOuId);
+        if (!existingUnit) continue;
+        if (
+          existingUnit.ou_group_id != null &&
+          existingUnit.ou_group_id !== targetGroupId &&
+          existingUnit.ou_type === targetType
+        ) {
+          // Find the name of the conflicting group container
+          const conflictingGroupUnit = units.find(
+            (u) => u.ou_id === existingUnit.ou_group_id
+          );
+          conflicts.set(
+            workerId,
+            conflictingGroupUnit?.name ?? `Group #${existingUnit.ou_group_id}`
+          );
+          break;
+        }
+      }
+    }
+    return conflicts;
+  }, [bulkUnitId, pageSelection, workerUnitAllocations, units]);
+
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
       setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -525,6 +578,31 @@ export function StepAllocateWorkers({
               </Button>
             </div>
 
+            {/* Cross-group conflict warning */}
+            {crossGroupConflicts.size > 0 && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span>
+                  <strong>{crossGroupConflicts.size} worker{crossGroupConflicts.size > 1 ? "s" : ""}</strong>{" "}
+                  in your selection {crossGroupConflicts.size > 1 ? "are" : "is"} already
+                  allocated to a different{" "}
+                  <strong>{units.find((u) => u.ou_id === Number(bulkUnitId))?.ou_type ?? "unit"}</strong>{" "}
+                  group. Allocating them will add them to this group too — to avoid double
+                  counting, remove them from their existing group first.
+                  {" "}
+                  <span className="text-amber-700">
+                    Affected:{" "}
+                    {Array.from(crossGroupConflicts.entries())
+                      .slice(0, 3)
+                      .map(([, groupName]) => groupName)
+                      .filter((v, i, a) => a.indexOf(v) === i)
+                      .join(", ")}
+                    {crossGroupConflicts.size > 3 ? " …" : ""}
+                  </span>
+                </span>
+              </div>
+            )}
+
             {/* Worker table */}
             <div className="max-h-[480px] overflow-auto rounded-md border">
               <table className="w-full text-sm">
@@ -608,23 +686,49 @@ export function StepAllocateWorkers({
                                 No units defined
                               </span>
                             )}
-                            {/* Show only allocated units as removable chips */}
+                            {/* Show only allocated units as removable chips.
+                                Flag cross-group conflicts with an amber border. */}
                             {units
                               .filter((u) => allocated.has(u.ou_id))
-                              .map((u) => (
-                                <button
-                                  key={u.ou_id}
-                                  type="button"
-                                  title="Remove from this unit"
-                                  onClick={() =>
-                                    toggleWorkerUnit(w.worker_id, u.ou_id, false)
-                                  }
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border bg-primary/10 border-primary/20 text-primary hover:bg-primary/20 transition-colors"
-                                >
-                                  {u.name}
-                                  <X className="h-2.5 w-2.5 opacity-60" />
-                                </button>
-                              ))}
+                              .map((u) => {
+                                // Detect if this unit's group conflicts with another
+                                // group of the same ou_type the worker is also in.
+                                const hasGroupConflict =
+                                  u.ou_group_id != null &&
+                                  units.some(
+                                    (other) =>
+                                      allocated.has(other.ou_id) &&
+                                      other.ou_id !== u.ou_id &&
+                                      other.ou_group_id != null &&
+                                      other.ou_group_id !== u.ou_group_id &&
+                                      other.ou_type === u.ou_type
+                                  );
+                                return (
+                                  <button
+                                    key={u.ou_id}
+                                    type="button"
+                                    title={
+                                      hasGroupConflict
+                                        ? "Cross-group conflict — this worker is in multiple groups of the same type"
+                                        : "Remove from this unit"
+                                    }
+                                    onClick={() =>
+                                      toggleWorkerUnit(w.worker_id, u.ou_id, false)
+                                    }
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                                      hasGroupConflict
+                                        ? "bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100"
+                                        : "bg-primary/10 border-primary/20 text-primary hover:bg-primary/20"
+                                    }`}
+                                  >
+                                    {hasGroupConflict && (
+                                      <AlertTriangle className="h-2.5 w-2.5 opacity-80" />
+                                    )}
+                                    {u.name}
+                                    <X className="h-2.5 w-2.5 opacity-60" />
+                                  </button>
+                                );
+                              })}
                             {/* Compact picker to add worker to an additional unit */}
                             {units.length > 0 &&
                               units.some((u) => !allocated.has(u.ou_id)) && (

@@ -63,6 +63,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { fetchApi } from "@/lib/api/fetch-api";
 import { VOTE_SUPPORTER_OPTIONS } from "@/lib/campaign/constants";
+import { RATING_LEVELS } from "@/types/planner-types";
 import { ChevronDown, ChevronUp, Search } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────
@@ -119,6 +120,7 @@ type FormPayload = {
     is_binary: boolean;
     supporter_outcome_value: string | null;
     assessment_type: string | null;
+    rating_labels: Record<string, string> | null;
   } | null;
   workers: WorkerRow[];
   membership_options: {
@@ -717,7 +719,7 @@ function LeaderForm({
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                {showRatings ? <TableHead>Rating (1–5)</TableHead> : null}
+                {showRatings ? <TableHead>Rating</TableHead> : null}
                 {showRatings && isBinary ? <TableHead>Response</TableHead> : null}
                 {includeMembership ? <TableHead>Membership</TableHead> : null}
                 <TableHead>Notes</TableHead>
@@ -754,13 +756,13 @@ function LeaderForm({
                               })
                             }
                           >
-                            <SelectTrigger className="w-24 h-9">
+                            <SelectTrigger className="w-40 h-9">
                               <SelectValue placeholder="—" />
                             </SelectTrigger>
                             <SelectContent>
-                              {[1, 2, 3, 4, 5].map((n) => (
-                                <SelectItem key={n} value={String(n)}>
-                                  {n}
+                              {RATING_LEVELS.filter((lvl) => lvl.value > 0).map((lvl) => (
+                                <SelectItem key={lvl.value} value={String(lvl.value)}>
+                                  {lvl.value} — {payload.activity?.rating_labels?.[String(lvl.value)] ?? lvl.label}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -904,6 +906,7 @@ function LeaderForm({
         prospective={tableState.prospective}
         onAddProspective={(row) => dispatch({ type: "add_prospective", row })}
         onRemoveProspective={(i) => dispatch({ type: "remove_prospective", index: i })}
+        ratingLabels={payload.activity?.rating_labels ?? null}
       />
 
       {submitErrors.length > 0 ? (
@@ -1303,6 +1306,7 @@ function AddAnotherWorkerCard({
   prospective,
   onAddProspective,
   onRemoveProspective,
+  ratingLabels,
 }: {
   token: string;
   existingIds: Set<number>;
@@ -1310,6 +1314,7 @@ function AddAnotherWorkerCard({
   prospective: ProspectiveDraft[];
   onAddProspective: (row: ProspectiveDraft) => void;
   onRemoveProspective: (index: number) => void;
+  ratingLabels?: Record<string, string> | null;
 }) {
   const [tab, setTab] = useState<"search" | "new">("search");
 
@@ -1336,6 +1341,7 @@ function AddAnotherWorkerCard({
               prospective={prospective}
               onAdd={onAddProspective}
               onRemove={onRemoveProspective}
+              ratingLabels={ratingLabels}
             />
           </TabsContent>
         </Tabs>
@@ -1486,10 +1492,12 @@ function ProspectiveForm({
   prospective,
   onAdd,
   onRemove,
+  ratingLabels,
 }: {
   prospective: ProspectiveDraft[];
   onAdd: (row: ProspectiveDraft) => void;
   onRemove: (index: number) => void;
+  ratingLabels?: Record<string, string> | null;
 }) {
   const form = useForm<ProspectiveFormValues>({
     resolver: zodResolver(prospectiveSchema),
@@ -1545,9 +1553,9 @@ function ProspectiveForm({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">—</SelectItem>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <SelectItem key={n} value={String(n)}>
-                    {n}
+                {RATING_LEVELS.filter((lvl) => lvl.value > 0).map((lvl) => (
+                  <SelectItem key={lvl.value} value={String(lvl.value)}>
+                    {lvl.value} — {ratingLabels?.[String(lvl.value)] ?? lvl.label}
                   </SelectItem>
                 ))}
               </SelectContent>

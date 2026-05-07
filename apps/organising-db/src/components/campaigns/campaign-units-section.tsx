@@ -61,6 +61,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SplitUnitDialog, type SplitMember } from "./wall-chart/split-unit-dialog";
+import { CreateOrganisingUnitDialog } from "./wall-chart/create-organising-unit-dialog";
 import type { WallChartOU } from "./wall-chart/types";
 
 const OU_TYPES: CampaignOuType[] = [
@@ -168,6 +169,7 @@ export function CampaignUnitsSection({
   const queryClient = useQueryClient();
   const [ouDialog, setOuDialog] = useState(false);
   const [editingOuId, setEditingOuId] = useState<number | null>(null);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [ouForm, setOuForm] = useState({
     name: "",
     ou_type: "department" as CampaignOuType,
@@ -1093,6 +1095,13 @@ export function CampaignUnitsSection({
                 >
                   <RefreshCw className={`h-3.5 w-3.5 mr-1 ${recomputeRules.isPending ? "animate-spin" : ""}`} />
                   Recompute rules
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setCreateGroupOpen(true)}
+                >
+                  New group
                 </Button>
                 <Button size="sm" onClick={() => setOuDialog(true)}>
                   Add unit
@@ -2167,6 +2176,17 @@ export function CampaignUnitsSection({
           }}
         />
       )}
+
+      <CreateOrganisingUnitDialog
+        open={createGroupOpen}
+        onOpenChange={setCreateGroupOpen}
+        campaignId={campaignId}
+        displayOrder={
+          ous.length > 0
+            ? Math.max(...ous.map((o) => (o.display_order ?? 0) as number)) + 1
+            : 0
+        }
+      />
     </div>
   );
 }

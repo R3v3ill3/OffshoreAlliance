@@ -1,0 +1,28 @@
+# Keep Docker build contexts lean and avoid copying host-built artefacts
+# into the image (especially node_modules, which may target a different
+# OS/arch than the container).
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/.cache
+
+# IDE / OS noise
+.DS_Store
+.idea
+.vscode
+
+# Local-only files that would never be needed inside an image
+.env
+.env.local
+**/.env
+**/.env.local
+
+# Git internals — Docker doesn't need these
+.git
+.gitignore
+
+# Documentation that doesn't affect builds
+*.md
+**/*.md
+!apps/scraper/README.md

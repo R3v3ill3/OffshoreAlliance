@@ -1,24 +1,31 @@
 # Railway service configuration for @oa/scraper.
 #
-# Deploy notes:
-#  - Set Root Directory to "apps/scraper" in the Railway project settings;
-#    Railway will pick up this file and the Dockerfile relative to that.
-#  - Required env vars (set in Railway dashboard, not committed):
-#      SUPABASE_URL
-#      SUPABASE_SERVICE_ROLE_KEY
-#      SCRAPER_SHARED_SECRET
-#      NOPSEMA_URL          (optional override of default)
-#      SCRAPER_CONTACT_EMAIL
-#  - Railway injects PORT automatically; the HTTP server reads it.
-#  - Configure a Cron schedule in Railway Settings -> Cron Jobs:
-#      Command:  node dist/cron.js
-#      Schedule: 0 16 * * *      (16:00 UTC = 02:00 AEST next day)
+# IMPORTANT: paths in this file are resolved relative to the REPO ROOT,
+# not relative to this file's location. The Dockerfile expects the build
+# context to be the repo root so it can copy pnpm-workspace.yaml,
+# pnpm-lock.yaml, and the @oa/employer-matching workspace package.
+#
+# Railway service settings:
+#  - Root Directory: leave at "/" (repo root)
+#  - Config-as-code path: "apps/scraper/railway.toml"
+#
+# Required env vars (set in Railway dashboard, not committed):
+#   SUPABASE_URL
+#   SUPABASE_SERVICE_ROLE_KEY
+#   SCRAPER_SHARED_SECRET
+#   NOPSEMA_URL          (optional override of default)
+#   SCRAPER_CONTACT_EMAIL
+#
+# Railway injects PORT automatically; the HTTP server reads it.
 
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
+dockerfilePath = "apps/scraper/Dockerfile"
 
 [deploy]
+# startCommand runs INSIDE the container, where the Dockerfile sets
+# WORKDIR to /app/apps/scraper. So this path is relative to that, not
+# to the repo root. (Different rule from dockerfilePath above.)
 startCommand = "node dist/index.js"
 healthcheckPath = "/health"
 healthcheckTimeout = 30

@@ -49,8 +49,15 @@ curl -X POST http://localhost:8080/scrape \
 ## Deploying to Railway
 
 1. Create a new Railway project and add a service from this repo.
-2. Set the **Root Directory** to `apps/scraper`. Railway will use the
-   `Dockerfile` and `railway.toml` in that directory.
+2. Configure the service:
+   - **Root Directory**: `/` (the repo root — the Dockerfile needs the
+     workspace context to resolve `@oa/employer-matching` and the
+     pnpm lockfile).
+   - **Config-as-code path**: `apps/scraper/railway.toml` — Railway will
+     pick up `dockerfilePath = apps/scraper/Dockerfile` from there.
+   - **Watch Paths** *(optional but recommended)*: `apps/scraper/**`,
+     `packages/employer-matching/**`, `pnpm-lock.yaml` — prevents
+     Railway redeploying when unrelated repo files change.
 3. Set the following service environment variables (from the dashboard,
    never committed):
    - `SUPABASE_URL` — production Supabase project URL

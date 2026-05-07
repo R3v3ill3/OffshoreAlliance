@@ -106,7 +106,7 @@ export function StageMappingPanel({
           <div>
             <CardTitle className="text-base">Stage mapping</CardTitle>
             <CardDescription>
-              AI-generated map of this section's ambitions, activities,
+              AI-generated map of this section&apos;s ambitions, activities,
               where-to-play rows, capacities, and SOCs back to the 11-stage
               Playing-to-Win framework. Confirm a mapping to keep it across
               future regenerations.
@@ -144,7 +144,7 @@ export function StageMappingPanel({
         )}
         {!isLoading && mappings.length === 0 && (
           <p className="text-sm text-muted-foreground py-4">
-            No mappings yet. Click "Generate" to ask the AI to map every
+            No mappings yet. Click &ldquo;Generate&rdquo; to ask the AI to map every
             subject in this section back to P2W stages.
           </p>
         )}

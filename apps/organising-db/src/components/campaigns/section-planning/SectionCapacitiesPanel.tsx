@@ -153,7 +153,7 @@ export function SectionCapacitiesPanel({ sectionPlanId }: { sectionPlanId: numbe
             <CardTitle className="text-base">Capacities</CardTitle>
             <CardDescription>
               Tools, skills, and platforms available (or needed) for this
-              period. Maps to the Field Plan Template's Capacities checklist.
+              period. Maps to the Field Plan Template&apos;s Capacities checklist.
               Mark gaps with a resolution plan.
             </CardDescription>
           </div>

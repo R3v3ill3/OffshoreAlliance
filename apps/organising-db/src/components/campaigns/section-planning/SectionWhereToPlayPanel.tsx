@@ -213,7 +213,7 @@ export function SectionWhereToPlayPanel({ sectionPlanId }: { sectionPlanId: numb
             <CardTitle className="text-base">Where to Play</CardTitle>
             <CardDescription>
               Priority cohorts and tactics for this period. Templated as the
-              Field Plan Template's Contact Strategy: rank by priority, link
+              Field Plan Template&apos;s Contact Strategy: rank by priority, link
               each row to the ambition it supports.
             </CardDescription>
           </div>
@@ -229,8 +229,8 @@ export function SectionWhereToPlayPanel({ sectionPlanId }: { sectionPlanId: numb
         {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
         {!isLoading && rows.length === 0 && (
           <p className="text-sm text-muted-foreground py-4">
-            No where-to-play rows yet. Add a priority cohort (e.g. "All
-            members at Wheatstone") and link it to an ambition.
+            No where-to-play rows yet. Add a priority cohort (e.g. &ldquo;All
+            members at Wheatstone&rdquo;) and link it to an ambition.
           </p>
         )}
         {rows.length > 0 && (

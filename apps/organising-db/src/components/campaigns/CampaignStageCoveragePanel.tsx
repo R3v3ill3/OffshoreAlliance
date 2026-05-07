@@ -59,7 +59,7 @@ export function CampaignStageCoveragePanel({
         <CardTitle className="text-base">Section coverage by P2W stage</CardTitle>
         <CardDescription>
           Where each section plan maps onto the 11-stage Playing-to-Win
-          framework. Chips link through to the section plan's mapping panel.
+          framework. Chips link through to the section plan&apos;s mapping panel.
         </CardDescription>
       </CardHeader>
       <CardContent>

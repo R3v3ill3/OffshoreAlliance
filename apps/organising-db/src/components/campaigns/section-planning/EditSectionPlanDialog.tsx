@@ -55,6 +55,7 @@ export function EditSectionPlanDialog({
   const update = useUpdateSectionPlan()
 
   // When the dialog reopens with a different plan, reset state.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional reset on open
   useEffect(() => {
     if (open) {
       setName(sectionPlan.name)

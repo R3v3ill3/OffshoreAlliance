@@ -131,7 +131,7 @@ export function WorkforceMappingTable({
             <CardDescription>
               Per-worksite worker / member / density. Pulled live from
               organising units; per-section overrides stay scoped to this
-              section plan and don't change campaign data.
+              section plan and don&apos;t change campaign data.
             </CardDescription>
           </div>
           <Button
@@ -163,7 +163,7 @@ export function WorkforceMappingTable({
         {!isLoading && !error && rows.length === 0 && (
           <p className="text-sm text-muted-foreground py-4">
             No worksite organising units found for this campaign. Add units of
-            type "worksite" via the campaign wizard or universe to populate
+            type &ldquo;worksite&rdquo; via the campaign wizard or universe to populate
             this table.
           </p>
         )}

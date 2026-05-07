@@ -139,8 +139,8 @@ export function SectionWorkplanGrid({ sectionPlanId }: { sectionPlanId: number }
         <CardTitle className="text-base">Workplan</CardTitle>
         <CardDescription>
           Day-by-day Activity / Calls Target / Completed / Outcomes grid for
-          this section's date range. Mirrors the Field Plan Template's Workplan
-          table; "Completed" is read directly from concluded activity events.
+          this section&apos;s date range. Mirrors the Field Plan Template&apos;s Workplan
+          table; &ldquo;Completed&rdquo; is read directly from concluded activity events.
         </CardDescription>
       </CardHeader>
       <CardContent>

@@ -198,27 +198,27 @@ export function WorkerTile({
 
   const largeBadgeAriaLabel = isAssessmentMode && assessment
     ? `Rate ${displayName} on ${assessment.title}. Current: ${largeBadgeDisplay}.`
-    : `Latest rating: ${largeBadgeDisplay}`;
+    : `Quick-rate ${displayName}. Click to select an assessment and rating.`;
 
   const largeBadgeClass = cn(
     "inline-flex items-center justify-center shrink-0 w-6 h-6 rounded-full bg-white text-sm font-bold leading-none border shadow-sm",
     ratingBorderTextClass(
       isAssessmentMode ? assessmentColourNumeric : last
     ),
-    canWrite && isAssessmentMode ? "cursor-pointer hover:bg-slate-50" : "cursor-default"
+    canWrite ? "cursor-pointer hover:bg-slate-50" : "cursor-default"
   );
 
   const largeBadge = (
     <span
-      role={canWrite && isAssessmentMode ? "button" : undefined}
-      tabIndex={canWrite && isAssessmentMode ? 0 : -1}
-      aria-label={canWrite && isAssessmentMode ? largeBadgeAriaLabel : undefined}
+      role={canWrite ? "button" : undefined}
+      tabIndex={canWrite ? 0 : -1}
+      aria-label={canWrite ? largeBadgeAriaLabel : undefined}
       onClick={(e) => {
-        if (!canWrite || !isAssessmentMode) return;
+        if (!canWrite) return;
         e.stopPropagation();
       }}
       onKeyDown={(e) => {
-        if (!canWrite || !isAssessmentMode) return;
+        if (!canWrite) return;
         if (e.key === "Enter" || e.key === " ") e.stopPropagation();
       }}
       className={largeBadgeClass}

@@ -101,6 +101,10 @@ export function useMoveWorkersMutation(campaignId: string | number) {
         // we also preserve / create assignments to the parent OU.
         const keepInParent = vars.keepInParent ?? true;
         let targetParentOuId: number | null = null;
+        // True when the direct parent of the target is a group container — workers
+        // must never be inserted directly into a group container (trigger enforces this),
+        // so we suppress the keepInParent INSERT for that case.
+        let parentIsGroupContainer = false;
         let siblingOuIds: number[] = [];
         {
           const { data: targetOuRow, error: targetOuErr } = await supabase
@@ -113,10 +117,19 @@ export function useMoveWorkersMutation(campaignId: string | number) {
           if (targetParentOuId != null) {
             const { data: siblings, error: sibErr } = await supabase
               .from("campaign_organising_units")
-              .select("ou_id")
+              .select("ou_id, is_group_container")
               .eq("parent_ou_id", targetParentOuId);
             if (sibErr) throw sibErr;
             siblingOuIds = (siblings ?? []).map((r) => r.ou_id as number);
+
+            // Determine whether the parent itself is a group container.
+            const { data: parentRow, error: parentErr } = await supabase
+              .from("campaign_organising_units")
+              .select("is_group_container")
+              .eq("ou_id", targetParentOuId)
+              .single();
+            if (parentErr) throw parentErr;
+            parentIsGroupContainer = (parentRow?.is_group_container as boolean) === true;
           }
         }
 
@@ -155,9 +168,10 @@ export function useMoveWorkersMutation(campaignId: string | number) {
             inserted = rows.length;
           }
 
-          // When the target is a sub-unit, ensure each affected worker is also
-          // assigned to the parent (idempotent — uniqueness is enforced).
-          if (targetParentOuId != null && keepInParent && workerIds.length > 0) {
+          // When the target is a sub-unit (and the parent is not a group container),
+          // ensure each affected worker is also assigned to the parent (idempotent).
+          // Group containers never receive direct worker assignments (trigger enforces this).
+          if (targetParentOuId != null && keepInParent && !parentIsGroupContainer && workerIds.length > 0) {
             const { data: existingParent, error: pExErr } = await supabase
               .from("campaign_worker_ou")
               .select("worker_id")
@@ -238,8 +252,8 @@ export function useMoveWorkersMutation(campaignId: string | number) {
             if (insErr) throw insErr;
             inserted = rows.length;
           }
-          // For copy + sub-unit target, also ensure parent membership.
-          if (targetParentOuId != null && keepInParent && workerIds.length > 0) {
+          // For copy + sub-unit target, also ensure parent membership (skip for group containers).
+          if (targetParentOuId != null && keepInParent && !parentIsGroupContainer && workerIds.length > 0) {
             const { data: existingParent, error: pExErr } = await supabase
               .from("campaign_worker_ou")
               .select("worker_id")

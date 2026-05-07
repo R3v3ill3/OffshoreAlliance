@@ -93,6 +93,11 @@ export type WallChartOU = {
   display_order?: number;
   /** Optional filter metadata when unit was derived from employer/worksite/occupation/etc. */
   unit_basis?: CampaignOuUnitBasis | null;
+  /** True when this OU is a group-container header. Workers cannot be assigned directly to it. */
+  is_group_container?: boolean;
+  /** FK to the group container OU that owns this member unit. Null for standalone units. */
+  ou_group_id?: number | null;
+  parent_ou_id?: number | null;
 };
 
 export type WallChartOUAssignment = {

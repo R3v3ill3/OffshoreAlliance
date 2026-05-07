@@ -342,6 +342,21 @@ export function CreateAssessmentDialog({
                     Override the default 1–5 label text for this specific assessment. Leave blank to
                     keep the default.
                   </p>
+                  <div className="rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40 px-3 py-2 space-y-1">
+                    <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                      Keep the scale&apos;s logic consistent
+                    </p>
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      Custom labels must still reflect the same underlying meaning:
+                    </p>
+                    <ul className="text-xs text-amber-700 dark:text-amber-400 space-y-0.5 pl-3 list-disc">
+                      <li><span className="font-medium">1</span> — Supportive leader (actively organises others)</li>
+                      <li><span className="font-medium">2</span> — Supporter (supports but doesn&apos;t organise)</li>
+                      <li><span className="font-medium">3</span> — Undecided / neutral</li>
+                      <li><span className="font-medium">4</span> — Opposed (individually)</li>
+                      <li><span className="font-medium">5</span> — Oppositional leader (actively organises opposition)</li>
+                    </ul>
+                  </div>
                   {RATING_LEVELS.filter((lvl) => lvl.value > 0).map((lvl) => (
                     <div key={lvl.value} className="flex items-center gap-2">
                       <span className="w-4 text-xs font-medium text-muted-foreground shrink-0">

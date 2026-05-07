@@ -78,7 +78,11 @@ export function MoveOrCopyWorkersDialog({
 
   const available = useMemo(() => {
     const excl = new Set(excludeOuIds);
-    const candidates = ous.filter((o) => !excl.has(o.ou_id));
+    // Never offer group containers as assignment targets — workers must be
+    // assigned to the individual member units within a group.
+    const candidates = ous.filter(
+      (o) => !excl.has(o.ou_id) && !o.is_group_container
+    );
     // When moving within a structured dimension, only offer same-type targets.
     if (
       mode === "move" &&

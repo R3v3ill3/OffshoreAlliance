@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/supabase/auth-context";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   useUpcomingProjects,
   type MatchStatus,
@@ -14,9 +15,12 @@ import {
 } from "@/lib/hooks/useUpcomingProjects";
 import { useRefreshUpcomingProjects } from "@/lib/hooks/useRefreshUpcomingProjects";
 import { MatchReviewPanel } from "./_components/match-review-panel";
-
-type StatusFilter = "all" | MatchStatus | "review_or_unmatched";
-type JurisdictionFilter = "all" | "WA" | "NT";
+import {
+  UpcomingProjectsFilterBar,
+  type StatusFilter,
+  type JurisdictionFilter,
+} from "./_components/filter-bar";
+import { UpcomingProjectsCalendar } from "./_components/upcoming-projects-calendar";
 
 const MATCH_VARIANTS: Record<MatchStatus, "success" | "warning" | "destructive" | "info" | "outline"> = {
   auto: "success",
@@ -71,6 +75,7 @@ export default function UpcomingProjectsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [selectedRow, setSelectedRow] = useState<UpcomingProjectRow | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [view, setView] = useState<"table" | "calendar">("table");
 
   const counts = useMemo(() => {
     const c = { needs_review: 0, unmatched: 0, total: 0 };
@@ -99,6 +104,11 @@ export default function UpcomingProjectsPage() {
     }
     return rows;
   }, [data, jurisdictionFilter, statusFilter]);
+
+  const openRow = (row: UpcomingProjectRow) => {
+    setSelectedRow(row);
+    setPanelOpen(true);
+  };
 
   const columns: Column<UpcomingProjectRow>[] = [
     {
@@ -195,59 +205,6 @@ export default function UpcomingProjectsPage() {
     },
   ];
 
-  const filterBar = (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs text-muted-foreground mr-1">Jurisdiction:</span>
-      {(["all", "WA", "NT"] as JurisdictionFilter[]).map((opt) => (
-        <Button
-          key={opt}
-          size="sm"
-          variant={jurisdictionFilter === opt ? "default" : "outline"}
-          onClick={() => setJurisdictionFilter(opt)}
-        >
-          {opt === "all" ? "All" : opt}
-        </Button>
-      ))}
-      <span className="text-xs text-muted-foreground mx-2">|</span>
-      <span className="text-xs text-muted-foreground mr-1">Match:</span>
-      <Button
-        size="sm"
-        variant={statusFilter === "all" ? "default" : "outline"}
-        onClick={() => setStatusFilter("all")}
-      >
-        All
-      </Button>
-      <Button
-        size="sm"
-        variant={statusFilter === "review_or_unmatched" ? "default" : "outline"}
-        onClick={() => setStatusFilter("review_or_unmatched")}
-      >
-        Needs attention ({counts.needs_review + counts.unmatched})
-      </Button>
-      <Button
-        size="sm"
-        variant={statusFilter === "needs_review" ? "default" : "outline"}
-        onClick={() => setStatusFilter("needs_review")}
-      >
-        Review ({counts.needs_review})
-      </Button>
-      <Button
-        size="sm"
-        variant={statusFilter === "unmatched" ? "default" : "outline"}
-        onClick={() => setStatusFilter("unmatched")}
-      >
-        Unmatched ({counts.unmatched})
-      </Button>
-      <Button
-        size="sm"
-        variant={statusFilter === "confirmed" ? "default" : "outline"}
-        onClick={() => setStatusFilter("confirmed")}
-      >
-        Confirmed
-      </Button>
-    </div>
-  );
-
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-start justify-between">
@@ -269,7 +226,7 @@ export default function UpcomingProjectsPage() {
             ) : (
               <RefreshCcw className="h-4 w-4 mr-2" />
             )}
-            Refresh now
+            {refreshMutation.isPending ? "Scraping…" : "Refresh now"}
           </Button>
         )}
       </div>
@@ -281,7 +238,7 @@ export default function UpcomingProjectsPage() {
       )}
       {refreshMutation.isSuccess && (
         <p className="text-sm text-muted-foreground">
-          Scrape requested. Results will appear here once the run completes.
+          Scrape complete. Showing latest data.
         </p>
       )}
 
@@ -291,24 +248,49 @@ export default function UpcomingProjectsPage() {
         </p>
       )}
 
-      <DataTable
-        data={filtered}
-        columns={columns}
-        loading={isLoading}
-        searchPlaceholder="Search title, organisation, project…"
-        searchKeys={[
-          "title",
-          "organisation",
-          "project_name",
-          "associated_project",
-          "location_text",
-        ]}
-        filterBar={filterBar}
-        onRowClick={(row) => {
-          setSelectedRow(row);
-          setPanelOpen(true);
-        }}
+      {/* Shared filter bar — applies to both Table and Calendar */}
+      <UpcomingProjectsFilterBar
+        jurisdiction={jurisdictionFilter}
+        onJurisdictionChange={setJurisdictionFilter}
+        status={statusFilter}
+        onStatusChange={setStatusFilter}
+        needsReviewCount={counts.needs_review}
+        unmatchedCount={counts.unmatched}
       />
+
+      <Tabs value={view} onValueChange={(v) => setView(v as "table" | "calendar")}>
+        <TabsList>
+          <TabsTrigger value="table">Table</TabsTrigger>
+          <TabsTrigger value="calendar">Calendar</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="table" className="mt-3">
+          <DataTable
+            data={filtered}
+            columns={columns}
+            loading={isLoading}
+            searchPlaceholder="Search title, organisation, project…"
+            searchKeys={[
+              "title",
+              "organisation",
+              "project_name",
+              "associated_project",
+              "location_text",
+            ]}
+            onRowClick={openRow}
+          />
+        </TabsContent>
+
+        <TabsContent value="calendar" className="mt-3">
+          {isLoading ? (
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              Loading…
+            </div>
+          ) : (
+            <UpcomingProjectsCalendar rows={filtered} onRowClick={openRow} />
+          )}
+        </TabsContent>
+      </Tabs>
 
       <MatchReviewPanel
         row={selectedRow}

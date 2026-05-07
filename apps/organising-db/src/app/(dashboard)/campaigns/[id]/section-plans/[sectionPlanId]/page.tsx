@@ -18,6 +18,11 @@ import { SectionActivitiesPanel } from '@/components/campaigns/section-planning/
 import { SectionTheoryOfWinningPanel } from '@/components/campaigns/section-planning/SectionTheoryOfWinningPanel'
 import { SectionSOCPanel } from '@/components/campaigns/section-planning/SectionSOCPanel'
 import { StageMappingPanel } from '@/components/campaigns/section-planning/StageMappingPanel'
+import { SectionWorkplanGrid } from '@/components/campaigns/section-planning/SectionWorkplanGrid'
+import { SectionRevisionHistory } from '@/components/campaigns/section-planning/SectionRevisionHistory'
+import { SectionGuidedWizard } from '@/components/campaigns/section-planning/SectionGuidedWizard'
+import { Button } from '@/components/ui/button'
+import { Wand2 } from 'lucide-react'
 
 const STEP_VALUES: SectionPlanStep[] = [
   'situation',
@@ -72,6 +77,17 @@ export default function SectionPlanDetailPage() {
     enabled: Number.isFinite(campaignId),
   })
 
+  const guided = searchParams.get('guided') === '1'
+  const setGuided = useCallback(
+    (next: boolean) => {
+      const p = new URLSearchParams(searchParams.toString())
+      if (next) p.set('guided', '1')
+      else p.delete('guided')
+      router.replace(`${pathname}?${p.toString()}`, { scroll: false })
+    },
+    [pathname, router, searchParams],
+  )
+
   if (!Number.isFinite(campaignId) || !Number.isFinite(sectionPlanId)) {
     return (
       <Card>
@@ -79,6 +95,24 @@ export default function SectionPlanDetailPage() {
           Invalid section plan URL.
         </CardContent>
       </Card>
+    )
+  }
+
+  if (guided) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h1 className="text-xl font-semibold flex items-center gap-2">
+            <Wand2 className="h-5 w-5" />
+            Guided mode
+          </h1>
+        </div>
+        <SectionGuidedWizard
+          sectionPlanId={sectionPlanId}
+          campaignId={campaignId}
+          onExit={() => setGuided(false)}
+        />
+      </div>
     )
   }
 
@@ -90,11 +124,19 @@ export default function SectionPlanDetailPage() {
       activeStep={activeStep}
       onStepChange={handleStepChange}
     >
-      <SectionPlanStepRouter
-        step={activeStep}
-        sectionPlanId={sectionPlanId}
-        campaignId={campaignId}
-      />
+      <div className="space-y-3">
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={() => setGuided(true)}>
+            <Wand2 className="h-3.5 w-3.5 mr-1.5" />
+            Guided mode
+          </Button>
+        </div>
+        <SectionPlanStepRouter
+          step={activeStep}
+          sectionPlanId={sectionPlanId}
+          campaignId={campaignId}
+        />
+      </div>
     </SectionPlanShell>
   )
 }
@@ -137,25 +179,14 @@ function SectionPlanStepRouter({ step, sectionPlanId, campaignId }: StepRouterPr
   if (step === 'mapping') {
     return <StageMappingPanel sectionPlanId={sectionPlanId} campaignId={campaignId} />
   }
-
-  const PLACEHOLDER: Record<SectionPlanStep, string> = {
-    situation: '',
-    workforce: '',
-    ambitions: '',
-    'where-to-play': '',
-    capacities: '',
-    activities: '',
-    theory: '',
-    soc: '',
-    workplan: 'Workplan grid arrives in Phase 9.',
-    mapping: '',
+  if (step === 'workplan') {
+    return (
+      <div className="space-y-6">
+        <SectionWorkplanGrid sectionPlanId={sectionPlanId} />
+        <SectionRevisionHistory sectionPlanId={sectionPlanId} />
+      </div>
+    )
   }
 
-  return (
-    <Card>
-      <CardContent className="py-8 text-sm text-muted-foreground">
-        {PLACEHOLDER[step]}
-      </CardContent>
-    </Card>
-  )
+  return null
 }

@@ -17,6 +17,7 @@ import { SectionCapacitiesPanel } from '@/components/campaigns/section-planning/
 import { SectionActivitiesPanel } from '@/components/campaigns/section-planning/SectionActivitiesPanel'
 import { SectionTheoryOfWinningPanel } from '@/components/campaigns/section-planning/SectionTheoryOfWinningPanel'
 import { SectionSOCPanel } from '@/components/campaigns/section-planning/SectionSOCPanel'
+import { StageMappingPanel } from '@/components/campaigns/section-planning/StageMappingPanel'
 
 const STEP_VALUES: SectionPlanStep[] = [
   'situation',
@@ -133,6 +134,9 @@ function SectionPlanStepRouter({ step, sectionPlanId, campaignId }: StepRouterPr
   if (step === 'soc') {
     return <SectionSOCPanel sectionPlanId={sectionPlanId} />
   }
+  if (step === 'mapping') {
+    return <StageMappingPanel sectionPlanId={sectionPlanId} campaignId={campaignId} />
+  }
 
   const PLACEHOLDER: Record<SectionPlanStep, string> = {
     situation: '',
@@ -144,7 +148,7 @@ function SectionPlanStepRouter({ step, sectionPlanId, campaignId }: StepRouterPr
     theory: '',
     soc: '',
     workplan: 'Workplan grid arrives in Phase 9.',
-    mapping: 'Stage mapping arrives in Phase 8.',
+    mapping: '',
   }
 
   return (

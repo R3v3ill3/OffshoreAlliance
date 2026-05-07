@@ -327,6 +327,13 @@ export type Database = {
             foreignKeyName: "activity_sequences_section_plan_id_fkey"
             columns: ["section_plan_id"]
             isOneToOne: false
+            referencedRelation: "v_campaign_section_stage_coverage"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "activity_sequences_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
             referencedRelation: "v_section_plan_soc_recording_grid"
             referencedColumns: ["section_plan_id"]
           },
@@ -3235,6 +3242,13 @@ export type Database = {
             columns: ["section_plan_id"]
             isOneToOne: false
             referencedRelation: "section_plans"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "campaign_activities_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_section_stage_coverage"
             referencedColumns: ["section_plan_id"]
           },
           {
@@ -9453,6 +9467,13 @@ export type Database = {
             foreignKeyName: "plan_ambitions_section_plan_id_fkey"
             columns: ["section_plan_id"]
             isOneToOne: false
+            referencedRelation: "v_campaign_section_stage_coverage"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "plan_ambitions_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
             referencedRelation: "v_section_plan_soc_recording_grid"
             referencedColumns: ["section_plan_id"]
           },
@@ -9566,6 +9587,13 @@ export type Database = {
             columns: ["section_plan_id"]
             isOneToOne: false
             referencedRelation: "section_plans"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "plan_capacities_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_section_stage_coverage"
             referencedColumns: ["section_plan_id"]
           },
           {
@@ -9826,6 +9854,13 @@ export type Database = {
             foreignKeyName: "plan_theory_of_winning_section_plan_id_fkey"
             columns: ["section_plan_id"]
             isOneToOne: false
+            referencedRelation: "v_campaign_section_stage_coverage"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "plan_theory_of_winning_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
             referencedRelation: "v_section_plan_soc_recording_grid"
             referencedColumns: ["section_plan_id"]
           },
@@ -9922,6 +9957,13 @@ export type Database = {
             columns: ["section_plan_id"]
             isOneToOne: false
             referencedRelation: "section_plans"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "plan_where_to_play_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_section_stage_coverage"
             referencedColumns: ["section_plan_id"]
           },
           {
@@ -10585,6 +10627,13 @@ export type Database = {
             foreignKeyName: "section_plan_ai_events_section_plan_id_fkey"
             columns: ["section_plan_id"]
             isOneToOne: false
+            referencedRelation: "v_campaign_section_stage_coverage"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "section_plan_ai_events_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
             referencedRelation: "v_section_plan_soc_recording_grid"
             referencedColumns: ["section_plan_id"]
           },
@@ -10646,6 +10695,13 @@ export type Database = {
             columns: ["section_plan_id"]
             isOneToOne: true
             referencedRelation: "section_plans"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "section_plan_situation_snippets_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: true
+            referencedRelation: "v_campaign_section_stage_coverage"
             referencedColumns: ["section_plan_id"]
           },
           {
@@ -10819,11 +10875,89 @@ export type Database = {
             foreignKeyName: "section_plan_socs_section_plan_id_fkey"
             columns: ["section_plan_id"]
             isOneToOne: false
+            referencedRelation: "v_campaign_section_stage_coverage"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "section_plan_socs_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
             referencedRelation: "v_section_plan_soc_recording_grid"
             referencedColumns: ["section_plan_id"]
           },
           {
             foreignKeyName: "section_plan_socs_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_summary"
+            referencedColumns: ["section_plan_id"]
+          },
+        ]
+      }
+      section_plan_stage_mappings: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          human_confirmed: boolean
+          mapping_id: number
+          model: string | null
+          prompt_snapshot: Json | null
+          rationale: string | null
+          section_plan_id: number
+          stage_number: number
+          subject_id: number
+          subject_kind: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          human_confirmed?: boolean
+          mapping_id?: number
+          model?: string | null
+          prompt_snapshot?: Json | null
+          rationale?: string | null
+          section_plan_id: number
+          stage_number: number
+          subject_id: number
+          subject_kind: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          human_confirmed?: boolean
+          mapping_id?: number
+          model?: string | null
+          prompt_snapshot?: Json | null
+          rationale?: string | null
+          section_plan_id?: number
+          stage_number?: number
+          subject_id?: number
+          subject_kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "section_plan_stage_mappings_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "section_plans"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "section_plan_stage_mappings_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_section_stage_coverage"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "section_plan_stage_mappings_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_soc_recording_grid"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "section_plan_stage_mappings_section_plan_id_fkey"
             columns: ["section_plan_id"]
             isOneToOne: false
             referencedRelation: "v_section_plan_summary"
@@ -10871,6 +11005,13 @@ export type Database = {
             columns: ["section_plan_id"]
             isOneToOne: false
             referencedRelation: "section_plans"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "section_plan_workforce_mapping_overrides_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_section_stage_coverage"
             referencedColumns: ["section_plan_id"]
           },
           {
@@ -15664,6 +15805,91 @@ export type Database = {
           workers_with_rating?: never
         }
         Relationships: []
+      }
+      v_campaign_section_stage_coverage: {
+        Row: {
+          any_confirmed: boolean | null
+          avg_confidence: number | null
+          campaign_id: number | null
+          section_name: string | null
+          section_plan_id: number | null
+          section_status: string | null
+          stage_number: number | null
+          subject_count: number | null
+          subject_kinds: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_bargaining_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
+          },
+        ]
       }
       v_intractable_state: {
         Row: {

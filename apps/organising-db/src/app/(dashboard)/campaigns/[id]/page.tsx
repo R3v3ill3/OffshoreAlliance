@@ -73,6 +73,7 @@ import { CampaignActionsSection } from "@/components/campaigns/campaign-actions-
 import { LibrarySection } from "@/components/campaigns/library/campaign-library";
 import { CampaignBasicsEditSheet } from "@/components/campaigns/campaign-basics-edit-sheet";
 import { SectionPlansTab } from "@/components/campaigns/section-planning/SectionPlansTab";
+import { CampaignStageCoveragePanel } from "@/components/campaigns/CampaignStageCoveragePanel";
 import {
   VALID_TABS,
   resolveTabParams,
@@ -589,6 +590,8 @@ export default function CampaignDetailPage() {
             canWrite={!!canWrite}
             onEdit={canWrite ? () => setSituationSheetOpen(true) : undefined}
           />
+
+          <CampaignStageCoveragePanel campaignId={campaignId} />
         </TabsContent>
 
         <TabsContent value="plan">

@@ -73,6 +73,7 @@ export default function UpcomingProjectsPage() {
 
   const [jurisdictionFilter, setJurisdictionFilter] = useState<JurisdictionFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [lifecycleFilter, setLifecycleFilter] = useState<Set<string>>(new Set());
   const [selectedRow, setSelectedRow] = useState<UpcomingProjectRow | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [view, setView] = useState<"table" | "calendar">("table");
@@ -88,6 +89,26 @@ export default function UpcomingProjectsPage() {
     return c;
   }, [data]);
 
+  // Distinct lifecycle values present in the loaded data — drives the
+  // filter chips so they match whatever NOPSEMA actually returns.
+  const lifecycleOptions = useMemo(() => {
+    const seen = new Set<string>();
+    for (const row of data ?? []) {
+      if (row.lifecycle_classification) seen.add(row.lifecycle_classification);
+    }
+    return [...seen].sort((a, b) => a.localeCompare(b));
+  }, [data]);
+
+  const toggleLifecycle = (value: string) =>
+    setLifecycleFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
+      return next;
+    });
+
+  const clearLifecycle = () => setLifecycleFilter(new Set());
+
   const filtered = useMemo<UpcomingProjectRow[]>(() => {
     let rows = data ?? [];
     if (jurisdictionFilter !== "all") {
@@ -102,8 +123,15 @@ export default function UpcomingProjectsPage() {
         return s === statusFilter;
       });
     }
+    if (lifecycleFilter.size > 0) {
+      rows = rows.filter((r) =>
+        r.lifecycle_classification
+          ? lifecycleFilter.has(r.lifecycle_classification)
+          : false
+      );
+    }
     return rows;
-  }, [data, jurisdictionFilter, statusFilter]);
+  }, [data, jurisdictionFilter, statusFilter, lifecycleFilter]);
 
   const openRow = (row: UpcomingProjectRow) => {
     setSelectedRow(row);
@@ -254,6 +282,10 @@ export default function UpcomingProjectsPage() {
         onJurisdictionChange={setJurisdictionFilter}
         status={statusFilter}
         onStatusChange={setStatusFilter}
+        lifecycleOptions={lifecycleOptions}
+        lifecycleSelected={lifecycleFilter}
+        onLifecycleToggle={toggleLifecycle}
+        onLifecycleClear={clearLifecycle}
         needsReviewCount={counts.needs_review}
         unmatchedCount={counts.unmatched}
       />

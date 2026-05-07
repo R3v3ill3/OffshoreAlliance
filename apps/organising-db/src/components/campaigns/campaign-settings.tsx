@@ -46,6 +46,7 @@ import { StepWorkerEstimate } from "@/components/campaigns/step-worker-estimate"
 import {
   StepCampaignUnits,
   type CampaignUnitDraft,
+  type PendingGroupAllocations,
 } from "@/components/campaigns/step-campaign-units";
 import {
   StepCampaignAmbitions,
@@ -136,6 +137,8 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
   const [selectedWorkers, setSelectedWorkers] = useState<number[]>([]);
   const [workerUnitAllocations, setWorkerUnitAllocations] =
     useState<WorkerUnitAllocation>({});
+  const [pendingGroupAllocations, setPendingGroupAllocations] =
+    useState<PendingGroupAllocations>({});
   const [campaignAmbitions, setCampaignAmbitions] = useState<
     CampaignAmbitionDraft[]
   >([]);
@@ -1023,12 +1026,15 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
           </AccordionTrigger>
           <AccordionContent>
             <StepCampaignUnits
+              campaignId={campaignId}
               selectedEmployers={selectedEmployers}
               selectedWorksites={selectedWorksites}
               worksiteSectorWide={worksiteSectorWide}
               totalWorkerEstimate={totalWorkerEstimateNum}
               units={units}
               setUnits={setUnits}
+              pendingGroupAllocations={pendingGroupAllocations}
+              setPendingGroupAllocations={setPendingGroupAllocations}
               isPending={saveUnitsMutation.isPending}
               onBack={() => undefined}
               onContinue={() => saveUnitsMutation.mutate()}

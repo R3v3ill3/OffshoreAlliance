@@ -164,7 +164,8 @@ function AddCampaignWorkerFormBody({
       }
 
       let ouResolved: number | null = null;
-      if (contextOu) ouResolved = contextOu.ou_id;
+      // Group containers cannot receive worker assignments directly — skip the OU.
+      if (contextOu && !contextOu.is_group_container) ouResolved = contextOu.ou_id;
       else {
         const rawOu = ouPick ?? NONE_VALUE;
         ouResolved = rawOu === NONE_VALUE ? null : Number(rawOu);
@@ -227,11 +228,13 @@ function AddCampaignWorkerFormBody({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE_VALUE}>Unassigned (campaign member only)</SelectItem>
-                {organisingUnits.map((ou) => (
-                  <SelectItem key={ou.ou_id} value={String(ou.ou_id)}>
-                    {ouDisplayName(ou)}
-                  </SelectItem>
-                ))}
+                {organisingUnits
+                  .filter((ou) => !ou.is_group_container)
+                  .map((ou) => (
+                    <SelectItem key={ou.ou_id} value={String(ou.ou_id)}>
+                      {ouDisplayName(ou)}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
             <p className="text-[11px] text-muted-foreground">

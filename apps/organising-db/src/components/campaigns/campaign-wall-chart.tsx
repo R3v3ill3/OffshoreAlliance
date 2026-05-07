@@ -1314,7 +1314,7 @@ export function CampaignWallChart({
                               });
                             }}
                           />
-                          {canWrite && (
+                          {canWrite && !ou.is_group_container && (
                             <Button
                               type="button"
                               size="sm"
@@ -1384,15 +1384,17 @@ export function CampaignWallChart({
                                   <Layers className="h-4 w-4 mr-2" /> Split into sub-units
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setAddWorkerContextOu(ou);
-                                    setAddWorkerFormKey((k) => k + 1);
-                                    setAddWorkerOpen(true);
-                                  }}
-                                >
-                                  Add worker to unit
-                                </DropdownMenuItem>
+                                {!ou.is_group_container && (
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setAddWorkerContextOu(ou);
+                                      setAddWorkerFormKey((k) => k + 1);
+                                      setAddWorkerOpen(true);
+                                    }}
+                                  >
+                                    Add worker to unit
+                                  </DropdownMenuItem>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           )}
@@ -1455,6 +1457,24 @@ export function CampaignWallChart({
                                           assessmentTitle={childAssessmentTitle}
                                           participationLabel={participationSourceLabel(participationSource)}
                                         />
+                                      ) : null
+                                    }
+                                    toolbar={
+                                      canWrite ? (
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="outline"
+                                          className="h-7 px-2 text-xs print:hidden"
+                                          onClick={() => {
+                                            setAddWorkerContextOu(child);
+                                            setAddWorkerFormKey((k) => k + 1);
+                                            setAddWorkerOpen(true);
+                                          }}
+                                          title="Add worker to this unit"
+                                        >
+                                          Add worker
+                                        </Button>
                                       ) : null
                                     }
                                   >

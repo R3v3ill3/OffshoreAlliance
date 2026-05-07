@@ -113,13 +113,23 @@ export async function POST(
   if (body.ou_id != null) {
     const { data: ouRow, error: ouErr } = await supabase
       .from("campaign_organising_units")
-      .select("ou_id")
+      .select("ou_id, is_group_container")
       .eq("ou_id", body.ou_id)
       .eq("campaign_id", campaignId)
       .maybeSingle();
     if (ouErr || !ouRow) {
       return NextResponse.json(
         { success: false, error: "Unit not found for this campaign" },
+        { status: 400 }
+      );
+    }
+    if ((ouRow as { is_group_container: boolean }).is_group_container) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Cannot assign workers directly to a group container. Select one of the individual units within the group.",
+        },
         { status: 400 }
       );
     }

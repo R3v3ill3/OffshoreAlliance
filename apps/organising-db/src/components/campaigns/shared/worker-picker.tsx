@@ -137,6 +137,15 @@ export function WorkerPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
+  // When a leader is set but has no unit memberships, the "only my units"
+  // filter would produce an empty visible list with no way to uncheck it.
+  // Auto-clear the filter so all campaign members remain visible.
+  useEffect(() => {
+    if (leaderWorkerId != null && ctx.leaderOuIds.size === 0) {
+      setOnlyMyUnits(false);
+    }
+  }, [leaderWorkerId, ctx.leaderOuIds.size]);
+
   const { data: campaignWorkers = [] } = useQuery({
     queryKey: ["campaign-workers-picker", campaignId],
     queryFn: async () => {
@@ -372,21 +381,15 @@ export function WorkerPicker({
         className="h-8 text-xs"
       />
 
-      {/* "Only my units" toggle — only when a leader is set & no OU filter active */}
-      {leaderWorkerId != null && ouFilter === "all" && (
+      {/* "Only my units" toggle — only when a leader is set, has units, & no OU filter active */}
+      {leaderWorkerId != null && ouFilter === "all" && ctx.leaderOuIds.size > 0 && (
         <label className="flex items-center gap-2 text-xs cursor-pointer">
           <Checkbox
             checked={onlyMyUnits}
             onCheckedChange={(v) => setOnlyMyUnits(!!v)}
-            disabled={ctx.leaderOuIds.size === 0}
           />
-          <span className="flex-1">
-            {myUnitsLabel}
-            {ctx.leaderOuIds.size === 0 && " — leader is not yet in any unit"}
-          </span>
-          {ctx.leaderOuIds.size > 0 && (
-            <span className="text-muted-foreground">{suggested.length}</span>
-          )}
+          <span className="flex-1">{myUnitsLabel}</span>
+          <span className="text-muted-foreground">{suggested.length}</span>
         </label>
       )}
 

@@ -6,10 +6,12 @@ import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { useSaveActivityRating } from "@/lib/hooks/useSaveActivityRating";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -82,6 +84,7 @@ export function WorkerDetailSheet({
           canWrite={canWrite}
           detailFocusField={detailFocusField}
           onClose={onClose}
+          ous={ous}
         />
       </TabsContent>
 
@@ -141,6 +144,7 @@ function DetailsTab({
   canWrite,
   detailFocusField,
   onClose,
+  ous,
 }: {
   campaignId: string;
   workerId: number;
@@ -149,6 +153,7 @@ function DetailsTab({
   canWrite: boolean;
   detailFocusField?: WallChartWorkerContactFocusField | null;
   onClose: () => void;
+  ous: WallChartOU[];
 }) {
   const supabase = createClient();
   const qc = useQueryClient();
@@ -385,6 +390,212 @@ function DetailsTab({
         >
           Save
         </Button>
+      )}
+
+      {canWrite && (
+        <RemoveFromCampaignPanel
+          campaignId={campaignId}
+          workerId={workerId}
+          workerName={`${worker.first_name} ${worker.last_name}`}
+          ous={ous}
+          onRemoved={onClose}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Remove from campaign panel — inline destructive zone on the Details tab.
+// ---------------------------------------------------------------------------
+
+function RemoveFromCampaignPanel({
+  campaignId,
+  workerId,
+  workerName,
+  ous,
+  onRemoved,
+}: {
+  campaignId: string;
+  workerId: number;
+  workerName: string;
+  ous: WallChartOU[];
+  onRemoved: () => void;
+}) {
+  const supabase = createClient();
+  const qc = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
+  const [clearEmployer, setClearEmployer] = useState(false);
+  const [clearWorksite, setClearWorksite] = useState(false);
+
+  // Only fetch employer/worksite info when the panel is open.
+  const { data: workerRecord } = useQuery({
+    queryKey: ["worker-employer-worksite", workerId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("workers")
+        .select(
+          `employer_id, worksite_id,
+           employer:employers(employer_name),
+           worksite:worksites(worksite_name)`
+        )
+        .eq("worker_id", workerId)
+        .single();
+      if (error) throw error;
+      return data as {
+        employer_id: number | null;
+        worksite_id: number | null;
+        employer: { employer_name: string } | { employer_name: string }[] | null;
+        worksite: { worksite_name: string } | { worksite_name: string }[] | null;
+      };
+    },
+    enabled: expanded,
+    staleTime: 30_000,
+  });
+
+  const employerName = (() => {
+    const e = workerRecord?.employer;
+    if (!e) return null;
+    return (Array.isArray(e) ? e[0] : e)?.employer_name ?? null;
+  })();
+
+  const worksiteName = (() => {
+    const w = workerRecord?.worksite;
+    if (!w) return null;
+    return (Array.isArray(w) ? w[0] : w)?.worksite_name ?? null;
+  })();
+
+  const removeFromCampaign = useAuthAwareMutation({
+    mutationFn: async () => {
+      const cidNum = Number(campaignId);
+
+      // 1. Remove all OU assignments for this worker in this campaign.
+      const ouIds = ous.map((o) => o.ou_id);
+      if (ouIds.length > 0) {
+        const { error: ouErr } = await supabase
+          .from("campaign_worker_ou")
+          .delete()
+          .eq("worker_id", workerId)
+          .in("ou_id", ouIds);
+        if (ouErr) throw ouErr;
+      }
+
+      // 2. Remove campaign membership.
+      const { error: memErr } = await supabase
+        .from("campaign_worker_membership")
+        .delete()
+        .eq("campaign_id", cidNum)
+        .eq("worker_id", workerId);
+      if (memErr) throw memErr;
+
+      // 3. Optionally clear employer / worksite on the worker record.
+      const workerUpdates: Record<string, unknown> = {};
+      if (clearEmployer) workerUpdates.employer_id = null;
+      if (clearWorksite) workerUpdates.worksite_id = null;
+      if (Object.keys(workerUpdates).length > 0) {
+        const { error: wErr } = await supabase
+          .from("workers")
+          .update(workerUpdates)
+          .eq("worker_id", workerId);
+        if (wErr) throw wErr;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
+      qc.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
+      qc.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
+      qc.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
+      qc.invalidateQueries({ queryKey: ["workers"] });
+      toast.success(`${workerName} removed from campaign.`);
+      onRemoved();
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to remove worker from campaign");
+    },
+  });
+
+  return (
+    <div className="border-t pt-3 mt-1">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between text-xs text-muted-foreground hover:text-destructive transition-colors"
+      >
+        <span className="flex items-center gap-1.5">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          No longer in campaign universe
+        </span>
+        {expanded ? (
+          <ChevronUp className="h-3.5 w-3.5" />
+        ) : (
+          <ChevronDown className="h-3.5 w-3.5" />
+        )}
+      </button>
+
+      {expanded && (
+        <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-3">
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Removes <strong>{workerName}</strong> from this campaign — all unit
+            assignments and campaign ratings will be unlinked. The worker record
+            itself is kept so they can be re-added if needed.
+          </p>
+
+          {/* Employer / worksite update options */}
+          {(workerRecord?.employer_id != null || workerRecord?.worksite_id != null) && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">
+                Also update employment details?
+              </p>
+
+              {workerRecord?.employer_id != null && (
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={clearEmployer}
+                    onCheckedChange={(v) => setClearEmployer(!!v)}
+                    className="mt-0.5"
+                  />
+                  <span className="text-xs leading-snug">
+                    Clear employer
+                    {employerName ? (
+                      <span className="text-muted-foreground"> ({employerName})</span>
+                    ) : null}
+                    {" "}— set to unknown
+                  </span>
+                </label>
+              )}
+
+              {workerRecord?.worksite_id != null && (
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={clearWorksite}
+                    onCheckedChange={(v) => setClearWorksite(!!v)}
+                    className="mt-0.5"
+                  />
+                  <span className="text-xs leading-snug">
+                    Clear worksite
+                    {worksiteName ? (
+                      <span className="text-muted-foreground"> ({worksiteName})</span>
+                    ) : null}
+                    {" "}— set to unknown
+                  </span>
+                </label>
+              )}
+            </div>
+          )}
+
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            className="w-full"
+            disabled={removeFromCampaign.isPending}
+            onClick={() => removeFromCampaign.mutate()}
+          >
+            {removeFromCampaign.isPending
+              ? "Removing…"
+              : "Remove from campaign"}
+          </Button>
+        </div>
       )}
     </div>
   );

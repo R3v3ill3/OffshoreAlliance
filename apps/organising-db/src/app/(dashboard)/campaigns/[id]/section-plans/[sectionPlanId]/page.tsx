@@ -12,6 +12,8 @@ import {
 import { SectionSituationSnippetCard } from '@/components/campaigns/section-planning/SectionSituationSnippetCard'
 import { WorkforceMappingTable } from '@/components/campaigns/section-planning/WorkforceMappingTable'
 import { SectionAmbitionPanel } from '@/components/campaigns/section-planning/SectionAmbitionPanel'
+import { SectionWhereToPlayPanel } from '@/components/campaigns/section-planning/SectionWhereToPlayPanel'
+import { SectionCapacitiesPanel } from '@/components/campaigns/section-planning/SectionCapacitiesPanel'
 
 const STEP_VALUES: SectionPlanStep[] = [
   'situation',
@@ -113,13 +115,19 @@ function SectionPlanStepRouter({ step, sectionPlanId, campaignId }: StepRouterPr
   if (step === 'ambitions') {
     return <SectionAmbitionPanel sectionPlanId={sectionPlanId} />
   }
+  if (step === 'where-to-play') {
+    return <SectionWhereToPlayPanel sectionPlanId={sectionPlanId} />
+  }
+  if (step === 'capacities') {
+    return <SectionCapacitiesPanel sectionPlanId={sectionPlanId} />
+  }
 
   const PLACEHOLDER: Record<SectionPlanStep, string> = {
     situation: '',
     workforce: '',
     ambitions: '',
-    'where-to-play': 'Where-to-play arrives in Phase 4.',
-    capacities: 'Capacities arrive in Phase 4.',
+    'where-to-play': '',
+    capacities: '',
     activities: 'Activities + sequences arrive in Phase 5.',
     theory: 'Theory of Winning arrives in Phase 6.',
     soc: 'Section SOC arrives in Phase 6.',

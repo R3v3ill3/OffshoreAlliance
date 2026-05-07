@@ -9112,6 +9112,7 @@ export type Database = {
           created_at: string | null
           custom_text: string | null
           gap_description: string | null
+          linked_ambition_id: number | null
           plan_id: number | null
           resolution_date: string | null
           resolution_plan: string | null
@@ -9126,6 +9127,7 @@ export type Database = {
           created_at?: string | null
           custom_text?: string | null
           gap_description?: string | null
+          linked_ambition_id?: number | null
           plan_id?: number | null
           resolution_date?: string | null
           resolution_plan?: string | null
@@ -9140,6 +9142,7 @@ export type Database = {
           created_at?: string | null
           custom_text?: string | null
           gap_description?: string | null
+          linked_ambition_id?: number | null
           plan_id?: number | null
           resolution_date?: string | null
           resolution_plan?: string | null
@@ -9161,6 +9164,34 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "capacity_options"
             referencedColumns: ["option_id"]
+          },
+          {
+            foreignKeyName: "plan_capacities_linked_ambition_id_fkey"
+            columns: ["linked_ambition_id"]
+            isOneToOne: false
+            referencedRelation: "ambition_activity_contribution"
+            referencedColumns: ["ambition_id"]
+          },
+          {
+            foreignKeyName: "plan_capacities_linked_ambition_id_fkey"
+            columns: ["linked_ambition_id"]
+            isOneToOne: false
+            referencedRelation: "ambition_progress"
+            referencedColumns: ["ambition_id"]
+          },
+          {
+            foreignKeyName: "plan_capacities_linked_ambition_id_fkey"
+            columns: ["linked_ambition_id"]
+            isOneToOne: false
+            referencedRelation: "plan_ambitions"
+            referencedColumns: ["ambition_id"]
+          },
+          {
+            foreignKeyName: "plan_capacities_linked_ambition_id_fkey"
+            columns: ["linked_ambition_id"]
+            isOneToOne: false
+            referencedRelation: "worker_ambition_rating"
+            referencedColumns: ["plan_ambition_id"]
           },
           {
             foreignKeyName: "plan_capacities_plan_id_fkey"

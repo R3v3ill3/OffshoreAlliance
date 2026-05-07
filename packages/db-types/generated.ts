@@ -10542,6 +10542,61 @@ export type Database = {
           },
         ]
       }
+      section_plan_ai_events: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          event_id: number
+          model: string | null
+          prompt_snapshot: Json | null
+          response_snapshot: Json | null
+          section_plan_id: number
+          surface: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          event_id?: number
+          model?: string | null
+          prompt_snapshot?: Json | null
+          response_snapshot?: Json | null
+          section_plan_id: number
+          surface: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          event_id?: number
+          model?: string | null
+          prompt_snapshot?: Json | null
+          response_snapshot?: Json | null
+          section_plan_id?: number
+          surface?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "section_plan_ai_events_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "section_plans"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "section_plan_ai_events_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_soc_recording_grid"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "section_plan_ai_events_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_summary"
+            referencedColumns: ["section_plan_id"]
+          },
+        ]
+      }
       section_plan_situation_snippets: {
         Row: {
           agreement_expiry_override: string | null

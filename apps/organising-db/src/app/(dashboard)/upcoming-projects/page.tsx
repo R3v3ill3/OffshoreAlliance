@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { format } from "date-fns";
-import { ExternalLink, RefreshCcw, Loader2 } from "lucide-react";
+import { ExternalLink, RefreshCcw, Loader2, Sparkles } from "lucide-react";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import {
   type UpcomingProjectRow,
 } from "@/lib/hooks/useUpcomingProjects";
 import { useRefreshUpcomingProjects } from "@/lib/hooks/useRefreshUpcomingProjects";
+import { useRematchUpcomingProjects } from "@/lib/hooks/useRematchUpcomingProjects";
 import { MatchReviewPanel } from "./_components/match-review-panel";
 import {
   UpcomingProjectsFilterBar,
@@ -70,6 +71,7 @@ export default function UpcomingProjectsPage() {
   const { isAdmin } = useAuth();
   const { data, isLoading, error } = useUpcomingProjects();
   const refreshMutation = useRefreshUpcomingProjects();
+  const rematchMutation = useRematchUpcomingProjects();
 
   const [jurisdictionFilter, setJurisdictionFilter] = useState<JurisdictionFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -243,19 +245,43 @@ export default function UpcomingProjectsPage() {
           </p>
         </div>
         {isAdmin && (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={refreshMutation.isPending}
-            onClick={() => refreshMutation.mutate()}
-          >
-            {refreshMutation.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCcw className="h-4 w-4 mr-2" />
-            )}
-            {refreshMutation.isPending ? "Scraping…" : "Refresh now"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={rematchMutation.isPending || refreshMutation.isPending}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "Re-evaluate every unconfirmed match using the current matcher? Confirmed/overridden/rejected rows will not be touched."
+                  )
+                ) {
+                  rematchMutation.mutate();
+                }
+              }}
+              title="Re-run the matcher against existing rows. Skips confirmed / overridden / rejected matches."
+            >
+              {rematchMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4 mr-2" />
+              )}
+              {rematchMutation.isPending ? "Re-evaluating…" : "Re-evaluate matches"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={refreshMutation.isPending || rematchMutation.isPending}
+              onClick={() => refreshMutation.mutate()}
+            >
+              {refreshMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCcw className="h-4 w-4 mr-2" />
+              )}
+              {refreshMutation.isPending ? "Scraping…" : "Refresh now"}
+            </Button>
+          </div>
         )}
       </div>
 
@@ -267,6 +293,28 @@ export default function UpcomingProjectsPage() {
       {refreshMutation.isSuccess && (
         <p className="text-sm text-muted-foreground">
           Scrape complete. Showing latest data.
+        </p>
+      )}
+      {rematchMutation.isError && (
+        <p className="text-sm text-destructive">
+          Re-evaluate failed: {(rematchMutation.error as Error).message}
+        </p>
+      )}
+      {rematchMutation.isSuccess && rematchMutation.data && (
+        <p className="text-sm text-muted-foreground">
+          Re-evaluated {rematchMutation.data.total} rows: {rematchMutation.data.auto} auto-matched
+          , {rematchMutation.data.needs_review} need review, {rematchMutation.data.unmatched} unmatched
+          {rematchMutation.data.skipped > 0
+            ? ` (${rematchMutation.data.skipped} skipped — admin decisions left in place)`
+            : ""}
+          .
+          {rematchMutation.data.errors && rematchMutation.data.errors.length > 0 && (
+            <span className="text-destructive">
+              {" "}
+              {rematchMutation.data.errors.length} row(s) errored — first:{" "}
+              {rematchMutation.data.errors[0]}
+            </span>
+          )}
         </p>
       )}
 

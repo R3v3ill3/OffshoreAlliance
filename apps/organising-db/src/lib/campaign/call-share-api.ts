@@ -113,7 +113,7 @@ export async function enrichCallListItem(
     .from("call_list_items")
     .select(
       `*,
-       workers (
+       workers!worker_id (
          worker_id, first_name, last_name, email, phone,
          occupation, address, suburb, state, postcode,
          employer_id, worksite_id,

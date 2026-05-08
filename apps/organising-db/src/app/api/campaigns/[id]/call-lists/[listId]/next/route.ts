@@ -23,7 +23,7 @@ export async function GET(
 
     const workerSelect = `
       *,
-      workers (
+      workers!worker_id (
         worker_id, first_name, last_name, email, phone,
         occupation, address, suburb, state, postcode,
         employer_id, worksite_id,

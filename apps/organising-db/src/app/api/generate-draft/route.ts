@@ -63,6 +63,10 @@ export async function POST(req: NextRequest) {
 
     const { system, user: userMessage } = PROMPT_BUILDERS[body.platform](body)
 
+    // #region agent log
+    fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6d7ac7'},body:JSON.stringify({sessionId:'6d7ac7',location:'generate-draft/route.ts:PRE_API',message:'About to call Anthropic',data:{platform:body.platform,model:'claude-sonnet-4-20250514',max_tokens:2000,systemPromptLen:system.length,userMessageLen:userMessage.length,hasSituationCtx:!!body.situation_analysis_context,situationCtxLen:body.situation_analysis_context?.length??0},timestamp:Date.now(),hypothesisId:'H1-H2-H3'})}).catch(()=>{});
+    // #endregion
+
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 2000,
@@ -75,6 +79,10 @@ export async function POST(req: NextRequest) {
       throw new Error('Unexpected response type from Claude')
     }
 
+    // #region agent log
+    fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6d7ac7'},body:JSON.stringify({sessionId:'6d7ac7',location:'generate-draft/route.ts:POST_API',message:'Anthropic response received',data:{stopReason:response.stop_reason,inputTokens:response.usage?.input_tokens,outputTokens:response.usage?.output_tokens,contentLength:content.type==='text'?content.text.length:0,contentPreview:content.type==='text'?content.text.slice(0,200):'',contentTail:content.type==='text'?content.text.slice(-200):''},timestamp:Date.now(),hypothesisId:'H1-H2'})}).catch(()=>{});
+    // #endregion
+
     let parsed
     try {
       parsed = JSON.parse(content.text)
@@ -86,6 +94,9 @@ export async function POST(req: NextRequest) {
         const jsonStart = content.text.indexOf('{')
         const jsonEnd = content.text.lastIndexOf('}')
         if (jsonStart !== -1 && jsonEnd !== -1) {
+          // #region agent log
+          fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6d7ac7'},body:JSON.stringify({sessionId:'6d7ac7',location:'generate-draft/route.ts:JSON_FALLBACK',message:'Using jsonStart/jsonEnd fallback extraction',data:{jsonStart,jsonEnd,sliceLen:jsonEnd+1-jsonStart,fullLen:content.text.length},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+          // #endregion
           parsed = JSON.parse(content.text.slice(jsonStart, jsonEnd + 1))
         } else {
           throw new Error('Could not parse JSON from Claude response')
@@ -98,6 +109,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(parsed)
   } catch (error) {
     console.error('Generate Draft API error:', error)
+
+    // #region agent log
+    fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6d7ac7'},body:JSON.stringify({sessionId:'6d7ac7',location:'generate-draft/route.ts:CATCH',message:'Route caught error',data:{errorType:error instanceof Error?error.constructor.name:'unknown',errorMessage:error instanceof Error?error.message.slice(0,500):'non-Error thrown'},timestamp:Date.now(),hypothesisId:'H1-H2-H3'})}).catch(()=>{});
+    // #endregion
 
     if (error instanceof Error) {
       return NextResponse.json({ error: error.message }, { status: 500 })

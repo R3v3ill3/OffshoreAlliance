@@ -332,10 +332,12 @@ DECLARE
   v_assigned_workers INT[] := ARRAY[]::INT[];
 BEGIN
   -- Validate parent exists and is top-level.
-  SELECT campaign_id, parent_ou_id
+  -- Table aliases are required throughout to avoid ambiguity with the RETURNS
+  -- TABLE output variable also named "ou_id" (PostgreSQL 17 is strict here).
+  SELECT cou.campaign_id, cou.parent_ou_id
     INTO v_campaign_id, v_parent_parent_id
-  FROM campaign_organising_units
-  WHERE ou_id = p_parent_ou_id;
+  FROM campaign_organising_units AS cou
+  WHERE cou.ou_id = p_parent_ou_id;
 
   IF v_campaign_id IS NULL THEN
     RAISE EXCEPTION 'parent OU % not found', p_parent_ou_id;
@@ -350,13 +352,13 @@ BEGIN
   END IF;
 
   -- Find next display_order in this campaign for the new sub-units.
-  SELECT COALESCE(MAX(display_order), -1) + 1
+  SELECT COALESCE(MAX(cou2.display_order), -1) + 1
     INTO v_max_display
-  FROM campaign_organising_units
-  WHERE campaign_id = v_campaign_id;
+  FROM campaign_organising_units AS cou2
+  WHERE cou2.campaign_id = v_campaign_id;
 
-  -- Pre-allocate the result table.
-  CREATE TEMP TABLE _split_result (sub_index INT, ou_id INT) ON COMMIT DROP;
+  -- Pre-allocate the result table (column renamed to avoid shadowing).
+  CREATE TEMP TABLE _split_result (sub_index INT, new_ou_id INT) ON COMMIT DROP;
 
   -- Insert each sub-unit row.
   FOR v_idx IN 0 .. jsonb_array_length(p_sub_units) - 1 LOOP
@@ -365,7 +367,7 @@ BEGIN
       RAISE EXCEPTION 'p_sub_units[%] missing required "name" field', v_idx;
     END IF;
 
-    INSERT INTO campaign_organising_units (
+    INSERT INTO campaign_organising_units AS ins (
       campaign_id, parent_ou_id, ou_type, name,
       total_workers_estimated, unit_basis, display_order, source
     )
@@ -382,16 +384,16 @@ BEGIN
       v_max_display + v_idx,
       'manual'
     )
-    RETURNING ou_id INTO v_new_ou_id;
+    RETURNING ins.ou_id INTO v_new_ou_id;
 
-    INSERT INTO _split_result (sub_index, ou_id) VALUES (v_idx, v_new_ou_id);
+    INSERT INTO _split_result (sub_index, new_ou_id) VALUES (v_idx, v_new_ou_id);
   END LOOP;
 
   -- Bulk insert worker assignments. Skip rows that would violate uniqueness.
   IF jsonb_typeof(p_assignments) = 'array' AND jsonb_array_length(p_assignments) > 0 THEN
     INSERT INTO campaign_worker_ou (ou_id, worker_id, is_primary, assignment_source)
     SELECT
-      sr.ou_id,
+      sr.new_ou_id,
       (a ->> 'worker_id')::INT,
       false,
       'manual'
@@ -406,12 +408,12 @@ BEGIN
 
   -- Optional: strip parent assignments for the assigned workers.
   IF p_keep_in_parent = false AND v_assigned_workers IS NOT NULL THEN
-    DELETE FROM campaign_worker_ou
-    WHERE ou_id = p_parent_ou_id
-      AND worker_id = ANY(v_assigned_workers);
+    DELETE FROM campaign_worker_ou AS cwo
+    WHERE cwo.ou_id = p_parent_ou_id
+      AND cwo.worker_id = ANY(v_assigned_workers);
   END IF;
 
-  RETURN QUERY SELECT sr.sub_index, sr.ou_id FROM _split_result sr ORDER BY sr.sub_index;
+  RETURN QUERY SELECT sr.sub_index, sr.new_ou_id FROM _split_result sr ORDER BY sr.sub_index;
 END;
 $$;
 

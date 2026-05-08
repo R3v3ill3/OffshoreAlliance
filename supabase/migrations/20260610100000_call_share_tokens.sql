@@ -1,130 +1,188 @@
 -- ============================================================
--- Migration 20260609100000: CTA <> Assessment linkage and
---                          per-CTA call ratings
+-- Mobile shareable phone-call operator
 --
--- 1. ALTER TABLE call_script_cta_ambitions
---    Adds activity_id (FK to campaign_activities). Each CTA on a
---    script can now point at an "assessment kind" activity row,
---    so the call runner knows what rating scale to render
---    (binary vs 1..5 with overridable rating_labels) and where
---    to write the per-worker rating.
---
--- 2. CREATE TABLE call_attempt_cta_ratings
---    Per-call audit row capturing the rating an organiser gave
---    for each CTA ambition during a specific call. Keeps the
---    full per-call history even if the assessment activity is
---    later relinked or deleted.
---
--- 3. UPDATE FUNCTION record_call_attempt(...)
---    Adds p_cta_ratings JSONB DEFAULT '[]'::JSONB. For each item:
---      - Insert one call_attempt_cta_ratings row.
---      - If the linked CTA ambition has an activity_id, also call
---        record_assessment_event() so the worker's wall-chart
---        rating is updated (campaign_activity_ratings).
---    The signature otherwise mirrors the live definition from
---    20260522100000_phone_call_actions.sql exactly.
+-- Adds password-protected call-list share tokens plus soft-claim
+-- primitives so multiple callers can safely work one shared list.
 -- ============================================================
 
-
--- -------------------------------------------------------
--- 1. Link CTA ambitions to assessment activities
--- -------------------------------------------------------
-ALTER TABLE call_script_cta_ambitions
-  ADD COLUMN IF NOT EXISTS activity_id INTEGER
-    REFERENCES campaign_activities(activity_id) ON DELETE SET NULL;
-
-CREATE INDEX IF NOT EXISTS idx_csca_activity
-  ON call_script_cta_ambitions(activity_id)
-  WHERE activity_id IS NOT NULL;
-
-COMMENT ON COLUMN call_script_cta_ambitions.activity_id IS
-  'Optional FK to the campaign_activities row (activity_kind = ''assessment'') '
-  'that this CTA is rated against. The call runner uses the activity''s '
-  'is_binary / rating_labels to render the rating control, and writes the '
-  'per-worker rating to campaign_activity_ratings via record_assessment_event().';
-
-
--- -------------------------------------------------------
--- 2. Per-call CTA rating audit table
--- -------------------------------------------------------
-CREATE TABLE IF NOT EXISTS call_attempt_cta_ratings (
-  cta_rating_id BIGSERIAL PRIMARY KEY,
-  attempt_id INTEGER NOT NULL REFERENCES call_attempts(attempt_id) ON DELETE CASCADE,
-  cta_ambition_id INTEGER NOT NULL REFERENCES call_script_cta_ambitions(id) ON DELETE CASCADE,
-  -- Denormalised at write time so the rating is still meaningful
-  -- if the ambition is later relinked or its activity is deleted.
-  activity_id INTEGER REFERENCES campaign_activities(activity_id) ON DELETE SET NULL,
-  worker_id INTEGER NOT NULL REFERENCES workers(worker_id) ON DELETE CASCADE,
-  rating SMALLINT CHECK (rating IS NULL OR rating BETWEEN 1 AND 5),
-  binary_value VARCHAR(30),
-  notes TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  CONSTRAINT chk_cacr_rating_or_binary
-    CHECK (rating IS NOT NULL OR binary_value IS NOT NULL),
-  CONSTRAINT cacr_attempt_ambition_uq UNIQUE (attempt_id, cta_ambition_id)
+CREATE TABLE IF NOT EXISTS call_share_tokens (
+  token_id SERIAL PRIMARY KEY,
+  list_id INTEGER NOT NULL REFERENCES call_lists(list_id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  password_algo VARCHAR(20) NOT NULL,
+  issued_by UUID NOT NULL REFERENCES auth.users(id),
+  leader_worker_id INTEGER REFERENCES workers(worker_id) ON DELETE SET NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ,
+  last_used_at TIMESTAMPTZ,
+  failed_attempts INTEGER NOT NULL DEFAULT 0,
+  locked_until TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_cacr_attempt   ON call_attempt_cta_ratings(attempt_id);
-CREATE INDEX IF NOT EXISTS idx_cacr_ambition  ON call_attempt_cta_ratings(cta_ambition_id);
-CREATE INDEX IF NOT EXISTS idx_cacr_activity  ON call_attempt_cta_ratings(activity_id) WHERE activity_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_cacr_worker    ON call_attempt_cta_ratings(worker_id);
+CREATE INDEX IF NOT EXISTS idx_call_share_tokens_list_id ON call_share_tokens(list_id);
+CREATE INDEX IF NOT EXISTS idx_call_share_tokens_token_hash ON call_share_tokens(token_hash);
 
-COMMENT ON TABLE call_attempt_cta_ratings IS
-  'Per-call rating an organiser gave for each CTA ambition. Audit-friendly '
-  'sibling to campaign_activity_ratings: this table keeps the full per-call '
-  'history (one row per attempt x ambition), while record_call_attempt also '
-  'upserts campaign_activity_ratings via record_assessment_event() so the '
-  'wall chart reflects the most recent rating.';
-COMMENT ON COLUMN call_attempt_cta_ratings.activity_id IS
-  'Snapshot of call_script_cta_ambitions.activity_id at write time. NULL for '
-  'CTAs not linked to a campaign_activities assessment row.';
+ALTER TABLE call_share_tokens ENABLE ROW LEVEL SECURITY;
 
-ALTER TABLE call_attempt_cta_ratings ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  BEGIN
+    CREATE POLICY "Authenticated users can read call_share_tokens"
+      ON call_share_tokens FOR SELECT TO authenticated USING (true);
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END;
 
-CREATE POLICY "Authenticated read call_attempt_cta_ratings"
-  ON call_attempt_cta_ratings FOR SELECT TO authenticated USING (true);
+  BEGIN
+    CREATE POLICY "Admin/User can insert call_share_tokens"
+      ON call_share_tokens FOR INSERT TO authenticated
+      WITH CHECK (get_user_role() IN ('admin', 'user'));
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END;
 
-CREATE POLICY "Campaign writers can insert call_attempt_cta_ratings"
-  ON call_attempt_cta_ratings FOR INSERT TO authenticated
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM call_attempts ca
-      JOIN call_list_items cli ON cli.item_id = ca.list_item_id
-      JOIN call_lists cl ON cl.list_id = cli.list_id
-      WHERE ca.attempt_id = call_attempt_cta_ratings.attempt_id
-        AND can_write_to_campaign(cl.campaign_id)
+  BEGIN
+    CREATE POLICY "Admin/User can update call_share_tokens"
+      ON call_share_tokens FOR UPDATE TO authenticated
+      USING (get_user_role() IN ('admin', 'user'))
+      WITH CHECK (get_user_role() IN ('admin', 'user'));
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END;
+END $$;
+
+CREATE TABLE IF NOT EXISTS call_share_form_events (
+  event_id BIGSERIAL PRIMARY KEY,
+  token_id INTEGER NOT NULL REFERENCES call_share_tokens(token_id) ON DELETE CASCADE,
+  event_type VARCHAR(40) NOT NULL CHECK (
+    event_type IN (
+      'opened',
+      'auth_fail',
+      'auth_success',
+      'identity_set',
+      'claim_acquired',
+      'claim_released',
+      'attempt_recorded'
     )
-  );
+  ),
+  worker_id INTEGER REFERENCES workers(worker_id) ON DELETE SET NULL,
+  payload JSONB,
+  ip_hash TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
-CREATE POLICY "Campaign writers can update call_attempt_cta_ratings"
-  ON call_attempt_cta_ratings FOR UPDATE TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM call_attempts ca
-      JOIN call_list_items cli ON cli.item_id = ca.list_item_id
-      JOIN call_lists cl ON cl.list_id = cli.list_id
-      WHERE ca.attempt_id = call_attempt_cta_ratings.attempt_id
-        AND can_write_to_campaign(cl.campaign_id)
-    )
-  );
+CREATE INDEX IF NOT EXISTS idx_call_share_form_events_token ON call_share_form_events(token_id);
+CREATE INDEX IF NOT EXISTS idx_call_share_form_events_event_type ON call_share_form_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_call_share_form_events_created_at ON call_share_form_events(created_at DESC);
 
-CREATE POLICY "Admin can delete call_attempt_cta_ratings"
-  ON call_attempt_cta_ratings FOR DELETE TO authenticated
-  USING (get_user_role() = 'admin');
+ALTER TABLE call_share_form_events ENABLE ROW LEVEL SECURITY;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON call_attempt_cta_ratings TO authenticated;
-GRANT USAGE, SELECT ON SEQUENCE call_attempt_cta_ratings_cta_rating_id_seq TO authenticated;
+DO $$
+BEGIN
+  BEGIN
+    CREATE POLICY "Authenticated users can read call_share_form_events"
+      ON call_share_form_events FOR SELECT TO authenticated USING (true);
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END;
+END $$;
 
+ALTER TABLE call_list_items
+  ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS claimed_by_session_label TEXT,
+  ADD COLUMN IF NOT EXISTS claimed_by_worker_id INTEGER REFERENCES workers(worker_id) ON DELETE SET NULL;
 
--- -------------------------------------------------------
--- 3. Extend record_call_attempt with p_cta_ratings
---    Mirrors the live signature from 20260522100000 exactly,
---    appends p_cta_ratings JSONB DEFAULT '[]'::JSONB, and adds
---    one new step (8b) that persists call_attempt_cta_ratings
---    rows + propagates to campaign_activity_ratings via the
---    shared record_assessment_event() RPC.
--- -------------------------------------------------------
+CREATE INDEX IF NOT EXISTS idx_call_list_items_active_claim
+  ON call_list_items(list_id, claimed_at)
+  WHERE status = 'in_progress' AND claimed_at IS NOT NULL;
+
+ALTER TABLE call_attempts
+  ADD COLUMN IF NOT EXISTS share_token_id INTEGER REFERENCES call_share_tokens(token_id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS caller_leader_worker_id INTEGER REFERENCES workers(worker_id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS caller_session_label TEXT,
+  ADD COLUMN IF NOT EXISTS caller_session_worker_id INTEGER REFERENCES workers(worker_id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_call_attempts_share_token ON call_attempts(share_token_id);
+CREATE INDEX IF NOT EXISTS idx_call_attempts_caller_session_worker ON call_attempts(caller_session_worker_id);
+
+CREATE OR REPLACE FUNCTION claim_next_call_list_item(
+  p_list_id INTEGER,
+  p_session_label TEXT,
+  p_session_worker_id INTEGER DEFAULT NULL,
+  p_claim_ttl_seconds INTEGER DEFAULT 900
+)
+RETURNS INTEGER AS $$
+DECLARE
+  v_item_id INTEGER;
+BEGIN
+  WITH parent_list AS (
+    SELECT list_id, priority_strategy
+    FROM call_lists
+    WHERE list_id = p_list_id
+  ),
+  candidate AS (
+    SELECT cli.item_id
+    FROM call_list_items cli
+    JOIN parent_list pl ON pl.list_id = cli.list_id
+    WHERE cli.list_id = p_list_id
+      AND (
+        cli.status = 'pending'
+        OR (
+          cli.status = 'in_progress'
+          AND cli.claimed_at IS NOT NULL
+          AND cli.claimed_at < now() - make_interval(secs => GREATEST(p_claim_ttl_seconds, 1))
+        )
+        OR (
+          cli.status = 'deferred'
+          AND cli.next_call_at IS NOT NULL
+          AND cli.next_call_at <= now()
+        )
+      )
+    ORDER BY
+      CASE WHEN pl.priority_strategy = 'priority_score' THEN cli.priority_score END DESC NULLS LAST,
+      CASE WHEN pl.priority_strategy = 'least_recently_contacted' THEN cli.last_attempt_at END ASC NULLS FIRST,
+      cli.sort_order ASC,
+      cli.item_id ASC
+    LIMIT 1
+    FOR UPDATE OF cli SKIP LOCKED
+  )
+  UPDATE call_list_items cli
+  SET
+    status = 'in_progress',
+    claimed_at = now(),
+    claimed_by_session_label = LEFT(p_session_label, 80),
+    claimed_by_worker_id = p_session_worker_id,
+    updated_at = now()
+  FROM candidate
+  WHERE cli.item_id = candidate.item_id
+  RETURNING cli.item_id INTO v_item_id;
+
+  RETURN v_item_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION release_call_list_item_claim(
+  p_item_id INTEGER,
+  p_session_label TEXT
+)
+RETURNS BOOLEAN AS $$
+DECLARE
+  v_released BOOLEAN := false;
+BEGIN
+  UPDATE call_list_items
+  SET
+    status = 'pending',
+    claimed_at = NULL,
+    claimed_by_session_label = NULL,
+    claimed_by_worker_id = NULL,
+    updated_at = now()
+  WHERE item_id = p_item_id
+    AND status = 'in_progress'
+    AND claimed_by_session_label = p_session_label
+  RETURNING true INTO v_released;
+
+  RETURN COALESCE(v_released, false);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 DROP FUNCTION IF EXISTS record_call_attempt(
   INTEGER,
   INTEGER,
@@ -137,6 +195,7 @@ DROP FUNCTION IF EXISTS record_call_attempt(
   TEXT,
   VARCHAR,
   INTEGER,
+  JSONB,
   JSONB,
   JSONB,
   JSONB
@@ -157,7 +216,11 @@ CREATE OR REPLACE FUNCTION record_call_attempt(
   p_step_outcomes JSONB DEFAULT '[]',
   p_objections JSONB DEFAULT '[]'::JSONB,
   p_issues JSONB DEFAULT '[]'::JSONB,
-  p_cta_ratings JSONB DEFAULT '[]'::JSONB
+  p_cta_ratings JSONB DEFAULT '[]'::JSONB,
+  p_share_token_id INTEGER DEFAULT NULL,
+  p_caller_leader_worker_id INTEGER DEFAULT NULL,
+  p_caller_session_label TEXT DEFAULT NULL,
+  p_caller_session_worker_id INTEGER DEFAULT NULL
 )
 RETURNS JSONB AS $$
 DECLARE
@@ -191,23 +254,25 @@ BEGIN
     RAISE EXCEPTION 'call_list_item % not found', p_list_item_id;
   END IF;
 
-  -- 1. Insert call_attempt
   INSERT INTO call_attempts (
     list_item_id, script_id, caller_user_id,
     dial_disposition, call_disposition,
     overall_notes, callback_datetime, support_level_assessed,
     follow_up_action, cta_response, duration_seconds,
-    ended_at
+    ended_at,
+    share_token_id, caller_leader_worker_id,
+    caller_session_label, caller_session_worker_id
   ) VALUES (
     p_list_item_id, p_script_id, p_caller_user_id,
     p_dial_disposition, p_call_disposition,
     p_overall_notes, p_callback_datetime, p_support_level,
     p_follow_up_action, p_cta_response, p_duration_seconds,
-    CASE WHEN p_duration_seconds IS NOT NULL THEN now() ELSE NULL END
+    CASE WHEN p_duration_seconds IS NOT NULL THEN now() ELSE NULL END,
+    p_share_token_id, p_caller_leader_worker_id,
+    LEFT(p_caller_session_label, 80), p_caller_session_worker_id
   )
   RETURNING attempt_id INTO v_attempt_id;
 
-  -- 2. Insert step outcomes
   FOR v_step IN SELECT * FROM jsonb_array_elements(p_step_outcomes)
   LOOP
     INSERT INTO call_step_outcomes (
@@ -223,7 +288,6 @@ BEGIN
     );
   END LOOP;
 
-  -- 3. Determine new item status
   IF p_dial_disposition = 'callback_requested' OR p_call_disposition = 'partial_asked_callback' THEN
     v_item_status := 'deferred';
   ELSIF p_dial_disposition = 'connected' AND p_call_disposition IS NOT NULL THEN
@@ -234,17 +298,18 @@ BEGIN
     v_item_status := 'pending';
   END IF;
 
-  -- 4. Update call_list_items
   UPDATE call_list_items SET
     status = v_item_status,
     attempts_count = attempts_count + 1,
     last_attempt_at = now(),
     best_disposition = COALESCE(p_call_disposition, p_dial_disposition),
     next_call_at = p_callback_datetime,
+    claimed_at = NULL,
+    claimed_by_session_label = NULL,
+    claimed_by_worker_id = NULL,
     updated_at = now()
   WHERE item_id = p_list_item_id;
 
-  -- 5. Update call_lists completed_items count
   UPDATE call_lists SET
     completed_items = (
       SELECT COUNT(*) FROM call_list_items
@@ -253,7 +318,6 @@ BEGIN
     updated_at = now()
   WHERE list_id = v_list_id;
 
-  -- 6. Upsert worker_campaign_connections
   SELECT connection_id INTO v_connection_id
   FROM worker_campaign_connections
   WHERE worker_id = v_worker_id AND campaign_id = v_campaign_id;
@@ -290,7 +354,6 @@ BEGIN
     WHERE connection_id = v_connection_id;
   END IF;
 
-  -- 7. Insert worker_activity_log
   INSERT INTO worker_activity_log (
     connection_id, activity_type, activity_date,
     description, outcome, contact_method,
@@ -307,7 +370,6 @@ BEGIN
     p_caller_user_id
   );
 
-  -- 8. Insert call_attempt_objections from p_objections JSONB array
   FOR v_obj IN SELECT * FROM jsonb_array_elements(p_objections)
   LOOP
     INSERT INTO call_attempt_objections (
@@ -323,14 +385,11 @@ BEGIN
     v_objections_inserted := v_objections_inserted + 1;
   END LOOP;
 
-  -- 8b. Insert call_attempt_cta_ratings + propagate to campaign_activity_ratings
   FOR v_cta IN SELECT * FROM jsonb_array_elements(p_cta_ratings)
   LOOP
     v_ambition_id := (v_cta->>'cta_ambition_id')::INTEGER;
     IF v_ambition_id IS NULL THEN CONTINUE; END IF;
 
-    -- Resolve the ambition's linked activity for denormalisation +
-    -- downstream propagation to campaign_activity_ratings.
     SELECT activity_id INTO v_ambition_activity_id
     FROM call_script_cta_ambitions
     WHERE id = v_ambition_id;
@@ -339,8 +398,6 @@ BEGIN
     v_cta_binary := NULLIF(v_cta->>'binary_value', '');
     v_cta_notes  := NULLIF(v_cta->>'notes', '');
 
-    -- Both rating and binary may be null when the organiser skipped
-    -- this CTA; only persist rows that have at least one signal.
     IF v_cta_rating IS NULL AND v_cta_binary IS NULL THEN
       CONTINUE;
     END IF;
@@ -361,10 +418,6 @@ BEGIN
 
     v_cta_ratings_inserted := v_cta_ratings_inserted + 1;
 
-    -- Propagate to wall chart when an assessment activity is linked.
-    -- record_assessment_event handles the conflict resolution and
-    -- requires at least one of rating / binary_value (already enforced
-    -- above), so the call below is safe.
     IF v_ambition_activity_id IS NOT NULL THEN
       PERFORM record_assessment_event(
         p_activity_id   := v_ambition_activity_id,
@@ -380,7 +433,6 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- 9. Insert call_issue_observations from p_issues JSONB array
   FOR v_iss IN SELECT * FROM jsonb_array_elements(p_issues)
   LOOP
     INSERT INTO call_issue_observations (
@@ -412,6 +464,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+GRANT EXECUTE ON FUNCTION claim_next_call_list_item TO authenticated;
+GRANT EXECUTE ON FUNCTION release_call_list_item_claim TO authenticated;
 GRANT EXECUTE ON FUNCTION record_call_attempt(
   INTEGER,
   INTEGER,
@@ -427,28 +481,9 @@ GRANT EXECUTE ON FUNCTION record_call_attempt(
   JSONB,
   JSONB,
   JSONB,
-  JSONB
+  JSONB,
+  INTEGER,
+  INTEGER,
+  TEXT,
+  INTEGER
 ) TO authenticated;
-
-COMMENT ON FUNCTION record_call_attempt(
-  INTEGER,
-  INTEGER,
-  UUID,
-  VARCHAR,
-  VARCHAR,
-  TEXT,
-  TIMESTAMPTZ,
-  VARCHAR,
-  TEXT,
-  VARCHAR,
-  INTEGER,
-  JSONB,
-  JSONB,
-  JSONB,
-  JSONB
-) IS
-  'Records a call_attempts row plus all per-attempt children (step outcomes, '
-  'objections, issues, CTA ratings). For each entry in p_cta_ratings, writes '
-  'a call_attempt_cta_ratings audit row and (when the CTA ambition is linked '
-  'to an assessment activity) calls record_assessment_event() so the worker''s '
-  'wall-chart rating is updated.';

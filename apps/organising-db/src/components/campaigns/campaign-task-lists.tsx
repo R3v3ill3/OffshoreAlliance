@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,22 +10,6 @@ import { fetchApi } from "@/lib/api/fetch-api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
@@ -33,7 +17,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Eye, EyeOff, Copy, Check, Activity as ActivityIcon } from "lucide-react";
+import { Activity as ActivityIcon } from "lucide-react";
+import {
+  IssueLinkDialog,
+  type IssueLinkResult,
+} from "@/components/share/issue-link-dialog";
+import { IssuedLinkResultDialog } from "@/components/share/issued-link-result-dialog";
 import {
   CreateTaskListDialog,
   type CreateTaskListDraft,
@@ -44,23 +33,8 @@ import {
 } from "./task-list-activity-panel";
 import type { TaskListProgressSummary } from "@/lib/campaign/task-list-progress";
 
-const EXPIRY_PRESETS: { label: string; hours: number }[] = [
-  { label: "2 hours", hours: 2 },
-  { label: "8 hours", hours: 8 },
-  { label: "24 hours", hours: 24 },
-  { label: "3 days", hours: 72 },
-  { label: "7 days", hours: 168 },
-  { label: "14 days", hours: 336 },
-];
-const DEFAULT_EXPIRY_HOURS = 168; // 7 days
-
 type IssueDialogTarget = { taskListId: number; title: string };
-type IssueResult = {
-  url: string;
-  password: string;
-  expires_at: string | null;
-  expires_in_hours: number;
-};
+type IssueResult = IssueLinkResult;
 
 type TaskListRow = {
   task_list_id: number;
@@ -406,8 +380,15 @@ export function CampaignTaskListsSection({
       )}
 
       <IssueLinkDialog
-        campaignId={campaignId}
-        target={issueTarget}
+        target={
+          issueTarget
+            ? {
+                title: issueTarget.title,
+                contextLabel: "For task list",
+                endpoint: `/api/campaigns/${campaignId}/task-lists/${issueTarget.taskListId}/token`,
+              }
+            : null
+        }
         onClose={() => setIssueTarget(null)}
         onIssued={(r) => {
           setIssueTarget(null);
@@ -536,280 +517,3 @@ function StatusFilterChips({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Issue link dialog — collects password + expiry, posts to API.       */
-/* ------------------------------------------------------------------ */
-
-function IssueLinkDialog({
-  campaignId,
-  target,
-  onClose,
-  onIssued,
-}: {
-  campaignId: string;
-  target: IssueDialogTarget | null;
-  onClose: () => void;
-  onIssued: (r: IssueResult) => void;
-}) {
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [expiryMode, setExpiryMode] = useState<string>(String(DEFAULT_EXPIRY_HOURS));
-  const [customHours, setCustomHours] = useState<string>("48");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const open = target !== null;
-
-  // Reset when opening for a new target.
-  useMemo(() => {
-    if (open) {
-      setPassword("");
-      setShowPassword(false);
-      setExpiryMode(String(DEFAULT_EXPIRY_HOURS));
-      setCustomHours("48");
-      setError(null);
-    }
-  }, [open]);
-
-  function resolveExpiryHours(): number | null {
-    if (expiryMode === "custom") {
-      const n = Number(customHours);
-      if (!Number.isFinite(n) || !Number.isInteger(n)) return null;
-      if (n < 2 || n > 336) return null;
-      return n;
-    }
-    const n = Number(expiryMode);
-    if (!Number.isFinite(n)) return null;
-    return n;
-  }
-
-  async function handleSubmit() {
-    if (!target) return;
-    setError(null);
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
-      return;
-    }
-    const hours = resolveExpiryHours();
-    if (hours == null) {
-      setError("Expiry must be between 2 and 336 hours (14 days).");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const res = await fetchApi(
-        `/api/campaigns/${campaignId}/task-lists/${target.taskListId}/token`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password, expiresInHours: hours }),
-        },
-      );
-      const json = await res.json();
-      if (!res.ok) {
-        const msg =
-          typeof json.error === "string"
-            ? json.error
-            : json.error?.formErrors?.[0] || "Failed to issue link";
-        throw new Error(msg);
-      }
-      onIssued({
-        url: json.url,
-        password,
-        expires_at: json.expires_at,
-        expires_in_hours: json.expires_in_hours ?? hours,
-      });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to issue link");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => (!o ? onClose() : undefined)}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Issue leader link</DialogTitle>
-        </DialogHeader>
-        {target && (
-          <p className="text-xs text-muted-foreground -mt-2">
-            For task list:{" "}
-            <span className="font-medium text-foreground">{target.title}</span>
-          </p>
-        )}
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <Label htmlFor="leader-password">Password (set by you, share separately)</Label>
-            <div className="relative">
-              <Input
-                id="leader-password"
-                type={showPassword ? "text" : "password"}
-                value={password}
-                autoComplete="new-password"
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Min 6 characters"
-                className="pr-10"
-              />
-              <button
-                type="button"
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              The leader needs this password to open the form. Share it on a different
-              channel from the link itself.
-            </p>
-          </div>
-
-          <div className="space-y-1">
-            <Label htmlFor="leader-expiry">Expires in</Label>
-            <Select value={expiryMode} onValueChange={setExpiryMode}>
-              <SelectTrigger id="leader-expiry">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {EXPIRY_PRESETS.map((p) => (
-                  <SelectItem key={p.hours} value={String(p.hours)}>
-                    {p.label}
-                  </SelectItem>
-                ))}
-                <SelectItem value="custom">Custom…</SelectItem>
-              </SelectContent>
-            </Select>
-            {expiryMode === "custom" && (
-              <div className="pt-2">
-                <Label htmlFor="custom-hours" className="text-xs">
-                  Hours (2 – 336)
-                </Label>
-                <Input
-                  id="custom-hours"
-                  type="number"
-                  min={2}
-                  max={336}
-                  step={1}
-                  value={customHours}
-                  onChange={(e) => setCustomHours(e.target.value)}
-                />
-              </div>
-            )}
-          </div>
-
-          {error && <p className="text-sm text-destructive">{error}</p>}
-        </div>
-
-        <DialogFooter>
-          <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button type="button" onClick={() => void handleSubmit()} disabled={submitting}>
-            {submitting ? "Issuing…" : "Issue link"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Result dialog — shows URL + password with copy buttons.             */
-/* ------------------------------------------------------------------ */
-
-function IssuedLinkResultDialog({
-  result,
-  onClose,
-}: {
-  result: IssueResult | null;
-  onClose: () => void;
-}) {
-  const [copied, setCopied] = useState<"url" | "password" | null>(null);
-
-  function copy(value: string, kind: "url" | "password") {
-    void navigator.clipboard.writeText(value);
-    setCopied(kind);
-    setTimeout(() => setCopied((c) => (c === kind ? null : c)), 1500);
-  }
-
-  return (
-    <Dialog
-      open={!!result}
-      onOpenChange={(o) => {
-        if (!o) {
-          setCopied(null);
-          onClose();
-        }
-      }}
-    >
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Leader link ready</DialogTitle>
-        </DialogHeader>
-        {result && (
-          <div className="space-y-4">
-            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-              <strong>Share the link and the password using two different channels.</strong>{" "}
-              For example: email the link, SMS the password. The password is only shown
-              once — you cannot reveal it again from this screen.
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                Link
-              </Label>
-              <div className="flex items-stretch gap-2">
-                <p className="flex-1 break-all font-mono text-sm bg-muted p-2 rounded">
-                  {result.url}
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => copy(result.url, "url")}
-                >
-                  {copied === "url" ? <Check size={14} /> : <Copy size={14} />}
-                  <span className="ml-1">Copy</span>
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                Password
-              </Label>
-              <div className="flex items-stretch gap-2">
-                <p className="flex-1 break-all font-mono text-sm bg-muted p-2 rounded">
-                  {result.password}
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => copy(result.password, "password")}
-                >
-                  {copied === "password" ? <Check size={14} /> : <Copy size={14} />}
-                  <span className="ml-1">Copy</span>
-                </Button>
-              </div>
-            </div>
-
-            <p className="text-xs text-muted-foreground">
-              Expires in {result.expires_in_hours} hour
-              {result.expires_in_hours === 1 ? "" : "s"}
-              {result.expires_at
-                ? ` (${new Date(result.expires_at).toLocaleString()})`
-                : ""}
-              .
-            </p>
-          </div>
-        )}
-        <DialogFooter>
-          <Button onClick={onClose}>Done</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}

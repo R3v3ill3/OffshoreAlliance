@@ -6,7 +6,7 @@ import { useCallLists, useDeleteCallList } from '@/lib/hooks/useCallList'
 import { useCallScripts, useDeleteCallScript } from '@/lib/hooks/useCallScripts'
 import type { CallListWithStats, CallScriptWithSections } from '@/types/planner-types'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import {
@@ -20,8 +20,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
-  Phone, Plus, Play, Pause, FileText, Users, ArrowLeft,
-  Loader2, Edit, Trash2, BarChart3,
+  Phone, Plus, Play, FileText, Users, ArrowLeft,
+  Loader2, Edit, Trash2, BarChart3, Share2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { CallActionReport } from '@/components/phone/CallActionReport'
@@ -331,6 +331,15 @@ function CallListCard({
                 Call
               </Button>
             )}
+            <Button
+              size="sm"
+              variant="outline"
+              title="Open list sharing settings"
+              onClick={() => router.push(`/campaigns/${campaignId}/phone/lists/${listId}`)}
+            >
+              <Share2 className="h-3 w-3 mr-1" />
+              Share
+            </Button>
             <Button
               size="sm" variant="ghost"
               onClick={() => router.push(`/campaigns/${campaignId}/phone/lists/${listId}`)}

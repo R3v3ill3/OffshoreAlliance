@@ -2,12 +2,15 @@
 
 import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   useCallList,
   useCallListItems,
   useUpdateCallList,
   useDeleteCallList,
 } from '@/lib/hooks/useCallList'
+import { createClient } from '@/lib/supabase/client'
+import { fetchApi } from '@/lib/api/fetch-api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -30,11 +33,14 @@ import {
 } from '@/components/ui/table'
 import {
   ArrowLeft, Phone, Play, Pause, Users, Loader2, CheckCircle,
-  SkipForward, Clock, AlertCircle, Trash2, Filter, Pencil,
+  SkipForward, Clock, AlertCircle, Trash2, Filter, Pencil, Share2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { CallListStatus } from '@/types/planner-types'
 import { CallListLinkedScripts } from '@/components/phone/CallListLinkedScripts'
+import { IssueLinkDialog, type IssueLinkResult } from '@/components/share/issue-link-dialog'
+import { IssuedLinkResultDialog } from '@/components/share/issued-link-result-dialog'
+import { WorkerPicker } from '@/components/campaigns/shared/worker-picker'
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
   pending: <Clock className="h-3 w-3 text-slate-500" />,
@@ -49,6 +55,8 @@ export default function CallListDetailPage() {
   const router = useRouter()
   const campaignId = params.id as string
   const listId = params.listId as string
+  const supabase = createClient()
+  const queryClient = useQueryClient()
 
   const { data: list, isLoading: listLoading } = useCallList(campaignId, listId)
   const { data: items, isLoading: itemsLoading } = useCallListItems(campaignId, listId)
@@ -58,6 +66,98 @@ export default function CallListDetailPage() {
   const [editingDetails, setEditingDetails] = useState(false)
   const [editName, setEditName] = useState('')
   const [editDescription, setEditDescription] = useState('')
+  const [shareOpen, setShareOpen] = useState(false)
+  const [issueResult, setIssueResult] = useState<IssueLinkResult | null>(null)
+  const [bindLeader, setBindLeader] = useState(false)
+  const [leaderWorkerIds, setLeaderWorkerIds] = useState<number[]>([])
+
+  const { data: activeShareTokens = [] } = useQuery({
+    queryKey: ['call-share-tokens', listId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('call_share_tokens')
+        .select(
+          `token_id, token_hash, leader_worker_id, expires_at, last_used_at, revoked_at,
+           leader:workers!call_share_tokens_leader_worker_id_fkey(first_name, last_name)`
+        )
+        .eq('list_id', Number(listId))
+        .is('revoked_at', null)
+        .gt('expires_at', new Date().toISOString())
+        .order('expires_at', { ascending: true })
+      if (error) throw error
+      return (data ?? []) as Array<{
+        token_id: number
+        token_hash: string
+        leader_worker_id: number | null
+        expires_at: string
+        last_used_at: string | null
+        leader: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null
+      }>
+    },
+    enabled: !!listId,
+    refetchInterval: 30_000,
+  })
+
+  const { data: currentCallers = [] } = useQuery({
+    queryKey: ['call-share-current-callers', listId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('call_list_items')
+        .select(
+          `item_id, claimed_at, claimed_by_session_label, claimed_by_worker_id,
+           worker:workers!call_list_items_worker_id_fkey(first_name, last_name, phone),
+           claimer:workers!call_list_items_claimed_by_worker_id_fkey(first_name, last_name)`
+        )
+        .eq('list_id', Number(listId))
+        .eq('status', 'in_progress')
+        .not('claimed_at', 'is', null)
+        .order('claimed_at', { ascending: true })
+      if (error) throw error
+      return (data ?? []) as Array<{
+        item_id: number
+        claimed_at: string
+        claimed_by_session_label: string | null
+        claimed_by_worker_id: number | null
+        worker: { first_name: string; last_name: string; phone: string | null } | { first_name: string; last_name: string; phone: string | null }[] | null
+        claimer: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null
+      }>
+    },
+    enabled: !!listId,
+    refetchInterval: 30_000,
+  })
+
+  const { data: outcomeDefinitionCount = 0 } = useQuery({
+    queryKey: ['call-list-outcome-definition-count', list?.script_id ?? 0],
+    queryFn: async () => {
+      if (!list?.script_id) return 0
+      const { count, error } = await supabase
+        .from('call_outcome_definitions')
+        .select('outcome_id', { count: 'exact', head: true })
+        .eq('script_id', list.script_id)
+      if (error) throw error
+      return count ?? 0
+    },
+    enabled: !!list?.script_id,
+  })
+
+  const revokeShareToken = useMutation({
+    mutationFn: async (tokenId: number) => {
+      const res = await fetchApi(`/api/campaigns/${campaignId}/call-lists/${listId}/share-tokens/revoke`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tokenId }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(body.error ?? 'Failed to revoke link')
+      }
+    },
+    onSuccess: () => {
+      toast.success('Mobile link revoked')
+      queryClient.invalidateQueries({ queryKey: ['call-share-tokens', listId] })
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Failed to revoke link'),
+  })
 
   type ListWithLinks = typeof list & {
     call_list_scripts?: Array<{
@@ -119,6 +219,16 @@ export default function CallListDetailPage() {
   const progressPct = list.total_items > 0
     ? Math.round((list.completed_items / list.total_items) * 100)
     : 0
+  const remainingItems = Math.max(0, (list.total_items ?? 0) - (list.completed_items ?? 0))
+  const hasActiveScript = !!list.script_id
+  const canShareMobile = hasActiveScript && remainingItems > 0 && outcomeDefinitionCount > 0
+  const shareDisabledReason = !hasActiveScript
+    ? 'Link an active script before sharing'
+    : remainingItems === 0
+      ? 'There are no remaining contacts to call'
+      : outcomeDefinitionCount === 0
+        ? 'Add at least one call outcome before sharing'
+      : null
 
   return (
     <div className="space-y-6">
@@ -158,6 +268,17 @@ export default function CallListDetailPage() {
           >
             <Filter className="h-4 w-4 mr-1" />
             Edit filters
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!canShareMobile}
+            title={shareDisabledReason ?? 'Share this call list for mobile calling'}
+            onClick={() => setShareOpen(true)}
+          >
+            <Share2 className="h-4 w-4 mr-1" />
+            Share for mobile calling
           </Button>
           <Button
             type="button"
@@ -276,6 +397,80 @@ export default function CallListDetailPage() {
         links={linkedScripts}
       />
 
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Active mobile-call links</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {activeShareTokens.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No active mobile-call links.</p>
+            ) : (
+              activeShareTokens.map((token) => {
+                const leaderRel = token.leader
+                const leader = Array.isArray(leaderRel) ? leaderRel[0] : leaderRel
+                return (
+                  <div key={token.token_id} className="flex items-center justify-between gap-3 rounded border p-2 text-xs">
+                    <div className="min-w-0">
+                      <p className="font-medium">Link ...{token.token_hash.slice(-8)}</p>
+                      <p className="text-muted-foreground">
+                        {leader ? `${leader.first_name} ${leader.last_name}`.trim() : 'Unbound link'}
+                        {' · '}expires {new Date(token.expires_at).toLocaleString()}
+                      </p>
+                      <p className="text-muted-foreground">
+                        {token.last_used_at ? `Last used ${new Date(token.last_used_at).toLocaleString()}` : 'Not used yet'}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={revokeShareToken.isPending}
+                      onClick={() => revokeShareToken.mutate(token.token_id)}
+                    >
+                      Revoke
+                    </Button>
+                  </div>
+                )
+              })
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Currently calling</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {currentCallers.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No contacts are currently claimed.</p>
+            ) : (
+              currentCallers.map((claim) => {
+                const workerRel = claim.worker
+                const worker = Array.isArray(workerRel) ? workerRel[0] : workerRel
+                const claimerRel = claim.claimer
+                const claimer = Array.isArray(claimerRel) ? claimerRel[0] : claimerRel
+                const callerName =
+                  claim.claimed_by_session_label ||
+                  (claimer ? `${claimer.first_name} ${claimer.last_name}`.trim() : 'Unknown caller')
+                return (
+                  <div key={claim.item_id} className="rounded border p-2 text-xs">
+                    <p className="font-medium">{callerName}</p>
+                    <p className="text-muted-foreground">
+                      Calling {worker ? `${worker.first_name} ${worker.last_name}`.trim() : `item #${claim.item_id}`}
+                      {worker?.phone ? ` · ${worker.phone}` : ''}
+                    </p>
+                    <p className="text-muted-foreground">
+                      Since {new Date(claim.claimed_at).toLocaleString()}
+                    </p>
+                  </div>
+                )
+              })
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Contact list table */}
       <Card>
         <CardHeader className="pb-2">
@@ -355,6 +550,55 @@ export default function CallListDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <IssueLinkDialog
+        title="Share for mobile calling"
+        target={
+          shareOpen
+            ? {
+                title: list.name,
+                contextLabel: 'For call list',
+                endpoint: `/api/campaigns/${campaignId}/call-lists/${listId}/share-token`,
+              }
+            : null
+        }
+        passwordHelp="You can share this one link with multiple callers — each person picks their name on sign-in and the system stops anyone from calling the same contact twice."
+        extraPayload={{
+          leaderWorkerId: bindLeader ? leaderWorkerIds[0] : undefined,
+        }}
+        extraFields={
+          <div className="space-y-2 rounded-md border p-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={bindLeader}
+                onChange={(event) => setBindLeader(event.target.checked)}
+              />
+              Bind to a specific leader
+            </label>
+            {bindLeader ? (
+              <WorkerPicker
+                campaignId={campaignId}
+                initialSelected={leaderWorkerIds}
+                onChange={(ids) => setLeaderWorkerIds(ids.slice(0, 1))}
+                hideNotes
+              />
+            ) : null}
+          </div>
+        }
+        onClose={() => setShareOpen(false)}
+        onIssued={(result) => {
+          setShareOpen(false)
+          setIssueResult(result)
+          queryClient.invalidateQueries({ queryKey: ['call-share-tokens', listId] })
+        }}
+      />
+
+      <IssuedLinkResultDialog
+        title="Mobile-call link ready"
+        result={issueResult}
+        onClose={() => setIssueResult(null)}
+      />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>

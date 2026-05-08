@@ -9996,6 +9996,151 @@ export type Database = {
           },
         ]
       }
+      plan_wtp_ambitions: {
+        Row: {
+          ambition_id: number
+          created_at: string
+          wtp_ambition_id: number
+          wtp_id: number
+        }
+        Insert: {
+          ambition_id: number
+          created_at?: string
+          wtp_ambition_id?: number
+          wtp_id: number
+        }
+        Update: {
+          ambition_id?: number
+          created_at?: string
+          wtp_ambition_id?: number
+          wtp_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_wtp_ambitions_ambition_id_fkey"
+            columns: ["ambition_id"]
+            isOneToOne: false
+            referencedRelation: "ambition_activity_contribution"
+            referencedColumns: ["ambition_id"]
+          },
+          {
+            foreignKeyName: "plan_wtp_ambitions_ambition_id_fkey"
+            columns: ["ambition_id"]
+            isOneToOne: false
+            referencedRelation: "ambition_progress"
+            referencedColumns: ["ambition_id"]
+          },
+          {
+            foreignKeyName: "plan_wtp_ambitions_ambition_id_fkey"
+            columns: ["ambition_id"]
+            isOneToOne: false
+            referencedRelation: "plan_ambitions"
+            referencedColumns: ["ambition_id"]
+          },
+          {
+            foreignKeyName: "plan_wtp_ambitions_ambition_id_fkey"
+            columns: ["ambition_id"]
+            isOneToOne: false
+            referencedRelation: "worker_ambition_rating"
+            referencedColumns: ["plan_ambition_id"]
+          },
+          {
+            foreignKeyName: "plan_wtp_ambitions_wtp_id_fkey"
+            columns: ["wtp_id"]
+            isOneToOne: false
+            referencedRelation: "plan_where_to_play"
+            referencedColumns: ["wtp_id"]
+          },
+        ]
+      }
+      plan_wtp_section_ambitions: {
+        Row: {
+          ambition_id: number
+          created_at: string
+          section_ambition_id: number
+          section_plan_id: number
+          wtp_category_id: number
+        }
+        Insert: {
+          ambition_id: number
+          created_at?: string
+          section_ambition_id?: number
+          section_plan_id: number
+          wtp_category_id: number
+        }
+        Update: {
+          ambition_id?: number
+          created_at?: string
+          section_ambition_id?: number
+          section_plan_id?: number
+          wtp_category_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_wtp_section_ambitions_ambition_id_fkey"
+            columns: ["ambition_id"]
+            isOneToOne: false
+            referencedRelation: "ambition_activity_contribution"
+            referencedColumns: ["ambition_id"]
+          },
+          {
+            foreignKeyName: "plan_wtp_section_ambitions_ambition_id_fkey"
+            columns: ["ambition_id"]
+            isOneToOne: false
+            referencedRelation: "ambition_progress"
+            referencedColumns: ["ambition_id"]
+          },
+          {
+            foreignKeyName: "plan_wtp_section_ambitions_ambition_id_fkey"
+            columns: ["ambition_id"]
+            isOneToOne: false
+            referencedRelation: "plan_ambitions"
+            referencedColumns: ["ambition_id"]
+          },
+          {
+            foreignKeyName: "plan_wtp_section_ambitions_ambition_id_fkey"
+            columns: ["ambition_id"]
+            isOneToOne: false
+            referencedRelation: "worker_ambition_rating"
+            referencedColumns: ["plan_ambition_id"]
+          },
+          {
+            foreignKeyName: "plan_wtp_section_ambitions_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "section_plans"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "plan_wtp_section_ambitions_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_section_stage_coverage"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "plan_wtp_section_ambitions_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_soc_recording_grid"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "plan_wtp_section_ambitions_section_plan_id_fkey"
+            columns: ["section_plan_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_summary"
+            referencedColumns: ["section_plan_id"]
+          },
+          {
+            foreignKeyName: "plan_wtp_section_ambitions_wtp_category_id_fkey"
+            columns: ["wtp_category_id"]
+            isOneToOne: false
+            referencedRelation: "wtp_categories"
+            referencedColumns: ["category_id"]
+          },
+        ]
+      }
       program_worksites: {
         Row: {
           end_date: string | null

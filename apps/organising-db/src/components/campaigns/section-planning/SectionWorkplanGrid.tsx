@@ -24,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -261,6 +262,11 @@ export function SectionWorkplanGrid({ sectionPlanId }: { sectionPlanId: number }
               {form.target ? 'Edit target' : 'New target'} —{' '}
               {form.date && format(parseISO(form.date), 'EEE dd MMM')}
             </DialogTitle>
+            <DialogDescription>
+              Set a daily call target for an activity (or a free-text label
+              when no activity is linked yet). Completion counts pull
+              automatically from concluded activity events on this date.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1">

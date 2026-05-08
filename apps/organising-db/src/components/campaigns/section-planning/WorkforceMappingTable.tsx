@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -248,6 +249,11 @@ export function WorkforceMappingTable({
             <DialogTitle>
               Override row — {edit.row?.worksite_name}
             </DialogTitle>
+            <DialogDescription>
+              Set per-section corrections to the live worker / member /
+              density figures. Leaving a field blank falls back to the live
+              campaign value.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <p className="text-xs text-muted-foreground">

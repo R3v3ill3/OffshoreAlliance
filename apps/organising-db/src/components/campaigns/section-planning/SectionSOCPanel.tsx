@@ -24,6 +24,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -366,6 +367,11 @@ export function SectionSOCPanel({ sectionPlanId }: { sectionPlanId: number }) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>New SOC</DialogTitle>
+            <DialogDescription>
+              Pick a SOC kind and give it a name. SOC 1 covers general
+              member / workforce calls; SOC 2 covers bargaining-rep
+              walkthroughs (with a per-worker recording grid).
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1">

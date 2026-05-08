@@ -21,6 +21,13 @@ export interface CallCtaAmbition {
   id?: number
   /** FK to call_outcome_definitions.outcome_id — null for custom/free-form ambitions. */
   outcome_definition_id?: number | null
+  /**
+   * FK to campaign_activities.activity_id (activity_kind = 'assessment').
+   * When set, the call runner renders the assessment's rating control
+   * (binary or 1..5 with rating_labels overrides) and writes the per-call
+   * rating to campaign_activity_ratings via record_assessment_event().
+   */
+  activity_id?: number | null
   /** Denormalised label (required). */
   cta_label: string
   target_response?: CtaTargetResponse | null

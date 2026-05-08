@@ -22,8 +22,10 @@ import {
   Trash2,
   Target,
   ExternalLink,
+  ClipboardList,
 } from 'lucide-react'
 import type { CallCtaAmbition, CtaTargetResponse, CtaSupportLevel } from './types'
+import { CreateAssessmentDialog } from '@/components/campaigns/assessments/create-assessment-dialog'
 
 // ─── Local types ─────────────────────────────────────────────────────────────
 
@@ -32,6 +34,12 @@ interface CtaOutcomeDefinition {
   name: string
   description: string | null
   response_type: string
+}
+
+interface AssessmentOption {
+  activity_id: number
+  title: string
+  is_binary: boolean
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -66,6 +74,7 @@ interface CallCtaAmbitionsEditorProps {
 function emptyAmbition(label: string, outcomeId?: number | null): CallCtaAmbition {
   return {
     outcome_definition_id: outcomeId ?? null,
+    activity_id: null,
     cta_label: label,
     target_response: null,
     target_min_rating: null,
@@ -85,9 +94,20 @@ interface AmbitionRowProps {
   onRemove: (index: number) => void
   readOnly: boolean
   isCustom: boolean
+  assessments: AssessmentOption[]
+  onCreateAssessment: (index: number) => void
 }
 
-function AmbitionRow({ ambition, index, onChange, onRemove, readOnly, isCustom }: AmbitionRowProps) {
+function AmbitionRow({
+  ambition,
+  index,
+  onChange,
+  onRemove,
+  readOnly,
+  isCustom,
+  assessments,
+  onCreateAssessment,
+}: AmbitionRowProps) {
   function update<K extends keyof CallCtaAmbition>(key: K, val: CallCtaAmbition[K]) {
     onChange(index, { ...ambition, [key]: val })
   }
@@ -119,6 +139,50 @@ function AmbitionRow({ ambition, index, onChange, onRemove, readOnly, isCustom }
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
         )}
+      </div>
+
+      {/* Linked assessment ─ drives the rating control rendered during the call */}
+      <div className="space-y-1">
+        <Label className="text-[10px] text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+          <ClipboardList className="h-3 w-3" />
+          Assessment
+        </Label>
+        <div className="flex items-center gap-2">
+          <Select
+            value={ambition.activity_id != null ? String(ambition.activity_id) : '__none__'}
+            onValueChange={(v) => update('activity_id', v === '__none__' ? null : Number(v))}
+            disabled={readOnly}
+          >
+            <SelectTrigger className="h-7 text-xs flex-1">
+              <SelectValue placeholder="None" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">None</SelectItem>
+              {assessments.map((a) => (
+                <SelectItem key={a.activity_id} value={String(a.activity_id)} className="text-xs">
+                  {a.title}
+                  {a.is_binary && <span className="ml-1 text-muted-foreground">(binary)</span>}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {!readOnly && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs shrink-0"
+              onClick={() => onCreateAssessment(index)}
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              New
+            </Button>
+          )}
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          The assessment&apos;s rating scale (binary or 1–5) is used during the call to record the worker&apos;s
+          rating against this CTA. Ratings are written to the wall chart.
+        </p>
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -235,6 +299,9 @@ export function CallCtaAmbitionsEditor({
   const supabase = createClient()
   const [showCustomForm, setShowCustomForm] = useState(false)
   const [customLabel, setCustomLabel] = useState('')
+  // When non-null, opens CreateAssessmentDialog and writes the new
+  // activity_id back into the ambition row at this index.
+  const [createAssessmentForIndex, setCreateAssessmentForIndex] = useState<number | null>(null)
 
   // Query CTA outcome definitions for this script
   const { data: ctaDefinitions = [], isLoading } = useQuery({
@@ -251,6 +318,24 @@ export function CallCtaAmbitionsEditor({
       return (data ?? []) as CtaOutcomeDefinition[]
     },
     enabled: !!scriptId,
+  })
+
+  // Assessment activities available on the campaign — used to link each
+  // CTA ambition to a concrete assessment (and therefore a rating scale).
+  const { data: assessments = [] } = useQuery({
+    queryKey: ['campaign-assessments-for-cta', campaignId],
+    queryFn: async (): Promise<AssessmentOption[]> => {
+      if (!campaignId || campaignId <= 0) return []
+      const { data, error } = await supabase
+        .from('campaign_activities')
+        .select('activity_id, title, is_binary')
+        .eq('campaign_id', campaignId)
+        .eq('activity_kind', 'assessment')
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return (data ?? []) as AssessmentOption[]
+    },
+    enabled: !!campaignId && campaignId > 0,
   })
 
   const hasNoCtas = !isLoading && ctaDefinitions.length === 0
@@ -364,6 +449,8 @@ export function CallCtaAmbitionsEditor({
               onRemove={handleRemove}
               readOnly={readOnly}
               isCustom={!ambition.outcome_definition_id}
+              assessments={assessments}
+              onCreateAssessment={(idx) => setCreateAssessmentForIndex(idx)}
             />
           ))}
         </div>
@@ -414,6 +501,29 @@ export function CallCtaAmbitionsEditor({
         <p className="text-xs text-muted-foreground italic">
           No ambitions set. Add from CTA outcomes above or add a custom ambition.
         </p>
+      )}
+
+      {/* Inline assessment creator. Writes the new activity_id back into the
+          row that triggered it. */}
+      {campaignId > 0 && (
+        <CreateAssessmentDialog
+          campaignId={String(campaignId)}
+          open={createAssessmentForIndex !== null}
+          onOpenChange={(open) => {
+            if (!open) setCreateAssessmentForIndex(null)
+          }}
+          lockKind="assessment"
+          onCreated={(activityId) => {
+            const idx = createAssessmentForIndex
+            if (idx == null) return
+            const next = [...value]
+            if (next[idx]) {
+              next[idx] = { ...next[idx], activity_id: activityId }
+              onChange(next)
+            }
+            setCreateAssessmentForIndex(null)
+          }}
+        />
       )}
     </div>
   )

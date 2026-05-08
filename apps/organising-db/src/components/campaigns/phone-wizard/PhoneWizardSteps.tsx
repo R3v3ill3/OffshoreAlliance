@@ -1212,6 +1212,7 @@ export function PhoneWizardSteps() {
           const { error } = await supabase.from('call_script_cta_ambitions').insert({
             script_id: state.savedScriptId,
             outcome_definition_id: ambition.outcome_definition_id ?? null,
+            activity_id: ambition.activity_id ?? null,
             cta_label: ambition.cta_label,
             target_response: ambition.target_response ?? null,
             target_min_rating: ambition.target_min_rating ?? null,

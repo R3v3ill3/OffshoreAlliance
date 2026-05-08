@@ -27,15 +27,28 @@ export function ContactCard({ contact, onEdit }: ContactCardProps) {
             </span>
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <h3 className="font-semibold text-base">
                 {worker.first_name} {worker.last_name}
               </h3>
+              {worker.phone ? (
+                <a
+                  href={`tel:${worker.phone}`}
+                  className="font-semibold text-base font-mono text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  <Phone className="h-4 w-4" />
+                  {worker.phone}
+                </a>
+              ) : (
+                <span className="font-semibold text-base font-mono text-muted-foreground">
+                  — no phone —
+                </span>
+              )}
               {onEdit && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground ml-auto"
                   onClick={onEdit}
                   title="Edit contact details"
                 >
@@ -44,14 +57,6 @@ export function ContactCard({ contact, onEdit }: ContactCardProps) {
               )}
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-muted-foreground">
-              {worker.phone && (
-                <span className="flex items-center gap-1">
-                  <Phone className="h-3 w-3" />
-                  <a href={`tel:${worker.phone}`} className="font-mono hover:text-primary">
-                    {worker.phone}
-                  </a>
-                </span>
-              )}
               {worker.email && (
                 <span className="flex items-center gap-1">
                   <Mail className="h-3 w-3" />

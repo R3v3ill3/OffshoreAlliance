@@ -295,8 +295,7 @@ export default function CallListDetailPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-8">#</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Phone</TableHead>
+                    <TableHead>Worker &amp; phone</TableHead>
                     <TableHead>Employer</TableHead>
                     <TableHead className="w-20">Status</TableHead>
                     <TableHead className="w-16">Calls</TableHead>
@@ -306,12 +305,27 @@ export default function CallListDetailPage() {
                 <TableBody>
                   {items.map((item, i) => (
                     <TableRow key={item.item_id}>
-                      <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
-                      <TableCell className="text-sm font-medium">
-                        {item.worker?.first_name} {item.worker?.last_name}
+                      <TableCell className="text-xs text-muted-foreground align-top pt-3">
+                        {i + 1}
                       </TableCell>
-                      <TableCell className="text-xs font-mono">
-                        {item.worker?.phone || '—'}
+                      <TableCell>
+                        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                          <span className="text-base font-semibold">
+                            {item.worker?.first_name} {item.worker?.last_name}
+                          </span>
+                          {item.worker?.phone ? (
+                            <a
+                              href={`tel:${item.worker.phone}`}
+                              className="text-base font-semibold font-mono text-primary hover:underline"
+                            >
+                              {item.worker.phone}
+                            </a>
+                          ) : (
+                            <span className="text-base font-semibold font-mono text-muted-foreground">
+                              — no phone —
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {item.worker?.employer_name || '—'}

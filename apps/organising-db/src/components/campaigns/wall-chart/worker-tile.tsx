@@ -123,6 +123,11 @@ export function WorkerTile({
       })
     : null;
   const colourSource = isAssessmentMode ? assessmentColourNumeric : cumulativeColourFallback;
+  const roleName = mt?.role_name?.trim().toLowerCase() ?? null;
+  const isDelegate = roleName === "delegate";
+  const isActivist = roleName === "activist";
+  const isContact = roleName === "contact";
+  const hasLeadershipRole = isDelegate || isActivist || isContact;
   const isMemberLike = isWorkerMemberLike({
     unionMembershipTypeName: um?.type_name,
     memberRoleName: mt?.role_name,
@@ -257,6 +262,15 @@ export function WorkerTile({
     largeBadge
   );
 
+  const tileStyle = isDelegate
+    ? {
+        backgroundImage:
+          "linear-gradient(rgba(15, 23, 42, 0.28), rgba(15, 23, 42, 0.28)), url('/heritage_Eurka_static.png')",
+        backgroundPosition: "center",
+        backgroundSize: "cover",
+      }
+    : undefined;
+
   return (
     <div
       className="relative h-full"
@@ -277,11 +291,14 @@ export function WorkerTile({
         title={`${displayName}. ${titleRatings}.${titleAssessment}${titleDefaultHint}${titleMultiUnit}${titleHsr}${titleOtherUnion}${titleHints}`}
         aria-pressed={isSelected ? true : undefined}
         onClick={handleClick}
-        className={`w-full h-full text-left text-[11px] leading-tight p-1.5 rounded border min-h-[3.25rem] flex flex-col gap-0.5 justify-between ${ratingBgClass(
-          colourSource
-        )} ${canWrite ? "cursor-pointer hover:opacity-90" : ""} ${
-          isSelected ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : ""
-        }`}
+        style={tileStyle}
+        className={cn(
+          "w-full h-full text-left text-[11px] leading-tight p-1.5 rounded border min-h-[3.25rem] flex flex-col gap-0.5 justify-between",
+          isDelegate ? "text-white shadow-sm" : ratingBgClass(colourSource),
+          isActivist ? "border-2 border-blue-900 dark:border-blue-400" : null,
+          canWrite ? "cursor-pointer hover:opacity-90" : null,
+          isSelected ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : null
+        )}
       >
         <div className="flex items-start justify-between gap-1 w-full">
           <div className="flex items-start gap-1 min-w-0 pt-0.5">
@@ -294,7 +311,14 @@ export function WorkerTile({
             >
               {storedCum ?? "—"}
             </span>
-            <span className="font-medium line-clamp-2 break-words">{displayName}</span>
+            <span
+              className={cn(
+                "line-clamp-2 break-words",
+                hasLeadershipRole ? "font-bold" : "font-medium"
+              )}
+            >
+              {displayName}
+            </span>
           </div>
           <div className="shrink-0">{largeBadgeRendered}</div>
         </div>

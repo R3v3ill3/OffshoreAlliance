@@ -19,6 +19,7 @@ import { WorkerEditDialog } from '@/components/phone/WorkerEditDialog'
 import { InCallObjectionsPanel } from '@/components/phone/InCallObjectionsPanel'
 import { InCallIssuesPanel } from '@/components/phone/InCallIssuesPanel'
 import { CtaRatingsPanel, type CtaAmbitionWithAssessment, type CtaRatingValue } from '@/components/phone/CtaRatingsPanel'
+import { CreateTaskListDialog } from '@/components/campaigns/task-lists/create-task-list-dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
@@ -36,7 +37,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import {
   Phone, ArrowLeft, SkipForward, Clock, LogOut,
-  PhoneForwarded, Loader2, FileText, CheckCircle,
+  PhoneForwarded, Loader2, FileText, CheckCircle, ListPlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { DIAL_DISPOSITIONS, CALL_DISPOSITIONS, SUPPORT_LEVELS } from '@/lib/phone/disposition-types'
@@ -126,6 +127,7 @@ export default function PhoneWizardCallPage() {
   const [checkedOutcomes, setCheckedOutcomes] = useState<Map<number, string | null>>(new Map())
   const [sidePanelTab, setSidePanelTab] = useState<'script' | 'objections' | 'issues'>('script')
   const [showAmbitionGate, setShowAmbitionGate] = useState(false)
+  const [showTaskListDialog, setShowTaskListDialog] = useState(false)
   const pendingSubmitArgs = useRef<Partial<RecordCallAttemptRequest> | undefined>(undefined)
 
   // Suppress unused: setShouldFetchNext is intentional for future use
@@ -620,6 +622,16 @@ export default function PhoneWizardCallPage() {
                   <Clock className="h-4 w-4 mr-1" />
                   Defer
                 </Button>
+                {contact?.worker && scriptCampaignIdForContext != null && (
+                  <Button
+                    variant="outline" size="sm"
+                    onClick={() => setShowTaskListDialog(true)}
+                    title="Create a task list with this worker as the leader"
+                  >
+                    <ListPlus className="h-4 w-4 mr-1" />
+                    New task list
+                  </Button>
+                )}
                 <div className="flex-1" />
                 <Button variant="ghost" size="sm" onClick={() => router.push('/campaigns')}>
                   <LogOut className="h-4 w-4 mr-1" />
@@ -736,6 +748,20 @@ export default function PhoneWizardCallPage() {
         onClose={() => setShowCallbackDialog(false)}
         onSchedule={handleCallbackScheduled}
       />
+
+      {contact?.worker && scriptCampaignIdForContext != null && (
+        <CreateTaskListDialog
+          campaignId={String(scriptCampaignIdForContext)}
+          open={showTaskListDialog}
+          onOpenChange={setShowTaskListDialog}
+          leaderWorkerLock={{
+            workerId: contact.worker.worker_id,
+            workerName:
+              `${contact.worker.first_name ?? ''} ${contact.worker.last_name ?? ''}`.trim() ||
+              `Worker #${contact.worker.worker_id}`,
+          }}
+        />
+      )}
 
       {contact?.worker && (
         <WorkerEditDialog

@@ -20,6 +20,7 @@ import { WorkerEditDialog } from '@/components/phone/WorkerEditDialog'
 import { InCallObjectionsPanel } from '@/components/phone/InCallObjectionsPanel'
 import { InCallIssuesPanel } from '@/components/phone/InCallIssuesPanel'
 import { CallActionReport } from '@/components/phone/CallActionReport'
+import { CtaRatingsPanel, type CtaAmbitionWithAssessment, type CtaRatingValue } from '@/components/phone/CtaRatingsPanel'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
@@ -46,13 +47,13 @@ import {
   Loader2, FileText, CheckCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { DIAL_DISPOSITIONS, CALL_DISPOSITIONS, CTA_RESPONSES, SUPPORT_LEVELS } from '@/lib/phone/disposition-types'
+import { DIAL_DISPOSITIONS, CALL_DISPOSITIONS, SUPPORT_LEVELS } from '@/lib/phone/disposition-types'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type {
-  DialDisposition, CallDisposition, CtaResponse, SupportLevel,
+  DialDisposition, CallDisposition, SupportLevel,
   CallScriptSection, RecordCallAttemptRequest, CallOutcomeDefinition,
+  CapturedCtaRatingPayload,
 } from '@/types/planner-types'
-import type { CallCtaAmbition } from '@/components/phone/setup/types'
 import { partitionCallOutcomeDefinitions } from '@/lib/phone/membership-outcomes'
 
 // ─── Suppress unused warning ──────────────────────────────────────────────────
@@ -68,7 +69,7 @@ export default function CallWizardPage() {
 
   const [flowState, dispatch] = useReducer(callFlowReducer, getInitialCallFlowState())
   const [notes, setNotes] = useState('')
-  const [ctaResponse, setCtaResponse] = useState<CtaResponse | null>(null)
+  const [ctaRatings, setCtaRatings] = useState<Map<number, CtaRatingValue>>(new Map())
   const [supportLevel, setSupportLevel] = useState<SupportLevel | null>(null)
   const [showCallbackDialog, setShowCallbackDialog] = useState(false)
   const [stepNotes, setStepNotes] = useState<Record<number, string>>({})
@@ -147,17 +148,31 @@ export default function CallWizardPage() {
   const outcomeScriptId = sessionScriptId ?? list?.script_id ?? null
   const { data: outcomeDefinitions = [] } = useCallOutcomeDefinitions(outcomeScriptId)
 
-  // Load CTA ambitions for the pre-finalise gate
-  const { data: ctaAmbitions = [] } = useQuery<CallCtaAmbition[]>({
+  // Load CTA ambitions (with linked assessment) for the per-CTA rating
+  // panel and the pre-finalise gate.
+  const { data: ctaAmbitions = [] } = useQuery<CtaAmbitionWithAssessment[]>({
     queryKey: ['call-script-cta-ambitions', outcomeScriptId],
     queryFn: async () => {
       if (!outcomeScriptId) return []
       const { data, error } = await supabase
         .from('call_script_cta_ambitions')
-        .select('id, outcome_definition_id, cta_label, target_response, target_min_rating, target_binary, target_support_level, min_call_threshold_pct, notes')
+        .select(
+          `id, outcome_definition_id, activity_id, cta_label,
+           target_response, target_min_rating, target_binary, target_support_level,
+           min_call_threshold_pct, notes,
+           activity:campaign_activities(activity_id, title, is_binary, rating_labels)`
+        )
         .eq('script_id', outcomeScriptId)
       if (error) throw error
-      return (data ?? []) as CallCtaAmbition[]
+      // PostgREST returns the joined relation as an array of one — flatten.
+      return ((data ?? []) as Array<Record<string, unknown>>).map((row) => {
+        const a = (row.activity ?? null) as
+          | { activity_id: number; title: string; is_binary: boolean; rating_labels: Record<string, string> | null }
+          | { activity_id: number; title: string; is_binary: boolean; rating_labels: Record<string, string> | null }[]
+          | null
+        const activity = Array.isArray(a) ? (a[0] ?? null) : a
+        return { ...(row as object), activity } as CtaAmbitionWithAssessment
+      })
     },
     enabled: !!outcomeScriptId,
   })
@@ -307,6 +322,19 @@ export default function CallWizardPage() {
       sort_order: i,
     }))
 
+    // Build per-CTA ratings payload — only include rows the organiser
+    // actually filled in (rating or binary_value).
+    const ctaRatingsPayload: CapturedCtaRatingPayload[] = flowState.dialDisposition === 'connected'
+      ? Array.from(ctaRatings.entries())
+          .filter(([, v]) => v.rating != null || v.binary_value != null)
+          .map(([id, v]) => ({
+            cta_ambition_id: id,
+            rating: v.rating,
+            binary_value: v.binary_value,
+            notes: v.notes,
+          }))
+      : []
+
     const attempt: RecordCallAttemptRequest = {
       list_item_id: contact.item_id,
       script_id: sessionScriptId ?? list?.script_id ?? null,
@@ -314,7 +342,7 @@ export default function CallWizardPage() {
       call_disposition: flowState.callDisposition || null,
       overall_notes: notes || null,
       support_level_assessed: supportLevel,
-      cta_response: ctaResponse,
+      cta_response: null,
       duration_seconds: duration,
       step_outcomes: flowState.dialDisposition === 'connected' ? stepOutcomes : [],
       outcome_entries: flowState.dialDisposition === 'connected'
@@ -322,6 +350,7 @@ export default function CallWizardPage() {
         : [],
       objections: flowState.capturedObjections,
       issues: flowState.capturedIssues,
+      cta_ratings: ctaRatingsPayload,
       ...overrides,
     }
 
@@ -329,7 +358,7 @@ export default function CallWizardPage() {
       await recordAttempt.mutateAsync(attempt)
 
       setNotes('')
-      setCtaResponse(null)
+      setCtaRatings(new Map())
       setSupportLevel(null)
       setStepNotes({})
       setStepReached(new Set())
@@ -341,7 +370,7 @@ export default function CallWizardPage() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to record attempt')
     }
-  }, [contact, list, sessionScriptId, flowState, notes, supportLevel, ctaResponse, sortedSections, stepReached, stepNotes, checkedOutcomes, recordAttempt, refetchNext])
+  }, [contact, list, sessionScriptId, flowState, notes, supportLevel, ctaRatings, sortedSections, stepReached, stepNotes, checkedOutcomes, recordAttempt, refetchNext])
 
   // Gate wrapper — checks ambition before submitting
   const submitAndLoadNext = useCallback(async (overrides?: Partial<RecordCallAttemptRequest>) => {
@@ -350,10 +379,15 @@ export default function CallWizardPage() {
     // Only gate on connected calls with a call disposition set
     const isConnectedCall = flowState.dialDisposition === 'connected' && (flowState.callDisposition || overrides?.call_disposition)
     if (isConnectedCall && ctaAmbitions.length > 0) {
+      const ratingSnapshot = new Map(
+        Array.from(ctaRatings.entries()).map(([id, v]) => [
+          id,
+          { rating: v.rating, binary_value: v.binary_value },
+        ])
+      )
       const meets = meetsCtaAmbition(ctaAmbitions, {
-        ctaResponse: (overrides?.cta_response ?? ctaResponse) as CtaResponse | null,
+        ctaRatings: ratingSnapshot,
         supportLevel: (overrides?.support_level_assessed ?? supportLevel) as SupportLevel | null,
-        callDisposition: (overrides?.call_disposition ?? flowState.callDisposition) as string | null,
       })
       if (!meets && flowState.capturedObjections.length === 0) {
         pendingSubmitArgs.current = overrides
@@ -363,7 +397,7 @@ export default function CallWizardPage() {
     }
 
     await doSubmit(overrides)
-  }, [contact, flowState, ctaResponse, supportLevel, ctaAmbitions, doSubmit])
+  }, [contact, flowState, ctaRatings, supportLevel, ctaAmbitions, doSubmit])
 
   const handleSkip = useCallback(async () => {
     if (!contact) return
@@ -563,38 +597,31 @@ export default function CallWizardPage() {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium">
-                        CTA Response
-                        {membershipHeroOutcomes.length > 0 && (
-                          <span className="text-[10px] font-normal text-muted-foreground ml-1">(optional if membership above)</span>
-                        )}
-                      </label>
-                      <Select value={ctaResponse || ''} onValueChange={(v) => setCtaResponse(v as CtaResponse)}>
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="Select..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CTA_RESPONSES.map((r) => (
-                            <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium">Support Level</label>
-                      <Select value={supportLevel || ''} onValueChange={(v) => setSupportLevel(v as SupportLevel)}>
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="Assess..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {SUPPORT_LEVELS.map((l) => (
-                            <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <CtaRatingsPanel
+                    ambitions={ctaAmbitions}
+                    values={ctaRatings}
+                    onChange={(id, next) => {
+                      setCtaRatings((prev) => {
+                        const m = new Map(prev)
+                        if (next == null) m.delete(id)
+                        else m.set(id, next)
+                        return m
+                      })
+                    }}
+                  />
+
+                  <div className="space-y-1 max-w-xs">
+                    <label className="text-xs font-medium">Overall Support Level</label>
+                    <Select value={supportLevel || ''} onValueChange={(v) => setSupportLevel(v as SupportLevel)}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Assess..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SUPPORT_LEVELS.map((l) => (
+                          <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {CALL_DISPOSITIONS.map((d) => (

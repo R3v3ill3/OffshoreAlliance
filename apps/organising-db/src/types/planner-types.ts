@@ -697,6 +697,23 @@ export interface RecordCallAttemptRequest {
   outcome_entries?: OutcomeEntry[]
   objections?: CapturedObjectionPayload[]
   issues?: CapturedIssuePayload[]
+  /**
+   * Per-CTA ratings captured during the call. Each entry persists a
+   * call_attempt_cta_ratings row and (when the linked ambition has an
+   * activity_id) propagates to campaign_activity_ratings via
+   * record_assessment_event().
+   */
+  cta_ratings?: CapturedCtaRatingPayload[]
+}
+
+export interface CapturedCtaRatingPayload {
+  /** FK to call_script_cta_ambitions.id */
+  cta_ambition_id: number
+  /** 1..5 inclusive (campaign_activity_ratings.rating). Null when only binary_value is recorded. */
+  rating?: number | null
+  /** yes / no / unsure / abstain (campaign_activity_ratings.binary_value). Null when only rating is recorded. */
+  binary_value?: string | null
+  notes?: string | null
 }
 
 export interface CallOutcomeSummary {

@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
       p_step_outcomes: body.step_outcomes || [],
       p_objections: body.objections && body.objections.length > 0 ? JSON.stringify(body.objections) : '[]',
       p_issues: body.issues && body.issues.length > 0 ? JSON.stringify(body.issues) : '[]',
+      p_cta_ratings: body.cta_ratings && body.cta_ratings.length > 0 ? JSON.stringify(body.cta_ratings) : '[]',
     })
 
     if (error) throw error

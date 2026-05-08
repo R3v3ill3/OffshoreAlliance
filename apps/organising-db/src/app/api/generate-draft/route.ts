@@ -63,13 +63,23 @@ export async function POST(req: NextRequest) {
 
     const { system, user: userMessage } = PROMPT_BUILDERS[body.platform](body)
 
+    // Phone scripts need significantly more tokens than emails or SMS —
+    // the full 8-stage SOC structure with EAR objections and inoculation
+    // easily exceeds 2 000 tokens, which truncates the JSON mid-string.
+    const MAX_TOKENS_BY_PLATFORM: Record<CommsPlatform, number> = {
+      sms: 500,
+      email: 2000,
+      phone_script: 6000,
+    }
+    const maxTokens = MAX_TOKENS_BY_PLATFORM[body.platform]
+
     // #region agent log
-    fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6d7ac7'},body:JSON.stringify({sessionId:'6d7ac7',location:'generate-draft/route.ts:PRE_API',message:'About to call Anthropic',data:{platform:body.platform,model:'claude-sonnet-4-20250514',max_tokens:2000,systemPromptLen:system.length,userMessageLen:userMessage.length,hasSituationCtx:!!body.situation_analysis_context,situationCtxLen:body.situation_analysis_context?.length??0},timestamp:Date.now(),hypothesisId:'H1-H2-H3'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6d7ac7'},body:JSON.stringify({sessionId:'6d7ac7',location:'generate-draft/route.ts:PRE_API',message:'About to call Anthropic',data:{platform:body.platform,model:'claude-sonnet-4-20250514',max_tokens:maxTokens,systemPromptLen:system.length,userMessageLen:userMessage.length,hasSituationCtx:!!body.situation_analysis_context,situationCtxLen:body.situation_analysis_context?.length??0},timestamp:Date.now(),hypothesisId:'H1-H2-H3'})}).catch(()=>{});
     // #endregion
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2000,
+      max_tokens: maxTokens,
       system,
       messages: [{ role: 'user', content: userMessage }],
     })
@@ -82,6 +92,12 @@ export async function POST(req: NextRequest) {
     // #region agent log
     fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6d7ac7'},body:JSON.stringify({sessionId:'6d7ac7',location:'generate-draft/route.ts:POST_API',message:'Anthropic response received',data:{stopReason:response.stop_reason,inputTokens:response.usage?.input_tokens,outputTokens:response.usage?.output_tokens,contentLength:content.type==='text'?content.text.length:0,contentPreview:content.type==='text'?content.text.slice(0,200):'',contentTail:content.type==='text'?content.text.slice(-200):''},timestamp:Date.now(),hypothesisId:'H1-H2'})}).catch(()=>{});
     // #endregion
+
+    if (response.stop_reason === 'max_tokens') {
+      throw new Error(
+        `The ${body.platform} draft exceeded the token limit and was truncated. Please try again with shorter custom instructions or contact support.`
+      )
+    }
 
     let parsed
     try {

@@ -48,6 +48,7 @@ import {
   GitBranch,
   AlertCircle,
   ListChecks,
+  MessageSquareQuote,
 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { CallCtaAmbitionsEditor } from '@/components/phone/setup/CallCtaAmbitionsEditor'
@@ -306,6 +307,13 @@ export function PhoneWizardSteps() {
   const [existingListId, setExistingListId] = useState<number | null>(null)
   const [existingLists, setExistingLists] = useState<Array<{ list_id: number; name: string; total_items: number; previously_linked?: boolean; is_current_for_script?: boolean }>>([])
   const [existingListsLoading, setExistingListsLoading] = useState(false)
+
+  // Step 3: SOC seeding — pre-populate the script from a Structured
+  // Organising Conversation that's been locked for this campaign (and
+  // ideally this stage). The locked content of each SOC stage maps onto
+  // a phone-script section_type so the organiser gets a structured
+  // starting point instead of a blank or single-blob AI draft.
+  const [selectedSocSessionId, setSelectedSocSessionId] = useState<number | null>(null)
 
   const generateDraft = useGenerateDraft()
 
@@ -1163,6 +1171,110 @@ export function PhoneWizardSteps() {
     }))
   }
 
+  // ─── SOC seeding (Step 3) ───────────────────────────────────────────────
+  //
+  // Maps each of the 8 SOC stages (Introduction → Close) onto a
+  // phone-script section_type so the seeded sections feel native to the
+  // call flow rather than just dumping locked content into one blob.
+  const SOC_STAGE_TO_SECTION_TYPE: Record<number, EditableSection['section_type']> = {
+    1: 'opening',
+    2: 'introduction',
+    3: 'discovery',
+    4: 'education',
+    5: 'education',
+    6: 'ask',
+    7: 'objection_handling',
+    8: 'close',
+  }
+
+  type SocSeedStageRow = {
+    stage_number: number
+    stage_name: string
+    hope_frame: string | null
+    locked_content: string
+  }
+
+  type SocSeedSession = {
+    session_id: number
+    title: string
+    stage_number: number | null
+    status: string
+    updated_at: string
+    soc_stage_content: SocSeedStageRow[]
+  }
+
+  const { data: socSeedSessions = [] } = useQuery<SocSeedSession[]>({
+    queryKey: ['phone-wizard-soc-seed', state.campaignId, state.stageNumber],
+    queryFn: async () => {
+      if (!state.campaignId) return []
+      let q = supabase
+        .from('soc_sessions')
+        .select(
+          `session_id, title, stage_number, status, updated_at,
+           soc_stage_content(stage_number, stage_name, hope_frame, locked_content)`
+        )
+        .eq('campaign_id', state.campaignId)
+        .order('updated_at', { ascending: false })
+      if (state.stageNumber) q = q.eq('stage_number', state.stageNumber)
+      const { data, error } = await q
+      if (error) throw error
+      return ((data ?? []) as unknown as SocSeedSession[]).filter(
+        (s) => Array.isArray(s.soc_stage_content) && s.soc_stage_content.length > 0
+      )
+    },
+    enabled: !!state.campaignId,
+  })
+
+  function handleSeedFromSoc(sessionId: number) {
+    const session = socSeedSessions.find((s) => s.session_id === sessionId)
+    if (!session) return
+
+    // Sort by stage number, with Hope frames in a stable order so all
+    // three frames stack into a single Hope section.
+    const HOPE_ORDER = ['opportunity', 'plan', 'dont_take_lolly']
+    const stages = [...session.soc_stage_content].sort((a, b) => {
+      if (a.stage_number !== b.stage_number) return a.stage_number - b.stage_number
+      const ai = HOPE_ORDER.indexOf(a.hope_frame ?? '')
+      const bi = HOPE_ORDER.indexOf(b.hope_frame ?? '')
+      return ai - bi
+    })
+
+    // Group stage 5 (Hope) frames into a single section body.
+    const grouped: Array<{ stage: number; title: string; body: string }> = []
+    for (const s of stages) {
+      const last = grouped[grouped.length - 1]
+      if (s.stage_number === 5 && last?.stage === 5) {
+        last.body += `\n\n— ${s.hope_frame ?? ''} —\n${s.locked_content}`
+      } else {
+        const title = s.stage_number === 5
+          ? 'Hope'
+          : s.stage_name + (s.hope_frame ? ` — ${s.hope_frame}` : '')
+        grouped.push({ stage: s.stage_number, title, body: s.locked_content })
+      }
+    }
+
+    const seeded: EditableSection[] = grouped.map((g, i) => ({
+      _key: `soc-${sessionId}-${i}-${Date.now()}`,
+      sort_order: i,
+      section_type: SOC_STAGE_TO_SECTION_TYPE[g.stage] ?? 'custom',
+      title: g.title,
+      body_text: g.body,
+      talking_points: [],
+      prompt_text: null,
+      expected_outcomes: [],
+      is_optional: false,
+    }))
+
+    setWizardSections(seeded)
+    setState((prev) => ({
+      ...prev,
+      scriptText: seeded.map((s) => s.body_text).join('\n\n'),
+      scriptTitle: prev.scriptTitle || `Phone Script — ${session.title}`,
+      savedScriptId: null,
+    }))
+    toast.success(`Seeded ${seeded.length} section${seeded.length !== 1 ? 's' : ''} from SOC`)
+  }
+
   async function handleSaveScript() {
     if (!wizardSections?.some((s) => s.body_text.trim())) return
     setIsSavingScript(true)
@@ -1692,6 +1804,58 @@ export function PhoneWizardSteps() {
             <CardTitle>Create Phone Script</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {wizardSections == null && socSeedSessions.length > 0 && (
+              <div className="rounded-lg border border-purple-200 bg-purple-50/60 p-3 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-purple-900">
+                  <MessageSquareQuote className="h-4 w-4" />
+                  Seed from Structured Organising Conversation
+                  <Badge variant="secondary" className="text-[10px] ml-auto">
+                    {socSeedSessions.length} session{socSeedSessions.length !== 1 ? 's' : ''}
+                  </Badge>
+                </div>
+                <p className="text-xs text-purple-900/80">
+                  Found locked SOC content for this campaign
+                  {state.stageNumber ? ` at stage ${state.stageNumber}` : ''}. Pre-populate the
+                  script&apos;s opening, discovery, ask, objections and close sections from a SOC
+                  in one click — you can still edit each section afterwards.
+                </p>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={selectedSocSessionId?.toString() ?? ''}
+                    onValueChange={(v) => setSelectedSocSessionId(v ? parseInt(v, 10) : null)}
+                  >
+                    <SelectTrigger className="h-8 text-xs flex-1">
+                      <SelectValue placeholder="Choose SOC session…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {socSeedSessions.map((s) => (
+                        <SelectItem key={s.session_id} value={String(s.session_id)}>
+                          {s.title}
+                          {s.stage_number ? ` — Stage ${s.stage_number}` : ''} ({s.status})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    onClick={() => selectedSocSessionId && handleSeedFromSoc(selectedSocSessionId)}
+                    disabled={!selectedSocSessionId}
+                  >
+                    Seed sections
+                  </Button>
+                  <Button asChild size="sm" variant="ghost" className="text-xs">
+                    <a
+                      href={`/campaigns/soc-wizard?cid=${state.campaignId}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open SOC →
+                    </a>
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {wizardSections == null && (
               <div className="grid grid-cols-2 gap-3">
                 <Button

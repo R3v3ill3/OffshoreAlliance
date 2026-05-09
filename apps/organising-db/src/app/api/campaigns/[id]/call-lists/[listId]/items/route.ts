@@ -15,7 +15,7 @@ export async function GET(
       .from('call_list_items')
       .select(`
         *,
-        workers!worker_id (
+        workers!call_list_items_worker_id_fkey (
           worker_id, first_name, last_name, email, phone,
           occupation,
           employers (employer_name),

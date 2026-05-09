@@ -79,10 +79,17 @@ export async function enrichCallListItem(
   }
 }
 
-/** The worker SELECT fragment used in both next endpoints. */
+/**
+ * The worker SELECT fragment used in both next endpoints.
+ *
+ * Uses the explicit FK constraint name `call_list_items_worker_id_fkey` rather
+ * than the column name hint `!worker_id` because `call_list_items` has a second
+ * FK to workers via `claimed_by_worker_id`, making the short-form hint
+ * ambiguous in PostgREST.
+ */
 export const WORKER_SELECT = `
   *,
-  workers!worker_id (
+  workers!call_list_items_worker_id_fkey (
     worker_id, first_name, last_name, email, phone,
     occupation, address, suburb, state, postcode,
     employer_id, worksite_id,

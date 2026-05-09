@@ -1,5 +1,6 @@
 "use client";
 
+import { ListPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export type WallChartSelectionBarProps = {
@@ -15,6 +16,8 @@ export type WallChartSelectionBarProps = {
   onRemove?: () => void;
   /** When provided, shows a "Clear ratings…" button for bulk-removing ratings from selected workers. */
   onClearRatings?: () => void;
+  /** When provided, shows an "Add to build list" button that pushes the current selection into the open build-list panel. Visible only while the panel is open. */
+  onAddToBuildList?: () => void;
 };
 
 export function WallChartSelectionBar({
@@ -27,6 +30,7 @@ export function WallChartSelectionBar({
   linkDisabled,
   onRemove,
   onClearRatings,
+  onAddToBuildList,
 }: WallChartSelectionBarProps) {
   if (count === 0) return null;
 
@@ -40,9 +44,22 @@ export function WallChartSelectionBar({
         {count} {count === 1 ? "worker" : "workers"} selected
       </span>
       <span className="text-muted-foreground hidden sm:inline">
-        ·  Hold ⌘/Ctrl-click to add, Esc to clear
+        ·  Hold ⌘/Ctrl or Shift-click to add, Esc to clear
       </span>
       <div className="ml-auto flex items-center gap-1">
+        {onAddToBuildList && (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="h-7 px-2 text-xs"
+            onClick={onAddToBuildList}
+            disabled={!canWrite}
+            title="Add the current selection to the open build-list panel"
+          >
+            <ListPlus className="h-3 w-3 mr-1" /> Add to build list
+          </Button>
+        )}
         <Button
           type="button"
           size="sm"

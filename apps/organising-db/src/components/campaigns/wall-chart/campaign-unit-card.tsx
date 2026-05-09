@@ -1,12 +1,15 @@
 "use client";
 
 import { ReactNode, useState } from "react";
+import { GripVertical } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { WALL_CHART_GRID_CLASS } from "./rating-colour";
 import { humanizeOuType, ouDisplayName, type WallChartOU } from "./types";
 import {
   DND_MIME_TYPE,
+  DND_UNIT_MIME_TYPE,
   parseDragPayload,
+  serializeUnitDragPayload,
   type WorkerDragMode,
   type WorkerDragPayload,
 } from "./dnd";
@@ -55,6 +58,14 @@ export type CampaignUnitCardProps = {
    * and > 0, shown as "· N unfilled" in the subtitle. Tiles are NOT rendered.
    */
   unfilledSlots?: number;
+  /**
+   * When provided, renders a drag handle in the card header. Dragging the
+   * handle emits a unit-drag payload that build-list drop targets accept,
+   * adding the listed worker IDs to the active list. The IDs should reflect
+   * the unit's currently visible (filtered) workers, so list builders only
+   * receive what the user can see.
+   */
+  unitDragPayload?: { workerIds: number[] };
 };
 
 const PLACEHOLDER_CAP = 24;
@@ -75,6 +86,7 @@ export function CampaignUnitCard({
   headerBadges,
   nested,
   unfilledSlots,
+  unitDragPayload,
 }: CampaignUnitCardProps) {
   const title = ou ? ouDisplayName(ou) : (fallbackTitle ?? "Unit");
   const typeChip = ou?.ou_type ? humanizeOuType(ou.ou_type) : null;
@@ -126,6 +138,33 @@ export function CampaignUnitCard({
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
+              {unitDragPayload && unitDragPayload.workerIds.length > 0 && (
+                <span
+                  draggable
+                  onDragStart={(e) => {
+                    e.stopPropagation();
+                    e.dataTransfer.effectAllowed = "copy";
+                    e.dataTransfer.setData(
+                      DND_UNIT_MIME_TYPE,
+                      serializeUnitDragPayload({
+                        version: 1,
+                        ouId: targetOuId,
+                        ouName: title,
+                        workerIds: unitDragPayload.workerIds,
+                      })
+                    );
+                    e.dataTransfer.setData(
+                      "text/plain",
+                      `${unitDragPayload.workerIds.length} workers from ${title}`
+                    );
+                  }}
+                  className="inline-flex h-5 w-5 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground active:cursor-grabbing print:hidden"
+                  title={`Drag to add ${unitDragPayload.workerIds.length} visible worker${unitDragPayload.workerIds.length === 1 ? "" : "s"} from "${title}" into the build list`}
+                  aria-label={`Drag entire unit ${title} into the build list`}
+                >
+                  <GripVertical className="h-3.5 w-3.5" aria-hidden />
+                </span>
+              )}
               <h3 className="text-sm font-semibold leading-tight truncate">{title}</h3>
               {typeChip && (
                 <span className="text-[10px] uppercase tracking-wide rounded border px-1.5 py-px text-muted-foreground">

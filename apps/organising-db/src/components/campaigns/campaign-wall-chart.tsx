@@ -97,6 +97,8 @@ import { CreateTaskListDialog } from "./task-lists/create-task-list-dialog";
 import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 import { AddCampaignWorkerDialog } from "./wall-chart/add-campaign-worker-dialog";
 import { WallChartAssessmentCharts } from "./WallChartAssessmentCharts";
+import { BuildListPanel } from "./wall-chart/build-list-panel";
+import { useBuildList, type FiredTaskDraft } from "./wall-chart/use-build-list";
 
 
 function activityIdsForWallChartSelections(
@@ -171,6 +173,9 @@ export function CampaignWallChart({
   const [createUnitOpen, setCreateUnitOpen] = useState(false);
   const [createAssessmentOpen, setCreateAssessmentOpen] = useState(false);
   const [createTaskListOpen, setCreateTaskListOpen] = useState(false);
+  const [taskListFiredDraft, setTaskListFiredDraft] = useState<FiredTaskDraft | null>(null);
+  const [buildListOpen, setBuildListOpen] = useState(false);
+  const buildListController = useBuildList({ campaignId });
   const [importWizardOpen, setImportWizardOpen] = useState(false);
   const [addWorkerOpen, setAddWorkerOpen] = useState(false);
   const [addWorkerFormKey, setAddWorkerFormKey] = useState(0);
@@ -980,6 +985,26 @@ export function CampaignWallChart({
           onClearRatings={() => setClearRatingsDialogOpen(true)}
           onLinkToLeader={() => setLinkDialogOpen(true)}
           onClear={() => selection.clear()}
+          onAddToBuildList={
+            buildListOpen
+              ? async () => {
+                  const ids = selection.workerIds();
+                  if (ids.length === 0) return;
+                  let listId = buildListController.activeListId;
+                  if (listId == null) {
+                    const created = await buildListController.createList.mutateAsync({
+                      name: "Untitled list",
+                    });
+                    listId = created.list_id;
+                  }
+                  await buildListController.addItems.mutateAsync({
+                    listId,
+                    workerIds: ids,
+                  });
+                  selection.clear();
+                }
+              : undefined
+          }
         />
         <div className="rounded border bg-muted/30 px-3 py-2 print:hidden">
           <AssessmentSelector
@@ -1067,6 +1092,23 @@ export function CampaignWallChart({
                 <Button
                   type="button"
                   size="sm"
+                  variant={buildListOpen ? "default" : "outline"}
+                  className="h-7 px-2 text-xs print:hidden"
+                  onClick={() => setBuildListOpen((v) => !v)}
+                  aria-pressed={buildListOpen}
+                  title={
+                    buildListOpen
+                      ? "Close build list panel"
+                      : "Open build list panel — drag tiles, units or multi-selections to assemble a cohort"
+                  }
+                >
+                  Build list
+                </Button>
+              )}
+              {canWrite && (
+                <Button
+                  type="button"
+                  size="sm"
                   variant="outline"
                   className="h-7 px-2 text-xs print:hidden"
                   asChild
@@ -1100,7 +1142,11 @@ export function CampaignWallChart({
           }
         />
 
-        <div ref={unitsContainerRef} className="relative space-y-4 print:space-y-2">
+        <div className={buildListOpen ? "flex flex-col xl:flex-row gap-3 items-start" : ""}>
+        <div
+          ref={unitsContainerRef}
+          className={`relative space-y-4 print:space-y-2 ${buildListOpen ? "flex-1 min-w-0 w-full" : ""}`}
+        >
         {unassignedWorkerIds.length > 0 && (() => {
           const filter = getFilter(UNASSIGNED_KEY);
           const fa = scopeAssessmentFilterAndSort(
@@ -1145,6 +1191,11 @@ export function CampaignWallChart({
               unfilledSlots={campaignGreySlots > 0 ? campaignGreySlots : undefined}
               onWorkerDrop={handleWorkerDrop}
               dropDisabled={!canWrite}
+              unitDragPayload={
+                buildListOpen && canWrite && sorted.length > 0
+                  ? { workerIds: sorted }
+                  : undefined
+              }
               summary={
                 <UnitSummaryMetrics
                   metrics={unassignedMetrics}
@@ -1285,6 +1336,11 @@ export function CampaignWallChart({
                       assessmentLabel={assessmentLabelForCard}
                       onWorkerDrop={handleWorkerDrop}
                       dropDisabled={!canWrite}
+                      unitDragPayload={
+                        buildListOpen && canWrite && sorted.length > 0
+                          ? { workerIds: sorted }
+                          : undefined
+                      }
                       headerBadges={
                         (childrenByParent.get(ou.ou_id)?.length ?? 0) > 0 ? (
                           <Badge variant="secondary" className="text-[10px] gap-1">
@@ -1458,6 +1514,11 @@ export function CampaignWallChart({
                                     assessmentLabel={childAssessmentLabel}
                                     onWorkerDrop={handleWorkerDrop}
                                     dropDisabled={!canWrite}
+                                    unitDragPayload={
+                                      buildListOpen && canWrite && childSorted.length > 0
+                                        ? { workerIds: childSorted }
+                                        : undefined
+                                    }
                                     nested
                                     summary={
                                       childMetrics && childIds.length > 0 ? (
@@ -1514,6 +1575,29 @@ export function CampaignWallChart({
             unitsByWorker={unitsByWorker}
             enabled={overlayEnabled}
           />
+        </div>
+        {buildListOpen && (
+          <BuildListPanel
+            campaignId={campaignId}
+            canWrite={canWrite}
+            open={buildListOpen}
+            onClose={() => setBuildListOpen(false)}
+            controller={buildListController}
+            onTaskDraftCreated={(draft) => {
+              setTaskListFiredDraft({
+                task_list_id: draft.task_list_id,
+                title: draft.title,
+                activity_id: draft.activity_id,
+                leader_worker_id: draft.leader_worker_id,
+                leader_organiser_id: draft.leader_organiser_id,
+                include_membership_ask: draft.include_membership_ask,
+                leader_instructions: draft.leader_instructions,
+                worker_ids: draft.worker_ids,
+              });
+              setCreateTaskListOpen(true);
+            }}
+          />
+        )}
         </div>
 
         <Button
@@ -1662,7 +1746,11 @@ export function CampaignWallChart({
       <CreateTaskListDialog
         campaignId={campaignId}
         open={createTaskListOpen}
-        onOpenChange={setCreateTaskListOpen}
+        onOpenChange={(next) => {
+          setCreateTaskListOpen(next);
+          if (!next) setTaskListFiredDraft(null);
+        }}
+        draft={taskListFiredDraft ?? undefined}
       />
 
       <WorkerImportWizard

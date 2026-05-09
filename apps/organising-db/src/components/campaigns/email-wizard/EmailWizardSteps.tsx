@@ -339,6 +339,30 @@ export function EmailWizardSteps() {
     return [...map.values()]
   }, [workerList, additionalWorkers])
 
+  // Prefill recipients from a saved worker list (build-list panel handoff).
+  // When the URL carries prefill_source=worker_list&worker_list_id=Z, we
+  // override the default "all workers with email" selection with the cohort
+  // members (still intersected with workers who actually have an email).
+  const prefillSource = searchParams.get('prefill_source')
+  const prefillWorkerListId = searchParams.get('worker_list_id')
+  const { data: prefillWorkerIds } = useQuery({
+    queryKey: ['email-wizard-prefill-worker-list', state.campaignId, prefillWorkerListId],
+    enabled:
+      step === 4 &&
+      prefillSource === 'worker_list' &&
+      !!prefillWorkerListId &&
+      !!state.campaignId,
+    queryFn: async (): Promise<number[]> => {
+      if (!state.campaignId || !prefillWorkerListId) return []
+      const res = await fetchApi(
+        `/api/campaigns/${state.campaignId}/worker-lists/${prefillWorkerListId}`
+      )
+      if (!res.ok) return []
+      const data = (await res.json()) as { items?: Array<{ worker_id: number }> }
+      return (data.items ?? []).map((i) => i.worker_id)
+    },
+  })
+
   useEffect(() => {
     if (step !== 4) return
     if (workersLoading) return
@@ -348,10 +372,34 @@ export function EmailWizardSteps() {
     }
     if (!workersInitialized) {
       const withEmail = combinedWorkers.filter((w) => w.email)
-      setSelectedWorkerIds(new Set(withEmail.map((w) => w.worker_id)))
+      const fromCohort =
+        prefillSource === 'worker_list' && prefillWorkerIds
+          ? new Set(prefillWorkerIds)
+          : null
+      const initial = fromCohort
+        ? withEmail.filter((w) => fromCohort.has(w.worker_id))
+        : withEmail
+      // If the cohort hasn't loaded yet, hold off — leave initial state empty
+      // and re-run when prefillWorkerIds arrives.
+      if (
+        prefillSource === 'worker_list' &&
+        prefillWorkerListId &&
+        !prefillWorkerIds
+      ) {
+        return
+      }
+      setSelectedWorkerIds(new Set(initial.map((w) => w.worker_id)))
       setWorkersInitialized(true)
     }
-  }, [step, combinedWorkers, workersLoading, workersInitialized])
+  }, [
+    step,
+    combinedWorkers,
+    workersLoading,
+    workersInitialized,
+    prefillSource,
+    prefillWorkerListId,
+    prefillWorkerIds,
+  ])
 
   const filteredWorkers = useMemo(() => {
     if (!workerSearch.trim()) return combinedWorkers

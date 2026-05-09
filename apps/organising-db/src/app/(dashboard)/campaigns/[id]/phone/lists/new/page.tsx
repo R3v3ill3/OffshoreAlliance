@@ -23,6 +23,7 @@ import {
 import { PRIORITY_STRATEGIES } from '@/lib/phone/disposition-types'
 import { toast } from 'sonner'
 import type { CallListPriorityStrategy } from '@/types/planner-types'
+import type { AudienceDescriptor } from '@/lib/phone/audience-descriptor'
 import { OccupationMultiSelect } from '@/components/phone/OccupationMultiSelect'
 
 type WizardStep = 'details' | 'filters' | 'priority' | 'script' | 'confirm'
@@ -123,6 +124,37 @@ export default function NewCallListPage() {
 
   const { data: scripts } = useCallScripts(campaignId)
   const createList = useCreateCallList(campaignId)
+
+  // E5: When a script_id is passed in the URL, pre-populate filters from its audience_descriptor.
+  useEffect(() => {
+    if (!preselectedScriptId) return
+    let cancelled = false
+    async function prefill() {
+      try {
+        const supabase = createClient()
+        const { data } = await supabase
+          .from('call_scripts')
+          .select('audience_descriptor')
+          .eq('script_id', preselectedScriptId!)
+          .single()
+        if (cancelled) return
+        const descriptor = data?.audience_descriptor as AudienceDescriptor | null
+        if (!descriptor?.filters) return
+        const f = descriptor.filters
+        setFilters((prev) => ({
+          ...prev,
+          membership: (f.membership as string) || prev.membership,
+          employer_id: f.employer_id ? String(f.employer_id) : prev.employer_id,
+          worksite_id: f.worksite_id ? String(f.worksite_id) : prev.worksite_id,
+          roles: f.roles?.length ? f.roles : prev.roles,
+        }))
+      } catch {
+        // non-fatal — best-effort pre-fill
+      }
+    }
+    void prefill()
+    return () => { cancelled = true }
+  }, [preselectedScriptId])
 
   // Fetch campaign-scoped employers
   const { data: employers = [] } = useQuery({
@@ -325,7 +357,7 @@ export default function NewCallListPage() {
           : undefined,
       }
 
-      const populateRes = await fetchApi(`/api/campaigns/${campaignId}/call-lists/${list.list_id}/populate`, {
+      const populateRes = await fetchApi(`/api/calls/lists/${list.list_id}/populate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(populateBody),
@@ -339,13 +371,24 @@ export default function NewCallListPage() {
         toast.success('Call list created (no contacts matched filters)')
       }
 
-      // If this list was created via the phone call orchestrator, link it to the action
+      // F2: When created via the orchestrator, update the action with the script + list and
+      // mark it completed (matches wizard behaviour at PhoneWizardSteps handleCreateListAndCall).
       if (actionId) {
         try {
           const supabase = createClient()
+
+          // Write to the new join table (F1) as well as legacy array (backward compat)
+          await supabase
+            .from('phone_call_action_lists')
+            .upsert({ action_id: actionId, list_id: list.list_id, position: 0 }, { onConflict: 'action_id,list_id' })
+
           await supabase
             .from('phone_call_actions')
-            .update({ list_ids: [list.list_id] })
+            .update({
+              list_ids: [list.list_id],
+              script_id: selectedScriptId ?? undefined,
+              status: selectedScriptId ? 'completed' : 'in_progress',
+            })
             .eq('action_id', actionId)
         } catch {
           // Non-fatal: action linking failure should not block the user

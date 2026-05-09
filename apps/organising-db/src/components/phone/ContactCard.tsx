@@ -1,9 +1,10 @@
 'use client'
 
+import { useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Phone, Mail, Briefcase, MapPin, Clock, MessageCircle, Pencil } from 'lucide-react'
+import { Phone, Mail, Briefcase, MapPin, Clock, MessageCircle, Pencil, Copy, Check } from 'lucide-react'
 import type { CallListItemWithWorker } from '@/types/planner-types'
 
 interface ContactCardProps {
@@ -13,9 +14,22 @@ interface ContactCardProps {
 
 export function ContactCard({ contact, onEdit }: ContactCardProps) {
   const { worker, connection, recent_attempts } = contact
+  const [copied, setCopied] = useState(false)
+
   if (!worker) return null
 
   const lastAttempt = recent_attempts?.[0]
+
+  const handleCopyPhone = async () => {
+    if (!worker.phone) return
+    try {
+      await navigator.clipboard.writeText(worker.phone)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // clipboard unavailable — silent fail
+    }
+  }
 
   return (
     <Card>
@@ -32,13 +46,27 @@ export function ContactCard({ contact, onEdit }: ContactCardProps) {
                 {worker.first_name} {worker.last_name}
               </h3>
               {worker.phone ? (
-                <a
-                  href={`tel:${worker.phone}`}
-                  className="font-semibold text-base font-mono text-primary hover:underline inline-flex items-center gap-1"
-                >
-                  <Phone className="h-4 w-4" />
-                  {worker.phone}
-                </a>
+                <span className="inline-flex items-center gap-1">
+                  <a
+                    href={`tel:${worker.phone}`}
+                    className="font-semibold text-base font-mono text-primary hover:underline inline-flex items-center gap-1"
+                  >
+                    <Phone className="h-4 w-4" />
+                    {worker.phone}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={handleCopyPhone}
+                    title={copied ? 'Copied!' : 'Copy phone number'}
+                    className="ml-0.5 p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {copied ? (
+                      <Check className="h-3.5 w-3.5 text-green-500" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </span>
               ) : (
                 <span className="font-semibold text-base font-mono text-muted-foreground">
                   — no phone —

@@ -586,6 +586,8 @@ export interface CallOutcomeDefinition {
   outcome_id: number
   campaign_id: number | null
   script_id: number | null
+  /** FK to campaign_activities when this outcome maps to an assessment activity. */
+  activity_id: number | null
   name: string
   description: string | null
   outcome_category: OutcomeCategory
@@ -693,8 +695,12 @@ export interface RecordCallAttemptRequest {
     duration_seconds?: number | null
     sort_order: number
   }[]
+  /**
+   * Overall call outcome classification (D1 taxonomy). Single-select from
+   * the canonical vocabulary on call_attempts.outcome_classification.
+   */
+  outcome_classification?: string | null
   outcome_ids?: number[]
-  outcome_entries?: OutcomeEntry[]
   objections?: CapturedObjectionPayload[]
   issues?: CapturedIssuePayload[]
   /**
@@ -718,7 +724,7 @@ export interface CapturedCtaRatingPayload {
 
 export interface CallOutcomeSummary {
   outcome_id: number
-  campaign_id: number
+  campaign_id: number | null
   script_id: number | null
   name: string
   outcome_category: OutcomeCategory

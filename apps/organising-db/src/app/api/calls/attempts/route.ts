@@ -1,14 +1,8 @@
-/**
- * @deprecated Use /api/calls/attempts instead (Phase C unified namespace).
- * Retained as a shim for one release window.
- */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+/** POST /api/calls/attempts — record a call attempt via the record_call_attempt RPC */
+export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -42,10 +36,9 @@ export async function POST(
     })
 
     if (error) throw error
-
     return NextResponse.json(data, { status: 201 })
   } catch (error) {
-    console.error('Record call attempt error:', error)
+    console.error('POST /api/calls/attempts error:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to record call attempt' },
       { status: 500 }

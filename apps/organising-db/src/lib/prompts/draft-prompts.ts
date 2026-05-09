@@ -181,3 +181,19 @@ ${wtp.contact_method_priority?.length ? `CONTACT METHOD PRIORITY:\n${wtp.contact
 
   return msg
 }
+
+/**
+ * I3. Build the `custom_instructions` string for phone-script variation
+ * generation. Previously duplicated in PhoneWizardSteps.tsx and
+ * ScriptVariationsPanel.tsx — single source from here.
+ *
+ * @param segmentLabel   Human-readable segment name, e.g. "Crane operators"
+ * @param callObjective  Optional override call purpose text
+ */
+export function buildVariationInstructions(segmentLabel: string, callObjective?: string | null): string {
+  return [
+    callObjective ? `Call purpose: ${callObjective}` : '',
+    `Generate a TARGETED VARIATION for: ${segmentLabel} workers.`,
+    `Keep the same overall structure and call purpose as the reference script. Adapt opening, issues, and ask for ${segmentLabel}.`,
+  ].filter(Boolean).join('\n')
+}

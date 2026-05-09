@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  enrichCallListItem,
   logCallShareEvent,
   requireCallShareSession,
   resolveCallShareTokenRow,
   tokenStatusResponse,
 } from "@/lib/campaign/call-share-api";
+import { fetchAndEnrichCallListItem } from "@/lib/phone/enrich-call-list-item";
 
 const CLAIM_TTL_SECONDS = 15 * 60;
 
@@ -46,7 +46,7 @@ export async function GET(
       .eq("list_id", tokenRow.list_id)
       .maybeSingle();
 
-    const enriched = await enrichCallListItem(admin, itemId as number, list?.campaign_id as number);
+    const enriched = await fetchAndEnrichCallListItem(admin, itemId as number, list?.campaign_id as number);
     await logCallShareEvent(
       admin,
       tokenRow.token_id,

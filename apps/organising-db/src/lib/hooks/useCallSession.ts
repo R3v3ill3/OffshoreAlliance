@@ -6,7 +6,7 @@ export function usePhoneNext(campaignId: number | string, listId: number | strin
   return useQuery({
     queryKey: ['phone-next', String(campaignId), String(listId)],
     queryFn: async () => {
-      const res = await fetchApi(`/api/campaigns/${campaignId}/call-lists/${listId}/next`)
+      const res = await fetchApi(`/api/calls/lists/${listId}/next`)
       if (!res.ok) throw new Error('Failed to get next contact')
       const data = await res.json()
       if (data.done) return null
@@ -22,7 +22,7 @@ export function useRecordCallAttempt(campaignId: number | string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (attempt: RecordCallAttemptRequest) => {
-      const res = await fetchApi(`/api/campaigns/${campaignId}/call-attempts`, {
+      const res = await fetchApi('/api/calls/attempts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(attempt),

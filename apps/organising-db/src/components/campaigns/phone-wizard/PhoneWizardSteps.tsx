@@ -9,6 +9,8 @@ import { useGenerateDraft } from '@/lib/hooks/useGenerateDraft'
 import { fetchApi, API_FETCH_TIMEOUT_LLM_MS } from '@/lib/api/fetch-api'
 import { STAGE_NAMES } from '@/types/planner-types'
 import type { CommsDraftRequest } from '@/types/planner-types'
+import { audienceTagsToFilters } from '@/lib/phone/audience-descriptor'
+import { buildVariationInstructions } from '@/lib/prompts/draft-prompts'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -694,11 +696,7 @@ export function PhoneWizardSteps() {
               body_text: s.body_text,
             }))
           : undefined,
-        custom_instructions: [
-          state.callPurpose ? `Call purpose: ${state.callPurpose}` : '',
-          `Generate a TARGETED VARIATION for: ${variation.segmentLabel} workers.`,
-          `Keep the same overall structure and call purpose as the reference script (above). Adapt the opening, issues discussed, and ask to resonate specifically with ${variation.segmentLabel}. Do not produce a generic script — start from the reference template.`,
-        ].filter(Boolean).join('\n'),
+        custom_instructions: buildVariationInstructions(variation.segmentLabel, state.callPurpose),
       }
 
       const res = await fetchApi('/api/generate-draft', {
@@ -760,12 +758,11 @@ export function PhoneWizardSteps() {
     if (!variation.scriptText.trim()) return
     setSavingVariationKey(variation.segmentKey)
     try {
-      const url = `/api/campaigns/${state.campaignId}/call-scripts`
-
-      const res = await fetchApi(url, {
+      const res = await fetchApi('/api/calls/scripts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          campaign_id: state.campaignId,
           title: variation.scriptTitle || `${state.scriptTitle || 'Phone Script'} — ${variation.segmentLabel}`,
           call_objective: state.callPurpose || null,
           sections: [{
@@ -804,12 +801,11 @@ export function PhoneWizardSteps() {
         const segWorkers = getWorkersForSegment(combinedWorkers, segmentVariable!, variation.segmentKey).filter((w) => w.phone)
         if (segWorkers.length === 0) continue
 
-        const listUrl = `/api/campaigns/${state.campaignId}/call-lists`
-
-        const listRes = await fetchApi(listUrl, {
+        const listRes = await fetchApi('/api/calls/lists', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            campaign_id: state.campaignId,
             name: `${variation.segmentLabel} — ${dateStr}`,
             script_id: variation.savedScriptId,
             priority_strategy: 'sequential',
@@ -821,7 +817,7 @@ export function PhoneWizardSteps() {
         const listId = listData.list_id
         const workerIds = segWorkers.map((w) => w.worker_id)
 
-        const populateRes = await fetchApi(`/api/campaigns/${state.campaignId}/call-lists/${listId}/populate`, {
+        const populateRes = await fetchApi(`/api/calls/lists/${listId}/populate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ filters: {}, worker_ids: workerIds }),
@@ -844,10 +840,11 @@ export function PhoneWizardSteps() {
         )
         const unmatched = combinedWorkers.filter((w) => w.phone && !matchedIds.has(w.worker_id))
         if (unmatched.length > 0) {
-          const listRes = await fetchApi(`/api/campaigns/${state.campaignId}/call-lists`, {
+          const listRes = await fetchApi('/api/calls/lists', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              campaign_id: state.campaignId,
               name: `General — ${dateStr}`,
               script_id: state.savedScriptId || null,
               priority_strategy: 'sequential',
@@ -855,7 +852,7 @@ export function PhoneWizardSteps() {
           })
           const listData = await listRes.json()
           if (listRes.ok) {
-            await fetchApi(`/api/campaigns/${state.campaignId}/call-lists/${listData.list_id}/populate`, {
+            await fetchApi(`/api/calls/lists/${listData.list_id}/populate`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ filters: {}, worker_ids: unmatched.map((w) => w.worker_id) }),
@@ -1239,12 +1236,21 @@ export function PhoneWizardSteps() {
         is_optional: s.is_optional || false,
       }))
 
-      const res = await fetchApi(`/api/campaigns/${state.campaignId}/call-scripts`, {
+      const audienceDescriptor = (state.tone.length > 0 || state.audience.length > 0)
+        ? audienceTagsToFilters(state.audience, {
+            tone: state.tone,
+            engagementIntensity: (state.engagementIntensity as 'low' | 'medium' | 'high') || undefined,
+          })
+        : null
+
+      const res = await fetchApi('/api/calls/scripts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          campaign_id: state.campaignId,
           title: state.scriptTitle || 'Phone Script',
           call_objective: state.callPurpose || null,
+          audience_descriptor: audienceDescriptor,
           sections: sectionPayload,
         }),
       })
@@ -1322,7 +1328,7 @@ export function PhoneWizardSteps() {
         // Make sure the selected script is linked (as current wave) to the list.
         if (state.savedScriptId) {
           const linkRes = await fetchApi(
-            `/api/campaigns/${state.campaignId}/call-lists/${listId}/link-script`,
+            `/api/calls/lists/${listId}/link-script`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -1341,10 +1347,11 @@ export function PhoneWizardSteps() {
         const listName = state.listName.trim() || `Call list — ${new Date().toLocaleDateString('en-AU')}`
 
         // Create the call list
-        const listRes = await fetchApi(`/api/campaigns/${state.campaignId}/call-lists`, {
+        const listRes = await fetchApi('/api/calls/lists', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            campaign_id: state.campaignId,
             name: listName,
             script_id: state.savedScriptId || null,
             priority_strategy: 'sequential',
@@ -1363,13 +1370,18 @@ export function PhoneWizardSteps() {
       const actionId = actionIdParam ? parseInt(actionIdParam, 10) : null
       if (actionId && Number.isFinite(actionId) && state.savedScriptId) {
         try {
+          // F1: write to new join table as well as legacy array.
+          await supabase
+            .from('phone_call_action_lists')
+            .upsert({ action_id: actionId, list_id: listId, position: 0 }, { onConflict: 'action_id,list_id' })
+
           const { data: existingAction } = await supabase
             .from('phone_call_actions')
             .select('list_ids, script_id, status')
             .eq('action_id', actionId)
             .single()
-          const prev: number[] = existingAction?.list_ids ?? []
-          const merged = [...new Set([...prev, listId])]
+          const prevIds: number[] = existingAction?.list_ids ?? []
+          const merged = [...new Set([...prevIds, listId])]
           await supabase
             .from('phone_call_actions')
             .update({
@@ -1385,7 +1397,7 @@ export function PhoneWizardSteps() {
 
       // Populate the list (both modes — adds workers, skipping duplicates).
       const workerIds = [...selectedWorkerIds]
-      const populateRes = await fetchApi(`/api/campaigns/${state.campaignId}/call-lists/${listId}/populate`, {
+      const populateRes = await fetchApi(`/api/calls/lists/${listId}/populate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filters: {}, worker_ids: workerIds }),
@@ -1417,8 +1429,8 @@ export function PhoneWizardSteps() {
     if (useVariations && segmentVariable) return
     let cancelled = false
     setExistingListsLoading(true)
-    const qs = state.savedScriptId ? `?script_id=${state.savedScriptId}` : ''
-    fetchApi(`/api/campaigns/${state.campaignId}/call-lists${qs}`)
+    const qs = state.savedScriptId ? `&script_id=${state.savedScriptId}` : ''
+    fetchApi(`/api/calls/lists?campaign_id=${state.campaignId}${qs}`)
       .then((r) => (r.ok ? r.json() : []))
       .then((data) => {
         if (cancelled) return

@@ -1,7 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Plus, Trash2, PhoneCall } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 import {
   Card,
   CardContent,
@@ -85,10 +87,28 @@ export function SectionActivitiesPanel({
   campaignId,
 }: SectionActivitiesPanelProps) {
   const { canWrite } = useAuth()
+  const router = useRouter()
   const { data: activities = [], isLoading } = useSectionActivities(sectionPlanId)
   const create = useCreateSectionActivity()
   const remove = useDeleteSectionActivity()
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
+  const [creatingListFor, setCreatingListFor] = useState<number | null>(null)
+
+  const handleCreateCallList = async (activityId: number) => {
+    setCreatingListFor(activityId)
+    try {
+      const supabase = createClient()
+      const { data: listId, error } = await supabase.rpc('create_call_list_from_activity', {
+        p_activity_id: activityId,
+      })
+      if (error) throw error
+      router.push(`/campaigns/${campaignId}/phone/lists/${listId}`)
+    } catch (err) {
+      console.error('Failed to create call list from activity:', err)
+    } finally {
+      setCreatingListFor(null)
+    }
+  }
 
   const submit = async () => {
     if (!form.title.trim()) return
@@ -155,6 +175,19 @@ export function SectionActivitiesPanel({
                     )}
                   </div>
                   {canWrite && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      {a.activity_kind === 'phone_call_list' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs gap-1"
+                          disabled={creatingListFor === a.activity_id}
+                          onClick={() => handleCreateCallList(a.activity_id)}
+                        >
+                          <PhoneCall className="h-3 w-3" />
+                          {creatingListFor === a.activity_id ? 'Creating…' : 'Create call list'}
+                        </Button>
+                      )}
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button
@@ -188,6 +221,7 @@ export function SectionActivitiesPanel({
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
+                    </div>
                   )}
                 </li>
               ))}

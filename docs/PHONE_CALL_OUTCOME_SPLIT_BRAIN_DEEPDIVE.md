@@ -2,6 +2,7 @@
 
 > Companion to [`docs/PHONE_CALL_AUDIT.md`](PHONE_CALL_AUDIT.md) and [`docs/PHONE_CALL_REMEDIATION_PLAN.md`](PHONE_CALL_REMEDIATION_PLAN.md).
 > Generated: May 2026.
+> **Resolved in Phase D (May 2026)**: `outcome_entries` has been removed from all UI and API layers. Calls now record a single `outcome_classification` string on `call_attempts` (e.g. `agreed_to_join`, `interested_undecided`, `declined`) plus per-CTA `call_attempt_cta_ratings` rows. The legacy `call_attempt_outcomes` table was archived as `_archive_call_attempt_outcomes_20260613`. The generic `set_worker_union_membership_pending` RPC handles membership transitions from any channel.
 
 This document explains in detail the **single most damaging issue** in the phone-call subsystem: there are two different models for "what was the outcome of this call?", they are simultaneously active in different layers of the stack, and they silently disagree with each other — meaning some user input is being discarded and some reporting tables are stale.
 

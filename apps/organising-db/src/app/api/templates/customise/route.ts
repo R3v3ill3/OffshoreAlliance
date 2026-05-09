@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { VARIABLE_GLOSSARY } from '@/lib/prompts/draft-prompts'
+import { AI_MODEL } from '@/lib/ai/models'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 })
 
-const SYSTEM_PROMPT = `You are a communications specialist for the Offshore Alliance (OA), a joint AWU/MUA union initiative in Australia's offshore oil and gas sector.
+const EMAIL_SYSTEM_PROMPT = `You are a communications specialist for the Offshore Alliance (OA), a joint AWU/MUA union initiative in Australia's offshore oil and gas sector.
 
 You are adapting an existing email template to match specific campaign "Where to Play" selections. The user will provide:
 1. The original template text
@@ -37,6 +38,74 @@ ADDITIONAL ADAPTATION RULES:
 
 Respond with ONLY valid JSON, no markdown formatting or explanation.`
 
+const PHONE_SYSTEM_PROMPT = `You are a communications specialist for the Offshore Alliance (OA), a joint AWU/MUA union initiative in Australia's offshore oil and gas sector.
+
+You are adapting an existing phone script template to match specific campaign "Where to Play" selections. The user will provide:
+1. The original script text
+2. The campaign's Where to Play context (tone, audience, engagement intensity)
+3. The campaign stage
+
+Phone scripts are spoken conversations, not written correspondence. Adapt language to be natural when spoken aloud. Return a JSON object with:
+
+- "adapted_subject": null (phone scripts have no subject line).
+- "adapted_body_text": string. The full adapted phone script as PLAIN TEXT. Use short sentences, natural spoken language, and section headings like "Opening:", "Issue:", "Ask:".
+- "changes_summary": array of 3-5 objects (keep brief), each with:
+  - "location": string (e.g. "opening", "issue framing", "ask/close")
+  - "original_snippet": string (max 50 chars of original)
+  - "adapted_snippet": string (max 50 chars of replacement)
+  - "reason": string (max 80 chars, why changed)
+- "tone_applied": string. Which tone(s) guided the adaptation.
+- "audience_targeted": string. Which audience segment the adaptation targets.
+
+${VARIABLE_GLOSSARY}
+
+ADDITIONAL ADAPTATION RULES:
+- Whatever {{variables}} appear in the original script, the adapted version MUST use the SAME variables in the same semantic slots.
+- Keep the script's core ask and call objective intact — make targeted edits, don't rewrite everything
+- Use conversational, spoken-word language — avoid formal written prose
+- Keep changes_summary entries SHORT (snippets max 50 chars each)
+- The response MUST be valid, complete JSON
+
+Respond with ONLY valid JSON, no markdown formatting or explanation.`
+
+const SMS_SYSTEM_PROMPT = `You are a communications specialist for the Offshore Alliance (OA), a joint AWU/MUA union initiative in Australia's offshore oil and gas sector.
+
+You are adapting an existing SMS message template to match specific campaign "Where to Play" selections. SMS messages must be concise (typically under 160 characters per segment). Return a JSON object with:
+
+- "adapted_subject": null (SMS messages have no subject line).
+- "adapted_body_text": string. The full adapted SMS body as PLAIN TEXT. Keep it brief and impactful.
+- "changes_summary": array of 2-4 objects (keep brief), each with:
+  - "location": string (e.g. "opening hook", "call to action", "sign-off")
+  - "original_snippet": string (max 50 chars of original)
+  - "adapted_snippet": string (max 50 chars of replacement)
+  - "reason": string (max 80 chars, why changed)
+- "tone_applied": string. Which tone(s) guided the adaptation.
+- "audience_targeted": string. Which audience segment the adaptation targets.
+
+${VARIABLE_GLOSSARY}
+
+ADDITIONAL ADAPTATION RULES:
+- Keep {{variables}} unchanged — same variable in same slot
+- Be brief: aim for 1-3 short sentences
+- No HTML, no long lists
+- The response MUST be valid, complete JSON
+
+Respond with ONLY valid JSON, no markdown formatting or explanation.`
+
+function getSystemPrompt(platform?: string): string {
+  switch (platform?.toLowerCase()) {
+    case 'phone':
+    case 'phone_call':
+    case 'phone_script':
+      return PHONE_SYSTEM_PROMPT
+    case 'sms':
+    case 'sms_blast':
+      return SMS_SYSTEM_PROMPT
+    default:
+      return EMAIL_SYSTEM_PROMPT
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
@@ -55,6 +124,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const {
       template_id,
+      platform,
       subject_line,
       body_text,
       body_html,
@@ -65,6 +135,8 @@ export async function POST(req: NextRequest) {
       campaign_context,
     } = body as {
       template_id?: number
+      /** Communication channel — determines which system prompt is used. Defaults to 'email'. */
+      platform?: string
       subject_line?: string
       body_text: string
       body_html?: string
@@ -127,9 +199,9 @@ ${custom_instructions ? `\nADDITIONAL INSTRUCTIONS:\n${custom_instructions}` : '
 Please adapt this template to match the Where to Play context above.`
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: AI_MODEL,
       max_tokens: 8000,
-      system: SYSTEM_PROMPT,
+      system: getSystemPrompt(platform),
       messages: [{ role: 'user', content: userMessage }],
     })
 

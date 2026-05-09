@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { fetchApi, API_FETCH_TIMEOUT_LLM_MS } from '@/lib/api/fetch-api'
+import { buildVariationInstructions } from '@/lib/prompts/draft-prompts'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -141,13 +142,7 @@ export function ScriptVariationsPanel({
           template_examples: referenceScriptBody.trim()
             ? [{ title: baseTitle, body_text: referenceScriptBody }]
             : undefined,
-          custom_instructions: [
-            callObjective ? `Call purpose: ${callObjective}` : '',
-            `Generate a TARGETED VARIATION for: ${segmentLabel} workers.`,
-            `Keep the same overall structure and call purpose as the reference script. Adapt opening, issues, and ask for ${segmentLabel}.`,
-          ]
-            .filter(Boolean)
-            .join('\n'),
+          custom_instructions: buildVariationInstructions(segmentLabel, callObjective),
         }
 
         const res = await fetchApi('/api/generate-draft', {

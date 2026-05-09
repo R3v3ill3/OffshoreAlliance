@@ -1,44 +1,38 @@
-'use client'
-
 /**
- * @deprecated Phase B: The standalone call session route is retired.
+ * @deprecated Phase H: The standalone call session route is retired.
  *
- * All call lists now have a campaign_id (orphan rows were migrated into
- * the "OA Membership Outreach" standing campaign). This page redirects
- * to the canonical campaign-scoped call session at
+ * Server-side redirect to the canonical campaign-scoped call session at
  * /campaigns/[campaignId]/phone/call/[listId].
+ *
+ * The campaign_id is derived from call_lists.campaign_id.
+ * If the list cannot be found, redirects to /campaigns.
  */
 
-import { useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
 
-export default function StandaloneCallSessionRedirect() {
-  const params = useParams()
-  const router = useRouter()
-  const listId = Number(params.listId)
+interface Props {
+  params: Promise<{ listId: string }>
+}
 
-  useEffect(() => {
-    async function redirect() {
-      const supabase = createClient()
-      const { data } = await supabase
-        .from('call_lists')
-        .select('campaign_id')
-        .eq('list_id', listId)
-        .single()
+export default async function StandaloneCallSessionRedirect({ params }: Props) {
+  const { listId } = await params
+  const numericListId = parseInt(listId, 10)
 
-      if (data?.campaign_id) {
-        router.replace(`/campaigns/${data.campaign_id}/phone/call/${listId}`)
-      } else {
-        router.replace('/campaigns/phone-wizard')
-      }
-    }
-    if (Number.isFinite(listId)) void redirect()
-  }, [listId, router])
+  if (!Number.isFinite(numericListId)) {
+    redirect('/campaigns')
+  }
 
-  return (
-    <div className="flex items-center justify-center min-h-[40vh]">
-      <p className="text-muted-foreground text-sm">Redirecting to call session…</p>
-    </div>
-  )
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('call_lists')
+    .select('campaign_id')
+    .eq('list_id', numericListId)
+    .single()
+
+  if (data?.campaign_id) {
+    redirect(`/campaigns/${data.campaign_id}/phone/call/${numericListId}`)
+  }
+
+  redirect('/campaigns')
 }

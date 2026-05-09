@@ -1,8 +1,11 @@
 # Phone Call Features — Full Review & Drift Audit
 
 > Generated: May 2026.
+> **Remediation status: Phases A–J complete as of May 2026.**
 > Scope: `apps/organising-db/`. Citations use repo-relative file paths.
 > No section plan, employer-matching, or scraper code creates phone calls; details below.
+
+> **Post-remediation note**: All issues identified in §7 have been addressed in the A–J implementation plan. See `docs/PHONE_CALL_REMEDIATION_PLAN.md` for current state.
 
 This is a research/audit deliverable. The companion documents are:
 

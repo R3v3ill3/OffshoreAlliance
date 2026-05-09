@@ -2,8 +2,9 @@
 
 > Companion to [`docs/PHONE_CALL_AUDIT.md`](PHONE_CALL_AUDIT.md). Sequenced workstream that resolves the §7 issues in dependency order.
 > Generated: May 2026.
+> **Status: Superseded by `phone-call-implementation-plan_78ade06d.plan.md`. Phases A–J complete as of May 2026.**
 
-This is a **scoping document** — no code is changed by adopting this plan. Each phase lists its goal, work items, files affected, acceptance criteria, risk, and rough effort. Sign-off is recommended at the end of each phase before starting the next.
+This was a **scoping document**. The actual implementation was tracked in the plan file referenced above. Key outcomes by phase: A (types + dead-code), B (Standing Campaign + orphan migration), C (unified `/api/calls/*` namespace), D (outcome model: `outcome_classification` + CTA ratings), E (audience descriptor), F (FK join table for action-list linkage), G (section plan → call list bridge), H (unified call session UI + copy-to-clipboard), I (AI model constant + platform-aware customise prompt + variation instructions), J (reporting views + dead-code sweep). Each phase lists its goal, work items, files affected, acceptance criteria, risk, and rough effort. Sign-off is recommended at the end of each phase before starting the next.
 
 ---
 

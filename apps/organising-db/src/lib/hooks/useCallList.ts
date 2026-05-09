@@ -6,7 +6,7 @@ export function useCallLists(campaignId: number | string) {
   return useQuery({
     queryKey: ['call-lists', String(campaignId)],
     queryFn: async () => {
-      const res = await fetchApi(`/api/campaigns/${campaignId}/call-lists`)
+      const res = await fetchApi(`/api/calls/lists?campaign_id=${campaignId}`)
       if (!res.ok) throw new Error('Failed to fetch call lists')
       return res.json() as Promise<CallListWithStats[]>
     },
@@ -18,7 +18,7 @@ export function useCallList(campaignId: number | string, listId: number | string
   return useQuery({
     queryKey: ['call-list', String(campaignId), String(listId)],
     queryFn: async () => {
-      const res = await fetchApi(`/api/campaigns/${campaignId}/call-lists/${listId}`)
+      const res = await fetchApi(`/api/calls/lists/${listId}`)
       if (!res.ok) throw new Error('Failed to fetch call list')
       return res.json() as Promise<CallListWithStats>
     },
@@ -30,7 +30,7 @@ export function useCallListItems(campaignId: number | string, listId: number | s
   return useQuery({
     queryKey: ['call-list-items', String(campaignId), String(listId)],
     queryFn: async () => {
-      const res = await fetchApi(`/api/campaigns/${campaignId}/call-lists/${listId}/items`)
+      const res = await fetchApi(`/api/calls/lists/${listId}/items`)
       if (!res.ok) throw new Error('Failed to fetch items')
       return res.json() as Promise<CallListItemWithWorker[]>
     },
@@ -47,10 +47,10 @@ export function useCreateCallList(campaignId: number | string) {
       script_id?: number | null
       priority_strategy?: string
     }) => {
-      const res = await fetchApi(`/api/campaigns/${campaignId}/call-lists`, {
+      const res = await fetchApi('/api/calls/lists', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, campaign_id: campaignId }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Failed' }))
@@ -68,7 +68,7 @@ export function useUpdateCallList(campaignId: number | string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async ({ listId, ...updates }: { listId: number } & Partial<CallList>) => {
-      const res = await fetchApi(`/api/campaigns/${campaignId}/call-lists/${listId}`, {
+      const res = await fetchApi(`/api/calls/lists/${listId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
@@ -87,7 +87,7 @@ export function useDeleteCallList(campaignId: number | string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (listId: number) => {
-      const res = await fetchApi(`/api/campaigns/${campaignId}/call-lists/${listId}`, { method: 'DELETE' })
+      const res = await fetchApi(`/api/calls/lists/${listId}`, { method: 'DELETE' })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Failed to delete list' }))
         throw new Error(typeof err.error === 'string' ? err.error : 'Failed to delete list')
@@ -106,7 +106,7 @@ export function usePopulateCallList(campaignId: number | string, listId: number 
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (filters: Record<string, unknown>) => {
-      const res = await fetchApi(`/api/campaigns/${campaignId}/call-lists/${listId}/populate`, {
+      const res = await fetchApi(`/api/calls/lists/${listId}/populate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filters }),

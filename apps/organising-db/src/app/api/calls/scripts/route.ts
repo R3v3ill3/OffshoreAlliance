@@ -1,63 +1,56 @@
-/**
- * @deprecated Use /api/calls/scripts instead (Phase C unified namespace).
- * These campaign-scoped routes are retained as shims for one release window.
- */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+/** GET /api/calls/scripts?campaign_id=X */
+export async function GET(req: NextRequest) {
   try {
-    const { id: campaignId } = await params
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    const url = new URL(req.url)
+    const campaignIdParam = url.searchParams.get('campaign_id')
+    if (!campaignIdParam) {
+      return NextResponse.json({ error: 'campaign_id query param is required' }, { status: 400 })
+    }
+
     const { data, error } = await supabase
       .from('call_scripts')
-      .select(`
-        *,
-        call_script_sections (*)
-      `)
-      .eq('campaign_id', parseInt(campaignId))
+      .select('*, call_script_sections (*)')
+      .eq('campaign_id', parseInt(campaignIdParam, 10))
       .order('created_at', { ascending: false })
 
     if (error) throw error
     return NextResponse.json(data)
   } catch (error) {
-    console.error('GET call-scripts error:', error)
+    console.error('GET /api/calls/scripts error:', error)
     return NextResponse.json({ error: 'Failed to fetch scripts' }, { status: 500 })
   }
 }
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+/** POST /api/calls/scripts — body must include campaign_id */
+export async function POST(req: NextRequest) {
   try {
-    const { id: campaignId } = await params
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await req.json()
-    const { title, draft_id, call_objective, estimated_duration_minutes, sections, base_script_id } = body
+    const { campaign_id, title, draft_id, call_objective, estimated_duration_minutes, sections, base_script_id, audience_descriptor } = body
 
-    if (!title) {
-      return NextResponse.json({ error: 'Title is required' }, { status: 400 })
-    }
+    if (!campaign_id) return NextResponse.json({ error: 'campaign_id is required' }, { status: 400 })
+    if (!title) return NextResponse.json({ error: 'title is required' }, { status: 400 })
 
     const { data: script, error: scriptError } = await supabase
       .from('call_scripts')
       .insert({
-        campaign_id: parseInt(campaignId),
+        campaign_id: parseInt(String(campaign_id), 10),
         draft_id: draft_id || null,
         base_script_id: base_script_id != null ? parseInt(String(base_script_id), 10) : null,
         title,
         call_objective: call_objective || null,
         estimated_duration_minutes: estimated_duration_minutes || null,
+        audience_descriptor: audience_descriptor ?? null,
         status: 'draft',
         created_by: user.id,
       })
@@ -78,11 +71,7 @@ export async function POST(
         expected_outcomes: s.expected_outcomes || [],
         is_optional: s.is_optional || false,
       }))
-
-      const { error: sectionsError } = await supabase
-        .from('call_script_sections')
-        .insert(sectionRows)
-
+      const { error: sectionsError } = await supabase.from('call_script_sections').insert(sectionRows)
       if (sectionsError) throw sectionsError
     }
 
@@ -101,7 +90,7 @@ export async function POST(
 
     return NextResponse.json(fullScript, { status: 201 })
   } catch (error) {
-    console.error('POST call-scripts error:', error)
+    console.error('POST /api/calls/scripts error:', error)
     return NextResponse.json({ error: 'Failed to create script' }, { status: 500 })
   }
 }

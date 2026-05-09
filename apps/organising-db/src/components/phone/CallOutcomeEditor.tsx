@@ -160,7 +160,7 @@ export function CallOutcomeEditor({
         category: a.ambition_option?.category ?? null,
       }))
 
-      const res = await fetchApi('/api/phone-wizard/translate-ambitions', {
+      const res = await fetchApi('/api/calls/translate-ambitions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ambitions: payload }),

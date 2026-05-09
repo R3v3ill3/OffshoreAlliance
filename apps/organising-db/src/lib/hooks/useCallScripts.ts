@@ -12,7 +12,7 @@ export function useCallScripts(campaignId: number | string) {
   return useQuery({
     queryKey: ['call-scripts', String(campaignId)],
     queryFn: async () => {
-      const res = await fetchApi(`/api/campaigns/${campaignId}/call-scripts`)
+      const res = await fetchApi(`/api/calls/scripts?campaign_id=${campaignId}`)
       if (!res.ok) throw new Error('Failed to fetch call scripts')
       return res.json() as Promise<CallScriptWithSections[]>
     },
@@ -49,10 +49,10 @@ export function useCreateCallScript(campaignId: number | string) {
       estimated_duration_minutes?: number
       sections?: Record<string, unknown>[]
     }) => {
-      const res = await fetchApi(`/api/campaigns/${campaignId}/call-scripts`, {
+      const res = await fetchApi('/api/calls/scripts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, campaign_id: campaignId }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Failed' }))
@@ -108,6 +108,7 @@ export function useUpdateCallScriptSections(campaignId: number | string, scriptI
 export function useStructureScript(campaignId: number | string) {
   return useMutation({
     mutationFn: async (request: StructureScriptRequest) => {
+      // Kept at the campaign-scoped route for now; will move to /api/calls/scripts/structure in Phase I.
       const res = await fetchApi(`/api/campaigns/${campaignId}/call-scripts/structure`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -147,7 +148,7 @@ export function useDeleteCallScript(campaignId: number | string) {
 
   return useMutation({
     mutationFn: async (scriptId: number) => {
-      const res = await fetchApi(`/api/campaigns/${campaignId}/call-scripts/${scriptId}`, {
+      const res = await fetchApi(`/api/calls/scripts/${scriptId}`, {
         method: 'DELETE',
       })
       if (!res.ok) {

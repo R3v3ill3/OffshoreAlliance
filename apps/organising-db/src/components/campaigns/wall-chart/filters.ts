@@ -15,8 +15,9 @@ export type SortKey =
   | "last_name"
   | "first_name"
   | "cumulative_desc"
+  | "cumulative_asc"
   | "last_activity_desc"
-  | "role"
+  | "last_activity_asc"
   | "occupation";
 
 export type RatingBucket = "unrated" | "1" | "2" | "3" | "4" | "5";
@@ -152,15 +153,11 @@ export function applySort(
     if (av === bv) return 0;
     return av > bv ? -1 : 1;
   };
-  const roleRank = (w: WallChartWorker | undefined): number => {
-    // Delegate > Activist > Bargaining Rep > HSR > Contact > None
-    if (!w) return 99;
-    if (w.member_role_type?.role_name === "delegate") return 0;
-    if (w.member_role_type?.role_name === "activist") return 1;
-    if (w.is_bargaining_rep) return 2;
-    if (w.is_hsr) return 3;
-    if (w.member_role_type?.role_name === "contact") return 4;
-    return 5;
+  const cmpNumAsc = (a: number | null | undefined, b: number | null | undefined) => {
+    const av = a ?? Infinity;
+    const bv = b ?? Infinity;
+    if (av === bv) return 0;
+    return av < bv ? -1 : 1;
   };
 
   copy.sort((a, b) => {
@@ -183,15 +180,28 @@ export function applySort(
           ratingByWorker.get(a)?.cumulative_rating,
           ratingByWorker.get(b)?.cumulative_rating
         );
+      case "cumulative_asc":
+        if (opts?.assessmentSort) {
+          const { selection, activityRatings } = opts.assessmentSort;
+          return cmpNumAsc(
+            assessmentNumericForWallChart(selection, activityRatings.get(a)),
+            assessmentNumericForWallChart(selection, activityRatings.get(b))
+          );
+        }
+        return cmpNumAsc(
+          ratingByWorker.get(a)?.cumulative_rating,
+          ratingByWorker.get(b)?.cumulative_rating
+        );
       case "last_activity_desc":
         return cmpNumDesc(
           ratingByWorker.get(a)?.last_activity_rating,
           ratingByWorker.get(b)?.last_activity_rating
         );
-      case "role": {
-        const c = roleRank(wa) - roleRank(wb);
-        return c !== 0 ? c : cmpString(wa?.last_name, wb?.last_name);
-      }
+      case "last_activity_asc":
+        return cmpNumAsc(
+          ratingByWorker.get(a)?.last_activity_rating,
+          ratingByWorker.get(b)?.last_activity_rating
+        );
       case "occupation": {
         const c = cmpString(
           wa?.canonical_occupation?.canonical_name,

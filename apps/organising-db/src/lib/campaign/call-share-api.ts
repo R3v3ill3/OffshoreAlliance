@@ -104,6 +104,10 @@ export async function logCallShareEvent(
   });
 }
 
+/**
+ * @deprecated Moved to lib/phone/enrich-call-list-item.ts (Phase C).
+ * Use fetchAndEnrichCallListItem from that module instead.
+ */
 export async function enrichCallListItem(
   admin: ReturnType<typeof createAdminClient>,
   itemId: number,

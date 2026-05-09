@@ -49,6 +49,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "cumulative_asc", label: "Cumulative rating (low → high)" },
   { key: "last_activity_desc", label: "Last activity (high → low)" },
   { key: "last_activity_asc", label: "Last activity (low → high)" },
+  { key: "relationships", label: "Group by relationships" },
   { key: "occupation", label: "Occupation" },
 ];
 

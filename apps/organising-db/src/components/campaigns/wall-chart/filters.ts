@@ -18,7 +18,13 @@ export type SortKey =
   | "cumulative_asc"
   | "last_activity_desc"
   | "last_activity_asc"
+  | "relationships"
   | "occupation";
+
+export type RelationshipSortLink = {
+  leader_worker_id: number;
+  follower_worker_id: number;
+};
 
 export type RatingBucket = "unrated" | "1" | "2" | "3" | "4" | "5";
 
@@ -142,11 +148,18 @@ export function applySort(
       selection: Extract<AssessmentSelection, { kind: "assessment" }>;
       activityRatings: Map<number, ActivityRating>;
     };
+    relationshipLinks?: RelationshipSortLink[];
   }
 ): number[] {
   const copy = [...ids];
   const cmpString = (a: string | null | undefined, b: string | null | undefined) =>
     (a ?? "").localeCompare(b ?? "", undefined, { sensitivity: "base" });
+  const cmpWorkerName = (a: number, b: number) => {
+    const wa = workerById.get(a);
+    const wb = workerById.get(b);
+    const last = cmpString(wa?.last_name, wb?.last_name);
+    return last !== 0 ? last : cmpString(wa?.first_name, wb?.first_name);
+  };
   const cmpNumDesc = (a: number | null | undefined, b: number | null | undefined) => {
     const av = a ?? -Infinity;
     const bv = b ?? -Infinity;
@@ -159,6 +172,22 @@ export function applySort(
     if (av === bv) return 0;
     return av < bv ? -1 : 1;
   };
+  const leaderRank = (workerId: number): number => {
+    const rn = workerById.get(workerId)?.member_role_type?.role_name?.toLowerCase();
+    if (rn === "delegate") return 0;
+    if (rn === "activist") return 1;
+    if (rn === "contact") return 2;
+    return 99;
+  };
+
+  if (sort === "relationships") {
+    return sortByRelationships(copy, {
+      workerById,
+      relationshipLinks: opts?.relationshipLinks ?? [],
+      leaderRank,
+      cmpWorkerName,
+    });
+  }
 
   copy.sort((a, b) => {
     const wa = workerById.get(a);
@@ -217,4 +246,59 @@ export function applySort(
     }
   });
   return copy;
+}
+
+function sortByRelationships(
+  ids: number[],
+  opts: {
+    workerById: Map<number, WallChartWorker>;
+    relationshipLinks: RelationshipSortLink[];
+    leaderRank: (workerId: number) => number;
+    cmpWorkerName: (a: number, b: number) => number;
+  }
+): number[] {
+  const visible = new Set(ids);
+  const followersByLeader = new Map<number, number[]>();
+
+  for (const link of opts.relationshipLinks) {
+    if (!visible.has(link.leader_worker_id) || !visible.has(link.follower_worker_id)) continue;
+    if (opts.leaderRank(link.leader_worker_id) >= 99) continue;
+    const followers = followersByLeader.get(link.leader_worker_id) ?? [];
+    followers.push(link.follower_worker_id);
+    followersByLeader.set(link.leader_worker_id, followers);
+  }
+
+  const leaders = ids
+    .filter((id) => opts.leaderRank(id) < 99)
+    .sort((a, b) => {
+      const rank = opts.leaderRank(a) - opts.leaderRank(b);
+      return rank !== 0 ? rank : opts.cmpWorkerName(a, b);
+    });
+
+  const emitted = new Set<number>();
+  const out: number[] = [];
+
+  for (const leaderId of leaders) {
+    if (!visible.has(leaderId) || emitted.has(leaderId)) continue;
+    out.push(leaderId);
+    emitted.add(leaderId);
+
+    const followers = [...new Set(followersByLeader.get(leaderId) ?? [])]
+      .filter((id) => visible.has(id) && !emitted.has(id) && opts.leaderRank(id) >= 99)
+      .sort(opts.cmpWorkerName);
+
+    for (const followerId of followers) {
+      out.push(followerId);
+      emitted.add(followerId);
+    }
+  }
+
+  const remaining = ids
+    .filter((id) => !emitted.has(id))
+    .sort((a, b) => {
+      const rank = opts.leaderRank(a) - opts.leaderRank(b);
+      return rank !== 0 ? rank : opts.cmpWorkerName(a, b);
+    });
+
+  return [...out, ...remaining];
 }

@@ -1122,7 +1122,10 @@ export function CampaignWallChart({
             workerById,
             ratingByWorker,
             filter.sort,
-            fa.sortAssessment ? { assessmentSort: fa.sortAssessment } : undefined
+            {
+              ...(fa.sortAssessment ? { assessmentSort: fa.sortAssessment } : {}),
+              relationshipLinks: allLinks,
+            }
           );
           const effScope = effectiveAssessmentForScope(
             UNASSIGNED_KEY,
@@ -1245,7 +1248,10 @@ export function CampaignWallChart({
                     workerById,
                     ratingByWorker,
                     filter.sort,
-                    fa.sortAssessment ? { assessmentSort: fa.sortAssessment } : undefined
+                    {
+                      ...(fa.sortAssessment ? { assessmentSort: fa.sortAssessment } : {}),
+                      relationshipLinks: allLinks,
+                    }
                   );
                   const placeholders = Math.max(0, est - ids.length);
                   const unitMetrics = metricsByOu.get(ou.ou_id);
@@ -1425,7 +1431,12 @@ export function CampaignWallChart({
                                 workerById,
                                 ratingByWorker,
                                 childFilter.sort,
-                                childFa.sortAssessment ? { assessmentSort: childFa.sortAssessment } : undefined
+                                {
+                                  ...(childFa.sortAssessment
+                                    ? { assessmentSort: childFa.sortAssessment }
+                                    : {}),
+                                  relationshipLinks: allLinks,
+                                }
                               );
                               const childMetrics = metricsByOu.get(child.ou_id);
                               const childEffScope = effectiveAssessmentForScope(

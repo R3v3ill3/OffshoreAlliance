@@ -317,14 +317,11 @@ export function PhoneWizardSteps() {
 
   const generateDraft = useGenerateDraft()
 
-  // Pre-fill from URL params: ?campaign_id=123
+  // Pre-fill from URL params: ?campaign_id=123.
+  // When no campaign_id is provided, fall back to the standing campaign
+  // so every script and call list is always associated with a campaign.
   useEffect(() => {
-    const campaignIdParam = searchParams.get('campaign_id')
-    if (!campaignIdParam) return
-    const campaignId = parseInt(campaignIdParam, 10)
-    if (!Number.isFinite(campaignId)) return
-
-    async function prefill() {
+    async function prefillCampaign(campaignId: number) {
       const { data: campaign } = await supabase
         .from('campaigns')
         .select('campaign_id, name, campaign_stage_plans(stage_number, status)')
@@ -340,7 +337,29 @@ export function PhoneWizardSteps() {
         stageNumber: activeStage?.stage_number ?? null,
       }))
     }
-    prefill()
+
+    async function loadStandingCampaign() {
+      const { data } = await supabase
+        .from('campaigns')
+        .select('campaign_id, name')
+        .eq('is_standing', true)
+        .single()
+      if (data) {
+        setState((prev) => ({
+          ...prev,
+          campaignId: data.campaign_id,
+          campaignName: data.name,
+        }))
+      }
+    }
+
+    const campaignIdParam = searchParams.get('campaign_id')
+    if (campaignIdParam) {
+      const campaignId = parseInt(campaignIdParam, 10)
+      if (Number.isFinite(campaignId)) void prefillCampaign(campaignId)
+    } else {
+      void loadStandingCampaign()
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -359,7 +378,7 @@ export function PhoneWizardSteps() {
     setAddFilterEmployerId(null)
     setAddFilterWorksiteId(null)
     setAddFilterOccupation('')
-  }, [state.campaignId, state.standaloneEmployerId, state.standaloneWorksiteId])
+  }, [state.campaignId])
 
   // Campaign list
   const { data: campaignsData } = useQuery({
@@ -442,7 +461,7 @@ export function PhoneWizardSteps() {
     enabled: !!state.campaignId && campaigns.length > 0,
   })
 
-  // Employers for standalone mode
+  // Employers for the "add workers" filter in step 6
   const { data: allEmployersData } = useQuery({
     queryKey: ['wizard-employers'],
     queryFn: async () => {
@@ -453,80 +472,28 @@ export function PhoneWizardSteps() {
       if (error) throw error
       return (data ?? []) as EmployerRow[]
     },
-    enabled: !!user && (!state.campaignId || step >= 4),
+    enabled: !!user && step >= 4,
   })
   const allEmployers = allEmployersData ?? EMPTY_EMPLOYERS
 
-  // Worksites for standalone employer selection
-  const { data: allWorksitesData } = useQuery({
-    queryKey: ['wizard-worksites', state.standaloneEmployerId],
-    queryFn: async () => {
-      let query = supabase
-        .from('worksites')
-        .select('worksite_id, worksite_name')
-        .order('worksite_name')
-      if (state.standaloneEmployerId) {
-        const { data: ewrRows } = await supabase
-          .from('employer_worksite_roles')
-          .select('worksite_id')
-          .eq('employer_id', state.standaloneEmployerId)
-        if (ewrRows?.length) {
-          query = query.in('worksite_id', ewrRows.map((r) => r.worksite_id))
-        }
-      }
-      const { data, error } = await query
-      if (error) throw error
-      return (data ?? []) as WorksiteRow[]
-    },
-    enabled: !!user && !state.campaignId,
-  })
-  const allWorksites = allWorksitesData ?? EMPTY_WORKSITES
-
-  // Worker list for step 4
+  // Worker list for step 4 — always fetched via the campaign's list-builder endpoint
   const { data: workerListData, isLoading: workersLoading } = useQuery({
-    queryKey: ['phone-wizard-worker-list', state.campaignId, state.standaloneEmployerId, state.standaloneWorksiteId],
+    queryKey: ['phone-wizard-worker-list', state.campaignId],
     queryFn: async (): Promise<WorkerPreview[]> => {
-      if (state.campaignId) {
-        const res = await fetchApi(`/api/campaigns/${state.campaignId}/list-builder`)
-        const json = await res.json()
-        if (!json.success) throw new Error(json.error)
-        return (json.data as WorkerPreview[]).map((row) => ({
-          ...row,
-          phone: row.phone ?? null,
-          membership_status: row.membership_status ?? null,
-          union_membership_type_name: row.union_membership_type_name ?? null,
-          non_oa_union_badge_initials: row.non_oa_union_badge_initials ?? null,
-          organising_role: row.organising_role ?? null,
-        }))
-      }
-      if (state.standaloneEmployerId) {
-        let q = supabase
-          .from('workers')
-          .select('worker_id, first_name, last_name, phone, email, occupation, employers(employer_name), worksites(worksite_name)')
-          .eq('employer_id', state.standaloneEmployerId)
-        if (state.standaloneWorksiteId) {
-          q = q.eq('worksite_id', state.standaloneWorksiteId)
-        }
-        const { data, error } = await q
-        if (error) throw error
-        return (data ?? []).map((r: Record<string, unknown>) => {
-          const emp = r.employers as { employer_name: string } | { employer_name: string }[] | null
-          const ws = r.worksites as { worksite_name: string } | { worksite_name: string }[] | null
-          return {
-            worker_id: r.worker_id as number,
-            first_name: r.first_name as string,
-            last_name: r.last_name as string,
-            phone: r.phone as string | null,
-            email: r.email as string | null,
-            occupation: r.occupation as string | null,
-            employer_name: Array.isArray(emp) ? emp[0]?.employer_name ?? null : emp?.employer_name ?? null,
-            worksite_name: Array.isArray(ws) ? ws[0]?.worksite_name ?? null : ws?.worksite_name ?? null,
-          }
-        })
-      }
-      return []
+      if (!state.campaignId) return []
+      const res = await fetchApi(`/api/campaigns/${state.campaignId}/list-builder`)
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error)
+      return (json.data as WorkerPreview[]).map((row) => ({
+        ...row,
+        phone: row.phone ?? null,
+        membership_status: row.membership_status ?? null,
+        union_membership_type_name: row.union_membership_type_name ?? null,
+        non_oa_union_badge_initials: row.non_oa_union_badge_initials ?? null,
+        organising_role: row.organising_role ?? null,
+      }))
     },
-    enabled: step >= 4 && (!!state.campaignId || !!state.standaloneEmployerId),
+    enabled: step >= 4 && !!state.campaignId,
   })
   const workerList = workerListData ?? EMPTY_WORKER_LIST
 
@@ -793,9 +760,7 @@ export function PhoneWizardSteps() {
     if (!variation.scriptText.trim()) return
     setSavingVariationKey(variation.segmentKey)
     try {
-      const url = state.campaignId
-        ? `/api/campaigns/${state.campaignId}/call-scripts`
-        : '/api/phone-wizard/scripts'
+      const url = `/api/campaigns/${state.campaignId}/call-scripts`
 
       const res = await fetchApi(url, {
         method: 'POST',
@@ -839,9 +804,7 @@ export function PhoneWizardSteps() {
         const segWorkers = getWorkersForSegment(combinedWorkers, segmentVariable!, variation.segmentKey).filter((w) => w.phone)
         if (segWorkers.length === 0) continue
 
-        const listUrl = state.campaignId
-          ? `/api/campaigns/${state.campaignId}/call-lists`
-          : '/api/phone-wizard/call-lists'
+        const listUrl = `/api/campaigns/${state.campaignId}/call-lists`
 
         const listRes = await fetchApi(listUrl, {
           method: 'POST',
@@ -858,16 +821,10 @@ export function PhoneWizardSteps() {
         const listId = listData.list_id
         const workerIds = segWorkers.map((w) => w.worker_id)
 
-        const populateUrl = state.campaignId
-          ? `/api/campaigns/${state.campaignId}/call-lists/${listId}/populate`
-          : `/api/phone-wizard/call-lists/${listId}/populate`
-
-        const populateRes = await fetchApi(populateUrl, {
+        const populateRes = await fetchApi(`/api/campaigns/${state.campaignId}/call-lists/${listId}/populate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: state.campaignId
-            ? JSON.stringify({ filters: {}, worker_ids: workerIds })
-            : JSON.stringify({ worker_ids: workerIds }),
+          body: JSON.stringify({ filters: {}, worker_ids: workerIds }),
         })
         const populateData = await populateRes.json()
         if (!populateRes.ok) throw new Error(populateData.error || 'Failed to populate list')
@@ -887,10 +844,7 @@ export function PhoneWizardSteps() {
         )
         const unmatched = combinedWorkers.filter((w) => w.phone && !matchedIds.has(w.worker_id))
         if (unmatched.length > 0) {
-          const listUrl = state.campaignId
-            ? `/api/campaigns/${state.campaignId}/call-lists`
-            : '/api/phone-wizard/call-lists'
-          const listRes = await fetchApi(listUrl, {
+          const listRes = await fetchApi(`/api/campaigns/${state.campaignId}/call-lists`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -901,15 +855,10 @@ export function PhoneWizardSteps() {
           })
           const listData = await listRes.json()
           if (listRes.ok) {
-            const populateUrl = state.campaignId
-              ? `/api/campaigns/${state.campaignId}/call-lists/${listData.list_id}/populate`
-              : `/api/phone-wizard/call-lists/${listData.list_id}/populate`
-            await fetchApi(populateUrl, {
+            await fetchApi(`/api/campaigns/${state.campaignId}/call-lists/${listData.list_id}/populate`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: state.campaignId
-                ? JSON.stringify({ filters: {}, worker_ids: unmatched.map((w) => w.worker_id) })
-                : JSON.stringify({ worker_ids: unmatched.map((w) => w.worker_id) }),
+              body: JSON.stringify({ filters: {}, worker_ids: unmatched.map((w) => w.worker_id) }),
             })
             setState((prev) => ({ ...prev, savedListId: listData.list_id }))
             toast.success(`Created general list (${unmatched.length} contacts)`)
@@ -1290,11 +1239,7 @@ export function PhoneWizardSteps() {
         is_optional: s.is_optional || false,
       }))
 
-      const url = state.campaignId
-        ? `/api/campaigns/${state.campaignId}/call-scripts`
-        : '/api/phone-wizard/scripts'
-
-      const res = await fetchApi(url, {
+      const res = await fetchApi(`/api/campaigns/${state.campaignId}/call-scripts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1394,12 +1339,9 @@ export function PhoneWizardSteps() {
         }
       } else {
         const listName = state.listName.trim() || `Call list — ${new Date().toLocaleDateString('en-AU')}`
-        const url = state.campaignId
-          ? `/api/campaigns/${state.campaignId}/call-lists`
-          : '/api/phone-wizard/call-lists'
 
         // Create the call list
-        const listRes = await fetchApi(url, {
+        const listRes = await fetchApi(`/api/campaigns/${state.campaignId}/call-lists`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1443,16 +1385,10 @@ export function PhoneWizardSteps() {
 
       // Populate the list (both modes — adds workers, skipping duplicates).
       const workerIds = [...selectedWorkerIds]
-      const populateUrl = state.campaignId
-        ? `/api/campaigns/${state.campaignId}/call-lists/${listId}/populate`
-        : `/api/phone-wizard/call-lists/${listId}/populate`
-
-      const populateRes = await fetchApi(populateUrl, {
+      const populateRes = await fetchApi(`/api/campaigns/${state.campaignId}/call-lists/${listId}/populate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: state.campaignId
-          ? JSON.stringify({ filters: {}, worker_ids: workerIds })
-          : JSON.stringify({ worker_ids: workerIds }),
+        body: JSON.stringify({ filters: {}, worker_ids: workerIds }),
       })
       const populateData = await populateRes.json()
       if (!populateRes.ok) throw new Error(populateData.error || 'Failed to populate list')
@@ -1465,11 +1401,7 @@ export function PhoneWizardSteps() {
       )
 
       // Navigate to calling session
-      if (state.campaignId) {
-        router.push(`/campaigns/${state.campaignId}/phone/call/${listId}`)
-      } else {
-        router.push(`/campaigns/phone-wizard/call/${listId}`)
-      }
+      router.push(`/campaigns/${state.campaignId}/phone/call/${listId}`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create list')
     } finally {
@@ -1569,23 +1501,15 @@ export function PhoneWizardSteps() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-1">
-              <Label>Campaign (optional)</Label>
+              <Label>Campaign</Label>
               <Select
-                value={state.campaignId?.toString() ?? '__none__'}
-                onValueChange={(v) => setState((prev) => ({
-                  ...prev,
-                  campaignId: v === '__none__' ? null : Number(v),
-                  ...(v === '__none__' ? {
-                    campaignName: '', employerName: '', agreementName: '',
-                    worksiteNames: [], organiserName: '', organiserPhone: '',
-                  } : {}),
-                }))}
+                value={state.campaignId?.toString() ?? ''}
+                onValueChange={(v) => setState((prev) => ({ ...prev, campaignId: Number(v) }))}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="No campaign — standalone calls" />
+                  <SelectValue placeholder="Select campaign…" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">No campaign — standalone calls</SelectItem>
                   {campaigns.map((c) => (
                     <SelectItem key={c.campaign_id} value={c.campaign_id.toString()}>
                       {c.name}
@@ -1624,67 +1548,6 @@ export function PhoneWizardSteps() {
                     <span className="font-medium">{state.worksiteNames.join(', ')}</span>
                   </div>
                 )}
-              </div>
-            )}
-
-            {!state.campaignId && (
-              <div className="space-y-3 p-3 rounded-lg border bg-muted/20">
-                <p className="text-sm font-medium">Target Universe</p>
-                <div className="space-y-1">
-                  <Label className="text-xs">Employer</Label>
-                  <Select
-                    value={state.standaloneEmployerId?.toString() ?? ''}
-                    onValueChange={(v) => {
-                      const eid = v ? Number(v) : null
-                      const emp = allEmployers.find((e) => e.employer_id === eid)
-                      setState((prev) => ({
-                        ...prev,
-                        standaloneEmployerId: eid,
-                        employerName: emp?.employer_name ?? '',
-                        standaloneWorksiteId: null,
-                        worksiteNames: [],
-                      }))
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select employer..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {allEmployers.map((e) => (
-                        <SelectItem key={e.employer_id} value={e.employer_id.toString()}>
-                          {e.employer_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Worksite (optional)</Label>
-                  <Select
-                    value={state.standaloneWorksiteId?.toString() ?? '__all__'}
-                    onValueChange={(v) => {
-                      const wid = v === '__all__' ? null : Number(v)
-                      const ws = allWorksites.find((w) => w.worksite_id === wid)
-                      setState((prev) => ({
-                        ...prev,
-                        standaloneWorksiteId: wid,
-                        worksiteNames: ws ? [ws.worksite_name] : [],
-                      }))
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All worksites" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__all__">All worksites</SelectItem>
-                      {allWorksites.map((w) => (
-                        <SelectItem key={w.worksite_id} value={w.worksite_id.toString()}>
-                          {w.worksite_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
             )}
 
@@ -2069,16 +1932,10 @@ export function PhoneWizardSteps() {
                       <SelectValue placeholder="Choose a variable…" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="membership_status" disabled={!state.campaignId}>
-                        Membership Status{!state.campaignId ? ' (campaign only)' : ''}
-                      </SelectItem>
-                      <SelectItem value="organising_role" disabled={!state.campaignId}>
-                        Member Role{!state.campaignId ? ' (campaign only)' : ''}
-                      </SelectItem>
+                      <SelectItem value="membership_status">Membership Status</SelectItem>
+                      <SelectItem value="organising_role">Member Role</SelectItem>
                       <SelectItem value="occupation">Occupation</SelectItem>
-                      <SelectItem value="rating_band" disabled={!state.campaignId}>
-                        Activity Rating Band{!state.campaignId ? ' (campaign only)' : ''}
-                      </SelectItem>
+                      <SelectItem value="rating_band">Activity Rating Band</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
@@ -2321,12 +2178,6 @@ export function PhoneWizardSteps() {
             </CardContent>
           </Card>
 
-          {!state.campaignId && (
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>Objections and issue data require a campaign to be selected (Step 1).</span>
-            </div>
-          )}
         </div>
       )}
 
@@ -2367,11 +2218,7 @@ export function PhoneWizardSteps() {
                             <Button
                               size="sm"
                               onClick={() => {
-                                if (state.campaignId) {
-                                  router.push(`/campaigns/${state.campaignId}/phone/call/${variation.listId}`)
-                                } else {
-                                  router.push(`/campaigns/phone-wizard/call/${variation.listId}`)
-                                }
+                                router.push(`/campaigns/${state.campaignId}/phone/call/${variation.listId}`)
                               }}
                             >
                               <PlayCircle className="h-3.5 w-3.5 mr-1" />
@@ -2416,11 +2263,7 @@ export function PhoneWizardSteps() {
                         <Button
                           size="sm"
                           onClick={() => {
-                            if (state.campaignId) {
-                              router.push(`/campaigns/${state.campaignId}/phone/call/${state.savedListId}`)
-                            } else {
-                              router.push(`/campaigns/phone-wizard/call/${state.savedListId}`)
-                            }
+                            router.push(`/campaigns/${state.campaignId}/phone/call/${state.savedListId}`)
                           }}
                         >
                           <PlayCircle className="h-3.5 w-3.5 mr-1" />

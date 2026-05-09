@@ -1,6 +1,7 @@
 import type { NonOaUnionCountEntry } from "@/lib/workers/other-union-display";
 import { isWorkerMemberLike, isWorkerOaMember } from "@/lib/campaign/constants";
 import type { ActivityRating, WallChartRatingSummary, WallChartWorker } from "./types";
+import { isSupportiveBinaryOutcome } from "./binary-assessment";
 
 // Role-type ids confirmed active in member_role_types:
 // Contact=3, Delegate=7, Activist=8. Bargaining Rep (4) is deprecated as a role
@@ -194,10 +195,10 @@ export function computeMetrics(
       if (assessmentInput.isBinary) {
         if (rv.binary_value != null) {
           am.binaryTotalRated += 1;
-          if (
-            assessmentInput.supportiveBinaryValue &&
-            rv.binary_value === assessmentInput.supportiveBinaryValue
-          ) {
+          if (isSupportiveBinaryOutcome({
+            binaryValue: rv.binary_value,
+            supporterOutcomeValue: assessmentInput.supportiveBinaryValue,
+          })) {
             am.binarySupportiveCount += 1;
           }
         }

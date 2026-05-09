@@ -5,8 +5,9 @@ import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { fetchWallChartAssessmentOptions } from "@/components/campaigns/wall-chart/assessment-selector";
 import { collapseActivityRatingsToWorkerMap } from "@/lib/utils/collapse-activity-ratings";
-import type { WallChartAssessmentOption, WallChartOU } from "@/components/campaigns/wall-chart/types";
+import type { WallChartOU } from "@/components/campaigns/wall-chart/types";
 import { ouDisplayName } from "@/components/campaigns/wall-chart/types";
+import { pseudoNumericForBinaryOutcome } from "@/components/campaigns/wall-chart/binary-assessment";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -152,6 +153,10 @@ export function useAssessmentDistributions(campaignId: string) {
     [memberRows]
   );
 
+  const assessmentOptionById = useMemo(() => {
+    return new Map(assessmentOptions.map((option) => [option.activity_id, option]));
+  }, [assessmentOptions]);
+
   const ratingsByActivity = useMemo(() => {
     const byActivity = new Map<number, typeof rawRatings>();
     for (const row of rawRatings) {
@@ -163,13 +168,22 @@ export function useAssessmentDistributions(campaignId: string) {
     for (const [activityId, rows] of byActivity.entries()) {
       const collapsed = collapseActivityRatingsToWorkerMap(rows as Parameters<typeof collapseActivityRatingsToWorkerMap>[0]);
       const workerRatings = new Map<number, number | null>();
+      const assessmentOption = assessmentOptionById.get(activityId);
       for (const [workerId, rating] of collapsed.entries()) {
-        workerRatings.set(workerId, rating.rating);
+        workerRatings.set(
+          workerId,
+          assessmentOption?.is_binary
+            ? pseudoNumericForBinaryOutcome({
+                binaryValue: rating.binary_value,
+                supporterOutcomeValue: assessmentOption.supporter_outcome_value,
+              })
+            : rating.rating
+        );
       }
       result.set(activityId, workerRatings);
     }
     return result;
-  }, [rawRatings]);
+  }, [assessmentOptionById, rawRatings]);
 
   const ambitionTargetByActivity = useMemo(() => {
     const result = new Map<number, AmbitionTarget | null>();

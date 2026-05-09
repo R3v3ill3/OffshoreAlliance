@@ -1,56 +1,33 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { NextResponse } from 'next/server'
 
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: Promise<{ scriptId: string }> }
-) {
-  try {
-    const { scriptId } = await params
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+/**
+ * @deprecated Phase B: /api/phone-wizard/scripts/[scriptId] is retired.
+ * All script operations now use /api/campaigns/[id]/call-scripts.
+ */
+export function GET() {
+  return NextResponse.json(
+    { error: 'This endpoint has been retired. Use /api/campaigns/[id]/call-scripts instead.' },
+    { status: 410 }
+  )
+}
 
-    const sid = parseInt(scriptId, 10)
-    if (!Number.isFinite(sid)) {
-      return NextResponse.json({ error: 'Invalid script id' }, { status: 400 })
-    }
+export function PUT() {
+  return NextResponse.json(
+    { error: 'This endpoint has been retired. Use /api/campaigns/[id]/call-scripts instead.' },
+    { status: 410 }
+  )
+}
 
-    const { data: row, error: fetchErr } = await supabase
-      .from('call_scripts')
-      .select('script_id, campaign_id, created_by')
-      .eq('script_id', sid)
-      .maybeSingle()
+export function PATCH() {
+  return NextResponse.json(
+    { error: 'This endpoint has been retired. Use /api/campaigns/[id]/call-scripts instead.' },
+    { status: 410 }
+  )
+}
 
-    if (fetchErr) throw fetchErr
-    if (!row || row.campaign_id != null) {
-      return NextResponse.json({ error: 'Script not found' }, { status: 404 })
-    }
-    if (row.created_by !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    const { error: delOutcomesErr } = await supabase
-      .from('call_outcome_definitions')
-      .delete()
-      .eq('script_id', sid)
-
-    if (delOutcomesErr) throw delOutcomesErr
-
-    const { error: delScriptErr } = await supabase
-      .from('call_scripts')
-      .delete()
-      .eq('script_id', sid)
-      .is('campaign_id', null)
-
-    if (delScriptErr) throw delScriptErr
-
-    return NextResponse.json({ ok: true })
-  } catch (error) {
-    console.error('DELETE phone-wizard script error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to delete script' },
-      { status: 500 }
-    )
-  }
+export function DELETE() {
+  return NextResponse.json(
+    { error: 'This endpoint has been retired. Use /api/campaigns/[id]/call-scripts instead.' },
+    { status: 410 }
+  )
 }

@@ -24,7 +24,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ACTIVITY_TEMPLATE_OPTIONS, VOTE_SUPPORTER_OPTIONS } from "@/lib/campaign/constants";
+import {
+  ACTIVITY_TEMPLATE_OPTIONS,
+  BINARY_SUPPORTER_OUTCOME_OPTIONS,
+} from "@/lib/campaign/constants";
 import { RATING_LEVELS } from "@/types/planner-types";
 import { toast } from "sonner";
 import type { CampaignActivityTemplateKey } from "@/types/database";
@@ -315,7 +318,7 @@ export function CreateAssessmentDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {VOTE_SUPPORTER_OPTIONS.map((option) => (
+                  {BINARY_SUPPORTER_OUTCOME_OPTIONS.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>

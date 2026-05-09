@@ -37,6 +37,11 @@ export const VOTE_SUPPORTER_OPTIONS = [
   { value: "abstain", label: "Abstained" },
 ] as const;
 
+export const BINARY_SUPPORTER_OUTCOME_OPTIONS = [
+  { value: "yes", label: "Yes" },
+  { value: "no", label: "No" },
+] as const;
+
 export const CAMPAIGN_SCOPE_LABELS: Record<string, string> = {
   single_employer_single_site: "Single employer, single site",
   single_employer_multi_site: "Single employer, multiple sites",

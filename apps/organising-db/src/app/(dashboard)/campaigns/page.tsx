@@ -41,6 +41,7 @@ interface CampaignRow {
   name: string;
   campaign_type: CampaignType;
   status: CampaignStatus;
+  is_standing: boolean;
   start_date: string | null;
   end_date: string | null;
   total_worker_estimate: number | null;
@@ -135,7 +136,7 @@ export default function CampaignsPage() {
       const { data, error } = await supabase
         .from("campaigns")
         .select(
-          `campaign_id, name, campaign_type, status, start_date, end_date,
+          `campaign_id, name, campaign_type, status, is_standing, start_date, end_date,
            total_worker_estimate, organiser_id,
            organiser:organisers(organiser_name),
            campaign_stage_plans(plan_id, stage_number, stage_name, status)`
@@ -202,7 +203,18 @@ export default function CampaignsPage() {
 
   const columns = useMemo<Column<CampaignRow>[]>(() => {
     const base: Column<CampaignRow>[] = [
-      { key: "name", header: "Name" },
+      {
+        key: "name",
+        header: "Name",
+        render: (row) => (
+          <span className="inline-flex items-center gap-2">
+            {row.name}
+            {row.is_standing && (
+              <Badge variant="secondary" className="text-xs shrink-0">Standing</Badge>
+            )}
+          </span>
+        ),
+      },
       {
         key: "campaign_type",
         header: "Type",

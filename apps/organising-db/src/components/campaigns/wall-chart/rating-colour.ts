@@ -1,5 +1,6 @@
 import { ratingLevelFor } from "@/types/planner-types";
 import type { ActivityRating, AssessmentSelection } from "./types";
+import { pseudoNumericForBinaryOutcome } from "./binary-assessment";
 
 /** Tailwind background class for a wall-chart cell, based on cumulative rating. */
 export function ratingBgClass(cumulative: number | null | undefined): string {
@@ -31,19 +32,13 @@ export const WALL_CHART_GRID_CLASS =
 
 /**
  * Map binary vote to the same discrete scale as 5-point ratings for wall-chart colour:
- * supportive → 2 (green), abstain → 3 (amber), other → 4 (red in theme).
+ * supportive → 2 (green), unsure/abstain → 3 (amber), other → 4 (red in theme).
  */
 export function pseudoNumericForBinaryWallChart(args: {
   binaryValue: string | null | undefined;
   supporterOutcomeValue: string | null | undefined;
 }): number | null {
-  const raw = args.binaryValue?.trim();
-  if (!raw) return null;
-  const bv = raw.toLowerCase();
-  const sup = args.supporterOutcomeValue?.trim().toLowerCase() ?? "";
-  if (bv === "abstain") return 3;
-  if (sup && bv === sup) return 2;
-  return 4;
+  return pseudoNumericForBinaryOutcome(args);
 }
 
 /** Numeric value that drives wall-chart tile colour in assessment mode (null = unrated grey). */

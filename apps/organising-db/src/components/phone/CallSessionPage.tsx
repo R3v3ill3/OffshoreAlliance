@@ -101,7 +101,7 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
   const queryClient = useQueryClient()
 
   const { data: list } = useCallList(campaignId, listId)
-  const { data: contact, isLoading: contactLoading, refetch: refetchNext } = usePhoneNext(
+  const { data: contact, isLoading: contactLoading, error: contactError, refetch: refetchNext } = usePhoneNext(
     campaignId, listId, shouldFetchNext
   )
   const recordAttempt = useRecordCallAttempt(campaignId)
@@ -543,6 +543,16 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
             <div className="flex items-center justify-center py-20">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               <span className="ml-2 text-sm text-muted-foreground">Loading next contact...</span>
+            </div>
+          ) : contactError ? (
+            <div className="text-center py-20">
+              <p className="text-lg font-semibold text-destructive">Failed to load contact</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                There was a problem fetching the next contact. Please try again.
+              </p>
+              <Button variant="outline" className="mt-4" onClick={() => refetchNext()}>
+                Retry
+              </Button>
             </div>
           ) : !contact ? (
             <div className="text-center py-20">

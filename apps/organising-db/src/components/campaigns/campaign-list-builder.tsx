@@ -55,15 +55,6 @@ interface CampaignListBuilderProps {
     contacts_tagged: number;
     contacts_created: number;
   }) => void;
-  /** When provided, the component switches to variation-aware multi-list creation mode. */
-  variationMode?: {
-    dimension: "membership_status" | "organising_role" | "occupation" | "rating_band";
-    segments: Array<{ key: string; label: string }>;
-  };
-  /** Script ID to link when creating call lists. */
-  scriptId?: number | null;
-  /** phone_call_actions.action_id to update list_ids after bulk creation. */
-  actionId?: number | null;
 }
 
 interface WorkerRow {
@@ -125,9 +116,6 @@ export function CampaignListBuilder({
   campaignId,
   canWrite,
   onListPrepared,
-  variationMode,
-  scriptId,
-  actionId,
 }: CampaignListBuilderProps) {
   const supabase = createClient();
   const { user } = useAuth();
@@ -437,54 +425,6 @@ export function CampaignListBuilder({
     };
   }
 
-  const handleCreateVariationLists = useCallback(async () => {
-    if (!variationMode || variationMode.segments.length === 0) return;
-    const baseName = listBaseName.trim() || `Call list`;
-    setCreatingLists(true);
-    setCreateListResult(null);
-    try {
-      const baseFilters = buildCurrentFilters();
-      const segments = variationMode.segments.map((seg) => {
-        // Merge the segment filter on top of base filters
-        const segFilters: Record<string, string | string[] | boolean | undefined> = {
-          ...baseFilters,
-          [variationMode.dimension === "membership_status" ? "membership" : variationMode.dimension]: seg.key,
-        };
-        return { key: seg.key, label: seg.label, filters: segFilters };
-      });
-
-      const res = await fetchApi(`/api/campaigns/${numericId}/call-lists/bulk-create`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          base_name: baseName,
-          script_id: scriptId ?? null,
-          action_id: actionId ?? null,
-          segments,
-        }),
-        timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Bulk create failed");
-      }
-      const count = (data.list_ids as number[]).length;
-      setCreateListResult({
-        type: "success",
-        message: `Created ${count} variation call list${count !== 1 ? "s" : ""}`,
-      });
-      queryClient.invalidateQueries({ queryKey: ["call-lists", numericId] });
-    } catch (err) {
-      setCreateListResult({
-        type: "error",
-        message: err instanceof Error ? err.message : "Unknown error",
-      });
-    } finally {
-      setCreatingLists(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [variationMode, listBaseName, numericId, scriptId, actionId, membershipFilter, roleFilter, employerFilter, worksiteFilter, ouFilter, ouTypeFilter, multiUnitOnly, occupationSearch, includeAnTags, excludeAnTags, queryClient]);
-
   const handleCreateSingleList = useCallback(async () => {
     const name = listBaseName.trim() || `Call list`;
     setCreatingLists(true);
@@ -497,7 +437,6 @@ export function CampaignListBuilder({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
-          script_id: scriptId ?? null,
           source_filters: baseFilters,
         }),
       });
@@ -532,7 +471,7 @@ export function CampaignListBuilder({
       setCreatingLists(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listBaseName, numericId, scriptId, membershipFilter, roleFilter, employerFilter, worksiteFilter, ouFilter, ouTypeFilter, multiUnitOnly, occupationSearch, includeAnTags, excludeAnTags, queryClient]);
+  }, [listBaseName, numericId, membershipFilter, roleFilter, employerFilter, worksiteFilter, ouFilter, ouTypeFilter, multiUnitOnly, occupationSearch, includeAnTags, excludeAnTags, queryClient]);
 
   return (
     <div className="space-y-4">
@@ -920,46 +859,24 @@ export function CampaignListBuilder({
             <div className="mb-4 flex flex-col gap-2">
               <div className="flex items-center gap-2">
                 <Input
-                  placeholder={
-                    variationMode
-                      ? `Base list name (e.g. "May call round")`
-                      : `List name (e.g. "May call round")`
-                  }
+                  placeholder={`List name (e.g. "May call round")`}
                   value={listBaseName}
                   onChange={(e) => setListBaseName(e.target.value)}
                   className="h-8 text-xs max-w-xs"
                 />
-                {variationMode ? (
-                  <Button
-                    size="sm"
-                    className="text-xs"
-                    onClick={() => void handleCreateVariationLists()}
-                    disabled={workers.length === 0 || creatingLists}
-                  >
-                    {creatingLists ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <ListPlus className="h-3 w-3" />
-                    )}
-                    {creatingLists
-                      ? "Creating…"
-                      : `Create ${variationMode.segments.length} variation list${variationMode.segments.length !== 1 ? "s" : ""}`}
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    className="text-xs"
-                    onClick={() => void handleCreateSingleList()}
-                    disabled={workers.length === 0 || creatingLists}
-                  >
-                    {creatingLists ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <ListPlus className="h-3 w-3" />
-                    )}
-                    {creatingLists ? "Creating…" : "Save as call list"}
-                  </Button>
-                )}
+                <Button
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => void handleCreateSingleList()}
+                  disabled={workers.length === 0 || creatingLists}
+                >
+                  {creatingLists ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <ListPlus className="h-3 w-3" />
+                  )}
+                  {creatingLists ? "Creating…" : "Save as call list"}
+                </Button>
               </div>
               {createListResult && (
                 <div

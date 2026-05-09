@@ -1,3 +1,12 @@
+/**
+ * call-flow-state — in-call UI state machine.
+ *
+ * `CallFlowAction` is the UI reducer event type for the in-call session.
+ * It is UNRELATED to the `phone_call_actions` database table, which is an
+ * orchestration session record (tracks which script and list(s) a caller has
+ * set up, and whether the setup is complete). The naming collision is
+ * unfortunate; a follow-up rename is tracked under §7.10 of the audit.
+ */
 import type { DialDisposition, CallDisposition } from '@/types/planner-types'
 
 // ─── Live-capture types ───────────────────────────────────────────────────────

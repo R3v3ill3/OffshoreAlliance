@@ -1422,16 +1422,14 @@ export function PhoneWizardSteps() {
       if (actionId && Number.isFinite(actionId) && state.savedScriptId) {
         try {
           const { data: existingAction } = await supabase
-            .from('phone_call_actions' as never)
+            .from('phone_call_actions')
             .select('list_ids, script_id, status')
             .eq('action_id', actionId)
             .single()
-          const prev: number[] =
-            ((existingAction as { list_ids?: number[] | null } | null)
-              ?.list_ids as number[] | null) ?? []
+          const prev: number[] = existingAction?.list_ids ?? []
           const merged = [...new Set([...prev, listId])]
           await supabase
-            .from('phone_call_actions' as never)
+            .from('phone_call_actions')
             .update({
               list_ids: merged,
               script_id: state.savedScriptId,

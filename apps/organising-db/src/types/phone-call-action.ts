@@ -1,8 +1,11 @@
 /**
- * Local TypeScript interface mirroring the phone_call_actions table
- * from migration 20260522100000_phone_call_actions.sql.
+ * Narrowed TypeScript types for the phone_call_actions table.
  *
- * Generated db types will not include this table until `pnpm gen:types` runs.
+ * The Supabase-generated types (packages/db-types/generated.ts) now include
+ * this table, but use `string` for enum columns (entry_branch, status,
+ * variation_dimension). These interfaces narrow to the known union values so
+ * call sites have proper type-checking. The generated types are used for
+ * Supabase client calls; these interfaces are used for business logic.
  */
 
 export type PhoneCallActionStatus = 'in_progress' | 'completed' | 'abandoned'

@@ -1,5 +1,22 @@
 'use client'
 
+/**
+ * CreatePhoneCallOrchestrator — a two-step **dialog router**, not a wizard.
+ *
+ * Step 1: BackgroundInfoStep — captures purpose, assessment context, and
+ *         whether variations are needed.
+ * Step 2: BranchPicker — lets the user choose script-first or list-first.
+ *
+ * On confirm it inserts a `phone_call_actions` orchestration row (status
+ * 'in_progress') and navigates to the appropriate starting page. The
+ * row is closed ('completed') once both a script and at least one list
+ * are linked — which happens either in PhoneWizardSteps (script-first) or
+ * in lists/new (list-first, via Phase F fix).
+ *
+ * Do NOT confuse with `PhoneWizardSteps`, which is the full 6-step phone
+ * wizard. This component only determines the entry branch and creates the
+ * orchestration record.
+ */
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Phone } from 'lucide-react'
@@ -17,7 +34,7 @@ import {
 } from '@/components/ui/dialog'
 import { BackgroundInfoStep, type BackgroundInfoValue } from './orchestrator/BackgroundInfoStep'
 import { BranchPicker } from './orchestrator/BranchPicker'
-import type { EntryBranch, PhoneCallAction } from '@/types/phone-call-action'
+import type { EntryBranch } from '@/types/phone-call-action'
 
 type Step = 'background_info' | 'branch_picker'
 
@@ -72,14 +89,14 @@ export function CreatePhoneCallOrchestrator({ campaignId, trigger, defaultOpen }
       }
 
       const { data, error } = await supabase
-        .from('phone_call_actions' as never)
-        .insert(payload as never)
+        .from('phone_call_actions')
+        .insert(payload)
         .select('action_id')
         .single()
 
       if (error) throw error
 
-      const actionId = (data as Pick<PhoneCallAction, 'action_id'>).action_id
+      const actionId = data!.action_id
 
       setOpen(false)
       toast.success('Phone call action created')

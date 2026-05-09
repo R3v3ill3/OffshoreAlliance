@@ -61,7 +61,7 @@ import { partitionCallOutcomeDefinitions } from '@/lib/phone/membership-outcomes
 void isCallActive
 void DIAL_DISPOSITIONS
 
-export default function CallWizardPage() {
+export default function CallSessionPage() {
   const params = useParams()
   const router = useRouter()
   const campaignId = params.id as string

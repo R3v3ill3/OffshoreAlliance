@@ -26,7 +26,7 @@ export function ResumeBanner({ campaignId }: Props) {
     queryFn: async () => {
       if (!user) return null
       const { data, error } = await supabase
-        .from('phone_call_actions' as never)
+        .from('phone_call_actions')
         .select('*')
         .eq('campaign_id', Number(campaignId))
         .eq('created_by', user.id)
@@ -44,7 +44,7 @@ export function ResumeBanner({ campaignId }: Props) {
   const abandonMutation = useMutation({
     mutationFn: async (actionId: number) => {
       const { error } = await supabase
-        .from('phone_call_actions' as never)
+        .from('phone_call_actions')
         .update({ status: 'abandoned' })
         .eq('action_id', actionId)
       if (error) throw error

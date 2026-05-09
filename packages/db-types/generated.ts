@@ -1610,6 +1610,95 @@ export type Database = {
           },
         ]
       }
+      call_attempt_cta_ratings: {
+        Row: {
+          activity_id: number | null
+          attempt_id: number
+          binary_value: string | null
+          created_at: string
+          created_by: string | null
+          cta_ambition_id: number
+          cta_rating_id: number
+          notes: string | null
+          rating: number | null
+          worker_id: number
+        }
+        Insert: {
+          activity_id?: number | null
+          attempt_id: number
+          binary_value?: string | null
+          created_at?: string
+          created_by?: string | null
+          cta_ambition_id: number
+          cta_rating_id?: number
+          notes?: string | null
+          rating?: number | null
+          worker_id: number
+        }
+        Update: {
+          activity_id?: number | null
+          attempt_id?: number
+          binary_value?: string | null
+          created_at?: string
+          created_by?: string | null
+          cta_ambition_id?: number
+          cta_rating_id?: number
+          notes?: string | null
+          rating?: number | null
+          worker_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_attempt_cta_ratings_activity_id_fkey"
+            columns: ["activity_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_activities"
+            referencedColumns: ["activity_id"]
+          },
+          {
+            foreignKeyName: "call_attempt_cta_ratings_attempt_id_fkey"
+            columns: ["attempt_id"]
+            isOneToOne: false
+            referencedRelation: "call_attempts"
+            referencedColumns: ["attempt_id"]
+          },
+          {
+            foreignKeyName: "call_attempt_cta_ratings_attempt_id_fkey"
+            columns: ["attempt_id"]
+            isOneToOne: false
+            referencedRelation: "vw_call_action_report"
+            referencedColumns: ["attempt_id"]
+          },
+          {
+            foreignKeyName: "call_attempt_cta_ratings_cta_ambition_id_fkey"
+            columns: ["cta_ambition_id"]
+            isOneToOne: false
+            referencedRelation: "call_script_cta_ambitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_attempt_cta_ratings_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_soc_recording_grid"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "call_attempt_cta_ratings_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "call_attempt_cta_ratings_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers_view"
+            referencedColumns: ["worker_id"]
+          },
+        ]
+      }
       call_attempt_objections: {
         Row: {
           attempt_id: number
@@ -1738,6 +1827,9 @@ export type Database = {
           attempt_id: number
           call_disposition: string | null
           callback_datetime: string | null
+          caller_leader_worker_id: number | null
+          caller_session_label: string | null
+          caller_session_worker_id: number | null
           caller_user_id: string
           created_at: string
           cta_response: string | null
@@ -1748,6 +1840,7 @@ export type Database = {
           list_item_id: number
           overall_notes: string | null
           script_id: number | null
+          share_token_id: number | null
           started_at: string
           support_level_assessed: string | null
         }
@@ -1755,6 +1848,9 @@ export type Database = {
           attempt_id?: number
           call_disposition?: string | null
           callback_datetime?: string | null
+          caller_leader_worker_id?: number | null
+          caller_session_label?: string | null
+          caller_session_worker_id?: number | null
           caller_user_id: string
           created_at?: string
           cta_response?: string | null
@@ -1765,6 +1861,7 @@ export type Database = {
           list_item_id: number
           overall_notes?: string | null
           script_id?: number | null
+          share_token_id?: number | null
           started_at?: string
           support_level_assessed?: string | null
         }
@@ -1772,6 +1869,9 @@ export type Database = {
           attempt_id?: number
           call_disposition?: string | null
           callback_datetime?: string | null
+          caller_leader_worker_id?: number | null
+          caller_session_label?: string | null
+          caller_session_worker_id?: number | null
           caller_user_id?: string
           created_at?: string
           cta_response?: string | null
@@ -1782,10 +1882,53 @@ export type Database = {
           list_item_id?: number
           overall_notes?: string | null
           script_id?: number | null
+          share_token_id?: number | null
           started_at?: string
           support_level_assessed?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "call_attempts_caller_leader_worker_id_fkey"
+            columns: ["caller_leader_worker_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_soc_recording_grid"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "call_attempts_caller_leader_worker_id_fkey"
+            columns: ["caller_leader_worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "call_attempts_caller_leader_worker_id_fkey"
+            columns: ["caller_leader_worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers_view"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "call_attempts_caller_session_worker_id_fkey"
+            columns: ["caller_session_worker_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_soc_recording_grid"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "call_attempts_caller_session_worker_id_fkey"
+            columns: ["caller_session_worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "call_attempts_caller_session_worker_id_fkey"
+            columns: ["caller_session_worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers_view"
+            referencedColumns: ["worker_id"]
+          },
           {
             foreignKeyName: "call_attempts_list_item_id_fkey"
             columns: ["list_item_id"]
@@ -1813,6 +1956,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vw_call_action_report"
             referencedColumns: ["script_id"]
+          },
+          {
+            foreignKeyName: "call_attempts_share_token_id_fkey"
+            columns: ["share_token_id"]
+            isOneToOne: false
+            referencedRelation: "call_share_tokens"
+            referencedColumns: ["token_id"]
           },
         ]
       }
@@ -1963,6 +2113,9 @@ export type Database = {
           assigned_to: string | null
           attempts_count: number
           best_disposition: string | null
+          claimed_at: string | null
+          claimed_by_session_label: string | null
+          claimed_by_worker_id: number | null
           created_at: string
           item_id: number
           last_attempt_at: string | null
@@ -1979,6 +2132,9 @@ export type Database = {
           assigned_to?: string | null
           attempts_count?: number
           best_disposition?: string | null
+          claimed_at?: string | null
+          claimed_by_session_label?: string | null
+          claimed_by_worker_id?: number | null
           created_at?: string
           item_id?: number
           last_attempt_at?: string | null
@@ -1995,6 +2151,9 @@ export type Database = {
           assigned_to?: string | null
           attempts_count?: number
           best_disposition?: string | null
+          claimed_at?: string | null
+          claimed_by_session_label?: string | null
+          claimed_by_worker_id?: number | null
           created_at?: string
           item_id?: number
           last_attempt_at?: string | null
@@ -2008,6 +2167,27 @@ export type Database = {
           worker_id?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "call_list_items_claimed_by_worker_id_fkey"
+            columns: ["claimed_by_worker_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_soc_recording_grid"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "call_list_items_claimed_by_worker_id_fkey"
+            columns: ["claimed_by_worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "call_list_items_claimed_by_worker_id_fkey"
+            columns: ["claimed_by_worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers_view"
+            referencedColumns: ["worker_id"]
+          },
           {
             foreignKeyName: "call_list_items_list_id_fkey"
             columns: ["list_id"]
@@ -2575,6 +2755,7 @@ export type Database = {
       }
       call_script_cta_ambitions: {
         Row: {
+          activity_id: number | null
           created_at: string
           cta_label: string
           id: number
@@ -2589,6 +2770,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          activity_id?: number | null
           created_at?: string
           cta_label: string
           id?: number
@@ -2603,6 +2785,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          activity_id?: number | null
           created_at?: string
           cta_label?: string
           id?: number
@@ -2617,6 +2800,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "call_script_cta_ambitions_activity_id_fkey"
+            columns: ["activity_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_activities"
+            referencedColumns: ["activity_id"]
+          },
           {
             foreignKeyName: "call_script_cta_ambitions_outcome_definition_id_fkey"
             columns: ["outcome_definition_id"]
@@ -2862,6 +3052,163 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "campaign_comms_drafts"
             referencedColumns: ["draft_id"]
+          },
+        ]
+      }
+      call_share_form_events: {
+        Row: {
+          created_at: string
+          event_id: number
+          event_type: string
+          ip_hash: string | null
+          payload: Json | null
+          token_id: number
+          worker_id: number | null
+        }
+        Insert: {
+          created_at?: string
+          event_id?: number
+          event_type: string
+          ip_hash?: string | null
+          payload?: Json | null
+          token_id: number
+          worker_id?: number | null
+        }
+        Update: {
+          created_at?: string
+          event_id?: number
+          event_type?: string
+          ip_hash?: string | null
+          payload?: Json | null
+          token_id?: number
+          worker_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_share_form_events_token_id_fkey"
+            columns: ["token_id"]
+            isOneToOne: false
+            referencedRelation: "call_share_tokens"
+            referencedColumns: ["token_id"]
+          },
+          {
+            foreignKeyName: "call_share_form_events_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_soc_recording_grid"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "call_share_form_events_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "call_share_form_events_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers_view"
+            referencedColumns: ["worker_id"]
+          },
+        ]
+      }
+      call_share_tokens: {
+        Row: {
+          created_at: string
+          expires_at: string
+          failed_attempts: number
+          issued_by: string
+          last_used_at: string | null
+          leader_worker_id: number | null
+          list_id: number
+          locked_until: string | null
+          password_algo: string
+          password_hash: string
+          revoked_at: string | null
+          token_hash: string
+          token_id: number
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          failed_attempts?: number
+          issued_by: string
+          last_used_at?: string | null
+          leader_worker_id?: number | null
+          list_id: number
+          locked_until?: string | null
+          password_algo: string
+          password_hash: string
+          revoked_at?: string | null
+          token_hash: string
+          token_id?: number
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          failed_attempts?: number
+          issued_by?: string
+          last_used_at?: string | null
+          leader_worker_id?: number | null
+          list_id?: number
+          locked_until?: string | null
+          password_algo?: string
+          password_hash?: string
+          revoked_at?: string | null
+          token_hash?: string
+          token_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_share_tokens_leader_worker_id_fkey"
+            columns: ["leader_worker_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_soc_recording_grid"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "call_share_tokens_leader_worker_id_fkey"
+            columns: ["leader_worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "call_share_tokens_leader_worker_id_fkey"
+            columns: ["leader_worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers_view"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "call_share_tokens_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "call_campaign_summary"
+            referencedColumns: ["list_id"]
+          },
+          {
+            foreignKeyName: "call_share_tokens_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "call_lists"
+            referencedColumns: ["list_id"]
+          },
+          {
+            foreignKeyName: "call_share_tokens_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "call_section_funnel"
+            referencedColumns: ["list_id"]
+          },
+          {
+            foreignKeyName: "call_share_tokens_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "vw_call_action_report"
+            referencedColumns: ["list_id"]
           },
         ]
       }
@@ -17839,6 +18186,15 @@ export type Database = {
         Args: { p_endpoint?: string; p_user_id: string }
         Returns: Json
       }
+      claim_next_call_list_item: {
+        Args: {
+          p_claim_ttl_seconds?: number
+          p_list_id: number
+          p_session_label: string
+          p_session_worker_id?: number
+        }
+        Returns: number
+      }
       cleanup_old_rate_limit_usage: { Args: never; Returns: number }
       clear_all_ai_cache: { Args: never; Returns: number }
       clear_expired_ai_cache: { Args: never; Returns: number }
@@ -18017,25 +18373,70 @@ export type Database = {
         }
         Returns: number
       }
-      record_call_attempt: {
-        Args: {
-          p_call_disposition?: string
-          p_callback_datetime?: string
-          p_caller_user_id: string
-          p_cta_response?: string
-          p_dial_disposition: string
-          p_duration_seconds?: number
-          p_follow_up_action?: string
-          p_issues?: Json
-          p_list_item_id: number
-          p_objections?: Json
-          p_overall_notes?: string
-          p_script_id: number
-          p_step_outcomes?: Json
-          p_support_level?: string
-        }
-        Returns: Json
-      }
+      record_call_attempt:
+        | {
+            Args: {
+              p_call_disposition?: string
+              p_callback_datetime?: string
+              p_caller_user_id: string
+              p_cta_response?: string
+              p_dial_disposition: string
+              p_duration_seconds?: number
+              p_follow_up_action?: string
+              p_issues?: Json
+              p_list_item_id: number
+              p_objections?: Json
+              p_overall_notes?: string
+              p_script_id: number
+              p_step_outcomes?: Json
+              p_support_level?: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_call_disposition?: string
+              p_callback_datetime?: string
+              p_caller_user_id: string
+              p_cta_ratings?: Json
+              p_cta_response?: string
+              p_dial_disposition: string
+              p_duration_seconds?: number
+              p_follow_up_action?: string
+              p_issues?: Json
+              p_list_item_id: number
+              p_objections?: Json
+              p_overall_notes?: string
+              p_script_id: number
+              p_step_outcomes?: Json
+              p_support_level?: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_call_disposition?: string
+              p_callback_datetime?: string
+              p_caller_leader_worker_id?: number
+              p_caller_session_label?: string
+              p_caller_session_worker_id?: number
+              p_caller_user_id: string
+              p_cta_ratings?: Json
+              p_cta_response?: string
+              p_dial_disposition: string
+              p_duration_seconds?: number
+              p_follow_up_action?: string
+              p_issues?: Json
+              p_list_item_id: number
+              p_objections?: Json
+              p_overall_notes?: string
+              p_script_id: number
+              p_share_token_id?: number
+              p_step_outcomes?: Json
+              p_support_level?: string
+            }
+            Returns: Json
+          }
       refresh_all_pending_gate_criteria: { Args: never; Returns: Json }
       refresh_gate_criteria_for_campaign: {
         Args: { p_campaign_id: number }
@@ -18048,6 +18449,10 @@ export type Database = {
       refresh_worksite_hierarchy_report_rows_mv: {
         Args: never
         Returns: undefined
+      }
+      release_call_list_item_claim: {
+        Args: { p_item_id: number; p_session_label: string }
+        Returns: boolean
       }
       request_campaign_edit_permission: {
         Args: { p_campaign_id: number; p_reason?: string }

@@ -344,8 +344,8 @@ export default function NewCallListPage() {
         try {
           const supabase = createClient()
           await supabase
-            .from('phone_call_actions' as never)
-            .update({ list_ids: [list.list_id] } as never)
+            .from('phone_call_actions')
+            .update({ list_ids: [list.list_id] })
             .eq('action_id', actionId)
         } catch {
           // Non-fatal: action linking failure should not block the user

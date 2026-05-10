@@ -1050,9 +1050,14 @@ export function CampaignWallChart({
           className="h-px -mb-px"
         />
         <div
-          className={`sticky top-0 z-20 bg-background -mx-2 px-2 pt-1 space-y-2 print:static print:bg-transparent print:p-0 ${
+          className={`sticky -top-6 z-20 bg-background -mx-2 px-2 pt-1 space-y-2 print:static print:bg-transparent print:p-0 ${
             isSummaryStuck ? "shadow-sm" : ""
           }`}
+          // Disable scroll anchoring on this branch so the layout shift
+          // caused by collapsing the summary doesn't trigger the browser to
+          // adjust scrollY, which made the page feel like it was jumping
+          // back to the top of the assessment distribution section.
+          style={{ overflowAnchor: "none" }}
         >
         <WallChartSelectionBar
           count={selection.size}
@@ -1219,6 +1224,13 @@ export function CampaignWallChart({
         />
         </div>
 
+        {/* overflow-anchor: none prevents the browser from picking these
+            elements as scroll anchors. When the sticky summary above
+            collapses, its flow height shrinks and content here would
+            otherwise become the anchor — the browser would then adjust
+            scrollY to keep it visually stable, which felt like the page
+            "jumping back to the top of this section". */}
+        <div style={{ overflowAnchor: "none" }}>
         <WallChartAssessmentCharts
           campaignId={campaignId}
           activeAssessmentId={
@@ -1228,7 +1240,10 @@ export function CampaignWallChart({
           }
         />
 
-        <div className={buildListOpen ? "flex flex-col xl:flex-row gap-3 items-start" : ""}>
+        <div
+          className={buildListOpen ? "flex flex-col xl:flex-row gap-3 items-start" : ""}
+          style={{ overflowAnchor: "none" }}
+        >
         <div
           ref={unitsContainerRef}
           className={`relative space-y-4 print:space-y-2 ${buildListOpen ? "flex-1 min-w-0 w-full" : ""}`}
@@ -1684,6 +1699,7 @@ export function CampaignWallChart({
             }}
           />
         )}
+        </div>
         </div>
 
         <Button

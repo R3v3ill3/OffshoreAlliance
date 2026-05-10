@@ -178,6 +178,24 @@ export function CampaignWallChart({
   // buildListController is declared further down once workerById / ratingByWorker
   // are available, so the optimistic add can hydrate placeholders from the
   // wall chart's already-loaded worker data.
+
+  // Sticky-aware campaign summary: a 1px sentinel rendered just above the
+  // sticky wrapper. When the sentinel scrolls out of viewport, the wrapper
+  // has stuck to the top — we pass `isStuck` to the summary header so it
+  // collapses verbose content while keeping the rating selector, controls
+  // and thin rating bar visible.
+  const [isSummaryStuck, setIsSummaryStuck] = useState(false);
+  const summaryStickySentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = summaryStickySentinelRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver(
+      ([entry]) => setIsSummaryStuck(!entry.isIntersecting),
+      { threshold: 0 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
   const [importWizardOpen, setImportWizardOpen] = useState(false);
   const [addWorkerOpen, setAddWorkerOpen] = useState(false);
   const [addWorkerFormKey, setAddWorkerFormKey] = useState(0);
@@ -1024,6 +1042,18 @@ export function CampaignWallChart({
         tabIndex={-1}
         onKeyDown={handleRootKeyDown}
       >
+        {/* Sticky sentinel: when this 1px row scrolls out of view, the
+            wrapper below has stuck to the top of the viewport. */}
+        <div
+          ref={summaryStickySentinelRef}
+          aria-hidden
+          className="h-px -mb-px"
+        />
+        <div
+          className={`sticky top-0 z-20 bg-background -mx-2 px-2 pt-1 space-y-2 print:static print:bg-transparent print:p-0 ${
+            isSummaryStuck ? "shadow-sm" : ""
+          }`}
+        >
         <WallChartSelectionBar
           count={selection.size}
           canWrite={canWrite}
@@ -1058,24 +1088,27 @@ export function CampaignWallChart({
               : undefined
           }
         />
-        <div className="rounded border bg-muted/30 px-3 py-2 print:hidden">
-          <AssessmentSelector
-            campaignId={campaignId}
-            value={campaignAssessmentDefault}
-            onChange={setCampaignAssessmentDefault}
-          />
-          {campaignAssessmentDefault.kind === "assessment" && (
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Campaign default: tile colour shows each worker&apos;s rating for{" "}
-              <span className="font-medium text-foreground">
-                {campaignAssessmentDefault.title}
-              </span>
-              . Use each unit&apos;s View control to override. Click the rating on a tile to
-              change it; the small badge is cumulative.
-            </p>
-          )}
-        </div>
         <WallChartSummaryHeader
+          isStuck={isSummaryStuck}
+          assessmentSelector={
+            <>
+              <AssessmentSelector
+                campaignId={campaignId}
+                value={campaignAssessmentDefault}
+                onChange={setCampaignAssessmentDefault}
+              />
+              {campaignAssessmentDefault.kind === "assessment" && !isSummaryStuck && (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Campaign default: tile colour shows each worker&apos;s rating for{" "}
+                  <span className="font-medium text-foreground">
+                    {campaignAssessmentDefault.title}
+                  </span>
+                  . Use each unit&apos;s View control to override. Click the rating on a
+                  tile to change it; the small badge is cumulative.
+                </p>
+              )}
+            </>
+          }
           campaignName={(campaign as { name?: string | null } | undefined)?.name ?? null}
           metrics={campaignMetrics}
           mode={displayMode}
@@ -1184,6 +1217,7 @@ export function CampaignWallChart({
             </div>
           }
         />
+        </div>
 
         <WallChartAssessmentCharts
           campaignId={campaignId}

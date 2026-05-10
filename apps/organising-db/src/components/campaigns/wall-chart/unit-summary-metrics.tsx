@@ -31,7 +31,7 @@ function formatLeadershipRatioCompact(leadershipTotal: number, total: number): s
 }
 
 /** Thin stacked rating bar for compact unit card summaries. */
-function CompactRatingsBar({ buckets, total }: { buckets: WallChartMetrics["ratingBuckets"]; total: number }) {
+export function CompactRatingsBar({ buckets, total }: { buckets: WallChartMetrics["ratingBuckets"]; total: number }) {
   if (total === 0) return null;
   const segments: { key: string; count: number; cls: string; label: string }[] = [
     { key: "r1", count: buckets.r1, cls: "bg-sky-500", label: "Rating 1" },

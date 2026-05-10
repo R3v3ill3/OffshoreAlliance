@@ -83,13 +83,34 @@ export type FireResponse = {
   draft?: FiredTaskDraft;
 };
 
+/**
+ * Local snapshot of a worker, used to render optimistic items in the panel
+ * before the server roundtrip completes. The wall chart provides this from its
+ * already-loaded worker maps so newly-dropped tiles render instantly.
+ */
+export type BuildListWorkerSnapshot = {
+  worker: NonNullable<BuildListItem["worker"]>;
+  cumulative_rating: number | null;
+  source_ou?: BuildListItem["source_ou"];
+};
+
 export type UseBuildListOptions = {
   campaignId: string | number;
   /** Initial list to open (e.g. from URL state or last-used). */
   initialListId?: number | null;
+  /**
+   * Returns a hydrated snapshot for a worker_id (or null if unknown). When
+   * provided, addItems pre-populates the items list optimistically so the
+   * UI does not wait for the network roundtrip.
+   */
+  workerSnapshot?: (workerId: number) => BuildListWorkerSnapshot | null;
 };
 
-export function useBuildList({ campaignId, initialListId }: UseBuildListOptions) {
+export function useBuildList({
+  campaignId,
+  initialListId,
+  workerSnapshot,
+}: UseBuildListOptions) {
   const queryClient = useQueryClient();
   const cid = typeof campaignId === "string" ? campaignId : String(campaignId);
 
@@ -186,7 +207,8 @@ export function useBuildList({ campaignId, initialListId }: UseBuildListOptions)
   const addItems = useAuthAwareMutation<
     { added: number; skipped: number },
     Error,
-    { listId: number; workerIds: number[]; sourceOuId?: number | null }
+    { listId: number; workerIds: number[]; sourceOuId?: number | null },
+    { previous: BuildListDetail | undefined }
   >({
     mutationFn: async ({ listId, workerIds, sourceOuId }) => {
       const res = await fetchApi(
@@ -204,13 +226,55 @@ export function useBuildList({ campaignId, initialListId }: UseBuildListOptions)
       const data = (await res.json()) as { added: number; skipped: number };
       return data;
     },
-    onSuccess: (_, vars) => invalidate(vars.listId),
+    // Optimistic update: append placeholders to the cached detail immediately
+    // so the user sees rows appear without waiting for the API roundtrip.
+    onMutate: async ({ listId, workerIds, sourceOuId }) => {
+      const key = detailKey(listId);
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<BuildListDetail>(key);
+      if (previous) {
+        const haveIds = new Set(previous.items.map((i) => i.worker_id));
+        const fresh = workerIds.filter((id) => !haveIds.has(id));
+        if (fresh.length > 0) {
+          const baseSort =
+            previous.items.reduce((m, i) => Math.max(m, i.sort_order), -1) + 1;
+          const now = new Date().toISOString();
+          const placeholders: BuildListItem[] = fresh.map((wid, i) => {
+            const snap = workerSnapshot?.(wid) ?? null;
+            return {
+              // Negative id flags the row as optimistic until the refetch lands.
+              id: -1 * (Date.now() + i),
+              list_id: listId,
+              worker_id: wid,
+              sort_order: baseSort + i,
+              source_ou_id: sourceOuId ?? snap?.source_ou?.ou_id ?? null,
+              added_at: now,
+              cumulative_rating: snap?.cumulative_rating ?? null,
+              worker: snap?.worker ?? null,
+              source_ou: snap?.source_ou ?? null,
+            };
+          });
+          queryClient.setQueryData<BuildListDetail>(key, {
+            ...previous,
+            items: [...previous.items, ...placeholders],
+          });
+        }
+      }
+      return { previous };
+    },
+    onError: (_err, vars, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData<BuildListDetail>(detailKey(vars.listId), ctx.previous);
+      }
+    },
+    onSettled: (_data, _err, vars) => invalidate(vars.listId),
   });
 
   const removeItems = useAuthAwareMutation<
     unknown,
     Error,
-    { listId: number; workerIds: number[] }
+    { listId: number; workerIds: number[] },
+    { previous: BuildListDetail | undefined }
   >({
     mutationFn: async ({ listId, workerIds }) => {
       const res = await fetchApi(
@@ -224,7 +288,25 @@ export function useBuildList({ campaignId, initialListId }: UseBuildListOptions)
       if (!res.ok) throw new Error(`Remove items failed: ${res.status}`);
       return res.json().catch(() => null);
     },
-    onSuccess: (_, vars) => invalidate(vars.listId),
+    onMutate: async ({ listId, workerIds }) => {
+      const key = detailKey(listId);
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<BuildListDetail>(key);
+      if (previous) {
+        const drop = new Set(workerIds);
+        queryClient.setQueryData<BuildListDetail>(key, {
+          ...previous,
+          items: previous.items.filter((i) => !drop.has(i.worker_id)),
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, vars, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData<BuildListDetail>(detailKey(vars.listId), ctx.previous);
+      }
+    },
+    onSettled: (_data, _err, vars) => invalidate(vars.listId),
   });
 
   const reorderItems = useAuthAwareMutation<

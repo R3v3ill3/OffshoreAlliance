@@ -36,40 +36,44 @@ export async function GET(
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { data: list, error: listErr } = await supabase
-      .from('campaign_worker_lists')
-      .select(
-        `list_id, campaign_id, name, description, default_purpose, status,
-         leader_worker_id, leader_organiser_id, source,
-         fired_call_list_id, fired_draft_id, fired_task_list_id, fired_at,
-         created_by, created_at, updated_at,
-         leader_worker:workers!campaign_worker_lists_leader_worker_id_fkey(
-           worker_id, first_name, last_name
-         )`
-      )
-      .eq('list_id', lid)
-      .single()
+    // List shell + items query run in parallel — they don't depend on each
+    // other. The ratings query has to follow because it needs worker_ids.
+    const [listRes, itemsRes] = await Promise.all([
+      supabase
+        .from('campaign_worker_lists')
+        .select(
+          `list_id, campaign_id, name, description, default_purpose, status,
+           leader_worker_id, leader_organiser_id, source,
+           fired_call_list_id, fired_draft_id, fired_task_list_id, fired_at,
+           created_by, created_at, updated_at,
+           leader_worker:workers!campaign_worker_lists_leader_worker_id_fkey(
+             worker_id, first_name, last_name
+           )`
+        )
+        .eq('list_id', lid)
+        .single(),
+      supabase
+        .from('campaign_worker_list_items')
+        .select(
+          `id, list_id, worker_id, sort_order, source_ou_id, added_at,
+           worker:workers!worker_id(
+             worker_id, first_name, last_name, email, phone,
+             is_hsr, is_bargaining_rep,
+             member_role_type:member_role_types(role_type_id, role_name, display_name)
+           ),
+           source_ou:campaign_organising_units!source_ou_id(ou_id, name, ou_type)`
+        )
+        .eq('list_id', lid)
+        .order('sort_order', { ascending: true }),
+    ])
 
-    if (listErr) throw listErr
+    if (listRes.error) throw listRes.error
+    const list = listRes.data
     if (!list || list.campaign_id !== cid) {
       return NextResponse.json({ error: 'List not found' }, { status: 404 })
     }
-
-    const { data: items, error: itemsErr } = await supabase
-      .from('campaign_worker_list_items')
-      .select(
-        `id, list_id, worker_id, sort_order, source_ou_id, added_at,
-         worker:workers!worker_id(
-           worker_id, first_name, last_name, email, phone,
-           is_hsr, is_bargaining_rep,
-           member_role_type:member_role_types(role_type_id, role_name, display_name)
-         ),
-         source_ou:campaign_organising_units!source_ou_id(ou_id, name, ou_type)`
-      )
-      .eq('list_id', lid)
-      .order('sort_order', { ascending: true })
-
-    if (itemsErr) throw itemsErr
+    if (itemsRes.error) throw itemsRes.error
+    const items = itemsRes.data
 
     // Hydrate cumulative rating from the rating summary view.
     const workerIds = (items ?? []).map((i) => i.worker_id)

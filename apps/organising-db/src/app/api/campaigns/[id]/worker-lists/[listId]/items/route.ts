@@ -1,23 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
-async function assertList(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  campaignId: number,
-  listId: number
-) {
-  const { data, error } = await supabase
-    .from('campaign_worker_lists')
-    .select('list_id, campaign_id')
-    .eq('list_id', listId)
-    .maybeSingle()
-  if (error) throw error
-  if (!data || data.campaign_id !== campaignId) {
-    return { ok: false as const, status: 404, message: 'List not found' }
-  }
-  return { ok: true as const }
-}
-
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; listId: string }> }
@@ -34,9 +17,6 @@ export async function POST(
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const guard = await assertList(supabase, cid, lid)
-    if (!guard.ok) return NextResponse.json({ error: guard.message }, { status: guard.status })
-
     const body = await req.json()
     const workerIds: unknown = body?.worker_ids
     const sourceOuId: number | null =
@@ -50,44 +30,68 @@ export async function POST(
       return NextResponse.json({ error: 'worker_ids[] empty after filter' }, { status: 400 })
     }
 
-    // Determine current max sort_order to append at the bottom.
-    const { data: existing, error: existingErr } = await supabase
-      .from('campaign_worker_list_items')
-      .select('worker_id, sort_order')
-      .eq('list_id', lid)
-    if (existingErr) throw existingErr
+    // Run the campaign-scope check + max-sort lookup in parallel. The
+    // previous implementation pulled every existing item from the list to
+    // dedupe in JS; we now lean on the (list_id, worker_id) UNIQUE constraint
+    // and `ignoreDuplicates` in the upsert below, so this stays O(1) on the
+    // list size.
+    const [scopeRes, maxRes] = await Promise.all([
+      supabase
+        .from('campaign_worker_lists')
+        .select('list_id, campaign_id')
+        .eq('list_id', lid)
+        .maybeSingle(),
+      supabase
+        .from('campaign_worker_list_items')
+        .select('sort_order')
+        .eq('list_id', lid)
+        .order('sort_order', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
 
-    const have = new Set((existing ?? []).map((r) => r.worker_id))
-    const fresh = ids.filter((id) => !have.has(id))
-    const maxSort =
-      (existing ?? []).reduce((m, r) => (r.sort_order > m ? r.sort_order : m), -1) + 1
-
-    if (fresh.length === 0) {
-      return NextResponse.json({ added: 0, skipped: ids.length, items: [] })
+    if (scopeRes.error) throw scopeRes.error
+    if (!scopeRes.data || scopeRes.data.campaign_id !== cid) {
+      return NextResponse.json({ error: 'List not found' }, { status: 404 })
     }
+    if (maxRes.error) throw maxRes.error
 
-    const rows = fresh.map((wid, i) => ({
+    const startSort = (maxRes.data?.sort_order ?? -1) + 1
+
+    const rows = ids.map((wid, i) => ({
       list_id: lid,
       worker_id: wid,
-      sort_order: maxSort + i,
+      sort_order: startSort + i,
       source_ou_id: sourceOuId,
     }))
 
+    // Upsert with ignoreDuplicates so existing (list_id, worker_id) pairs
+    // are silently skipped without a separate read. .select() returns only
+    // the rows actually inserted.
     const { data: inserted, error: insErr } = await supabase
       .from('campaign_worker_list_items')
-      .insert(rows)
+      .upsert(rows, { onConflict: 'list_id,worker_id', ignoreDuplicates: true })
       .select()
 
     if (insErr) throw insErr
 
-    // Touch parent updated_at so the list reflows in the picker.
-    await supabase
+    // Fire-and-forget: bump parent updated_at so the list reflows in the
+    // picker. We don't await — clients only need the inserted items back.
+    void supabase
       .from('campaign_worker_lists')
       .update({ updated_at: new Date().toISOString() })
       .eq('list_id', lid)
+      .then(({ error }) => {
+        if (error) console.error('Touch updated_at failed:', error)
+      })
 
+    const addedCount = inserted?.length ?? 0
     return NextResponse.json(
-      { added: inserted?.length ?? 0, skipped: ids.length - fresh.length, items: inserted ?? [] },
+      {
+        added: addedCount,
+        skipped: ids.length - addedCount,
+        items: inserted ?? [],
+      },
       { status: 201 }
     )
   } catch (error) {
@@ -112,9 +116,6 @@ export async function DELETE(
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const guard = await assertList(supabase, cid, lid)
-    if (!guard.ok) return NextResponse.json({ error: guard.message }, { status: guard.status })
-
     const body = await req.json().catch(() => null)
     const workerIds: unknown = body?.worker_ids
     if (!Array.isArray(workerIds) || workerIds.length === 0) {
@@ -122,6 +123,9 @@ export async function DELETE(
     }
     const ids = workerIds.filter((n): n is number => typeof n === 'number')
 
+    // The DELETE is RLS-guarded against the parent list (campaign writer
+    // policy), so we don't need a separate scope check. Skipping that read
+    // saves one round-trip vs. the previous assertList() call.
     const { error } = await supabase
       .from('campaign_worker_list_items')
       .delete()
@@ -130,10 +134,13 @@ export async function DELETE(
 
     if (error) throw error
 
-    await supabase
+    void supabase
       .from('campaign_worker_lists')
       .update({ updated_at: new Date().toISOString() })
       .eq('list_id', lid)
+      .then(({ error: tErr }) => {
+        if (tErr) console.error('Touch updated_at failed:', tErr)
+      })
 
     return NextResponse.json({ ok: true, removed: ids.length })
   } catch (error) {

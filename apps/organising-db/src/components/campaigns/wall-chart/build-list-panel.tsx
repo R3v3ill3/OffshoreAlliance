@@ -368,6 +368,10 @@ export function BuildListPanel({
                     <BuildListItemRow
                       item={item}
                       missingContact={flagged}
+                      // Negative ids are optimistic placeholders that haven't
+                      // been confirmed by the server yet — the row shows a
+                      // small saving spinner in place of the drag handle.
+                      pending={item.id < 0}
                       onRemove={canWrite ? handleRemoveItem : undefined}
                       onDragStart={onRowDragStart}
                       onDragOver={onRowDragOver}

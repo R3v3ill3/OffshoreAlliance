@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Mail, Phone } from "lucide-react";
+import { Check, Mail, Phone } from "lucide-react";
 import type { DragEvent, MouseEvent } from "react";
 import { cn } from "@/lib/utils/cn";
 import { getWallChartDefaultCumulative, isWorkerMemberLike } from "@/lib/campaign/constants";
@@ -64,6 +64,12 @@ export type WorkerTileProps = {
   onDragEnd?: () => void;
   /** Phone / email icon → open worker sheet with that field focused (when canWrite). */
   onContactBadgeClick?: (workerId: number, field: WorkerTileContactField) => void;
+  /**
+   * True when this worker is in the currently-active build list. Renders a
+   * small green check overlay so users can see at a glance who has already
+   * been added (and avoid re-adding them).
+   */
+  inBuildList?: boolean;
 };
 
 export function WorkerTile({
@@ -82,6 +88,7 @@ export function WorkerTile({
   onDragStartRefs,
   onDragEnd,
   onContactBadgeClick,
+  inBuildList,
 }: WorkerTileProps) {
   const mt = worker.member_role_type;
   const um = worker.union_membership_type;
@@ -387,6 +394,15 @@ export function WorkerTile({
           className="absolute -top-1 -right-1 inline-flex items-center justify-center rounded-sm bg-violet-600 text-white text-[8px] leading-none px-1 py-px shadow"
         >
           ◫
+        </span>
+      )}
+      {inBuildList && (
+        <span
+          aria-label="Already in the build list"
+          title="Already in the build list"
+          className="absolute -top-1 -left-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-white shadow ring-1 ring-white print:hidden"
+        >
+          <Check className="h-2.5 w-2.5" strokeWidth={3} aria-hidden />
         </span>
       )}
     </div>

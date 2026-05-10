@@ -1,6 +1,6 @@
 "use client";
 
-import { Mail, Phone, X, GripVertical } from "lucide-react";
+import { Loader2, Mail, Phone, X, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { ratingBorderTextClass } from "./rating-colour";
 import type { BuildListItem } from "./use-build-list";
@@ -22,6 +22,8 @@ export type BuildListItemRowProps = {
   rightAction?: React.ReactNode;
   /** Visual state when this row is being dragged into the leader slot. */
   draggable?: boolean;
+  /** When true, the row is an optimistic placeholder waiting for server confirmation — render a small saving spinner. */
+  pending?: boolean;
 };
 
 export function BuildListItemRow({
@@ -35,6 +37,7 @@ export function BuildListItemRow({
   onClick,
   rightAction,
   draggable = true,
+  pending,
 }: BuildListItemRowProps) {
   const w = item.worker;
   if (!w) {
@@ -72,7 +75,8 @@ export function BuildListItemRow({
       className={cn(
         "group flex items-center gap-2 rounded border bg-card px-2 py-1.5 text-xs",
         "hover:bg-accent/50 transition-colors",
-        missingContact && "border-amber-400/70 bg-amber-50/40 dark:bg-amber-950/20"
+        missingContact && "border-amber-400/70 bg-amber-50/40 dark:bg-amber-950/20",
+        pending && "opacity-70"
       )}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : -1}
@@ -88,10 +92,17 @@ export function BuildListItemRow({
           : undefined
       }
     >
-      <GripVertical
-        className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground opacity-50 group-hover:opacity-100"
-        aria-hidden
-      />
+      {pending ? (
+        <Loader2
+          className="h-3 w-3 shrink-0 animate-spin text-muted-foreground"
+          aria-label="Saving"
+        />
+      ) : (
+        <GripVertical
+          className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground opacity-50 group-hover:opacity-100"
+          aria-hidden
+        />
+      )}
 
       <span
         title={`Cumulative rating ${cumulative ?? "—"}`}

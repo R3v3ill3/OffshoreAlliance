@@ -175,7 +175,9 @@ export function CampaignWallChart({
   const [createTaskListOpen, setCreateTaskListOpen] = useState(false);
   const [taskListFiredDraft, setTaskListFiredDraft] = useState<FiredTaskDraft | null>(null);
   const [buildListOpen, setBuildListOpen] = useState(false);
-  const buildListController = useBuildList({ campaignId });
+  // buildListController is declared further down once workerById / ratingByWorker
+  // are available, so the optimistic add can hydrate placeholders from the
+  // wall chart's already-loaded worker data.
   const [importWizardOpen, setImportWizardOpen] = useState(false);
   const [addWorkerOpen, setAddWorkerOpen] = useState(false);
   const [addWorkerFormKey, setAddWorkerFormKey] = useState(0);
@@ -455,6 +457,53 @@ export function CampaignWallChart({
     for (const r of ratingSummary) m.set(r.worker_id, r);
     return m;
   }, [ratingSummary]);
+
+  // Snapshot getter so the build-list panel can render optimistic rows
+  // immediately on drop without waiting for the server roundtrip.
+  const buildListWorkerSnapshot = useCallback(
+    (id: number) => {
+      const w = workerById.get(id);
+      if (!w) return null;
+      const role = w.member_role_type;
+      return {
+        worker: {
+          worker_id: w.worker_id,
+          first_name: w.first_name,
+          last_name: w.last_name,
+          email: w.email,
+          phone: w.phone,
+          is_hsr: w.is_hsr,
+          is_bargaining_rep: w.is_bargaining_rep,
+          member_role_type: role
+            ? {
+                role_type_id: role.role_type_id,
+                role_name: role.role_name,
+                display_name: role.display_name,
+              }
+            : null,
+        },
+        cumulative_rating: ratingByWorker.get(id)?.cumulative_rating ?? null,
+        source_ou: null,
+      };
+    },
+    [workerById, ratingByWorker]
+  );
+
+  const buildListController = useBuildList({
+    campaignId,
+    workerSnapshot: buildListWorkerSnapshot,
+  });
+
+  // Set of worker_ids in the active build list — used to render a
+  // "✓ in build list" badge on wall chart tiles, so users don't add the
+  // same worker twice.
+  const buildListWorkerIds = useMemo(() => {
+    const s = new Set<number>();
+    for (const item of buildListController.detail.data?.items ?? []) {
+      s.add(item.worker_id);
+    }
+    return s;
+  }, [buildListController.detail.data]);
 
   // ---- Multi-unit assignment metadata ---------------------------------------
   const ouNameById = useMemo(() => {
@@ -761,6 +810,7 @@ export function CampaignWallChart({
             setSelectedWorkerId(id);
           }}
           onCopy={(id) => setCopyWorkerId(id)}
+          inBuildList={buildListOpen ? buildListWorkerIds.has(workerId) : undefined}
           onDragStartRefs={(id, tileOuId) => {
             if (selection.has(tileOuId, id)) {
               return selection
@@ -792,6 +842,8 @@ export function CampaignWallChart({
       unitAssessmentOverride,
       activityRatingsByActivityId,
       campaignId,
+      buildListOpen,
+      buildListWorkerIds,
     ]
   );
 

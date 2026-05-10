@@ -84,6 +84,21 @@ export type WorkerPickerProps = {
   notes?: string;
   /** Notes change handler. Only relevant when `hideNotes` is false. */
   onNotesChange?: (notes: string) => void;
+  /**
+   * Worker IDs to "pin" at the top of the list under a dedicated
+   * "Pre-loaded from list" group. These workers stay visible and pre-checked
+   * even when:
+   *   - they're in `existingFollowerIds` (already linked to the leader),
+   *   - the "Only my units" toggle would normally hide them,
+   *   - the OU filter would normally hide them.
+   * Used by flows that pre-populate the picker from a saved cohort (e.g. the
+   * wall chart "build list" handoff into the task wizard) so the user can
+   * confirm the inherited members and uncheck any they want to drop before
+   * saving.
+   */
+  preloadedWorkerIds?: number[];
+  /** Label for the preloaded group header. Defaults to "Pre-loaded from list". */
+  preloadedGroupLabel?: string;
 };
 
 const EMPTY_NUMBER_ARRAY: ReadonlyArray<number> = Object.freeze([]);
@@ -98,6 +113,8 @@ export function WorkerPicker({
   hideNotes = true,
   notes,
   onNotesChange,
+  preloadedWorkerIds,
+  preloadedGroupLabel = "Pre-loaded from list",
 }: WorkerPickerProps) {
   const supabase = createClient();
   const ctx = useLeaderUnitContext({
@@ -221,28 +238,40 @@ export function WorkerPicker({
     return s;
   }, [excludeWorkerIds]);
 
+  const preloadedSet = useMemo(
+    () => new Set<number>(preloadedWorkerIds ?? []),
+    [preloadedWorkerIds]
+  );
+
   const selectedOuId = ouFilter === "all" ? null : Number(ouFilter);
 
-  const { suggested, others } = useMemo(() => {
+  const { preloaded, suggested, others } = useMemo(() => {
     const nameQ = search.trim().toLowerCase();
     const occQ = occupationFilter.trim().toLowerCase();
 
+    // Preloaded workers always pass the leader-link / unit / OU filters so
+    // the user can see and confirm the inherited cohort. They still respect
+    // text/occupation search so the user can pare them down visually.
+    const passesText = (w: CampaignWorkerRow) => {
+      if (nameQ) {
+        const matches =
+          w.first_name.toLowerCase().includes(nameQ) ||
+          w.last_name.toLowerCase().includes(nameQ);
+        if (!matches) return false;
+      }
+      if (occQ && !(w.occupation ?? "").toLowerCase().includes(occQ)) return false;
+      return true;
+    };
+
     const base = campaignWorkers
       .filter((w) => leaderWorkerId == null || w.worker_id !== leaderWorkerId)
-      .filter((w) => !existingFollowerIds.has(w.worker_id))
+      .filter((w) => preloadedSet.has(w.worker_id) || !existingFollowerIds.has(w.worker_id))
       .filter((w) => !exclusionSet.has(w.worker_id))
+      .filter(passesText)
       .filter((w) => {
-        if (!nameQ) return true;
-        return (
-          w.first_name.toLowerCase().includes(nameQ) ||
-          w.last_name.toLowerCase().includes(nameQ)
-        );
-      })
-      .filter((w) => {
-        if (!occQ) return true;
-        return (w.occupation ?? "").toLowerCase().includes(occQ);
-      })
-      .filter((w) => {
+        // Preloaded workers ignore the OU filter — they should always be
+        // visible regardless of what the user has the OU filter set to.
+        if (preloadedSet.has(w.worker_id)) return true;
         if (selectedOuId == null) return true;
         return ctx.allWorkerOuIds(w.worker_id).includes(selectedOuId);
       });
@@ -272,24 +301,34 @@ export function WorkerPicker({
       }
     });
 
+    // Pull preloaded workers out into their own bucket so they render in a
+    // dedicated group at the top, regardless of the suggested/other split.
+    const preloaded: CampaignWorkerRow[] = [];
+    const remaining: CampaignWorkerRow[] = [];
+    for (const w of sorted) {
+      if (preloadedSet.has(w.worker_id)) preloaded.push(w);
+      else remaining.push(w);
+    }
+
     // When a specific OU filter is active OR there is no leader to compare
     // against, collapse the suggested/other grouping (no shared-unit signal).
     if (selectedOuId != null || leaderWorkerId == null) {
-      return { suggested: sorted, others: [] };
+      return { preloaded, suggested: remaining, others: [] };
     }
 
     const suggested: CampaignWorkerRow[] = [];
     const others: CampaignWorkerRow[] = [];
-    for (const w of sorted) {
+    for (const w of remaining) {
       if (ctx.isSharedUnit(w.worker_id)) suggested.push(w);
       else others.push(w);
     }
-    return { suggested, others };
+    return { preloaded, suggested, others };
   }, [
     campaignWorkers,
     existingFollowerIds,
     exclusionSet,
     leaderWorkerId,
+    preloadedSet,
     search,
     occupationFilter,
     selectedOuId,
@@ -297,12 +336,19 @@ export function WorkerPicker({
     ctx,
   ]);
 
-  const visible = useMemo(
-    () => (onlyMyUnits && selectedOuId == null && leaderWorkerId != null
-      ? suggested
-      : [...suggested, ...others]),
+  // Visible rows EXCLUDING the preloaded group — that group is rendered
+  // explicitly at the top of the list. Preloaded rows are always visible:
+  // they bypass the "Only my units" toggle so the user can see (and
+  // confirm/uncheck) the cohort that was handed in from upstream, even if
+  // those workers aren't in the leader's own units.
+  const visibleRemaining = useMemo(
+    () =>
+      onlyMyUnits && selectedOuId == null && leaderWorkerId != null
+        ? suggested
+        : [...suggested, ...others],
     [onlyMyUnits, selectedOuId, suggested, others, leaderWorkerId]
   );
+  const totalVisible = preloaded.length + visibleRemaining.length;
 
   const toggle = (id: number) => {
     setSelected((prev) => {
@@ -316,7 +362,8 @@ export function WorkerPicker({
   const selectAllVisible = () => {
     setSelected((prev) => {
       const next = new Set(prev);
-      for (const w of visible) next.add(w.worker_id);
+      for (const w of preloaded) next.add(w.worker_id);
+      for (const w of visibleRemaining) next.add(w.worker_id);
       return next;
     });
   };
@@ -409,10 +456,41 @@ export function WorkerPicker({
       )}
 
       <div className="max-h-72 overflow-y-auto rounded border divide-y">
-        {visible.length === 0 ? (
+        {totalVisible === 0 ? (
           <p className="p-3 text-xs text-muted-foreground">No matching workers.</p>
         ) : (
           <>
+            {/* Preloaded group — always rendered first so the user can see
+                workers that were handed in from upstream (e.g. wall chart
+                build list). Stays visible regardless of "Only my units" or
+                OU filter; pre-checked via the seeded selection. */}
+            {preloaded.length > 0 && (
+              <>
+                <GroupHeader
+                  label={preloadedGroupLabel}
+                  count={preloaded.length}
+                  onSelectAll={() => {
+                    setSelected((prev) => {
+                      const next = new Set(prev);
+                      for (const w of preloaded) next.add(w.worker_id);
+                      return next;
+                    });
+                  }}
+                />
+                {preloaded.map((w) => (
+                  <CandidateRow
+                    key={`p-${w.worker_id}`}
+                    worker={w}
+                    checked={selected.has(w.worker_id)}
+                    onToggle={() => toggle(w.worker_id)}
+                    unitNames={ctx.allWorkerOuNames(w.worker_id)}
+                    highlightUnits={
+                      leaderWorkerId != null && ctx.isSharedUnit(w.worker_id)
+                    }
+                  />
+                ))}
+              </>
+            )}
             {suggested.length > 0 && selectedOuId == null && leaderWorkerId != null && (
               <GroupHeader
                 label="Suggested from leader's units"
@@ -427,7 +505,7 @@ export function WorkerPicker({
               />
             )}
             {(leaderWorkerId == null || selectedOuId != null
-              ? visible
+              ? visibleRemaining
               : suggested
             ).map((w) => (
               <CandidateRow
@@ -476,7 +554,7 @@ export function WorkerPicker({
       <div className="flex items-center justify-between text-xs">
         <span className="text-muted-foreground">
           {selected.size} selected
-          {visible.length > 0 && (
+          {totalVisible > 0 && (
             <>
               {" · "}
               <button

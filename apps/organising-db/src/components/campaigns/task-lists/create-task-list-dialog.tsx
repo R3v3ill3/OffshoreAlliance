@@ -41,7 +41,7 @@
  * row instead of INSERTing a new one.
  */
 
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
@@ -295,12 +295,20 @@ export function CreateTaskListDialog({
   const [organiserFieldKey, setOrganiserFieldKey] = useState(0);
   const [createActivityOpen, setCreateActivityOpen] = useState(false);
 
+  // Stable list of worker_ids that arrived with the draft. The Workers step
+  // pins these in a "Pre-loaded from your build list" group at the top so
+  // the user can confirm or trim them. We keep this separate from
+  // state.worker_ids (which changes as the user toggles) so the group stays
+  // anchored to the original cohort even if the user unticks rows.
+  const preloadedWorkerIdsRef = useRef<number[]>(draft?.worker_ids ?? []);
+
   // Re-initialise when the dialog re-opens or the draft id changes.
   useEffect(() => {
     if (open) {
       dispatch({ type: "RESET", value: initialState });
       setCurrentStep(leaderWorkerLock || draft ? "leader" : "anchor");
       setOrganiserFieldKey((k) => k + 1);
+      preloadedWorkerIdsRef.current = draft?.worker_ids ?? [];
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, draft?.task_list_id]);
@@ -684,6 +692,7 @@ export function CreateTaskListDialog({
                 campaignId={campaignId}
                 leaderWorkerId={leaderWorkerId}
                 workerIds={state.worker_ids}
+                preloadedWorkerIds={preloadedWorkerIdsRef.current}
                 onChange={(ids) => dispatch({ type: "SET_WORKERS", value: ids })}
               />
             )}
@@ -1284,11 +1293,18 @@ function WorkersStep({
   campaignId,
   leaderWorkerId,
   workerIds,
+  preloadedWorkerIds,
   onChange,
 }: {
   campaignId: string;
   leaderWorkerId: number | null;
   workerIds: number[];
+  /**
+   * Worker IDs that arrived with the draft (e.g. from the wall chart build
+   * list). They get pinned at the top of the picker in a "Pre-loaded from
+   * list" group so the user can confirm or trim them before saving.
+   */
+  preloadedWorkerIds?: number[];
   onChange: (ids: number[]) => void;
 }) {
   return (
@@ -1301,10 +1317,20 @@ function WorkersStep({
         that leader. The leader themselves is auto-rated 1 and (if needed)
         promoted to activist when the list is activated.
       </p>
+      {preloadedWorkerIds && preloadedWorkerIds.length > 0 && (
+        <p className="text-xs rounded border border-emerald-300/70 bg-emerald-50 px-2 py-1.5 text-emerald-900 dark:border-emerald-700/60 dark:bg-emerald-950/40 dark:text-emerald-200">
+          {preloadedWorkerIds.length} worker
+          {preloadedWorkerIds.length === 1 ? "" : "s"} were pre-loaded from
+          your build list and are already selected below. Untick any you
+          want to leave off the task list.
+        </p>
+      )}
       <WorkerPicker
         campaignId={campaignId}
         leaderWorkerId={leaderWorkerId ?? undefined}
         initialSelected={workerIds}
+        preloadedWorkerIds={preloadedWorkerIds}
+        preloadedGroupLabel="Pre-loaded from your build list"
         onChange={onChange}
       />
     </div>

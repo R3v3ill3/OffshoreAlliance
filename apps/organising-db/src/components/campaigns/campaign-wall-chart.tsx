@@ -196,6 +196,35 @@ export function CampaignWallChart({
     obs.observe(el);
     return () => obs.disconnect();
   }, []);
+
+  // Measure the sticky summary's height so the build-list panel (also
+  // sticky) can offset itself to sit just below the summary instead of
+  // disappearing behind it. We track height continuously so the offset
+  // adjusts to the collapsed vs. expanded summary.
+  const summaryStickyWrapperRef = useRef<HTMLDivElement | null>(null);
+  const [summaryStickyHeight, setSummaryStickyHeight] = useState(0);
+  useEffect(() => {
+    const el = summaryStickyWrapperRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      setSummaryStickyHeight(el.getBoundingClientRect().height);
+    };
+    const obs = new ResizeObserver(measure);
+    obs.observe(el);
+    measure();
+    return () => obs.disconnect();
+  }, []);
+
+  // Top offset for the build-list panel's sticky positioning. The summary
+  // wrapper uses `-top-6` (sticks 24px above the scroll viewport top), so
+  // its visible bottom inside the viewport is at `summaryHeight - 24`. We
+  // add an 8px gap below it for breathing room, then offset against main's
+  // p-6 padding (24px) so the panel sticks against the same baseline.
+  // When the summary isn't stuck yet, fall back to the original `top: 8`.
+  const buildListStickyTopPx =
+    isSummaryStuck && summaryStickyHeight > 0
+      ? summaryStickyHeight - 24 + 8
+      : 8;
   const [importWizardOpen, setImportWizardOpen] = useState(false);
   const [addWorkerOpen, setAddWorkerOpen] = useState(false);
   const [addWorkerFormKey, setAddWorkerFormKey] = useState(0);
@@ -1050,6 +1079,7 @@ export function CampaignWallChart({
           className="h-px -mb-px"
         />
         <div
+          ref={summaryStickyWrapperRef}
           className={`sticky -top-6 z-20 bg-background -mx-2 px-2 pt-1 space-y-2 print:static print:bg-transparent print:p-0 ${
             isSummaryStuck ? "shadow-sm" : ""
           }`}
@@ -1684,6 +1714,7 @@ export function CampaignWallChart({
             open={buildListOpen}
             onClose={() => setBuildListOpen(false)}
             controller={buildListController}
+            stickyTopPx={buildListStickyTopPx}
             onTaskDraftCreated={(draft) => {
               setTaskListFiredDraft({
                 task_list_id: draft.task_list_id,

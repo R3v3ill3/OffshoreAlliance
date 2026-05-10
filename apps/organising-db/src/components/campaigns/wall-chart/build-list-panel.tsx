@@ -67,6 +67,12 @@ export type BuildListPanelProps = {
    * the existing CreateTaskListDialog with the hydrated draft.
    */
   onTaskDraftCreated?: (draft: FiredTaskDraft) => void;
+  /**
+   * Sticky-top offset in pixels for the panel. Lets the parent push the
+   * panel down so its top sits just below any sticky element above it
+   * (e.g. the campaign summary header). Defaults to 8px.
+   */
+  stickyTopPx?: number;
 };
 
 export function BuildListPanel({
@@ -76,6 +82,7 @@ export function BuildListPanel({
   onClose,
   controller,
   onTaskDraftCreated,
+  stickyTopPx = 8,
 }: BuildListPanelProps) {
   const router = useRouter();
   const ownController = useBuildList({ campaignId });
@@ -256,8 +263,16 @@ export function BuildListPanel({
     <aside
       role="region"
       aria-label="Build list panel"
+      // top + max-height are driven by the parent so the panel docks
+      // immediately below the sticky campaign summary instead of
+      // disappearing behind it. The 16px gap = stickyTop padding (8px
+      // requested by parent) + 8px breathing room at the bottom.
+      style={{
+        top: `${stickyTopPx}px`,
+        maxHeight: `calc(100vh - ${stickyTopPx + 16}px)`,
+      }}
       className={cn(
-        "sticky top-2 max-h-[calc(100vh-2rem)] w-full md:w-[360px] lg:w-[400px]",
+        "sticky w-full md:w-[360px] lg:w-[400px]",
         "rounded border bg-card shadow-sm flex flex-col print:hidden"
       )}
     >

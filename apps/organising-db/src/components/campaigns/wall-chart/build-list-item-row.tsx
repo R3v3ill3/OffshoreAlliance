@@ -2,6 +2,7 @@
 
 import { Loader2, Mail, Phone, X, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { CampaignWorkerNameButton } from "../campaign-worker-detail-provider";
 import { ratingBorderTextClass } from "./rating-colour";
 import type { BuildListItem } from "./use-build-list";
 
@@ -116,7 +117,9 @@ export function BuildListItemRow({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="font-medium truncate">{fullName}</span>
+          <CampaignWorkerNameButton workerId={item.worker_id} className="truncate">
+            {fullName}
+          </CampaignWorkerNameButton>
           {role && (
             <span className="text-[9px] uppercase bg-background border rounded px-1 leading-none py-px">
               {role}

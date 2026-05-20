@@ -74,6 +74,7 @@ import { LibrarySection } from "@/components/campaigns/library/campaign-library"
 import { CampaignBasicsEditSheet } from "@/components/campaigns/campaign-basics-edit-sheet";
 import { SectionPlansTab } from "@/components/campaigns/section-planning/SectionPlansTab";
 import { CampaignStageCoveragePanel } from "@/components/campaigns/CampaignStageCoveragePanel";
+import { CampaignWorkerDetailProvider } from "@/components/campaigns/campaign-worker-detail-provider";
 import {
   VALID_TABS,
   resolveTabParams,
@@ -496,8 +497,9 @@ export default function CampaignDetailPage() {
         </div>
       )}
 
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <TabsList className="flex flex-wrap h-auto gap-1">
+      <CampaignWorkerDetailProvider campaignId={id} canWrite={!!canWrite}>
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
+          <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="plan">Plan &amp; Execution</TabsTrigger>
           <TabsTrigger value="section-plans">Section Plans</TabsTrigger>
@@ -867,7 +869,8 @@ export default function CampaignDetailPage() {
         <TabsContent value="bargaining">
           <BargainingTabContent campaignId={campaignId} />
         </TabsContent>
-      </Tabs>
+        </Tabs>
+      </CampaignWorkerDetailProvider>
 
       {campaignIdValid && (
         <SituationAnalysisEditSheet

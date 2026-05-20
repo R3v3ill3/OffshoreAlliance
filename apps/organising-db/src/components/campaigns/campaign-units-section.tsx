@@ -66,6 +66,7 @@ import {
   DeleteOrganisingUnitDialog,
   type DeleteUnitWorker,
 } from "./wall-chart/delete-organising-unit-dialog";
+import { CampaignWorkerNameButton } from "./campaign-worker-detail-provider";
 import type { WallChartOU } from "./wall-chart/types";
 
 const OU_TYPES: CampaignOuType[] = [
@@ -1390,7 +1391,9 @@ export function CampaignUnitsSection({
                                     </td>
                                   )}
                                   <td className="px-1 py-1">
-                                    {displayName}
+                                    <CampaignWorkerNameButton workerId={row.worker_id}>
+                                      {displayName}
+                                    </CampaignWorkerNameButton>
                                   </td>
                                   <td className="px-1 py-1 text-muted-foreground space-x-1">
                                     {row.is_primary && <span>(primary)</span>}
@@ -1646,7 +1649,11 @@ export function CampaignUnitsSection({
                             />
                           </td>
                         )}
-                        <td className="px-1 py-1">{m.label}</td>
+                        <td className="px-1 py-1">
+                          <CampaignWorkerNameButton workerId={m.worker_id}>
+                            {m.label}
+                          </CampaignWorkerNameButton>
+                        </td>
                         {canWrite && (
                           <td className="px-1 py-1 text-right">
                             <Button

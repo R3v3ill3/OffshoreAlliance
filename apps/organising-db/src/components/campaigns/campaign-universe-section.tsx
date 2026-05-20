@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Building2, MapPin, Plus, Trash2, Upload, Users } from "lucide-react";
 import { CampaignUnitsSection } from "@/components/campaigns/campaign-units-section";
+import { CampaignWorkerNameButton } from "@/components/campaigns/campaign-worker-detail-provider";
 import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 import { isWorkerMemberLike } from "@/lib/campaign/constants";
 
@@ -808,10 +809,12 @@ export function CampaignUniverseSection({
                     });
                     return (
                       <TableRow key={m.membership_id}>
-                        <TableCell className="font-medium">
-                          {w
-                            ? `${w.first_name ?? ""} ${w.last_name ?? ""}`.trim()
-                            : `Worker #${m.worker_id}`}
+                        <TableCell>
+                          <CampaignWorkerNameButton workerId={m.worker_id}>
+                            {w
+                              ? `${w.first_name ?? ""} ${w.last_name ?? ""}`.trim()
+                              : `Worker #${m.worker_id}`}
+                          </CampaignWorkerNameButton>
                         </TableCell>
                         <TableCell>
                           {canWrite ? (

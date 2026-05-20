@@ -44,6 +44,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { CampaignWorkerNameButton } from "./campaign-worker-detail-provider";
 
 interface CampaignListBuilderProps {
   campaignId: string | number;
@@ -938,7 +939,9 @@ export function CampaignListBuilder({
                         />
                       </TableCell>
                       <TableCell className="font-medium whitespace-nowrap">
-                        {w.first_name} {w.last_name}
+                        <CampaignWorkerNameButton workerId={w.worker_id}>
+                          {w.first_name} {w.last_name}
+                        </CampaignWorkerNameButton>
                       </TableCell>
                       <TableCell className="text-xs max-w-[180px] truncate">
                         {w.email ?? "—"}

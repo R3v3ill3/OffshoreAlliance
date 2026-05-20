@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { ActionResultType } from "@/types/database";
+import { CampaignWorkerNameButton } from "./campaign-worker-detail-provider";
 
 interface ResultRow {
   result_id: number;
@@ -77,9 +78,13 @@ export function CampaignResultsSection({ results }: CampaignResultsSectionProps)
                 {results.map((r) => (
                   <TableRow key={r.result_id}>
                     <TableCell className="font-medium">
-                      {r.worker
-                        ? `${r.worker.first_name} ${r.worker.last_name}`
-                        : "—"}
+                      {r.worker ? (
+                        <CampaignWorkerNameButton workerId={r.worker.worker_id}>
+                          {`${r.worker.first_name} ${r.worker.last_name}`}
+                        </CampaignWorkerNameButton>
+                      ) : (
+                        "—"
+                      )}
                     </TableCell>
                     <TableCell>{r.action?.title ?? "—"}</TableCell>
                     <TableCell>

@@ -273,8 +273,10 @@ function DetailsTab({
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
+      qc.invalidateQueries({ queryKey: ["campaign-members", campaignId] });
       qc.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
       qc.invalidateQueries({ queryKey: ["campaign-list-stats-members", cid] });
+      qc.invalidateQueries({ queryKey: ["campaign-list-builder-workers", cid] });
       qc.invalidateQueries({ queryKey: ["worker", String(workerId)] });
       qc.invalidateQueries({ queryKey: ["workers"] });
     },
@@ -341,7 +343,9 @@ function DetailsTab({
           invalidateQueryKeys={[
             ["non-oa-union-options"],
             ["campaign-members-full", campaignId],
+            ["campaign-members", campaignId],
             ["campaign-list-stats-members", cid],
+            ["campaign-list-builder-workers", cid],
             ["worker", String(workerId)],
           ]}
           unionMembershipTypeId={unionMembershipTypeId}
@@ -502,7 +506,9 @@ function RemoveFromCampaignPanel({
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
+      qc.invalidateQueries({ queryKey: ["campaign-members", campaignId] });
       qc.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
+      qc.invalidateQueries({ queryKey: ["campaign-list-builder-workers", Number(campaignId)] });
       qc.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
       qc.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
       qc.invalidateQueries({ queryKey: ["workers"] });

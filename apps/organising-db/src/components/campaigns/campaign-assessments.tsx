@@ -48,6 +48,7 @@ import { Trash2 } from "lucide-react";
 import { VOTE_SUPPORTER_OPTIONS } from "@/lib/campaign/constants";
 import { formatWorkerLabel } from "@/lib/workers/format-worker-label";
 import type { CampaignActivity } from "@/types/database";
+import { CampaignWorkerNameButton } from "./campaign-worker-detail-provider";
 import { CreateAssessmentDialog } from "./assessments/create-assessment-dialog";
 import { CreateTaskListDialog } from "./task-lists/create-task-list-dialog";
 import { AssessmentsTabCharts } from "./AssessmentsTabCharts";
@@ -943,7 +944,11 @@ export function CampaignAssessmentsSection({
                               aria-label={`Select ${row.workerName}`}
                             />
                           </TableCell>
-                          <TableCell className="font-medium">{row.workerName}</TableCell>
+                          <TableCell>
+                            <CampaignWorkerNameButton workerId={row.worker_id}>
+                              {row.workerName}
+                            </CampaignWorkerNameButton>
+                          </TableCell>
                           <TableCell>
                             <Select
                               value={typeof existingRating === "number" ? String(existingRating) : UNSET_VALUE}

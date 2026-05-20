@@ -19,11 +19,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  useCampaignWorkerDetail,
+} from "./campaign-worker-detail-provider";
 import { CampaignUnitCard } from "./wall-chart/campaign-unit-card";
 import { WorkerTile } from "./wall-chart/worker-tile";
 import {
@@ -37,7 +34,6 @@ import { Badge } from "@/components/ui/badge";
 import { MoreVertical, Layers, Trash2 } from "lucide-react";
 import { DeleteOrganisingUnitDialog, type DeleteUnitWorker } from "./wall-chart/delete-organising-unit-dialog";
 import { SplitUnitDialog, type SplitMember } from "./wall-chart/split-unit-dialog";
-import { WALL_CHART_GRID_CLASS } from "./wall-chart/rating-colour";
 import { humanizeOuType, ouDisplayName } from "./wall-chart/types";
 import { collapseActivityRatingsToWorkerMap } from "@/lib/utils/collapse-activity-ratings";
 import {
@@ -58,9 +54,7 @@ import {
   WallChartFilterBar,
   useDerivedOptions,
 } from "./wall-chart/wall-chart-filter-bar";
-import { WorkerDetailSheet } from "./wall-chart/worker-detail-sheet";
 import {
-  CopyWorkerToUnitDialog,
   MoveOrCopyWorkersDialog,
   type MoveMode,
 } from "./wall-chart/copy-worker-to-unit-dialog";
@@ -86,9 +80,7 @@ import type {
   WallChartOU,
   WallChartOUAssignment,
   WallChartRatingSummary,
-  WallChartRoleType,
   WallChartWorker,
-  WallChartWorkerContactFocusField,
 } from "./wall-chart/types";
 import { WallChartUnitManager } from "./wall-chart/wall-chart-unit-manager";
 import { CreateOrganisingUnitDialog } from "./wall-chart/create-organising-unit-dialog";
@@ -167,10 +159,7 @@ export function CampaignWallChart({
 }) {
   const supabase = createClient();
   const queryClient = useQueryClient();
-  const [selectedWorkerId, setSelectedWorkerId] = useState<number | null>(null);
-  const [detailFocusField, setDetailFocusField] =
-    useState<WallChartWorkerContactFocusField | null>(null);
-  const [copyWorkerId, setCopyWorkerId] = useState<number | null>(null);
+  const workerDetail = useCampaignWorkerDetail();
   const [tileUnitDialog, setTileUnitDialog] = useState<{
     workerId: number;
     fromOuId: number | null;
@@ -395,8 +384,6 @@ export function CampaignWallChart({
       window.setTimeout(() => setHighlightedOuId(null), 2500);
     }, 150);
     return () => window.clearTimeout(t);
-    // We intentionally run this only when ous first loads (length change) or focusOuId changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusOuId, ous.length]);
 
   const nextDisplayOrder = useMemo(() => {
@@ -670,25 +657,6 @@ export function CampaignWallChart({
     [parentExclusiveWorkersByOu, workersByOu]
   );
 
-  const selectedRow = useMemo(() => {
-    if (selectedWorkerId == null) return undefined;
-    return memberRows.find((r) => r.worker_id === selectedWorkerId);
-  }, [memberRows, selectedWorkerId]);
-
-  const { data: roleTypes = [] } = useQuery({
-    queryKey: ["member_role_types"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("member_role_types")
-        .select("role_type_id, role_name, display_name")
-        .eq("is_active", true)
-        .order("sort_order");
-      if (error) throw error;
-      return (data ?? []) as WallChartRoleType[];
-    },
-    enabled: !!selectedWorkerId,
-  });
-
   const estimate = (campaign?.total_worker_estimate as number | null) ?? 0;
   const named = memberRows.length;
   const campaignGreySlots = Math.max(0, estimate - named);
@@ -855,13 +823,11 @@ export function CampaignWallChart({
               return;
             }
             if (selection.size > 0) selection.clear();
-            setDetailFocusField(null);
-            setSelectedWorkerId(id);
+            workerDetail?.openWorkerDetail(id);
           }}
           onContactBadgeClick={(id, field) => {
             if (selection.size > 0) selection.clear();
-            setDetailFocusField(field);
-            setSelectedWorkerId(id);
+            workerDetail?.openWorkerDetail(id, { focusField: field });
           }}
           onCopy={(id, tileOuId) =>
             setTileUnitDialog({
@@ -904,11 +870,10 @@ export function CampaignWallChart({
       campaignId,
       buildListOpen,
       buildListWorkerIds,
+      workerDetail,
     ]
   );
 
-  const copyWorker = copyWorkerId != null ? workerById.get(copyWorkerId) : undefined;
-  const copyWorkerOuIds = copyWorkerId != null ? unitsByWorker.get(copyWorkerId) ?? [] : [];
   const tileDialogWorker =
     tileUnitDialog != null ? workerById.get(tileUnitDialog.workerId) : undefined;
   const tileDialogWorkerOuIds =
@@ -1790,54 +1755,6 @@ export function CampaignWallChart({
         </Button>
       </CardContent>
 
-      <Sheet
-        open={!!selectedRow}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedWorkerId(null);
-            setDetailFocusField(null);
-          }
-        }}
-      >
-        <SheetContent
-          className="w-full sm:max-w-xl overflow-y-auto"
-          onOpenAutoFocus={(e) => {
-            if (detailFocusField) e.preventDefault();
-          }}
-        >
-          <SheetHeader>
-            <SheetTitle>
-              {selectedRow?.worker
-                ? `${selectedRow.worker.first_name} ${selectedRow.worker.last_name}`
-                : "Worker"}
-            </SheetTitle>
-          </SheetHeader>
-          {selectedRow?.worker && (
-            <WorkerDetailSheet
-              key={selectedRow.worker_id}
-              campaignId={campaignId}
-              workerId={selectedRow.worker_id}
-              worker={selectedRow.worker}
-              ous={ous}
-              assignedOuIds={(unitsByWorker.get(selectedRow.worker_id) ?? []).slice().sort((a, b) => a - b)}
-              primaryOuId={
-                (ouAssign.find(
-                  (a) => a.worker_id === selectedRow.worker_id && a.is_primary
-                )?.ou_id) ?? null
-              }
-              roleTypes={roleTypes}
-              canWrite={canWrite}
-              detailFocusField={detailFocusField}
-              onClose={() => {
-                setSelectedWorkerId(null);
-                setDetailFocusField(null);
-              }}
-              onRequestCopyToUnit={(id) => setCopyWorkerId(id)}
-            />
-          )}
-        </SheetContent>
-      </Sheet>
-
       <MoveOrCopyWorkersDialog
         key={
           tileUnitDialog
@@ -1868,18 +1785,6 @@ export function CampaignWallChart({
         }
         ous={ous}
         excludeOuIds={tileDialogWorkerOuIds}
-      />
-
-      <CopyWorkerToUnitDialog
-        open={copyWorkerId != null}
-        onOpenChange={(v) => {
-          if (!v) setCopyWorkerId(null);
-        }}
-        campaignId={campaignId}
-        workerId={copyWorkerId}
-        workerName={copyWorker ? `${copyWorker.first_name} ${copyWorker.last_name}` : undefined}
-        ous={ous}
-        currentOuIds={copyWorkerOuIds}
       />
 
       {linkDialogOpen && (

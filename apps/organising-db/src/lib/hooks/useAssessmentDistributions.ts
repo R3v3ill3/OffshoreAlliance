@@ -57,7 +57,11 @@ export function useAssessmentDistributions(campaignId: string) {
         .select("worker_id")
         .eq("campaign_id", campaignId);
       if (error) throw error;
-      return (data ?? []) as { worker_id: number }[];
+      const rows = (data ?? []) as { worker_id: number }[];
+      // #region agent log
+      fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3dd855'},body:JSON.stringify({sessionId:'3dd855',location:'useAssessmentDistributions.ts:members-queryFn',message:'assessment-distributions fetched campaign-members (worker_id only)',data:{campaignId,rowCount:rows.length,hasWorkerJoin:false,selectShape:'worker_id-only',sampleKeys:rows[0]?Object.keys(rows[0]):[]},timestamp:Date.now(),hypothesisId:'H1-H4'})}).catch(()=>{});
+      // #endregion
+      return rows;
     },
   });
 

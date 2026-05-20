@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
@@ -139,7 +139,13 @@ export function CampaignUniverseSection({
   });
 
   // Comprehensive members query — same cache key as campaign-units-section so both get full shape.
-  const { data: members = [] } = useQuery({
+  const {
+    data: members = [],
+    isFetching: membersFetching,
+    isStale: membersStale,
+    isFetched: membersFetched,
+    dataUpdatedAt: membersUpdatedAt,
+  } = useQuery({
     queryKey: ["campaign-members", campaignId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -157,10 +163,35 @@ export function CampaignUniverseSection({
         )
         .eq("campaign_id", cid);
       if (error) throw error;
-      return data ?? [];
+      const rows = data ?? [];
+      const sample = rows[0] as { worker_id?: number; worker?: unknown } | undefined;
+      const sampleWorker = normalizeOne(
+        sample?.worker as { first_name?: string; last_name?: string } | null
+      );
+      // #region agent log
+      fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3dd855'},body:JSON.stringify({sessionId:'3dd855',location:'campaign-universe-section.tsx:members-queryFn',message:'universe section fetched campaign-members (full worker join)',data:{campaignId,rowCount:rows.length,hasWorkerJoin:sample?.worker!=null,sampleWorkerId:sample?.worker_id,sampleFirstName:sampleWorker?.first_name??null,sampleLastName:sampleWorker?.last_name??null,selectShape:'full-worker-join'},timestamp:Date.now(),hypothesisId:'H2-H4'})}).catch(()=>{});
+      // #endregion
+      return rows;
     },
     enabled: !!user && Number.isFinite(cid),
   });
+
+  useEffect(() => {
+    if (!Number.isFinite(cid) || members.length === 0) return;
+    const sample = members[0] as { worker_id?: number; worker?: unknown };
+    const sampleWorker = normalizeOne(
+      sample?.worker as { first_name?: string; last_name?: string } | null
+    );
+    const missingNameCount = members.filter((m: { worker?: unknown; worker_id: number }) => {
+      const w = normalizeOne(
+        m.worker as { first_name?: string; last_name?: string } | null
+      );
+      return !w || !(`${w.first_name ?? ""} ${w.last_name ?? ""}`.trim());
+    }).length;
+    // #region agent log
+    fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3dd855'},body:JSON.stringify({sessionId:'3dd855',location:'campaign-universe-section.tsx:members-effect',message:'universe section members cache/render state',data:{campaignId,memberCount:members.length,missingNameCount,hasWorkerJoin:sample?.worker!=null,sampleWorkerId:sample?.worker_id,sampleFirstName:sampleWorker?.first_name??null,sampleLastName:sampleWorker?.last_name??null,isFetching:membersFetching,isStale:membersStale,isFetched:membersFetched,dataUpdatedAt:membersUpdatedAt,userReady:!!user},timestamp:Date.now(),hypothesisId:'H1-H3-H5'})}).catch(()=>{});
+    // #endregion
+  }, [members, membersFetching, membersStale, membersFetched, membersUpdatedAt, campaignId, cid, user]);
 
   const { data: roleTypes = [] } = useQuery({
     queryKey: ["member_role_types"],

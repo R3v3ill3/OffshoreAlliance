@@ -50,8 +50,8 @@ export type WorkerTileProps = {
    * (range/add-to-selection — currently treated as toggle).
    */
   onClick?: (workerId: number, ouId: number | null, kind: WorkerTileClickKind) => void;
-  /** Right-click → open copy-to-unit dialog. */
-  onCopy?: (workerId: number) => void;
+  /** Right-click → open move/copy-to-unit dialog. */
+  onCopy?: (workerId: number, ouId: number | null) => void;
   /** True when this (ouId, workerId) pair is in the active selection. */
   isSelected?: boolean;
   /**
@@ -161,7 +161,7 @@ export function WorkerTile({
   const titleHsr = worker.is_hsr ? " Health and Safety Representative." : "";
   const titleOtherUnion = showOtherBadge && otherUnionTitle ? ` ${otherUnionTitle}.` : "";
   const titleHints =
-    canWrite ? " Click to open, \u2318/Ctrl-click to select, Shift-click to add, right-click to copy." : "";
+    canWrite ? " Click to open, \u2318/Ctrl-click to select, Shift-click to add, right-click to move/copy." : "";
 
   const hasPhone = Boolean(worker.phone?.trim());
   const hasEmail = Boolean(worker.email?.trim());
@@ -289,7 +289,7 @@ export function WorkerTile({
       onContextMenu={(e) => {
         if (!canWrite || !onCopy) return;
         e.preventDefault();
-        onCopy(worker.worker_id);
+        onCopy(worker.worker_id, ouId ?? null);
       }}
     >
       <button

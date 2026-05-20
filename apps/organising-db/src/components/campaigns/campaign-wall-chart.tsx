@@ -171,6 +171,11 @@ export function CampaignWallChart({
   const [detailFocusField, setDetailFocusField] =
     useState<WallChartWorkerContactFocusField | null>(null);
   const [copyWorkerId, setCopyWorkerId] = useState<number | null>(null);
+  const [tileUnitDialog, setTileUnitDialog] = useState<{
+    workerId: number;
+    fromOuId: number | null;
+    fromOuType: string | null;
+  } | null>(null);
   const [createUnitOpen, setCreateUnitOpen] = useState(false);
   const [createAssessmentOpen, setCreateAssessmentOpen] = useState(false);
   const [createTaskListOpen, setCreateTaskListOpen] = useState(false);
@@ -858,7 +863,13 @@ export function CampaignWallChart({
             setDetailFocusField(field);
             setSelectedWorkerId(id);
           }}
-          onCopy={(id) => setCopyWorkerId(id)}
+          onCopy={(id, tileOuId) =>
+            setTileUnitDialog({
+              workerId: id,
+              fromOuId: tileOuId,
+              fromOuType: tileOuId != null ? (ouTypeById.get(tileOuId) ?? null) : null,
+            })
+          }
           inBuildList={buildListOpen ? buildListWorkerIds.has(workerId) : undefined}
           onDragStartRefs={(id, tileOuId) => {
             if (selection.has(tileOuId, id)) {
@@ -898,6 +909,10 @@ export function CampaignWallChart({
 
   const copyWorker = copyWorkerId != null ? workerById.get(copyWorkerId) : undefined;
   const copyWorkerOuIds = copyWorkerId != null ? unitsByWorker.get(copyWorkerId) ?? [] : [];
+  const tileDialogWorker =
+    tileUnitDialog != null ? workerById.get(tileUnitDialog.workerId) : undefined;
+  const tileDialogWorkerOuIds =
+    tileUnitDialog != null ? unitsByWorker.get(tileUnitDialog.workerId) ?? [] : [];
 
   // ── Split: members for the targeted OU ─────────────────────────────────
   // Lazy-loaded only when a split dialog is open; pulls dimension columns +
@@ -1822,6 +1837,38 @@ export function CampaignWallChart({
           )}
         </SheetContent>
       </Sheet>
+
+      <MoveOrCopyWorkersDialog
+        key={
+          tileUnitDialog
+            ? `tile-${tileUnitDialog.workerId}-${tileUnitDialog.fromOuId ?? "unassigned"}`
+            : "tile-none"
+        }
+        open={tileUnitDialog != null}
+        onOpenChange={(v) => {
+          if (!v) setTileUnitDialog(null);
+        }}
+        campaignId={campaignId}
+        refs={
+          tileUnitDialog
+            ? [
+                {
+                  workerId: tileUnitDialog.workerId,
+                  fromOuId: tileUnitDialog.fromOuId,
+                  fromOuType: tileUnitDialog.fromOuType,
+                },
+              ]
+            : []
+        }
+        mode="move"
+        workerLabel={
+          tileDialogWorker
+            ? `${tileDialogWorker.first_name} ${tileDialogWorker.last_name}`
+            : undefined
+        }
+        ous={ous}
+        excludeOuIds={tileDialogWorkerOuIds}
+      />
 
       <CopyWorkerToUnitDialog
         open={copyWorkerId != null}

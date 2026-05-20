@@ -95,6 +95,8 @@ export function MoveOrCopyWorkersDialog({
   }, [ous, excludeOuIds, mode, sourceDimensionType]);
 
   const moveMutation = useMoveWorkersMutation(campaignId);
+  const hasUnassignedTarget = mode === "move";
+  const hasTargetOptions = available.length > 0 || hasUnassignedTarget;
 
   const submit = () => {
     if (refs.length === 0) return;
@@ -177,7 +179,7 @@ export function MoveOrCopyWorkersDialog({
             <p className="text-sm text-muted-foreground">
               These workers are already in every organising unit for this campaign.
             </p>
-          ) : available.length === 0 && mode === "move" ? (
+          ) : !hasTargetOptions ? (
             <p className="text-sm text-muted-foreground">
               No other {sourceDimensionType ? humanizeOuType(sourceDimensionType) + " " : ""}units
               are available to move to.
@@ -210,7 +212,6 @@ export function MoveOrCopyWorkersDialog({
             disabled={
               !selectedOuId ||
               (mode === "copy" && available.length === 0) ||
-              (mode === "move" && available.length === 0) ||
               moveMutation.isPending
             }
           >

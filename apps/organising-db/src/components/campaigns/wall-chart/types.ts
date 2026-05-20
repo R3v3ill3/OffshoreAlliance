@@ -17,6 +17,7 @@ export type WallChartWorker = {
   last_name: string;
   email: string | null;
   phone: string | null;
+  notes: string | null;
   member_role_type_id: number | null;
   is_bargaining_rep: boolean | null;
   is_hsr: boolean | null;

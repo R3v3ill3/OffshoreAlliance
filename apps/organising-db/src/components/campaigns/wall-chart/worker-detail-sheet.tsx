@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, X } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -37,6 +37,68 @@ import type {
   WallChartWorkerContactFocusField,
 } from "./types";
 import { ouDisplayName } from "./types";
+
+type OccupationOption = {
+  occupation_id: number;
+  canonical_name: string;
+  group_name: string | null;
+};
+
+type WorkerNoteRow = {
+  note_id: number;
+  worker_id: number;
+  campaign_id: number | null;
+  note_text: string;
+  flag_for_follow_up: boolean;
+  created_at: string;
+};
+
+type WorkerNoteInsert = {
+  worker_id: number;
+  campaign_id: number | null;
+  note_text: string;
+  flag_for_follow_up: boolean;
+};
+
+type QueryError = { message: string };
+
+type WorkerNotesTable = {
+  select: (columns: string) => {
+    eq: (column: string, value: number) => {
+      order: (
+        column: string,
+        options: { ascending: boolean }
+      ) => Promise<{ data: WorkerNoteRow[] | null; error: QueryError | null }>;
+    };
+  };
+  insert: (row: WorkerNoteInsert) => {
+    select: (columns: string) => {
+      single: () => Promise<{ data: WorkerNoteRow | null; error: QueryError | null }>;
+    };
+  };
+};
+
+function workerNotesTable(supabase: ReturnType<typeof createClient>) {
+  return (supabase as unknown as { from: (table: "worker_notes") => WorkerNotesTable }).from(
+    "worker_notes"
+  );
+}
+
+function normalizeOccupation(row: unknown): OccupationOption {
+  const r = row as {
+    occupation_id: number;
+    canonical_name: string;
+    occupation_group?: { name?: string | null } | { name?: string | null }[] | null;
+  };
+  const group = Array.isArray(r.occupation_group)
+    ? r.occupation_group[0]
+    : r.occupation_group;
+  return {
+    occupation_id: r.occupation_id,
+    canonical_name: r.canonical_name,
+    group_name: group?.name ?? null,
+  };
+}
 
 export type WorkerDetailSheetProps = {
   campaignId: string;
@@ -67,9 +129,8 @@ export function WorkerDetailSheet({
 }: WorkerDetailSheetProps) {
   return (
     <Tabs defaultValue="details" className="mt-2">
-      <TabsList className="grid grid-cols-5 w-full">
+      <TabsList className="grid grid-cols-4 w-full">
         <TabsTrigger value="details">Details</TabsTrigger>
-        <TabsTrigger value="campaign">Campaign</TabsTrigger>
         <TabsTrigger value="ratings">Ratings</TabsTrigger>
         <TabsTrigger value="units">Units</TabsTrigger>
         <TabsTrigger value="relationships">Relationships</TabsTrigger>
@@ -86,10 +147,6 @@ export function WorkerDetailSheet({
           onClose={onClose}
           ous={ous}
         />
-      </TabsContent>
-
-      <TabsContent value="campaign">
-        <CampaignTab worker={worker} />
       </TabsContent>
 
       <TabsContent value="ratings">
@@ -165,6 +222,7 @@ function DetailsTab({
   const [email, setEmail] = useState(worker.email ?? "");
   const [phone, setPhone] = useState(worker.phone ?? "");
   const [roleId, setRoleId] = useState(String(worker.member_role_type?.role_type_id ?? ""));
+  const [occupationId, setOccupationId] = useState<number | null>(worker.canonical_occupation_id);
   const [isHsr, setIsHsr] = useState(!!worker.is_hsr);
   const [isBargainingRep, setIsBargainingRep] = useState(!!worker.is_bargaining_rep);
   const [unionMembershipTypeId, setUnionMembershipTypeId] = useState<number | null>(
@@ -173,6 +231,8 @@ function DetailsTab({
   const [nonOaUnionOptionId, setNonOaUnionOptionId] = useState<number | null>(
     worker.non_oa_union_option_id
   );
+  const [noteText, setNoteText] = useState("");
+  const [flagForFollowUp, setFlagForFollowUp] = useState(false);
 
   const { data: unionMembershipTypes = [] } = useQuery({
     queryKey: ["union-membership-types"],
@@ -203,33 +263,40 @@ function DetailsTab({
     staleTime: 60_000,
   });
 
+  const { data: occupations = [] } = useQuery({
+    queryKey: ["occupations-all"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("occupations")
+        .select(
+          "occupation_id, canonical_name, occupation_group:occupation_groups(name)"
+        )
+        .order("canonical_name");
+      if (error) throw error;
+      return (data ?? []).map(normalizeOccupation);
+    },
+    enabled: !!canWrite,
+    staleTime: 60_000,
+  });
+
+  const { data: workerNotes = [] } = useQuery({
+    queryKey: ["worker-notes", workerId],
+    queryFn: async () => {
+      const { data, error } = await workerNotesTable(supabase)
+        .select(
+          "note_id, worker_id, campaign_id, note_text, flag_for_follow_up, created_at"
+        )
+        .eq("worker_id", workerId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
   const selectedMembershipTypeName = useMemo(
     () => unionMembershipTypes.find((t) => t.union_membership_type_id === unionMembershipTypeId)?.type_name,
     [unionMembershipTypes, unionMembershipTypeId]
   );
-
-  useEffect(() => {
-    setFirst(worker.first_name);
-    setLast(worker.last_name);
-    setEmail(worker.email ?? "");
-    setPhone(worker.phone ?? "");
-    setRoleId(String(worker.member_role_type?.role_type_id ?? ""));
-    setIsHsr(!!worker.is_hsr);
-    setIsBargainingRep(!!worker.is_bargaining_rep);
-    setUnionMembershipTypeId(worker.union_membership_type_id);
-    setNonOaUnionOptionId(worker.non_oa_union_option_id ?? null);
-  }, [
-    worker.worker_id,
-    worker.first_name,
-    worker.last_name,
-    worker.email,
-    worker.phone,
-    worker.member_role_type?.role_type_id,
-    worker.is_hsr,
-    worker.is_bargaining_rep,
-    worker.union_membership_type_id,
-    worker.non_oa_union_option_id,
-  ]);
 
   useEffect(() => {
     if (!detailFocusField) return;
@@ -263,6 +330,7 @@ function DetailsTab({
           email: email || null,
           phone: phone || null,
           member_role_type_id: roleId && roleId !== "__none__" ? Number(roleId) : null,
+          canonical_occupation_id: occupationId,
           is_hsr: isHsr,
           is_bargaining_rep: isBargainingRep,
           union_membership_type_id: unionMembershipTypeId,
@@ -279,6 +347,55 @@ function DetailsTab({
       qc.invalidateQueries({ queryKey: ["campaign-list-builder-workers", cid] });
       qc.invalidateQueries({ queryKey: ["worker", String(workerId)] });
       qc.invalidateQueries({ queryKey: ["workers"] });
+    },
+  });
+
+  const createOccupation = useAuthAwareMutation({
+    mutationFn: async (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) throw new Error("Occupation name is required");
+      const { data, error } = await supabase
+        .from("occupations")
+        .insert({ canonical_name: trimmed })
+        .select("occupation_id, canonical_name, occupation_group:occupation_groups(name)")
+        .single();
+      if (error) throw error;
+      return normalizeOccupation(data);
+    },
+    onSuccess: (occupation) => {
+      setOccupationId(occupation.occupation_id);
+      qc.invalidateQueries({ queryKey: ["occupations-all"] });
+      toast.success(`Added ${occupation.canonical_name}`);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to add occupation");
+    },
+  });
+
+  const addWorkerNote = useAuthAwareMutation({
+    mutationFn: async () => {
+      const text = noteText.trim();
+      if (!text) throw new Error("Note text is required");
+      const { data, error } = await workerNotesTable(supabase)
+        .insert({
+          worker_id: workerId,
+          campaign_id: Number.isFinite(cid) ? cid : null,
+          note_text: text,
+          flag_for_follow_up: flagForFollowUp,
+        })
+        .select("note_id, worker_id, campaign_id, note_text, flag_for_follow_up, created_at")
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      setNoteText("");
+      setFlagForFollowUp(false);
+      qc.invalidateQueries({ queryKey: ["worker-notes", workerId] });
+      toast.success("Note added");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to add note");
     },
   });
 
@@ -309,10 +426,14 @@ function DetailsTab({
         />
       </Field>
       <Field label="Occupation">
-        <Input
-          value={worker.canonical_occupation?.canonical_name ?? "—"}
-          disabled
-          readOnly
+        <OccupationCombobox
+          value={occupationId}
+          onChange={setOccupationId}
+          options={occupations}
+          disabled={!canWrite}
+          fallbackLabel={worker.canonical_occupation?.canonical_name ?? null}
+          onCreate={(name) => createOccupation.mutate(name)}
+          isCreating={createOccupation.isPending}
         />
       </Field>
       <Field label="Organising role">
@@ -384,6 +505,18 @@ function DetailsTab({
         />
       </div>
 
+      <WorkerNotesSection
+        canWrite={canWrite}
+        legacyNotes={worker.notes}
+        noteText={noteText}
+        onNoteTextChange={setNoteText}
+        flagForFollowUp={flagForFollowUp}
+        onFlagForFollowUpChange={setFlagForFollowUp}
+        onAddNote={() => addWorkerNote.mutate()}
+        isAdding={addWorkerNote.isPending}
+        notes={workerNotes}
+      />
+
       {canWrite && (
         <Button
           onClick={() => {
@@ -405,6 +538,274 @@ function DetailsTab({
           onRemoved={onClose}
         />
       )}
+    </div>
+  );
+}
+
+function OccupationCombobox({
+  value,
+  onChange,
+  options,
+  disabled,
+  fallbackLabel,
+  onCreate,
+  isCreating,
+}: {
+  value: number | null;
+  onChange: (id: number | null) => void;
+  options: OccupationOption[];
+  disabled?: boolean;
+  fallbackLabel?: string | null;
+  onCreate: (name: string) => void;
+  isCreating?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const selected =
+    options.find((occupation) => occupation.occupation_id === value) ??
+    (value != null && fallbackLabel
+      ? { occupation_id: value, canonical_name: fallbackLabel, group_name: null }
+      : null);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return options;
+    return options.filter(
+      (occupation) =>
+        occupation.canonical_name.toLowerCase().includes(q) ||
+        (occupation.group_name?.toLowerCase().includes(q) ?? false)
+    );
+  }, [search, options]);
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, OccupationOption[]>();
+    for (const occupation of filtered) {
+      const key = occupation.group_name ?? "Other";
+      const list = map.get(key) ?? [];
+      list.push(occupation);
+      map.set(key, list);
+    }
+    return map;
+  }, [filtered]);
+
+  const exactMatch = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return options.some((occupation) => occupation.canonical_name.toLowerCase() === q);
+  }, [search, options]);
+
+  useEffect(() => {
+    function handleClick(e: globalThis.MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  function handleSelect(id: number) {
+    onChange(id);
+    setSearch("");
+    setOpen(false);
+  }
+
+  function handleClear(e: React.MouseEvent) {
+    e.stopPropagation();
+    onChange(null);
+    setSearch("");
+  }
+
+  function handleCreate() {
+    const trimmed = search.trim();
+    if (!trimmed || exactMatch || isCreating) return;
+    onCreate(trimmed);
+    setSearch("");
+    setOpen(false);
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div
+        className="flex h-9 w-full cursor-text items-center rounded-md border border-input bg-background px-3 text-sm shadow-sm"
+        onClick={() => {
+          if (!disabled) {
+            setOpen(true);
+            setSearch("");
+            setTimeout(() => inputRef.current?.focus(), 0);
+          }
+        }}
+      >
+        {open ? (
+          <input
+            ref={inputRef}
+            className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
+            value={search}
+            placeholder="Search job types..."
+            onChange={(e) => setSearch(e.target.value)}
+            onFocus={() => setOpen(true)}
+          />
+        ) : (
+          <span className={selected ? "flex-1 truncate" : "flex-1 text-muted-foreground"}>
+            {selected ? selected.canonical_name : "Select job type..."}
+          </span>
+        )}
+        {selected && !open && !disabled && (
+          <button
+            type="button"
+            className="ml-1 rounded text-muted-foreground hover:text-foreground"
+            onClick={handleClear}
+            aria-label="Clear occupation"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto rounded-md border bg-popover shadow-md">
+          {filtered.length === 0 ? (
+            <p className="p-3 text-center text-xs text-muted-foreground">No job types found.</p>
+          ) : (
+            [...grouped.entries()].map(([group, items]) => (
+              <div key={group}>
+                <div className="sticky top-0 bg-muted/80 px-3 py-1 text-xs font-semibold text-muted-foreground backdrop-blur">
+                  {group}
+                </div>
+                {items.map((occupation) => (
+                  <button
+                    key={occupation.occupation_id}
+                    type="button"
+                    className={`flex w-full items-center px-3 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground ${
+                      occupation.occupation_id === value ? "bg-accent/50 font-medium" : ""
+                    }`}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      handleSelect(occupation.occupation_id);
+                    }}
+                  >
+                    {occupation.canonical_name}
+                  </button>
+                ))}
+              </div>
+            ))
+          )}
+          {search.trim() && !exactMatch && (
+            <div className="border-t p-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="w-full justify-start text-xs"
+                disabled={isCreating}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  handleCreate();
+                }}
+              >
+                {isCreating ? "Adding..." : `Add "${search.trim()}"`}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkerNotesSection({
+  canWrite,
+  legacyNotes,
+  noteText,
+  onNoteTextChange,
+  flagForFollowUp,
+  onFlagForFollowUpChange,
+  onAddNote,
+  isAdding,
+  notes,
+}: {
+  canWrite: boolean;
+  legacyNotes: string | null;
+  noteText: string;
+  onNoteTextChange: (value: string) => void;
+  flagForFollowUp: boolean;
+  onFlagForFollowUpChange: (value: boolean) => void;
+  onAddNote: () => void;
+  isAdding: boolean;
+  notes: WorkerNoteRow[];
+}) {
+  return (
+    <div className="space-y-2 rounded-md border p-3">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Notes
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Notes are timestamped when saved. Follow-up flags are stored for a later workflow.
+        </p>
+      </div>
+
+      {legacyNotes?.trim() && (
+        <div className="rounded border bg-muted/30 p-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Existing profile notes
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-xs">{legacyNotes}</p>
+        </div>
+      )}
+
+      {canWrite && (
+        <div className="space-y-2">
+          <Textarea
+            value={noteText}
+            onChange={(e) => onNoteTextChange(e.target.value)}
+            rows={3}
+            placeholder="Add a note..."
+            className="text-sm"
+          />
+          <div className="flex items-center justify-between gap-2">
+            <label className="flex items-center gap-2 text-xs">
+              <Checkbox
+                checked={flagForFollowUp}
+                onCheckedChange={(checked) => onFlagForFollowUpChange(checked === true)}
+              />
+              Flag for follow up
+            </label>
+            <Button
+              type="button"
+              size="sm"
+              disabled={isAdding || !noteText.trim()}
+              onClick={onAddNote}
+            >
+              {isAdding ? "Adding..." : "Add note"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {notes.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No timestamped notes yet.</p>
+        ) : (
+          notes.map((note) => (
+            <div key={note.note_id} className="rounded border px-2 py-1.5 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">
+                  {new Date(note.created_at).toLocaleString()}
+                </span>
+                {note.flag_for_follow_up && (
+                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                    Follow up
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 whitespace-pre-wrap">{note.note_text}</p>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -603,32 +1004,6 @@ function RemoveFromCampaignPanel({
           </Button>
         </div>
       )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Campaign — read-only context about this worker's campaign standing.
-// ---------------------------------------------------------------------------
-
-function CampaignTab({ worker }: { worker: WallChartWorker }) {
-  return (
-    <div className="grid gap-3 py-3 text-sm">
-      <KV k="Union membership">
-        {worker.union_membership_type?.display_name ??
-          worker.union_membership_type?.type_name ??
-          "—"}
-      </KV>
-      {worker.union_membership_type?.type_name === "non_oa_member" && worker.non_oa_union_option && (
-        <KV k="Other union">
-          {worker.non_oa_union_option.badge_initials} — {worker.non_oa_union_option.display_name}
-        </KV>
-      )}
-      <KV k="Role (enduring)">
-        {worker.member_role_type?.display_name ?? worker.member_role_type?.role_name ?? "None"}
-      </KV>
-      <KV k="HSR">{worker.is_hsr ? "Yes" : "No"}</KV>
-      <KV k="Bargaining rep">{worker.is_bargaining_rep ? "Yes" : "No"}</KV>
     </div>
   );
 }
@@ -1087,11 +1462,3 @@ function ToggleRow({
   );
 }
 
-function KV({ k, children }: { k: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-baseline justify-between gap-2 border-b py-1">
-      <span className="text-muted-foreground text-xs">{k}</span>
-      <span className="font-medium">{children}</span>
-    </div>
-  );
-}

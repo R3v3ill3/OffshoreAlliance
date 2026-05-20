@@ -280,7 +280,7 @@ export function CampaignWallChart({
         .select(
           `membership_id, worker_id,
            worker:workers(
-             worker_id, first_name, last_name, email, phone,
+             worker_id, first_name, last_name, email, phone, notes,
              member_role_type_id, is_bargaining_rep, is_hsr,
              union_membership_type_id,
              non_oa_union_option_id,
@@ -459,6 +459,7 @@ export function CampaignWallChart({
               last_name: w.last_name,
               email: w.email,
               phone: w.phone,
+              notes: w.notes,
               member_role_type_id: w.member_role_type_id,
               is_bargaining_rep: w.is_bargaining_rep,
               is_hsr: w.is_hsr,
@@ -1941,6 +1942,7 @@ type RawWorker = {
   last_name: string;
   email: string | null;
   phone: string | null;
+  notes: string | null;
   member_role_type_id: number | null;
   is_bargaining_rep: boolean | null;
   is_hsr: boolean | null;

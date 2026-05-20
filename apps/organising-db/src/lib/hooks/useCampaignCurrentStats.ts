@@ -113,7 +113,7 @@ export function useCampaignCurrentStats(campaignId: number | string) {
   })
 
   const { data: members = [] } = useQuery({
-    queryKey: ['campaign-members', cid],
+    queryKey: ['campaign-members-stats', cid],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('campaign_worker_membership')

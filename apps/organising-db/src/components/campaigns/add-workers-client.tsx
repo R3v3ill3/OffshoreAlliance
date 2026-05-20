@@ -299,6 +299,7 @@ export function AddWorkersClient({ campaignId, campaignName }: AddWorkersClientP
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-members", cid] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-member-ids", cid] });
       queryClient.invalidateQueries({ queryKey: ["campaign-universe-employers", cid] });
       queryClient.invalidateQueries({ queryKey: ["campaign-universe-worksites", cid] });
       queryClient.invalidateQueries({ queryKey: ["campaign-ous", cid] });

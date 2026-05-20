@@ -62,6 +62,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SplitUnitDialog, type SplitMember } from "./wall-chart/split-unit-dialog";
 import { CreateOrganisingUnitDialog } from "./wall-chart/create-organising-unit-dialog";
+import {
+  DeleteOrganisingUnitDialog,
+  type DeleteUnitWorker,
+} from "./wall-chart/delete-organising-unit-dialog";
 import type { WallChartOU } from "./wall-chart/types";
 
 const OU_TYPES: CampaignOuType[] = [
@@ -224,6 +228,7 @@ export function CampaignUnitsSection({
 
   // OU currently being split into sub-units.
   const [splitTargetOu, setSplitTargetOu] = useState<WallChartOU | null>(null);
+  const [deleteTargetOuId, setDeleteTargetOuId] = useState<number | null>(null);
 
   const { data: members = [], isLoading: membersLoading } = useQuery({
     queryKey: ["campaign-members", campaignId],
@@ -807,6 +812,25 @@ export function CampaignUnitsSection({
     [ousTyped]
   );
 
+  const deleteTargetOu = useMemo(
+    () => (deleteTargetOuId != null ? ousTyped.find((o) => o.ou_id === deleteTargetOuId) ?? null : null),
+    [deleteTargetOuId, ousTyped]
+  );
+
+  const deleteUnitWorkers = useMemo((): DeleteUnitWorker[] => {
+    if (!deleteTargetOu) return [];
+    return (ouAssignments as { ou_id: number; worker_id: number; is_primary?: boolean }[])
+      .filter((a) => a.ou_id === deleteTargetOu.ou_id)
+      .map((a) => {
+        const memberOption = memberOptions.find((m) => m.worker_id === a.worker_id);
+        return {
+          worker_id: a.worker_id,
+          label: memberOption?.label ?? `Worker #${a.worker_id}`,
+          is_primary: a.is_primary,
+        };
+      });
+  }, [deleteTargetOu, ouAssignments, memberOptions]);
+
   // ── Split dialog: members for the targeted OU ─────────────────────────
   const splitMemberWorkerIds = useMemo(() => {
     if (!splitTargetOu) return [] as number[];
@@ -1232,6 +1256,12 @@ export function CampaignUnitsSection({
                           }}
                         >
                           Assign workers
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => setDeleteTargetOuId(ou.ou_id)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" /> Delete unit
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -2187,6 +2217,39 @@ export function CampaignUnitsSection({
             : 0
         }
       />
+
+      {deleteTargetOu && (
+        <DeleteOrganisingUnitDialog
+          open={!!deleteTargetOu}
+          onOpenChange={(o) => {
+            if (!o) setDeleteTargetOuId(null);
+          }}
+          campaignId={campaignId}
+          unit={{
+            ou_id: deleteTargetOu.ou_id,
+            name: deleteTargetOu.name,
+            ou_type: deleteTargetOu.ou_type,
+            parent_ou_id: deleteTargetOu.parent_ou_id ?? null,
+            ou_group_id: (deleteTargetOu as { ou_group_id?: number | null }).ou_group_id ?? null,
+            is_group_container:
+              (deleteTargetOu as { is_group_container?: boolean }).is_group_container ?? false,
+          }}
+          allOus={ousTyped.map((o) => ({
+            ou_id: o.ou_id,
+            name: o.name,
+            ou_type: o.ou_type,
+            parent_ou_id: o.parent_ou_id ?? null,
+            ou_group_id: (o as { ou_group_id?: number | null }).ou_group_id ?? null,
+            is_group_container: (o as { is_group_container?: boolean }).is_group_container ?? false,
+          }))}
+          childOuIds={(childrenByParent.get(deleteTargetOu.ou_id) ?? []).map((c) => c.ou_id)}
+          workers={deleteUnitWorkers}
+          onDeleted={() => {
+            setDeleteTargetOuId(null);
+            setUnitSelection(null);
+          }}
+        />
+      )}
     </div>
   );
 }

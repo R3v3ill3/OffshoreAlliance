@@ -34,7 +34,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { MoreVertical, Layers } from "lucide-react";
+import { MoreVertical, Layers, Trash2 } from "lucide-react";
+import { DeleteOrganisingUnitDialog, type DeleteUnitWorker } from "./wall-chart/delete-organising-unit-dialog";
 import { SplitUnitDialog, type SplitMember } from "./wall-chart/split-unit-dialog";
 import { WALL_CHART_GRID_CLASS } from "./wall-chart/rating-colour";
 import { humanizeOuType, ouDisplayName } from "./wall-chart/types";
@@ -244,6 +245,7 @@ export function CampaignWallChart({
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
   const [clearRatingsDialogOpen, setClearRatingsDialogOpen] = useState(false);
   const [splitTargetOu, setSplitTargetOu] = useState<WallChartOU | null>(null);
+  const [deleteTargetOu, setDeleteTargetOu] = useState<WallChartOU | null>(null);
   const moveWorkers = useMoveWorkersMutation(campaignId);
 
   // Esc clears selection.
@@ -900,6 +902,28 @@ export function CampaignWallChart({
   // ── Split: members for the targeted OU ─────────────────────────────────
   // Lazy-loaded only when a split dialog is open; pulls dimension columns +
   // tag names so the dialog can group on them.
+  const deleteUnitWorkers = useMemo((): DeleteUnitWorker[] => {
+    if (!deleteTargetOu) return [];
+    const workerIds = workersByOu.get(deleteTargetOu.ou_id) ?? [];
+    const primaryByWorker = new Map<number, boolean>();
+    for (const a of ouAssign) {
+      if (a.ou_id === deleteTargetOu.ou_id && a.is_primary) {
+        primaryByWorker.set(a.worker_id, true);
+      }
+    }
+    return workerIds.map((wid) => {
+      const w = workerById.get(wid);
+      const label = w
+        ? `${w.last_name}, ${w.first_name}`.trim()
+        : `Worker #${wid}`;
+      return {
+        worker_id: wid,
+        label,
+        is_primary: primaryByWorker.get(wid),
+      };
+    });
+  }, [deleteTargetOu, workersByOu, ouAssign, workerById]);
+
   const splitMemberWorkerIds = useMemo(() => {
     if (!splitTargetOu) return [] as number[];
     return workersByOu.get(splitTargetOu.ou_id) ?? [];
@@ -1248,6 +1272,7 @@ export function CampaignWallChart({
                 onShowAllHidden={unitVisibility.showAll}
                 onReorder={(ids) => reorderOus.mutate(ids)}
                 onOpenCreateUnit={() => setCreateUnitOpen(true)}
+                onDeleteUnit={canWrite ? (ou) => setDeleteTargetOu(ou) : undefined}
               />
             </div>
           }
@@ -1588,6 +1613,12 @@ export function CampaignWallChart({
                                     Add worker to unit
                                   </DropdownMenuItem>
                                 )}
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => setDeleteTargetOu(ou)}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" /> Delete unit
+                                </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
                           )}
@@ -1928,6 +1959,24 @@ export function CampaignWallChart({
         workerIds={selection.workerIds()}
         onSuccess={() => selection.clear()}
       />
+
+      {deleteTargetOu && (
+        <DeleteOrganisingUnitDialog
+          open={!!deleteTargetOu}
+          onOpenChange={(o) => {
+            if (!o) setDeleteTargetOu(null);
+          }}
+          campaignId={campaignId}
+          unit={deleteTargetOu}
+          allOus={ous}
+          childOuIds={(childrenByParent.get(deleteTargetOu.ou_id) ?? []).map((c) => c.ou_id)}
+          workers={deleteUnitWorkers}
+          onDeleted={() => {
+            setDeleteTargetOu(null);
+            selection.clear();
+          }}
+        />
+      )}
     </Card>
   );
 }

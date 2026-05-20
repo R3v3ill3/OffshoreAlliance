@@ -532,6 +532,7 @@ export function CreateTaskListDialog({
       queryClient.invalidateQueries({ queryKey: ["campaign-activity-ratings"] });
       queryClient.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["campaign-members", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-member-ids", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["leader-links"] });
       queryClient.invalidateQueries({ queryKey: ["campaign-leader-form-events"] });

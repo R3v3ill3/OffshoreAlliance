@@ -50,7 +50,7 @@ export function useAssessmentDistributions(campaignId: string) {
 
   // 2. Campaign member IDs (the universe for unassessed count)
   const { data: memberRows = [], isLoading: loadingMembers } = useQuery({
-    queryKey: ["campaign-members", campaignId],
+    queryKey: ["campaign-member-ids", campaignId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaign_worker_membership")

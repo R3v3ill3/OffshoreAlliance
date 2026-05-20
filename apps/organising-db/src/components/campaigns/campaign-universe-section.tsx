@@ -84,6 +84,7 @@ export function CampaignUniverseSection({
     queryClient.invalidateQueries({ queryKey: SCOPE_KEYS.employers(campaignId) });
     queryClient.invalidateQueries({ queryKey: SCOPE_KEYS.worksites(campaignId) });
     queryClient.invalidateQueries({ queryKey: ["campaign-members", campaignId] });
+    queryClient.invalidateQueries({ queryKey: ["campaign-member-ids", campaignId] });
     queryClient.invalidateQueries({ queryKey: ["campaign", campaignId] });
   };
 

@@ -1120,6 +1120,7 @@ export function CampaignWizard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });
       queryClient.invalidateQueries({ queryKey: ["campaign-members", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-member-ids", campaignId] });
       // After workers, go to situation analysis (step 7). Ambitions are
       // step 8 once the campaign-level context is captured; the situation
       // analysis runs for every campaign type because predicted employer

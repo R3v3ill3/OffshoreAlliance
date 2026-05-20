@@ -65,6 +65,7 @@ export function RoleReassessPrompt({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["campaign-members", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-member-ids", campaignId] });
       toast.success("Role updated");
       onOpenChange(false);
     },

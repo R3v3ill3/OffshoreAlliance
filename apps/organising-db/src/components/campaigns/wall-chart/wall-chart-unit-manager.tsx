@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, LayoutGrid } from "lucide-react";
+import { ChevronDown, ChevronUp, LayoutGrid, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,7 @@ export type WallChartUnitManagerProps = {
   onShowAllHidden: () => void;
   onReorder: (orderedOuIds: number[]) => void;
   onOpenCreateUnit: () => void;
+  onDeleteUnit?: (ou: WallChartOU) => void;
 };
 
 export function WallChartUnitManager({
@@ -27,6 +28,7 @@ export function WallChartUnitManager({
   onShowAllHidden,
   onReorder,
   onOpenCreateUnit,
+  onDeleteUnit,
 }: WallChartUnitManagerProps) {
   const [open, setOpen] = useState(false);
 
@@ -132,6 +134,19 @@ export function WallChartUnitManager({
                         >
                           <ChevronDown className="h-4 w-4" />
                         </Button>
+                        {onDeleteUnit && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            onClick={() => onDeleteUnit(ou)}
+                            aria-label={`Delete ${label}`}
+                            title="Delete unit"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     )}
                   </li>

@@ -128,17 +128,12 @@ export default function AssessmentSetupPage() {
     return `/campaigns/${cid}/phone/lists/new?action_id=${action.action_id}&pathway=assessment_only&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`
   }
 
-  // Back navigation retraces: if we're the SECOND step (list_first order),
-  // back goes to the list step; otherwise it goes to returnTo.
+  // Back navigation always retraces to whichever page sent us here —
+  // that's the URL the caller wrote into ?returnTo=. Don't try to be
+  // clever based on entry_branch; the previous component already knows
+  // its own URL and encodes it on every link, so trusting returnTo
+  // gives the correct retrace for both setup-first and list-first orders.
   function computeBackHref(): string {
-    if (!action) return returnTo
-    if (action.entry_branch === 'assessment_list_first') {
-      const lid = action.list_ids?.[0]
-      const cid = String(campaignId)
-      if (lid) {
-        return `/campaigns/${cid}/phone/lists/${lid}?action_id=${action.action_id}`
-      }
-    }
     return returnTo
   }
 

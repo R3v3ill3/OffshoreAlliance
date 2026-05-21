@@ -100,15 +100,30 @@ export default function NewCallListPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const campaignId = params.id as string
-  const backHref = searchParams.get('returnTo')
-    ? decodeURIComponent(searchParams.get('returnTo')!)
-    : `/campaigns/${campaignId}/phone`
-  const preselectedScriptId = searchParams.get('script_id')
-    ? parseInt(searchParams.get('script_id')!, 10)
-    : null
   const actionId = searchParams.get('action_id')
     ? parseInt(searchParams.get('action_id')!, 10)
     : null
+  // When the page is opened from the orchestrator (actionId set) and no
+  // explicit returnTo is provided, fall back to the campaign page rather
+  // than the Phone Ops tab so Back retraces the breadcrumb correctly.
+  const defaultBackHref = actionId
+    ? `/campaigns/${campaignId}`
+    : `/campaigns/${campaignId}/phone`
+  const backHref = searchParams.get('returnTo')
+    ? decodeURIComponent(searchParams.get('returnTo')!)
+    : defaultBackHref
+  const preselectedScriptId = searchParams.get('script_id')
+    ? parseInt(searchParams.get('script_id')!, 10)
+    : null
+  const pathwayParam = searchParams.get('pathway')
+
+  // Top-level mode: build a new list, or pick from existing draft/active
+  // call lists for this campaign. The existing-list picker is only useful
+  // when an actionId is in scope (orchestrator flow), so the toggle is
+  // hidden for standalone uses of this page.
+  const [listMode, setListMode] = useState<'new' | 'existing'>('new')
+  const [pickedListId, setPickedListId] = useState<number | null>(null)
+  const [isAttachingExisting, setIsAttachingExisting] = useState(false)
 
   const [step, setStep] = useState<WizardStep>('details')
   const [name, setName] = useState('')
@@ -200,6 +215,32 @@ export default function NewCallListPage() {
         }
       }
       return result.sort((a, b) => a.worksite_name.localeCompare(b.worksite_name))
+    },
+    enabled: !!campaignId,
+  })
+
+  // Existing draft/active call lists for this campaign — fuels the
+  // "Use existing list" picker when the page is hit from the orchestrator
+  // and the user wants to attach a pre-built list instead of running the
+  // whole wizard.
+  const { data: existingLists = [] } = useQuery({
+    queryKey: ['campaign-existing-call-lists', campaignId],
+    queryFn: async () => {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('call_lists')
+        .select('list_id, name, description, status, total_items, created_at')
+        .eq('campaign_id', parseInt(campaignId))
+        .in('status', ['draft', 'active', 'paused'])
+        .order('created_at', { ascending: false })
+      return (data ?? []) as Array<{
+        list_id: number
+        name: string
+        description: string | null
+        status: string
+        total_items: number | null
+        created_at: string
+      }>
     },
     enabled: !!campaignId,
   })
@@ -310,6 +351,86 @@ export default function NewCallListPage() {
     setPriority((prev) => ({ ...prev, ratingOrder: order }))
   }
 
+  // Attach an existing call_list to the orchestrator action and route
+  // onward. Mirrors the orchestrator-aware tail of handleCreate so the
+  // user lands in the right place: dialler if both halves of the pathway
+  // are done, otherwise the second component for this pathway.
+  async function handleAttachExistingList() {
+    if (!pickedListId || !actionId) {
+      toast.error('Pick a list to attach.')
+      return
+    }
+    setIsAttachingExisting(true)
+    try {
+      const supabase = createClient()
+
+      // Read the action so we know the pathway + which step we're on.
+      const { data: actionRow, error: actionErr } = await supabase
+        .from('phone_call_actions')
+        .select('entry_branch, script_id, selected_assessment_ids')
+        .eq('action_id', actionId)
+        .maybeSingle()
+      if (actionErr) throw actionErr
+      const entryBranch = actionRow?.entry_branch as string | undefined
+
+      // Pull the script linked to the list (if any) so we can mirror it
+      // into the action and complete the session in one shot when the
+      // list is the second component.
+      const { data: chosenList } = await supabase
+        .from('call_lists')
+        .select('script_id')
+        .eq('list_id', pickedListId)
+        .maybeSingle()
+      const listScriptId = (chosenList as { script_id: number | null } | null)?.script_id ?? null
+
+      await supabase
+        .from('phone_call_action_lists')
+        .upsert(
+          { action_id: actionId, list_id: pickedListId, position: 0 },
+          { onConflict: 'action_id,list_id' },
+        )
+
+      const isAssessmentOnly =
+        entryBranch === 'assessment_first' || entryBranch === 'assessment_list_first'
+      const isListSecond = entryBranch === 'script_first' || entryBranch === 'assessment_first'
+      const newStatus = isListSecond ? 'completed' : 'in_progress'
+
+      await supabase
+        .from('phone_call_actions')
+        .update({
+          list_ids: [pickedListId],
+          script_id: actionRow?.script_id ?? listScriptId,
+          status: newStatus,
+        })
+        .eq('action_id', actionId)
+
+      toast.success('Existing list attached')
+
+      // Route onward
+      const cid = String(campaignId)
+      if (isListSecond) {
+        // List was the second component → straight to the dialler.
+        router.push(`/campaigns/${cid}/phone/call/${pickedListId}?action_id=${actionId}`)
+        return
+      }
+      // List was the first component → go to the second component.
+      const here = encodeURIComponent(window.location.pathname + window.location.search)
+      if (isAssessmentOnly) {
+        router.push(
+          `/campaigns/${cid}/phone/assessment-setup?action_id=${actionId}&returnTo=${here}`,
+        )
+      } else {
+        router.push(
+          `/campaigns/phone-wizard?campaign_id=${cid}&action_id=${actionId}&returnTo=${here}`,
+        )
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to attach existing list')
+    } finally {
+      setIsAttachingExisting(false)
+    }
+  }
+
   const handleCreate = async () => {
     try {
       // priority_strategy must be one of the valid DB enum values.
@@ -401,6 +522,13 @@ export default function NewCallListPage() {
     }
   }
 
+  // Pathway-aware breadcrumb label for the orchestrator flow.
+  const breadcrumbLabel = actionId
+    ? pathwayParam === 'assessment_only'
+      ? 'Assessment-only pathway · List step'
+      : 'Script pathway · List step'
+    : null
+
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="flex items-center gap-3">
@@ -409,13 +537,117 @@ export default function NewCallListPage() {
           Back
         </Button>
         <div className="flex-1">
-          <h2 className="text-lg font-semibold">Create Call List</h2>
-          <p className="text-sm text-muted-foreground">
-            Step {stepIndex + 1} of {STEPS.length}: {STEPS[stepIndex].label}
-          </p>
+          <h2 className="text-lg font-semibold">
+            {listMode === 'existing' ? 'Attach a call list' : 'Create Call List'}
+          </h2>
+          {breadcrumbLabel ? (
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">
+              {breadcrumbLabel}
+            </p>
+          ) : null}
+          {listMode === 'new' && (
+            <p className="text-sm text-muted-foreground">
+              Step {stepIndex + 1} of {STEPS.length}: {STEPS[stepIndex].label}
+            </p>
+          )}
         </div>
       </div>
 
+      {/* Mode toggle — only meaningful inside the orchestrator flow */}
+      {actionId != null && (
+        <div className="inline-flex rounded-md border bg-background p-0.5">
+          <Button
+            type="button"
+            size="sm"
+            variant={listMode === 'new' ? 'default' : 'ghost'}
+            className="h-8 px-3 text-xs"
+            onClick={() => setListMode('new')}
+            aria-pressed={listMode === 'new'}
+          >
+            Build new list
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={listMode === 'existing' ? 'default' : 'ghost'}
+            className="h-8 px-3 text-xs"
+            onClick={() => setListMode('existing')}
+            aria-pressed={listMode === 'existing'}
+          >
+            Use existing list
+          </Button>
+        </div>
+      )}
+
+      {/* Existing-list picker */}
+      {actionId != null && listMode === 'existing' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <ListChecks className="h-5 w-5" />
+              Pick an existing call list
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {existingLists.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">
+                No draft, active, or paused call lists exist for this campaign.
+                Switch to &ldquo;Build new list&rdquo; to create one.
+              </p>
+            ) : (
+              <>
+                <div className="space-y-1">
+                  <Label>Call list</Label>
+                  <Select
+                    value={pickedListId != null ? String(pickedListId) : ''}
+                    onValueChange={(v) => setPickedListId(Number(v))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a call list…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {existingLists.map((l) => (
+                        <SelectItem key={l.list_id} value={String(l.list_id)}>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium truncate max-w-[260px]">{l.name}</span>
+                            <Badge variant="secondary" className="text-xs">{l.status}</Badge>
+                            {l.total_items != null && (
+                              <span className="text-xs text-muted-foreground">
+                                {l.total_items} contacts
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => router.push(backHref)} disabled={isAttachingExisting}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleAttachExistingList}
+                    disabled={!pickedListId || isAttachingExisting}
+                  >
+                    {isAttachingExisting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        Attaching…
+                      </>
+                    ) : (
+                      'Attach list and continue'
+                    )}
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {listMode === 'new' && (
+        <>
       {/* Step indicator */}
       <div className="flex items-center gap-1">
         {STEPS.map((s, i) => (
@@ -997,24 +1229,50 @@ export default function NewCallListPage() {
             </div>
             {actionId && (
               <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-                <strong>Next step:</strong> Create a phone script so callers have a guide to follow.
+                <strong>Next step:</strong>{' '}
+                {pathwayParam === 'assessment_only'
+                  ? 'Pick which assessments to rate during each call.'
+                  : 'Create a phone script so callers have a guide to follow.'}
               </div>
             )}
             <div className="flex flex-wrap gap-2">
-              {actionId && (
+              {actionId && pathwayParam !== 'assessment_only' && (
                 <Button
-                  onClick={() =>
-                    router.push(
-                      `/campaigns/phone-wizard?campaign_id=${campaignId}&action_id=${actionId}`
+                  onClick={() => {
+                    const here = encodeURIComponent(
+                      window.location.pathname + window.location.search,
                     )
-                  }
+                    router.push(
+                      `/campaigns/phone-wizard?campaign_id=${campaignId}&action_id=${actionId}&returnTo=${here}`,
+                    )
+                  }}
                 >
                   <Phone className="h-4 w-4 mr-1" />
                   Create Script Now
                 </Button>
               )}
+              {actionId && pathwayParam === 'assessment_only' && (
+                <Button
+                  onClick={() => {
+                    const here = encodeURIComponent(
+                      window.location.pathname + window.location.search,
+                    )
+                    router.push(
+                      `/campaigns/${campaignId}/phone/assessment-setup?action_id=${actionId}&returnTo=${here}`,
+                    )
+                  }}
+                >
+                  <Phone className="h-4 w-4 mr-1" />
+                  Set Assessments Now
+                </Button>
+              )}
               {createdListId && (
-                <Button variant={actionId ? 'outline' : 'default'} onClick={() => router.push(`/campaigns/${campaignId}/phone/call/${createdListId}`)}>
+                <Button variant={actionId ? 'outline' : 'default'} onClick={() => {
+                  const target = actionId
+                    ? `/campaigns/${campaignId}/phone/call/${createdListId}?action_id=${actionId}`
+                    : `/campaigns/${campaignId}/phone/call/${createdListId}`
+                  router.push(target)
+                }}>
                   <Phone className="h-4 w-4 mr-1" />
                   Start Calling
                 </Button>
@@ -1025,6 +1283,8 @@ export default function NewCallListPage() {
             </div>
           </CardContent>
         </Card>
+      )}
+        </>
       )}
     </div>
   )

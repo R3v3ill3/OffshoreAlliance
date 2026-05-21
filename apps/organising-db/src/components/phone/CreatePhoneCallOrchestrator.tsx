@@ -1,22 +1,25 @@
 'use client'
 
 /**
- * CreatePhoneCallOrchestrator — a two-step **dialog router**, not a wizard.
+ * CreatePhoneCallOrchestrator — two-step dialog router.
  *
- * Step 1: BackgroundInfoStep — captures purpose, assessment context, and
- *         whether variations are needed.
- * Step 2: BranchPicker — lets the user choose script-first or list-first.
+ * Step 1: PathwayPicker — Script + ratings, OR Assessment-only.
+ * Step 2: OrderPicker  — set up first, OR build the list first.
  *
- * On confirm it inserts a `phone_call_actions` orchestration row (status
- * 'in_progress') and navigates to the appropriate starting page. The
- * row is closed ('completed') once both a script and at least one list
- * are linked — which happens either in PhoneWizardSteps (script-first) or
- * in lists/new (list-first, via Phase F fix).
+ * On confirm we insert a `phone_call_actions` row (status='in_progress')
+ * carrying the resolved entry_branch, then navigate to whichever pathway
+ * component matches the chosen order. The two components per pathway
+ * are:
+ *   • Script pathway:        Script wizard ←→ List step
+ *   • Assessment-only path:  Assessment setup ←→ List step
  *
- * Do NOT confuse with `PhoneWizardSteps`, which is the full 6-step phone
- * wizard. This component only determines the entry branch and creates the
- * orchestration record.
+ * The action row is closed ('completed') once both components are linked
+ * to it, which happens in the trailing component for each pathway.
+ *
+ * Do NOT confuse with `PhoneWizardSteps`, the full 6-step phone script
+ * wizard. This dialog only decides the entry pathway + order.
  */
+
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Phone } from 'lucide-react'
@@ -32,19 +35,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { BackgroundInfoStep, type BackgroundInfoValue } from './orchestrator/BackgroundInfoStep'
-import { BranchPicker } from './orchestrator/BranchPicker'
-import type { EntryBranch } from '@/types/phone-call-action'
+import { PathwayPicker } from './orchestrator/PathwayPicker'
+import { OrderPicker } from './orchestrator/OrderPicker'
+import { entryBranchFor, type Order, type Pathway } from '@/types/phone-call-action'
 
-type Step = 'background_info' | 'branch_picker'
-
-const INITIAL_BACKGROUND: BackgroundInfoValue = {
-  assessmentId: null,
-  hasVariations: false,
-  variationCount: 1,
-  variationDimension: null,
-  selectedAssessmentIds: [],
-}
+type Step = 'pathway' | 'order'
 
 interface Props {
   campaignId: number | string
@@ -58,36 +53,37 @@ export function CreatePhoneCallOrchestrator({ campaignId, trigger, defaultOpen }
   const supabase = createClient()
 
   const [open, setOpen] = useState(defaultOpen ?? false)
-  const [step, setStep] = useState<Step>('background_info')
-  const [backgroundInfo, setBackgroundInfo] = useState<BackgroundInfoValue>(INITIAL_BACKGROUND)
-  const [selectedBranch, setSelectedBranch] = useState<EntryBranch | null>(null)
+  const [step, setStep] = useState<Step>('pathway')
+  const [pathway, setPathway] = useState<Pathway | null>(null)
+  const [order, setOrder] = useState<Order | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   function handleOpenChange(next: boolean) {
     setOpen(next)
     if (!next) {
-      setStep('background_info')
-      setBackgroundInfo(INITIAL_BACKGROUND)
-      setSelectedBranch(null)
+      setStep('pathway')
+      setPathway(null)
+      setOrder(null)
     }
   }
 
   async function handleConfirm() {
-    if (!selectedBranch || !user) return
+    if (!pathway || !order || !user) return
     setIsSubmitting(true)
 
     try {
+      const entryBranch = entryBranchFor(pathway, order)
+
       const payload = {
         campaign_id: Number(campaignId),
         created_by: user.id,
-        assessment_id: backgroundInfo.assessmentId ?? null,
-        variation_count: backgroundInfo.hasVariations ? backgroundInfo.variationCount : 1,
-        variation_dimension: backgroundInfo.hasVariations
-          ? backgroundInfo.variationDimension
-          : 'none',
-        entry_branch: selectedBranch,
-        status: 'in_progress',
-        selected_assessment_ids: backgroundInfo.selectedAssessmentIds,
+        // Variation knobs default to "none" — the script wizard collects
+        // these on its own when the user is in the script pathway.
+        variation_count: 1,
+        variation_dimension: 'none' as const,
+        entry_branch: entryBranch,
+        status: 'in_progress' as const,
+        selected_assessment_ids: [] as number[],
       }
 
       const { data, error } = await supabase
@@ -97,21 +93,32 @@ export function CreatePhoneCallOrchestrator({ campaignId, trigger, defaultOpen }
         .single()
 
       if (error) throw error
-
       const actionId = data!.action_id
 
       setOpen(false)
       toast.success('Phone call action created')
 
-      if (selectedBranch === 'script_first') {
-        router.push(
-          `/campaigns/phone-wizard?campaign_id=${campaignId}&action_id=${actionId}`
-        )
+      // returnTo is set so each component's Back button retraces to the
+      // previous step in the chosen order (or to the campaign page if the
+      // user is on the first component).
+      const cid = String(campaignId)
+      const campaignHref = `/campaigns/${cid}`
+      const encodedCampaign = encodeURIComponent(campaignHref)
+
+      let firstStepHref = ''
+      if (pathway === 'script') {
+        firstStepHref =
+          order === 'setup_first'
+            ? `/campaigns/phone-wizard?campaign_id=${cid}&action_id=${actionId}&returnTo=${encodedCampaign}`
+            : `/campaigns/${cid}/phone/lists/new?action_id=${actionId}&returnTo=${encodedCampaign}`
       } else {
-        router.push(
-          `/campaigns/${campaignId}/phone/lists/new?action_id=${actionId}`
-        )
+        firstStepHref =
+          order === 'setup_first'
+            ? `/campaigns/${cid}/phone/assessment-setup?action_id=${actionId}&returnTo=${encodedCampaign}`
+            : `/campaigns/${cid}/phone/lists/new?action_id=${actionId}&pathway=assessment_only&returnTo=${encodedCampaign}`
       }
+
+      router.push(firstStepHref)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Something went wrong'
       toast.error(`Failed to create phone call action: ${message}`)
@@ -133,29 +140,29 @@ export function CreatePhoneCallOrchestrator({ campaignId, trigger, defaultOpen }
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {step === 'background_info' ? 'Phone Call Setup' : 'How do you want to start?'}
+            {step === 'pathway' ? 'Create phone call' : 'Choose where to start'}
           </DialogTitle>
           <DialogDescription className="sr-only">
             Set up a phone call action for this campaign.
           </DialogDescription>
         </DialogHeader>
 
-        {step === 'background_info' && (
-          <BackgroundInfoStep
-            campaignId={campaignId}
-            value={backgroundInfo}
-            onChange={setBackgroundInfo}
-            onNext={() => setStep('branch_picker')}
-            onCancel={() => setOpen(false)}
+        {step === 'pathway' && (
+          <PathwayPicker
+            value={pathway}
+            onChange={setPathway}
+            onNext={() => setStep('order')}
+            onCancel={() => handleOpenChange(false)}
           />
         )}
 
-        {step === 'branch_picker' && (
-          <BranchPicker
-            value={selectedBranch}
-            onChange={setSelectedBranch}
+        {step === 'order' && pathway && (
+          <OrderPicker
+            pathway={pathway}
+            value={order}
+            onChange={setOrder}
             onConfirm={handleConfirm}
-            onBack={() => setStep('background_info')}
+            onBack={() => setStep('pathway')}
             isSubmitting={isSubmitting}
           />
         )}

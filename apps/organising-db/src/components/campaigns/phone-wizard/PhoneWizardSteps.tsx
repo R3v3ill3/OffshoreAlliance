@@ -252,6 +252,23 @@ export function PhoneWizardSteps() {
   const { user, profile } = useAuth()
   const [step, setStep] = useState(1)
   const [state, setState] = useState<PhoneWizardState>(INITIAL_STATE)
+  // Honour the orchestrator's returnTo so Back / Cancel retraces the
+  // breadcrumb instead of punting to the campaigns list.
+  const returnTo = useMemo(() => {
+    const raw = searchParams.get('returnTo')
+    if (!raw) return null
+    try {
+      return decodeURIComponent(raw)
+    } catch {
+      return null
+    }
+  }, [searchParams])
+  const wizardActionId = useMemo(() => {
+    const raw = searchParams.get('action_id')
+    if (!raw) return null
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : null
+  }, [searchParams])
   const [isSavingScript, setIsSavingScript] = useState(false)
   /** Segmented script for step 3; null until AI generate or “write from scratch”. */
   const [wizardSections, setWizardSections] = useState<EditableSection[] | null>(null)
@@ -1470,8 +1487,11 @@ export function PhoneWizardSteps() {
             Create a call script, build a call list, and run through your calls step by step
           </p>
         </div>
-        <Button variant="outline" onClick={() => router.push('/campaigns')}>
-          Cancel
+        <Button
+          variant="outline"
+          onClick={() => router.push(returnTo ?? '/campaigns')}
+        >
+          {returnTo ? 'Back' : 'Cancel'}
         </Button>
       </div>
 
@@ -2891,8 +2911,16 @@ export function PhoneWizardSteps() {
       <div className="flex justify-between">
         <Button
           variant="outline"
-          onClick={() => setStep(Math.max(1, step - 1))}
-          disabled={step === 1}
+          onClick={() => {
+            if (step === 1) {
+              // On the first wizard step there's nothing to step back to
+              // internally — retrace the breadcrumb instead.
+              if (returnTo) router.push(returnTo)
+              return
+            }
+            setStep(Math.max(1, step - 1))
+          }}
+          disabled={step === 1 && !returnTo}
         >
           <ChevronLeft className="h-4 w-4 mr-1" />
           Back

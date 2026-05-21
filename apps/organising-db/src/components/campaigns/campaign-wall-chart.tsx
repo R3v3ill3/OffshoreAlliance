@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
@@ -90,7 +89,6 @@ import type {
 import { WallChartUnitManager } from "./wall-chart/wall-chart-unit-manager";
 import { CreateOrganisingUnitDialog } from "./wall-chart/create-organising-unit-dialog";
 import { useWallChartUnitVisibility } from "./wall-chart/use-wall-chart-unit-visibility";
-import { CreateAssessmentDialog } from "./assessments/create-assessment-dialog";
 import { CreateTaskListDialog } from "./task-lists/create-task-list-dialog";
 import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 import { AddCampaignWorkerDialog } from "./wall-chart/add-campaign-worker-dialog";
@@ -171,10 +169,30 @@ export function CampaignWallChart({
     fromOuType: string | null;
   } | null>(null);
   const [createUnitOpen, setCreateUnitOpen] = useState(false);
-  const [createAssessmentOpen, setCreateAssessmentOpen] = useState(false);
   const [createTaskListOpen, setCreateTaskListOpen] = useState(false);
   const [taskListFiredDraft, setTaskListFiredDraft] = useState<FiredTaskDraft | null>(null);
-  const [buildListOpen, setBuildListOpen] = useState(false);
+  // Build-list panel open state is URL-driven (?buildList=1) so the persistent
+  // campaign header can toggle the panel from any tab. The wall chart still
+  // owns the panel mount and layout; it just reads the open state from the URL.
+  const router = useRouter();
+  const pathname = usePathname();
+  const wallChartSearchParams = useSearchParams();
+  const buildListOpen = wallChartSearchParams.get("buildList") === "1";
+  const setBuildListOpen = useCallback(
+    (next: boolean | ((prev: boolean) => boolean)) => {
+      const params = new URLSearchParams(wallChartSearchParams.toString());
+      const current = params.get("buildList") === "1";
+      const value = typeof next === "function" ? next(current) : next;
+      if (value) {
+        params.set("buildList", "1");
+      } else {
+        params.delete("buildList");
+      }
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, wallChartSearchParams]
+  );
   // buildListController is declared further down once workerById / ratingByWorker
   // are available, so the optimistic add can hydrate placeholders from the
   // wall chart's already-loaded worker data.
@@ -233,8 +251,9 @@ export function CampaignWallChart({
 
   // Scroll to + briefly highlight a specific OU when arriving from the
   // overview summaries table (URL param: ?tab=wall&ou=<ou_id>).
-  const searchParams = useSearchParams();
-  const focusOuId = searchParams.get("ou") ? Number(searchParams.get("ou")) : null;
+  const focusOuId = wallChartSearchParams.get("ou")
+    ? Number(wallChartSearchParams.get("ou"))
+    : null;
   const [highlightedOuId, setHighlightedOuId] = useState<number | null>(null);
 
   // Multi-select state for bulk Move/Copy/Link/Remove actions.
@@ -1148,49 +1167,10 @@ export function CampaignWallChart({
                   Import Workers
                 </Button>
               )}
-              {canWrite && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-7 px-2 text-xs print:hidden"
-                  onClick={() => setCreateAssessmentOpen(true)}
-                >
-                  Add assessment
-                </Button>
-              )}
-              {canWrite && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={buildListOpen ? "default" : "outline"}
-                  className="h-7 px-2 text-xs print:hidden"
-                  onClick={() => setBuildListOpen((v) => !v)}
-                  aria-pressed={buildListOpen}
-                  title={
-                    buildListOpen
-                      ? "Close build list panel"
-                      : "Open build list panel — drag tiles, units or multi-selections to assemble a cohort"
-                  }
-                >
-                  Build list
-                </Button>
-              )}
-              {canWrite && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-7 px-2 text-xs print:hidden"
-                  asChild
-                >
-                  <Link
-                    href={`/campaigns/${campaignId}?tab=plan&sub=task-lists&from=wall-chart`}
-                  >
-                    Task management
-                  </Link>
-                </Button>
-              )}
+              {/* Build list, Add assessment, and Task management buttons live in
+                  the persistent campaign header (page.tsx) so they're visible
+                  on every tab. The Build list panel itself is still mounted
+                  here and driven by the ?buildList=1 URL param. */}
               <WallChartUnitManager
                 ous={ous}
                 canWrite={canWrite}
@@ -1795,16 +1775,8 @@ export function CampaignWallChart({
         displayOrder={nextDisplayOrder}
       />
 
-      <CreateAssessmentDialog
-        campaignId={campaignId}
-        open={createAssessmentOpen}
-        onOpenChange={setCreateAssessmentOpen}
-        lockKind="assessment"
-        onCreated={() => {
-          queryClient.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
-          queryClient.invalidateQueries({ queryKey: ["campaign-assessments-rated", campaignId] });
-        }}
-      />
+      {/* CreateAssessmentDialog is mounted in the campaign page so the
+          persistent header's "Add assessment" button can open it from any tab. */}
 
       <CreateTaskListDialog
         campaignId={campaignId}

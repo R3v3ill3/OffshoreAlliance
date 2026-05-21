@@ -74,6 +74,7 @@ import { CampaignResultsSection } from "@/components/campaigns/campaign-results-
 import { CampaignActionsSection } from "@/components/campaigns/campaign-actions-section";
 import { LibrarySection } from "@/components/campaigns/library/campaign-library";
 import { CampaignBasicsEditSheet } from "@/components/campaigns/campaign-basics-edit-sheet";
+import { CreateAssessmentDialog } from "@/components/campaigns/assessments/create-assessment-dialog";
 import { SectionPlansTab } from "@/components/campaigns/section-planning/SectionPlansTab";
 import { CampaignStageCoveragePanel } from "@/components/campaigns/CampaignStageCoveragePanel";
 import { CampaignWorkerDetailProvider } from "@/components/campaigns/campaign-worker-detail-provider";
@@ -262,6 +263,26 @@ export default function CampaignDetailPage() {
   const [actionForm, setActionForm] = useState(INITIAL_ACTION_FORM);
   const [situationSheetOpen, setSituationSheetOpen] = useState(false);
   const [basicsSheetOpen, setBasicsSheetOpen] = useState(false);
+  // Persistent campaign-header dialogs / panel toggles. These three buttons
+  // (Build list, Add assessment, Task management) sit alongside Create Phone
+  // Call so they're available on every campaign tab.
+  const [createAssessmentOpen, setCreateAssessmentOpen] = useState(false);
+  const isBuildListOpen = searchParams.get("buildList") === "1";
+  const handleToggleBuildList = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    const currentlyOpen = params.get("buildList") === "1";
+    if (currentlyOpen) {
+      params.delete("buildList");
+    } else {
+      params.set("buildList", "1");
+      // Build-list panel lives inside the wall-chart sub-tab; ensure we land
+      // there from any other tab so the panel actually mounts.
+      params.set("tab", "workforce");
+      params.set("sub", "wall-chart");
+    }
+    const qs = params.toString();
+    router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   const { data: campaign, isLoading } = useQuery({
     queryKey: ["campaign", id],
@@ -487,12 +508,55 @@ export default function CampaignDetailPage() {
         onSaved={() => queryClient.invalidateQueries({ queryKey: ["campaign", id] })}
       />
 
-      {/* Phone call CTA — persists across all tabs */}
+      {/* Page-level "Add assessment" dialog driven by the persistent header button. */}
+      {campaignIdValid && (
+        <CreateAssessmentDialog
+          campaignId={String(campaignId)}
+          open={createAssessmentOpen}
+          onOpenChange={setCreateAssessmentOpen}
+          lockKind="assessment"
+          onCreated={() => {
+            queryClient.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
+            queryClient.invalidateQueries({ queryKey: ["campaign-assessments-rated", campaignId] });
+          }}
+        />
+      )}
+
+      {/* Phone call CTA + workforce-action quick buttons — persist across all tabs */}
       {campaignIdValid && (
         <div className="space-y-2">
           <ResumeBanner campaignId={campaignId} />
           {canWrite && (
-            <div className="flex justify-end">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={isBuildListOpen ? "default" : "outline"}
+                onClick={handleToggleBuildList}
+                aria-pressed={isBuildListOpen}
+                title={
+                  isBuildListOpen
+                    ? "Close build list panel"
+                    : "Open build list panel — drag tiles, units or selections to assemble a cohort"
+                }
+              >
+                Build list
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setCreateAssessmentOpen(true)}
+              >
+                Add assessment
+              </Button>
+              <Button type="button" size="sm" variant="outline" asChild>
+                <a
+                  href={`/campaigns/${campaignId}?tab=plan&sub=task-lists&from=header`}
+                >
+                  Task management
+                </a>
+              </Button>
               <CreatePhoneCallOrchestrator campaignId={campaignId} />
             </div>
           )}

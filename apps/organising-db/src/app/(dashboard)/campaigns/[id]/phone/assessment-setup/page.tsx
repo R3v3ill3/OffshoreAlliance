@@ -28,6 +28,10 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { ArrowLeft, Loader2, Plus, Star } from 'lucide-react'
 import { toast } from 'sonner'
 import { CreateAssessmentDialog } from '@/components/campaigns/assessments/create-assessment-dialog'
+import {
+  fetchUserAssessments,
+  type UserAssessmentRow,
+} from '@/lib/phone/fetch-user-assessments'
 import type { EntryBranch } from '@/types/phone-call-action'
 
 interface ActionRow {
@@ -38,10 +42,7 @@ interface ActionRow {
   list_ids: number[] | null
 }
 
-interface CampaignAssessmentRow {
-  activity_id: number
-  title: string
-}
+type CampaignAssessmentRow = UserAssessmentRow
 
 export default function AssessmentSetupPage() {
   const params = useParams()
@@ -89,16 +90,7 @@ export default function AssessmentSetupPage() {
 
   const { data: assessments = [], isLoading: assessmentsLoading } = useQuery<CampaignAssessmentRow[]>({
     queryKey: ['campaign-assessment-options', campaignId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('campaign_activities')
-        .select('activity_id, title, activity_kind')
-        .eq('campaign_id', Number(campaignId))
-        .eq('activity_kind', 'assessment')
-        .order('created_at', { ascending: false })
-      if (error) throw error
-      return (data ?? []) as CampaignAssessmentRow[]
-    },
+    queryFn: () => fetchUserAssessments(supabase, Number(campaignId)),
   })
 
   function toggle(id: number) {

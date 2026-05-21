@@ -17,6 +17,10 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Plus } from 'lucide-react'
 import { CreateAssessmentDialog } from '@/components/campaigns/assessments/create-assessment-dialog'
+import {
+  fetchUserAssessments,
+  type UserAssessmentRow,
+} from '@/lib/phone/fetch-user-assessments'
 import type { VariationDimension } from '@/types/phone-call-action'
 
 const VARIATION_DIMENSION_OPTIONS: { value: VariationDimension; label: string; hint: string }[] = [
@@ -61,11 +65,7 @@ export interface BackgroundInfoValue {
   selectedAssessmentIds: number[]
 }
 
-interface CampaignAssessmentRow {
-  activity_id: number
-  title: string
-  activity_kind: string
-}
+type CampaignAssessmentRow = UserAssessmentRow
 
 interface Props {
   campaignId: number | string
@@ -100,20 +100,11 @@ export function BackgroundInfoStep({ campaignId, value, onChange, onNext, onCanc
 
   // Campaign assessments available to rate during this call session.
   // Driven by the same campaign_activities table the Workforce → Assessments
-  // tab uses, so newly created assessments persist at campaign level (not
-  // phone-scoped) and remain available to other campaign features.
+  // tab uses, with script-shadow rows filtered out (see
+  // fetchUserAssessments docstring for the rationale).
   const { data: campaignAssessments = [] } = useQuery<CampaignAssessmentRow[]>({
     queryKey: ['campaign-assessment-options', String(campaignId)],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('campaign_activities')
-        .select('activity_id, title, activity_kind')
-        .eq('campaign_id', Number(campaignId))
-        .eq('activity_kind', 'assessment')
-        .order('created_at', { ascending: false })
-      if (error) throw error
-      return (data ?? []) as CampaignAssessmentRow[]
-    },
+    queryFn: () => fetchUserAssessments(supabase, Number(campaignId)),
   })
 
   const selectedSet = new Set(value.selectedAssessmentIds)

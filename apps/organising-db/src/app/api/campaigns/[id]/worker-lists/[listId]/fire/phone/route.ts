@@ -90,9 +90,33 @@ export async function POST(
       .eq('list_id', lid)
     if (markErr) throw markErr
 
+    // Create a phone_call_actions session row so this pathway has the same
+    // resume + reporting + setup affordances as the orchestrator-driven
+    // pathways. entry_branch='build_list' marks the origin so analytics can
+    // distinguish wall-chart fires from explicit Create Phone Call sessions.
+    const { data: action, error: actionErr } = await supabase
+      .from('phone_call_actions')
+      .insert({
+        campaign_id: cid,
+        created_by: user.id,
+        entry_branch: 'build_list',
+        list_ids: [callList.list_id],
+        status: 'in_progress',
+      })
+      .select('action_id')
+      .single()
+    if (actionErr) {
+      // Don't fail the fire if action creation hits a constraint — the
+      // worker list still gets a call_lists row, so the user can dial.
+      // Log so the issue surfaces in server logs.
+      console.error('phone_call_actions insert failed (non-fatal):', actionErr)
+    }
+
+    const actionParam = action?.action_id ? `?action_id=${action.action_id}` : ''
     return NextResponse.json({
       call_list_id: callList.list_id,
-      redirect_to: `/campaigns/${cid}/phone/lists/${callList.list_id}`,
+      action_id: action?.action_id ?? null,
+      redirect_to: `/campaigns/${cid}/phone/lists/${callList.list_id}${actionParam}`,
     })
   } catch (error) {
     console.error('Fire phone error:', error)

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
+import { useRemoveWorkerFromCampaign } from "@/lib/hooks/useRemoveWorkerFromCampaign";
 import { useSaveActivityRating } from "@/lib/hooks/useSaveActivityRating";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -534,7 +535,6 @@ function DetailsTab({
           campaignId={campaignId}
           workerId={workerId}
           workerName={`${worker.first_name} ${worker.last_name}`}
-          ous={ous}
           onRemoved={onClose}
         />
       )}
@@ -818,17 +818,14 @@ function RemoveFromCampaignPanel({
   campaignId,
   workerId,
   workerName,
-  ous,
   onRemoved,
 }: {
   campaignId: string;
   workerId: number;
   workerName: string;
-  ous: WallChartOU[];
   onRemoved: () => void;
 }) {
   const supabase = createClient();
-  const qc = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const [clearEmployer, setClearEmployer] = useState(false);
   const [clearWorksite, setClearWorksite] = useState(false);
@@ -870,55 +867,14 @@ function RemoveFromCampaignPanel({
     return (Array.isArray(w) ? w[0] : w)?.worksite_name ?? null;
   })();
 
-  const removeFromCampaign = useAuthAwareMutation({
-    mutationFn: async () => {
-      const cidNum = Number(campaignId);
-
-      // 1. Remove all OU assignments for this worker in this campaign.
-      const ouIds = ous.map((o) => o.ou_id);
-      if (ouIds.length > 0) {
-        const { error: ouErr } = await supabase
-          .from("campaign_worker_ou")
-          .delete()
-          .eq("worker_id", workerId)
-          .in("ou_id", ouIds);
-        if (ouErr) throw ouErr;
-      }
-
-      // 2. Remove campaign membership.
-      const { error: memErr } = await supabase
-        .from("campaign_worker_membership")
-        .delete()
-        .eq("campaign_id", cidNum)
-        .eq("worker_id", workerId);
-      if (memErr) throw memErr;
-
-      // 3. Optionally clear employer / worksite on the worker record.
-      const workerUpdates: Record<string, unknown> = {};
-      if (clearEmployer) workerUpdates.employer_id = null;
-      if (clearWorksite) workerUpdates.worksite_id = null;
-      if (Object.keys(workerUpdates).length > 0) {
-        const { error: wErr } = await supabase
-          .from("workers")
-          .update(workerUpdates)
-          .eq("worker_id", workerId);
-        if (wErr) throw wErr;
-      }
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
-      qc.invalidateQueries({ queryKey: ["campaign-members", campaignId] });
-      qc.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
-      qc.invalidateQueries({ queryKey: ["campaign-list-builder-workers", Number(campaignId)] });
-      qc.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
-      qc.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
-      qc.invalidateQueries({ queryKey: ["workers"] });
-      toast.success(`${workerName} removed from campaign.`);
-      onRemoved();
-    },
-    onError: (err: Error) => {
-      toast.error(err.message || "Failed to remove worker from campaign");
-    },
+  // Removal logic lives in a shared hook so the dialler's
+  // "removed_from_campaign" / "no_longer_in_universe" call dispositions
+  // call the same code path.
+  const removeFromCampaign = useRemoveWorkerFromCampaign({
+    campaignId,
+    workerId,
+    workerName,
+    onRemoved,
   });
 
   return (
@@ -996,7 +952,13 @@ function RemoveFromCampaignPanel({
             size="sm"
             className="w-full"
             disabled={removeFromCampaign.isPending}
-            onClick={() => removeFromCampaign.mutate()}
+            onClick={() =>
+              removeFromCampaign.mutate({
+                reasonCode: "no_longer_in_universe",
+                clearEmployer,
+                clearWorksite,
+              })
+            }
           >
             {removeFromCampaign.isPending
               ? "Removing…"

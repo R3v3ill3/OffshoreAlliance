@@ -55,6 +55,12 @@ interface WorkerEditDialogProps {
   initialData: WorkerEditInitialData
   connectionId?: number | null
   connectionNotes?: string | null
+  /**
+   * When provided, the worker_activity_log "details_updated" audit row is
+   * tagged with this phone_call_actions session id so the session report
+   * can surface a "details updated" flag for this call.
+   */
+  actionId?: number | null
 }
 
 const AU_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA']
@@ -69,10 +75,13 @@ export function WorkerEditDialog({
   initialData,
   connectionId,
   connectionNotes,
+  actionId,
 }: WorkerEditDialogProps) {
   const supabase = createClient()
   const numericCampaignId = campaignId != null ? Number(campaignId) : null
 
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [occupation, setOccupation] = useState('')
@@ -92,6 +101,8 @@ export function WorkerEditDialog({
 
   useEffect(() => {
     if (open) {
+      setFirstName(initialData.first_name || '')
+      setLastName(initialData.last_name || '')
       setPhone(initialData.phone || '')
       setEmail(initialData.email || '')
       setOccupation(initialData.occupation || '')
@@ -273,15 +284,57 @@ export function WorkerEditDialog({
     setIsSaving(true)
     try {
       const workerUpdates: Record<string, unknown> = {}
-      if (phone !== (initialData.phone || '')) workerUpdates.phone = phone.trim() || null
-      if (email !== (initialData.email || '')) workerUpdates.email = email.trim() || null
-      if (occupation !== (initialData.occupation || '')) workerUpdates.occupation = occupation.trim() || null
-      if (address !== (initialData.address || '')) workerUpdates.address = address.trim() || null
-      if (suburb !== (initialData.suburb || '')) workerUpdates.suburb = suburb.trim() || null
-      if (state !== (initialData.state || '')) workerUpdates.state = state || null
-      if (postcode !== (initialData.postcode || '')) workerUpdates.postcode = postcode.trim() || null
-      if (employerId !== initialData.employer_id) workerUpdates.employer_id = employerId
-      if (worksiteId !== initialData.worksite_id) workerUpdates.worksite_id = worksiteId
+      const fieldDiff: Record<string, { from: unknown; to: unknown }> = {}
+      const recordChange = (field: string, from: unknown, to: unknown) => {
+        fieldDiff[field] = { from, to }
+      }
+
+      const trimmedFirstName = firstName.trim()
+      const trimmedLastName = lastName.trim()
+      if (trimmedFirstName && trimmedFirstName !== (initialData.first_name || '')) {
+        workerUpdates.first_name = trimmedFirstName
+        recordChange('first_name', initialData.first_name || null, trimmedFirstName)
+      }
+      if (trimmedLastName && trimmedLastName !== (initialData.last_name || '')) {
+        workerUpdates.last_name = trimmedLastName
+        recordChange('last_name', initialData.last_name || null, trimmedLastName)
+      }
+      if (phone !== (initialData.phone || '')) {
+        workerUpdates.phone = phone.trim() || null
+        recordChange('phone', initialData.phone || null, phone.trim() || null)
+      }
+      if (email !== (initialData.email || '')) {
+        workerUpdates.email = email.trim() || null
+        recordChange('email', initialData.email || null, email.trim() || null)
+      }
+      if (occupation !== (initialData.occupation || '')) {
+        workerUpdates.occupation = occupation.trim() || null
+        recordChange('occupation', initialData.occupation || null, occupation.trim() || null)
+      }
+      if (address !== (initialData.address || '')) {
+        workerUpdates.address = address.trim() || null
+        recordChange('address', initialData.address || null, address.trim() || null)
+      }
+      if (suburb !== (initialData.suburb || '')) {
+        workerUpdates.suburb = suburb.trim() || null
+        recordChange('suburb', initialData.suburb || null, suburb.trim() || null)
+      }
+      if (state !== (initialData.state || '')) {
+        workerUpdates.state = state || null
+        recordChange('state', initialData.state || null, state || null)
+      }
+      if (postcode !== (initialData.postcode || '')) {
+        workerUpdates.postcode = postcode.trim() || null
+        recordChange('postcode', initialData.postcode || null, postcode.trim() || null)
+      }
+      if (employerId !== initialData.employer_id) {
+        workerUpdates.employer_id = employerId
+        recordChange('employer_id', initialData.employer_id, employerId)
+      }
+      if (worksiteId !== initialData.worksite_id) {
+        workerUpdates.worksite_id = worksiteId
+        recordChange('worksite_id', initialData.worksite_id, worksiteId)
+      }
 
       if (Object.keys(workerUpdates).length > 0) {
         const { error } = await supabase
@@ -297,6 +350,24 @@ export function WorkerEditDialog({
           .update({ notes: notes.trim() || null })
           .eq('connection_id', connectionId)
         if (error) throw error
+      }
+
+      // Audit row in worker_activity_log so session reports can surface a
+      // "details updated" flag (and the Excel export can list the changes).
+      // Only logged when the worker has an active campaign connection — the
+      // log is keyed to connection_id by design.
+      if (connectionId && Object.keys(fieldDiff).length > 0) {
+        await supabase.from('worker_activity_log').insert({
+          connection_id: connectionId,
+          activity_type: 'details_updated',
+          description: 'Contact details updated during call',
+          outcome: 'details_updated',
+          contact_method: 'phone',
+          action_id: actionId ?? null,
+          metadata: {
+            changes: fieldDiff,
+          },
+        })
       }
 
       toast.success('Contact details updated')
@@ -323,6 +394,26 @@ export function WorkerEditDialog({
           </DialogHeader>
 
           <div className="space-y-4 py-2">
+            {/* Name */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">First name</Label>
+                <Input
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Last name</Label>
+                <Input
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+            </div>
+
             {/* Contact details */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">

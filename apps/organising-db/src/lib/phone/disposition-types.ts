@@ -26,6 +26,18 @@ export const CALL_DISPOSITIONS: { value: CallDisposition; label: string; color: 
   { value: 'partial_hung_up', label: 'Hung Up', color: 'bg-amber-100 text-amber-700' },
   { value: 'partial_asked_callback', label: 'Asked for Callback', color: 'bg-purple-100 text-purple-700' },
   { value: 'referred_to_other', label: 'Referred to Other', color: 'bg-blue-100 text-blue-700' },
+  { value: 'removed_from_campaign', label: 'Remove from Campaign', color: 'bg-red-100 text-red-800' },
+  { value: 'no_longer_in_universe', label: 'No Longer in Universe', color: 'bg-red-100 text-red-800' },
+]
+
+/**
+ * Call dispositions that cause the worker to be removed from the campaign
+ * (universe). Picking either triggers the shared removal mutation in
+ * addition to recording the call attempt.
+ */
+export const REMOVAL_CALL_DISPOSITIONS: CallDisposition[] = [
+  'removed_from_campaign',
+  'no_longer_in_universe',
 ]
 
 export const CTA_RESPONSES: { value: CtaResponse; label: string; color: string }[] = [

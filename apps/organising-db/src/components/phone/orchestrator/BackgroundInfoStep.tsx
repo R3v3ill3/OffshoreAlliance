@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -14,6 +15,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Plus } from 'lucide-react'
+import { CreateAssessmentDialog } from '@/components/campaigns/assessments/create-assessment-dialog'
 import type { VariationDimension } from '@/types/phone-call-action'
 
 const VARIATION_DIMENSION_OPTIONS: { value: VariationDimension; label: string; hint: string }[] = [
@@ -49,6 +52,19 @@ export interface BackgroundInfoValue {
   hasVariations: boolean
   variationCount: number
   variationDimension: VariationDimension | null
+  /**
+   * Campaign assessments (campaign_activities.activity_id where
+   * activity_kind = 'assessment') the driver wants to rate every contact
+   * against during this call session. The dialler renders one rating row
+   * per id. Empty array = no per-call assessment capture.
+   */
+  selectedAssessmentIds: number[]
+}
+
+interface CampaignAssessmentRow {
+  activity_id: number
+  title: string
+  activity_kind: string
 }
 
 interface Props {
@@ -61,6 +77,8 @@ interface Props {
 
 export function BackgroundInfoStep({ campaignId, value, onChange, onNext, onCancel }: Props) {
   const supabase = createClient()
+  const queryClient = useQueryClient()
+  const [addAssessmentOpen, setAddAssessmentOpen] = useState(false)
 
   const { data: assessments = [], isError: assessmentsError } = useQuery<Assessment[]>({
     queryKey: ['bargaining-strength-assessments', String(campaignId)],
@@ -79,6 +97,35 @@ export function BackgroundInfoStep({ campaignId, value, onChange, onNext, onCanc
     },
     retry: false,
   })
+
+  // Campaign assessments available to rate during this call session.
+  // Driven by the same campaign_activities table the Workforce → Assessments
+  // tab uses, so newly created assessments persist at campaign level (not
+  // phone-scoped) and remain available to other campaign features.
+  const { data: campaignAssessments = [] } = useQuery<CampaignAssessmentRow[]>({
+    queryKey: ['campaign-assessment-options', String(campaignId)],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('campaign_activities')
+        .select('activity_id, title, activity_kind')
+        .eq('campaign_id', Number(campaignId))
+        .eq('activity_kind', 'assessment')
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return (data ?? []) as CampaignAssessmentRow[]
+    },
+  })
+
+  const selectedSet = new Set(value.selectedAssessmentIds)
+  const toggleAssessment = (id: number) => {
+    const next = new Set(selectedSet)
+    if (next.has(id)) {
+      next.delete(id)
+    } else {
+      next.add(id)
+    }
+    onChange({ ...value, selectedAssessmentIds: Array.from(next) })
+  }
 
   // Keep variationDimension in sync when toggling variations off
   useEffect(() => {
@@ -134,6 +181,50 @@ export function BackgroundInfoStep({ campaignId, value, onChange, onNext, onCanc
           Linking an assessment lets the script and CTA ambitions draw on the campaign&apos;s
           bargaining-strength data.
         </p>
+      </div>
+
+      {/* Multi-select: assessments to rate during this call session */}
+      <div className="space-y-2 border-t pt-4">
+        <div className="flex items-center justify-between gap-2">
+          <Label>Assessments to rate during the call (optional)</Label>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setAddAssessmentOpen(true)}
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" />
+            New assessment
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Tick the assessments you want to record a rating for on each contact
+          (e.g. support level, willingness to take action). The dialler will
+          show one rating row per assessment per call. New assessments you add
+          here are saved to the campaign and remain available outside this
+          session.
+        </p>
+        {campaignAssessments.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic">
+            No assessments defined for this campaign yet. Use the &ldquo;New
+            assessment&rdquo; button above to create one.
+          </p>
+        ) : (
+          <div className="space-y-1 max-h-40 overflow-y-auto rounded border bg-muted/30 p-2">
+            {campaignAssessments.map((a) => (
+              <label
+                key={a.activity_id}
+                className="flex items-center gap-2 px-1 py-1 text-sm cursor-pointer hover:bg-background rounded"
+              >
+                <Checkbox
+                  checked={selectedSet.has(a.activity_id)}
+                  onCheckedChange={() => toggleAssessment(a.activity_id)}
+                />
+                <span>{a.title}</span>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Variations toggle */}
@@ -218,6 +309,24 @@ export function BackgroundInfoStep({ campaignId, value, onChange, onNext, onCanc
           Next
         </Button>
       </div>
+
+      <CreateAssessmentDialog
+        campaignId={String(campaignId)}
+        open={addAssessmentOpen}
+        onOpenChange={setAddAssessmentOpen}
+        lockKind="assessment"
+        onCreated={(activityId) => {
+          // Auto-tick the new assessment for this session and refresh the list.
+          queryClient.invalidateQueries({
+            queryKey: ['campaign-assessment-options', String(campaignId)],
+          })
+          if (typeof activityId === 'number') {
+            const next = new Set(value.selectedAssessmentIds)
+            next.add(activityId)
+            onChange({ ...value, selectedAssessmentIds: Array.from(next) })
+          }
+        }}
+      />
     </div>
   )
 }

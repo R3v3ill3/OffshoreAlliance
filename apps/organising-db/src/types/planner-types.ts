@@ -480,6 +480,8 @@ export type CallDisposition =
   | 'partial_hung_up'
   | 'partial_asked_callback'
   | 'referred_to_other'
+  | 'removed_from_campaign'
+  | 'no_longer_in_universe'
 
 export type CtaResponse = 'accepted' | 'considering' | 'declined' | 'not_reached'
 export type SupportLevel = 'strong_supporter' | 'supporter' | 'neutral' | 'unsupportive' | 'hostile'
@@ -710,6 +712,26 @@ export interface RecordCallAttemptRequest {
    * record_assessment_event().
    */
   cta_ratings?: CapturedCtaRatingPayload[]
+  /**
+   * Per-call assessment ratings — one per assessment the driver selected
+   * at session setup (phone_call_actions.selected_assessment_ids). Persisted
+   * to call_attempt_assessment_ratings; non-null ratings also propagate to
+   * campaign_activity_ratings.
+   */
+  assessment_ratings?: CapturedAssessmentRatingPayload[]
+  /**
+   * Orchestrator session this attempt belongs to. When set the audit row
+   * in worker_activity_log is tagged so session reports can attribute it.
+   */
+  action_id?: number | null
+}
+
+export interface CapturedAssessmentRatingPayload {
+  /** FK to campaign_activities.activity_id (an assessment row). */
+  activity_id: number
+  /** 1..5 inclusive; null = the driver left this assessment unrated. */
+  rating?: number | null
+  notes?: string | null
 }
 
 export interface CapturedCtaRatingPayload {

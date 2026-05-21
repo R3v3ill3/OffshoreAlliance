@@ -43,6 +43,7 @@ const INITIAL_BACKGROUND: BackgroundInfoValue = {
   hasVariations: false,
   variationCount: 1,
   variationDimension: null,
+  selectedAssessmentIds: [],
 }
 
 interface Props {
@@ -86,6 +87,7 @@ export function CreatePhoneCallOrchestrator({ campaignId, trigger, defaultOpen }
           : 'none',
         entry_branch: selectedBranch,
         status: 'in_progress',
+        selected_assessment_ids: backgroundInfo.selectedAssessmentIds,
       }
 
       const { data, error } = await supabase

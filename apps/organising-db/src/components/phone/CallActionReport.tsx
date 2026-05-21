@@ -4,7 +4,9 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { fetchApi } from '@/lib/api/fetch-api'
-import { exportToCSV } from '@/lib/utils/export'
+import { createClient } from '@/lib/supabase/client'
+import { exportToCSV, exportToXLSX } from '@/lib/utils/export'
+import { toast } from 'sonner'
 import { useCallLists } from '@/lib/hooks/useCallList'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -104,6 +106,13 @@ interface CallActionReportProps {
   defaultListId?: number
   defaultGroupBy?: GroupBy
   campaignName?: string
+  /**
+   * When provided, the report scopes the "details updated workers" download
+   * to worker_activity_log rows tagged with this phone_call_actions session.
+   * Without an actionId the download covers all details_updated rows for
+   * the current campaign (useful for cross-session admin export).
+   */
+  actionId?: number | null
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -180,6 +189,13 @@ function SupportLevelChips({ levels }: { levels: Record<SupportLevelKey, number>
   )
 }
 
+// Render a JSONB diff value compactly for the XLSX "changes" column.
+function describeValue(v: unknown): string {
+  if (v == null || v === '') return '∅'
+  if (typeof v === 'string') return v
+  return JSON.stringify(v)
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function CallActionReport({
@@ -187,13 +203,136 @@ export function CallActionReport({
   defaultListId,
   defaultGroupBy,
   campaignName,
+  actionId,
 }: CallActionReportProps) {
   const [groupBy, setGroupBy] = useState<GroupBy | 'none'>((defaultGroupBy as GroupBy) ?? 'none')
   const [listId, setListId] = useState<string>(defaultListId ? String(defaultListId) : 'all')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const supabase = createClient()
 
   const { data: lists } = useCallLists(campaignId)
+
+  /**
+   * Workers whose contact details were updated during this session. Filter
+   * by action_id when supplied so the harmonised session report scopes to
+   * the active phone_call_actions row; otherwise return all campaign-wide
+   * details_updated rows so the report viewer can still grab a global list.
+   */
+  const { data: detailsUpdatedWorkers = [] } = useQuery({
+    queryKey: [
+      'phone-call-action-details-updated',
+      campaignId,
+      actionId ?? 'all',
+    ],
+    queryFn: async () => {
+      // Step 1: pull the activity_log rows.
+      let q = supabase
+        .from('worker_activity_log')
+        .select('activity_id, connection_id, metadata, activity_date, action_id')
+        .eq('activity_type', 'details_updated')
+        .order('activity_date', { ascending: false })
+      if (actionId != null) {
+        q = q.eq('action_id', actionId)
+      }
+      const { data: rows, error } = await q
+      if (error) throw error
+      const logRows = (rows ?? []) as Array<{
+        activity_id: number
+        connection_id: number
+        metadata: { changes?: Record<string, { from: unknown; to: unknown }> } | null
+        activity_date: string
+        action_id: number | null
+      }>
+      if (logRows.length === 0) return []
+
+      // Step 2: resolve connection_id → (worker_id, campaign_id) so we can
+      // filter to this campaign and hydrate worker details.
+      const connIds = Array.from(new Set(logRows.map((r) => r.connection_id)))
+      const { data: connections, error: cErr } = await supabase
+        .from('worker_campaign_connections')
+        .select('connection_id, worker_id, campaign_id')
+        .in('connection_id', connIds)
+      if (cErr) throw cErr
+      const connMap = new Map(
+        (connections ?? []).map((c) => [c.connection_id, c]),
+      )
+
+      const workerIds = Array.from(
+        new Set(
+          logRows
+            .map((r) => connMap.get(r.connection_id))
+            .filter((c) => c && c.campaign_id === campaignId)
+            .map((c) => c!.worker_id),
+        ),
+      )
+      if (workerIds.length === 0) return []
+
+      const { data: workers, error: wErr } = await supabase
+        .from('workers')
+        .select('worker_id, first_name, last_name, member_number')
+        .in('worker_id', workerIds)
+      if (wErr) throw wErr
+      const workerMap = new Map(
+        (workers ?? []).map((w) => [
+          w.worker_id,
+          w as { worker_id: number; first_name: string | null; last_name: string | null; member_number: string | null },
+        ]),
+      )
+
+      // Step 3: assemble one row per (worker × activity_id) so the export
+      // captures every recorded change, not just the latest.
+      return logRows
+        .map((r) => {
+          const conn = connMap.get(r.connection_id)
+          if (!conn || conn.campaign_id !== campaignId) return null
+          const worker = workerMap.get(conn.worker_id)
+          if (!worker) return null
+          const changes = r.metadata?.changes ?? {}
+          const changeDesc = Object.entries(changes)
+            .map(([field, diff]) => `${field}: ${describeValue(diff.from)} → ${describeValue(diff.to)}`)
+            .join('; ')
+          return {
+            worker_id: worker.worker_id,
+            first_name: worker.first_name ?? '',
+            last_name: worker.last_name ?? '',
+            member_number: worker.member_number ?? '',
+            changes: changeDesc,
+            updated_at: r.activity_date,
+          }
+        })
+        .filter((r): r is Exclude<typeof r, null> => r !== null)
+    },
+  })
+
+  async function handleDownloadDetailsUpdated() {
+    if (detailsUpdatedWorkers.length === 0) {
+      toast.info('No worker detail changes recorded for this session yet.')
+      return
+    }
+    const today = format(new Date(), 'yyyy-MM-dd')
+    const nameSlug = campaignName
+      ? campaignName.replace(/[^a-z0-9]/gi, '-').toLowerCase()
+      : `campaign-${campaignId}`
+    const suffix = actionId != null ? `-action-${actionId}` : ''
+    try {
+      await exportToXLSX(
+        detailsUpdatedWorkers as unknown as Record<string, unknown>[],
+        [
+          { key: 'first_name', header: 'First Name' },
+          { key: 'last_name', header: 'Last Name' },
+          { key: 'changes', header: 'Changes' },
+          { key: 'member_number', header: 'Member / Identifier' },
+          { key: 'worker_id', header: 'Worker ID' },
+          { key: 'updated_at', header: 'Updated At' },
+        ],
+        `details-updated-${nameSlug}${suffix}-${today}`,
+        'Details updated',
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to export XLSX')
+    }
+  }
 
   const queryParams = new URLSearchParams()
   if (groupBy && groupBy !== 'none') queryParams.set('groupBy', groupBy)
@@ -367,7 +506,22 @@ export function CallActionReport({
           />
         </div>
 
-        <div className="ml-auto">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleDownloadDetailsUpdated}
+            disabled={detailsUpdatedWorkers.length === 0}
+            title="Workers whose contact details changed during this session"
+          >
+            <Download className="h-4 w-4 mr-1.5" />
+            Details updated (XLSX)
+            {detailsUpdatedWorkers.length > 0 && (
+              <Badge variant="secondary" className="ml-1.5">
+                {detailsUpdatedWorkers.length}
+              </Badge>
+            )}
+          </Button>
           <Button
             size="sm"
             variant="outline"

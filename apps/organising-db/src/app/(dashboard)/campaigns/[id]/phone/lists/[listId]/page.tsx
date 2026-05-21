@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useState, useMemo } from 'react'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   useCallList,
@@ -41,6 +41,7 @@ import { CallListLinkedScripts } from '@/components/phone/CallListLinkedScripts'
 import { IssueLinkDialog, type IssueLinkResult } from '@/components/share/issue-link-dialog'
 import { IssuedLinkResultDialog } from '@/components/share/issued-link-result-dialog'
 import { WorkerPicker } from '@/components/campaigns/shared/worker-picker'
+import { EditCallSetupDialog } from '@/components/phone/orchestrator/EditCallSetupDialog'
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
   pending: <Clock className="h-3 w-3 text-slate-500" />,
@@ -53,10 +54,21 @@ const STATUS_ICONS: Record<string, React.ReactNode> = {
 export default function CallListDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const campaignId = params.id as string
   const listId = params.listId as string
   const supabase = createClient()
   const queryClient = useQueryClient()
+  const actionId = useMemo(() => {
+    const raw = searchParams.get('action_id')
+    if (!raw) return null
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : null
+  }, [searchParams])
+  const [showEditSetup, setShowEditSetup] = useState(false)
+  const callUrl = actionId != null
+    ? `/campaigns/${campaignId}/phone/call/${listId}?action_id=${actionId}`
+    : `/campaigns/${campaignId}/phone/call/${listId}`
 
   const { data: list, isLoading: listLoading } = useCallList(campaignId, listId)
   const { data: items, isLoading: itemsLoading } = useCallListItems(campaignId, listId)
@@ -377,10 +389,20 @@ export default function CallListDetailPage() {
                 </Button>
               )}
             </div>
+            {actionId != null && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full"
+                onClick={() => setShowEditSetup(true)}
+              >
+                Configure call setup
+              </Button>
+            )}
             {(list.status === 'active' || list.status === 'draft') && (
               <Button
                 size="sm" className="w-full"
-                onClick={() => router.push(`/campaigns/${campaignId}/phone/call/${listId}`)}
+                onClick={() => router.push(callUrl)}
               >
                 <Phone className="h-3 w-3 mr-1" />
                 Start Calling
@@ -628,6 +650,15 @@ export default function CallListDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {actionId != null && (
+        <EditCallSetupDialog
+          open={showEditSetup}
+          onOpenChange={setShowEditSetup}
+          campaignId={campaignId}
+          actionId={actionId}
+        />
+      )}
     </div>
   )
 }

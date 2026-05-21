@@ -11,10 +11,11 @@
  */
 
 import { useReducer, useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallList } from '@/lib/hooks/useCallList'
 import { usePhoneNext, useRecordCallAttempt } from '@/lib/hooks/useCallSession'
+import { useRemoveWorkerFromCampaign } from '@/lib/hooks/useRemoveWorkerFromCampaign'
 import { useCallOutcomeDefinitions } from '@/lib/hooks/useCallOutcomes'
 import { useCampaignPhoneScriptContext } from '@/lib/hooks/useCampaignPhoneScriptContext'
 import { mergePhoneScriptVariableContext } from '@/lib/comms/template-variables'
@@ -31,6 +32,11 @@ import { InCallObjectionsPanel } from '@/components/phone/InCallObjectionsPanel'
 import { InCallIssuesPanel } from '@/components/phone/InCallIssuesPanel'
 import { CallActionReport } from '@/components/phone/CallActionReport'
 import { CtaRatingsPanel, type CtaAmbitionWithAssessment, type CtaRatingValue } from '@/components/phone/CtaRatingsPanel'
+import {
+  SessionAssessmentRatingsPanel,
+  serializeAssessmentRatings,
+} from '@/components/phone/SessionAssessmentRatingsPanel'
+import { EditCallSetupDialog } from '@/components/phone/orchestrator/EditCallSetupDialog'
 import { CreateTaskListDialog } from '@/components/campaigns/task-lists/create-task-list-dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -58,7 +64,11 @@ import {
   Loader2, FileText, CheckCircle, ListPlus, Building2, Map as MapIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { CALL_DISPOSITIONS, SUPPORT_LEVELS } from '@/lib/phone/disposition-types'
+import {
+  CALL_DISPOSITIONS,
+  REMOVAL_CALL_DISPOSITIONS,
+  SUPPORT_LEVELS,
+} from '@/lib/phone/disposition-types'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type {
   DialDisposition, CallDisposition, SupportLevel,
@@ -77,11 +87,21 @@ interface CallSessionPageProps {
 
 export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
   const router = useRouter()
+  const callSessionSearchParams = useSearchParams()
+  const actionId = useMemo(() => {
+    const raw = callSessionSearchParams.get('action_id')
+    if (!raw) return null
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : null
+  }, [callSessionSearchParams])
   const supabase = createClient()
 
   const [flowState, dispatch] = useReducer(callFlowReducer, getInitialCallFlowState())
   const [notes, setNotes] = useState('')
   const [ctaRatings, setCtaRatings] = useState<Map<number, CtaRatingValue>>(new Map())
+  const [assessmentRatings, setAssessmentRatings] = useState<
+    Map<number, { rating: number | null; notes: string | null }>
+  >(new Map())
   const [supportLevel, setSupportLevel] = useState<SupportLevel | null>(null)
   const [showCallbackDialog, setShowCallbackDialog] = useState(false)
   const [stepNotes, setStepNotes] = useState<Record<number, string>>({})
@@ -95,6 +115,7 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
   const [showAmbitionGate, setShowAmbitionGate] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)
   const [showTaskListDialog, setShowTaskListDialog] = useState(false)
+  const [showEditSetup, setShowEditSetup] = useState(false)
   const pendingSubmitArgs = useRef<Partial<RecordCallAttemptRequest> | undefined>(undefined)
 
   const callStartTime = useRef<Date | null>(null)
@@ -105,6 +126,13 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
     campaignId, listId, shouldFetchNext
   )
   const recordAttempt = useRecordCallAttempt(campaignId)
+  // Shared removal mutation — wired to the same code path as the
+  // worker-detail sheet's "No longer in campaign universe" panel. The
+  // hook accepts per-mutate workerId so we can target whichever contact
+  // is currently active.
+  const removeWorkerFromCampaign = useRemoveWorkerFromCampaign({
+    campaignId,
+  })
 
   type ListWithLinks = typeof list & {
     call_list_scripts?: Array<{
@@ -371,6 +399,11 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
           }))
       : []
 
+    const assessmentRatingsPayload =
+      flowState.dialDisposition === 'connected'
+        ? serializeAssessmentRatings(assessmentRatings)
+        : []
+
     const attempt: RecordCallAttemptRequest = {
       list_item_id: contact.item_id,
       script_id: sessionScriptId ?? list?.script_id ?? null,
@@ -384,14 +417,38 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
       objections: flowState.capturedObjections,
       issues: flowState.capturedIssues,
       cta_ratings: ctaRatingsPayload,
+      assessment_ratings: assessmentRatingsPayload,
+      action_id: actionId,
       ...overrides,
     }
 
     try {
       await recordAttempt.mutateAsync(attempt)
 
+      // If the driver picked one of the removal call_dispositions, run the
+      // shared "no longer in campaign universe" mutation so the worker is
+      // unlinked + audited identically to the worker-detail panel.
+      const finalCallDisposition = attempt.call_disposition
+      if (
+        finalCallDisposition &&
+        (REMOVAL_CALL_DISPOSITIONS as readonly string[]).includes(finalCallDisposition) &&
+        contact.worker
+      ) {
+        const workerName =
+          `${contact.worker.first_name ?? ''} ${contact.worker.last_name ?? ''}`.trim() ||
+          `Worker #${contact.worker.worker_id}`
+        await removeWorkerFromCampaign.mutateAsync({
+          reasonCode: finalCallDisposition as 'removed_from_campaign' | 'no_longer_in_universe',
+          workerId: contact.worker.worker_id,
+          workerName,
+          actionId: actionId,
+          note: notes || null,
+        })
+      }
+
       setNotes('')
       setCtaRatings(new Map())
+      setAssessmentRatings(new Map())
       setSupportLevel(null)
       setStepNotes({})
       setStepReached(new Set())
@@ -403,7 +460,7 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to record attempt')
     }
-  }, [contact, list, sessionScriptId, flowState, notes, supportLevel, ctaRatings, sortedSections, stepReached, stepNotes, checkedOutcomes, recordAttempt, refetchNext])
+  }, [contact, list, sessionScriptId, flowState, notes, supportLevel, ctaRatings, assessmentRatings, sortedSections, stepReached, stepNotes, checkedOutcomes, recordAttempt, refetchNext, actionId, removeWorkerFromCampaign])
 
   const submitAndLoadNext = useCallback(async (overrides?: Partial<RecordCallAttemptRequest>) => {
     if (!contact) return
@@ -508,6 +565,18 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
               </SelectContent>
             </Select>
           </div>
+        )}
+
+        {actionId != null && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => setShowEditSetup(true)}
+            title="Edit session assessments and variation settings"
+          >
+            Edit setup
+          </Button>
         )}
 
         <Badge variant="secondary">{flowState.phase.replace(/_/g, ' ')}</Badge>
@@ -654,6 +723,19 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
                         const m = new Map(prev)
                         if (next == null) m.delete(id)
                         else m.set(id, next)
+                        return m
+                      })
+                    }}
+                  />
+
+                  <SessionAssessmentRatingsPanel
+                    actionId={actionId}
+                    values={assessmentRatings}
+                    onChange={(activityId, next) => {
+                      setAssessmentRatings((prev) => {
+                        const m = new Map(prev)
+                        if (next == null) m.delete(activityId)
+                        else m.set(activityId, next)
                         return m
                       })
                     }}
@@ -884,6 +966,7 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
           <CallActionReport
             campaignId={numericCampaignId}
             defaultListId={list.list_id}
+            actionId={actionId}
           />
         </DialogContent>
       </Dialog>
@@ -920,6 +1003,16 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
           }}
           connectionId={contact.connection?.connection_id ?? null}
           connectionNotes={contact.connection?.notes ?? null}
+          actionId={actionId}
+        />
+      )}
+
+      {actionId != null && (
+        <EditCallSetupDialog
+          open={showEditSetup}
+          onOpenChange={setShowEditSetup}
+          campaignId={campaignId}
+          actionId={actionId}
         />
       )}
     </div>

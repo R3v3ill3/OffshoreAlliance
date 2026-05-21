@@ -529,10 +529,22 @@ export default function NewCallListPage() {
       : 'Script pathway · List step'
     : null
 
+  // Smart top-level Back: step backwards through the internal wizard
+  // first, only exit to `backHref` (returnTo / campaign page) once the
+  // user is on the first internal step. Existing-list mode has no
+  // internal steps, so the top Back always exits there.
+  function handleHeaderBack() {
+    if (listMode === 'new' && stepIndex > 0) {
+      goBack()
+      return
+    }
+    router.push(backHref)
+  }
+
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => router.push(backHref)}>
+        <Button variant="ghost" size="sm" onClick={handleHeaderBack}>
           <ArrowLeft className="h-4 w-4 mr-1" />
           Back
         </Button>

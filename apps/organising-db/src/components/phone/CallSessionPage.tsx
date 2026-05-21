@@ -94,6 +94,22 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
     const n = Number(raw)
     return Number.isFinite(n) ? n : null
   }, [callSessionSearchParams])
+  // Honour returnTo (set by upstream orchestrator components) so Back
+  // retraces the breadcrumb instead of always dumping to /campaigns/[id]/phone.
+  const dialerReturnTo = useMemo(() => {
+    const raw = callSessionSearchParams.get('returnTo')
+    if (!raw) return null
+    try {
+      return decodeURIComponent(raw)
+    } catch {
+      return null
+    }
+  }, [callSessionSearchParams])
+  const dialerBackHref =
+    dialerReturnTo ??
+    (actionId != null
+      ? `/campaigns/${campaignId}/phone/lists/${listId}?action_id=${actionId}`
+      : `/campaigns/${campaignId}/phone`)
   const supabase = createClient()
 
   const [flowState, dispatch] = useReducer(callFlowReducer, getInitialCallFlowState())
@@ -512,7 +528,7 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
     <div className="flex flex-col h-[calc(100vh-8rem)]">
       {/* Header */}
       <div className="flex items-center gap-3 pb-4 border-b mb-4 flex-shrink-0">
-        <Button variant="ghost" size="sm" onClick={() => router.push(`/campaigns/${campaignId}/phone`)}>
+        <Button variant="ghost" size="sm" onClick={() => router.push(dialerBackHref)}>
           <ArrowLeft className="h-4 w-4 mr-1" />
           Back
         </Button>

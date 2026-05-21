@@ -1489,9 +1489,18 @@ export function PhoneWizardSteps() {
         </div>
         <Button
           variant="outline"
-          onClick={() => router.push(returnTo ?? '/campaigns')}
+          onClick={() => {
+            // Smart top-level Back: step backwards through the wizard if
+            // we're not on step 1; only exit to returnTo (or fallback to
+            // /campaigns) once the user is on step 1.
+            if (step > 1) {
+              setStep(step - 1)
+              return
+            }
+            router.push(returnTo ?? '/campaigns')
+          }}
         >
-          {returnTo ? 'Back' : 'Cancel'}
+          {step > 1 ? 'Back' : returnTo ? 'Back' : 'Cancel'}
         </Button>
       </div>
 

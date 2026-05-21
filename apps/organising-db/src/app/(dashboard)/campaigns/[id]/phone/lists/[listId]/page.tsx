@@ -66,8 +66,16 @@ export default function CallListDetailPage() {
     return Number.isFinite(n) ? n : null
   }, [searchParams])
   const [showEditSetup, setShowEditSetup] = useState(false)
+  const returnTo = searchParams.get('returnTo')
+    ? decodeURIComponent(searchParams.get('returnTo')!)
+    : null
+  // Default back target: when arriving via the orchestrator (action_id
+  // set) without an explicit returnTo, fall back to the campaign page
+  // rather than the Phone Ops tab so back retraces the breadcrumb.
+  const backHref =
+    returnTo ?? (actionId != null ? `/campaigns/${campaignId}` : `/campaigns/${campaignId}/phone`)
   const callUrl = actionId != null
-    ? `/campaigns/${campaignId}/phone/call/${listId}?action_id=${actionId}`
+    ? `/campaigns/${campaignId}/phone/call/${listId}?action_id=${actionId}&returnTo=${encodeURIComponent(typeof window === 'undefined' ? '' : window.location.pathname + window.location.search)}`
     : `/campaigns/${campaignId}/phone/call/${listId}`
 
   const { data: list, isLoading: listLoading } = useCallList(campaignId, listId)
@@ -245,7 +253,7 @@ export default function CallListDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => router.push(`/campaigns/${campaignId}/phone`)}>
+        <Button variant="ghost" size="sm" onClick={() => router.push(backHref)}>
           <ArrowLeft className="h-4 w-4 mr-1" />
           Back
         </Button>

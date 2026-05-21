@@ -66,9 +66,8 @@ export const SECTION_TYPES: { value: ScriptSectionType; label: string; descripti
   { value: 'custom', label: 'Custom Section', description: 'Campaign-specific section' },
 ]
 
-export const PRIORITY_STRATEGIES: { value: CallListPriorityStrategy; label: string; description: string }[] = [
-  { value: 'sequential', label: 'Sequential', description: 'Call in the order the list was built' },
-  { value: 'priority_score', label: 'Priority Score', description: 'Call highest-priority contacts first' },
-  { value: 'least_recently_contacted', label: 'Least Recent', description: 'Call those not contacted recently first' },
-  { value: 'random', label: 'Random', description: 'Randomise the call order' },
-]
+// PRIORITY_STRATEGIES was retired when the lists/new wizard unified the
+// Base Priority Strategy + Call Order steps into a single Call Order
+// step. The CallListPriorityStrategy type is still the source of truth
+// for the DB value — strategies are derived from the Call Order picker
+// directly in lists/new/page.tsx (see handleCreate).

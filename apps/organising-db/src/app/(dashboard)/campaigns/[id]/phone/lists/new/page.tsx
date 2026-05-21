@@ -20,7 +20,6 @@ import {
   Loader2, CheckCircle, ChevronUp, ChevronDown, GripVertical,
   Filter, ArrowUpDown,
 } from 'lucide-react'
-import { PRIORITY_STRATEGIES } from '@/lib/phone/disposition-types'
 import { toast } from 'sonner'
 import type { CallListPriorityStrategy } from '@/types/planner-types'
 import type { AudienceDescriptor } from '@/lib/phone/audience-descriptor'
@@ -28,7 +27,7 @@ import { OccupationMultiSelect } from '@/components/phone/OccupationMultiSelect'
 
 type WizardStep = 'details' | 'filters' | 'priority' | 'script' | 'confirm'
 
-const STEPS: { key: WizardStep; label: string }[] = [
+const STEPS_ALL: { key: WizardStep; label: string }[] = [
   { key: 'details', label: 'List Details' },
   { key: 'filters', label: 'Build List' },
   { key: 'priority', label: 'Call Order' },
@@ -70,8 +69,27 @@ interface FilterState {
   include_unrated: boolean
 }
 
+/**
+ * Unified call-order state. `by` is the user-facing choice; the two
+ * bucket-order arrays are preserved across switches so the user doesn't
+ * lose their drag-ordering if they toggle modes.
+ *
+ * DB write derivation (in handleCreate):
+ *   sequential               → priority_strategy='sequential',                  no priority_order
+ *   rating                   → priority_strategy='priority_score',              priority_order={by:'rating', order: ratingOrder}
+ *   assessment_rating        → priority_strategy='priority_score',              priority_order={by:'assessment_rating', order: assessmentRatingOrder, assessment_id}
+ *   least_recently_contacted → priority_strategy='least_recently_contacted',   no priority_order
+ *   random                   → priority_strategy='random',                      no priority_order
+ */
+type CallOrderKind =
+  | 'sequential'
+  | 'rating'
+  | 'assessment_rating'
+  | 'least_recently_contacted'
+  | 'random'
+
 interface PriorityOrderState {
-  by: 'sequential' | 'assessment_rating' | 'rating'
+  by: CallOrderKind
   assessmentRatingOrder: string[]
   ratingOrder: string[]
 }
@@ -128,10 +146,17 @@ export default function NewCallListPage() {
   const [step, setStep] = useState<WizardStep>('details')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [priorityStrategy, setPriorityStrategy] = useState<CallListPriorityStrategy>('sequential')
   const [selectedScriptId, setSelectedScriptId] = useState<number | null>(preselectedScriptId)
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS)
   const [priority, setPriority] = useState<PriorityOrderState>(DEFAULT_PRIORITY)
+
+  // Filter STEPS for the assessment-only pathway: scripts aren't part of
+  // that flow, so we drop the 'script' step entirely. Render gates already
+  // key off `step === 'script'`, so removing it from the array transparently
+  // skips it for both navigation and the progress indicator.
+  const STEPS = pathwayParam === 'assessment_only'
+    ? STEPS_ALL.filter((s) => s.key !== 'script')
+    : STEPS_ALL
   const [createdListId, setCreatedListId] = useState<number | null>(null)
   const [populateResult, setPopulateResult] = useState<{ added: number; skipped_no_phone?: number } | null>(null)
   const [previewCount, setPreviewCount] = useState<{ total: number; withPhone: number } | null>(null)
@@ -217,6 +242,26 @@ export default function NewCallListPage() {
       return result.sort((a, b) => a.worksite_name.localeCompare(b.worksite_name))
     },
     enabled: !!campaignId,
+  })
+
+  // The orchestrator action row for this wizard run (when present). Used
+  // by the confirm-card buttons to decide which onward actions make sense
+  // — e.g. when entry_branch='assessment_first' the assessments were
+  // already picked in the prior pathway step, so we hide the redundant
+  // "Set Assessments Now" link.
+  const { data: phoneCallAction } = useQuery({
+    queryKey: ['phone-call-action-summary', actionId],
+    enabled: actionId != null,
+    queryFn: async () => {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('phone_call_actions')
+        .select('action_id, entry_branch')
+        .eq('action_id', actionId!)
+        .maybeSingle()
+      if (error) throw error
+      return data as { action_id: number; entry_branch: string } | null
+    },
   })
 
   // Existing draft/active call lists for this campaign — fuels the
@@ -433,17 +478,24 @@ export default function NewCallListPage() {
 
   const handleCreate = async () => {
     try {
-      // priority_strategy must be one of the valid DB enum values.
-      // Custom ordering (support_level, rating) is stored in source_filters by the populate route
-      // and applied via priority_score on each call_list_item. The 'priority_score' strategy
-      // tells the calling module to order contacts by their computed score.
-      const strategyValue = priority.by !== 'sequential' ? 'priority_score' : priorityStrategy
+      // Derive priority_strategy + priority_order from the single Call Order
+      // choice. The two bucket modes ('rating', 'assessment_rating') must use
+      // 'priority_score' as the runtime strategy because the bucket bonuses
+      // are encoded in each item's priority_score at populate time.
+      let strategyValue: CallListPriorityStrategy = 'sequential'
+      if (priority.by === 'rating' || priority.by === 'assessment_rating') {
+        strategyValue = 'priority_score'
+      } else if (priority.by === 'least_recently_contacted') {
+        strategyValue = 'least_recently_contacted'
+      } else if (priority.by === 'random') {
+        strategyValue = 'random'
+      }
 
       const list = await createList.mutateAsync({
         name,
         description: description || undefined,
         script_id: selectedScriptId,
-        priority_strategy: strategyValue as CallListPriorityStrategy,
+        priority_strategy: strategyValue,
       })
       setCreatedListId(list.list_id)
 
@@ -463,19 +515,24 @@ export default function NewCallListPage() {
           rating_max: filters.rating_max ? parseFloat(filters.rating_max) : undefined,
           include_unrated: filters.include_unrated,
         },
-        priority_order: priority.by !== 'sequential'
-          ? {
-              by: priority.by,
-              order:
-                priority.by === 'assessment_rating'
-                  ? priority.assessmentRatingOrder
-                  : priority.ratingOrder,
-              assessment_id:
-                priority.by === 'assessment_rating' && filters.assessment_id
-                  ? Number(filters.assessment_id)
-                  : undefined,
-            }
-          : undefined,
+        // Only the bucket-mode picks ('rating', 'assessment_rating') send a
+        // priority_order body. 'least_recently_contacted' and 'random' don't
+        // need bucket bonuses — they're realised at /next-call time via
+        // priority_strategy alone.
+        priority_order:
+          priority.by === 'rating' || priority.by === 'assessment_rating'
+            ? {
+                by: priority.by,
+                order:
+                  priority.by === 'assessment_rating'
+                    ? priority.assessmentRatingOrder
+                    : priority.ratingOrder,
+                assessment_id:
+                  priority.by === 'assessment_rating' && filters.assessment_id
+                    ? Number(filters.assessment_id)
+                    : undefined,
+              }
+            : undefined,
       }
 
       const populateRes = await fetchApi(`/api/calls/lists/${list.list_id}/populate`, {
@@ -697,27 +754,11 @@ export default function NewCallListPage() {
                 rows={2}
               />
             </div>
-            <div className="space-y-1">
-              <Label>Base Priority Strategy</Label>
-              <Select
-                value={priorityStrategy}
-                onValueChange={(v) => setPriorityStrategy(v as CallListPriorityStrategy)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRIORITY_STRATEGIES.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>
-                      <div>
-                        <span className="font-medium">{s.label}</span>
-                        <span className="text-muted-foreground text-xs ml-2">{s.description}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <p className="text-xs text-muted-foreground">
+              Call order is set on the <strong>Call Order</strong> step further on — it
+              covers sequential, by-rating, least-recently-contacted, and random ordering in
+              one place.
+            </p>
             <div className="flex justify-end">
               <Button onClick={goNext} disabled={!name.trim()}>
                 Next
@@ -1000,22 +1041,44 @@ export default function NewCallListPage() {
 
             <div className="space-y-2">
               {[
-                { value: 'sequential', label: 'Sequential', desc: 'Call workers in the order they appear in the campaign list', disabled: false },
                 {
-                  value: 'assessment_rating',
-                  label: 'By Specific Assessment Rating',
+                  value: 'sequential' as const,
+                  label: 'Sequential',
+                  desc: 'Call workers in the order they appear in the campaign list',
+                  disabled: false,
+                },
+                {
+                  value: 'rating' as const,
+                  label: 'By cumulative activity rating',
+                  desc: 'Set a custom call order by cumulative rating bucket — use the controls below to reorder',
+                  disabled: false,
+                },
+                {
+                  value: 'assessment_rating' as const,
+                  label: 'By specific assessment rating',
                   desc: selectedAssessment
                     ? `Order by rating on "${selectedAssessment.title}" — drag to set the call order`
                     : 'Pick a Specific Assessment in the Build List step first to enable this option',
                   disabled: !filters.assessment_id,
                 },
-                { value: 'rating', label: 'By Cumulative Activity Rating', desc: 'Set a custom call order by cumulative rating bucket — use the controls below to reorder', disabled: false },
+                {
+                  value: 'least_recently_contacted' as const,
+                  label: 'Least recently contacted',
+                  desc: 'Call workers who have not been contacted recently first',
+                  disabled: false,
+                },
+                {
+                  value: 'random' as const,
+                  label: 'Random',
+                  desc: 'Randomise the queue order',
+                  disabled: false,
+                },
               ].map((option) => (
                 <button
                   key={option.value}
                   onClick={() => {
                     if (option.disabled) return
-                    setPriority((prev) => ({ ...prev, by: option.value as PriorityOrderState['by'] }))
+                    setPriority((prev) => ({ ...prev, by: option.value }))
                   }}
                   disabled={option.disabled}
                   className={`w-full text-left p-3 rounded-lg border transition-colors ${
@@ -1129,10 +1192,23 @@ export default function NewCallListPage() {
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 Back
               </Button>
-              <Button onClick={goNext}>
-                Next
-                <ArrowRight className="h-4 w-4 ml-1" />
-              </Button>
+              {/* Assessment-only pathway skips the Attach Script step, so the
+                  priority step is the last input step before populating the
+                  list. Surface a Create Call List button directly here in
+                  that case. The script pathway keeps the standard Next button. */}
+              {pathwayParam === 'assessment_only' ? (
+                <Button onClick={handleCreate} disabled={createList.isPending}>
+                  {createList.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : null}
+                  Create Call List
+                </Button>
+              ) : (
+                <Button onClick={goNext}>
+                  Next
+                  <ArrowRight className="h-4 w-4 ml-1" />
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -1221,12 +1297,16 @@ export default function NewCallListPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2 text-sm">
               <p><strong>Name:</strong> {name}</p>
-              <p><strong>Priority:</strong> {
+              <p><strong>Call order:</strong> {
                 priority.by === 'assessment_rating'
-                  ? `Assessment rating order${selectedAssessment ? ` (${selectedAssessment.title})` : ''}: ${priority.assessmentRatingOrder.map((r) => assessmentRatingConfig[r]?.label ?? r).join(' → ')}`
+                  ? `By specific assessment rating${selectedAssessment ? ` (${selectedAssessment.title})` : ''}: ${priority.assessmentRatingOrder.map((r) => assessmentRatingConfig[r]?.label ?? r).join(' → ')}`
                   : priority.by === 'rating'
-                    ? `Cumulative rating order: ${priority.ratingOrder.map((b) => RATING_BUCKET_CONFIG[b]?.label).join(' → ')}`
-                    : PRIORITY_STRATEGIES.find((s) => s.value === priorityStrategy)?.label
+                    ? `By cumulative activity rating: ${priority.ratingOrder.map((b) => RATING_BUCKET_CONFIG[b]?.label).join(' → ')}`
+                    : priority.by === 'least_recently_contacted'
+                      ? 'Least recently contacted'
+                      : priority.by === 'random'
+                        ? 'Random'
+                        : 'Sequential'
               }</p>
               {populateResult && (
                 <>
@@ -1239,60 +1319,88 @@ export default function NewCallListPage() {
                 </>
               )}
             </div>
-            {actionId && (
-              <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-                <strong>Next step:</strong>{' '}
-                {pathwayParam === 'assessment_only'
+            {(() => {
+              // Decide which onward CTA(s) belong on the confirm card based
+              // on the pathway and on which order was chosen.
+              //   Script pathway, list_first   → still needs a script next.
+              //   Script pathway, script_first → list was the second component; go to dialler.
+              //   Assessment-only, list_first  → still needs assessments next (assessment_list_first).
+              //   Assessment-only, setup_first → assessments already done (assessment_first); go to dialler.
+              const branch = phoneCallAction?.entry_branch
+              const isAssessmentOnly = pathwayParam === 'assessment_only'
+              const showCreateScript =
+                !!actionId && !isAssessmentOnly && branch === 'list_first'
+              const showSetAssessments =
+                !!actionId && isAssessmentOnly && branch === 'assessment_list_first'
+
+              const nextStepLabel = showCreateScript
+                ? 'Create a phone script so callers have a guide to follow.'
+                : showSetAssessments
                   ? 'Pick which assessments to rate during each call.'
-                  : 'Create a phone script so callers have a guide to follow.'}
-              </div>
-            )}
-            <div className="flex flex-wrap gap-2">
-              {actionId && pathwayParam !== 'assessment_only' && (
-                <Button
-                  onClick={() => {
-                    const here = encodeURIComponent(
-                      window.location.pathname + window.location.search,
-                    )
-                    router.push(
-                      `/campaigns/phone-wizard?campaign_id=${campaignId}&action_id=${actionId}&returnTo=${here}`,
-                    )
-                  }}
-                >
-                  <Phone className="h-4 w-4 mr-1" />
-                  Create Script Now
-                </Button>
-              )}
-              {actionId && pathwayParam === 'assessment_only' && (
-                <Button
-                  onClick={() => {
-                    const here = encodeURIComponent(
-                      window.location.pathname + window.location.search,
-                    )
-                    router.push(
-                      `/campaigns/${campaignId}/phone/assessment-setup?action_id=${actionId}&returnTo=${here}`,
-                    )
-                  }}
-                >
-                  <Phone className="h-4 w-4 mr-1" />
-                  Set Assessments Now
-                </Button>
-              )}
-              {createdListId && (
-                <Button variant={actionId ? 'outline' : 'default'} onClick={() => {
-                  const target = actionId
-                    ? `/campaigns/${campaignId}/phone/call/${createdListId}?action_id=${actionId}`
-                    : `/campaigns/${campaignId}/phone/call/${createdListId}`
-                  router.push(target)
-                }}>
-                  <Phone className="h-4 w-4 mr-1" />
-                  Start Calling
-                </Button>
-              )}
-              <Button variant="outline" onClick={() => router.push(`/campaigns/${campaignId}/phone`)}>
-                View All Lists
-              </Button>
-            </div>
+                  : null
+
+              return (
+                <>
+                  {nextStepLabel && (
+                    <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+                      <strong>Next step:</strong> {nextStepLabel}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {showCreateScript && (
+                      <Button
+                        onClick={() => {
+                          const here = encodeURIComponent(
+                            window.location.pathname + window.location.search,
+                          )
+                          router.push(
+                            `/campaigns/phone-wizard?campaign_id=${campaignId}&action_id=${actionId}&returnTo=${here}`,
+                          )
+                        }}
+                      >
+                        <Phone className="h-4 w-4 mr-1" />
+                        Create Script Now
+                      </Button>
+                    )}
+                    {showSetAssessments && (
+                      <Button
+                        onClick={() => {
+                          const here = encodeURIComponent(
+                            window.location.pathname + window.location.search,
+                          )
+                          router.push(
+                            `/campaigns/${campaignId}/phone/assessment-setup?action_id=${actionId}&returnTo=${here}`,
+                          )
+                        }}
+                      >
+                        <Phone className="h-4 w-4 mr-1" />
+                        Set Assessments Now
+                      </Button>
+                    )}
+                    {createdListId && (
+                      <Button
+                        variant={showCreateScript || showSetAssessments ? 'outline' : 'default'}
+                        onClick={() => {
+                          const target = actionId
+                            ? `/campaigns/${campaignId}/phone/call/${createdListId}?action_id=${actionId}`
+                            : `/campaigns/${campaignId}/phone/call/${createdListId}`
+                          router.push(target)
+                        }}
+                      >
+                        <Phone className="h-4 w-4 mr-1" />
+                        Start Calling
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      onClick={() => router.push(`/campaigns/${campaignId}/phone`)}
+                    >
+                      View All Lists
+                    </Button>
+                  </div>
+                </>
+              )
+            })()}
           </CardContent>
         </Card>
       )}

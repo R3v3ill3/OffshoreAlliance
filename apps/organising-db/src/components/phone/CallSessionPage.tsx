@@ -337,6 +337,28 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
   const currentSection = sortedSections[flowState.currentSectionIndex] || null
   void currentSection
 
+  // The side panel hides the Script tab when no script is attached so
+  // assessment-only sessions (and legacy build-list fires with no script)
+  // don't see an empty "No structured script attached" placeholder. The
+  // gate is intentionally broad — show the tab whenever there's any
+  // signal of a script (sections OR a sessionScriptId OR a linked
+  // record), so race-conditions during initial load don't flicker the
+  // tab away.
+  const hasScript =
+    sortedSections.length > 0 ||
+    sessionScriptId != null ||
+    linkedScripts.length > 0 ||
+    !!listWithLinks?.script_id
+
+  // Derive the effective side-panel tab: when no script is attached and
+  // the underlying state is the default 'script', display 'objections'
+  // instead. We keep the underlying state untouched so that hasScript
+  // flipping back (e.g. user attaches a script mid-session) restores the
+  // Script tab automatically. Done as a derived value rather than a
+  // setState-in-effect to avoid cascading renders.
+  const effectiveSidePanelTab: 'script' | 'objections' | 'issues' =
+    !hasScript && sidePanelTab === 'script' ? 'objections' : sidePanelTab
+
   const scriptContext = useMemo(() => {
     const w = contact?.worker
     const workerFields = {
@@ -592,6 +614,33 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
             title="Edit session assessments and variation settings"
           >
             Edit setup
+          </Button>
+        )}
+
+        {/* Late-script attach affordance. Sends the user to the list
+            management page where CallListLinkedScripts exposes "Link
+            another script". Per-call assessment ratings already recorded
+            on this session remain untouched — script attachment writes to
+            call_attempt_cta_ratings (separate table) and only starts on
+            attempts that record after the link. */}
+        {!hasScript && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            title="Attach a script to this call list"
+            onClick={() => {
+              const here = encodeURIComponent(
+                window.location.pathname + window.location.search,
+              )
+              const target = actionId != null
+                ? `/campaigns/${campaignId}/phone/lists/${listId}?action_id=${actionId}&returnTo=${here}`
+                : `/campaigns/${campaignId}/phone/lists/${listId}?returnTo=${here}`
+              router.push(target)
+            }}
+          >
+            <FileText className="h-3.5 w-3.5 mr-1" />
+            Attach script
           </Button>
         )}
 
@@ -855,12 +904,18 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
         {/* Right: Tabbed side panel (desktop only) */}
         <div className="hidden lg:flex flex-[2] border-l pl-4 min-h-0 flex-col">
           <Tabs
-            value={sidePanelTab}
+            value={effectiveSidePanelTab}
             onValueChange={(v) => setSidePanelTab(v as typeof sidePanelTab)}
             className="flex flex-col h-full"
           >
-            <TabsList className="grid grid-cols-3 w-full shrink-0 mb-3">
-              <TabsTrigger value="script" className="text-xs">Script</TabsTrigger>
+            <TabsList
+              className={`grid w-full shrink-0 mb-3 ${
+                hasScript ? 'grid-cols-3' : 'grid-cols-2'
+              }`}
+            >
+              {hasScript && (
+                <TabsTrigger value="script" className="text-xs">Script</TabsTrigger>
+              )}
               <TabsTrigger value="objections" className="text-xs">
                 Objections
                 {flowState.capturedObjections.length > 0 && (

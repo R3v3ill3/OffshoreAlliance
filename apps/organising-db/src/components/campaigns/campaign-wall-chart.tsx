@@ -1168,9 +1168,9 @@ export function CampaignWallChart({
                 </Button>
               )}
               {/* Build list, Add assessment, and Task management buttons live in
-                  the persistent campaign header (page.tsx) so they're visible
-                  on every tab. The Build list panel itself is still mounted
-                  here and driven by the ?buildList=1 URL param. */}
+                  the persistent campaign header (CampaignDetailHeaderBar) so
+                  they're visible on every campaign route. The Build list panel
+                  itself is still mounted here and driven by the ?buildList=1 URL param. */}
               <WallChartUnitManager
                 ous={ous}
                 canWrite={canWrite}

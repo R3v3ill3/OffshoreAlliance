@@ -5,13 +5,7 @@ import { useParams, useRouter, useSearchParams, usePathname } from "next/navigat
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { format } from "date-fns";
-import { ArrowLeft, ChevronDown, Pencil, Plus, Settings as SettingsIcon } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Plus } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -62,8 +56,6 @@ import { CampaignEmployersWorksitesCard } from "@/components/campaigns/campaign-
 import { CampaignCommsSection } from "@/components/campaigns/campaign-comms-section";
 import { CampaignOverviewMetrics } from "@/components/campaigns/CampaignOverviewMetrics";
 import { InlinePhoneOpsPanel } from "@/components/phone/InlinePhoneOpsPanel";
-import { CreatePhoneCallOrchestrator } from "@/components/phone/CreatePhoneCallOrchestrator";
-import { ResumeBanner } from "@/components/phone/orchestrator/ResumeBanner";
 import { SituationAnalysisCard } from "@/components/campaigns/planning/SituationAnalysisCard";
 import { SituationAnalysisEditSheet } from "@/components/campaigns/situation-analysis/SituationAnalysisEditSheet";
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
@@ -73,8 +65,6 @@ import { FoundationalReadinessPanel } from "@/components/campaigns/bargaining/Fo
 import { CampaignResultsSection } from "@/components/campaigns/campaign-results-section";
 import { CampaignActionsSection } from "@/components/campaigns/campaign-actions-section";
 import { LibrarySection } from "@/components/campaigns/library/campaign-library";
-import { CampaignBasicsEditSheet } from "@/components/campaigns/campaign-basics-edit-sheet";
-import { CreateAssessmentDialog } from "@/components/campaigns/assessments/create-assessment-dialog";
 import { SectionPlansTab } from "@/components/campaigns/section-planning/SectionPlansTab";
 import { CampaignStageCoveragePanel } from "@/components/campaigns/CampaignStageCoveragePanel";
 import { CampaignWorkerDetailProvider } from "@/components/campaigns/campaign-worker-detail-provider";
@@ -139,19 +129,7 @@ interface ResultRow {
   action: { action_id: number; title: string } | null;
 }
 
-const STATUS_VARIANT: Record<CampaignStatus, "secondary" | "success" | "info" | "warning"> = {
-  planning: "secondary",
-  active: "success",
-  completed: "info",
-  suspended: "warning",
-};
-
-const TYPE_VARIANT: Record<CampaignType, "default" | "info" | "warning" | "secondary"> = {
-  bargaining: "info",
-  organising: "default",
-  mobilisation: "warning",
-  political: "secondary",
-};
+const INITIAL_UNIVERSE_FORM = { name: "", description: "" };
 
 function formatDate(d: string | null) {
   if (!d) return "—";
@@ -161,8 +139,6 @@ function formatDate(d: string | null) {
     return d;
   }
 }
-
-const INITIAL_UNIVERSE_FORM = { name: "", description: "" };
 
 const INITIAL_ACTION_FORM = {
   title: "",
@@ -262,27 +238,6 @@ export default function CampaignDetailPage() {
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [actionForm, setActionForm] = useState(INITIAL_ACTION_FORM);
   const [situationSheetOpen, setSituationSheetOpen] = useState(false);
-  const [basicsSheetOpen, setBasicsSheetOpen] = useState(false);
-  // Persistent campaign-header dialogs / panel toggles. These three buttons
-  // (Build list, Add assessment, Task management) sit alongside Create Phone
-  // Call so they're available on every campaign tab.
-  const [createAssessmentOpen, setCreateAssessmentOpen] = useState(false);
-  const isBuildListOpen = searchParams.get("buildList") === "1";
-  const handleToggleBuildList = useCallback(() => {
-    const params = new URLSearchParams(searchParams.toString());
-    const currentlyOpen = params.get("buildList") === "1";
-    if (currentlyOpen) {
-      params.delete("buildList");
-    } else {
-      params.set("buildList", "1");
-      // Build-list panel lives inside the wall-chart sub-tab; ensure we land
-      // there from any other tab so the panel actually mounts.
-      params.set("tab", "workforce");
-      params.set("sub", "wall-chart");
-    }
-    const qs = params.toString();
-    router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
-  }, [pathname, router, searchParams]);
 
   const { data: campaign, isLoading } = useQuery({
     queryKey: ["campaign", id],
@@ -433,136 +388,6 @@ export default function CampaignDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push("/campaigns")}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">{campaign.name}</h1>
-            {canWrite && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => setBasicsSheetOpen(true)}
-                title="Edit campaign basics"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-            )}
-            <Badge variant={TYPE_VARIANT[campaign.campaign_type]}>
-              {campaign.campaign_type}
-            </Badge>
-            <Badge variant={STATUS_VARIANT[campaign.status]}>
-              {campaign.status}
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            {formatDate(campaign.start_date)} — {formatDate(campaign.end_date)}
-          </p>
-        </div>
-        {canWrite && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline">
-                Actions
-                <ChevronDown className="h-4 w-4 ml-1" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={() =>
-                  router.push(`/campaigns/new?cid=${campaignId}&edit=1`)
-                }
-              >
-                <Pencil className="h-4 w-4 mr-2" />
-                Re-run wizard
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() =>
-                  router.push(`/campaigns/${campaignId}/settings`)
-                }
-              >
-                <SettingsIcon className="h-4 w-4 mr-2" />
-                All settings
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() =>
-                  router.push(`/campaigns/${campaignId}/plan`)
-                }
-              >
-                View full plan
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
-
-      {/* Campaign basics edit sheet */}
-      <CampaignBasicsEditSheet
-        open={basicsSheetOpen}
-        onOpenChange={setBasicsSheetOpen}
-        campaign={campaign}
-        campaignId={campaignId}
-        onSaved={() => queryClient.invalidateQueries({ queryKey: ["campaign", id] })}
-      />
-
-      {/* Page-level "Add assessment" dialog driven by the persistent header button. */}
-      {campaignIdValid && (
-        <CreateAssessmentDialog
-          campaignId={String(campaignId)}
-          open={createAssessmentOpen}
-          onOpenChange={setCreateAssessmentOpen}
-          lockKind="assessment"
-          onCreated={() => {
-            queryClient.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
-            queryClient.invalidateQueries({ queryKey: ["campaign-assessments-rated", campaignId] });
-          }}
-        />
-      )}
-
-      {/* Phone call CTA + workforce-action quick buttons — persist across all tabs */}
-      {campaignIdValid && (
-        <div className="space-y-2">
-          <ResumeBanner campaignId={campaignId} />
-          {canWrite && (
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant={isBuildListOpen ? "default" : "outline"}
-                onClick={handleToggleBuildList}
-                aria-pressed={isBuildListOpen}
-                title={
-                  isBuildListOpen
-                    ? "Close build list panel"
-                    : "Open build list panel — drag tiles, units or selections to assemble a cohort"
-                }
-              >
-                Build list
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setCreateAssessmentOpen(true)}
-              >
-                Add assessment
-              </Button>
-              <Button type="button" size="sm" variant="outline" asChild>
-                <a
-                  href={`/campaigns/${campaignId}?tab=plan&sub=task-lists&from=header`}
-                >
-                  Task management
-                </a>
-              </Button>
-              <CreatePhoneCallOrchestrator campaignId={campaignId} />
-            </div>
-          )}
-        </div>
-      )}
-
       <CampaignWorkerDetailProvider campaignId={id} canWrite={!!canWrite}>
         <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="flex flex-wrap h-auto gap-1">

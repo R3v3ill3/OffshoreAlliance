@@ -1,6 +1,13 @@
 "use client";
 
+import { Suspense } from "react";
 import { usePathname } from "next/navigation";
+import { CampaignDetailHeaderBar } from "@/components/campaigns/campaign-detail-header-bar";
+import {
+  getCampaignIdFromPath,
+  isCampaignDetailRoute,
+  isStagePlanningRoute,
+} from "@/lib/campaign/campaign-detail-routes";
 import { MobileNav } from "./mobile-nav";
 
 const pageTitles: Record<string, string> = {
@@ -20,19 +27,8 @@ const pageTitles: Record<string, string> = {
   "/organiser-patches": "Organiser Patches",
 };
 
-// Phase 5: stage planning pages live inside an already-rich chrome
-// (campaign header → stage progress bar → vertical P2W nav). The global
-// app header would be visual noise on top of that, so we hide the title
-// row entirely on those routes. Other routes still render normally.
-function isStagePlanningRoute(pathname: string | null): boolean {
-  if (!pathname) return false;
-  return /\/campaigns\/[^/]+\/plan\/stage\//.test(pathname);
-}
-
 export function Header() {
   const pathname = usePathname();
-  const basePath = "/" + (pathname.split("/")[1] || "");
-  const title = pageTitles[basePath] || "Offshore Alliance";
 
   if (isStagePlanningRoute(pathname)) {
     // The stage page renders its own focused header. Keep MobileNav
@@ -44,6 +40,25 @@ export function Header() {
       </header>
     );
   }
+
+  const campaignId = getCampaignIdFromPath(pathname);
+  if (isCampaignDetailRoute(pathname) && campaignId) {
+    return (
+      <Suspense
+        fallback={
+          <header className="flex h-16 items-center border-b bg-background px-4 md:px-6">
+            <MobileNav />
+            <div className="ml-3 h-6 w-48 animate-pulse rounded bg-muted" />
+          </header>
+        }
+      >
+        <CampaignDetailHeaderBar campaignId={campaignId} />
+      </Suspense>
+    );
+  }
+
+  const basePath = "/" + (pathname.split("/")[1] || "");
+  const title = pageTitles[basePath] || "Offshore Alliance";
 
   return (
     <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:px-6">

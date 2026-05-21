@@ -67,6 +67,11 @@ import type { WorkerDragRef } from "./wall-chart/dnd";
 import { RelationshipOverlay } from "./wall-chart/relationship-overlay";
 import { useAllLeaderLinks } from "./wall-chart/use-leader-links";
 import {
+  CAMPAIGN_MEMBERS_FULL_SELECT,
+  normalizeCampaignMemberRows,
+  type RawCampaignMemberRow,
+} from "./wall-chart/normalize-members";
+import {
   DEFAULT_FILTER_STATE,
   applyFilters,
   applySort,
@@ -277,25 +282,10 @@ export function CampaignWallChart({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaign_worker_membership")
-        .select(
-          `membership_id, worker_id,
-           worker:workers(
-             worker_id, first_name, last_name, email, phone, notes,
-             member_role_type_id, is_bargaining_rep, is_hsr,
-             union_membership_type_id,
-             non_oa_union_option_id,
-             canonical_occupation_id,
-             member_role_type:member_role_types(role_name, role_type_id, display_name),
-             union_membership_type:union_membership_types(type_name, display_name),
-             non_oa_union_option:non_oa_union_options!workers_non_oa_union_option_id_fkey(
-               non_oa_union_option_id, badge_initials, display_name
-             ),
-             canonical_occupation:occupations!workers_canonical_occupation_id_fkey(occupation_id, canonical_name)
-           )`
-        )
+        .select(CAMPAIGN_MEMBERS_FULL_SELECT)
         .eq("campaign_id", campaignId);
       if (error) throw error;
-      return (data ?? []) as unknown as RawMemberRow[];
+      return (data ?? []) as unknown as RawCampaignMemberRow[];
     },
   });
 
@@ -437,54 +427,10 @@ export function CampaignWallChart({
   });
 
   // ---- Normalise members -----------------------------------------------------
-  const memberRows = useMemo<WallChartMemberRow[]>(() => {
-    return members.map((row) => {
-      const wr = row.worker;
-      const w = (Array.isArray(wr) ? wr[0] : wr) as RawWorker | null;
-      const mtRaw = w?.member_role_type;
-      const mt = (Array.isArray(mtRaw) ? mtRaw[0] : mtRaw) ?? null;
-      const umRaw = w?.union_membership_type;
-      const um = (Array.isArray(umRaw) ? umRaw[0] : umRaw) ?? null;
-      const nauoRaw = w?.non_oa_union_option;
-      const nauo = (Array.isArray(nauoRaw) ? nauoRaw[0] : nauoRaw) ?? null;
-      const coRaw = w?.canonical_occupation;
-      const occ = (Array.isArray(coRaw) ? coRaw[0] : coRaw) ?? null;
-      return {
-        membership_id: row.membership_id,
-        worker_id: row.worker_id,
-        worker: w
-          ? {
-              worker_id: w.worker_id,
-              first_name: w.first_name,
-              last_name: w.last_name,
-              email: w.email,
-              phone: w.phone,
-              notes: w.notes,
-              member_role_type_id: w.member_role_type_id,
-              is_bargaining_rep: w.is_bargaining_rep,
-              is_hsr: w.is_hsr,
-              union_membership_type_id: w.union_membership_type_id,
-              non_oa_union_option_id: w.non_oa_union_option_id ?? null,
-              canonical_occupation_id: w.canonical_occupation_id,
-              member_role_type: mt,
-              union_membership_type: um,
-              non_oa_union_option:
-                nauo &&
-                typeof nauo === "object" &&
-                "badge_initials" in nauo &&
-                typeof (nauo as { badge_initials: unknown }).badge_initials === "string"
-                  ? (nauo as {
-                      non_oa_union_option_id: number;
-                      badge_initials: string;
-                      display_name: string;
-                    })
-                  : null,
-              canonical_occupation: occ,
-            }
-          : null,
-      };
-    });
-  }, [members]);
+  const memberRows = useMemo<WallChartMemberRow[]>(
+    () => normalizeCampaignMemberRows(members),
+    [members]
+  );
 
   const workerById = useMemo(() => {
     const m = new Map<number, WallChartWorker>();
@@ -1934,24 +1880,4 @@ export function CampaignWallChart({
   );
 }
 
-// ---- Raw shapes coming back from Supabase (joined rows can be array or object) ----
-type RawMemberRow = { membership_id: number; worker_id: number; worker: unknown };
-type RawWorker = {
-  worker_id: number;
-  first_name: string;
-  last_name: string;
-  email: string | null;
-  phone: string | null;
-  notes: string | null;
-  member_role_type_id: number | null;
-  is_bargaining_rep: boolean | null;
-  is_hsr: boolean | null;
-  union_membership_type_id: number | null;
-  non_oa_union_option_id: number | null;
-  canonical_occupation_id: number | null;
-  member_role_type: unknown;
-  union_membership_type: unknown;
-  non_oa_union_option: unknown;
-  canonical_occupation: unknown;
-};
 

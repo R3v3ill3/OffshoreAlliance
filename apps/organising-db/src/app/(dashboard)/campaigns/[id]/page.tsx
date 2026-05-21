@@ -44,7 +44,7 @@ import type { Database } from "@oa/db-types";
 import { CampaignAssessmentsSection } from "@/components/campaigns/campaign-assessments";
 import { CampaignReportingCharts } from "@/components/campaigns/campaign-reporting";
 import { CampaignProgressReport } from "@/components/reports/CampaignProgressReport";
-import { CampaignWallChart } from "@/components/campaigns/campaign-wall-chart";
+import { WorkforceBoard } from "@/components/campaigns/workforce/workforce-board";
 import { CampaignTaskListsSection } from "@/components/campaigns/campaign-task-lists";
 import {
   PendingReviewTab,
@@ -57,6 +57,8 @@ import {
 import { CampaignPlanPanel } from "@/components/campaigns/campaign-plan-panel";
 import { CampaignWorkplanSection } from "@/components/campaigns/campaign-workplan";
 import { CampaignUniverseSection } from "@/components/campaigns/campaign-universe-section";
+import { CampaignUnitsSection } from "@/components/campaigns/campaign-units-section";
+import { CampaignEmployersWorksitesCard } from "@/components/campaigns/campaign-employers-worksites-card";
 import { CampaignCommsSection } from "@/components/campaigns/campaign-comms-section";
 import { CampaignOverviewMetrics } from "@/components/campaigns/CampaignOverviewMetrics";
 import { InlinePhoneOpsPanel } from "@/components/phone/InlinePhoneOpsPanel";
@@ -514,6 +516,7 @@ export default function CampaignDetailPage() {
 
         <TabsContent value="overview" className="space-y-6">
           <CampaignOverviewMetrics campaignId={campaignId} campaignLabel={campaign?.name ?? undefined} />
+          <CampaignEmployersWorksitesCard campaignId={id} />
           <Card>
             <CardContent className="pt-6">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-4 text-sm">
@@ -686,9 +689,10 @@ export default function CampaignDetailPage() {
             onValueChange={handleSubChange}
           >
             <TabsList className="mb-4">
-              <TabsTrigger value="universe">Universe</TabsTrigger>
+              <TabsTrigger value="wall-chart">Wall Chart / List</TabsTrigger>
+              <TabsTrigger value="campaign-units">Campaign Units</TabsTrigger>
+              <TabsTrigger value="universe">Scope</TabsTrigger>
               <TabsTrigger value="assessments">Assessments</TabsTrigger>
-              <TabsTrigger value="wall-chart">Wall Chart</TabsTrigger>
               <TabsTrigger value="foundational-readiness">Foundational Readiness</TabsTrigger>
             </TabsList>
 
@@ -803,7 +807,11 @@ export default function CampaignDetailPage() {
             </TabsContent>
 
             <TabsContent value="wall-chart">
-              <CampaignWallChart campaignId={id} canWrite={!!canWrite} />
+              <WorkforceBoard campaignId={id} canWrite={!!canWrite} />
+            </TabsContent>
+
+            <TabsContent value="campaign-units">
+              <CampaignUnitsSection campaignId={id} canWrite={!!canWrite} />
             </TabsContent>
 
             <TabsContent value="foundational-readiness">

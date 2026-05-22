@@ -40,6 +40,8 @@ import {
 } from '@/lib/comms/template-variables'
 import { STAGE_NAMES } from '@/types/planner-types'
 import type { CommsDraftRequest } from '@/types/planner-types'
+import { TemplatePicker } from '@/components/campaigns/planning/TemplatePicker'
+import type { TemplateRow } from '@/lib/hooks/useTemplateLibrary'
 import { EditEmailSetupDialog } from '@/components/email/orchestrator/EditEmailSetupDialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -57,6 +59,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckCircle,
+  FileText,
   Loader2,
   Sparkles,
   PenLine,
@@ -117,6 +120,7 @@ interface DraftRow {
   email_list_id: number | null
   stage_number: number | null
   status: string
+  source_template_ids: number[] | null
 }
 
 interface RecipientRow {
@@ -163,6 +167,9 @@ export function CampaignEmailWizard() {
   const [subject, setSubject] = useState('')
   const [bodyText, setBodyText] = useState('')
   const [bodyHtml, setBodyHtml] = useState<string | null>(null)
+  const [sourceTemplateId, setSourceTemplateId] = useState<number | null>(null)
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false)
+  const [isCustomisingTemplate, setIsCustomisingTemplate] = useState<number | null>(null)
   const [draftGeneratedWithTone, setDraftGeneratedWithTone] = useState<string[]>([])
   const [draftGeneratedWithAudience, setDraftGeneratedWithAudience] = useState<string[]>([])
   const [autoGenAttempted, setAutoGenAttempted] = useState(false)
@@ -190,7 +197,7 @@ export function CampaignEmailWizard() {
       const { data, error } = await supabase
         .from('campaign_comms_drafts')
         .select(
-          'draft_id, campaign_id, subject, body, body_html, tone, audience_segment, entry_branch, email_list_id, stage_number, status',
+          'draft_id, campaign_id, subject, body, body_html, tone, audience_segment, entry_branch, email_list_id, stage_number, status, source_template_ids',
         )
         .eq('draft_id', draftId!)
         .maybeSingle()
@@ -372,6 +379,9 @@ export function CampaignEmailWizard() {
     setSubject(draft.subject || '')
     setBodyText(draft.body || '')
     setBodyHtml(draft.body_html || null)
+    if (draft.source_template_ids && draft.source_template_ids.length > 0) {
+      setSourceTemplateId(draft.source_template_ids[0])
+    }
     if (draft.tone && tone.length === 0) {
       setTone(draft.tone.split(',').map((t) => t.trim()).filter(Boolean))
     }
@@ -486,6 +496,67 @@ export function CampaignEmailWizard() {
     void handleAIGenerate()
   }, [step, pathway, autoGenAttempted, campaignContext, bodyText, handleAIGenerate])
 
+  // ----- Template handlers --------------------------------------------
+
+  function handleSelectTemplate(template: TemplateRow) {
+    setSubject(template.subject_line || '')
+    setBodyText(template.body_text)
+    setBodyHtml(template.body_html || null)
+    setSourceTemplateId(template.template_id)
+    setDraftGeneratedWithTone(tone)
+    setDraftGeneratedWithAudience(audience)
+    setAutoGenAttempted(true)
+    setShowTemplatePicker(false)
+  }
+
+  async function handleCustomiseTemplate(template: TemplateRow) {
+    setIsCustomisingTemplate(template.template_id)
+    try {
+      const response = await fetchApi('/api/templates/customise', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          template_id: template.template_id,
+          subject_line: template.subject_line,
+          body_text: template.body_text,
+          stage_number: draft?.stage_number || 1,
+          stage_name: stageName,
+          wtp_selections: {
+            tone,
+            audience,
+            platforms: ['Email'],
+            engagement_intensity: engagementIntensity || undefined,
+          },
+          campaign_context: {
+            employer_name: campaignContext?.employerName || undefined,
+            agreement_name: campaignContext?.agreementName || undefined,
+            worksite_names: campaignContext?.worksiteNames ?? [],
+            organiser_name: campaignContext?.organiserName || undefined,
+            organiser_phone: campaignContext?.organiserPhone || undefined,
+            staff_name: profile?.display_name || user?.email || undefined,
+            staff_email: user?.email || undefined,
+          },
+        }),
+        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
+      })
+      if (!response.ok) throw new Error('Customisation failed')
+      const result = await response.json()
+      setSubject(result.adapted_subject || template.subject_line || '')
+      setBodyText(result.adapted_body_text || template.body_text)
+      setBodyHtml(template.body_html || null)
+      setSourceTemplateId(template.template_id)
+      setDraftGeneratedWithTone(tone)
+      setDraftGeneratedWithAudience(audience)
+      setAutoGenAttempted(true)
+      setShowTemplatePicker(false)
+      toast.success('Template customised')
+    } catch {
+      toast.error('Customisation failed')
+    } finally {
+      setIsCustomisingTemplate(null)
+    }
+  }
+
   function insertVariable(variable: string) {
     const textarea = bodyRef.current
     if (!textarea) {
@@ -517,6 +588,7 @@ export function CampaignEmailWizard() {
           body_html: bodyHtml,
           tone: tone.join(', ') || null,
           audience_segment: audience.join(', ') || null,
+          source_template_ids: sourceTemplateId ? [sourceTemplateId] : null,
         })
         .eq('draft_id', draftId)
       if (error) throw error
@@ -880,10 +952,19 @@ export function CampaignEmailWizard() {
               <Button
                 variant="outline"
                 size="sm"
+                onClick={() => setShowTemplatePicker(true)}
+              >
+                <FileText className="h-4 w-4 mr-1" />
+                Use template
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => {
                   setSubject('')
                   setBodyText('')
                   setBodyHtml(null)
+                  setSourceTemplateId(null)
                   setDraftGeneratedWithTone([])
                   setDraftGeneratedWithAudience([])
                   setAutoGenAttempted(true)
@@ -893,6 +974,12 @@ export function CampaignEmailWizard() {
                 <PenLine className="h-4 w-4 mr-1" />
                 Clear / paste
               </Button>
+              {sourceTemplateId && (
+                <Badge variant="secondary" className="text-xs">
+                  <FileText className="h-3 w-3 mr-1" />
+                  Template #{sourceTemplateId}
+                </Badge>
+              )}
               {toneOrAudienceChangedSinceLastGen() && (
                 <Badge variant="outline" className="text-xs text-amber-700 border-amber-300">
                   Tone or audience changed since last AI generation
@@ -1189,6 +1276,19 @@ export function CampaignEmailWizard() {
         onOpenChange={setEditSetupOpen}
         campaignId={campaignId}
         draftId={draftId}
+      />
+
+      <TemplatePicker
+        open={showTemplatePicker}
+        onClose={() => {
+          setShowTemplatePicker(false)
+          setIsCustomisingTemplate(null)
+        }}
+        onSelect={handleSelectTemplate}
+        onSelectAndCustomise={handleCustomiseTemplate}
+        platform="email"
+        stageNumber={draft?.stage_number || 1}
+        isCustomising={isCustomisingTemplate}
       />
     </div>
   )

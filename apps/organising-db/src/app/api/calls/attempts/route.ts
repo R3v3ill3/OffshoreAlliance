@@ -17,6 +17,12 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // JSONB params must be sent as real JS arrays — NOT JSON-stringified.
+    // Supabase JS forwards each value to PostgREST as a JSON value;
+    // PostgREST passes it to Postgres as JSONB. A JS array becomes a
+    // JSONB array (what jsonb_array_elements expects). A JSON-stringified
+    // array becomes a JSONB scalar string, which trips
+    // "cannot extract elements from a scalar" inside the RPC.
     const { data, error } = await supabase.rpc('record_call_attempt', {
       p_list_item_id: body.list_item_id,
       p_script_id: body.script_id || null,
@@ -29,14 +35,11 @@ export async function POST(req: NextRequest) {
       p_follow_up_action: body.follow_up_action || null,
       p_cta_response: body.cta_response || null,
       p_duration_seconds: body.duration_seconds || null,
-      p_step_outcomes: body.step_outcomes || [],
-      p_objections: body.objections && body.objections.length > 0 ? JSON.stringify(body.objections) : '[]',
-      p_issues: body.issues && body.issues.length > 0 ? JSON.stringify(body.issues) : '[]',
-      p_cta_ratings: body.cta_ratings && body.cta_ratings.length > 0 ? JSON.stringify(body.cta_ratings) : '[]',
-      p_assessment_ratings:
-        body.assessment_ratings && body.assessment_ratings.length > 0
-          ? JSON.stringify(body.assessment_ratings)
-          : '[]',
+      p_step_outcomes: Array.isArray(body.step_outcomes) ? body.step_outcomes : [],
+      p_objections: Array.isArray(body.objections) ? body.objections : [],
+      p_issues: Array.isArray(body.issues) ? body.issues : [],
+      p_cta_ratings: Array.isArray(body.cta_ratings) ? body.cta_ratings : [],
+      p_assessment_ratings: Array.isArray(body.assessment_ratings) ? body.assessment_ratings : [],
       p_action_id: body.action_id ?? null,
     })
 

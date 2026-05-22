@@ -43,6 +43,8 @@ export async function POST(
     if (!item) return NextResponse.json({ error: "Contact is not on this call list" }, { status: 404 });
 
     const body = parsed.data;
+    // JSONB params go as real arrays — never JSON.stringify, see
+    // /api/calls/attempts/route.ts for the explanation.
     const { data, error } = await admin.rpc("record_call_attempt", {
       p_list_item_id: body.list_item_id,
       p_script_id: body.script_id ?? null,
@@ -55,10 +57,10 @@ export async function POST(
       p_follow_up_action: body.follow_up_action ?? null,
       p_cta_response: body.cta_response ?? null,
       p_duration_seconds: body.duration_seconds ?? null,
-      p_step_outcomes: body.step_outcomes ?? [],
-      p_objections: body.objections && body.objections.length > 0 ? JSON.stringify(body.objections) : "[]",
-      p_issues: body.issues && body.issues.length > 0 ? JSON.stringify(body.issues) : "[]",
-      p_cta_ratings: body.cta_ratings && body.cta_ratings.length > 0 ? JSON.stringify(body.cta_ratings) : "[]",
+      p_step_outcomes: Array.isArray(body.step_outcomes) ? body.step_outcomes : [],
+      p_objections: Array.isArray(body.objections) ? body.objections : [],
+      p_issues: Array.isArray(body.issues) ? body.issues : [],
+      p_cta_ratings: Array.isArray(body.cta_ratings) ? body.cta_ratings : [],
       p_share_token_id: tokenRow.token_id,
       p_caller_leader_worker_id: tokenRow.leader_worker_id,
       p_caller_session_label: session.label,

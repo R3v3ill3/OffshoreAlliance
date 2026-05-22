@@ -1,0 +1,177 @@
+-- ============================================================
+-- Migration 20260623100000: Email Lists & Email Orchestration
+--
+-- Mirrors the call_lists / call_list_items / phone_call_actions
+-- pattern (see 20260414200000_phone_call_operations.sql and
+-- 20260522100000_phone_call_actions.sql) for the email side.
+--
+-- Adds:
+--   - email_lists: persistent recipient lists for email campaigns
+--   - email_list_items: workers on an email recipient list
+--   - campaign_comms_drafts.entry_branch + email_list_id columns to
+--     track orchestration state for campaign-scoped email setups
+--     (PathwayPicker + OrderPicker entry, build-list fire, etc.)
+--   - campaign_worker_lists.fired_email_list_id for parity with
+--     fired_call_list_id when the wall-chart Build List panel fires
+--     a worker_list into the email pathway.
+--
+-- Note: there is no separate "email_actions" table. Phone has a
+-- 1:N action->lists relationship; email is 1:1:1 (draft <-> list
+-- <-> AN tag push), so the orchestration session lives on the
+-- existing campaign_comms_drafts row.
+-- ============================================================
+
+-- -------------------------------------------------------
+-- 1. email_lists
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS email_lists (
+  list_id SERIAL PRIMARY KEY,
+  campaign_id INTEGER NOT NULL REFERENCES campaigns(campaign_id) ON DELETE CASCADE,
+  draft_id INTEGER REFERENCES campaign_comms_drafts(draft_id) ON DELETE SET NULL,
+  name VARCHAR(300) NOT NULL,
+  description TEXT,
+  status VARCHAR(20) NOT NULL DEFAULT 'draft'
+    CHECK (status IN ('draft', 'active', 'sent', 'completed', 'paused')),
+  source_filters JSONB,
+  total_items INTEGER NOT NULL DEFAULT 0,
+  sent_items INTEGER NOT NULL DEFAULT 0,
+  created_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_el_campaign ON email_lists(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_el_status   ON email_lists(campaign_id, status);
+CREATE INDEX IF NOT EXISTS idx_el_draft    ON email_lists(draft_id);
+
+CREATE TRIGGER trg_email_lists_updated_at
+  BEFORE UPDATE ON email_lists
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- -------------------------------------------------------
+-- 2. email_list_items
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS email_list_items (
+  item_id SERIAL PRIMARY KEY,
+  list_id INTEGER NOT NULL REFERENCES email_lists(list_id) ON DELETE CASCADE,
+  worker_id INTEGER NOT NULL REFERENCES workers(worker_id) ON DELETE CASCADE,
+  email VARCHAR(320),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  priority_score NUMERIC(6,2) DEFAULT 0,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'queued', 'sent', 'skipped', 'bounced', 'unsubscribed')),
+  send_status_detail TEXT,
+  sent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(list_id, worker_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_eli_list   ON email_list_items(list_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_eli_status ON email_list_items(list_id, status);
+CREATE INDEX IF NOT EXISTS idx_eli_worker ON email_list_items(worker_id);
+
+CREATE TRIGGER trg_email_list_items_updated_at
+  BEFORE UPDATE ON email_list_items
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- -------------------------------------------------------
+-- 3. campaign_comms_drafts orchestration columns
+-- -------------------------------------------------------
+ALTER TABLE campaign_comms_drafts
+  ADD COLUMN IF NOT EXISTS entry_branch VARCHAR(30)
+    CHECK (entry_branch IS NULL OR entry_branch IN (
+      'ai_first', 'paste_first', 'ai_list_first', 'paste_list_first', 'build_list'
+    ));
+
+ALTER TABLE campaign_comms_drafts
+  ADD COLUMN IF NOT EXISTS email_list_id INTEGER
+    REFERENCES email_lists(list_id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_ccd_email_list ON campaign_comms_drafts(email_list_id)
+  WHERE platform = 'email';
+CREATE INDEX IF NOT EXISTS idx_ccd_entry_branch ON campaign_comms_drafts(campaign_id, entry_branch)
+  WHERE entry_branch IS NOT NULL;
+
+-- -------------------------------------------------------
+-- 4. campaign_worker_lists.fired_email_list_id (parity with fired_call_list_id)
+-- -------------------------------------------------------
+ALTER TABLE campaign_worker_lists
+  ADD COLUMN IF NOT EXISTS fired_email_list_id INTEGER
+    REFERENCES email_lists(list_id) ON DELETE SET NULL;
+
+COMMENT ON COLUMN campaign_worker_lists.fired_email_list_id IS
+  'When fired into email, the email_lists.list_id created from this cohort. Parity with fired_call_list_id.';
+
+-- -------------------------------------------------------
+-- 5. RLS Policies (mirror call_lists / call_list_items)
+-- -------------------------------------------------------
+ALTER TABLE email_lists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE email_list_items ENABLE ROW LEVEL SECURITY;
+
+-- email_lists: read for authenticated, write via can_write_to_campaign
+CREATE POLICY "Authenticated read email_lists"
+  ON email_lists FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Campaign writers can insert email_lists"
+  ON email_lists FOR INSERT TO authenticated
+  WITH CHECK (can_write_to_campaign(campaign_id));
+CREATE POLICY "Campaign writers can update email_lists"
+  ON email_lists FOR UPDATE TO authenticated
+  USING (can_write_to_campaign(campaign_id))
+  WITH CHECK (can_write_to_campaign(campaign_id));
+CREATE POLICY "Campaign writers can delete email_lists"
+  ON email_lists FOR DELETE TO authenticated
+  USING (can_write_to_campaign(campaign_id));
+
+-- email_list_items: policies follow parent list
+CREATE POLICY "Authenticated read email_list_items"
+  ON email_list_items FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Campaign writers can insert email_list_items"
+  ON email_list_items FOR INSERT TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM email_lists el
+      WHERE el.list_id = email_list_items.list_id
+        AND can_write_to_campaign(el.campaign_id)
+    )
+  );
+CREATE POLICY "Campaign writers can update email_list_items"
+  ON email_list_items FOR UPDATE TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM email_lists el
+      WHERE el.list_id = email_list_items.list_id
+        AND can_write_to_campaign(el.campaign_id)
+    )
+  );
+CREATE POLICY "Campaign writers can delete email_list_items"
+  ON email_list_items FOR DELETE TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM email_lists el
+      WHERE el.list_id = email_list_items.list_id
+        AND can_write_to_campaign(el.campaign_id)
+    )
+  );
+
+-- -------------------------------------------------------
+-- 6. Grants
+-- -------------------------------------------------------
+GRANT SELECT, INSERT, UPDATE, DELETE ON email_lists TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON email_list_items TO authenticated;
+GRANT USAGE, SELECT ON SEQUENCE email_lists_list_id_seq TO authenticated;
+GRANT USAGE, SELECT ON SEQUENCE email_list_items_item_id_seq TO authenticated;
+
+-- -------------------------------------------------------
+-- 7. Comments
+-- -------------------------------------------------------
+COMMENT ON TABLE  email_lists IS
+  'Persistent recipient lists for email campaigns. Mirrors call_lists.';
+COMMENT ON COLUMN email_lists.draft_id IS
+  'Optional back-link to the campaign_comms_drafts row that owns this list (1:1 in v1).';
+COMMENT ON TABLE  email_list_items IS
+  'Workers on an email recipient list. email is denormalised from workers.email at populate time.';
+COMMENT ON COLUMN campaign_comms_drafts.entry_branch IS
+  'Tracks how the email orchestration was entered. Values: ai_first | paste_first | ai_list_first | paste_list_first | build_list. NULL for legacy/standalone drafts.';
+COMMENT ON COLUMN campaign_comms_drafts.email_list_id IS
+  'Optional FK to email_lists. Set when the campaign-scoped flow attaches a persisted recipient list to the draft. NULL means filter-based recipients (legacy flow).';

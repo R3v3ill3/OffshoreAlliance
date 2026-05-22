@@ -434,6 +434,9 @@ export function BuildListPanel({
           purpose={purpose}
           listEmpty={items.length === 0 || !list}
           firing={buildList.fire.isPending}
+          itemsSaving={
+            buildList.addItems.isPending || buildList.removeItems.isPending
+          }
           onFire={onFire}
           canWrite={canWrite}
         />
@@ -495,16 +498,19 @@ function FireBar({
   purpose,
   listEmpty,
   firing,
+  itemsSaving,
   onFire,
   canWrite,
 }: {
   purpose: BuildListPurpose | "";
   listEmpty: boolean;
   firing: boolean;
+  /** Block fire while optimistic item rows may not be persisted yet. */
+  itemsSaving: boolean;
   onFire: (p: BuildListPurpose) => void;
   canWrite: boolean;
 }) {
-  const disabled = !canWrite || listEmpty || firing;
+  const disabled = !canWrite || listEmpty || firing || itemsSaving;
   if (purpose) {
     const Icon =
       purpose === "email" ? Mail : purpose === "phone" ? PhoneIcon : ListChecks;

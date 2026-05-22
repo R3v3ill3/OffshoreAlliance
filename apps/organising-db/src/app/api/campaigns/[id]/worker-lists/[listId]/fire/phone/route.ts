@@ -10,8 +10,10 @@ import { errorResponse } from '@/lib/api/error-response'
  *   2. INSERT a `call_lists` row tagged with source_filters.source = 'worker_list'.
  *   3. Bulk INSERT `call_list_items` from the worker list items, using sort_order
  *      as the priority_score so the order in the build-list panel is preserved.
- *   4. Mark the worker list as fired (status = 'fired', fired_call_list_id, fired_at).
- *   5. Return a redirect_to URL pointing at the existing list-management screen,
+ *   4. Update `call_lists.total_items` so Phone Ops / dialler stats match the
+ *      inserted rows (same as the populate and bulk-create pathways).
+ *   5. Mark the worker list as fired (status = 'fired', fired_call_list_id, fired_at).
+ *   6. Return a redirect_to URL pointing at the existing list-management screen,
  *      where the user attaches a script and starts calling.
  */
 export async function POST(
@@ -81,6 +83,12 @@ export async function POST(
       .insert(callItemRows)
     if (insErr) throw insErr
 
+    const { error: totalErr } = await supabase
+      .from('call_lists')
+      .update({ total_items: callItemRows.length })
+      .eq('list_id', callList.list_id)
+    if (totalErr) throw totalErr
+
     const { error: markErr } = await supabase
       .from('campaign_worker_lists')
       .update({
@@ -111,6 +119,16 @@ export async function POST(
       // worker list still gets a call_lists row, so the user can dial.
       // Log so the issue surfaces in server logs.
       console.error('phone_call_actions insert failed (non-fatal):', actionErr)
+    } else if (action?.action_id) {
+      const { error: joinErr } = await supabase
+        .from('phone_call_action_lists')
+        .upsert(
+          { action_id: action.action_id, list_id: callList.list_id, position: 0 },
+          { onConflict: 'action_id,list_id' },
+        )
+      if (joinErr) {
+        console.error('phone_call_action_lists upsert failed (non-fatal):', joinErr)
+      }
     }
 
     // Route the user into the same orchestrator UI as the "Create Phone

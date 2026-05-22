@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ArrowLeft, ChevronDown, Pencil, Phone, Settings as SettingsIcon } from "lucide-react";
+import { ArrowLeft, ChevronDown, Mail, Pencil, Phone, Settings as SettingsIcon } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,6 +20,8 @@ import { CampaignBasicsEditSheet } from "@/components/campaigns/campaign-basics-
 import { CreateAssessmentDialog } from "@/components/campaigns/assessments/create-assessment-dialog";
 import { CreatePhoneCallOrchestrator } from "@/components/phone/CreatePhoneCallOrchestrator";
 import { ResumeBanner } from "@/components/phone/orchestrator/ResumeBanner";
+import { CreateEmailOrchestrator } from "@/components/email/CreateEmailOrchestrator";
+import { EmailResumeBanner } from "@/components/email/orchestrator/EmailResumeBanner";
 import type { CampaignStatus, CampaignType } from "@/types/database";
 
 const STATUS_VARIANT: Record<CampaignStatus, "secondary" | "success" | "info" | "warning"> = {
@@ -124,6 +126,15 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
           </Button>
         }
       />
+      <CreateEmailOrchestrator
+        campaignId={campaignId}
+        trigger={
+          <Button type="button" size="sm">
+            <Mail className="h-4 w-4 mr-2" />
+            Create Email
+          </Button>
+        }
+      />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm">
@@ -206,8 +217,9 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
         </div>
 
         {campaignIdValid && (
-          <div className="pb-2">
+          <div className="pb-2 space-y-2">
             <ResumeBanner campaignId={campaignId} />
+            <EmailResumeBanner campaignId={campaignId} />
           </div>
         )}
       </header>

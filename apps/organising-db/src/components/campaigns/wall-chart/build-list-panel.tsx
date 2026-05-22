@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   ListPlus,
   Mail,
@@ -251,6 +252,8 @@ export function BuildListPanel({
       if (result.redirect_to) router.push(result.redirect_to);
     } catch (err) {
       console.error("Fire failed", err);
+      const message = err instanceof Error ? err.message : `Failed to continue to ${pathway} pathway`;
+      toast.error(message);
     }
   };
 

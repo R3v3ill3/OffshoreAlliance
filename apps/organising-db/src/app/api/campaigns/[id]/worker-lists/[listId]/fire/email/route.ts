@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { errorResponse } from '@/lib/api/error-response'
 
 /**
  * Fire a saved worker list into the email pathway.
@@ -51,12 +52,25 @@ export async function POST(
       )
     }
 
+    // campaign_comms_drafts.stage_number is NOT NULL with CHECK BETWEEN 1 AND 6,
+    // so we must supply it. Mirror the email-wizard prefill logic: pick the
+    // currently active stage plan, otherwise fall back to stage 1.
+    const { data: stagePlans, error: stageErr } = await supabase
+      .from('campaign_stage_plans')
+      .select('stage_number, status')
+      .eq('campaign_id', cid)
+    if (stageErr) throw stageErr
+    const activeStage = stagePlans?.find((s) => s.status === 'active')
+    const stageNumber = activeStage?.stage_number ?? 1
+
     const { data: draft, error: draftErr } = await supabase
       .from('campaign_comms_drafts')
       .insert({
         campaign_id: cid,
+        stage_number: stageNumber,
         platform: 'email',
         status: 'draft',
+        title: list.name,
         subject: list.name,
         body: '',
         created_by: user.id,
@@ -88,9 +102,6 @@ export async function POST(
     })
   } catch (error) {
     console.error('Fire email error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fire to email' },
-      { status: 500 }
-    )
+    return errorResponse('Failed to fire to email', error)
   }
 }

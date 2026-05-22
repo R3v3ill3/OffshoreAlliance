@@ -355,8 +355,27 @@ export function useBuildList({
         }
       );
       if (!res.ok) {
-        const detail = await res.text().catch(() => "");
-        throw new Error(`Fire ${pathway} failed: ${res.status} ${detail}`);
+        // Prefer the server's JSON `error` field so a toast can show a
+        // clean, human-readable message. Fall back to raw text / status.
+        const raw = await res.text().catch(() => "");
+        let message = `Fire ${pathway} failed (${res.status})`;
+        if (raw) {
+          try {
+            const body = JSON.parse(raw) as {
+              error?: string;
+              hint?: string | null;
+            };
+            if (typeof body.error === "string" && body.error.length > 0) {
+              message = body.error;
+              if (body.hint) message += ` (${body.hint})`;
+            } else {
+              message = `${message}: ${raw}`;
+            }
+          } catch {
+            message = `${message}: ${raw}`;
+          }
+        }
+        throw new Error(message);
       }
       return (await res.json()) as FireResponse;
     },

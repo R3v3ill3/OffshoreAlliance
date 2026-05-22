@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { errorResponse } from '@/lib/api/error-response'
 
 /**
  * Fire a saved worker list into the phone pathway.
@@ -130,9 +131,6 @@ export async function POST(
     })
   } catch (error) {
     console.error('Fire phone error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fire to phone' },
-      { status: 500 }
-    )
+    return errorResponse('Failed to fire to phone', error)
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { resolveCampaignOrganiserId } from '@/lib/campaign/resolve-campaign-organiser'
+import { errorResponse } from '@/lib/api/error-response'
 
 /**
  * Fire a saved worker list into the activist-task pathway.
@@ -155,9 +156,6 @@ export async function POST(
     })
   } catch (error) {
     console.error('Fire task error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fire to task' },
-      { status: 500 }
-    )
+    return errorResponse('Failed to fire to task', error)
   }
 }

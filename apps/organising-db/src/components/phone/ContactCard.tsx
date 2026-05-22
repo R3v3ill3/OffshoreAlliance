@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Phone, Mail, Briefcase, MapPin, Clock, MessageCircle, Pencil, Copy, Check } from 'lucide-react'
+import { formatAustralianPhoneDisplay } from '@/lib/phone/format-phone-display'
 import type { CallListItemWithWorker } from '@/types/planner-types'
 
 interface ContactCardProps {
@@ -19,6 +20,7 @@ export function ContactCard({ contact, onEdit }: ContactCardProps) {
   if (!worker) return null
 
   const lastAttempt = recent_attempts?.[0]
+  const displayPhone = worker.phone ? formatAustralianPhoneDisplay(worker.phone) : null
 
   const handleCopyPhone = async () => {
     if (!worker.phone) return
@@ -45,14 +47,14 @@ export function ContactCard({ contact, onEdit }: ContactCardProps) {
               <h3 className="font-semibold text-base">
                 {worker.first_name} {worker.last_name}
               </h3>
-              {worker.phone ? (
+              {displayPhone ? (
                 <span className="inline-flex items-center gap-1">
                   <a
                     href={`tel:${worker.phone}`}
-                    className="font-semibold text-base font-mono text-primary hover:underline inline-flex items-center gap-1"
+                    className="font-semibold text-2xl text-primary hover:underline inline-flex items-center gap-1.5 tracking-wide"
                   >
-                    <Phone className="h-4 w-4" />
-                    {worker.phone}
+                    <Phone className="h-6 w-6" />
+                    {displayPhone}
                   </a>
                   <button
                     type="button"

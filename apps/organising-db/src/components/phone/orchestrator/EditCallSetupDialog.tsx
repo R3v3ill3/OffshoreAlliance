@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { BackgroundInfoStep, type BackgroundInfoValue } from './BackgroundInfoStep'
-import type { VariationDimension } from '@/types/phone-call-action'
+import { pathwayFor, type EntryBranch, type VariationDimension } from '@/types/phone-call-action'
 
 interface Props {
   open: boolean
@@ -27,6 +27,7 @@ interface ActionRow {
   variation_count: number
   variation_dimension: VariationDimension | null
   selected_assessment_ids: number[] | null
+  entry_branch: EntryBranch
 }
 
 const EMPTY_VALUE: BackgroundInfoValue = {
@@ -61,7 +62,7 @@ export function EditCallSetupDialog({ open, onOpenChange, campaignId, actionId }
       const { data, error } = await supabase
         .from('phone_call_actions')
         .select(
-          'action_id, assessment_id, variation_count, variation_dimension, selected_assessment_ids',
+          'action_id, assessment_id, variation_count, variation_dimension, selected_assessment_ids, entry_branch',
         )
         .eq('action_id', actionId)
         .maybeSingle()
@@ -70,6 +71,12 @@ export function EditCallSetupDialog({ open, onOpenChange, campaignId, actionId }
     },
     enabled: open && actionId != null,
   })
+
+  // Assessment-only sessions don't have a script, so variations + the
+  // bargaining-strength assessment selector are meaningless there.
+  const isAssessmentOnly = action
+    ? pathwayFor(action.entry_branch) === 'assessment_only'
+    : false
 
   useEffect(() => {
     if (action) {
@@ -134,6 +141,7 @@ export function EditCallSetupDialog({ open, onOpenChange, campaignId, actionId }
           onChange={setValue}
           onNext={handleSave}
           onCancel={() => onOpenChange(false)}
+          hideScriptOnlyControls={isAssessmentOnly}
         />
         {isSaving && (
           <p className="text-xs text-muted-foreground text-center">Saving…</p>

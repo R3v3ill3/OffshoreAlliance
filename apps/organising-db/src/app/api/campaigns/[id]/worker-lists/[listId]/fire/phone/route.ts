@@ -112,11 +112,21 @@ export async function POST(
       console.error('phone_call_actions insert failed (non-fatal):', actionErr)
     }
 
-    const actionParam = action?.action_id ? `?action_id=${action.action_id}` : ''
+    // Route the user into the same orchestrator UI as the "Create Phone
+    // Call" pathway, but with the list already attached. /phone/setup
+    // detects the action_id, lets the user pick Script vs Assessment-only,
+    // then skips the OrderPicker (order is implicitly list_first since
+    // the list is already done) and lands them on the right setup
+    // component (script wizard or assessment-setup). The legacy
+    // /phone/lists/[listId] page is still reachable via the dialler's
+    // "Attach script" affordance.
+    const redirectTo = action?.action_id
+      ? `/campaigns/${cid}/phone/setup?action_id=${action.action_id}`
+      : `/campaigns/${cid}/phone/lists/${callList.list_id}`
     return NextResponse.json({
       call_list_id: callList.list_id,
       action_id: action?.action_id ?? null,
-      redirect_to: `/campaigns/${cid}/phone/lists/${callList.list_id}${actionParam}`,
+      redirect_to: redirectTo,
     })
   } catch (error) {
     console.error('Fire phone error:', error)

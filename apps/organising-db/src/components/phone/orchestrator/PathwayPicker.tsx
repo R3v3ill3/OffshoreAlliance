@@ -37,9 +37,19 @@ interface Props {
   onChange: (p: Pathway) => void
   onNext: () => void
   onCancel: () => void
+  isSubmitting?: boolean
+  /** Override the "Next" button label (e.g. "Continue"). */
+  nextLabel?: string
 }
 
-export function PathwayPicker({ value, onChange, onNext, onCancel }: Props) {
+export function PathwayPicker({
+  value,
+  onChange,
+  onNext,
+  onCancel,
+  isSubmitting,
+  nextLabel = 'Next',
+}: Props) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
@@ -87,11 +97,11 @@ export function PathwayPicker({ value, onChange, onNext, onCancel }: Props) {
       </div>
 
       <div className="flex justify-between pt-2">
-        <Button variant="outline" onClick={onCancel}>
+        <Button variant="outline" onClick={onCancel} disabled={isSubmitting}>
           Cancel
         </Button>
-        <Button onClick={onNext} disabled={!value}>
-          Next
+        <Button onClick={onNext} disabled={!value || isSubmitting}>
+          {isSubmitting ? 'Saving…' : nextLabel}
         </Button>
       </div>
     </div>

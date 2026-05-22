@@ -382,6 +382,36 @@ export function PhoneWizardSteps() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Pre-fill the wizard's "use existing list" mode when this run is part
+  // of an orchestrator action that already has a list attached (e.g. the
+  // Build List → Fire to Phone pathway routes via /phone/setup which
+  // sends the user here for the script pathway with the list already
+  // populated on phone_call_actions.list_ids). Otherwise the wizard's
+  // default "create new list" mode is used.
+  useEffect(() => {
+    if (wizardActionId == null) return
+    let cancelled = false
+    async function prefillExistingList(actionId: number) {
+      const { data: action } = await supabase
+        .from('phone_call_actions')
+        .select('list_ids')
+        .eq('action_id', actionId)
+        .maybeSingle()
+      if (cancelled) return
+      const lids = (action as { list_ids?: number[] | null } | null)?.list_ids
+      const lid = Array.isArray(lids) ? lids[0] : undefined
+      if (lid != null) {
+        setListMode('existing')
+        setExistingListId(lid)
+      }
+    }
+    void prefillExistingList(wizardActionId)
+    return () => {
+      cancelled = true
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wizardActionId])
+
   useEffect(() => {
     const t = setTimeout(() => setAddSearchDebounced(addSearch.trim()), 400)
     return () => clearTimeout(t)

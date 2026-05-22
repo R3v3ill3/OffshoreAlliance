@@ -73,9 +73,23 @@ interface Props {
   onChange: (v: BackgroundInfoValue) => void
   onNext: () => void
   onCancel: () => void
+  /**
+   * Hides the bargaining-strength assessment selector and the variations
+   * toggle when the session is on the assessment-only pathway — those
+   * controls are script-pathway-specific. The multi-assessment picker
+   * always renders since it powers both pathways.
+   */
+  hideScriptOnlyControls?: boolean
 }
 
-export function BackgroundInfoStep({ campaignId, value, onChange, onNext, onCancel }: Props) {
+export function BackgroundInfoStep({
+  campaignId,
+  value,
+  onChange,
+  onNext,
+  onCancel,
+  hideScriptOnlyControls,
+}: Props) {
   const supabase = createClient()
   const queryClient = useQueryClient()
   const [addAssessmentOpen, setAddAssessmentOpen] = useState(false)
@@ -138,41 +152,45 @@ export function BackgroundInfoStep({ campaignId, value, onChange, onNext, onCanc
 
   return (
     <div className="space-y-6">
-      {/* Assessment selector */}
-      <div className="space-y-2">
-        <Label htmlFor="assessment-select">Bargaining strength assessment (optional)</Label>
-        {assessmentsError || assessments.length === 0 ? (
+      {/* Assessment selector — script-pathway only (drives script + CTA
+          ambitions). Hidden for the assessment-only pathway since it
+          doesn't generate scripts. */}
+      {!hideScriptOnlyControls && (
+        <div className="space-y-2">
+          <Label htmlFor="assessment-select">Bargaining strength assessment (optional)</Label>
+          {assessmentsError || assessments.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              No assessments configured for this campaign — you can skip this field.
+            </p>
+          ) : (
+            <Select
+              value={value.assessmentId != null ? String(value.assessmentId) : 'none'}
+              onValueChange={(v) =>
+                onChange({
+                  ...value,
+                  assessmentId: v === 'none' ? null : Number(v),
+                })
+              }
+            >
+              <SelectTrigger id="assessment-select">
+                <SelectValue placeholder="Select an assessment…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {assessments.map((a) => (
+                  <SelectItem key={a.assessment_id} value={String(a.assessment_id)}>
+                    {`Assessment ${new Date(a.assessed_at).toLocaleDateString()}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <p className="text-xs text-muted-foreground">
-            No assessments configured for this campaign — you can skip this field.
+            Linking an assessment lets the script and CTA ambitions draw on the campaign&apos;s
+            bargaining-strength data.
           </p>
-        ) : (
-          <Select
-            value={value.assessmentId != null ? String(value.assessmentId) : 'none'}
-            onValueChange={(v) =>
-              onChange({
-                ...value,
-                assessmentId: v === 'none' ? null : Number(v),
-              })
-            }
-          >
-            <SelectTrigger id="assessment-select">
-              <SelectValue placeholder="Select an assessment…" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">None</SelectItem>
-              {assessments.map((a) => (
-                <SelectItem key={a.assessment_id} value={String(a.assessment_id)}>
-                  {`Assessment ${new Date(a.assessed_at).toLocaleDateString()}`}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        <p className="text-xs text-muted-foreground">
-          Linking an assessment lets the script and CTA ambitions draw on the campaign&apos;s
-          bargaining-strength data.
-        </p>
-      </div>
+        </div>
+      )}
 
       {/* Multi-select: assessments to rate during this call session */}
       <div className="space-y-2 border-t pt-4">
@@ -218,78 +236,82 @@ export function BackgroundInfoStep({ campaignId, value, onChange, onNext, onCanc
         )}
       </div>
 
-      {/* Variations toggle */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <Switch
-            id="has-variations"
-            checked={value.hasVariations}
-            onCheckedChange={(checked) =>
-              onChange({
-                ...value,
-                hasVariations: checked,
-                variationCount: checked ? 2 : 1,
-                variationDimension: checked ? value.variationDimension : null,
-              })
-            }
-          />
-          <Label htmlFor="has-variations" className="cursor-pointer font-medium">
-            This call has variations
-          </Label>
-        </div>
-
-        <p className="text-xs text-muted-foreground">
-          Variations let you create multiple slightly different scripts or lists for different
-          worker segments — e.g. one for members and one for non-members — all tracked under
-          this single phone call action.
-        </p>
-
-        {value.hasVariations && (
-          <div className="pl-4 border-l-2 border-muted space-y-4">
-            {/* Number of variations */}
-            <div className="space-y-2">
-              <Label htmlFor="variation-count">Number of variations (2–5)</Label>
-              <Input
-                id="variation-count"
-                type="number"
-                min={2}
-                max={5}
-                value={value.variationCount}
-                onChange={(e) => {
-                  const n = Math.min(5, Math.max(2, Number(e.target.value)))
-                  onChange({ ...value, variationCount: n })
-                }}
-                className="w-24"
-              />
-            </div>
-
-            {/* Variation dimension */}
-            <div className="space-y-2">
-              <Label htmlFor="variation-dimension">Variation dimension *</Label>
-              <Select
-                value={value.variationDimension ?? ''}
-                onValueChange={(v) =>
-                  onChange({ ...value, variationDimension: v as VariationDimension })
-                }
-              >
-                <SelectTrigger id="variation-dimension">
-                  <SelectValue placeholder="Select what to vary by…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {VARIATION_DIMENSION_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {selectedDimension && (
-                <p className="text-xs text-muted-foreground">{selectedDimension.hint}</p>
-              )}
-            </div>
+      {/* Variations toggle — script-pathway only. Variations are about
+          generating multiple script variants for different worker
+          segments, which is meaningless without a script. */}
+      {!hideScriptOnlyControls && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Switch
+              id="has-variations"
+              checked={value.hasVariations}
+              onCheckedChange={(checked) =>
+                onChange({
+                  ...value,
+                  hasVariations: checked,
+                  variationCount: checked ? 2 : 1,
+                  variationDimension: checked ? value.variationDimension : null,
+                })
+              }
+            />
+            <Label htmlFor="has-variations" className="cursor-pointer font-medium">
+              This call has variations
+            </Label>
           </div>
-        )}
-      </div>
+
+          <p className="text-xs text-muted-foreground">
+            Variations let you create multiple slightly different scripts or lists for different
+            worker segments — e.g. one for members and one for non-members — all tracked under
+            this single phone call action.
+          </p>
+
+          {value.hasVariations && (
+            <div className="pl-4 border-l-2 border-muted space-y-4">
+              {/* Number of variations */}
+              <div className="space-y-2">
+                <Label htmlFor="variation-count">Number of variations (2–5)</Label>
+                <Input
+                  id="variation-count"
+                  type="number"
+                  min={2}
+                  max={5}
+                  value={value.variationCount}
+                  onChange={(e) => {
+                    const n = Math.min(5, Math.max(2, Number(e.target.value)))
+                    onChange({ ...value, variationCount: n })
+                  }}
+                  className="w-24"
+                />
+              </div>
+
+              {/* Variation dimension */}
+              <div className="space-y-2">
+                <Label htmlFor="variation-dimension">Variation dimension *</Label>
+                <Select
+                  value={value.variationDimension ?? ''}
+                  onValueChange={(v) =>
+                    onChange({ ...value, variationDimension: v as VariationDimension })
+                  }
+                >
+                  <SelectTrigger id="variation-dimension">
+                    <SelectValue placeholder="Select what to vary by…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {VARIATION_DIMENSION_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedDimension && (
+                  <p className="text-xs text-muted-foreground">{selectedDimension.hint}</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Footer actions */}
       <div className="flex justify-end gap-2 pt-2">

@@ -128,6 +128,88 @@ interface RecipientRow {
   source_label: string
 }
 
+interface RichContext {
+  campaignName: string
+  campaignDescription: string
+  campaignType: string
+  campaignStatus: string
+  memberCount: number
+  membershipBreakdown: Record<string, number>
+  employerName: string
+  employersByCount: Array<[string, number]>
+  worksiteNames: string[]
+  worksitesByCount: Array<[string, number]>
+  agreementName: string
+  organiserName: string
+  organiserPhone: string
+  activeStageNumber: number | null
+  activeStageName: string | null
+  ambitions: string[]
+}
+
+/**
+ * Synthesize a narrative context block from the wizard's gathered campaign
+ * data. Passed to the AI prompt as custom_instructions — augments (rather
+ * than replaces) the structured campaign_context fields and the
+ * server-side situation_analysis_context.
+ *
+ * Returns an empty string when there's effectively nothing useful to add.
+ */
+function buildRichContextBlock(ctx: RichContext | null | undefined): string {
+  if (!ctx) return ''
+  const lines: string[] = ['CAMPAIGN SNAPSHOT — narrative context to ground the draft:']
+
+  if (ctx.campaignName) {
+    lines.push(`- Campaign: "${ctx.campaignName}"${ctx.campaignType ? ` (type: ${ctx.campaignType})` : ''}`)
+  }
+  if (ctx.campaignDescription) {
+    lines.push(`- Description: ${ctx.campaignDescription}`)
+  }
+  if (ctx.activeStageName) {
+    lines.push(`- Active stage: Stage ${ctx.activeStageNumber} — ${ctx.activeStageName}`)
+  }
+  if (ctx.ambitions.length > 0) {
+    lines.push('- Current stage ambitions:')
+    for (const a of ctx.ambitions) lines.push(`    • ${a}`)
+  }
+  if (ctx.memberCount > 0) {
+    const parts: string[] = []
+    const mb = ctx.membershipBreakdown
+    if (mb.member) parts.push(`${mb.member} members`)
+    if (mb.member_pending) parts.push(`${mb.member_pending} pending`)
+    if (mb.non_member) parts.push(`${mb.non_member} non-members`)
+    lines.push(
+      `- Workforce on campaign: ${ctx.memberCount} workers${parts.length ? ` (${parts.join(', ')})` : ''}`,
+    )
+  }
+  if (ctx.employersByCount.length > 1 || (ctx.employersByCount.length === 1 && !ctx.employerName)) {
+    const empSummary = ctx.employersByCount
+      .map(([name, count]) => `${name} (${count})`)
+      .join(', ')
+    lines.push(`- Employers in scope: ${empSummary}`)
+  }
+  if (ctx.worksitesByCount.length > 0 && ctx.worksiteNames.length === 0) {
+    lines.push(
+      `- Worksites (derived from members): ${ctx.worksitesByCount.map(([n, c]) => `${n} (${c})`).join(', ')}`,
+    )
+  }
+  if (ctx.agreementName) {
+    lines.push(`- Enterprise agreement: ${ctx.agreementName}`)
+  }
+  if (ctx.organiserName) {
+    lines.push(
+      `- Lead organiser: ${ctx.organiserName}${ctx.organiserPhone ? ` (${ctx.organiserPhone})` : ''}`,
+    )
+  }
+  lines.push(
+    '',
+    'Use this snapshot to choose concrete agitation hooks and a believable ask. If a field is missing, write generically rather than inventing specifics.',
+  )
+
+  // If we only have the header + closing instruction, treat as empty.
+  return lines.length <= 2 ? '' : lines.join('\n')
+}
+
 export function CampaignEmailWizard() {
   const params = useParams()
   const router = useRouter()
@@ -206,7 +288,9 @@ export function CampaignEmailWizard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('campaigns')
-        .select('campaign_id, name, organiser_id')
+        .select(
+          'campaign_id, name, organiser_id, description, campaign_type, status, start_date, end_date',
+        )
         .eq('campaign_id', campaignId)
         .single()
       if (error) throw error
@@ -214,14 +298,35 @@ export function CampaignEmailWizard() {
     },
   })
 
-  // Campaign context (employer, agreement, organiser, worksites) for AI
-  // generation + template variable resolution. Same fetches the legacy
-  // EmailWizardSteps performs at step 1.
+  // Rich campaign context for AI generation + template-variable resolution.
+  //
+  // Gathers from several sources with graceful fallbacks so the AI has
+  // something meaningful to work with even on a fresh organising-type
+  // campaign with no enterprise agreement on file:
+  //
+  //   1. Primary employer / agreement / sector
+  //      - campaign_timelines → agreements → employers (the "bargaining"
+  //        canonical link). Falls back to deriving the dominant employer
+  //        from campaign_worker_membership when no agreement exists.
+  //
+  //   2. Worksites
+  //      - campaign_worksites first; falls back to distinct worksites of
+  //        members.
+  //
+  //   3. Workforce snapshot
+  //      - Member count + membership breakdown (member / pending / non-member).
+  //
+  //   4. Active stage + ambitions
+  //      - campaign_stage_plans where status='active', plus the stage's
+  //        plan_ambitions (limited to top 5 by sort_order) so the prompt
+  //        knows what the campaign is *currently trying to achieve*.
   const { data: campaignContext } = useQuery({
     queryKey: ['campaign-email-wizard-context', campaignId],
     enabled: Number.isFinite(campaignId) && !!campaign,
     queryFn: async () => {
+      // ---- 1. Agreement + agreement-linked employer ---------------
       let agreementName = ''
+      let agreementEmployerId: number | null = null
       let employerName = ''
       const { data: timeline } = await supabase
         .from('campaign_timelines')
@@ -235,16 +340,18 @@ export function CampaignEmailWizard() {
           .eq('agreement_id', timeline.agreement_id)
           .single()
         agreementName = agreement?.agreement_name ?? ''
-        if (agreement?.employer_id) {
+        agreementEmployerId = agreement?.employer_id ?? null
+        if (agreementEmployerId) {
           const { data: employer } = await supabase
             .from('employers')
             .select('employer_name')
-            .eq('employer_id', agreement.employer_id)
+            .eq('employer_id', agreementEmployerId)
             .single()
           employerName = employer?.employer_name ?? ''
         }
       }
 
+      // ---- 2. Lead organiser --------------------------------------
       let organiserName = ''
       let organiserPhone = ''
       if (campaign?.organiser_id) {
@@ -257,16 +364,135 @@ export function CampaignEmailWizard() {
         organiserPhone = org?.phone ?? ''
       }
 
+      // ---- 3. Worksites (campaign_worksites first) ----------------
       const { data: wsLinks } = await supabase
         .from('campaign_worksites')
         .select('worksites(worksite_name)')
         .eq('campaign_id', campaignId)
-      const worksiteNames = (wsLinks ?? [])
+      let worksiteNames = (wsLinks ?? [])
         .map(
           (r: Record<string, unknown>) =>
             (r.worksites as { worksite_name: string } | null)?.worksite_name,
         )
         .filter(Boolean) as string[]
+
+      // ---- 4. Member-derived fallbacks (employer + worksites) -----
+      // For organising-type campaigns without an agreement on file, the
+      // membership table is usually the only place employer/worksite
+      // info lives.
+      const employerCounts = new Map<string, number>()
+      const worksiteCounts = new Map<string, number>()
+      let memberCount = 0
+      const membershipBreakdown: Record<string, number> = {
+        member: 0,
+        member_pending: 0,
+        non_member: 0,
+        unknown: 0,
+      }
+      const { data: members } = await supabase
+        .from('campaign_worker_membership')
+        .select(
+          `worker_id,
+           workers!inner(
+             employer_id,
+             employers(employer_name),
+             worksites(worksite_name),
+             union_membership_type:union_membership_types(type_name)
+           )`,
+        )
+        .eq('campaign_id', campaignId)
+      for (const row of members ?? []) {
+        memberCount += 1
+        const w = row.workers as unknown as {
+          employer_id: number | null
+          employers: { employer_name: string } | { employer_name: string }[] | null
+          worksites: { worksite_name: string } | { worksite_name: string }[] | null
+          union_membership_type:
+            | { type_name: string }
+            | { type_name: string }[]
+            | null
+        } | null
+        const empName = Array.isArray(w?.employers)
+          ? w?.employers[0]?.employer_name
+          : w?.employers?.employer_name
+        if (empName) employerCounts.set(empName, (employerCounts.get(empName) ?? 0) + 1)
+        const wsName = Array.isArray(w?.worksites)
+          ? w?.worksites[0]?.worksite_name
+          : w?.worksites?.worksite_name
+        if (wsName) worksiteCounts.set(wsName, (worksiteCounts.get(wsName) ?? 0) + 1)
+        const ump = Array.isArray(w?.union_membership_type)
+          ? w?.union_membership_type[0]
+          : w?.union_membership_type
+        const typeName = ump?.type_name ?? 'unknown'
+        if (typeName in membershipBreakdown) {
+          membershipBreakdown[typeName] += 1
+        } else {
+          membershipBreakdown.unknown += 1
+        }
+      }
+      const employersByCount = [...employerCounts.entries()].sort(
+        (a, b) => b[1] - a[1],
+      )
+      const worksitesByCount = [...worksiteCounts.entries()].sort(
+        (a, b) => b[1] - a[1],
+      )
+
+      if (!employerName && employersByCount.length > 0) {
+        employerName = employersByCount[0][0]
+      }
+      if (worksiteNames.length === 0 && worksitesByCount.length > 0) {
+        worksiteNames = worksitesByCount.slice(0, 5).map(([name]) => name)
+      }
+
+      // ---- 5. Active stage + ambitions ----------------------------
+      let activeStageNumber: number | null = null
+      let activeStageName: string | null = null
+      const ambitions: string[] = []
+      const { data: stagePlans } = await supabase
+        .from('campaign_stage_plans')
+        .select('plan_id, stage_number, status')
+        .eq('campaign_id', campaignId)
+      const active = stagePlans?.find((s) => s.status === 'active')
+      if (active) {
+        activeStageNumber = active.stage_number
+        const stageMap: Record<number, string> = {
+          1: 'Contact ID & Mapping',
+          2: 'Intro Comms & Education',
+          3: 'Member Mobilisation',
+          4: 'Develop Claims / MSD',
+          5: 'Endorsement & Commence Bargaining',
+          6: 'Bargaining to Win',
+        }
+        activeStageName = stageMap[active.stage_number] ?? `Stage ${active.stage_number}`
+
+        const { data: ambitionRows } = await supabase
+          .from('plan_ambitions')
+          .select('custom_text, target_value, target_unit, target_date, ambition_options(option_text)')
+          .eq('plan_id', active.plan_id)
+          .order('sort_order', { ascending: true })
+          .limit(5)
+        for (const a of ambitionRows ?? []) {
+          const optText = Array.isArray(
+            (a as Record<string, unknown>).ambition_options,
+          )
+            ? ((a as Record<string, unknown>).ambition_options as Array<{
+                option_text: string
+              }>)[0]?.option_text
+            : ((a as Record<string, unknown>).ambition_options as {
+                option_text: string
+              } | null)?.option_text
+          const text = ((a as { custom_text: string | null }).custom_text || optText || '').trim()
+          if (!text) continue
+          const target = (a as { target_value: string | null; target_unit: string | null }).target_value
+            ? ` — target ${(a as { target_value: string }).target_value}${
+                (a as { target_unit: string | null }).target_unit
+                  ? ` ${(a as { target_unit: string }).target_unit}`
+                  : ''
+              }`
+            : ''
+          ambitions.push(`${text}${target}`)
+        }
+      }
 
       return {
         employerName,
@@ -275,6 +501,16 @@ export function CampaignEmailWizard() {
         organiserPhone,
         worksiteNames,
         campaignName: campaign?.name ?? '',
+        campaignDescription: campaign?.description ?? '',
+        campaignType: campaign?.campaign_type ?? '',
+        campaignStatus: campaign?.status ?? '',
+        memberCount,
+        membershipBreakdown,
+        employersByCount: employersByCount.slice(0, 5),
+        worksitesByCount: worksitesByCount.slice(0, 5),
+        activeStageNumber,
+        activeStageName,
+        ambitions,
       }
     },
   })
@@ -428,6 +664,13 @@ export function CampaignEmailWizard() {
       toast.error('Campaign context still loading — try again in a second.')
       return
     }
+    // Build a narrative context block to bundle every bit of useful
+    // campaign data into the prompt's custom_instructions. The API already
+    // auto-loads situation_analysis_context when one exists; this block
+    // covers everything else (description, type, member breakdown,
+    // active-stage ambitions, multi-employer footprint, etc).
+    const richContext = buildRichContextBlock(campaignContext)
+
     const request: CommsDraftRequest = {
       campaign_id: campaignId,
       plan_id: 0,
@@ -435,10 +678,13 @@ export function CampaignEmailWizard() {
       stage_name: stageName,
       platform: 'email',
       campaign_context: {
-        employer_name: campaignContext.employerName,
-        agreement_name: campaignContext.agreementName,
+        // Fallbacks ensure we never trip the API's required-fields check.
+        // The narrative payload below carries the real signal.
+        employer_name: campaignContext.employerName || 'the campaign workforce',
+        agreement_name: campaignContext.agreementName || 'Independent Organising',
         worksite_names: campaignContext.worksiteNames,
-        sector: '',
+        sector: 'offshore oil & gas',
+        campaign_type: campaignContext.campaignType || undefined,
         organiser_name: campaignContext.organiserName || undefined,
         organiser_phone: campaignContext.organiserPhone || undefined,
         staff_name: profile?.display_name || user?.email || undefined,
@@ -450,6 +696,7 @@ export function CampaignEmailWizard() {
         platforms: ['Email'],
         engagement_intensity: engagementIntensity || undefined,
       },
+      custom_instructions: richContext || undefined,
     }
     try {
       const result = await generateDraft.mutateAsync(request)

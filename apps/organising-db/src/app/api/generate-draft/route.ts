@@ -40,15 +40,27 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!body.campaign_context?.employer_name) {
-      return NextResponse.json(
-        { error: 'Missing required campaign context (employer_name)' },
-        { status: 400 }
-      )
+    // Provide sensible fallbacks so prompts always render cleanly. Campaigns
+    // without a campaign_timelines → agreements → employer chain (common for
+    // organising-type campaigns) used to hard-fail here with a 400; we now
+    // synthesize defaults and let the prompt's narrative context (set by the
+    // caller via custom_instructions / situation_analysis_context) carry the
+    // weight.
+    if (!body.campaign_context) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(body as any).campaign_context = {}
     }
-    // Ensure agreement_name always has a value so prompts render cleanly
+    if (!body.campaign_context.employer_name) {
+      body.campaign_context.employer_name = 'the campaign workforce'
+    }
     if (!body.campaign_context.agreement_name) {
       body.campaign_context.agreement_name = 'Independent Organising'
+    }
+    if (!body.campaign_context.sector) {
+      body.campaign_context.sector = 'offshore oil & gas'
+    }
+    if (!Array.isArray(body.campaign_context.worksite_names)) {
+      body.campaign_context.worksite_names = []
     }
 
     // Auto-load the campaign's saved situation analysis as additional

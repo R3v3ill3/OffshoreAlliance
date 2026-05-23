@@ -91,7 +91,7 @@ export default function NewEmailListPage() {
   const pathway = searchParams.get('pathway') || undefined
   const backHref = searchParams.get('returnTo')
     ? decodeURIComponent(searchParams.get('returnTo')!)
-    : `/campaigns/${campaignId}/email/setup`
+    : `/campaigns/${campaignId}/email/setup/order`
 
   // Existing-list picker mode toggle (parallel to phone). Only meaningful
   // when we have a draft_id in scope.

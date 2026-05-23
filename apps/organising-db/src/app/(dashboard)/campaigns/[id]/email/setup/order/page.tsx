@@ -1,67 +1,63 @@
 'use client'
 
 /**
- * Email setup — step 2 of 2 (Order picker).
+ * Email setup — order picker (now the only setup screen).
  *
- * Mirrors /campaigns/[id]/phone/setup/order/page.tsx.
+ * The pathway picker has been removed: every email defaults to entry_branch
+ * 'ai_first' / 'ai_list_first' (the user re-selects AI vs paste vs template
+ * inside the body step itself, where the choice is actually meaningful).
  *
- * Reads the chosen pathway from ?pathway=. On Confirm:
- *   1. Insert a campaign_comms_drafts row (status='draft', platform='email',
- *      entry_branch derived from (pathway, order)).
- *   2. Resolve the first pathway component URL.
- *   3. Navigate with returnTo so Back retraces this page.
+ * Cards are hot-select: clicking one immediately creates the draft and
+ * navigates onward. No intermediate Continue button. Back returns to the
+ * campaign page.
  */
 
-import { useMemo, useState } from 'react'
-import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { ArrowLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/lib/supabase/auth-context'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { EmailOrderPicker } from '@/components/email/orchestrator/EmailOrderPicker'
 import {
   entryBranchForEmail,
   type EmailOrder,
-  type EmailPathway,
 } from '@/types/email-action'
-
-function isEmailPathway(value: string | null): value is EmailPathway {
-  return value === 'ai' || value === 'paste'
-}
 
 export default function EmailSetupOrderPage() {
   const params = useParams()
   const router = useRouter()
-  const searchParams = useSearchParams()
   const { user } = useAuth()
   const supabase = createClient()
   const campaignId = params.id as string
 
-  const pathway = useMemo<EmailPathway | null>(() => {
-    const raw = searchParams.get('pathway')
-    return isEmailPathway(raw) ? raw : null
-  }, [searchParams])
+  // Default pathway is 'ai' — the user re-chooses inside the body step.
+  const pathway = 'ai' as const
 
-  const [order, setOrder] = useState<EmailOrder | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitting, setSubmitting] = useState<EmailOrder | null>(null)
 
-  const backHref = `/campaigns/${campaignId}/email/setup`
+  const backHref = `/campaigns/${campaignId}`
 
-  async function handleConfirm() {
-    if (!pathway || !order) return
+  async function handleSelect(order: EmailOrder) {
     if (!user) {
       toast.error('You must be signed in to create an email draft.')
       return
     }
-    setIsSubmitting(true)
+    setSubmitting(order)
     try {
       const entryBranch = entryBranchForEmail(pathway, order)
 
       // campaign_comms_drafts.stage_number is NOT NULL with CHECK BETWEEN 1
-      // AND 6 (see migration 20260409100000_comms_draft_system.sql). Mirror
-      // the fire-email route's logic: pick the active stage_plan, else 1.
+      // AND 6. Mirror the fire-email route's logic: pick the active stage
+      // plan, else 1.
       const { data: stagePlans, error: stageErr } = await supabase
         .from('campaign_stage_plans')
         .select('stage_number, status')
@@ -87,16 +83,14 @@ export default function EmailSetupOrderPage() {
       if (error) throw error
       const draftId = data!.draft_id
 
-      toast.success('Email draft created')
-
       const here = encodeURIComponent(
-        `/campaigns/${campaignId}/email/setup/order?pathway=${pathway}`,
+        `/campaigns/${campaignId}/email/setup/order`,
       )
 
       const firstStepHref =
         order === 'setup_first'
-          ? `/campaigns/${campaignId}/email/wizard?draft_id=${draftId}&entry_branch=${entryBranch}&pathway=${pathway}&returnTo=${here}`
-          : `/campaigns/${campaignId}/email/lists/new?draft_id=${draftId}&entry_branch=${entryBranch}&pathway=${pathway}&returnTo=${here}`
+          ? `/campaigns/${campaignId}/email/wizard?draft_id=${draftId}&entry_branch=${entryBranch}&returnTo=${here}`
+          : `/campaigns/${campaignId}/email/lists/new?draft_id=${draftId}&entry_branch=${entryBranch}&returnTo=${here}`
 
       router.push(firstStepHref)
     } catch (err) {
@@ -105,43 +99,26 @@ export default function EmailSetupOrderPage() {
           ? `Failed to create email draft: ${err.message}`
           : 'Failed to create email draft',
       )
-    } finally {
-      setIsSubmitting(false)
+      setSubmitting(null)
     }
   }
-
-  if (!pathway) {
-    return (
-      <div className="space-y-6 max-w-3xl mx-auto">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => router.push(backHref)}>
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Back
-          </Button>
-        </div>
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            No pathway selected. Use the Back button or restart from
-            &ldquo;Create Email&rdquo;.
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  const pathwayLabel = pathway === 'ai' ? 'AI-assisted' : 'Paste / write'
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => router.push(backHref)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.push(backHref)}
+          disabled={submitting != null}
+        >
           <ArrowLeft className="h-4 w-4 mr-1" />
           Back
         </Button>
         <div className="flex-1">
-          <h2 className="text-lg font-semibold">Choose where to start</h2>
+          <h2 className="text-lg font-semibold">Create email</h2>
           <p className="text-xs text-muted-foreground uppercase tracking-wide">
-            Step 2 of 2 · {pathwayLabel}
+            Where do you want to start?
           </p>
         </div>
       </div>
@@ -150,17 +127,15 @@ export default function EmailSetupOrderPage() {
         <CardHeader>
           <CardTitle>Order</CardTitle>
           <CardDescription>
-            Choose which component to set up first. Either order ends at the same send step.
+            Click a card to begin. You can pick AI, template, or paste once
+            you reach the body editor.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <EmailOrderPicker
-            pathway={pathway}
-            value={order}
-            onChange={setOrder}
-            onConfirm={handleConfirm}
+            onSelect={handleSelect}
             onBack={() => router.push(backHref)}
-            isSubmitting={isSubmitting}
+            submitting={submitting}
           />
         </CardContent>
       </Card>

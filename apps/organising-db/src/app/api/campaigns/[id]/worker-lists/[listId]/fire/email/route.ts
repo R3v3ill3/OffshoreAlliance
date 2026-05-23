@@ -15,9 +15,10 @@ import { errorResponse } from '@/lib/api/error-response'
  *   4. UPDATE the draft so email_list_id points at the new list.
  *   5. Mark the worker list as fired (status, fired_draft_id, fired_email_list_id,
  *      fired_at).
- *   6. Return a redirect_to URL into the campaign-scoped email pathway picker
- *      (/campaigns/[id]/email/setup?draft_id=…) — *not* the legacy wizard.
- *      The pathway picker detects the attached list and skips the OrderPicker.
+ *   6. Return a redirect_to URL straight into the campaign-scoped email
+ *      wizard (/campaigns/[id]/email/wizard?draft_id=…&entry_branch=build_list).
+ *      The list is already attached, so the wizard opens directly on the body
+ *      editor with the recipient list visible on the final step.
  */
 export async function POST(
   _req: NextRequest,
@@ -164,9 +165,12 @@ export async function POST(
       .eq('list_id', lid)
     if (markErr) throw markErr
 
-    // Step 6: route into the campaign-scoped email pathway picker, mirroring
-    // the phone fire route's redirect into /phone/setup?action_id=…
-    const redirectTo = `/campaigns/${cid}/email/setup?draft_id=${draft.draft_id}`
+    // Step 6: route straight into the campaign-scoped email wizard. The
+    // list is already attached and entry_branch='build_list', so the
+    // wizard lands the user on the body editor with the list visible at
+    // the final step. The pathway picker has been removed; AI vs paste
+    // vs template is chosen inside the body step itself.
+    const redirectTo = `/campaigns/${cid}/email/wizard?draft_id=${draft.draft_id}&entry_branch=build_list`
 
     return NextResponse.json({
       draft_id: draft.draft_id,

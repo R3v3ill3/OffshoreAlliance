@@ -4,12 +4,13 @@
  * CreateEmailOrchestrator — entry-point button for the campaign-scoped
  * email setup flow.
  *
- * Mirrors CreatePhoneCallOrchestrator. Routes to /campaigns/{id}/email/setup
- * which renders the EmailPathwayPicker. From there:
- *   1. setup → /setup/order → /email/wizard (setup-first)
- *                            or /email/lists/new → /email/wizard (list-first)
- *   2. setup with ?draft_id=… (build-list fire) skips the OrderPicker and
- *      hands the user a list-attached wizard.
+ * Mirrors CreatePhoneCallOrchestrator. Routes straight to the (hot-select)
+ * order picker. From there:
+ *   • Draft email first → /email/wizard
+ *   • Build list first  → /email/lists/new → /email/wizard
+ *
+ * The wall-chart Build List fire path bypasses this entry entirely and
+ * lands the user directly in /email/wizard with the list already attached.
  */
 
 import Link from 'next/link'
@@ -24,7 +25,7 @@ interface Props {
 }
 
 export function CreateEmailOrchestrator({ campaignId, trigger }: Props) {
-  const href = `/campaigns/${campaignId}/email/setup`
+  const href = `/campaigns/${campaignId}/email/setup/order`
 
   if (trigger) {
     return <Link href={href}>{trigger}</Link>

@@ -6,18 +6,16 @@
  * Sibling to the standalone EmailWizardSteps. Reuses the same AI generation
  * (useGenerateDraft), Action Network push (/api/campaigns/[id]/push-list),
  * and template-variable resolution. Differences from the legacy wizard:
- *   • Campaign is locked from the URL `[id]` segment — no Step 1.
+ *   • Campaign is locked from the URL `[id]` segment — no Campaign-context step.
  *   • Draft + (optional) email_list are loaded from a required draft_id URL param.
- *   • Body step is pathway-aware: AI auto-fires generation when entering with
- *     an empty body; paste leaves the editor empty.
+ *   • Body step exposes three content-creation options inline: Generate with
+ *     AI, Use template, Clear / paste. No up-front pathway choice.
  *   • Recipient step prefers email_list_items when an email_list is attached.
- *   • "Edit setup" button surfaces EditEmailSetupDialog for switching pathway
- *     mid-session or replacing the recipient list.
  *
  * Entered from:
- *   /campaigns/[id]/email/setup/order      (setup-first)
+ *   /campaigns/[id]/email/setup/order      (setup-first, after order pick)
  *   /campaigns/[id]/email/lists/new        (list-first / build_list, after list creation)
- *   /campaigns/[id]/email/setup            (build_list, after pathway pick)
+ *   Wall-chart Build List → fire/email     (build_list, list already attached)
  *   EmailResumeBanner                       (resume in-progress draft)
  */
 
@@ -68,11 +66,7 @@ import {
   Variable,
   Users,
 } from 'lucide-react'
-import {
-  pathwayForEmail,
-  type EmailEntryBranch,
-  type EmailPathway,
-} from '@/types/email-action'
+import type { EmailEntryBranch } from '@/types/email-action'
 
 const STEPS = [
   { id: 1, title: 'Tone & Audience', icon: Target },
@@ -134,10 +128,6 @@ interface RecipientRow {
   source_label: string
 }
 
-function isPathway(v: string | null): v is EmailPathway {
-  return v === 'ai' || v === 'paste'
-}
-
 export function CampaignEmailWizard() {
   const params = useParams()
   const router = useRouter()
@@ -155,8 +145,6 @@ export function CampaignEmailWizard() {
     return Number.isFinite(n) ? n : null
   }, [draftIdParam])
 
-  const pathwayParam = searchParams.get('pathway')
-  const urlPathway = isPathway(pathwayParam) ? pathwayParam : null
   const entryBranchParam = searchParams.get('entry_branch') as EmailEntryBranch | null
   const returnTo = searchParams.get('returnTo')
 
@@ -172,7 +160,6 @@ export function CampaignEmailWizard() {
   const [isCustomisingTemplate, setIsCustomisingTemplate] = useState<number | null>(null)
   const [draftGeneratedWithTone, setDraftGeneratedWithTone] = useState<string[]>([])
   const [draftGeneratedWithAudience, setDraftGeneratedWithAudience] = useState<string[]>([])
-  const [autoGenAttempted, setAutoGenAttempted] = useState(false)
   const [selectedWorkerIds, setSelectedWorkerIds] = useState<Set<number>>(new Set())
   const [workersInitialized, setWorkersInitialized] = useState(false)
   const [isSavingDraft, setIsSavingDraft] = useState(false)
@@ -208,9 +195,10 @@ export function CampaignEmailWizard() {
 
   const entryBranch =
     (draft?.entry_branch as EmailEntryBranch | null) ?? entryBranchParam ?? null
-  const pathway: EmailPathway = entryBranch
-    ? pathwayForEmail(entryBranch)
-    : urlPathway ?? 'ai'
+  // entryBranch is preserved for the future (analytics, resume routing) but
+  // no longer drives a pathway/auto-fire behaviour — the user picks AI vs
+  // template vs paste explicitly inside the body step.
+  void entryBranch
 
   const { data: campaign } = useQuery({
     queryKey: ['campaign-email-wizard-campaign', campaignId],
@@ -433,7 +421,7 @@ export function CampaignEmailWizard() {
     setWorkersInitialized(true)
   }, [step, recipients, recipientsLoading, workersInitialized])
 
-  // ----- AI auto-fire on entering Body step ---------------------------
+  // ----- AI generation handler ----------------------------------------
 
   const handleAIGenerate = useCallback(async () => {
     if (!campaignContext) {
@@ -486,16 +474,6 @@ export function CampaignEmailWizard() {
     generateDraft,
   ])
 
-  useEffect(() => {
-    if (step !== 2) return
-    if (autoGenAttempted) return
-    if (pathway !== 'ai') return
-    if (!campaignContext) return
-    if (bodyText.trim().length > 0) return
-    setAutoGenAttempted(true)
-    void handleAIGenerate()
-  }, [step, pathway, autoGenAttempted, campaignContext, bodyText, handleAIGenerate])
-
   // ----- Template handlers --------------------------------------------
 
   function handleSelectTemplate(template: TemplateRow) {
@@ -505,7 +483,6 @@ export function CampaignEmailWizard() {
     setSourceTemplateId(template.template_id)
     setDraftGeneratedWithTone(tone)
     setDraftGeneratedWithAudience(audience)
-    setAutoGenAttempted(true)
     setShowTemplatePicker(false)
   }
 
@@ -547,7 +524,6 @@ export function CampaignEmailWizard() {
       setSourceTemplateId(template.template_id)
       setDraftGeneratedWithTone(tone)
       setDraftGeneratedWithAudience(audience)
-      setAutoGenAttempted(true)
       setShowTemplatePicker(false)
       toast.success('Template customised')
     } catch {
@@ -778,19 +754,6 @@ export function CampaignEmailWizard() {
             <h1 className="text-2xl font-bold truncate">Campaign email</h1>
             <p className="text-sm text-muted-foreground mt-0.5 truncate">
               {campaign?.name || `Campaign ${campaignId}`}
-              {entryBranch ? (
-                <>
-                  {' · '}
-                  <span className="inline-flex items-center gap-1 text-xs">
-                    {pathway === 'ai' ? (
-                      <Sparkles className="h-3 w-3" />
-                    ) : (
-                      <PenLine className="h-3 w-3" />
-                    )}
-                    {pathway === 'ai' ? 'AI' : 'Paste'}
-                  </span>
-                </>
-              ) : null}
             </p>
           </div>
         </div>
@@ -967,7 +930,6 @@ export function CampaignEmailWizard() {
                   setSourceTemplateId(null)
                   setDraftGeneratedWithTone([])
                   setDraftGeneratedWithAudience([])
-                  setAutoGenAttempted(true)
                   setTimeout(() => bodyRef.current?.focus(), 50)
                 }}
               >

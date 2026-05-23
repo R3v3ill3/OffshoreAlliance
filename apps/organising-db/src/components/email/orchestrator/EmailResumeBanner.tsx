@@ -118,10 +118,10 @@ export function EmailResumeBanner({ campaignId }: Props) {
         )
         return
       case 'build_list':
-        // Build-list fire: the email_list is already attached. Drop into
-        // the pathway picker so the user picks AI vs paste.
+        // Build-list fire: the email_list is already attached. Drop the
+        // user straight into the wizard — pathway picker was removed.
         router.push(
-          `/campaigns/${campaignId}/email/setup?draft_id=${draft_id}`,
+          `/campaigns/${campaignId}/email/wizard?draft_id=${draft_id}&entry_branch=build_list`,
         )
         return
       default:

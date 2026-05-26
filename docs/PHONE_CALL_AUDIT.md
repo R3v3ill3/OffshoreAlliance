@@ -2,10 +2,51 @@
 
 > Generated: May 2026.
 > **Remediation status: Phases A–J complete as of May 2026.**
+> **Mobile-dialer rebuild status: complete as of May 2026 — see addendum below.**
 > Scope: `apps/organising-db/`. Citations use repo-relative file paths.
 > No section plan, employer-matching, or scraper code creates phone calls; details below.
 
 > **Post-remediation note**: All issues identified in §7 have been addressed in the A–J implementation plan. See `docs/PHONE_CALL_REMEDIATION_PLAN.md` for current state.
+
+## Addendum — Mobile-dialer rebuild (May 2026)
+
+The shareable mobile dialer at `/call/[token]` has been rebuilt as a
+mobile-first, PWA-capable surface that shares its design language,
+hooks, taxonomy, and APIs with the desktop tracker. The rebuild
+explicitly closes the data-capture gaps called out in §7 and adds:
+
+- **Shared dialer core** under `src/lib/phone/session/`,
+  `src/lib/phone/telephony/`, `src/lib/phone/outcome-model.ts`, and
+  `src/lib/ui/dialer-tokens.ts`. Both surfaces consume these and the
+  outcome_classification column is now written from both paths.
+- **Mobile component tree** under
+  `src/components/phone/mobile/` (welcome, password gate, queue,
+  contact, in-call, wrap-up, lost-claim, error). Replaces the old
+  `CallSessionView`.
+- **Multi-caller robustness**: staff `next` route now claims via
+  `claim_next_call_list_item`; share dialer auto-renews claims;
+  coordinator can force-release; cross-list dedup hints surface in
+  the contact card; share-token revoke now also drops in-flight
+  claims via `force_release_claims_for_token`.
+- **Coordinator live action dashboard** at
+  `/campaigns/[id]/phone/live` with per-caller tiles, per-token
+  panels, live activity feed, outcome rollup card, drill-down to
+  attempt detail, re-allocation controls (revoke, force-release,
+  re-queue, exclude-from-share), in-app nudges, and CSV/XLSX export.
+- **PWA + offline resilience**: webmanifest, install prompt, service
+  worker that caches the dialer shell, the active claim contact +
+  script, and queues a single attempt offline (replay on reconnect
+  via Background Sync or message-passing).
+- **A11y + telemetry + haptics**: WCAG 2.2 AA-aware sizing, focus
+  trap in bottom sheets, `prefers-reduced-motion` respected; PostHog
+  events for the full mobile funnel; semantic haptics on call placed,
+  outcome submit, and success/error transitions.
+- **Tests**: vitest unit tests for the outcome model and the call
+  flow reducer; Playwright happy-path spec scaffold; standalone load
+  test script for `claim_next_call_list_item` concurrency.
+
+See [`docs/MOBILE_DIALER.md`](MOBILE_DIALER.md) for the design system,
+component map, and telephony provider interface.
 
 This is a research/audit deliverable. The companion documents are:
 

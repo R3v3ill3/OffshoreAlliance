@@ -4,6 +4,19 @@
 > Generated: May 2026.
 > **Resolved in Phase D (May 2026)**: `outcome_entries` has been removed from all UI and API layers. Calls now record a single `outcome_classification` string on `call_attempts` (e.g. `agreed_to_join`, `interested_undecided`, `declined`) plus per-CTA `call_attempt_cta_ratings` rows. The legacy `call_attempt_outcomes` table was archived as `_archive_call_attempt_outcomes_20260613`. The generic `set_worker_union_membership_pending` RPC handles membership transitions from any channel.
 
+> **Unified across surfaces (May 2026 mobile-dialer rebuild)**:
+> `outcome_classification` is now derived from the same single source of
+> truth (`apps/organising-db/src/lib/phone/outcome-model.ts`,
+> `deriveOutcomeClassification`) by every dialer surface — the mobile
+> share-link flow, the desktop `CallSessionPage`, and the share-side
+> API route. The migration
+> [`supabase/migrations/20260624100000_outcome_classification_in_record_call_attempt.sql`](../supabase/migrations/20260624100000_outcome_classification_in_record_call_attempt.sql)
+> added a `p_outcome_classification` parameter to `record_call_attempt`,
+> and both the staff (`/api/calls/attempts`) and share
+> (`/api/call-share/[token]/attempt`) routes pass it through. Vitest
+> coverage for the derivation logic lives in
+> `apps/organising-db/src/lib/phone/__tests__/outcome-model.test.ts`.
+
 This document explains in detail the **single most damaging issue** in the phone-call subsystem: there are two different models for "what was the outcome of this call?", they are simultaneously active in different layers of the stack, and they silently disagree with each other — meaning some user input is being discarded and some reporting tables are stale.
 
 ---

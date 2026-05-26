@@ -29,13 +29,16 @@ export async function GET(
     const session = requireCallShareSession(request, rawToken, tokenRow);
     if (!session) return NextResponse.json({ requires_password: true }, { status: 401 });
 
-    const { data: itemId, error: claimErr } = await admin.rpc("claim_next_call_list_item", {
-      p_list_id: tokenRow.list_id,
-      p_session_label: session.label,
-      p_session_worker_id: session.workerId,
-      p_claim_ttl_seconds: CLAIM_TTL_SECONDS,
-      p_share_token_id: tokenRow.token_id,
-    });
+    const { data: itemId, error: claimErr } = await admin.rpc(
+      "claim_next_call_list_item_for_share",
+      {
+        p_list_id: tokenRow.list_id,
+        p_session_label: session.label,
+        p_session_worker_id: session.workerId,
+        p_claim_ttl_seconds: CLAIM_TTL_SECONDS,
+        p_share_token_id: tokenRow.token_id,
+      },
+    );
     if (claimErr) throw claimErr;
     if (!itemId) {
       return NextResponse.json({ done: true, message: "No more contacts to call" });

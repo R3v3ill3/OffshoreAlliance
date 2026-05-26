@@ -2121,6 +2121,7 @@ export type Database = {
           claimed_by_share_token_id: number | null
           claimed_by_worker_id: number | null
           created_at: string
+          excluded_from_share: boolean
           item_id: number
           last_attempt_at: string | null
           list_id: number
@@ -2141,6 +2142,7 @@ export type Database = {
           claimed_by_share_token_id?: number | null
           claimed_by_worker_id?: number | null
           created_at?: string
+          excluded_from_share?: boolean
           item_id?: number
           last_attempt_at?: string | null
           list_id: number
@@ -2161,6 +2163,7 @@ export type Database = {
           claimed_by_share_token_id?: number | null
           claimed_by_worker_id?: number | null
           created_at?: string
+          excluded_from_share?: boolean
           item_id?: number
           last_attempt_at?: string | null
           list_id?: number
@@ -18193,6 +18196,16 @@ export type Database = {
         Returns: Json
       }
       claim_next_call_list_item: {
+        Args: {
+          p_claim_ttl_seconds?: number
+          p_list_id: number
+          p_session_label: string
+          p_session_worker_id?: number
+          p_share_token_id?: number
+        }
+        Returns: number
+      }
+      claim_next_call_list_item_for_share: {
         Args: {
           p_claim_ttl_seconds?: number
           p_list_id: number

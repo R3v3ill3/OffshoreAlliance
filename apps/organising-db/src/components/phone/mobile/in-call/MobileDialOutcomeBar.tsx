@@ -33,11 +33,11 @@ interface MobileDialOutcomeBarProps {
  */
 export function MobileDialOutcomeBar({ value, onSelect }: MobileDialOutcomeBarProps) {
   return (
-    <div className="space-y-2">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+    <fieldset className="space-y-2">
+      <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         What happened on the call?
-      </p>
-      <div className="grid grid-cols-2 gap-2">
+      </legend>
+      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Dial outcome">
         {DIAL_OPTIONS.map((option) => {
           const Icon = option.icon;
           const selected = value === option.value;
@@ -45,18 +45,19 @@ export function MobileDialOutcomeBar({ value, onSelect }: MobileDialOutcomeBarPr
             <button
               key={option.value}
               type="button"
+              role="radio"
+              aria-checked={selected}
               onClick={() => onSelect(option.value)}
-              aria-pressed={selected}
-              className={`inline-flex min-h-[56px] items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition active:scale-[0.98] ${
+              className={`inline-flex min-h-[56px] items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100 ${
                 selected ? `${option.tone} border-current shadow` : "border-muted-foreground/20 bg-card hover:bg-muted/40"
               }`}
             >
-              <Icon className="h-4 w-4 flex-shrink-0" />
+              <Icon className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
               <span>{option.label}</span>
             </button>
           );
         })}
       </div>
-    </div>
+    </fieldset>
   );
 }

@@ -10,9 +10,17 @@ import { tokens } from "@/lib/ui/dialer-tokens";
  */
 export function MobileWelcome({ message }: { message?: string }) {
   return (
-    <div className={tokens.layout.mobileScreen}>
+    <div
+      className={tokens.layout.mobileScreen}
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
       <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6">
-        <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-primary/10 text-primary">
+        <div
+          className="flex h-16 w-16 items-center justify-center rounded-3xl bg-primary/10 text-primary"
+          aria-hidden="true"
+        >
           <PhoneCall className="h-7 w-7" />
         </div>
         <div className="space-y-1 text-center">
@@ -21,7 +29,10 @@ export function MobileWelcome({ message }: { message?: string }) {
             {message ?? "Loading the call list and script…"}
           </p>
         </div>
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <Loader2
+          className="h-5 w-5 animate-spin text-muted-foreground motion-reduce:animate-none"
+          aria-hidden="true"
+        />
       </div>
     </div>
   );

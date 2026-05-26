@@ -15,6 +15,7 @@ import { MobileWrapUp } from "./screens/MobileWrapUp";
 import { MobileLostClaim } from "./screens/MobileLostClaim";
 import { MobileError } from "./screens/MobileError";
 import { useClaimCountdown } from "@/lib/phone/session/use-claim-countdown";
+import { dialerTelemetry, tokenHint } from "@/lib/phone/telemetry";
 
 type ScreenState =
   | { kind: "queue" }
@@ -39,6 +40,19 @@ interface MobileDialerProps {
 export function MobileDialer({ token }: MobileDialerProps) {
   const { state, refresh, toPasswordGate } = useShareBootstrap(token);
   const [screen, setScreen] = useState<ScreenState>({ kind: "queue" });
+  const hint = tokenHint(token);
+
+  useEffect(() => {
+    dialerTelemetry.opened({ token_hint: hint });
+  }, [hint]);
+
+  useEffect(() => {
+    if (state.kind !== "ready") return;
+    dialerTelemetry.authenticated({
+      token_hint: hint,
+      worker_id: state.caller.workerId ?? null,
+    });
+  }, [state, hint]);
   const [error, setError] = useState<string | null>(null);
   const [isFetchingNext, setIsFetchingNext] = useState(false);
   const [recent, setRecent] = useState<RecentMobileAttempt[]>([]);
@@ -67,6 +81,10 @@ export function MobileDialer({ token }: MobileDialerProps) {
   useEffect(() => {
     if (!activeContact) return;
     if (countdown.isExpired && screen.kind === "contact") {
+      dialerTelemetry.claimLost({
+        item_id: activeContact.item_id,
+        reason: "ttl_expired",
+      });
       setScreen({ kind: "lost_claim" });
     }
   }, [countdown.isExpired, activeContact, screen.kind]);
@@ -78,9 +96,14 @@ export function MobileDialer({ token }: MobileDialerProps) {
     try {
       const next = await dataSource.fetchNext();
       if (!next) {
+        dialerTelemetry.wrapUpShown({ calls_completed: recent.length });
         setScreen({ kind: "wrap_up" });
         return;
       }
+      dialerTelemetry.claimAcquired({
+        item_id: next.item_id,
+        list_id: next.list_id,
+      });
       setScreen({ kind: "contact", contact: next });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load next contact");
@@ -97,6 +120,7 @@ export function MobileDialer({ token }: MobileDialerProps) {
       releaseInFlight.current = itemId;
       try {
         await dataSource.releaseClaim(itemId);
+        dialerTelemetry.claimReleased({ item_id: itemId });
       } catch {
         // best-effort — claim TTL will release server-side anyway
       } finally {
@@ -141,6 +165,12 @@ export function MobileDialer({ token }: MobileDialerProps) {
           ...prev,
         ].slice(0, 30),
       );
+      dialerTelemetry.attemptRecorded({
+        item_id: result.contact.item_id,
+        attempt_id: result.attempt_id,
+        outcome_classification: result.outcome_classification,
+        duration_seconds: null,
+      });
       setScreen({ kind: "loading_next" });
       void fetchNext();
     },
@@ -153,6 +183,7 @@ export function MobileDialer({ token }: MobileDialerProps) {
   }, [fetchNext]);
 
   const handleHandBack = useCallback(async () => {
+    dialerTelemetry.handBack({ item_id: activeContact?.item_id ?? null });
     if (activeContact) {
       await releaseClaim(activeContact.item_id);
     }
@@ -267,7 +298,13 @@ export function MobileDialer({ token }: MobileDialerProps) {
         onAttemptRecorded={handleAttemptRecorded}
         onSkipContact={handleSkip}
         onHandBack={handleHandBack}
-        onClaimLost={() => setScreen({ kind: "lost_claim" })}
+        onClaimLost={() => {
+          dialerTelemetry.claimLost({
+            item_id: screen.contact.item_id,
+            reason: "server_force_released",
+          });
+          setScreen({ kind: "lost_claim" });
+        }}
       />
     </>
   );

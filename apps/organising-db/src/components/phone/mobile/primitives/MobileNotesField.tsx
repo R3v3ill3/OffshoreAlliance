@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Mic, MicOff } from "lucide-react";
+import { hapticTap } from "@/lib/phone/haptics";
 
 interface MobileNotesFieldProps {
   value: string;
@@ -107,7 +108,7 @@ export function MobileNotesField({
       instance.start();
       recognitionRef.current = instance;
       setListening(true);
-      if (navigator.vibrate) navigator.vibrate(20);
+      hapticTap();
     } catch (err) {
       console.error("dictation start failed", err);
     }
@@ -117,23 +118,29 @@ export function MobileNotesField({
     recognitionRef.current?.stop();
     recognitionRef.current = null;
     setListening(false);
-    if (navigator.vibrate) navigator.vibrate(10);
+    hapticTap();
   }, []);
 
+  const textareaId = useId();
   return (
     <div className="space-y-1.5">
       {label ? (
-        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <label
+          htmlFor={textareaId}
+          className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+        >
           {label}
         </label>
       ) : null}
       <div className="relative">
         <textarea
+          id={textareaId}
           ref={textareaRef}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           rows={minRows}
           placeholder={placeholder}
+          aria-label={label ?? placeholder ?? "Call notes"}
           className="w-full resize-none rounded-xl border bg-background px-3 py-2 text-base leading-relaxed shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         {voiceSupported && !disableVoice ? (

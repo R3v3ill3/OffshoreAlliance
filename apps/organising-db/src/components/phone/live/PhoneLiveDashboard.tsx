@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import {
   ArrowLeft,
   Activity,
@@ -10,6 +11,7 @@ import {
   Phone,
   AlertTriangle,
   RefreshCcw,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +22,8 @@ import { CallerTile } from "./CallerTile";
 import { ShareTokenPanel } from "./ShareTokenPanel";
 import { LiveActivityFeed } from "./LiveActivityFeed";
 import { OutcomeRollupCard } from "./OutcomeRollupCard";
+import { AttemptDrawer } from "./AttemptDrawer";
+import { NudgesCard } from "./NudgesCard";
 
 const POLL_INTERVAL_MS = 15_000;
 
@@ -79,12 +83,18 @@ interface PhoneLiveDashboardProps {
   campaignId: string;
 }
 
+type DrawerFilter =
+  | { kind: "outcome"; outcomeClassification: string; label: string }
+  | { kind: "caller"; callerSessionLabel: string; label: string }
+  | { kind: "token"; shareTokenId: number; label: string };
+
 export function PhoneLiveDashboard({ campaignId }: PhoneLiveDashboardProps) {
   const router = useRouter();
   const [data, setData] = useState<LivePayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [drawer, setDrawer] = useState<DrawerFilter | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -106,6 +116,47 @@ export function PhoneLiveDashboard({ campaignId }: PhoneLiveDashboardProps) {
     const id = setInterval(() => void load(), POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [load]);
+
+  // Supabase Realtime — collapse poll latency by re-fetching on every
+  // call_attempts INSERT and call_list_items claim mutation across the
+  // campaign's lists. The poll above stays in place as a heartbeat that
+  // catches missed broadcasts and timed-out subscriptions.
+  const listIdsRef = useRef<number[]>([]);
+  useEffect(() => {
+    if (!data?.lists) return;
+    listIdsRef.current = data.lists.map((l) => l.list_id);
+  }, [data?.lists]);
+  useEffect(() => {
+    const supabase = createClient();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleReload = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void load();
+      }, 500);
+    };
+    const channel = supabase
+      .channel(`phone-live:${campaignId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "call_attempts" },
+        () => scheduleReload(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "call_list_items" },
+        (payload) => {
+          const next = (payload.new as { list_id?: number } | null)?.list_id;
+          if (next != null && listIdsRef.current.includes(next)) scheduleReload();
+        },
+      )
+      .subscribe();
+    return () => {
+      if (timer) clearTimeout(timer);
+      void supabase.removeChannel(channel);
+    };
+  }, [campaignId, load]);
 
   const handleRevokeToken = useCallback(
     async (tokenId: number, listId: number) => {
@@ -180,10 +231,38 @@ export function PhoneLiveDashboard({ campaignId }: PhoneLiveDashboardProps) {
             ) : null}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void load()} disabled={isLoading}>
-          <RefreshCcw className={`h-4 w-4 mr-1 ${isLoading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              window.open(
+                `/api/campaigns/${campaignId}/phone/attempts/export?format=csv`,
+                "_blank",
+              );
+            }}
+          >
+            <Download className="h-4 w-4 mr-1" />
+            CSV
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              window.open(
+                `/api/campaigns/${campaignId}/phone/attempts/export?format=xlsx`,
+                "_blank",
+              );
+            }}
+          >
+            <Download className="h-4 w-4 mr-1" />
+            XLSX
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => void load()} disabled={isLoading}>
+            <RefreshCcw className={`h-4 w-4 mr-1 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {error ? (
@@ -226,11 +305,20 @@ export function PhoneLiveDashboard({ campaignId }: PhoneLiveDashboardProps) {
                   <CallerTile
                     key={caller.id}
                     caller={caller}
+                    onDrillDown={
+                      caller.label
+                        ? () =>
+                            setDrawer({
+                              kind: "caller",
+                              callerSessionLabel: caller.label!,
+                              label: caller.label!,
+                            })
+                        : undefined
+                    }
                     onForceRelease={
                       caller.current_claim_item_id
                         ? () => {
-                            const item = data.callers.find((c) => c.id === caller.id);
-                            const itemId = item?.current_claim_item_id ?? null;
+                            const itemId = caller.current_claim_item_id;
                             const list = data.lists.find((l) => l.list_id !== undefined);
                             if (!itemId || !list) return;
                             void handleForceRelease({ itemId, listId: list.list_id });
@@ -263,6 +351,13 @@ export function PhoneLiveDashboard({ campaignId }: PhoneLiveDashboardProps) {
                     onForceRelease={() =>
                       void handleForceRelease({ tokenId: tok.token_id, listId: tok.list_id })
                     }
+                    onDrillDown={() =>
+                      setDrawer({
+                        kind: "token",
+                        shareTokenId: tok.token_id,
+                        label: `${tok.list_name} · token #${tok.token_id}`,
+                      })
+                    }
                   />
                 ))}
               </div>
@@ -274,12 +369,34 @@ export function PhoneLiveDashboard({ campaignId }: PhoneLiveDashboardProps) {
               <LiveActivityFeed activity={data.activity} />
             </div>
             <div className="space-y-4">
-              <OutcomeRollupCard outcomes={data.rollup.outcome_counts} />
+              <OutcomeRollupCard
+                outcomes={data.rollup.outcome_counts}
+                onSelect={(outcomeKey, label) =>
+                  setDrawer({
+                    kind: "outcome",
+                    outcomeClassification: outcomeKey,
+                    label,
+                  })
+                }
+              />
+              <NudgesCard
+                header={data.header}
+                callers={data.callers}
+                lists={data.lists}
+              />
             </div>
           </div>
         </>
       ) : isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : null}
+
+      {drawer ? (
+        <AttemptDrawer
+          campaignId={campaignId}
+          filter={drawer}
+          onClose={() => setDrawer(null)}
+        />
       ) : null}
     </div>
   );

@@ -28,6 +28,8 @@ import { MobileOutcomeWheel } from "@/components/phone/mobile/in-call/MobileOutc
 import { MobileCallbackPicker } from "@/components/phone/mobile/in-call/MobileCallbackPicker";
 import { useScriptVariables } from "@/lib/phone/session/use-script-variables";
 import { useClaimAutoRenew } from "@/lib/phone/session/use-claim-auto-renew";
+import { hapticError, hapticSuccess, hapticTap } from "@/lib/phone/haptics";
+import { dialerTelemetry } from "@/lib/phone/telemetry";
 import type { CallSessionDataSource } from "@/lib/phone/session/types";
 import type { CtaRatingValue } from "@/components/phone/CtaRatingsPanel";
 import type {
@@ -153,17 +155,29 @@ export function MobileCallSession({
 
   const handleCallPlaced = useCallback(() => {
     callStartTime.current = new Date();
-    if (navigator.vibrate) navigator.vibrate(15);
+    hapticTap();
+    dialerTelemetry.callPlaced({
+      item_id: contact.item_id,
+      surface: "share_link",
+    });
     dispatch({ type: "START_DIAL" });
-  }, []);
+  }, [contact.item_id]);
 
-  const handleDial = useCallback((disposition: typeof flowState.dialDisposition) => {
-    if (!disposition) return;
-    dispatch({ type: "DIAL_OUTCOME", disposition });
-    if (disposition === "connected") {
-      setStepReached(new Set([0]));
-    }
-  }, []);
+  const handleDial = useCallback(
+    (disposition: typeof flowState.dialDisposition) => {
+      if (!disposition) return;
+      hapticTap();
+      dialerTelemetry.dialOutcomeSelected({
+        item_id: contact.item_id,
+        dial_disposition: disposition,
+      });
+      dispatch({ type: "DIAL_OUTCOME", disposition });
+      if (disposition === "connected") {
+        setStepReached(new Set([0]));
+      }
+    },
+    [contact.item_id],
+  );
 
   const finalize = useCallback(async () => {
     setSubmitting(true);
@@ -220,13 +234,24 @@ export function MobileCallSession({
 
     try {
       const result = await dataSource.recordAttempt(attempt);
-      if (navigator.vibrate) navigator.vibrate([20, 30, 20]);
+      hapticSuccess();
+      if ((result as unknown as { queued_offline?: boolean }).queued_offline) {
+        dialerTelemetry.attemptQueuedOffline({ item_id: contact.item_id });
+      } else {
+        dialerTelemetry.attemptRecorded({
+          item_id: contact.item_id,
+          attempt_id: result.attempt_id,
+          outcome_classification: outcome,
+          duration_seconds: duration,
+        });
+      }
       onAttemptRecorded({
         attempt_id: result.attempt_id,
         outcome_classification: outcome,
         contact,
       });
     } catch (err) {
+      hapticError();
       setError(err instanceof Error ? err.message : "Failed to record attempt");
     } finally {
       setSubmitting(false);
@@ -266,6 +291,7 @@ export function MobileCallSession({
       };
       try {
         await dataSource.recordAttempt(attempt);
+        dialerTelemetry.skipUsed({ item_id: contact.item_id, reason });
         onSkipContact();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to record skip");
@@ -280,6 +306,7 @@ export function MobileCallSession({
       notes,
       onSkipContact,
     ],
+
   );
 
   const fullName =
@@ -384,6 +411,12 @@ export function MobileCallSession({
                   else map.set(id, next);
                   return map;
                 });
+                if (next != null) {
+                  dialerTelemetry.ctaRated({
+                    item_id: contact.item_id,
+                    cta_ambition_id: id,
+                  });
+                }
               }}
             />
 
@@ -397,6 +430,12 @@ export function MobileCallSession({
                   else map.set(activityId, next);
                   return map;
                 });
+                if (next != null) {
+                  dialerTelemetry.assessmentRated({
+                    item_id: contact.item_id,
+                    activity_id: activityId,
+                  });
+                }
               }}
             />
 
@@ -408,7 +447,16 @@ export function MobileCallSession({
 
         {flowState.dialDisposition ? (
           <>
-            <MobileOutcomeWheel value={outcome} onChange={setOutcome} />
+            <MobileOutcomeWheel
+              value={outcome}
+              onChange={(next) => {
+                setOutcome(next);
+                dialerTelemetry.outcomeSelected({
+                  item_id: contact.item_id,
+                  outcome_classification: next,
+                });
+              }}
+            />
             {outcome && OUTCOME_META[outcome]?.schedulesCallback ? (
               <MobileCallbackPicker value={callbackAt} onChange={setCallbackAt} />
             ) : null}
@@ -439,9 +487,12 @@ export function MobileCallSession({
             className={tokens.buttons.actionPrimary}
           >
             {submitting ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
+              <Loader2
+                className="h-5 w-5 animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+              />
             ) : (
-              <PhoneForwarded className="h-5 w-5" />
+              <PhoneForwarded className="h-5 w-5" aria-hidden="true" />
             )}
             Save & next contact
           </button>
@@ -503,7 +554,13 @@ export function MobileCallSession({
         onClose={() => setShowObjections(false)}
         bank={bootstrap.objectionBank}
         captured={flowState.capturedObjections}
-        onAdd={(objection: CapturedObjection) => dispatch({ type: "ADD_OBJECTION", objection })}
+        onAdd={(objection: CapturedObjection) => {
+          dialerTelemetry.objectionLogged({
+            item_id: contact.item_id,
+            source: objection.objection_id != null ? "bank" : "custom",
+          });
+          dispatch({ type: "ADD_OBJECTION", objection });
+        }}
         onUpdate={(index, objection: CapturedObjection) =>
           dispatch({ type: "UPDATE_OBJECTION", index, objection })
         }
@@ -515,7 +572,13 @@ export function MobileCallSession({
         onClose={() => setShowIssues(false)}
         expected={bootstrap.expectedIssues}
         captured={flowState.capturedIssues}
-        onAdd={(issue: CapturedIssue) => dispatch({ type: "ADD_ISSUE", issue })}
+        onAdd={(issue: CapturedIssue) => {
+          dialerTelemetry.issueLogged({
+            item_id: contact.item_id,
+            heat: issue.heat ?? null,
+          });
+          dispatch({ type: "ADD_ISSUE", issue });
+        }}
         onUpdate={(index, issue: CapturedIssue) =>
           dispatch({ type: "UPDATE_ISSUE", index, issue })
         }

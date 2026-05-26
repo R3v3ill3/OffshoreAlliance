@@ -5,6 +5,7 @@ import { Phone } from "lucide-react";
 import { useTelephony } from "@/lib/phone/telephony";
 import { tokens } from "@/lib/ui/dialer-tokens";
 import { formatAustralianPhoneDisplay } from "@/lib/phone/format-phone-display";
+import { hapticSubmit } from "@/lib/phone/haptics";
 
 interface MobileCallButtonProps {
   phoneNumber: string;
@@ -33,9 +34,7 @@ export function MobileCallButton({
   const telephony = useTelephony();
 
   const handleClick = useCallback(async () => {
-    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
-      navigator.vibrate(20);
-    }
+    hapticSubmit();
     try {
       await telephony.placeCall({
         phoneNumber,

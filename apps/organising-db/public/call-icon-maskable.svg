@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="OA Dialer (maskable)">
+  <rect width="256" height="256" fill="#0b2a5b" />
+  <g fill="#ffffff" transform="translate(0,0) scale(0.78) translate(36,36)">
+    <path d="M82 64c-9 4-15 12-15 22 0 50 53 103 103 103 10 0 18-6 22-15l13-29c2-4 1-9-3-12l-30-22c-4-3-9-3-13 0l-13 10c-15-8-28-21-36-36l10-13c3-4 3-9 0-13l-22-30c-3-4-8-5-12-3z" />
+  </g>
+</svg>

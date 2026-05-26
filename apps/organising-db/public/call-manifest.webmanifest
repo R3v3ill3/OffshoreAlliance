@@ -1,0 +1,26 @@
+{
+  "name": "Offshore Alliance Call Dialer",
+  "short_name": "OA Dialer",
+  "description": "Mobile dialer for offshore Alliance organising campaigns.",
+  "start_url": "/",
+  "scope": "/call/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b2a5b",
+  "theme_color": "#0b2a5b",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/call-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/call-icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -18,11 +18,20 @@ interface ShareTokenPanelProps {
   };
   onRevoke: () => void;
   onForceRelease: () => void;
+  onDrillDown?: () => void;
 }
 
-export function ShareTokenPanel({ token, onRevoke, onForceRelease }: ShareTokenPanelProps) {
+export function ShareTokenPanel({ token, onRevoke, onForceRelease, onDrillDown }: ShareTokenPanelProps) {
   return (
-    <Card>
+    <Card
+      className={onDrillDown ? "cursor-pointer transition hover:bg-muted/30" : undefined}
+      onClick={(event) => {
+        if (!onDrillDown) return;
+        const target = event.target as HTMLElement;
+        if (target.closest("button")) return;
+        onDrillDown();
+      }}
+    >
       <CardContent className="p-3">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex min-w-0 items-center gap-2">

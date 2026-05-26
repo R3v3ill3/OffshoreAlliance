@@ -7,6 +7,8 @@ import { tokens as dialerTokens } from "@/lib/ui/dialer-tokens";
 
 interface OutcomeRollupCardProps {
   outcomes: Record<string, number>;
+  /** Drill into the attempts that produced this outcome bucket. */
+  onSelect?: (outcomeKey: string, label: string) => void;
 }
 
 const SENTIMENT_ORDER: Record<string, number> = {
@@ -16,7 +18,7 @@ const SENTIMENT_ORDER: Record<string, number> = {
   operational: 3,
 };
 
-export function OutcomeRollupCard({ outcomes }: OutcomeRollupCardProps) {
+export function OutcomeRollupCard({ outcomes, onSelect }: OutcomeRollupCardProps) {
   const total = Object.values(outcomes).reduce((sum, n) => sum + n, 0);
   const rows = Object.entries(outcomes)
     .map(([key, count]) => {
@@ -49,9 +51,14 @@ export function OutcomeRollupCard({ outcomes }: OutcomeRollupCardProps) {
           <ul className="space-y-2">
             {rows.map((row) => (
               <li key={row.key} className="space-y-1">
-                <div className="flex items-baseline justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => onSelect?.(row.key, row.label)}
+                  disabled={!onSelect || row.key === "unknown"}
+                  className="flex w-full items-baseline justify-between gap-2 rounded text-left disabled:cursor-default disabled:opacity-100 enabled:hover:bg-muted/40 enabled:px-1"
+                >
                   <span
-                    className={`text-xs font-medium ${
+                    className={`rounded px-1.5 py-0.5 text-xs font-medium ${
                       dialerTokens.sentiment[row.sentiment as keyof typeof dialerTokens.sentiment] ?? ""
                     }`}
                   >
@@ -60,7 +67,7 @@ export function OutcomeRollupCard({ outcomes }: OutcomeRollupCardProps) {
                   <span className="text-xs tabular-nums text-muted-foreground">
                     {row.count} ({row.share.toFixed(0)}%)
                   </span>
-                </div>
+                </button>
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                   <div
                     className={`h-full rounded-full ${

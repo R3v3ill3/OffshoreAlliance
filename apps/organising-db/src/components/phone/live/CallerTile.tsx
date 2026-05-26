@@ -20,16 +20,28 @@ interface CallerTileProps {
   };
   /** Coordinator force-release on the active claim. */
   onForceRelease?: () => void;
+  /** Open the attempt drill-down for this caller. */
+  onDrillDown?: () => void;
 }
 
 const IDLE_THRESHOLD_MIN = 8;
 
-export function CallerTile({ caller, onForceRelease }: CallerTileProps) {
+export function CallerTile({ caller, onForceRelease, onDrillDown }: CallerTileProps) {
   const idleWarn =
     caller.idle_minutes != null && caller.idle_minutes > IDLE_THRESHOLD_MIN;
 
   return (
-    <Card className={idleWarn ? "border-amber-300 bg-amber-50/40" : undefined}>
+    <Card
+      className={`${
+        idleWarn ? "border-amber-300 bg-amber-50/40 " : ""
+      }${onDrillDown ? "cursor-pointer transition hover:bg-muted/30" : ""}`}
+      onClick={(event) => {
+        if (!onDrillDown) return;
+        const target = event.target as HTMLElement;
+        if (target.closest("button")) return;
+        onDrillDown();
+      }}
+    >
       <CardContent className="p-3 space-y-2">
         <div className="flex items-center gap-2">
           {caller.source === "staff" ? (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, PhoneCall, History, CheckCircle2 } from "lucide-react";
 import { MobileBottomSheet } from "@/components/phone/mobile/primitives/MobileBottomSheet";
 import { MobileHeader } from "@/components/phone/mobile/primitives/MobileHeader";
@@ -9,6 +9,7 @@ import { tokens } from "@/lib/ui/dialer-tokens";
 import type { CallSessionBootstrap, CallSessionCaller } from "@/lib/phone/session/types";
 import type { OutcomeClassification } from "@/lib/phone/outcome-model";
 import { OUTCOME_META } from "@/lib/phone/outcome-model";
+import { dialerTelemetry } from "@/lib/phone/telemetry";
 
 export interface RecentMobileAttempt {
   attempt_id: number;
@@ -46,6 +47,10 @@ export function MobileQueue({
   const total = (list as { total_items?: number }).total_items ?? 0;
   const completed = (list as { completed_items?: number }).completed_items ?? 0;
   const remaining = Math.max(total - completed, 0);
+
+  useEffect(() => {
+    dialerTelemetry.queueViewed({ remaining, total });
+  }, [remaining, total]);
 
   return (
     <div className={tokens.layout.mobileScreen}>
@@ -100,11 +105,14 @@ export function MobileQueue({
           className={tokens.buttons.callPrimary}
         >
           {isFetchingNext ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
+            <Loader2
+              className="h-5 w-5 animate-spin motion-reduce:animate-none"
+              aria-hidden="true"
+            />
           ) : remaining === 0 ? (
-            <CheckCircle2 className="h-5 w-5" />
+            <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
           ) : (
-            <PhoneCall className="h-5 w-5" />
+            <PhoneCall className="h-5 w-5" aria-hidden="true" />
           )}
           {remaining === 0 ? "All done" : "Get next contact"}
         </button>

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fetchApi } from "@/lib/api/fetch-api";
 import { tokens } from "@/lib/ui/dialer-tokens";
+import { dialerTelemetry, tokenHint } from "@/lib/phone/telemetry";
 
 interface IdentityOption {
   worker_id: number;
@@ -94,9 +95,15 @@ export function MobilePasswordGate({
         error?: string;
       };
       if (res.ok && body.ok) {
+        dialerTelemetry.passwordAttempted({ success: true });
+        dialerTelemetry.passwordSuccess({
+          token_hint: tokenHint(token),
+          worker_id: sessionWorkerId,
+        });
         onSuccess();
         return;
       }
+      dialerTelemetry.passwordAttempted({ success: false });
       if (res.status === 423) {
         setError(
           `Too many failed attempts. Try again after ${
@@ -239,7 +246,11 @@ export function MobilePasswordGate({
           disabled={submitting || !password}
           onClick={() => void submit()}
         >
-          {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <KeyRound className="h-5 w-5" />}
+          {submitting ? (
+            <Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+          ) : (
+            <KeyRound className="h-5 w-5" aria-hidden="true" />
+          )}
           Start calling
         </Button>
         <p className="text-center text-[11px] text-muted-foreground">

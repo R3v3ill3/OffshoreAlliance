@@ -50,7 +50,7 @@ export function MobileDialer({ token }: MobileDialerProps) {
     if (state.kind !== "ready") return;
     dialerTelemetry.authenticated({
       token_hint: hint,
-      worker_id: state.caller.workerId ?? null,
+      worker_id: state.caller.worker_id ?? null,
     });
   }, [state, hint]);
   const [error, setError] = useState<string | null>(null);

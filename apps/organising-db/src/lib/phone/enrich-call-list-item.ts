@@ -10,7 +10,7 @@
  */
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type SupabaseLike = { from: (table: string) => any }
+type SupabaseLike = { from: (table: string) => any; rpc: (fn: string, params?: Record<string, unknown>) => any }
 
 export async function enrichCallListItem(
   db: SupabaseLike,

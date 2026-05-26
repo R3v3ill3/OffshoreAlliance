@@ -101,9 +101,9 @@ export function MobileConversationStepper({
           </p>
           <h3 className="text-base font-semibold leading-tight">{section.title}</h3>
         </div>
-        {section.content ? (
+        {section.body_text ? (
           <div className="mt-2 whitespace-pre-line text-sm leading-relaxed text-foreground">
-            {interpolate(section.content)}
+            {interpolate(section.body_text)}
           </div>
         ) : null}
         <div className="mt-3 flex items-center gap-2">

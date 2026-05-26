@@ -488,6 +488,7 @@ export async function POST(
       membership_changes: { saved: 0, errors: [] as string[] } as SectionResult,
       existing_added: { saved: 0, errors: [] as string[] } as SectionResult,
       prospective: { saved: 0, errors: [] as string[] } as SectionResult,
+      removed_workers: { saved: 0, errors: [] as string[] } as SectionResult,
     };
 
     // ── Ratings ───────────────────────────────────────────────────────
@@ -781,6 +782,36 @@ export async function POST(
       }
     }
 
+    // ── Removed workers ───────────────────────────────────────────────
+    if (parsed.data.removed_worker_ids.length > 0) {
+      for (const wid of parsed.data.removed_worker_ids) {
+        if (!allowedIds.has(wid)) {
+          result.removed_workers.errors.push(`worker ${wid} not on this task list`);
+          continue;
+        }
+        try {
+          const { error: delErr } = await admin
+            .from("campaign_task_list_items")
+            .delete()
+            .eq("task_list_id", tokenRow.task_list_id)
+            .eq("worker_id", wid);
+          if (delErr) throw delErr;
+          allowedIds.delete(wid);
+          await admin.from("campaign_leader_form_events").insert({
+            token_id: tokenRow.token_id,
+            event_type: "worker_removed",
+            worker_id: wid,
+            payload: { task_list_id: tokenRow.task_list_id, reason: "no_longer_in_campaign" },
+          });
+          result.removed_workers.saved++;
+        } catch (e) {
+          result.removed_workers.errors.push(
+            `worker ${wid}: ${e instanceof Error ? e.message : "unknown"}`,
+          );
+        }
+      }
+    }
+
     // ── Prospective additions ─────────────────────────────────────────
     for (const p of parsed.data.prospective) {
       try {
@@ -830,7 +861,8 @@ export async function POST(
         result.worker_edits.errors.length +
         result.membership_changes.errors.length +
         result.existing_added.errors.length +
-        result.prospective.errors.length >
+        result.prospective.errors.length +
+        result.removed_workers.errors.length >
       0;
 
     return NextResponse.json(
@@ -842,6 +874,7 @@ export async function POST(
           membership_changes: result.membership_changes,
           existing_added: result.existing_added,
           prospective: result.prospective,
+          removed_workers: result.removed_workers,
         },
       },
       { status: anyErrors ? 207 : 200 },

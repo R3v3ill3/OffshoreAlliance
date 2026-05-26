@@ -59,6 +59,16 @@ export class ActionNetworkClient {
     return this.request(`/people/${id}`);
   }
 
+  /**
+   * @deprecated Prefer {@link signupPerson}. Action Network's docs explicitly
+   * say POST /people without the helper envelope is not supported and that
+   * the Person Signup Helper is the only way to create or upsert a person:
+   * https://actionnetwork.org/docs/v2/person_signup_helper
+   *
+   * Kept for callers that still expect this method signature; new code should
+   * use signupPerson() so a person can be upserted and tagged in one atomic
+   * call (matching tags by name).
+   */
   async createPerson(person: ActionNetworkPerson): Promise<ActionNetworkResponse> {
     return this.request("/people", {
       method: "POST",
@@ -73,6 +83,63 @@ export class ActionNetworkClient {
         },
       }),
     });
+  }
+
+  /**
+   * Person Signup Helper — the canonical way to upsert a person on AN.
+   *
+   * Per https://actionnetwork.org/docs/v2/person_signup_helper :
+   *   - People are matched/deduplicated by email address (and phone).
+   *   - If the email exists, the record is updated rather than duplicated.
+   *   - `add_tags` / `remove_tags` are arrays of tag NAMES — AN matches them
+   *     against existing tags on your group's API key. Unknown names are
+   *     silently ignored, so callers should ensure the tag is created first
+   *     (POST /tags is idempotent by name; safe to call before this).
+   *   - Returns the resulting person resource with `_links.self.href` set to
+   *     the canonical person URL.
+   *
+   * This atomic upsert+tag replaces the legacy 2-call flow
+   * (`createPerson` then `addTaggingByPersonId`) and also halves the API
+   * pressure against AN's 4 req/sec rate limit.
+   */
+  async signupPerson(
+    person: ActionNetworkPerson,
+    opts: { add_tags?: string[]; remove_tags?: string[]; background?: boolean } = {}
+  ): Promise<ActionNetworkResponse> {
+    const body: Record<string, unknown> = {
+      person: {
+        given_name: person.given_name,
+        family_name: person.family_name,
+        email_addresses: person.email_addresses,
+        phone_numbers: person.phone_numbers,
+        postal_addresses: person.postal_addresses,
+        custom_fields: person.custom_fields,
+      },
+    };
+    if (opts.add_tags?.length) body.add_tags = opts.add_tags;
+    if (opts.remove_tags?.length) body.remove_tags = opts.remove_tags;
+
+    const endpoint = opts.background ? "/people/?background_request=true" : "/people";
+    return this.request(endpoint, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  /**
+   * Find a person by email address using AN's odata-style filter.
+   *
+   * Returns the first matching person resource (the embedded shape includes
+   * `_links.self.href` for the canonical URL), or null if no match. Used as
+   * a defensive fallback when {@link signupPerson} returns a response shape
+   * we can't extract an ID from (e.g. throttled / background-processed
+   * responses, or future AN API changes).
+   */
+  async findPersonByEmail(email: string): Promise<Record<string, unknown> | null> {
+    const filter = encodeURIComponent(`email_address eq '${email.replace(/'/g, "''")}'`);
+    const response = await this.request(`/people?filter=${filter}`);
+    const embedded = (response._embedded?.["osdi:people"] as Array<Record<string, unknown>> | undefined) ?? [];
+    return embedded.length > 0 ? embedded[0] : null;
   }
 
   async updatePerson(id: string, person: Partial<ActionNetworkPerson>): Promise<ActionNetworkResponse> {
@@ -116,6 +183,13 @@ export class ActionNetworkClient {
     return this.request(`/tags?page=${page}`);
   }
 
+  /**
+   * @deprecated Prefer {@link signupPerson} with `add_tags`. Kept for the
+   * generic /api/action-network passthrough route. New code should not add
+   * taggings as a separate step — it doubles API pressure and creates a
+   * race where a tag can be created without the recipient list being
+   * applied if the second call fails.
+   */
   async addTagging(tagId: string, person: ActionNetworkPerson): Promise<ActionNetworkResponse> {
     return this.request(`/tags/${tagId}/taggings`, {
       method: "POST",
@@ -123,6 +197,9 @@ export class ActionNetworkClient {
     });
   }
 
+  /**
+   * @deprecated Prefer {@link signupPerson} with `add_tags`. See above.
+   */
   async addTaggingByPersonId(tagId: string, personId: string): Promise<ActionNetworkResponse> {
     return this.request(`/tags/${tagId}/taggings`, {
       method: "POST",
@@ -132,6 +209,19 @@ export class ActionNetworkClient {
         },
       }),
     });
+  }
+
+  /**
+   * Read-back: how many people currently have this tag on AN's side.
+   *
+   * Used to verify that a push-list operation actually populated the tag
+   * with the expected number of recipients. AN's taggings collection
+   * exposes `total_records` on page 1 of the response, so a single GET is
+   * enough to verify regardless of how many people are tagged.
+   */
+  async getTaggingCount(tagId: string): Promise<number> {
+    const response = await this.request(`/tags/${tagId}/taggings?page=1`);
+    return typeof response.total_records === "number" ? response.total_records : 0;
   }
 
   // Messages

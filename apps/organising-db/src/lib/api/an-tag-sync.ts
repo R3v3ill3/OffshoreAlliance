@@ -80,7 +80,12 @@ export async function syncCampaignTagsFromAN(
 
 /**
  * Push a tag to AN for specified campaign workers.
- * Creates the tag in AN if needed, then adds taggings for each worker.
+ *
+ * Uses the Person Signup Helper (atomic upsert + add_tags by name) — the
+ * canonical AN flow per https://actionnetwork.org/docs/v2/person_signup_helper.
+ * The helper handles the existing-vs-new branch via email dedup, so we
+ * don't need separate createPerson / addTagging calls. We still call
+ * createTag first so the tag id is materialised for our local cache + log.
  */
 export async function pushTagToCampaignWorkers(
   supabase: SupabaseClient,
@@ -97,9 +102,9 @@ export async function pushTagToCampaignWorkers(
 
   const { data: workers, error } = await supabase
     .from("workers")
-    .select("worker_id, action_network_id, email, first_name, last_name")
+    .select("worker_id, action_network_id, email, phone, first_name, last_name")
     .in("worker_id", workerIds)
-    .not("action_network_id", "is", null);
+    .not("email", "is", null);
 
   if (error) throw new Error(`Failed to fetch workers: ${error.message}`);
 
@@ -108,9 +113,43 @@ export async function pushTagToCampaignWorkers(
 
   for (const worker of workers || []) {
     try {
-      await anClient.addTagging(tagId, {
-        email_addresses: worker.email ? [{ address: worker.email }] : undefined,
-      });
+      if (!worker.email) {
+        errors.push(`Worker ${worker.worker_id}: no email address on file`);
+        continue;
+      }
+
+      const signupResult = await anClient.signupPerson(
+        {
+          given_name: worker.first_name ?? undefined,
+          family_name: worker.last_name ?? undefined,
+          email_addresses: [{ address: worker.email, primary: true }],
+          phone_numbers: worker.phone
+            ? [{ number: worker.phone, primary: true }]
+            : undefined,
+        },
+        { add_tags: [tagName] }
+      );
+
+      const personHref =
+        (signupResult as Record<string, Record<string, { href: string }>>)?._links?.self?.href ?? "";
+      let anId = personHref.split("/").pop() || "";
+      if (!anId) {
+        try {
+          const found = await anClient.findPersonByEmail(worker.email);
+          const fallbackHref =
+            (found as Record<string, Record<string, { href: string }>> | null)?._links?.self?.href ?? "";
+          anId = fallbackHref.split("/").pop() || "";
+        } catch {
+          // Fall through.
+        }
+      }
+
+      if (anId && anId !== worker.action_network_id) {
+        await supabase
+          .from("workers")
+          .update({ action_network_id: anId })
+          .eq("worker_id", worker.worker_id);
+      }
 
       await supabase.from("worker_an_tags").upsert(
         {

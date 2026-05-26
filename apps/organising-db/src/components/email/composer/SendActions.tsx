@@ -65,6 +65,8 @@ import {
 import { extractMergeFieldKeys } from '@/lib/comms/chip-html'
 import type { AnalysedRecipient } from '@/lib/comms/bcc-token-analysis'
 import { BccPreSendDialog } from './BccPreSendDialog'
+import { DirectSendConfirmDialog } from './DirectSendConfirmDialog'
+import { fetchApi, API_FETCH_TIMEOUT_UPLOAD_MS } from '@/lib/api/fetch-api'
 
 export interface SendActionsProps {
   /** Logged-in user's email (default for test send). */
@@ -89,8 +91,14 @@ export interface SendActionsProps {
     tag_name: string
     contacts_tagged: number
     contacts_created: number
+    /** AN-side verified count read back via GET /tags/{id}/taggings. */
+    verified_tag_count?: number | null
+    /** Set when AN's read-back is lower than expected, or fetch failed. */
+    verification_warning?: string | null
   } | null
   externalMessageId: string | null
+  /** AN message admin URL captured from the create-message response. */
+  administrativeUrl?: string | null
   isPushingList: boolean
   isPushingToAN: boolean
   /** Handler for the push-list step. */
@@ -135,6 +143,7 @@ export function SendActions({
   hasBody,
   preparedTag,
   externalMessageId,
+  administrativeUrl,
   isPushingList,
   isPushingToAN,
   onPushList,
@@ -156,8 +165,13 @@ export function SendActions({
   const {
     connection: outlook,
     connect: connectOutlook,
+    reconsent: reconsentOutlook,
     disconnect: disconnectOutlook,
   } = useOutlookConnection()
+  const [directSendMode, setDirectSendMode] = useState<
+    'personalised' | 'bcc' | null
+  >(null)
+  const [directSendBusy, setDirectSendBusy] = useState(false)
 
   const recipientTokensInBody = useMemo(
     () => detectRecipientTokens(`${subject}\n\n${bodyHtml}\n${bodyText}`),
@@ -376,21 +390,108 @@ export function SendActions({
     }
   }
 
+  /**
+   * Confirm direct-send (the irreversible action). Fires the
+   * /send-via-outlook route with no body/subject overrides — the user
+   * is sending what they see in the preview iframe.
+   */
+  async function handleDirectSendConfirm() {
+    if (!directSendMode) return
+    if (!campaignId || !draftId) {
+      toast.error('Composer not ready — try again.')
+      return
+    }
+    setDirectSendBusy(true)
+    try {
+      const ids = (selectedWorkerIds ?? []).slice()
+      if (ids.length === 0) {
+        toast.error('No recipients selected.')
+        return
+      }
+      const res = await fetchApi(
+        `/api/campaigns/${campaignId}/emails/${draftId}/send-via-outlook`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: directSendMode, worker_ids: ids }),
+          timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
+        },
+      )
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        if (data?.needs_reconsent) {
+          toast.error(
+            'Outlook is missing Mail.Send permission. Reconnect to enable direct send.',
+          )
+          reconsentOutlook()
+        } else if (data?.needs_connection) {
+          toast.error('Outlook not connected — connect first.')
+        } else {
+          toast.error(data?.error || 'Direct send failed.')
+        }
+        return
+      }
+      const failed = data.failed_count ?? 0
+      const sent = data.sent_count ?? 0
+      if (failed > 0) {
+        toast.warning(
+          `Sent ${sent} of ${sent + failed} — ${failed} failed.`,
+        )
+      } else {
+        toast.success(
+          `Sent ${sent} email${sent === 1 ? '' : 's'} from ${outlook?.email ?? 'your mailbox'}.`,
+        )
+      }
+      setDirectSendMode(null)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Direct send failed.')
+    } finally {
+      setDirectSendBusy(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between border-t bg-background px-4 py-3">
-      <div className="flex items-center gap-2 text-sm">
+      <div className="flex items-center gap-2 text-sm flex-wrap">
         <Badge variant="secondary" className="text-xs">
           {recipientCount} recipient{recipientCount === 1 ? '' : 's'}
         </Badge>
         {externalMessageId && (
           <span className="text-xs text-green-700 flex items-center gap-1">
             <ExternalLink className="h-3 w-3" />
-            AN message {externalMessageId.slice(0, 8)}…
+            AN draft {externalMessageId.slice(0, 8)}…
+            {administrativeUrl && (
+              <a
+                href={administrativeUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="underline ml-1"
+                title="Open the draft in Action Network to set tag-based targeting before sending"
+              >
+                Open in AN
+              </a>
+            )}
+            {preparedTag?.tag_name && (
+              <span className="text-amber-700 ml-1">
+                — target tag &quot;{preparedTag.tag_name}&quot; in AN before sending
+              </span>
+            )}
           </span>
         )}
         {preparedTag && !externalMessageId && (
-          <span className="text-xs text-green-700">
-            Tag {preparedTag.tag_name} created ({preparedTag.contacts_tagged + preparedTag.contacts_created} contacts)
+          <span
+            className={`text-xs flex items-center gap-1 ${
+              preparedTag.verification_warning ? 'text-amber-700' : 'text-green-700'
+            }`}
+            title={preparedTag.verification_warning ?? undefined}
+          >
+            {preparedTag.verification_warning && (
+              <AlertTriangle className="h-3 w-3" />
+            )}
+            Tag {preparedTag.tag_name}{' '}
+            {typeof preparedTag.verified_tag_count === 'number'
+              ? `(${preparedTag.verified_tag_count} verified on AN)`
+              : `(${preparedTag.contacts_tagged + preparedTag.contacts_created} pushed)`}
           </span>
         )}
       </div>
@@ -438,7 +539,7 @@ export function SendActions({
                   <DropdownMenuItem
                     onClick={() => void handleSaveToOutlook('personalised')}
                     className="flex-col items-start gap-0.5 py-2"
-                    disabled={!!outlookBusy}
+                    disabled={!!outlookBusy || !!directSendBusy}
                   >
                     <span className="text-sm flex items-center gap-1.5">
                       <UsersIcon className="h-3.5 w-3.5" />
@@ -449,11 +550,30 @@ export function SendActions({
                       per-worker. Queued in your Outlook Drafts for review.
                     </span>
                   </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() =>
+                      outlook.has_send_scope
+                        ? setDirectSendMode('personalised')
+                        : reconsentOutlook()
+                    }
+                    className="flex-col items-start gap-0.5 py-2"
+                    disabled={!!outlookBusy || !!directSendBusy}
+                  >
+                    <span className="text-sm flex items-center gap-1.5">
+                      <Send className="h-3.5 w-3.5 text-red-600" />
+                      Send personalised now from my mailbox
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {outlook.has_send_scope
+                        ? `Sends ${recipientCount} personalised emails directly. Irreversible.`
+                        : 'Requires Mail.Send permission — click to reconnect Outlook with extra scope.'}
+                    </span>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={() => void handleSaveToOutlook('bcc')}
                     className="flex-col items-start gap-0.5 py-2"
-                    disabled={!!outlookBusy}
+                    disabled={!!outlookBusy || !!directSendBusy}
                   >
                     <span className="text-sm flex items-center gap-1.5">
                       <Mail className="h-3.5 w-3.5" />
@@ -461,10 +581,40 @@ export function SendActions({
                     </span>
                     <span className="text-[11px] text-muted-foreground">
                       One draft with all {recipientCount} recipients in BCC.
-                      Recipient tokens replaced with collective phrasing
-                      (e.g. &ldquo;comrades&rdquo;).
+                      Variable-resolution dialog opens first if tokens are present.
                     </span>
                   </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() =>
+                      outlook.has_send_scope
+                        ? setDirectSendMode('bcc')
+                        : reconsentOutlook()
+                    }
+                    className="flex-col items-start gap-0.5 py-2"
+                    disabled={!!outlookBusy || !!directSendBusy}
+                  >
+                    <span className="text-sm flex items-center gap-1.5">
+                      <Send className="h-3.5 w-3.5 text-red-600" />
+                      Send shared BCC now from my mailbox
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {outlook.has_send_scope
+                        ? 'Sends one BCC email to all recipients directly. Irreversible.'
+                        : 'Requires Mail.Send permission — click to reconnect Outlook with extra scope.'}
+                    </span>
+                  </DropdownMenuItem>
+                  {!outlook.has_send_scope && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => reconsentOutlook()}
+                        className="py-1.5 text-[11px] text-amber-700"
+                      >
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        Reconnect to enable direct send
+                      </DropdownMenuItem>
+                    </>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={() => void disconnectOutlook()}
@@ -608,6 +758,21 @@ export function SendActions({
             ? 'saving to Outlook'
             : 'opening in your mail client'
         }
+      />
+
+      <DirectSendConfirmDialog
+        open={directSendMode !== null}
+        onOpenChange={(o) => {
+          if (!o) setDirectSendMode(null)
+        }}
+        mode={directSendMode ?? 'personalised'}
+        mailboxEmail={outlook?.email ?? null}
+        recipientCount={recipientEmails.length}
+        recipientPreview={recipientEmails}
+        subject={subject}
+        bodyHtml={bodyHtml}
+        submitting={directSendBusy}
+        onConfirm={() => void handleDirectSendConfirm()}
       />
 
       <Dialog open={bccWarningOpen} onOpenChange={setBccWarningOpen}>

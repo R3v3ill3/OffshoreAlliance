@@ -45,6 +45,7 @@ export async function GET() {
     email: data.email,
     display_name: data.display_name,
     scopes: data.scopes,
+    has_send_scope: hasSendScope(data.scopes),
     connected_at: data.connected_at,
     last_used_at: data.last_used_at,
     last_error: data.last_error,

@@ -19,7 +19,7 @@
  * we never see the cookie value here — the server-side handler sets it.
  */
 
-import { Fragment, useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { useParams } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -35,6 +35,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -42,14 +43,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -64,7 +57,7 @@ import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { fetchApi } from "@/lib/api/fetch-api";
 import { VOTE_SUPPORTER_OPTIONS } from "@/lib/campaign/constants";
 import { RATING_LEVELS } from "@/types/planner-types";
-import { ChevronDown, ChevronUp, Search } from "lucide-react";
+import { Search, UserX } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────
 // Payload types — mirror the GET /api/campaign-leader/[token] response.
@@ -182,6 +175,8 @@ type TableState = {
    *  from a separate fetch and are not yet part of the server payload. */
   pendingAddedRows: WorkerRow[];
   prospective: ProspectiveDraft[];
+  /** Workers flagged as "no longer in campaign" — removed from the list on submit. */
+  removedWorkers: number[];
 };
 
 type TableAction =
@@ -197,6 +192,7 @@ type TableAction =
   | { type: "remove_existing"; worker_id: number }
   | { type: "add_prospective"; row: ProspectiveDraft }
   | { type: "remove_prospective"; index: number }
+  | { type: "toggle_removed"; worker_id: number }
   | { type: "reset_after_submit" };
 
 function initialTableState(): TableState {
@@ -210,6 +206,7 @@ function initialTableState(): TableState {
     existingAdded: [],
     pendingAddedRows: [],
     prospective: [],
+    removedWorkers: [],
   };
 }
 
@@ -229,6 +226,15 @@ function tableReducer(state: TableState, action: TableAction): TableState {
         ratings: r,
         binaries: b,
         notes: n,
+      };
+    }
+    case "toggle_removed": {
+      const already = state.removedWorkers.includes(action.worker_id);
+      return {
+        ...state,
+        removedWorkers: already
+          ? state.removedWorkers.filter((id) => id !== action.worker_id)
+          : [...state.removedWorkers, action.worker_id],
       };
     }
     case "set_rating":
@@ -285,6 +291,7 @@ function tableReducer(state: TableState, action: TableAction): TableState {
         existingAdded: [],
         pendingAddedRows: [],
         prospective: [],
+        removedWorkers: [],
       };
     default:
       return state;
@@ -546,6 +553,8 @@ function LeaderForm({
     worker?: WorkerRow;
     to?: "member_pending";
   }>({ open: false });
+  // Which worker card is open in the detail drawer
+  const [selectedWorkerId, setSelectedWorkerId] = useState<number | null>(null);
 
   // Hydrate the reducer when the payload first arrives or changes.
   useEffect(() => {
@@ -613,6 +622,7 @@ function LeaderForm({
           worker_edits: workerEdits,
           membership_changes: membershipChanges,
           existing_added: tableState.existingAdded,
+          removed_worker_ids: tableState.removedWorkers,
         }),
       });
       const body = (await res.json().catch(() => ({}))) as {
@@ -705,199 +715,103 @@ function LeaderForm({
         )}
       </header>
 
-      <Card className="print:border-0 print:shadow-none">
-        <CardHeader>
-          <CardTitle className="text-base">Workers</CardTitle>
-          <CardDescription>
-            {tableState.pendingAddedRows.length > 0
-              ? `${tableState.pendingAddedRows.length} pending addition(s) at bottom — submit to commit.`
-              : "Click the chevron to edit a worker's details."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                {showRatings ? <TableHead>Rating</TableHead> : null}
-                {showRatings && isBinary ? <TableHead>Response</TableHead> : null}
-                {includeMembership ? <TableHead>Membership</TableHead> : null}
-                <TableHead>Notes</TableHead>
-                <TableHead className="text-right">Edit</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {allWorkers.map((w) => {
-                const isPending = tableState.pendingAddedRows.some(
-                  (r) => r.worker_id === w.worker_id,
-                );
-                const expanded = tableState.expandedRow === w.worker_id;
-                const queuedMembership = tableState.membershipChanges[w.worker_id];
-                return (
-                  <Fragment key={w.worker_id}>
-                    <TableRow>
-                      <TableCell className="font-medium">
-                        {w.first_name} {w.last_name}
-                        {isPending ? (
-                          <Badge variant="outline" className="ml-2 text-xs">
-                            pending submit
-                          </Badge>
-                        ) : null}
-                      </TableCell>
-                      {showRatings ? (
-                        <TableCell>
-                          <Select
-                            value={String(tableState.ratings[w.worker_id] ?? "")}
-                            onValueChange={(v) =>
-                              dispatch({
-                                type: "set_rating",
-                                worker_id: w.worker_id,
-                                rating: Number(v),
-                              })
-                            }
-                          >
-                            <SelectTrigger className="w-40 h-9">
-                              <SelectValue placeholder="—" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {RATING_LEVELS.filter((lvl) => lvl.value > 0).map((lvl) => (
-                                <SelectItem key={lvl.value} value={String(lvl.value)}>
-                                  {lvl.value} — {payload.activity?.rating_labels?.[String(lvl.value)] ?? lvl.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                      ) : null}
-                      {showRatings && isBinary ? (
-                        <TableCell>
-                          <Select
-                            value={tableState.binaries[w.worker_id] ?? ""}
-                            onValueChange={(v) =>
-                              dispatch({
-                                type: "set_binary",
-                                worker_id: w.worker_id,
-                                value: v,
-                              })
-                            }
-                          >
-                            <SelectTrigger className="w-28 h-9">
-                              <SelectValue placeholder="—" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {VOTE_SUPPORTER_OPTIONS.map((o) => (
-                                <SelectItem key={o.value} value={o.value}>
-                                  {o.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                      ) : null}
-                      {includeMembership ? (
-                        <TableCell>
-                          <MembershipCell
-                            worker={w}
-                            queued={queuedMembership}
-                            allowed={
-                              payload.membership_options.allowed_transitions
-                            }
-                            onSelect={(v) => handleMembershipSelect(w, v)}
-                            onClear={() =>
-                              dispatch({
-                                type: "clear_membership",
-                                worker_id: w.worker_id,
-                              })
-                            }
-                            unions={payload.membership_options.unions}
-                          />
-                        </TableCell>
-                      ) : null}
-                      <TableCell>
-                        <Input
-                          className="h-9 min-w-[120px]"
-                          value={tableState.notes[w.worker_id] ?? ""}
-                          onChange={(e) =>
-                            dispatch({
-                              type: "set_notes",
-                              worker_id: w.worker_id,
-                              value: e.target.value,
-                            })
-                          }
-                        />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            dispatch({ type: "toggle_row", worker_id: w.worker_id })
-                          }
-                          aria-label={expanded ? "Hide details" : "Edit details"}
-                        >
-                          {expanded ? (
-                            <ChevronUp className="h-4 w-4" />
-                          ) : (
-                            <ChevronDown className="h-4 w-4" />
-                          )}
-                        </Button>
-                        {isPending ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive"
-                            onClick={() =>
-                              dispatch({
-                                type: "remove_existing",
-                                worker_id: w.worker_id,
-                              })
-                            }
-                          >
-                            Remove
-                          </Button>
-                        ) : null}
-                      </TableCell>
-                    </TableRow>
-                    {expanded ? (
-                      <TableRow>
-                        <TableCell
-                          colSpan={
-                            2 +
-                            (showRatings ? 1 : 0) +
-                            (showRatings && isBinary ? 1 : 0) +
-                            (includeMembership ? 1 : 0) +
-                            1
-                          }
-                          className="bg-muted/30"
-                        >
-                          <WorkerEditRow
-                            worker={w}
-                            draft={tableState.workerEdits[w.worker_id] ?? {}}
-                            shiftOptions={payload.shift_options}
-                            workAreaOptions={payload.work_area_options}
-                            rosterPanelOptions={payload.roster_panel_options}
-                            worksiteOptions={payload.worksite_options}
-                            onChange={(field, value) =>
-                              dispatch({
-                                type: "edit_field",
-                                worker_id: w.worker_id,
-                                field,
-                                value,
-                              })
-                            }
-                          />
-                        </TableCell>
-                      </TableRow>
-                    ) : null}
-                  </Fragment>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      {/* ── Progress bar ──────────────────────────────────────────────── */}
+      {showRatings && (
+        <div className="rounded-md border bg-muted/30 px-4 py-2.5 flex items-center justify-between gap-3">
+          <span className="text-sm font-medium">
+            {allWorkers.filter((w) => (tableState.ratings[w.worker_id] ?? w.existing_rating) != null).length}
+            {" / "}
+            {allWorkers.length} assessed
+          </span>
+          {tableState.removedWorkers.length > 0 && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <UserX className="h-3.5 w-3.5" />
+              {tableState.removedWorkers.length} flagged for removal
+            </span>
+          )}
+          {tableState.pendingAddedRows.length > 0 && (
+            <Badge variant="outline" className="text-xs">
+              {tableState.pendingAddedRows.length} pending add
+            </Badge>
+          )}
+        </div>
+      )}
+
+      {/* ── Worker card list ──────────────────────────────────────────── */}
+      <div className="space-y-2">
+        {allWorkers.map((w) => {
+          const isPending = tableState.pendingAddedRows.some((r) => r.worker_id === w.worker_id);
+          const isRemoved = tableState.removedWorkers.includes(w.worker_id);
+          const currentRating = tableState.ratings[w.worker_id] ?? w.existing_rating ?? null;
+          const currentBinary = tableState.binaries[w.worker_id] ?? w.binary_value ?? null;
+          const hasNotes = !!(tableState.notes[w.worker_id] ?? w.notes);
+          const hasEdits = !!(tableState.workerEdits[w.worker_id] && Object.keys(tableState.workerEdits[w.worker_id]).length > 0);
+          const hasMembership = !!tableState.membershipChanges[w.worker_id];
+          return (
+            <button
+              key={w.worker_id}
+              type="button"
+              onClick={() => setSelectedWorkerId(w.worker_id)}
+              className={`w-full text-left rounded-lg border px-4 py-3 flex items-center gap-3 transition-colors hover:bg-accent active:bg-accent/70 ${isRemoved ? "opacity-50 line-through" : ""}`}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-base font-semibold leading-snug">
+                    {w.first_name} {w.last_name}
+                  </span>
+                  {isPending && (
+                    <Badge variant="outline" className="text-[10px] px-1 py-0">new</Badge>
+                  )}
+                  {isRemoved && (
+                    <Badge variant="destructive" className="text-[10px] px-1 py-0">removing</Badge>
+                  )}
+                  {(hasNotes || hasEdits || hasMembership) && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" title="Has unsaved changes" />
+                  )}
+                </div>
+                {(w.occupation || w.worksite_name) ? (
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                    {[w.occupation, w.worksite_name].filter(Boolean).join(" · ")}
+                  </p>
+                ) : null}
+                {isBinary && currentBinary ? (
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {VOTE_SUPPORTER_OPTIONS.find((o) => o.value === currentBinary)?.label ?? currentBinary}
+                  </p>
+                ) : null}
+              </div>
+              <div className="shrink-0">
+                {currentRating != null ? (
+                  <span className={`inline-flex items-center justify-center rounded-full w-8 h-8 text-sm font-bold ${ratingBadgeClass(currentRating)}`}>
+                    {currentRating}
+                  </span>
+                ) : showRatings ? (
+                  <span className="inline-flex items-center justify-center rounded-full w-8 h-8 text-sm font-medium bg-muted text-muted-foreground">—</span>
+                ) : null}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Worker detail drawer ──────────────────────────────────────── */}
+      {(() => {
+        const selectedWorker = allWorkers.find((w) => w.worker_id === selectedWorkerId) ?? null;
+        return (
+          <WorkerDetailDialog
+            open={selectedWorkerId !== null}
+            worker={selectedWorker}
+            tableState={tableState}
+            dispatch={dispatch}
+            payload={payload}
+            showRatings={showRatings}
+            isBinary={isBinary}
+            includeMembership={includeMembership}
+            onMembershipSelect={handleMembershipSelect}
+            onClose={() => setSelectedWorkerId(null)}
+          />
+        );
+      })()}
 
       <AddAnotherWorkerCard
         token={token}
@@ -971,144 +885,6 @@ function LeaderForm({
           setOtherUnionDialog({ open: false });
         }}
       />
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Worker edit drawer.
-// ─────────────────────────────────────────────────────────────────────
-
-function WorkerEditRow({
-  worker,
-  draft,
-  shiftOptions,
-  workAreaOptions,
-  rosterPanelOptions,
-  worksiteOptions,
-  onChange,
-}: {
-  worker: WorkerRow;
-  draft: WorkerEditDraft;
-  shiftOptions: OptionRow[];
-  workAreaOptions: OptionRow[];
-  rosterPanelOptions: OptionRow[];
-  worksiteOptions: WorksiteOption[];
-  onChange: (field: keyof WorkerEditDraft, value: string | number | null) => void;
-}) {
-  // Prefer options scoped to the worker's employer / worksite where the
-  // option carries scoping; fall back to globally-scoped options. The picker
-  // shows scoped options first, then unscoped.
-  function scoped<T extends OptionRow>(opts: T[]): T[] {
-    if (!worker.employer_id && !worker.worksite_id) return opts;
-    const matches = opts.filter(
-      (o) =>
-        (o.employer_id && o.employer_id === worker.employer_id) ||
-        (o.worksite_id && o.worksite_id === worker.worksite_id),
-    );
-    const rest = opts.filter(
-      (o) =>
-        !(o.employer_id && o.employer_id === worker.employer_id) &&
-        !(o.worksite_id && o.worksite_id === worker.worksite_id),
-    );
-    return [...matches, ...rest];
-  }
-
-  const shifts = scoped(shiftOptions);
-  const workAreas = scoped(workAreaOptions);
-  const rosterPanels = scoped(rosterPanelOptions);
-
-  function valueOr<T>(raw: T | null | undefined, fallback: T | null): T | null {
-    if (raw === undefined) return fallback;
-    return raw;
-  }
-
-  return (
-    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 py-3">
-      <OptionSelect
-        label="Worksite"
-        currentId={valueOr(draft.worksite_id, worker.worksite_id)}
-        options={worksiteOptions.map((w) => ({ id: w.worksite_id, name: w.worksite_name }))}
-        onChange={(id) => onChange("worksite_id", id)}
-      />
-      <OptionSelect
-        label="Shift"
-        currentId={valueOr(draft.shift_id, worker.shift_id)}
-        options={shifts}
-        onChange={(id) => onChange("shift_id", id)}
-      />
-      <OptionSelect
-        label="Work area"
-        currentId={valueOr(draft.work_area_id, worker.work_area_id)}
-        options={workAreas}
-        onChange={(id) => onChange("work_area_id", id)}
-      />
-      <OptionSelect
-        label="Roster / panel"
-        currentId={valueOr(draft.roster_panel_id, worker.roster_panel_id)}
-        options={rosterPanels}
-        onChange={(id) => onChange("roster_panel_id", id)}
-      />
-      <div className="space-y-1">
-        <Label htmlFor={`occ-${worker.worker_id}`}>Occupation</Label>
-        <Input
-          id={`occ-${worker.worker_id}`}
-          value={valueOr(draft.occupation, worker.occupation) ?? ""}
-          onChange={(e) => onChange("occupation", e.target.value)}
-        />
-      </div>
-      <div className="space-y-1">
-        <Label htmlFor={`phone-${worker.worker_id}`}>Phone</Label>
-        <Input
-          id={`phone-${worker.worker_id}`}
-          type="tel"
-          value={valueOr(draft.phone, worker.phone) ?? ""}
-          onChange={(e) => onChange("phone", e.target.value)}
-        />
-      </div>
-      <div className="space-y-1 sm:col-span-2 lg:col-span-3">
-        <Label htmlFor={`email-${worker.worker_id}`}>Email</Label>
-        <Input
-          id={`email-${worker.worker_id}`}
-          type="email"
-          value={valueOr(draft.email, worker.email) ?? ""}
-          onChange={(e) => onChange("email", e.target.value)}
-        />
-      </div>
-    </div>
-  );
-}
-
-function OptionSelect({
-  label,
-  currentId,
-  options,
-  onChange,
-}: {
-  label: string;
-  currentId: number | null;
-  options: { id: number; name: string }[];
-  onChange: (id: number | null) => void;
-}) {
-  return (
-    <div className="space-y-1">
-      <Label>{label}</Label>
-      <Select
-        value={currentId == null ? "__none__" : String(currentId)}
-        onValueChange={(v) => onChange(v === "__none__" ? null : Number(v))}
-      >
-        <SelectTrigger className="h-9">
-          <SelectValue placeholder="—" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__none__">—</SelectItem>
-          {options.map((o) => (
-            <SelectItem key={o.id} value={String(o.id)}>
-              {o.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
     </div>
   );
 }
@@ -1617,6 +1393,318 @@ function ProspectiveForm({
         </ul>
       ) : null}
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Rating colour helper (1=supporter leader green → 5=oppositional red)
+// ─────────────────────────────────────────────────────────────────────
+
+function ratingBadgeClass(rating: number): string {
+  switch (rating) {
+    case 1: return "bg-green-700 text-white";
+    case 2: return "bg-green-500 text-white";
+    case 3: return "bg-amber-400 text-amber-950";
+    case 4: return "bg-orange-500 text-white";
+    case 5: return "bg-red-600 text-white";
+    default: return "bg-muted text-muted-foreground";
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Worker detail drawer — full-screen on mobile, constrained on desktop.
+// ─────────────────────────────────────────────────────────────────────
+
+function WorkerDetailDialog({
+  open,
+  worker,
+  tableState,
+  dispatch,
+  payload,
+  showRatings,
+  isBinary,
+  includeMembership,
+  onMembershipSelect,
+  onClose,
+}: {
+  open: boolean;
+  worker: WorkerRow | null;
+  tableState: TableState;
+  dispatch: React.Dispatch<TableAction>;
+  payload: FormPayload;
+  showRatings: boolean;
+  isBinary: boolean;
+  includeMembership: boolean;
+  onMembershipSelect: (worker: WorkerRow, value: string) => void;
+  onClose: () => void;
+}) {
+  if (!worker) return null;
+  // Capture as non-nullable so nested functions can close over it safely.
+  const w0: WorkerRow = worker;
+
+  const wid = w0.worker_id;
+  const currentRating = tableState.ratings[wid] ?? worker.existing_rating ?? null;
+  const currentBinary = tableState.binaries[wid] ?? worker.binary_value ?? null;
+  const currentNotes = tableState.notes[wid] ?? worker.notes ?? "";
+  const draft = tableState.workerEdits[wid] ?? {};
+  const queuedMembership = tableState.membershipChanges[wid];
+  const isRemoved = tableState.removedWorkers.includes(wid);
+  const isPending = tableState.pendingAddedRows.some((r) => r.worker_id === wid);
+
+  function valueOr<T>(raw: T | null | undefined, fallback: T | null): T | null {
+    if (raw === undefined) return fallback;
+    return raw;
+  }
+
+  function scoped<T extends { id: number; name: string; employer_id?: number | null; worksite_id?: number | null }>(opts: T[]): T[] {
+    if (!w0.employer_id && !w0.worksite_id) return opts;
+    const matches = opts.filter(
+      (o) =>
+        (o.employer_id && o.employer_id === w0.employer_id) ||
+        (o.worksite_id && o.worksite_id === w0.worksite_id),
+    );
+    const rest = opts.filter(
+      (o) =>
+        !(o.employer_id && o.employer_id === w0.employer_id) &&
+        !(o.worksite_id && o.worksite_id === w0.worksite_id),
+    );
+    return [...matches, ...rest];
+  }
+
+  const worksiteOpts = payload.worksite_options;
+  const shiftOpts = scoped(payload.shift_options as { id: number; name: string; employer_id?: number | null; worksite_id?: number | null }[]);
+  const workAreaOpts = scoped(payload.work_area_options as typeof shiftOpts);
+  const rosterOpts = scoped(payload.roster_panel_options as typeof shiftOpts);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-md max-h-[92dvh] overflow-y-auto flex flex-col gap-0 p-0">
+        <DialogHeader className="px-4 pt-4 pb-3 border-b">
+          <DialogTitle className="flex items-center gap-2">
+            {worker.first_name} {worker.last_name}
+            {currentRating != null && (
+              <span className={`inline-flex items-center justify-center rounded-full w-7 h-7 text-xs font-bold ${ratingBadgeClass(currentRating)}`}>
+                {currentRating}
+              </span>
+            )}
+          </DialogTitle>
+          {(worker.occupation || worker.worksite_name) ? (
+            <DialogDescription>
+              {[worker.occupation, worker.worksite_name].filter(Boolean).join(" · ")}
+            </DialogDescription>
+          ) : null}
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
+
+          {/* ── Assessment ──────────────────────────────────────────── */}
+          {showRatings && (
+            <section className="space-y-3">
+              <h3 className="text-sm font-semibold">Assessment</h3>
+              <div className="space-y-2">
+                <Label className="text-xs">Rating</Label>
+                <Select
+                  value={currentRating != null ? String(currentRating) : ""}
+                  onValueChange={(v) => dispatch({ type: "set_rating", worker_id: wid, rating: Number(v) })}
+                >
+                  <SelectTrigger className="h-11 text-base">
+                    <SelectValue placeholder="— select rating —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RATING_LEVELS.filter((lvl) => lvl.value > 0).map((lvl) => (
+                      <SelectItem key={lvl.value} value={String(lvl.value)} className="py-3 text-base">
+                        <span className={`inline-flex items-center justify-center rounded-full w-6 h-6 text-xs font-bold mr-2 ${ratingBadgeClass(lvl.value)}`}>{lvl.value}</span>
+                        {payload.activity?.rating_labels?.[String(lvl.value)] ?? lvl.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {isBinary && (
+                <div className="space-y-2">
+                  <Label className="text-xs">Response</Label>
+                  <Select
+                    value={currentBinary ?? ""}
+                    onValueChange={(v) => dispatch({ type: "set_binary", worker_id: wid, value: v })}
+                  >
+                    <SelectTrigger className="h-11 text-base">
+                      <SelectValue placeholder="— select response —" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {VOTE_SUPPORTER_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value} className="py-3 text-base">
+                          {o.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label className="text-xs">Notes</Label>
+                <Textarea
+                  rows={3}
+                  className="text-base resize-none"
+                  placeholder="Add notes…"
+                  value={currentNotes}
+                  onChange={(e) => dispatch({ type: "set_notes", worker_id: wid, value: e.target.value })}
+                />
+              </div>
+            </section>
+          )}
+
+          {/* ── Membership ──────────────────────────────────────────── */}
+          {includeMembership && (
+            <section className="space-y-3 pt-1 border-t">
+              <h3 className="text-sm font-semibold pt-2">Membership</h3>
+              <MembershipCell
+                worker={worker}
+                queued={queuedMembership}
+                allowed={payload.membership_options.allowed_transitions}
+                onSelect={(v) => onMembershipSelect(worker, v)}
+                onClear={() => dispatch({ type: "clear_membership", worker_id: wid })}
+                unions={payload.membership_options.unions}
+              />
+            </section>
+          )}
+
+          {/* ── Update details ──────────────────────────────────────── */}
+          <section className="space-y-3 pt-1 border-t">
+            <h3 className="text-sm font-semibold pt-2">Update details</h3>
+            <div className="space-y-2">
+              <Label htmlFor={`phone-d-${wid}`} className="text-xs">Phone</Label>
+              <Input
+                id={`phone-d-${wid}`}
+                type="tel"
+                className="h-11 text-base"
+                placeholder={worker.phone ?? "Not set"}
+                value={valueOr(draft.phone, worker.phone) ?? ""}
+                onChange={(e) => dispatch({ type: "edit_field", worker_id: wid, field: "phone", value: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`email-d-${wid}`} className="text-xs">Email</Label>
+              <Input
+                id={`email-d-${wid}`}
+                type="email"
+                className="h-11 text-base"
+                placeholder={worker.email ?? "Not set"}
+                value={valueOr(draft.email, worker.email) ?? ""}
+                onChange={(e) => dispatch({ type: "edit_field", worker_id: wid, field: "email", value: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`occ-d-${wid}`} className="text-xs">Occupation</Label>
+              <Input
+                id={`occ-d-${wid}`}
+                className="h-11 text-base"
+                placeholder={worker.occupation ?? "Not set"}
+                value={valueOr(draft.occupation, worker.occupation) ?? ""}
+                onChange={(e) => dispatch({ type: "edit_field", worker_id: wid, field: "occupation", value: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Worksite</Label>
+              <Select
+                value={valueOr(draft.worksite_id, worker.worksite_id) == null ? "__none__" : String(valueOr(draft.worksite_id, worker.worksite_id))}
+                onValueChange={(v) => dispatch({ type: "edit_field", worker_id: wid, field: "worksite_id", value: v === "__none__" ? null : Number(v) })}
+              >
+                <SelectTrigger className="h-11 text-base"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">—</SelectItem>
+                  {worksiteOpts.map((o) => (
+                    <SelectItem key={o.worksite_id} value={String(o.worksite_id)}>{o.worksite_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Shift</Label>
+              <Select
+                value={valueOr(draft.shift_id, worker.shift_id) == null ? "__none__" : String(valueOr(draft.shift_id, worker.shift_id))}
+                onValueChange={(v) => dispatch({ type: "edit_field", worker_id: wid, field: "shift_id", value: v === "__none__" ? null : Number(v) })}
+              >
+                <SelectTrigger className="h-11 text-base"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">—</SelectItem>
+                  {shiftOpts.map((o) => (
+                    <SelectItem key={o.id} value={String(o.id)}>{o.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Work area</Label>
+              <Select
+                value={valueOr(draft.work_area_id, worker.work_area_id) == null ? "__none__" : String(valueOr(draft.work_area_id, worker.work_area_id))}
+                onValueChange={(v) => dispatch({ type: "edit_field", worker_id: wid, field: "work_area_id", value: v === "__none__" ? null : Number(v) })}
+              >
+                <SelectTrigger className="h-11 text-base"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">—</SelectItem>
+                  {workAreaOpts.map((o) => (
+                    <SelectItem key={o.id} value={String(o.id)}>{o.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Roster / panel</Label>
+              <Select
+                value={valueOr(draft.roster_panel_id, worker.roster_panel_id) == null ? "__none__" : String(valueOr(draft.roster_panel_id, worker.roster_panel_id))}
+                onValueChange={(v) => dispatch({ type: "edit_field", worker_id: wid, field: "roster_panel_id", value: v === "__none__" ? null : Number(v) })}
+              >
+                <SelectTrigger className="h-11 text-base"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">—</SelectItem>
+                  {rosterOpts.map((o) => (
+                    <SelectItem key={o.id} value={String(o.id)}>{o.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </section>
+
+          {/* ── Flags ───────────────────────────────────────────────── */}
+          <section className="space-y-3 pt-1 border-t">
+            <h3 className="text-sm font-semibold pt-2">Flags</h3>
+            <label className="flex items-start gap-3 rounded-md border px-3 py-3 cursor-pointer hover:bg-accent">
+              <Checkbox
+                checked={isRemoved}
+                onCheckedChange={() => dispatch({ type: "toggle_removed", worker_id: wid })}
+                className="mt-0.5"
+              />
+              <span className="flex-1">
+                <span className="block text-sm font-medium">No longer in campaign universe</span>
+                <span className="block text-xs text-muted-foreground mt-0.5">
+                  Removes this person from the task list when you submit. They will remain in the system but won't appear in future tasks.
+                </span>
+              </span>
+            </label>
+            {isPending && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-destructive w-full"
+                onClick={() => {
+                  dispatch({ type: "remove_existing", worker_id: wid });
+                  onClose();
+                }}
+              >
+                Remove from this list
+              </Button>
+            )}
+          </section>
+        </div>
+
+        <DialogFooter className="px-4 py-3 border-t">
+          <Button type="button" className="w-full h-11 text-base" onClick={onClose}>
+            Done
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

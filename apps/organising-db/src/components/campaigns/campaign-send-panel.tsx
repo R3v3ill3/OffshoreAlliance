@@ -44,6 +44,18 @@ export interface PreparedTag {
   tag_name: string;
   contacts_tagged: number;
   contacts_created: number;
+  /**
+   * Number of people AN reports as currently tagged with this tag, read
+   * back via GET /tags/{id}/taggings after the push completes. Null when
+   * verification was skipped or failed (network error, throttle, etc).
+   */
+  verified_tag_count?: number | null;
+  /**
+   * Human-readable warning string when the AN-side count is lower than
+   * what we expected, or when the verification call itself failed. Drives
+   * the amber banner on the send UI.
+   */
+  verification_warning?: string | null;
 }
 
 interface CampaignSendPanelProps {
@@ -207,15 +219,21 @@ export function CampaignSendPanel({
       const resolvedBody = translateToActionNetwork(
         resolveTemplateVariables(selectedDraft.body_html || selectedDraft.body, ctx)
       );
+      // Note: AN's `targets` array expects saved-query hrefs, not tag hrefs
+      // (see https://actionnetwork.org/docs/v2/messages). Sending a tag href
+      // here was silently ignored. Instead, surface the tag in the message
+      // `name` (administrative title) so the organiser can see which tag to
+      // include when they open the draft in AN to set targeting.
+      const adminTitle = preparedTag?.tag_name
+        ? `${resolvedSubject || "Untitled"} — push tag ${preparedTag.tag_name}`
+        : resolvedSubject || "Untitled";
       const messagePayload: Record<string, unknown> = {
+        name: adminTitle,
         subject: resolvedSubject,
         body: resolvedBody,
         from: "Offshore Alliance",
         reply_to: "info@offshorealliance.org.au",
       };
-      if (preparedTag?.tag_href) {
-        messagePayload.targets = [{ href: preparedTag.tag_href }];
-      }
       const createRes = await fetchApi("/api/action-network", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -231,6 +249,11 @@ export function CampaignSendPanel({
       const messageHref =
         createData.data?._links?.self?.href ?? "";
       const messageId = messageHref.split("/").pop() || "";
+      const administrativeUrl = (createData.data?.administrative_url as string | undefined) ?? null;
+
+      const sendStatsUpdate: Record<string, unknown> = administrativeUrl
+        ? { administrative_url: administrativeUrl, an_tag_name: preparedTag?.tag_name ?? null }
+        : { an_tag_name: preparedTag?.tag_name ?? null };
 
       const { error } = await supabase
         .from("campaign_comms_drafts")
@@ -238,6 +261,7 @@ export function CampaignSendPanel({
           status: "sent",
           sent_via: "action_network",
           external_message_id: messageId,
+          send_stats: sendStatsUpdate,
         })
         .eq("draft_id", selectedDraft.draft_id);
       if (error) throw error;

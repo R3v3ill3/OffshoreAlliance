@@ -254,8 +254,18 @@ export function CampaignEmailWizard() {
     tag_name: string
     contacts_tagged: number
     contacts_created: number
+    verified_tag_count?: number | null
+    verification_warning?: string | null
   } | null>(null)
+  const [pushResults, setPushResults] = useState<Array<{
+    worker_id: number
+    name: string
+    status: string
+    detail?: string
+  }> | null>(null)
+  const [showPushDetails, setShowPushDetails] = useState(false)
   const [externalMessageId, setExternalMessageId] = useState<string | null>(null)
+  const [administrativeUrl, setAdministrativeUrl] = useState<string | null>(null)
   const [editSetupOpen, setEditSetupOpen] = useState(false)
 
   // ----- Data loads -----------------------------------------------------
@@ -849,24 +859,42 @@ export function CampaignEmailWizard() {
       })
       const data = await res.json()
       if (!res.ok || !data.success) throw new Error(data.error || 'Push failed')
+      const pushed = (data.contacts_tagged ?? 0) + (data.contacts_created ?? 0)
       setPreparedTag({
         tag_id: data.tag_id,
         tag_href: data.tag_href,
         tag_name: data.tag_name,
         contacts_tagged: data.contacts_tagged,
         contacts_created: data.contacts_created,
+        verified_tag_count: data.verified_tag_count ?? null,
+        verification_warning: data.verification_warning ?? null,
       })
-      toast.success(
-        `${data.contacts_tagged + data.contacts_created} contacts pushed to AN`,
-      )
+      if (Array.isArray(data.worker_results)) {
+        setPushResults(data.worker_results)
+      }
+
+      // Surface either a hard success or a soft warning toast depending on
+      // whether AN's read-back matches what we believe we pushed. The old
+      // unconditional success toast hid silent failures (e.g. 0 of 4
+      // tagged) — see plan §2 Bug A.
+      if (data.verification_warning) {
+        toast.warning(data.verification_warning)
+      } else if (typeof data.verified_tag_count === 'number') {
+        toast.success(
+          `${data.verified_tag_count} ${
+            data.verified_tag_count === 1 ? 'contact' : 'contacts'
+          } verified on AN tag "${data.tag_name}"`,
+        )
+      } else {
+        toast.success(`${pushed} contacts pushed to AN`)
+      }
 
       // Reflect the send on the email_list / items so the dashboard view
       // shows progress and reporting reflects sent counts.
       if (draft?.email_list_id) {
-        const totalSent = (data.contacts_tagged ?? 0) + (data.contacts_created ?? 0)
         await supabase
           .from('email_lists')
-          .update({ status: 'sent', sent_items: totalSent })
+          .update({ status: 'sent', sent_items: pushed })
           .eq('list_id', draft.email_list_id)
         if (Array.isArray(data.worker_results)) {
           const sentWorkerIds = (
@@ -905,14 +933,20 @@ export function CampaignEmailWizard() {
         resolveTemplateVariables(bodyHtml || bodyText, varContext),
       )
 
+      // Per https://actionnetwork.org/docs/v2/messages, `targets` expects
+      // saved-query hrefs — not tag hrefs. Sending a tag href was ignored
+      // by AN, leaving the draft with no targeting AND silently misleading
+      // the organiser. Instead, surface the tag in the admin title so it's
+      // visible when they open the draft in AN to set targeting.
+      const adminTitle = preparedTag?.tag_name
+        ? `${resolvedSubject || 'Untitled'} — push tag ${preparedTag.tag_name}`
+        : resolvedSubject || 'Untitled'
       const messagePayload: Record<string, unknown> = {
+        name: adminTitle,
         subject: resolvedSubject,
         body: resolvedBody,
         from: 'Offshore Alliance',
         reply_to: 'info@offshorealliance.org.au',
-      }
-      if (preparedTag?.tag_href) {
-        messagePayload.targets = [{ href: preparedTag.tag_href }]
       }
 
       const createRes = await fetchApi('/api/action-network', {
@@ -926,6 +960,7 @@ export function CampaignEmailWizard() {
 
       const messageHref = createData.data?._links?.self?.href ?? ''
       const messageId = messageHref.split('/').pop() || ''
+      const adminUrl = (createData.data?.administrative_url as string | undefined) ?? null
 
       await supabase
         .from('campaign_comms_drafts')
@@ -933,11 +968,19 @@ export function CampaignEmailWizard() {
           status: 'sent',
           sent_via: 'action_network',
           external_message_id: messageId,
+          send_stats: adminUrl
+            ? { administrative_url: adminUrl, an_tag_name: preparedTag?.tag_name ?? null }
+            : { an_tag_name: preparedTag?.tag_name ?? null },
         })
         .eq('draft_id', draftId)
 
       setExternalMessageId(messageId)
-      toast.success('Email pushed to Action Network')
+      setAdministrativeUrl(adminUrl)
+      toast.success(
+        preparedTag?.tag_name
+          ? `Draft created in Action Network. Open AN and target tag "${preparedTag.tag_name}" before sending.`
+          : 'Draft created in Action Network — open AN to set targeting before sending.',
+      )
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Push failed')
     } finally {
@@ -1455,12 +1498,12 @@ export function CampaignEmailWizard() {
                   Push list to Action Network ({selectedWorkerIds.size})
                 </Button>
               ) : (
-                <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">
-                  <p className="font-medium">
-                    List pushed: {preparedTag.contacts_tagged + preparedTag.contacts_created}{' '}
-                    contacts tagged as <code>{preparedTag.tag_name}</code>.
-                  </p>
-                </div>
+                <PushResultCard
+                  preparedTag={preparedTag}
+                  pushResults={pushResults}
+                  showDetails={showPushDetails}
+                  onToggleDetails={() => setShowPushDetails((v) => !v)}
+                />
               )}
 
               {preparedTag && !externalMessageId && (
@@ -1475,12 +1518,25 @@ export function CampaignEmailWizard() {
               )}
 
               {externalMessageId && (
-                <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+                <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800 space-y-2">
                   <p className="font-medium">
-                    Email message created in Action Network (id:{' '}
-                    <code>{externalMessageId}</code>). Open Action Network to schedule and
-                    send.
+                    Draft created in Action Network (id:{' '}
+                    <code>{externalMessageId}</code>).
                   </p>
+                  {preparedTag?.tag_name && (
+                    <p className="text-xs">
+                      Action Network does not let us set tag-based targeting via the
+                      API. Open the draft and add the include filter <code>tag is &quot;{preparedTag.tag_name}&quot;</code>{' '}
+                      before clicking Send.
+                    </p>
+                  )}
+                  {administrativeUrl && (
+                    <Button asChild size="sm" variant="outline" className="mt-1">
+                      <a href={administrativeUrl} target="_blank" rel="noreferrer noopener">
+                        Open draft in Action Network
+                      </a>
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -1526,6 +1582,100 @@ export function CampaignEmailWizard() {
         stageNumber={draft?.stage_number || 1}
         isCustomising={isCustomisingTemplate}
       />
+    </div>
+  )
+}
+
+/**
+ * PushResultCard — shows the verified state of a completed list push to AN.
+ *
+ * Surfaces three signals that the legacy success card hid:
+ *   • Verified count from AN's read-back (vs. what we believe we pushed).
+ *   • A copyable tag name + the targeting reminder (AN's API can't set
+ *     tag-based targeting on a message, so the organiser must do it in AN).
+ *   • Per-worker errors (collapsible; useful when only some recipients land).
+ */
+interface PushResultCardProps {
+  preparedTag: {
+    tag_name: string
+    contacts_tagged: number
+    contacts_created: number
+    verified_tag_count?: number | null
+    verification_warning?: string | null
+  }
+  pushResults: Array<{ worker_id: number; name: string; status: string; detail?: string }> | null
+  showDetails: boolean
+  onToggleDetails: () => void
+}
+
+function PushResultCard({ preparedTag, pushResults, showDetails, onToggleDetails }: PushResultCardProps) {
+  const pushed = preparedTag.contacts_tagged + preparedTag.contacts_created
+  const errored = (pushResults ?? []).filter((r) => r.status === 'error' || r.status === 'skipped')
+  const hasWarning = !!preparedTag.verification_warning
+  const verifiedKnown = typeof preparedTag.verified_tag_count === 'number'
+  const tone = hasWarning
+    ? 'border-amber-200 bg-amber-50 text-amber-900'
+    : 'border-green-200 bg-green-50 text-green-800'
+
+  return (
+    <div className={cn('rounded-md border p-3 text-sm space-y-2', tone)}>
+      <p className="font-medium">
+        {hasWarning ? 'List pushed with warnings' : 'List pushed'}: {pushed}{' '}
+        {pushed === 1 ? 'contact' : 'contacts'} tagged as{' '}
+        <code className="bg-white/60 px-1 rounded">{preparedTag.tag_name}</code>.
+      </p>
+      {verifiedKnown && (
+        <p className="text-xs">
+          Action Network reports{' '}
+          <strong>{preparedTag.verified_tag_count}</strong>{' '}
+          {preparedTag.verified_tag_count === 1 ? 'person' : 'people'} on this tag.
+        </p>
+      )}
+      {hasWarning && (
+        <p className="text-xs">{preparedTag.verification_warning}</p>
+      )}
+      <p className="text-xs">
+        Note: AN&apos;s API cannot set tag-based message targeting. When you
+        open the draft in Action Network, add the include filter{' '}
+        <code className="bg-white/60 px-1 rounded">
+          tag is &quot;{preparedTag.tag_name}&quot;
+        </code>{' '}
+        before saving and sending.
+      </p>
+      {pushResults && pushResults.length > 0 && (
+        <div className="pt-1">
+          <button
+            type="button"
+            onClick={onToggleDetails}
+            className="text-xs underline opacity-80 hover:opacity-100"
+          >
+            {showDetails ? 'Hide' : 'Show'} per-worker results
+            {errored.length > 0 ? ` (${errored.length} ${errored.length === 1 ? 'issue' : 'issues'})` : ''}
+          </button>
+          {showDetails && (
+            <div className="mt-2 max-h-56 overflow-auto rounded border border-current/20 bg-white/60">
+              <table className="w-full text-xs">
+                <thead className="bg-black/5 text-[10px] uppercase tracking-wide">
+                  <tr>
+                    <th className="text-left p-1.5">Worker</th>
+                    <th className="text-left p-1.5">Status</th>
+                    <th className="text-left p-1.5">Detail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pushResults.map((r) => (
+                    <tr key={r.worker_id} className="border-t border-current/10">
+                      <td className="p-1.5">{r.name}</td>
+                      <td className="p-1.5 font-mono">{r.status}</td>
+                      <td className="p-1.5 text-muted-foreground break-all">{r.detail ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

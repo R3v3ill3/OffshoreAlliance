@@ -12,6 +12,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 export type SendMethod =
   | 'outlook_personalised'
   | 'outlook_bcc'
+  /** Direct send via /me/sendMail — bypasses Outlook drafts. */
+  | 'outlook_send_personalised'
+  | 'outlook_send_bcc'
   | 'action_network'
   | 'mailto'
   | 'eml'

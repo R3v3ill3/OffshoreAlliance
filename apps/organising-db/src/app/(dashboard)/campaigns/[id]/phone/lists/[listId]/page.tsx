@@ -146,20 +146,6 @@ export default function CallListDetailPage() {
     refetchInterval: 30_000,
   })
 
-  const { data: outcomeDefinitionCount = 0 } = useQuery({
-    queryKey: ['call-list-outcome-definition-count', list?.script_id ?? 0],
-    queryFn: async () => {
-      if (!list?.script_id) return 0
-      const { count, error } = await supabase
-        .from('call_outcome_definitions')
-        .select('outcome_id', { count: 'exact', head: true })
-        .eq('script_id', list.script_id)
-      if (error) throw error
-      return count ?? 0
-    },
-    enabled: !!list?.script_id,
-  })
-
   const revokeShareToken = useMutation({
     mutationFn: async (tokenId: number) => {
       const res = await fetchApi(`/api/campaigns/${campaignId}/call-lists/${listId}/share-tokens/revoke`, {
@@ -241,13 +227,11 @@ export default function CallListDetailPage() {
     : 0
   const remainingItems = Math.max(0, (list.total_items ?? 0) - (list.completed_items ?? 0))
   const hasActiveScript = !!list.script_id
-  const canShareMobile = hasActiveScript && remainingItems > 0 && outcomeDefinitionCount > 0
+  const canShareMobile = hasActiveScript && remainingItems > 0
   const shareDisabledReason = !hasActiveScript
     ? 'Link an active script before sharing'
     : remainingItems === 0
       ? 'There are no remaining contacts to call'
-      : outcomeDefinitionCount === 0
-        ? 'Add at least one call outcome before sharing'
       : null
 
   return (

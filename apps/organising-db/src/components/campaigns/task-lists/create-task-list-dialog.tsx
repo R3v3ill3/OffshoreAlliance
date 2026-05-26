@@ -83,7 +83,10 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  CheckCircle2,
+  ExternalLink,
   Info,
+  Link2,
   Plus,
   Users,
   ListChecks,
@@ -94,6 +97,9 @@ import {
   UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
+import { IssueLinkDialog, type IssueLinkResult } from "@/components/share/issue-link-dialog";
+import { IssuedLinkResultDialog } from "@/components/share/issued-link-result-dialog";
 
 const NONE = "__none__";
 
@@ -262,6 +268,17 @@ export function CreateTaskListDialog({
   const supabase = createClient();
   const queryClient = useQueryClient();
   const { user, isAdmin } = useAuth();
+  const router = useRouter();
+
+  // Set after a successful save — shows the success/link-generation step.
+  const [savedResult, setSavedResult] = useState<{
+    task_list_id: number;
+    leader_worker_id: number | null;
+    status: string;
+    title: string;
+  } | null>(null);
+  const [issueLinkOpen, setIssueLinkOpen] = useState(false);
+  const [issueResult, setIssueResult] = useState<IssueLinkResult | null>(null);
 
   const initialState = useMemo<FormState>(() => {
     if (draft) {
@@ -310,6 +327,9 @@ export function CreateTaskListDialog({
       setCurrentStep(leaderWorkerLock || draft ? "leader" : "anchor");
       setOrganiserFieldKey((k) => k + 1);
       preloadedWorkerIdsRef.current = draft?.worker_ids ?? [];
+      setSavedResult(null);
+      setIssueLinkOpen(false);
+      setIssueResult(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, draft?.task_list_id]);
@@ -542,16 +562,13 @@ export function CreateTaskListDialog({
           queryKey: ["campaign-task-lists", campaignId, "for-leader", leader_worker_id],
         });
       }
-      toast.success(
-        status === "active"
-          ? draft
-            ? "Task list activated"
-            : "Task list created"
-          : draft
-          ? "Draft saved"
-          : "Draft created"
-      );
-      onOpenChange(false);
+      // Stay open on the success step instead of closing immediately.
+      setSavedResult({
+        task_list_id,
+        leader_worker_id,
+        status,
+        title: state.title || (draft?.title ?? "Untitled task list"),
+      });
       onCreated?.(task_list_id, leader_worker_id);
     },
     onError: (err) => {
@@ -596,165 +613,235 @@ export function CreateTaskListDialog({
   /* Render                                                             */
   /* ------------------------------------------------------------------ */
 
+  const handleDone = () => {
+    onOpenChange(false);
+  };
+
+  const handleViewTask = () => {
+    router.push(`/campaigns/${campaignId}?tab=tasks`);
+    onOpenChange(false);
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              {draft
-                ? `Complete setup: ${draft.title || "Untitled draft"}`
-                : leaderWorkerLock
-                ? `New task list for ${leaderWorkerLock.workerName}`
-                : "New task list"}
-            </DialogTitle>
-            <DialogDescription>
-              Configure the leader, activity, workers, and activation options for this
-              campaign task list.
-            </DialogDescription>
-          </DialogHeader>
 
-          {/* Stepper indicator */}
-          <ol className="flex items-center gap-1 border-b pb-3 mb-2">
-            {visibleSteps.map((step, idx) => {
-              const isActive = step.id === currentStep;
-              const isComplete = stepCompleteness[step.id];
-              const Icon = step.icon;
-              return (
-                <li key={step.id} className="flex items-center">
-                  <button
+          {/* ── Success step ─────────────────────────────────────────── */}
+          {savedResult ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                  {savedResult.status === "active" ? "Task list activated" : "Draft saved"}
+                </DialogTitle>
+                <DialogDescription>
+                  &ldquo;{savedResult.title}&rdquo;
+                  {savedResult.status === "active"
+                    ? " is live. Generate a share link to send to the leader."
+                    : " has been saved as a draft. Activate it before generating a share link."}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-3 py-2">
+                {savedResult.status === "active" && (
+                  <div className="rounded-md border bg-muted/30 p-4 space-y-3">
+                    <p className="text-sm font-medium">Share with leader</p>
+                    <p className="text-xs text-muted-foreground">
+                      Generate a password-protected link for the leader's webform. You can
+                      also do this later from the Task Lists tab.
+                    </p>
+                    <Button
+                      type="button"
+                      className="w-full sm:w-auto"
+                      onClick={() => setIssueLinkOpen(true)}
+                    >
+                      <Link2 className="h-4 w-4 mr-2" />
+                      Generate share link
+                    </Button>
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                  <Button
                     type="button"
-                    onClick={() => setCurrentStep(step.id)}
-                    className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
-                      isActive
-                        ? "bg-primary text-primary-foreground"
-                        : isComplete
-                        ? "bg-muted text-foreground hover:bg-accent"
-                        : "text-muted-foreground hover:bg-accent"
-                    }`}
+                    variant="outline"
+                    className="flex-1 sm:flex-none"
+                    onClick={handleViewTask}
                   >
-                    {isComplete && !isActive ? (
-                      <Check size={12} />
-                    ) : (
-                      <Icon size={12} />
-                    )}
-                    <span>{step.label}</span>
-                  </button>
-                  {idx < visibleSteps.length - 1 && (
-                    <span className="px-1 text-muted-foreground">›</span>
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    View task
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="flex-1 sm:flex-none"
+                    onClick={handleDone}
+                  >
+                    Return to wall chart
+                  </Button>
+                </div>
+              </div>
+            </>
+          ) : (
+            /* ── Wizard steps ──────────────────────────────────────────── */
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  {draft
+                    ? `Complete setup: ${draft.title || "Untitled draft"}`
+                    : leaderWorkerLock
+                    ? `New task list for ${leaderWorkerLock.workerName}`
+                    : "New task list"}
+                </DialogTitle>
+                <DialogDescription>
+                  Configure the leader, activity, workers, and activation options for this
+                  campaign task list.
+                </DialogDescription>
+              </DialogHeader>
+
+              {/* Stepper indicator */}
+              <ol className="flex items-center gap-1 border-b pb-3 mb-2">
+                {visibleSteps.map((step, idx) => {
+                  const isActive = step.id === currentStep;
+                  const isComplete = stepCompleteness[step.id];
+                  const Icon = step.icon;
+                  return (
+                    <li key={step.id} className="flex items-center">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentStep(step.id)}
+                        className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
+                          isActive
+                            ? "bg-primary text-primary-foreground"
+                            : isComplete
+                            ? "bg-muted text-foreground hover:bg-accent"
+                            : "text-muted-foreground hover:bg-accent"
+                        }`}
+                      >
+                        {isComplete && !isActive ? (
+                          <Check size={12} />
+                        ) : (
+                          <Icon size={12} />
+                        )}
+                        <span>{step.label}</span>
+                      </button>
+                      {idx < visibleSteps.length - 1 && (
+                        <span className="px-1 text-muted-foreground">›</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+
+              <div className="min-h-[260px]">
+                {currentStep === "anchor" && (
+                  <AnchorStep
+                    value={state.anchor}
+                    onChange={(v) => {
+                      dispatch({ type: "ANCHOR", value: v });
+                      if (v === "leader") setCurrentStep("leader");
+                      else if (v === "activity") setCurrentStep("activity");
+                      else if (v === "workers") setCurrentStep("workers");
+                    }}
+                  />
+                )}
+
+                {currentStep === "leader" && (
+                  <LeaderStep
+                    campaignId={campaignId}
+                    state={state}
+                    dispatch={dispatch}
+                    organiserFieldKey={organiserFieldKey}
+                    leaderWorkerLock={leaderWorkerLock}
+                    followersCount={leaderFollowers.length}
+                  />
+                )}
+
+                {currentStep === "activity" && (
+                  <ActivityStep
+                    activities={activities as {
+                      activity_id: number;
+                      title: string;
+                      is_binary: boolean;
+                      supporter_outcome_value: string | null;
+                      assessment_type: string;
+                    }[]}
+                    state={state}
+                    dispatch={dispatch}
+                    selectedActivity={selectedActivity}
+                    onCreateNew={() => setCreateActivityOpen(true)}
+                    onPatchAssessmentType={(activity_id, assessment_type) =>
+                      patchAssessmentType.mutate({ activity_id, assessment_type })
+                    }
+                    isPatching={patchAssessmentType.isPending}
+                  />
+                )}
+
+                {currentStep === "workers" && (
+                  <WorkersStep
+                    campaignId={campaignId}
+                    leaderWorkerId={leaderWorkerId}
+                    workerIds={state.worker_ids}
+                    preloadedWorkerIds={preloadedWorkerIdsRef.current}
+                    onChange={(ids) => dispatch({ type: "SET_WORKERS", value: ids })}
+                  />
+                )}
+
+                {currentStep === "options" && (
+                  <OptionsStep
+                    state={state}
+                    dispatch={dispatch}
+                    canActivate={canActivate}
+                    hasLeader={hasLeader}
+                    hasActivity={hasActivity}
+                  />
+                )}
+              </div>
+
+              <DialogFooter className="flex items-center justify-between sm:justify-between gap-2 pt-3 border-t">
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={goPrev}
+                    disabled={currentIdx === 0}
+                  >
+                    <ArrowLeft size={14} className="mr-1" /> Back
+                  </Button>
+                  {currentStep !== "options" && (
+                    <Button type="button" variant="outline" onClick={goNext}>
+                      Next <ArrowRight size={14} className="ml-1" />
+                    </Button>
                   )}
-                </li>
-              );
-            })}
-          </ol>
-
-          <div className="min-h-[260px]">
-            {currentStep === "anchor" && (
-              <AnchorStep
-                value={state.anchor}
-                onChange={(v) => {
-                  dispatch({ type: "ANCHOR", value: v });
-                  // Auto-advance to whichever step the user picked first.
-                  if (v === "leader") setCurrentStep("leader");
-                  else if (v === "activity") setCurrentStep("activity");
-                  else if (v === "workers") setCurrentStep("workers");
-                }}
-              />
-            )}
-
-            {currentStep === "leader" && (
-              <LeaderStep
-                campaignId={campaignId}
-                state={state}
-                dispatch={dispatch}
-                organiserFieldKey={organiserFieldKey}
-                leaderWorkerLock={leaderWorkerLock}
-                followersCount={leaderFollowers.length}
-              />
-            )}
-
-            {currentStep === "activity" && (
-              <ActivityStep
-                activities={activities as {
-                  activity_id: number;
-                  title: string;
-                  is_binary: boolean;
-                  supporter_outcome_value: string | null;
-                  assessment_type: string;
-                }[]}
-                state={state}
-                dispatch={dispatch}
-                selectedActivity={selectedActivity}
-                onCreateNew={() => setCreateActivityOpen(true)}
-                onPatchAssessmentType={(activity_id, assessment_type) =>
-                  patchAssessmentType.mutate({ activity_id, assessment_type })
-                }
-                isPatching={patchAssessmentType.isPending}
-              />
-            )}
-
-            {currentStep === "workers" && (
-              <WorkersStep
-                campaignId={campaignId}
-                leaderWorkerId={leaderWorkerId}
-                workerIds={state.worker_ids}
-                preloadedWorkerIds={preloadedWorkerIdsRef.current}
-                onChange={(ids) => dispatch({ type: "SET_WORKERS", value: ids })}
-              />
-            )}
-
-            {currentStep === "options" && (
-              <OptionsStep
-                state={state}
-                dispatch={dispatch}
-                canActivate={canActivate}
-                hasLeader={hasLeader}
-                hasActivity={hasActivity}
-              />
-            )}
-          </div>
-
-          <DialogFooter className="flex items-center justify-between sm:justify-between gap-2 pt-3 border-t">
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={goPrev}
-                disabled={currentIdx === 0}
-              >
-                <ArrowLeft size={14} className="mr-1" /> Back
-              </Button>
-              {currentStep !== "options" && (
-                <Button type="button" variant="outline" onClick={goNext}>
-                  Next <ArrowRight size={14} className="ml-1" />
-                </Button>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={() => saveTaskList.mutate()}
-                disabled={saveTaskList.isPending}
-              >
-                {saveTaskList.isPending
-                  ? "Saving…"
-                  : state.activate_now
-                  ? draft
-                    ? "Activate"
-                    : "Create & activate"
-                  : draft
-                  ? "Save draft"
-                  : "Save as draft"}
-              </Button>
-            </div>
-          </DialogFooter>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => onOpenChange(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => saveTaskList.mutate()}
+                    disabled={saveTaskList.isPending}
+                  >
+                    {saveTaskList.isPending
+                      ? "Saving…"
+                      : state.activate_now
+                      ? draft
+                        ? "Activate"
+                        : "Create & activate"
+                      : draft
+                      ? "Save draft"
+                      : "Save as draft"}
+                  </Button>
+                </div>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -768,6 +855,33 @@ export function CreateTaskListDialog({
           setCreateActivityOpen(false);
         }}
       />
+
+      {savedResult && (
+        <>
+          <IssueLinkDialog
+            title="Generate share link"
+            target={
+              issueLinkOpen
+                ? {
+                    title: savedResult.title,
+                    contextLabel: "For task list",
+                    endpoint: `/api/campaigns/${campaignId}/task-lists/${savedResult.task_list_id}/token`,
+                  }
+                : null
+            }
+            onClose={() => setIssueLinkOpen(false)}
+            onIssued={(result) => {
+              setIssueLinkOpen(false);
+              setIssueResult(result);
+            }}
+          />
+          <IssuedLinkResultDialog
+            title="Share link ready"
+            result={issueResult}
+            onClose={() => setIssueResult(null)}
+          />
+        </>
+      )}
     </>
   );
 }

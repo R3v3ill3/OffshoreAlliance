@@ -11,6 +11,8 @@ export interface OutlookConnectionState {
   email?: string | null
   display_name?: string | null
   scopes?: string
+  /** True when the granted scopes include Mail.Send (direct-send capability). */
+  has_send_scope?: boolean
   connected_at?: string
   last_used_at?: string | null
   last_error?: string | null
@@ -34,6 +36,7 @@ export function useOutlookConnection() {
         email: json.email,
         display_name: json.display_name,
         scopes: json.scopes,
+        has_send_scope: !!json.has_send_scope,
         connected_at: json.connected_at,
         last_used_at: json.last_used_at,
         last_error: json.last_error,
@@ -45,6 +48,17 @@ export function useOutlookConnection() {
   const connect = useCallback((returnTo?: string) => {
     const here = returnTo ?? window.location.pathname + window.location.search
     const url = `/api/oauth/microsoft/start?returnTo=${encodeURIComponent(here)}`
+    window.location.assign(url)
+  }, [])
+
+  /**
+   * Re-trigger the OAuth consent flow with `prompt=consent`. Used when
+   * scopes have been added on the server (e.g. Mail.Send) and the user
+   * needs to re-grant permission to unlock new capabilities.
+   */
+  const reconsent = useCallback((returnTo?: string) => {
+    const here = returnTo ?? window.location.pathname + window.location.search
+    const url = `/api/oauth/microsoft/start?reconsent=1&returnTo=${encodeURIComponent(here)}`
     window.location.assign(url)
   }, [])
 
@@ -67,6 +81,7 @@ export function useOutlookConnection() {
     error: query.error,
     refresh: () => queryClient.invalidateQueries({ queryKey: QUERY_KEY }),
     connect,
+    reconsent,
     disconnect,
   }
 }

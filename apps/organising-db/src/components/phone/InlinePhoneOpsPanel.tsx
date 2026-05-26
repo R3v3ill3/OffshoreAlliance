@@ -20,7 +20,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
-  Phone, Plus, Play, FileText, Users, Loader2, Edit, ExternalLink, Trash2, Activity,
+  Phone, Plus, Play, FileText, Users, Loader2, Edit, ExternalLink, Trash2, Activity, Share2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { CallListWithStats } from '@/types/planner-types'
@@ -32,6 +32,8 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion'
+import { IssueLinkDialog, type IssueLinkResult } from '@/components/share/issue-link-dialog'
+import { IssuedLinkResultDialog } from '@/components/share/issued-link-result-dialog'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-700',
@@ -54,6 +56,8 @@ export function InlinePhoneOpsPanel({ campaignId }: InlinePhoneOpsPanelProps) {
   const deleteList = useDeleteCallList(id)
   const [listPendingDelete, setListPendingDelete] = useState<CallListWithStats | null>(null)
   const [openAccordion, setOpenAccordion] = useState<string>()
+  const [shareTarget, setShareTarget] = useState<CallListWithStats | null>(null)
+  const [shareIssueResult, setShareIssueResult] = useState<IssueLinkResult | null>(null)
 
   return (
     <div className="space-y-6">
@@ -170,6 +174,7 @@ export function InlinePhoneOpsPanel({ campaignId }: InlinePhoneOpsPanelProps) {
                 campaignId={id}
                 router={router}
                 onRequestDelete={setListPendingDelete}
+                onRequestShare={setShareTarget}
               />
             ))}
           </div>
@@ -247,6 +252,31 @@ export function InlinePhoneOpsPanel({ campaignId }: InlinePhoneOpsPanelProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <IssueLinkDialog
+        title="Share for mobile calling"
+        target={
+          shareTarget
+            ? {
+                title: shareTarget.name,
+                contextLabel: 'For call list',
+                endpoint: `/api/campaigns/${id}/call-lists/${shareTarget.list_id}/share-token`,
+              }
+            : null
+        }
+        passwordHelp="You can share this one link with multiple callers — each person picks their name on sign-in and the system stops anyone from calling the same contact twice."
+        onClose={() => setShareTarget(null)}
+        onIssued={(result) => {
+          setShareTarget(null)
+          setShareIssueResult(result)
+        }}
+      />
+
+      <IssuedLinkResultDialog
+        title="Mobile-call link ready"
+        result={shareIssueResult}
+        onClose={() => setShareIssueResult(null)}
+      />
     </div>
   )
 }
@@ -256,11 +286,13 @@ function ListCard({
   campaignId,
   router,
   onRequestDelete,
+  onRequestShare,
 }: {
   list: CallListWithStats
   campaignId: string
   router: ReturnType<typeof useRouter>
   onRequestDelete: (list: CallListWithStats) => void
+  onRequestShare: (list: CallListWithStats) => void
 }) {
   const totalItems = list.total_items || 0
   const completedItems = list.completed_items || 0
@@ -294,6 +326,17 @@ function ListCard({
               >
                 <Phone className="h-3 w-3 mr-1" />
                 Call
+              </Button>
+            )}
+            {(list.status === 'active' || list.status === 'draft') &&
+              (list.total_items ?? 0) - (list.completed_items ?? 0) > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                title="Share for mobile calling"
+                onClick={() => onRequestShare(list)}
+              >
+                <Share2 className="h-3 w-3" />
               </Button>
             )}
             <Button

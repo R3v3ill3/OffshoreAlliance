@@ -189,8 +189,17 @@ export function EmailComposer() {
     tag_name: string
     contacts_tagged: number
     contacts_created: number
+    verified_tag_count?: number | null
+    verification_warning?: string | null
   } | null>(null)
+  const [pushResults, setPushResults] = useState<Array<{
+    worker_id: number
+    name: string
+    status: string
+    detail?: string
+  }> | null>(null)
   const [externalMessageId, setExternalMessageId] = useState<string | null>(null)
+  const [administrativeUrl, setAdministrativeUrl] = useState<string | null>(null)
   const [editSetupOpen, setEditSetupOpen] = useState(false)
   const [transformBusy, setTransformBusy] = useState(false)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>(
@@ -742,17 +751,35 @@ export function EmailComposer() {
       })
       const data = await res.json()
       if (!res.ok || !data.success) throw new Error(data.error || 'Push failed')
+      const pushed = (data.contacts_tagged ?? 0) + (data.contacts_created ?? 0)
       setPreparedTag({
         tag_id: data.tag_id,
         tag_href: data.tag_href,
         tag_name: data.tag_name,
         contacts_tagged: data.contacts_tagged,
         contacts_created: data.contacts_created,
+        verified_tag_count: data.verified_tag_count ?? null,
+        verification_warning: data.verification_warning ?? null,
       })
-      toast.success(
-        `${data.contacts_tagged + data.contacts_created} contacts pushed to AN`,
-      )
-      announce('List pushed to Action Network.')
+      if (Array.isArray(data.worker_results)) {
+        setPushResults(data.worker_results)
+      }
+      // Drive toast tone from AN's read-back so we don't paper over silent
+      // failures (the legacy unconditional success toast hid 0-of-N pushes).
+      if (data.verification_warning) {
+        toast.warning(data.verification_warning)
+        announce('Push to Action Network completed with verification warning.')
+      } else if (typeof data.verified_tag_count === 'number') {
+        toast.success(
+          `${data.verified_tag_count} ${
+            data.verified_tag_count === 1 ? 'contact' : 'contacts'
+          } verified on AN tag "${data.tag_name}"`,
+        )
+        announce('List pushed and verified on Action Network.')
+      } else {
+        toast.success(`${pushed} contacts pushed to AN`)
+        announce('List pushed to Action Network.')
+      }
 
       if (draft?.email_list_id) {
         const totalSent =
@@ -806,7 +833,15 @@ export function EmailComposer() {
       const resolvedBody = translateToActionNetwork(
         resolveTemplateVariables(bodyHtml || bodyText, varContext),
       )
+      // Per https://actionnetwork.org/docs/v2/messages, `targets` expects
+      // saved-query hrefs — not tag hrefs. Sending a tag href was silently
+      // ignored. Surface the tag in the admin title so the organiser knows
+      // which include filter to set in AN before sending.
+      const adminTitle = preparedTag?.tag_name
+        ? `${resolvedSubject || 'Untitled'} — push tag ${preparedTag.tag_name}`
+        : resolvedSubject || 'Untitled'
       const messagePayload: Record<string, unknown> = {
+        name: adminTitle,
         subject: resolvedSubject,
         body: resolvedBody,
         from: 'Offshore Alliance',
@@ -816,9 +851,6 @@ export function EmailComposer() {
         messagePayload.preheader = translateToActionNetwork(
           resolveTemplateVariables(preheader, varContext),
         )
-      }
-      if (preparedTag?.tag_href) {
-        messagePayload.targets = [{ href: preparedTag.tag_href }]
       }
       const createRes = await fetchApi('/api/action-network', {
         method: 'POST',
@@ -833,16 +865,25 @@ export function EmailComposer() {
       if (!createData.success) throw new Error(createData.error)
       const messageHref = createData.data?._links?.self?.href ?? ''
       const messageId = messageHref.split('/').pop() || ''
+      const adminUrl = (createData.data?.administrative_url as string | undefined) ?? null
       await supabase
         .from('campaign_comms_drafts')
         .update({
           status: 'sent',
           sent_via: 'action_network',
           external_message_id: messageId,
+          send_stats: adminUrl
+            ? { administrative_url: adminUrl, an_tag_name: preparedTag?.tag_name ?? null }
+            : { an_tag_name: preparedTag?.tag_name ?? null },
         })
         .eq('draft_id', draftId)
       setExternalMessageId(messageId)
-      toast.success('Email pushed to Action Network')
+      setAdministrativeUrl(adminUrl)
+      toast.success(
+        preparedTag?.tag_name
+          ? `Draft created in AN. Open AN and target tag "${preparedTag.tag_name}" before sending.`
+          : 'Draft created in Action Network — open AN to set targeting before sending.',
+      )
       announce('Action Network message created.')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Push failed')
@@ -1207,6 +1248,31 @@ export function EmailComposer() {
         />
       </section>
 
+      {/* Push result errors — only when at least one worker failed/skipped.
+          The verification badge in SendActions covers the success path. */}
+      {pushResults && pushResults.some((r) => r.status === 'error' || r.status === 'skipped') && (
+        <section className="px-4 py-2 bg-amber-50 border-t border-amber-200 flex-shrink-0 text-xs text-amber-900">
+          <p className="font-medium">
+            {pushResults.filter((r) => r.status === 'error' || r.status === 'skipped').length} of{' '}
+            {pushResults.length} workers were not tagged in Action Network
+          </p>
+          <details className="mt-1">
+            <summary className="cursor-pointer underline opacity-80 hover:opacity-100">
+              Show details
+            </summary>
+            <ul className="mt-1 list-disc pl-5 max-h-32 overflow-auto">
+              {pushResults
+                .filter((r) => r.status === 'error' || r.status === 'skipped')
+                .map((r) => (
+                  <li key={r.worker_id}>
+                    <strong>{r.name}</strong> — {r.status}: {r.detail ?? '—'}
+                  </li>
+                ))}
+            </ul>
+          </details>
+        </section>
+      )}
+
       {/* Footer send actions */}
       <SendActions
         userEmail={user?.email ?? undefined}
@@ -1219,6 +1285,7 @@ export function EmailComposer() {
         hasBody={hasBody}
         preparedTag={preparedTag}
         externalMessageId={externalMessageId}
+        administrativeUrl={administrativeUrl}
         isPushingList={isPushingList}
         isPushingToAN={isPushingToAN}
         onPushList={handlePushList}

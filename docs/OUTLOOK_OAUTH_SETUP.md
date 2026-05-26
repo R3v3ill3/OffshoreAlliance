@@ -40,9 +40,10 @@ You're now on the app's overview page. Copy the **Application (client) ID** — 
    - `profile`
    - `User.Read` — so we can display the connected mailbox in the UI.
    - `Mail.ReadWrite` — required to create drafts in the user's Drafts folder.
+   - `Mail.Send` — required for the "Send now from my mailbox" direct-send path (one-click bulk send that bypasses the Drafts review step). The drafts-only path continues to work without this scope; users who decline it just won't see the "Send now" menu items.
 3. Click **Add permissions**.
 
-**Note**: we intentionally do **not** request `Mail.Send`. The app only ever creates drafts; the user does the actual send from Outlook. This gives them final control and keeps the consent scope narrow.
+**Note on existing connections**: organisers who connected before `Mail.Send` was added have a partial scope set and need to **reconnect** to grant the new permission. The composer surfaces a "Reconnect to enable direct send" affordance both inline (in the Outlook dropdown when scope is missing) and on the connection card. Clicking it routes them through `?reconsent=1` which forces Microsoft to re-show the consent screen.
 
 4. Some tenants require **admin consent** for these scopes. If yours does and you're the admin, click **Grant admin consent for [tenant]** to pre-approve for everyone in the tenant. Otherwise each user will see the consent prompt the first time they connect, which is fine.
 

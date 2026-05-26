@@ -203,6 +203,7 @@ export function EmailWizardSteps() {
   const [selectedWorkerIds, setSelectedWorkerIds] = useState<Set<number>>(new Set())
   const [workersInitialized, setWorkersInitialized] = useState(false)
   const [pushResults, setPushResults] = useState<Array<{ worker_id: number; name: string; status: string; detail?: string }> | null>(null)
+  const [administrativeUrl, setAdministrativeUrl] = useState<string | null>(null)
   const [additionalWorkers, setAdditionalWorkers] = useState<WorkerPreview[]>([])
   const [workerSources, setWorkerSources] = useState<Record<number, string>>({})
   const [addSearch, setAddSearch] = useState('')
@@ -1009,6 +1010,7 @@ export function EmailWizardSteps() {
       })
       const data = await res.json()
       if (!res.ok || !data.success) throw new Error(data.error || 'Push failed')
+      const pushed = (data.contacts_tagged ?? 0) + (data.contacts_created ?? 0)
       setState((prev) => ({
         ...prev,
         preparedTag: {
@@ -1017,12 +1019,26 @@ export function EmailWizardSteps() {
           tag_name: data.tag_name,
           contacts_tagged: data.contacts_tagged,
           contacts_created: data.contacts_created,
+          verified_tag_count: data.verified_tag_count ?? null,
+          verification_warning: data.verification_warning ?? null,
         },
       }))
       if (data.worker_results) {
         setPushResults(data.worker_results)
       }
-      toast.success(`${data.contacts_tagged + data.contacts_created} contacts pushed to AN`)
+      // Use AN's read-back to drive the toast tone — the legacy toast hid
+      // silent failures (e.g. 0 of 4 tagged) by always reporting success.
+      if (data.verification_warning) {
+        toast.warning(data.verification_warning)
+      } else if (typeof data.verified_tag_count === 'number') {
+        toast.success(
+          `${data.verified_tag_count} ${
+            data.verified_tag_count === 1 ? 'contact' : 'contacts'
+          } verified on AN tag "${data.tag_name}"`,
+        )
+      } else {
+        toast.success(`${pushed} contacts pushed to AN`)
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Push failed')
     } finally {
@@ -1038,14 +1054,19 @@ export function EmailWizardSteps() {
       const resolvedSubject = translateToActionNetwork(resolveTemplateVariables(state.subject, ctx))
       const resolvedBody = translateToActionNetwork(resolveTemplateVariables(state.bodyHtml || state.bodyText, ctx))
 
+      // AN's `targets` array expects saved-query hrefs, not tag hrefs (per
+      // https://actionnetwork.org/docs/v2/messages). Sending a tag href was
+      // silently ignored. Surface the tag in the admin title so the
+      // organiser knows which include filter to set in AN before sending.
+      const adminTitle = state.preparedTag?.tag_name
+        ? `${resolvedSubject || 'Untitled'} — push tag ${state.preparedTag.tag_name}`
+        : resolvedSubject || 'Untitled'
       const messagePayload: Record<string, unknown> = {
+        name: adminTitle,
         subject: resolvedSubject,
         body: resolvedBody,
         from: 'Offshore Alliance',
         reply_to: 'info@offshorealliance.org.au',
-      }
-      if (state.preparedTag?.tag_href) {
-        messagePayload.targets = [{ href: state.preparedTag.tag_href }]
       }
 
       const createRes = await fetchApi('/api/action-network', {
@@ -1059,6 +1080,7 @@ export function EmailWizardSteps() {
 
       const messageHref = createData.data?._links?.self?.href ?? ''
       const messageId = messageHref.split('/').pop() || ''
+      const adminUrl = (createData.data?.administrative_url as string | undefined) ?? null
 
       if (state.draftId) {
         await supabase
@@ -1067,12 +1089,20 @@ export function EmailWizardSteps() {
             status: 'sent',
             sent_via: 'action_network',
             external_message_id: messageId,
+            send_stats: adminUrl
+              ? { administrative_url: adminUrl, an_tag_name: state.preparedTag?.tag_name ?? null }
+              : { an_tag_name: state.preparedTag?.tag_name ?? null },
           })
           .eq('draft_id', state.draftId)
       }
 
       setState((prev) => ({ ...prev, externalMessageId: messageId }))
-      toast.success('Email pushed to Action Network')
+      setAdministrativeUrl(adminUrl)
+      toast.success(
+        state.preparedTag?.tag_name
+          ? `Draft created in Action Network. Open AN and target tag "${state.preparedTag.tag_name}" before sending.`
+          : 'Draft created in Action Network — open AN to set targeting before sending.',
+      )
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Push failed')
     } finally {
@@ -1930,18 +1960,54 @@ export function EmailWizardSteps() {
             {/* Tag ready + send */}
             {state.preparedTag && (
               <div className="space-y-3">
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 border border-green-200">
-                  <CheckCircle className="h-5 w-5 text-green-600 shrink-0" />
-                  <div className="text-sm">
-                    <p className="font-medium text-green-800">
-                      {state.preparedTag.contacts_tagged + state.preparedTag.contacts_created} contacts ready
-                    </p>
-                    <p className="text-green-700 text-xs">
-                      Tag: {state.preparedTag.tag_name}
-                      {state.preparedTag.contacts_created > 0 && ` (${state.preparedTag.contacts_created} new)`}
-                    </p>
-                  </div>
-                </div>
+                {(() => {
+                  const pt = state.preparedTag!
+                  const pushed = pt.contacts_tagged + pt.contacts_created
+                  const hasWarning = !!pt.verification_warning
+                  const verifiedKnown = typeof pt.verified_tag_count === 'number'
+                  return (
+                    <div
+                      className={cn(
+                        'p-3 rounded-lg border space-y-1.5 text-sm',
+                        hasWarning
+                          ? 'bg-amber-50 border-amber-200 text-amber-900'
+                          : 'bg-green-50 border-green-200 text-green-800',
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        {hasWarning ? (
+                          <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
+                        ) : (
+                          <CheckCircle className="h-5 w-5 text-green-600 shrink-0" />
+                        )}
+                        <p className="font-medium">
+                          {hasWarning
+                            ? `${pushed} pushed — verification warning`
+                            : `${pushed} ${pushed === 1 ? 'contact' : 'contacts'} ready`}
+                        </p>
+                      </div>
+                      <p className="text-xs">
+                        Tag: <code className="bg-white/60 px-1 rounded">{pt.tag_name}</code>
+                        {pt.contacts_created > 0 && ` (${pt.contacts_created} new in AN)`}
+                      </p>
+                      {verifiedKnown && (
+                        <p className="text-xs">
+                          Action Network reports <strong>{pt.verified_tag_count}</strong>{' '}
+                          {pt.verified_tag_count === 1 ? 'person' : 'people'} on this tag.
+                        </p>
+                      )}
+                      {hasWarning && <p className="text-xs">{pt.verification_warning}</p>}
+                      <p className="text-xs">
+                        AN&apos;s API cannot set tag-based message targeting. Open the
+                        draft in Action Network and add the include filter{' '}
+                        <code className="bg-white/60 px-1 rounded">
+                          tag is &quot;{pt.tag_name}&quot;
+                        </code>{' '}
+                        before sending.
+                      </p>
+                    </div>
+                  )
+                })()}
 
                 {!state.externalMessageId && (
                   <Button onClick={handlePushToAN} disabled={isPushingToAN || !state.bodyText.trim()}>
@@ -1954,14 +2020,25 @@ export function EmailWizardSteps() {
                   <div className="p-4 rounded-lg bg-blue-50 border border-blue-200 space-y-2">
                     <div className="flex items-center gap-2">
                       <CheckCircle className="h-5 w-5 text-blue-600" />
-                      <span className="font-medium text-blue-800">Email ready in Action Network</span>
+                      <span className="font-medium text-blue-800">Draft created in Action Network</span>
                     </div>
                     <p className="text-sm text-blue-700">
-                      The email has been created in Action Network targeting {state.preparedTag.contacts_tagged + state.preparedTag.contacts_created} contacts.
+                      Open the draft in AN, set targeting to include tag{' '}
+                      <code className="bg-white px-1 rounded">{state.preparedTag.tag_name}</code>,
+                      then save and send.
                     </p>
-                    <Button variant="outline" onClick={() => router.push('/campaigns')}>
-                      Done — Back to Campaigns
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      {administrativeUrl && (
+                        <Button asChild size="sm">
+                          <a href={administrativeUrl} target="_blank" rel="noreferrer noopener">
+                            Open draft in Action Network
+                          </a>
+                        </Button>
+                      )}
+                      <Button variant="outline" size="sm" onClick={() => router.push('/campaigns')}>
+                        Back to Campaigns
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>

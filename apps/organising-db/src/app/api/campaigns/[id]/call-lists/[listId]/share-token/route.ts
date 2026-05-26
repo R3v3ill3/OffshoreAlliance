@@ -72,23 +72,6 @@ export async function POST(
       return NextResponse.json({ error: "Call list has no pending contacts" }, { status: 400 });
     }
 
-    const { data: scriptRow, error: scriptErr } = await serverClient
-      .from("call_scripts")
-      .select("base_script_id")
-      .eq("script_id", list.script_id)
-      .maybeSingle();
-    if (scriptErr) throw scriptErr;
-    const outcomesScriptId = scriptRow?.base_script_id ?? list.script_id;
-
-    const { count: outcomeCount, error: outcomeErr } = await serverClient
-      .from("call_outcome_definitions")
-      .select("outcome_id", { count: "exact", head: true })
-      .eq("script_id", outcomesScriptId);
-    if (outcomeErr) throw outcomeErr;
-    if ((outcomeCount ?? 0) < 1) {
-      return NextResponse.json({ error: "Call script needs at least one outcome definition" }, { status: 400 });
-    }
-
     if (leaderWorkerId != null) {
       const { data: membership, error: membershipErr } = await serverClient
         .from("campaign_worker_membership")

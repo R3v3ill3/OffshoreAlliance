@@ -113,38 +113,67 @@ export async function POST(req: NextRequest) {
           continue
         }
 
-        let anId = w.action_network_id
+        const anPerson = syncWorkerToActionNetwork({
+          first_name: w.first_name,
+          last_name: w.last_name,
+          email: w.email,
+          phone: w.phone,
+          employer_name: w.employer_name ?? undefined,
+          worksite_name: w.worksite_name ?? undefined,
+          occupation: w.occupation,
+        })
 
+        // Atomic upsert + tag in a single AN call (Person Signup Helper).
+        // Tags matched by name against the tag we created above.
+        const signupResult = await anClient.signupPerson(anPerson, {
+          add_tags: [finalTagName],
+        })
+
+        const personHref =
+          (signupResult as Record<string, Record<string, { href: string }>>)?._links?.self?.href ?? ''
+        let anId = personHref.split('/').pop() || ''
+
+        // Defensive fallback: look up by email if the helper response shape
+        // is unexpected (e.g. background-processed responses).
         if (!anId) {
-          const anPerson = syncWorkerToActionNetwork({
-            first_name: w.first_name,
-            last_name: w.last_name,
-            email: w.email,
-            phone: w.phone,
-            employer_name: w.employer_name ?? undefined,
-            worksite_name: w.worksite_name ?? undefined,
-            occupation: w.occupation,
-          })
-          const createResult = await anClient.createPerson(anPerson)
-          const personHref = (createResult as Record<string, Record<string, { href: string }>>)?._links?.self?.href ?? ''
-          anId = personHref.split('/').pop() || ''
-
-          if (anId) {
-            await supabase.from('workers').update({ action_network_id: anId }).eq('worker_id', w.worker_id)
-            contactsCreated++
-            workerResults.push({ worker_id: w.worker_id, name: fullName, status: 'created', detail: `AN ID: ${anId}` })
-          } else {
-            contactsSkipped++
-            workerResults.push({ worker_id: w.worker_id, name: fullName, status: 'skipped', detail: 'No AN ID returned from createPerson' })
-            continue
+          try {
+            const found = await anClient.findPersonByEmail(w.email)
+            const fallbackHref =
+              (found as Record<string, Record<string, { href: string }>> | null)?._links?.self?.href ?? ''
+            anId = fallbackHref.split('/').pop() || ''
+          } catch {
+            // Fall through to the no-id branch below.
           }
         }
 
-        await anClient.addTaggingByPersonId(tagId, anId)
-        contactsTagged++
-        if (!workerResults.find((r) => r.worker_id === w.worker_id)) {
-          workerResults.push({ worker_id: w.worker_id, name: fullName, status: 'tagged', detail: `AN ID: ${anId}` })
+        if (!anId) {
+          contactsSkipped++
+          workerResults.push({
+            worker_id: w.worker_id,
+            name: fullName,
+            status: 'skipped',
+            detail: 'No AN ID returned from signup helper or email lookup',
+          })
+          continue
         }
+
+        const wasNew = !w.action_network_id
+        if (wasNew) {
+          await supabase
+            .from('workers')
+            .update({ action_network_id: anId })
+            .eq('worker_id', w.worker_id)
+          contactsCreated++
+        } else {
+          contactsTagged++
+        }
+
+        workerResults.push({
+          worker_id: w.worker_id,
+          name: fullName,
+          status: wasNew ? 'created' : 'tagged',
+          detail: `AN ID: ${anId}`,
+        })
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Unknown error'
         contactsSkipped++
@@ -159,6 +188,25 @@ export async function POST(req: NextRequest) {
         JSON.stringify(workerErrors.slice(0, 5)))
     }
 
+    // Post-push verification — single GET against AN to confirm what
+    // actually landed on the tag, vs. what we believe we pushed.
+    const pushedCount = contactsTagged + contactsCreated
+    let verifiedTagCount: number | null = null
+    let verificationWarning: string | null = null
+    try {
+      verifiedTagCount = await anClient.getTaggingCount(tagId)
+      if (verifiedTagCount < pushedCount) {
+        verificationWarning =
+          `Action Network reports ${verifiedTagCount} people on tag "${finalTagName}", ` +
+          `but we expected ${pushedCount}. Some recipients may not have been tagged — ` +
+          `check the per-worker results below or retry the push.`
+      }
+    } catch (err) {
+      verificationWarning = `Could not verify tag membership in Action Network: ${
+        err instanceof Error ? err.message : 'Unknown error'
+      }`
+    }
+
     return NextResponse.json({
       success: true,
       tag_id: tagId,
@@ -167,6 +215,8 @@ export async function POST(req: NextRequest) {
       contacts_tagged: contactsTagged,
       contacts_created: contactsCreated,
       contacts_skipped: contactsSkipped,
+      verified_tag_count: verifiedTagCount,
+      verification_warning: verificationWarning,
       total_workers: workers.length,
       errors: workerErrors.length > 0 ? workerErrors : undefined,
       worker_results: workerResults,

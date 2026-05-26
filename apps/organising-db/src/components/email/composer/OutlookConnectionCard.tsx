@@ -25,7 +25,8 @@ interface Props {
 }
 
 export function OutlookConnectionCard({ variant = 'card', returnTo }: Props) {
-  const { connection, isLoading, connect, disconnect } = useOutlookConnection()
+  const { connection, isLoading, connect, reconsent, disconnect } =
+    useOutlookConnection()
 
   if (isLoading) {
     return (
@@ -140,6 +141,27 @@ export function OutlookConnectionCard({ variant = 'card', returnTo }: Props) {
                 </p>
               )}
             </div>
+            {!connection?.has_send_scope && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 space-y-2">
+                <p className="text-xs font-medium text-amber-800 flex items-start gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                  <span>
+                    Direct send unavailable — your Outlook connection
+                    doesn&apos;t include the &ldquo;Send mail as you&rdquo;
+                    permission. Drafts continue to work as normal.
+                  </span>
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-amber-400 text-amber-900 hover:bg-amber-100"
+                  onClick={() => reconsent(returnTo)}
+                >
+                  Reconnect to enable direct send
+                </Button>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <Button
                 type="button"

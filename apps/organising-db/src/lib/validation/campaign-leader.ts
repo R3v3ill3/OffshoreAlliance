@@ -82,6 +82,7 @@ export const leaderSubmitBodySchema = z.object({
   worker_edits: z.array(leaderWorkerEditSchema).default([]),
   membership_changes: z.array(leaderMembershipChangeSchema).default([]),
   existing_added: z.array(z.number().int().positive()).default([]),
+  removed_worker_ids: z.array(z.number().int().positive()).default([]),
 });
 
 export type LeaderWorkerEdit = z.infer<typeof leaderWorkerEditSchema>;

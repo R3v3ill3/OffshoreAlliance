@@ -38,6 +38,8 @@ import {
 } from '@/components/phone/SessionAssessmentRatingsPanel'
 import { EditCallSetupDialog } from '@/components/phone/orchestrator/EditCallSetupDialog'
 import { CreateTaskListDialog } from '@/components/campaigns/task-lists/create-task-list-dialog'
+import { IssueLinkDialog, type IssueLinkResult } from '@/components/share/issue-link-dialog'
+import { IssuedLinkResultDialog } from '@/components/share/issued-link-result-dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
@@ -61,7 +63,7 @@ import {
 } from '@/components/ui/dialog'
 import {
   Phone, ArrowLeft, SkipForward, Clock, LogOut, PhoneForwarded,
-  Loader2, FileText, CheckCircle, ListPlus, Building2, Map as MapIcon,
+  Loader2, FileText, CheckCircle, ListPlus, Building2, Map as MapIcon, Share2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -132,6 +134,8 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
   const [showReportModal, setShowReportModal] = useState(false)
   const [showTaskListDialog, setShowTaskListDialog] = useState(false)
   const [showEditSetup, setShowEditSetup] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
+  const [shareIssueResult, setShareIssueResult] = useState<IssueLinkResult | null>(null)
   const pendingSubmitArgs = useRef<Partial<RecordCallAttemptRequest> | undefined>(undefined)
 
   const callStartTime = useRef<Date | null>(null)
@@ -644,6 +648,19 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
           </Button>
         )}
 
+        {list && (list.total_items ?? 0) - (list.completed_items ?? 0) > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            title="Create a shareable mobile-calling link for this list"
+            onClick={() => setShareOpen(true)}
+          >
+            <Share2 className="h-3.5 w-3.5 mr-1" />
+            Share for mobile
+          </Button>
+        )}
+
         <Badge variant="secondary">{flowState.phase.replace(/_/g, ' ')}</Badge>
 
         {/* Mobile script panel toggle */}
@@ -1086,6 +1103,31 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
           actionId={actionId}
         />
       )}
+
+      <IssueLinkDialog
+        title="Share for mobile calling"
+        target={
+          shareOpen && list
+            ? {
+                title: list.name,
+                contextLabel: 'For call list',
+                endpoint: `/api/campaigns/${campaignId}/call-lists/${listId}/share-token`,
+              }
+            : null
+        }
+        passwordHelp="You can share this one link with multiple callers — each person picks their name on sign-in and the system stops anyone from calling the same contact twice."
+        onClose={() => setShareOpen(false)}
+        onIssued={(result) => {
+          setShareOpen(false)
+          setShareIssueResult(result)
+        }}
+      />
+
+      <IssuedLinkResultDialog
+        title="Mobile-call link ready"
+        result={shareIssueResult}
+        onClose={() => setShareIssueResult(null)}
+      />
     </div>
   )
 }

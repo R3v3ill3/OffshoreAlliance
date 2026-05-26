@@ -31,8 +31,9 @@ import {
 import { EditorContent, useEditor } from '@tiptap/react'
 import type { Editor, JSONContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import Link from '@tiptap/extension-link'
-import Underline from '@tiptap/extension-underline'
+// NB: TipTap StarterKit v3 already bundles Link + Underline — registering
+// them as standalone extensions here produces "Duplicate extension names"
+// warnings. We pass their options via StarterKit.configure() instead.
 import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
 import {
@@ -288,13 +289,13 @@ export const EmailBodyEditor = forwardRef<EmailBodyEditorRef, EmailBodyEditorPro
         extensions: [
           StarterKit.configure({
             heading: { levels: [2, 3] },
+            // StarterKit v3 ships Link + Underline; pass their options here.
+            link: {
+              openOnClick: false,
+              HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
+            },
             // We supply our own placeholder & character count.
           }),
-          Link.configure({
-            openOnClick: false,
-            HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
-          }),
-          Underline,
           Placeholder.configure({
             placeholder: placeholder ?? 'Write the email body. Type / for AI, {{ for merge fields.',
           }),

@@ -54,7 +54,19 @@ export function buildEml(input: BuildEmlInput): Blob {
 
   msg.setSubject(input.subject || '(no subject)')
 
-  msg.setHeader('Reply-To', input.replyTo ?? OA_REPLY_TO)
+  // Reply-To: only set if the caller explicitly passed one. We deliberately
+  // do NOT default to OA's info@ address — when the user opens this draft
+  // in their own mail client and sends, replies should come back to them,
+  // not to the OA shared inbox. mimetext v3 is strict about Reply-To header
+  // values (must parse as a Mailbox); wrap in try/catch so a malformed
+  // input.replyTo never blocks the whole download.
+  if (input.replyTo) {
+    try {
+      msg.setHeader('Reply-To', formatMailbox(input.replyTo))
+    } catch {
+      // Silently skip — better a draft without Reply-To than no draft at all.
+    }
+  }
   // Critical: X-Unsent: 1 marks the .eml as a draft to open for editing.
   msg.setHeader('X-Unsent', '1')
 
@@ -92,6 +104,21 @@ export function downloadEml(input: BuildEmlInput, filename = 'draft.eml'): void 
     // Slight delay so the click actually fires the download before revoking.
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
+}
+
+/**
+ * Coerce a bare email or "Name <email>" string into mimetext v3's
+ * expected mailbox format. mimetext rejects bare emails on address-type
+ * headers like Reply-To unless they parse as a Mailbox; the safest form
+ * is "Display Name <addr@host>".
+ */
+function formatMailbox(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) throw new Error('empty mailbox')
+  // Already has "Name <addr>" or "<addr>" structure.
+  if (/<[^@\s]+@[^@\s]+>/.test(trimmed)) return trimmed
+  // Bare addr — wrap in angle brackets so mimetext's parser accepts it.
+  return `<${trimmed}>`
 }
 
 function stripHtml(html: string): string {

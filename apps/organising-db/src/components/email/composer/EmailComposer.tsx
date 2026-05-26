@@ -64,7 +64,9 @@ import {
   CheckCircle,
   Cloud,
   CloudOff,
+  FileText,
 } from 'lucide-react'
+import { TemplatePicker } from '@/components/campaigns/planning/TemplatePicker'
 import { SubjectLineField, PreheaderField } from './SubjectLineField'
 import { EmailPreviewPane, type PreviewSampleContact } from './EmailPreviewPane'
 import { RecipientPanel, type RecipientRow } from './RecipientPanel'
@@ -160,6 +162,7 @@ export function EmailComposer() {
   const [editorMode, setEditorMode] = useState<'rich' | 'plain'>('rich')
   const [sourceTemplateId, setSourceTemplateId] = useState<number | null>(null)
   const [briefOpen, setBriefOpen] = useState(false)
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false)
   const [briefSelections, setBriefSelections] = useState<AiBriefSelections>({
     tone: [],
     audience: [],
@@ -1067,13 +1070,27 @@ export function EmailComposer() {
             </Label>
           </div>
           <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setTemplatePickerOpen(true)}
+            className="gap-1.5"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            {hasBody ? 'Swap template' : 'Use template'}
+            {sourceTemplateId && (
+              <Badge variant="secondary" className="ml-1 text-[10px] py-0">
+                #{sourceTemplateId}
+              </Badge>
+            )}
+          </Button>
+          <Button
             variant="default"
             size="sm"
             onClick={() => setBriefOpen(true)}
             className="gap-1.5"
           >
             <Sparkles className="h-3.5 w-3.5" />
-            AI brief
+            {hasBody ? 'AI brief' : 'Create with AI'}
             {draftGenStale && (
               <Badge variant="outline" className="ml-1 text-[10px] py-0">
                 Stale
@@ -1198,6 +1215,25 @@ export function EmailComposer() {
         onUseTemplate={handleUseTemplate}
         onCustomiseTemplate={handleCustomiseTemplate}
         isCustomisingTemplateId={isCustomisingTemplate}
+      />
+
+      {/* Templates picker — surfaced as a peer of the AI brief so neither
+          pathway is hidden behind the other. Reuses the same use-as-is
+          and customise-with-AI handlers. */}
+      <TemplatePicker
+        open={templatePickerOpen}
+        onClose={() => setTemplatePickerOpen(false)}
+        onSelect={(t) => {
+          handleUseTemplate(t)
+          setTemplatePickerOpen(false)
+        }}
+        onSelectAndCustomise={(t) => {
+          handleCustomiseTemplate(t)
+          setTemplatePickerOpen(false)
+        }}
+        platform="email"
+        stageNumber={draft?.stage_number || 1}
+        isCustomising={isCustomisingTemplate}
       />
     </div>
   )

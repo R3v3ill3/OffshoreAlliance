@@ -8,7 +8,7 @@
  * always-available side panel instead of being baked into step 2.
  */
 
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import {
   Sheet,
   SheetContent,
@@ -20,8 +20,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Loader2, Sparkles, FileText } from 'lucide-react'
-import { TemplatePicker } from '@/components/campaigns/planning/TemplatePicker'
+import { Loader2, Sparkles } from 'lucide-react'
 import type { TemplateRow } from '@/lib/hooks/useTemplateLibrary'
 import {
   fetchApi,
@@ -72,13 +71,13 @@ interface Props {
   isPending: boolean
   hasExistingDraft: boolean
   onGenerate: () => void
-  /** Stage number for template scoping. */
-  stageNumber: number
-  /** Called when the user picks a template (immediate use, no AI). */
-  onUseTemplate: (template: TemplateRow) => void
-  /** Called when the user picks a template + asks AI to customise. */
-  onCustomiseTemplate: (template: TemplateRow) => void
-  isCustomisingTemplateId: number | null
+  // Template handling lives on a dedicated peer button on the composer
+  // header — the props below are retained so existing call-sites keep
+  // type-checking even though this panel no longer renders the picker.
+  stageNumber?: number
+  onUseTemplate?: (template: TemplateRow) => void
+  onCustomiseTemplate?: (template: TemplateRow) => void
+  isCustomisingTemplateId?: number | null
 }
 
 export function AiBriefPanel({
@@ -89,13 +88,7 @@ export function AiBriefPanel({
   isPending,
   hasExistingDraft,
   onGenerate,
-  stageNumber,
-  onUseTemplate,
-  onCustomiseTemplate,
-  isCustomisingTemplateId,
 }: Props) {
-  const [showTemplatePicker, setShowTemplatePicker] = useState(false)
-
   const toggle = useCallback(
     (
       key: keyof Pick<AiBriefSelections, 'tone' | 'audience'>,
@@ -225,16 +218,6 @@ export function AiBriefPanel({
               )}
               {hasExistingDraft ? 'Regenerate full draft' : 'Generate full draft with AI'}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={() => setShowTemplatePicker(true)}
-              disabled={isPending}
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Browse templates
-            </Button>
             {(selections.tone.length === 0 || selections.audience.length === 0) && (
               <p className="text-[11px] text-muted-foreground text-center">
                 Pick at least one tone and audience to enable generate.
@@ -243,22 +226,6 @@ export function AiBriefPanel({
           </div>
         </SheetContent>
       </Sheet>
-
-      <TemplatePicker
-        open={showTemplatePicker}
-        onClose={() => setShowTemplatePicker(false)}
-        onSelect={(t) => {
-          onUseTemplate(t)
-          setShowTemplatePicker(false)
-        }}
-        onSelectAndCustomise={(t) => {
-          onCustomiseTemplate(t)
-          setShowTemplatePicker(false)
-        }}
-        platform="email"
-        stageNumber={stageNumber}
-        isCustomising={isCustomisingTemplateId}
-      />
     </>
   )
 }

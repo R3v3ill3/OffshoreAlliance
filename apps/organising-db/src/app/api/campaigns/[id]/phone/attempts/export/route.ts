@@ -181,7 +181,7 @@ function sendExport(
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "attempts");
     const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
-    return new NextResponse(buf, {
+    return new NextResponse(new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength), {
       status: 200,
       headers: {
         "Content-Type":

@@ -20,7 +20,12 @@
         "SENTRY_ORG",
         "SENTRY_PROJECT",
         "RAILWAY_SCRAPER_URL",
-        "SCRAPER_SHARED_SECRET"
+        "SCRAPER_SHARED_SECRET",
+        "LEADER_SESSION_VARIABLE",
+        "OAUTH_TOKEN_ENCRYPTION_KEY",
+        "MICROSOFT_CLIENT_SECRET",
+        "MICROSOFT_REDIRECT_URI",
+        "MICROSOFT_CLIENT_ID"
       ],
       "outputs": [".next/**", "!.next/cache/**"]
     },

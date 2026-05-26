@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
       p_cta_ratings: Array.isArray(body.cta_ratings) ? body.cta_ratings : [],
       p_assessment_ratings: Array.isArray(body.assessment_ratings) ? body.assessment_ratings : [],
       p_action_id: body.action_id ?? null,
+      p_outcome_classification: body.outcome_classification ?? null,
     })
 
     if (error) throw error

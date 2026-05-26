@@ -108,3 +108,42 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
+
+/* Email composer — TipTap merge-field chip styling.
+ * Renders {{first_name}}-style tokens as compact, atomic pill chips
+ * with a clear visual distinction from regular text. The chip's
+ * underlying text content is still `{{key}}` so any copy-paste keeps
+ * the token intact for downstream resolution. */
+.ProseMirror .merge-field-chip {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  margin: 0 0.15rem;
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.375rem;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  white-space: nowrap;
+  user-select: all;
+  cursor: default;
+}
+
+.ProseMirror .merge-field-chip:hover {
+  background: hsl(var(--primary) / 0.12);
+  border-color: hsl(var(--primary) / 0.4);
+}
+
+.ProseMirror .ProseMirror-selectednode.merge-field-chip {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+/* TipTap placeholder for empty editor */
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: hsl(var(--muted-foreground));
+  pointer-events: none;
+  height: 0;
+}

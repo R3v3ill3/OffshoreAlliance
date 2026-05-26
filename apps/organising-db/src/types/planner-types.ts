@@ -548,6 +548,13 @@ export interface CallListItem {
   best_disposition: string | null
   next_call_at: string | null
   notes: string | null
+  /**
+   * Soft-claim timestamp (ISO). Populated when a caller has reserved this
+   * item via `claim_next_call_list_item`. Cleared on attempt or release.
+   */
+  claimed_at?: string | null
+  claimed_by_session_label?: string | null
+  claimed_by_worker_id?: number | null
   created_at: string
   updated_at: string
 }

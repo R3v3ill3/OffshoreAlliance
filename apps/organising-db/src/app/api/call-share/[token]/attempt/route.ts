@@ -61,6 +61,11 @@ export async function POST(
       p_objections: Array.isArray(body.objections) ? body.objections : [],
       p_issues: Array.isArray(body.issues) ? body.issues : [],
       p_cta_ratings: Array.isArray(body.cta_ratings) ? body.cta_ratings : [],
+      p_assessment_ratings: Array.isArray(body.assessment_ratings)
+        ? body.assessment_ratings
+        : [],
+      p_action_id: body.action_id ?? null,
+      p_outcome_classification: body.outcome_classification ?? null,
       p_share_token_id: tokenRow.token_id,
       p_caller_leader_worker_id: tokenRow.leader_worker_id,
       p_caller_session_label: session.label,

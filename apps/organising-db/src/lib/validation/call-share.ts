@@ -28,6 +28,8 @@ export const shareAttemptSchema = z.object({
   objections: z.array(z.record(z.string(), z.unknown())).optional(),
   issues: z.array(z.record(z.string(), z.unknown())).optional(),
   cta_ratings: z.array(z.record(z.string(), z.unknown())).optional(),
+  assessment_ratings: z.array(z.record(z.string(), z.unknown())).optional(),
+  action_id: z.number().int().positive().nullable().optional(),
 });
 
 export const shareReleaseSchema = z.object({

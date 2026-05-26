@@ -53,7 +53,10 @@ export async function updateSession(request: NextRequest) {
     !pathname.startsWith("/auth") &&
     // Leader-form pages are token-gated (URL token + password session cookie);
     // they must remain accessible without a Supabase user session.
-    !pathname.startsWith("/leader/task")
+    !pathname.startsWith("/leader/task") &&
+    // Shareable mobile call dialer is token-gated (URL token + password session
+    // cookie); volunteers must reach it without a Supabase user session.
+    !pathname.startsWith("/call/")
   ) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";

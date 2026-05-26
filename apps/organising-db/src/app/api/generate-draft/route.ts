@@ -3,7 +3,23 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import type { CommsDraftRequest, CommsPlatform } from '@/types/planner-types'
 import { buildEmailPrompt, buildSmsPrompt, buildPhoneScriptPrompt } from '@/lib/prompts/draft-prompts'
+import { buildTransformPrompt, buildSubjectVariantsPrompt, type TransformAction } from '@/lib/prompts/email-transform-prompts'
 import { loadSituationContextString } from '@/lib/situation-analysis/serialise'
+
+interface TransformRequestBody {
+  mode: 'transform'
+  text: string
+  action: TransformAction
+  scope?: 'selection' | 'whole_body'
+}
+
+interface SubjectVariantsRequestBody {
+  mode: 'subject_variants'
+  body_text: string
+  hint?: string
+}
+
+const ANTHROPIC_MODEL = 'claude-sonnet-4-20250514'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -31,7 +47,21 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const body: CommsDraftRequest = await req.json()
+    const rawBody = await req.json()
+
+    // ---- Mode dispatch ----------------------------------------------
+    // 'transform' and 'subject_variants' are auxiliary modes for the
+    // email composer's selection-toolbar and subject-ideas actions.
+    // They share the Anthropic client + auth gate but skip the
+    // full draft-prompt pipeline.
+    if (rawBody?.mode === 'transform') {
+      return handleTransform(rawBody as TransformRequestBody)
+    }
+    if (rawBody?.mode === 'subject_variants') {
+      return handleSubjectVariants(rawBody as SubjectVariantsRequestBody)
+    }
+
+    const body: CommsDraftRequest = rawBody
 
     if (!body.platform || !PROMPT_BUILDERS[body.platform]) {
       return NextResponse.json(
@@ -133,4 +163,115 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
+}
+
+async function handleTransform(body: TransformRequestBody): Promise<NextResponse> {
+  if (!body.text || typeof body.text !== 'string' || !body.text.trim()) {
+    return NextResponse.json(
+      { success: false, error: 'No text supplied to transform.' },
+      { status: 400 },
+    )
+  }
+  if (!body.action) {
+    return NextResponse.json(
+      { success: false, error: 'Missing action.' },
+      { status: 400 },
+    )
+  }
+  try {
+    const { system, user } = buildTransformPrompt({
+      text: body.text,
+      action: body.action,
+      scope: body.scope ?? 'selection',
+    })
+    const response = await anthropic.messages.create({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 1200,
+      system,
+      messages: [{ role: 'user', content: user }],
+    })
+    const content = response.content[0]
+    if (content.type !== 'text') throw new Error('Unexpected response type')
+    const transformed = content.text.trim().replace(/^```[\w]*\n?|\n?```$/g, '')
+    return NextResponse.json({ success: true, transformed })
+  } catch (err) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: err instanceof Error ? err.message : 'Transform failed',
+      },
+      { status: 500 },
+    )
+  }
+}
+
+async function handleSubjectVariants(
+  body: SubjectVariantsRequestBody,
+): Promise<NextResponse> {
+  if (!body.body_text || !body.body_text.trim()) {
+    return NextResponse.json(
+      { success: false, error: 'No body text supplied for subject variants.' },
+      { status: 400 },
+    )
+  }
+  try {
+    const { system, user } = buildSubjectVariantsPrompt({
+      bodyText: body.body_text,
+      hint: body.hint,
+    })
+    const response = await anthropic.messages.create({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 400,
+      system,
+      messages: [{ role: 'user', content: user }],
+    })
+    const content = response.content[0]
+    if (content.type !== 'text') throw new Error('Unexpected response type')
+    const raw = content.text.trim()
+    const variants = parseSubjectVariants(raw)
+    return NextResponse.json({ success: true, variants })
+  } catch (err) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: err instanceof Error ? err.message : 'Subject variant generation failed',
+      },
+      { status: 500 },
+    )
+  }
+}
+
+function parseSubjectVariants(text: string): string[] {
+  // Accept any of: JSON array, numbered list, line-separated list.
+  try {
+    const trimmed = text.trim()
+    if (trimmed.startsWith('[')) {
+      const arr = JSON.parse(trimmed) as unknown
+      if (Array.isArray(arr)) {
+        return arr.map(String).map(stripBullet).filter(Boolean).slice(0, 5)
+      }
+    }
+    const jsonMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
+    if (jsonMatch) {
+      const arr = JSON.parse(jsonMatch[1]) as unknown
+      if (Array.isArray(arr)) {
+        return arr.map(String).map(stripBullet).filter(Boolean).slice(0, 5)
+      }
+    }
+  } catch {
+    // fall through to line-parse
+  }
+  return text
+    .split(/\r?\n/)
+    .map((l) => stripBullet(l.trim()))
+    .filter((l) => l.length > 0 && l.length < 200)
+    .slice(0, 5)
+}
+
+function stripBullet(s: string): string {
+  return s
+    .replace(/^[-*•]\s+/, '')
+    .replace(/^\d+[.)]\s+/, '')
+    .replace(/^["“”']|["“”']$/g, '')
+    .trim()
 }

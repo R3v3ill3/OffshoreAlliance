@@ -1838,6 +1838,7 @@ export type Database = {
           ended_at: string | null
           follow_up_action: string | null
           list_item_id: number
+          outcome_classification: string | null
           overall_notes: string | null
           script_id: number | null
           share_token_id: number | null
@@ -1859,6 +1860,7 @@ export type Database = {
           ended_at?: string | null
           follow_up_action?: string | null
           list_item_id: number
+          outcome_classification?: string | null
           overall_notes?: string | null
           script_id?: number | null
           share_token_id?: number | null
@@ -1880,6 +1882,7 @@ export type Database = {
           ended_at?: string | null
           follow_up_action?: string | null
           list_item_id?: number
+          outcome_classification?: string | null
           overall_notes?: string | null
           script_id?: number | null
           share_token_id?: number | null
@@ -18373,70 +18376,33 @@ export type Database = {
         }
         Returns: number
       }
-      record_call_attempt:
-        | {
-            Args: {
-              p_call_disposition?: string
-              p_callback_datetime?: string
-              p_caller_user_id: string
-              p_cta_response?: string
-              p_dial_disposition: string
-              p_duration_seconds?: number
-              p_follow_up_action?: string
-              p_issues?: Json
-              p_list_item_id: number
-              p_objections?: Json
-              p_overall_notes?: string
-              p_script_id: number
-              p_step_outcomes?: Json
-              p_support_level?: string
-            }
-            Returns: Json
-          }
-        | {
-            Args: {
-              p_call_disposition?: string
-              p_callback_datetime?: string
-              p_caller_user_id: string
-              p_cta_ratings?: Json
-              p_cta_response?: string
-              p_dial_disposition: string
-              p_duration_seconds?: number
-              p_follow_up_action?: string
-              p_issues?: Json
-              p_list_item_id: number
-              p_objections?: Json
-              p_overall_notes?: string
-              p_script_id: number
-              p_step_outcomes?: Json
-              p_support_level?: string
-            }
-            Returns: Json
-          }
-        | {
-            Args: {
-              p_call_disposition?: string
-              p_callback_datetime?: string
-              p_caller_leader_worker_id?: number
-              p_caller_session_label?: string
-              p_caller_session_worker_id?: number
-              p_caller_user_id: string
-              p_cta_ratings?: Json
-              p_cta_response?: string
-              p_dial_disposition: string
-              p_duration_seconds?: number
-              p_follow_up_action?: string
-              p_issues?: Json
-              p_list_item_id: number
-              p_objections?: Json
-              p_overall_notes?: string
-              p_script_id: number
-              p_share_token_id?: number
-              p_step_outcomes?: Json
-              p_support_level?: string
-            }
-            Returns: Json
-          }
+      record_call_attempt: {
+        Args: {
+          p_action_id?: number
+          p_assessment_ratings?: Json
+          p_call_disposition?: string
+          p_callback_datetime?: string
+          p_caller_leader_worker_id?: number
+          p_caller_session_label?: string
+          p_caller_session_worker_id?: number
+          p_caller_user_id: string
+          p_cta_ratings?: Json
+          p_cta_response?: string
+          p_dial_disposition: string
+          p_duration_seconds?: number
+          p_follow_up_action?: string
+          p_issues?: Json
+          p_list_item_id: number
+          p_objections?: Json
+          p_outcome_classification?: string
+          p_overall_notes?: string
+          p_script_id: number
+          p_share_token_id?: number
+          p_step_outcomes?: Json
+          p_support_level?: string
+        }
+        Returns: Json
+      }
       refresh_all_pending_gate_criteria: { Args: never; Returns: Json }
       refresh_gate_criteria_for_campaign: {
         Args: { p_campaign_id: number }

@@ -55,6 +55,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -607,6 +608,10 @@ export function CreateTaskListDialog({
                 ? `New task list for ${leaderWorkerLock.workerName}`
                 : "New task list"}
             </DialogTitle>
+            <DialogDescription>
+              Configure the leader, activity, workers, and activation options for this
+              campaign task list.
+            </DialogDescription>
           </DialogHeader>
 
           {/* Stepper indicator */}

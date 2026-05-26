@@ -180,8 +180,8 @@ function sendExport(
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "attempts");
-    const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
-    const blob = new Blob([buf], {
+    const arr = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as Uint8Array<ArrayBuffer>;
+    const blob = new Blob([arr], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
     return new NextResponse(blob, {

@@ -21,7 +21,10 @@
  *   SHARE_TOKEN_ID?         — optional, exercises the share-aware RPC
  */
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyClient = SupabaseClient<any, any, any>;
 
 const URL = process.env.SUPABASE_URL;
 const KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -38,7 +41,7 @@ interface ClaimResult {
 }
 
 async function singleClaim(
-  client: ReturnType<typeof createClient>,
+  client: AnyClient,
   callerId: number,
 ): Promise<ClaimResult> {
   const started = performance.now();
@@ -51,7 +54,8 @@ async function singleClaim(
       p_session_label: `loadtest:${callerId}`,
     };
     if (TOKEN_ID) params.p_share_token_id = TOKEN_ID;
-    const { data, error } = await client.rpc(rpc, params);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await client.rpc(rpc, params as any);
     if (error) {
       return {
         caller_id: callerId,
@@ -80,7 +84,7 @@ async function singleClaim(
 }
 
 async function runCaller(
-  client: ReturnType<typeof createClient>,
+  client: AnyClient,
   callerId: number,
   results: ClaimResult[],
   startedAt: number,
@@ -103,7 +107,7 @@ async function main() {
   }
   const client = createClient(URL, KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
-  });
+  }) as AnyClient;
   const startedAt = performance.now();
   const results: ClaimResult[] = [];
   await Promise.all(

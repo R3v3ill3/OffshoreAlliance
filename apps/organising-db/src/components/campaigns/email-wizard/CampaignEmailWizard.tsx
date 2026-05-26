@@ -240,6 +240,7 @@ export function CampaignEmailWizard() {
   const [sourceTemplateId, setSourceTemplateId] = useState<number | null>(null)
   const [showTemplatePicker, setShowTemplatePicker] = useState(false)
   const [isCustomisingTemplate, setIsCustomisingTemplate] = useState<number | null>(null)
+  const [emailPurpose, setEmailPurpose] = useState('')
   const [draftGeneratedWithTone, setDraftGeneratedWithTone] = useState<string[]>([])
   const [draftGeneratedWithAudience, setDraftGeneratedWithAudience] = useState<string[]>([])
   const [selectedWorkerIds, setSelectedWorkerIds] = useState<Set<number>>(new Set())
@@ -670,6 +671,12 @@ export function CampaignEmailWizard() {
     // covers everything else (description, type, member breakdown,
     // active-stage ambitions, multi-employer footprint, etc).
     const richContext = buildRichContextBlock(campaignContext)
+    const purposeBlock = emailPurpose.trim()
+      ? `EMAIL PURPOSE / SPECIFIC ASK (from organiser):\n${emailPurpose.trim()}`
+      : ''
+    const combinedInstructions = [purposeBlock, richContext]
+      .filter(Boolean)
+      .join('\n\n')
 
     const request: CommsDraftRequest = {
       campaign_id: campaignId,
@@ -696,7 +703,7 @@ export function CampaignEmailWizard() {
         platforms: ['Email'],
         engagement_intensity: engagementIntensity || undefined,
       },
-      custom_instructions: richContext || undefined,
+      custom_instructions: combinedInstructions || undefined,
     }
     try {
       const result = await generateDraft.mutateAsync(request)
@@ -718,6 +725,7 @@ export function CampaignEmailWizard() {
     tone,
     audience,
     engagementIntensity,
+    emailPurpose,
     generateDraft,
   ])
 
@@ -760,6 +768,7 @@ export function CampaignEmailWizard() {
             staff_name: profile?.display_name || user?.email || undefined,
             staff_email: user?.email || undefined,
           },
+          custom_instructions: emailPurpose.trim() || undefined,
         }),
         timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
       })
@@ -1145,6 +1154,24 @@ export function CampaignEmailWizard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-1">
+              <Label className="text-xs">
+                Purpose / specific ask{' '}
+                <span className="text-muted-foreground font-normal">(optional, improves AI quality)</span>
+              </Label>
+              <Textarea
+                value={emailPurpose}
+                onChange={(e) => setEmailPurpose(e.target.value)}
+                placeholder="What should this email achieve? e.g. announce bargaining dates, drive RSVPs for a delegates meeting on 15 June, mobilise members for a stop-work vote, recruit signatories to a petition…"
+                rows={2}
+                className="text-sm"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Used by &ldquo;Generate with AI&rdquo; and &ldquo;AI Customise Template&rdquo;. Leave blank to let
+                the model infer from the campaign snapshot.
+              </p>
+            </div>
+
             <div className="flex items-center gap-2 flex-wrap">
               <Button
                 variant="outline"

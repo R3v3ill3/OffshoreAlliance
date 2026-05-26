@@ -185,6 +185,7 @@ export function CampaignWallChart({
       const value = typeof next === "function" ? next(current) : next;
       if (value) {
         params.set("buildList", "1");
+        params.delete("view");
       } else {
         params.delete("buildList");
       }

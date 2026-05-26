@@ -96,6 +96,27 @@ export function BuildListPanel({
   const [organiserPick, setOrganiserPick] = useState("");
   // Drag-state inside the items list (for reorder).
   const reorderDraggedId = useRef<number | null>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const wasOpenRef = useRef(false);
+  const [highlighted, setHighlighted] = useState(false);
+
+  // Scroll the panel into view and focus the name field when first opened.
+  useEffect(() => {
+    if (!open) {
+      wasOpenRef.current = false;
+      return;
+    }
+    if (wasOpenRef.current) return;
+    wasOpenRef.current = true;
+
+    const t = window.setTimeout(() => {
+      panelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      document.getElementById("build-list-name")?.focus({ preventScroll: true });
+      setHighlighted(true);
+      window.setTimeout(() => setHighlighted(false), 2500);
+    }, 150);
+    return () => window.clearTimeout(t);
+  }, [open]);
 
   // Sync local fields when the active list changes / refetches.
   useEffect(() => {
@@ -264,6 +285,8 @@ export function BuildListPanel({
 
   return (
     <aside
+      ref={panelRef}
+      data-build-list-panel
       role="region"
       aria-label="Build list panel"
       // top + max-height are driven by the parent so the panel docks
@@ -276,7 +299,8 @@ export function BuildListPanel({
       }}
       className={cn(
         "sticky w-full md:w-[360px] lg:w-[400px]",
-        "rounded border bg-card shadow-sm flex flex-col print:hidden"
+        "rounded border bg-card shadow-sm flex flex-col print:hidden",
+        highlighted && "ring-2 ring-primary ring-offset-2"
       )}
     >
       <header className="flex items-center justify-between gap-2 border-b px-3 py-2">

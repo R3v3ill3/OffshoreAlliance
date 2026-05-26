@@ -74,6 +74,7 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
       params.set("buildList", "1");
       params.set("tab", "workforce");
       params.set("sub", "wall-chart");
+      params.delete("view");
     }
     const qs = params.toString();
     const mainCampaignPath = `/campaigns/${campaignId}`;

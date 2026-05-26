@@ -254,10 +254,12 @@ export async function GET(
         .from("campaign_activities")
         .select("activity_id, title")
         .in("activity_id", action.selected_assessment_ids);
-      const byId = new Map((rows ?? []).map((r) => [r.activity_id, r] as const));
-      sessionAssessments = action.selected_assessment_ids
-        .map((id: number) => byId.get(id))
-        .filter((r): r is { activity_id: number; title: string } => Boolean(r));
+      const byId = new Map<number, { activity_id: number; title: string }>(
+        (rows ?? []).map((r: { activity_id: number; title: string }) => [r.activity_id, r]),
+      );
+      sessionAssessments = (action.selected_assessment_ids as number[])
+        .map((id) => byId.get(id))
+        .filter((r): r is { activity_id: number; title: string } => r != null);
     }
 
     return NextResponse.json({

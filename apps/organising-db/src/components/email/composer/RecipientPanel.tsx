@@ -14,7 +14,9 @@ import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { ChevronDown, ChevronUp, Users, Settings, Search, Loader2 } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+import { ChevronDown, ChevronUp, Users, Settings, Search, Loader2, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 
 export interface RecipientRow {
@@ -26,6 +28,8 @@ export interface RecipientRow {
   employer_name: string | null
   worksite_name: string | null
   source_label: string
+  /** Set to 'invalid' when a bounce has been detected for this address. */
+  email_status?: string | null
 }
 
 interface Props {
@@ -49,21 +53,36 @@ export function RecipientPanel({
 }: Props) {
   const [open, setOpen] = useState(defaultOpen ?? false)
   const [search, setSearch] = useState('')
+  const [includeBounced, setIncludeBounced] = useState(false)
+
+  const bouncedCount = useMemo(
+    () => recipients.filter((r) => r.email_status === 'invalid').length,
+    [recipients],
+  )
+
+  // Apply bounce filter before passing to other derived lists.
+  const visibleRecipients = useMemo(
+    () =>
+      includeBounced
+        ? recipients
+        : recipients.filter((r) => r.email_status !== 'invalid'),
+    [recipients, includeBounced],
+  )
 
   const withEmail = useMemo(
-    () => recipients.filter((r) => r.email && r.email.trim()),
-    [recipients],
+    () => visibleRecipients.filter((r) => r.email && r.email.trim()),
+    [visibleRecipients],
   )
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return recipients
-    return recipients.filter((r) => {
+    if (!q) return visibleRecipients
+    return visibleRecipients.filter((r) => {
       const hay =
         `${r.first_name} ${r.last_name} ${r.email ?? ''} ${r.employer_name ?? ''} ${r.worksite_name ?? ''} ${r.occupation ?? ''}`.toLowerCase()
       return hay.includes(q)
     })
-  }, [recipients, search])
+  }, [visibleRecipients, search])
 
   const selectedCount = selectedIds.size
   const totalWithEmail = withEmail.length
@@ -148,6 +167,27 @@ export function RecipientPanel({
             </Button>
           </div>
 
+          {bouncedCount > 0 && (
+            <div className="flex items-center gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-600 flex-shrink-0" />
+              <span className="text-amber-800 flex-1">
+                {bouncedCount} worker{bouncedCount === 1 ? '' : 's'} with
+                bounced email{bouncedCount === 1 ? '' : 's'} excluded.
+              </span>
+              <div className="flex items-center gap-1.5">
+                <Switch
+                  id="include-bounced"
+                  checked={includeBounced}
+                  onCheckedChange={setIncludeBounced}
+                  className="h-4 w-7"
+                />
+                <Label htmlFor="include-bounced" className="text-xs cursor-pointer">
+                  Include
+                </Label>
+              </div>
+            </div>
+          )}
+
           {isLoading ? (
             <div className="flex items-center justify-center py-10">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -173,6 +213,7 @@ export function RecipientPanel({
                 <tbody>
                   {filtered.map((r) => {
                     const has = !!r.email && r.email.trim() !== ''
+                    const isBounced = r.email_status === 'invalid'
                     const selected = selectedIds.has(r.worker_id)
                     return (
                       <tr
@@ -180,6 +221,7 @@ export function RecipientPanel({
                         className={cn(
                           'border-t hover:bg-muted/30',
                           !has && 'opacity-50',
+                          isBounced && 'bg-destructive/5',
                         )}
                       >
                         <td className="p-2">
@@ -207,8 +249,17 @@ export function RecipientPanel({
                             </p>
                           )}
                         </td>
-                        <td className="p-2 truncate max-w-[220px] text-xs text-muted-foreground">
-                          {r.email ?? '—'}
+                        <td className="p-2 truncate max-w-[220px] text-xs">
+                          {isBounced ? (
+                            <span className="text-destructive flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                              {r.email ?? '—'}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              {r.email ?? '—'}
+                            </span>
+                          )}
                         </td>
                         <td className="p-2 truncate max-w-[260px] text-xs text-muted-foreground hidden md:table-cell">
                           {r.employer_name ?? '—'}

@@ -73,6 +73,7 @@ export async function GET(
           first_name,
           last_name,
           email,
+          email_status,
           phone,
           occupation,
           employer_id,
@@ -99,6 +100,7 @@ export async function GET(
         first_name: string;
         last_name: string;
         email: string | null;
+        email_status: string | null;
         phone: string | null;
         occupation: string | null;
         employer_id: number | null;
@@ -134,6 +136,7 @@ export async function GET(
         first_name: worker.first_name,
         last_name: worker.last_name,
         email: worker.email,
+        email_status: worker.email_status,
         phone: worker.phone,
         occupation: worker.occupation,
         employer_name: worker.employers?.employer_name ?? null,

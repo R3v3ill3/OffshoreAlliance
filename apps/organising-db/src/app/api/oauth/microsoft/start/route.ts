@@ -48,6 +48,10 @@ export async function GET(req: NextRequest) {
 
   const returnTo = req.nextUrl.searchParams.get('returnTo') || ''
   const safeReturnTo = returnTo.startsWith('/') ? returnTo : ''
+  // `?reconsent=1` forces Microsoft to re-show the consent screen even
+  // when the user previously approved. Required when we add a new scope
+  // (e.g. Mail.Send) and existing users need to re-grant.
+  const forceConsent = req.nextUrl.searchParams.get('reconsent') === '1'
 
   const state = generateState()
   const verifier = generateCodeVerifier()
@@ -57,6 +61,7 @@ export async function GET(req: NextRequest) {
     state,
     codeChallenge: challenge,
     loginHint: user.email ?? undefined,
+    prompt: forceConsent ? 'consent' : 'select_account',
   })
 
   const response = NextResponse.redirect(authorizeUrl)

@@ -10,6 +10,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { hasSendScope } from '@/lib/integrations/microsoft-graph'
 
 export async function GET() {
   const supabase = await createClient()

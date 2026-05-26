@@ -637,8 +637,20 @@ export function EmailComposer() {
   // The actual Graph calls happen server-side; we hand off worker IDs +
   // mode and let /api/campaigns/[id]/emails/[draftId]/save-to-outlook
   // resolve per-recipient tokens before creating each draft.
+  //
+  // We thread `saveDraft` through a ref because it's declared further down
+  // the component (TDZ if referenced here directly). Reading via ref also
+  // means we always invoke the freshest closure — important so the server
+  // reads the latest body / subject / preheader, not whatever state was
+  // captured when this callback was first memoised.
+  const saveDraftRef = useRef<(silent?: boolean) => Promise<void>>(
+    async () => {},
+  )
   const handleSaveToOutlook = useCallback(
-    async (mode: 'personalised' | 'bcc') => {
+    async (
+      mode: 'personalised' | 'bcc',
+      overrides?: { subjectOverride: string; bodyHtmlOverride: string },
+    ) => {
       if (!draftId) return null
       if (!bodyText.trim()) {
         toast.error('Body is empty — write or generate the email first.')
@@ -661,12 +673,19 @@ export function EmailComposer() {
           : 'Creating shared BCC draft in Outlook…',
       )
       try {
+        const payload: Record<string, unknown> = { mode, worker_ids: ids }
+        if (overrides?.subjectOverride !== undefined) {
+          payload.subject_override = overrides.subjectOverride
+        }
+        if (overrides?.bodyHtmlOverride !== undefined) {
+          payload.body_html_override = overrides.bodyHtmlOverride
+        }
         const res = await fetchApi(
           `/api/campaigns/${campaignId}/emails/${draftId}/save-to-outlook`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode, worker_ids: ids }),
+            body: JSON.stringify(payload),
             timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
           },
         )
@@ -696,7 +715,6 @@ export function EmailComposer() {
     // saveDraft is declared further down the component (TDZ at this line);
     // we read it through `saveDraftRef` set below so the latest closure
     // (with up-to-date body / subject / preheader) is invoked here.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       draftId,
       campaignId,
@@ -931,6 +949,12 @@ export function EmailComposer() {
       supabase,
     ],
   )
+
+  // Keep the ref pointed at the latest saveDraft closure so the
+  // save-to-outlook flow always force-flushes with current state.
+  useEffect(() => {
+    saveDraftRef.current = saveDraft
+  }, [saveDraft])
 
   useEffect(() => {
     if (!hasUnsavedChanges) return
@@ -1204,6 +1228,16 @@ export function EmailComposer() {
         campaignId={campaignId}
         draftId={draftId ?? null}
         selectedWorkerIds={[...selectedWorkerIds]}
+        recipientWorkers={recipients
+          .filter((r) => selectedWorkerIds.has(r.worker_id))
+          .map((r) => ({
+            worker_id: r.worker_id,
+            first_name: r.first_name,
+            last_name: r.last_name,
+            occupation: r.occupation,
+            employer_name: r.employer_name,
+            worksite_name: r.worksite_name,
+          }))}
       />
 
       <EditEmailSetupDialog

@@ -20,7 +20,6 @@ import Suggestion, { type SuggestionOptions } from '@tiptap/suggestion'
 import { PluginKey } from '@tiptap/pm/state'
 import {
   ALL_TEMPLATE_VARIABLES,
-  ALL_VARIABLE_KEYS,
   type TemplateVariable,
 } from '@/lib/comms/template-variables'
 
@@ -170,52 +169,11 @@ export function variableSuggestions(query: string): TemplateVariable[] {
   )
 }
 
-/**
- * Rewrite any raw `{{key}}` tokens in an HTML string into chip markup so
- * TipTap can hydrate them as MergeFieldMention nodes via parseHTML.
- * Skips tokens whose key isn't a known merge variable.
- */
-export function parseHtmlWithMergeFields(html: string): string {
-  if (!html) return html
-  return html.replace(/\{\{\s*(\w+)\s*\}\}/g, (full, rawKey) => {
-    const key = String(rawKey)
-    if (!ALL_VARIABLE_KEYS.includes(key)) return full
-    return `<span data-merge-field="${key}">{{${key}}}</span>`
-  })
-}
-
-/**
- * Convert plain text containing `{{key}}` tokens into HTML where each
- * known token is wrapped as a chip span — used when initialising the
- * editor from a draft that only has plain text persisted.
- */
-export function plainTextToChipHtml(text: string): string {
-  if (!text) return ''
-  const escaped = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-  const withChips = escaped.replace(/\{\{\s*(\w+)\s*\}\}/g, (full, rawKey) => {
-    const key = String(rawKey)
-    if (!ALL_VARIABLE_KEYS.includes(key)) return full
-    return `<span data-merge-field="${key}">{{${key}}}</span>`
-  })
-  return withChips
-    .split(/\n{2,}/)
-    .map((para) => `<p>${para.replace(/\n/g, '<br>')}</p>`)
-    .join('')
-}
-
-/**
- * Remove the chip wrapper from exported HTML, leaving raw `{{key}}` tokens
- * so downstream resolvers (template-variables, AN translator) work
- * unchanged. Runs before DOMPurify so the sanitizer doesn't have to know
- * about chips.
- */
-export function stripMergeFieldChips(html: string): string {
-  if (!html) return html
-  return html.replace(
-    /<span[^>]*data-merge-field="([^"]+)"[^>]*>[\s\S]*?<\/span>/g,
-    (_, key) => `{{${key}}}`,
-  )
-}
+// Chip-HTML transforms moved to `@/lib/comms/chip-html` so server code can
+// import them without dragging in TipTap. Re-exported here for backward
+// compatibility with existing call sites.
+export {
+  parseHtmlWithMergeFields,
+  plainTextToChipHtml,
+  stripMergeFieldChips,
+} from '@/lib/comms/chip-html'

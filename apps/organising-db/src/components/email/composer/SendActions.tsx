@@ -62,6 +62,9 @@ import {
   RECIPIENT_VARIABLES,
   SAMPLE_DATA,
 } from '@/lib/comms/template-variables'
+import { extractMergeFieldKeys } from '@/lib/comms/chip-html'
+import type { AnalysedRecipient } from '@/lib/comms/bcc-token-analysis'
+import { BccPreSendDialog } from './BccPreSendDialog'
 
 export interface SendActionsProps {
   /** Logged-in user's email (default for test send). */
@@ -97,7 +100,10 @@ export interface SendActionsProps {
   /** Handler for sending a single-recipient test via AN. */
   onSendTestViaAN: (recipient: string) => Promise<void>
   /** Handler for saving drafts to the user's connected Outlook mailbox. */
-  onSaveToOutlook?: (mode: 'personalised' | 'bcc') => Promise<{
+  onSaveToOutlook?: (
+    mode: 'personalised' | 'bcc',
+    overrides?: { subjectOverride: string; bodyHtmlOverride: string },
+  ) => Promise<{
     drafts_created: number
     drafts_failed: number
   } | null>
@@ -110,6 +116,12 @@ export interface SendActionsProps {
   campaignId?: number
   draftId?: number | null
   selectedWorkerIds?: number[]
+  /**
+   * Full worker data for the selected recipients — used to pre-classify
+   * merge tokens before BCC dispatch (`{{employer_name}}` resolvable
+   * across the whole list vs. `{{first_name}}` varying per recipient).
+   */
+  recipientWorkers?: AnalysedRecipient[]
 }
 
 export function SendActions({
@@ -133,9 +145,13 @@ export function SendActions({
   campaignId,
   draftId,
   selectedWorkerIds,
+  recipientWorkers,
 }: SendActionsProps) {
   const [testOpen, setTestOpen] = useState(false)
   const [bccWarningOpen, setBccWarningOpen] = useState(false)
+  const [bccPreSendTarget, setBccPreSendTarget] = useState<
+    'mail_client' | 'outlook' | null
+  >(null)
   const [outlookBusy, setOutlookBusy] = useState<'personalised' | 'bcc' | null>(null)
   const {
     connection: outlook,
@@ -145,6 +161,14 @@ export function SendActions({
 
   const recipientTokensInBody = useMemo(
     () => detectRecipientTokens(`${subject}\n\n${bodyHtml}\n${bodyText}`),
+    [subject, bodyHtml, bodyText],
+  )
+
+  // Any known merge token present in the body? Drives whether we open
+  // the pre-send analysis dialog for BCC dispatches.
+  const anyMergeTokens = useMemo(
+    () =>
+      extractMergeFieldKeys(`${subject}\n\n${bodyHtml || bodyText}`).length > 0,
     [subject, bodyHtml, bodyText],
   )
 
@@ -171,9 +195,15 @@ export function SendActions({
       toast.error('No recipients selected.')
       return
     }
+    // If we have recipient data AND any merge tokens, open the smart
+    // pre-send dialog so the user can review what auto-resolves and
+    // decide what to do with varying tokens. Falls back to the old
+    // binary warning if worker data isn't available (legacy callers).
+    if (anyMergeTokens && recipientWorkers && recipientWorkers.length > 0) {
+      setBccPreSendTarget('mail_client')
+      return
+    }
     if (recipientTokensInBody.length > 0) {
-      // Warn before opening — BCC = single shared body, per-recipient
-      // tokens can't resolve.
       setBccWarningOpen(true)
       return
     }
@@ -228,7 +258,51 @@ export function SendActions({
     dispatchOpenInMailClient(replaceTokens)
   }
 
-  async function handleSaveToOutlook(mode: 'personalised' | 'bcc') {
+  /**
+   * Dispatch open-in-mail-client using the body/subject/text from the
+   * pre-send dialog. The dialog has already substituted tokens per the
+   * user's choices, so we don't re-resolve here — just dispatch.
+   */
+  function dispatchOpenInMailClientWithOverrides(overrides: {
+    subjectOverride: string
+    bodyHtmlOverride: string
+    bodyTextOverride: string
+  }) {
+    const plain = htmlToPlain(overrides.bodyHtmlOverride) || overrides.bodyTextOverride
+
+    if (recipientEmails.length <= 30) {
+      const link = buildMailto({
+        bcc: recipientEmails,
+        subject: overrides.subjectOverride,
+        body: plain,
+      })
+      if (link.fits) {
+        window.location.href = link.href
+        recordLocalSend('mailto')
+        return
+      }
+      toast.info(
+        'Too many addresses to fit in a mailto: link. Downloading a .eml draft instead.',
+      )
+    }
+
+    downloadEml(
+      {
+        subject: overrides.subjectOverride,
+        bodyText: plain,
+        bodyHtml: overrides.bodyHtmlOverride,
+        bcc: recipientEmails,
+      },
+      `oa-draft-${Date.now()}.eml`,
+    )
+    recordLocalSend('eml')
+    toast.success('Draft downloaded — double-click to open in your mail app.')
+  }
+
+  async function handleSaveToOutlook(
+    mode: 'personalised' | 'bcc',
+    overrides?: { subjectOverride: string; bodyHtmlOverride: string },
+  ) {
     if (!onSaveToOutlook) return
     if (!outlook?.connected) {
       connectOutlook()
@@ -242,9 +316,21 @@ export function SendActions({
       toast.error('No recipients selected.')
       return
     }
+    // BCC mode + tokens detected → open the pre-send analysis dialog so
+    // the user can decide what to do with varying / missing tokens.
+    if (
+      mode === 'bcc' &&
+      !overrides &&
+      anyMergeTokens &&
+      recipientWorkers &&
+      recipientWorkers.length > 0
+    ) {
+      setBccPreSendTarget('outlook')
+      return
+    }
     setOutlookBusy(mode)
     try {
-      const result = await onSaveToOutlook(mode)
+      const result = await onSaveToOutlook(mode, overrides)
       if (result) {
         if (mode === 'personalised') {
           toast.success(
@@ -265,6 +351,28 @@ export function SendActions({
       }
     } finally {
       setOutlookBusy(null)
+    }
+  }
+
+  /**
+   * BccPreSendDialog "Apply and continue" handler — receives the
+   * transformed subject + body and dispatches via whichever path the
+   * user originally chose (mailto/eml or Outlook OAuth).
+   */
+  function handleBccApply(overrides: {
+    subjectOverride: string
+    bodyHtmlOverride: string
+    bodyTextOverride: string
+  }) {
+    const target = bccPreSendTarget
+    setBccPreSendTarget(null)
+    if (target === 'mail_client') {
+      dispatchOpenInMailClientWithOverrides(overrides)
+    } else if (target === 'outlook') {
+      void handleSaveToOutlook('bcc', {
+        subjectOverride: overrides.subjectOverride,
+        bodyHtmlOverride: overrides.bodyHtmlOverride,
+      })
     }
   }
 
@@ -482,6 +590,24 @@ export function SendActions({
         bodyText={bodyText}
         varContext={varContext}
         onSendViaAN={onSendTestViaAN}
+      />
+
+      <BccPreSendDialog
+        open={bccPreSendTarget !== null}
+        onOpenChange={(o) => {
+          if (!o) setBccPreSendTarget(null)
+        }}
+        subject={subject}
+        bodyHtml={bodyHtml}
+        bodyText={bodyText}
+        recipients={recipientWorkers ?? []}
+        campaignContext={varContext}
+        onApply={handleBccApply}
+        actionLabel={
+          bccPreSendTarget === 'outlook'
+            ? 'saving to Outlook'
+            : 'opening in your mail client'
+        }
       />
 
       <Dialog open={bccWarningOpen} onOpenChange={setBccWarningOpen}>

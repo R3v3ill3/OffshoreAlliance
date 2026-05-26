@@ -41,7 +41,16 @@ export const AN_VARIABLE_MAP: Record<string, string> = {
 }
 
 /** Matches `{{key}}` or `{{ key }}` for template substitution. */
-const TEMPLATE_TOKEN_RE = /\{\{\s*(\w+)\s*\}\}/g
+export const TEMPLATE_TOKEN_RE = /\{\{\s*(\w+)\s*\}\}/g
+
+/**
+ * Matches chip-span wrappers — `<span ... data-merge-field="key" ...>...</span>` —
+ * regardless of attribute order. The non-greedy inner match handles the
+ * span's content (typically `{{key}}` but may legally contain a label in
+ * older drafts).
+ */
+export const CHIP_SPAN_RE =
+  /<span\b[^>]*?\bdata-merge-field=["']([^"']+)["'][^>]*>[\s\S]*?<\/span>/gi
 
 /**
  * Merge campaign template context with per-worker fields for live phone script display.
@@ -114,6 +123,36 @@ export function translateToActionNetwork(text: string): string {
   return text.replace(TEMPLATE_TOKEN_RE, (match, key) => {
     return AN_VARIABLE_MAP[key] || match
   })
+}
+
+/**
+ * Like `resolveScriptVariables` but ALSO matches chip-span wrappers
+ * (`<span data-merge-field="key">...</span>`) and replaces them with the
+ * resolved value. Use for server-side resolution where the stored
+ * `body_html` may have escaped the client-side strip step on some flows
+ * (e.g. legacy drafts predating the chip system, or programmatic
+ * `setContent` paths that didn't route through `onChange`).
+ *
+ * When the context value is `undefined`, the original chip-span / token
+ * is left intact so downstream `translateToActionNetwork` or another
+ * resolver can have a crack at it.
+ */
+export function resolveScriptVariablesIncludingChips(
+  text: string,
+  context: Record<string, string | undefined>,
+): string {
+  if (!text) return text
+  // Replace chip spans first so the inner `{{key}}` literal doesn't get
+  // matched twice by the bare-token pass below.
+  let out = text.replace(CHIP_SPAN_RE, (match, key) => {
+    const value = context[key]
+    return value ?? match
+  })
+  out = out.replace(TEMPLATE_TOKEN_RE, (match, key) => {
+    const value = context[key]
+    return value ?? match
+  })
+  return out
 }
 
 export function applyVariableReplacements(

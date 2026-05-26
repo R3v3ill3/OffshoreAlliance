@@ -11,10 +11,17 @@
  *   - openid + profile    → required for User.Read to give us name/email
  *   - User.Read           → so we can display the connected mailbox
  *   - Mail.ReadWrite      → required to create drafts in /me/messages
+ *   - Mail.Send           → required to send mail directly via /me/sendMail
+ *                           (one-click bulk send, no manual Outlook step).
+ *                           Users connected before this scope was added
+ *                           must reconnect to enable the direct-send path;
+ *                           draft creation continues to work without it.
  *
- * We deliberately do NOT request Mail.Send — drafts only. The user does
- * the actual send from inside Outlook so they retain final control and
- * the email leaves their own account with their own signature.
+ * Note on consent: drafts-only path remains available even if the user
+ * declines the Mail.Send scope at consent time — the connection still
+ * works for draft creation. The `has_send_scope` flag exposed via
+ * /api/oauth/microsoft/status drives the UI's per-feature gating so the
+ * direct-send menu items are disabled gracefully.
  */
 
 import { fetchApi } from '@/lib/api/fetch-api'
@@ -31,7 +38,20 @@ export const MICROSOFT_SCOPES = [
   'profile',
   'User.Read',
   'Mail.ReadWrite',
+  'Mail.Send',
 ].join(' ')
+
+/**
+ * Return true if the stored `scope` string includes the Mail.Send scope.
+ * Microsoft returns the granted scopes (space-separated) on each token
+ * exchange / refresh; we persist this on `user_oauth_connections.scopes`.
+ */
+export function hasSendScope(scopes: string | null | undefined): boolean {
+  if (!scopes) return false
+  return scopes
+    .split(/\s+/)
+    .some((s) => s.trim().toLowerCase() === 'mail.send')
+}
 
 export interface MsTokenResponse {
   token_type: 'Bearer'
@@ -79,6 +99,13 @@ export function buildAuthorizeUrl(input: {
   state: string
   codeChallenge: string
   loginHint?: string
+  /**
+   * Microsoft consent prompt. Default `select_account` re-prompts for
+   * account selection but re-uses prior consent if scopes are unchanged.
+   * Use `consent` to force the consent screen — needed when an existing
+   * user has to re-grant after we've added a new scope (e.g. Mail.Send).
+   */
+  prompt?: 'select_account' | 'consent' | 'login' | 'none'
 }): string {
   const { clientId, redirectUri } = requireMicrosoftEnv()
   const params = new URLSearchParams({
@@ -90,7 +117,7 @@ export function buildAuthorizeUrl(input: {
     state: input.state,
     code_challenge: input.codeChallenge,
     code_challenge_method: 'S256',
-    prompt: 'select_account',
+    prompt: input.prompt ?? 'select_account',
   })
   if (input.loginHint) params.set('login_hint', input.loginHint)
   return `${MICROSOFT_AUTHORIZE_URL}?${params.toString()}`
@@ -191,9 +218,6 @@ export interface GraphMessageResponse {
 /**
  * Create a draft email in the connected user's Drafts folder. The user
  * then opens Outlook, finds the draft, optionally edits, and hits send.
- *
- * NB: We never send the message ourselves. Mail.Send is intentionally
- * not in our scope set.
  */
 export async function createDraft(
   accessToken: string,
@@ -225,6 +249,50 @@ export async function createDraft(
     throw new Error(`Graph createDraft failed (${res.status}): ${text}`)
   }
   return (await res.json()) as GraphMessageResponse
+}
+
+/**
+ * Send a message directly via Graph's /me/sendMail endpoint — bypasses
+ * the Drafts folder. Requires the `Mail.Send` scope. The message also
+ * appears in the user's Sent Items (saveToSentItems defaults to true).
+ *
+ * Returns nothing — Graph's /me/sendMail responds with 202 Accepted and
+ * no body. For tracking we rely on the audit row written by the caller.
+ */
+export async function sendMessage(
+  accessToken: string,
+  input: CreateDraftInput & { saveToSentItems?: boolean },
+): Promise<void> {
+  const message: Record<string, unknown> = {
+    subject: input.subject || '(no subject)',
+    body: {
+      contentType: 'HTML',
+      content: input.bodyHtml,
+    },
+  }
+  if (input.toRecipients?.length) message.toRecipients = input.toRecipients
+  if (input.ccRecipients?.length) message.ccRecipients = input.ccRecipients
+  if (input.bccRecipients?.length) message.bccRecipients = input.bccRecipients
+  if (input.replyTo?.length) message.replyTo = input.replyTo
+
+  const payload = {
+    message,
+    saveToSentItems: input.saveToSentItems !== false,
+  }
+
+  const res = await fetchApi(`${MICROSOFT_GRAPH_BASE}/me/sendMail`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+    requestId: false,
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Graph sendMail failed (${res.status}): ${text}`)
+  }
 }
 
 /** PKCE helpers — Node Web Crypto compatible. */

@@ -259,7 +259,7 @@ export function EmailComposer() {
       const { data, error } = await supabase
         .from('email_list_items')
         .select(
-          'worker_id, email, sort_order, workers!inner(first_name, last_name, occupation, employers(employer_name), worksites(worksite_name))',
+          'worker_id, email, sort_order, workers!inner(first_name, last_name, email_status, occupation, employers(employer_name), worksites(worksite_name))',
         )
         .eq('list_id', draft!.email_list_id!)
         .order('sort_order', { ascending: true })
@@ -269,6 +269,7 @@ export function EmailComposer() {
           | {
               first_name: string
               last_name: string
+              email_status: string | null
               occupation: string | null
               employers: { employer_name: string } | { employer_name: string }[] | null
               worksites: { worksite_name: string } | { worksite_name: string }[] | null
@@ -281,6 +282,7 @@ export function EmailComposer() {
           first_name: w?.first_name ?? '',
           last_name: w?.last_name ?? '',
           email: (row.email as string | null) ?? null,
+          email_status: w?.email_status ?? null,
           occupation: w?.occupation ?? null,
           employer_name: Array.isArray(emp)
             ? emp[0]?.employer_name ?? null
@@ -307,6 +309,7 @@ export function EmailComposer() {
           first_name: string
           last_name: string
           email: string | null
+          email_status: string | null
           occupation: string | null
           employer_name: string | null
           worksite_name: string | null
@@ -351,12 +354,14 @@ export function EmailComposer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft?.draft_id])
 
-  // Initial recipient selection — all with an email, like the legacy wizard.
+  // Initial recipient selection — all with a valid (non-bounced) email.
   useEffect(() => {
     if (recipientsLoading) return
     if (workersInitialized) return
     if (recipients.length === 0) return
-    const withEmail = recipients.filter((r) => r.email && r.email.trim())
+    const withEmail = recipients.filter(
+      (r) => r.email && r.email.trim() && r.email_status !== 'invalid',
+    )
     setSelectedWorkerIds(new Set(withEmail.map((r) => r.worker_id)))
     setWorkersInitialized(true)
   }, [recipients, recipientsLoading, workersInitialized])
@@ -639,8 +644,10 @@ export function EmailComposer() {
         toast.error('Body is empty — write or generate the email first.')
         return null
       }
-      // Save first so the server reads the latest body/subject.
-      await saveDraft(true)
+      // Force-flush the latest draft state via the ref, so the server
+      // reads fresh body/subject — guards against React closure staleness
+      // when the user clicks save-to-outlook moments after typing.
+      await saveDraftRef.current(true)
       const ids = recipients
         .filter((r) => selectedWorkerIds.has(r.worker_id) && r.email)
         .map((r) => r.worker_id)
@@ -686,9 +693,9 @@ export function EmailComposer() {
         return null
       }
     },
-    // saveDraft is captured by closure; including it would cause infinite
-    // re-renders since it captures most state. The handler is invoked
-    // by user interaction, not by render, so the stale-closure risk is low.
+    // saveDraft is declared further down the component (TDZ at this line);
+    // we read it through `saveDraftRef` set below so the latest closure
+    // (with up-to-date body / subject / preheader) is invoked here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       draftId,
@@ -1194,6 +1201,9 @@ export function EmailComposer() {
         onCreateMessage={handleCreateMessage}
         onSendTestViaAN={handleSendTestViaAN}
         onSaveToOutlook={handleSaveToOutlook}
+        campaignId={campaignId}
+        draftId={draftId ?? null}
+        selectedWorkerIds={[...selectedWorkerIds]}
       />
 
       <EditEmailSetupDialog

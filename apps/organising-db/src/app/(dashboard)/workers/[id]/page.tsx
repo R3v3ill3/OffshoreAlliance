@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { ArrowLeft, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { format } from "date-fns";
 import { Label } from "@/components/ui/label";
@@ -40,6 +40,7 @@ import {
 import { WorkerCallHistoryPanel } from "@/components/workers/WorkerCallHistoryPanel";
 import { WorkerObjectionsPanel } from "@/components/workers/WorkerObjectionsPanel";
 import { WorkerIssueObservationsPanel } from "@/components/workers/WorkerIssueObservationsPanel";
+import { EmailHistorySection } from "@/components/workers/profile/EmailHistorySection";
 
 const AU_STATES = ["WA", "NT", "QLD", "SA", "NSW", "VIC", "TAS", "ACT"];
 const NONE_VALUE = "__none__";
@@ -84,6 +85,8 @@ interface WorkerDetail {
   resignation_date: string | null;
   notes: string | null;
   is_active: boolean;
+  email_status: string | null;
+  email_status_updated_at: string | null;
   created_at: string;
   updated_at: string;
   employer_id: number | null;
@@ -1975,6 +1978,19 @@ export default function WorkerDetailPage() {
 
         {/* ── Communications tab ───────────────────────────────────────── */}
         <TabsContent value="communications" className="mt-4 space-y-4">
+          {worker.email_status === 'invalid' && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <span>
+                This worker&apos;s email address bounced on{' '}
+                {worker.email_status_updated_at
+                  ? format(new Date(worker.email_status_updated_at), 'dd MMM yyyy')
+                  : 'an unknown date'}
+                . Edit the email field above to retry.
+              </span>
+            </div>
+          )}
+          <EmailHistorySection workerId={workerId} />
           <WorkerCallHistoryPanel workerId={workerId} />
           <WorkerObjectionsPanel workerId={workerId} />
         </TabsContent>

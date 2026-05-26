@@ -51,11 +51,25 @@ import {
   type GraphRecipient,
 } from '@/lib/integrations/microsoft-graph'
 import {
-  resolveScriptVariables,
+  resolveScriptVariablesIncludingChips,
   resolveTemplateVariables,
 } from '@/lib/comms/template-variables'
+import { stripMergeFieldChips } from '@/lib/comms/chip-html'
+import { recordEmailSend, tagWorkerEmailed } from '@/lib/comms/send-log'
+import { rewriteLinks } from '@/lib/comms/click-tracker'
 
 const MAX_BATCH = 200
+const DEBUG = process.env.DEBUG_EMAIL_RESOLVE === '1'
+
+function dbg(label: string, payload: unknown): void {
+  if (!DEBUG) return
+  try {
+    const str = typeof payload === 'string' ? payload : JSON.stringify(payload)
+    console.log(`[save-to-outlook] ${label}: ${str.slice(0, 800)}`)
+  } catch {
+    // Best-effort logging only.
+  }
+}
 
 interface BodyShape {
   mode: 'personalised' | 'bcc'
@@ -65,6 +79,14 @@ interface BodyShape {
     last_name?: string
     occupation?: string
   }
+  /**
+   * Optional overrides — when present, server skips template-variable
+   * resolution for these fields and uses the provided strings as-is.
+   * Used by the BCC pre-send dialog after the user has chosen how to
+   * handle varying / missing tokens.
+   */
+  subject_override?: string
+  body_html_override?: string
 }
 
 interface WorkerRow {
@@ -249,9 +271,21 @@ export async function POST(
     )
   }
 
-  const subjectTpl = draft.subject ?? ''
-  const bodySource = (draft.body_html && draft.body_html.trim()) || draft.body || ''
-  const isHtmlSource = !!(draft.body_html && draft.body_html.trim())
+  const subjectTpl = body.subject_override ?? draft.subject ?? ''
+  const rawBody =
+    body.body_html_override ??
+    ((draft.body_html && draft.body_html.trim()) || draft.body || '')
+  const isHtmlSource =
+    !!body.body_html_override ||
+    !!(draft.body_html && draft.body_html.trim())
+
+  // Defensive: strip any merge-field chip wrappers that may have escaped
+  // the client-side sanitise step (e.g. legacy drafts, programmatic
+  // setContent paths that bypassed onChange). Keeps raw `{{key}}` tokens
+  // intact for the resolver downstream.
+  const bodySource = isHtmlSource ? stripMergeFieldChips(rawBody) : rawBody
+  dbg('input subject', subjectTpl)
+  dbg('input body (first 800)', bodySource)
 
   const errors: Array<{ worker_id?: number; email?: string; error: string }> = []
   let draftsCreated = 0
@@ -266,13 +300,42 @@ export async function POST(
           last_name: worker.last_name ?? '',
           occupation: worker.occupation ?? '',
         }
-        const subjectResolved = resolveScriptVariables(subjectTpl, ctx)
-        const bodyResolved = isHtmlSource
-          ? resolveScriptVariables(bodySource, ctx)
-          : textToHtml(resolveScriptVariables(bodySource, ctx))
-        await createDraft(tokenResult.accessToken, {
+        const subjectResolved = body.subject_override
+          ? subjectTpl
+          : resolveScriptVariablesIncludingChips(subjectTpl, ctx)
+        const bodyResolved = body.body_html_override
+          ? rawBody
+          : isHtmlSource
+          ? resolveScriptVariablesIncludingChips(bodySource, ctx)
+          : textToHtml(resolveScriptVariablesIncludingChips(bodySource, ctx))
+        if (worker === workers[0]) {
+          dbg('first-recipient ctx', ctx)
+          dbg('first-recipient resolved subject', subjectResolved)
+          dbg('first-recipient resolved body (first 800)', bodyResolved)
+        }
+
+        // Record the send first so we have a sendId for click-token rewriting.
+        const sendId = await recordEmailSend({
+          draftId,
+          campaignId,
+          workerId: worker.worker_id,
+          recipientEmail: worker.email!,
+          sendMethod: 'outlook_personalised',
+          conversationId: null, // updated below once Graph responds
+          externalMessageId: null,
+          userId: user.id,
+        })
+
+        // Rewrite outbound links for click-tracking (only if sendId was obtained).
+        let finalBodyHtml = bodyResolved
+        if (sendId) {
+          const rewritten = await rewriteLinks(bodyResolved, sendId).catch(() => null)
+          if (rewritten) finalBodyHtml = rewritten.html
+        }
+
+        const graphMsg = await createDraft(tokenResult.accessToken, {
           subject: subjectResolved,
-          bodyHtml: bodyResolved,
+          bodyHtml: finalBodyHtml,
           toRecipients: [
             {
               emailAddress: {
@@ -286,6 +349,19 @@ export async function POST(
           ],
         })
         draftsCreated += 1
+
+        // Back-fill the Graph IDs onto the send log row, then tag the worker.
+        if (sendId) {
+          const admin = createAdminClient()
+          void admin
+            .from('email_send_log')
+            .update({
+              conversation_id: graphMsg.conversationId ?? null,
+              external_message_id: graphMsg.id,
+            })
+            .eq('send_id', sendId)
+            .then(() => tagWorkerEmailed(worker.worker_id))
+        }
       } catch (err) {
         errors.push({
           worker_id: worker.worker_id,
@@ -295,7 +371,11 @@ export async function POST(
       }
     }
   } else {
-    // Shared BCC draft. Recipient tokens become collective phrasing.
+    // Shared BCC draft. If body/subject overrides were passed (from the
+    // BccPreSendDialog), use them verbatim — the dialog already applied
+    // the user's chosen substitutions. Otherwise fall back to the legacy
+    // collective-phrasing behaviour so callers that don't open the
+    // dialog still get a usable draft.
     const collectiveCtx: Record<string, string | undefined> = {
       ...campaignContext,
       first_name: body.collective_phrasing?.first_name ?? 'comrades',
@@ -303,10 +383,22 @@ export async function POST(
       occupation: body.collective_phrasing?.occupation ?? 'workmate',
     }
     try {
-      const subjectResolved = resolveScriptVariables(subjectTpl, collectiveCtx)
-      const bodyResolvedBase = resolveTemplateVariables(bodySource, campaignContext)
-      const bodyResolved = resolveScriptVariables(bodyResolvedBase, collectiveCtx)
-      const bodyHtml = isHtmlSource ? bodyResolved : textToHtml(bodyResolved)
+      const subjectResolved = body.subject_override
+        ? subjectTpl
+        : resolveScriptVariablesIncludingChips(subjectTpl, collectiveCtx)
+      let bodyHtmlBase: string
+      if (body.body_html_override) {
+        bodyHtmlBase = rawBody
+      } else {
+        const baseResolved = resolveTemplateVariables(bodySource, campaignContext)
+        const bodyResolved = resolveScriptVariablesIncludingChips(
+          baseResolved,
+          collectiveCtx,
+        )
+        bodyHtmlBase = isHtmlSource ? bodyResolved : textToHtml(bodyResolved)
+      }
+      dbg('bcc resolved subject', subjectResolved)
+      dbg('bcc resolved body (first 800)', bodyHtmlBase)
       const bccList: GraphRecipient[] = workers.map((w) => ({
         emailAddress: {
           address: w.email!,
@@ -314,12 +406,64 @@ export async function POST(
             [w.first_name, w.last_name].filter(Boolean).join(' ') || undefined,
         },
       }))
-      await createDraft(tokenResult.accessToken, {
+
+      // For BCC mode, record send for the first worker to get a sendId for
+      // click token generation (tokens will be shared across all recipients).
+      const firstWorker = workers[0]
+      const firstSendId = firstWorker
+        ? await recordEmailSend({
+            draftId,
+            campaignId,
+            workerId: firstWorker.worker_id,
+            recipientEmail: firstWorker.email!,
+            sendMethod: 'outlook_bcc',
+            conversationId: null,
+            externalMessageId: null,
+            userId: user.id,
+          })
+        : null
+
+      // Rewrite links using the first sendId (tokens shared across BCC list).
+      let finalBodyHtml = bodyHtmlBase
+      if (firstSendId) {
+        const rewritten = await rewriteLinks(bodyHtmlBase, firstSendId).catch(() => null)
+        if (rewritten) finalBodyHtml = rewritten.html
+      }
+
+      const graphMsg = await createDraft(tokenResult.accessToken, {
         subject: subjectResolved,
-        bodyHtml: bodyHtml,
+        bodyHtml: finalBodyHtml,
         bccRecipients: bccList,
       })
       draftsCreated = 1
+
+      const admin = createAdminClient()
+      // Record one send-log entry per BCC recipient with the shared conversationId.
+      // First worker's row was already created above; update it and create rest.
+      for (let i = 0; i < workers.length; i++) {
+        const worker = workers[i]
+        if (i === 0 && firstSendId) {
+          void admin
+            .from('email_send_log')
+            .update({
+              conversation_id: graphMsg.conversationId ?? null,
+              external_message_id: graphMsg.id,
+            })
+            .eq('send_id', firstSendId)
+            .then(() => tagWorkerEmailed(worker.worker_id))
+        } else {
+          void recordEmailSend({
+            draftId,
+            campaignId,
+            workerId: worker.worker_id,
+            recipientEmail: worker.email!,
+            sendMethod: 'outlook_bcc',
+            conversationId: graphMsg.conversationId ?? null,
+            externalMessageId: graphMsg.id,
+            userId: user.id,
+          }).then(() => tagWorkerEmailed(worker.worker_id))
+        }
+      }
     } catch (err) {
       errors.push({
         error: err instanceof Error ? err.message : String(err),

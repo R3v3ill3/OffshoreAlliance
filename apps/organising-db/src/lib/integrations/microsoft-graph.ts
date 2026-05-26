@@ -183,6 +183,7 @@ export interface CreateDraftInput {
 
 export interface GraphMessageResponse {
   id: string
+  conversationId?: string
   webLink?: string
   parentFolderId?: string
 }

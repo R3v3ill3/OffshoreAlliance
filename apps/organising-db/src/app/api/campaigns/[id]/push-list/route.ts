@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCampaignMembershipStatus } from '@/lib/campaign/constants'
 import { ActionNetworkClient } from '@/lib/api/action-network'
 import { syncWorkerToActionNetwork } from '@/lib/api/action-network'
+import { recordEmailSend, tagWorkerEmailed } from '@/lib/comms/send-log'
 
 function getAnClient(): ActionNetworkClient {
   const apiKey = process.env.ACTION_NETWORK_API_KEY
@@ -179,7 +180,7 @@ export async function POST(
       }
     }
 
-    let workerIds = workers.map((w) => w.worker_id)
+    const workerIds = workers.map((w) => w.worker_id)
 
     if (filters.an_tags?.length && workerIds.length > 0) {
       const { data: tagRows } = await supabase
@@ -301,6 +302,18 @@ export async function POST(
 
         contactsTagged++
         workerResults.push({ worker_id: worker.worker_id, name: fullName, status: anId === worker.action_network_id ? 'tagged' : 'created', detail: `AN ID: ${anId}` })
+
+        // Record the send in the engagement log if a draft is associated.
+        if (draft_id) {
+          void recordEmailSend({
+            draftId: draft_id,
+            campaignId,
+            workerId: worker.worker_id,
+            recipientEmail: worker.email!,
+            sendMethod: 'action_network',
+            userId: user.id,
+          }).then(() => tagWorkerEmailed(worker.worker_id))
+        }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Unknown error'
         contactsSkipped++

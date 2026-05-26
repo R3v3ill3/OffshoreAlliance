@@ -103,6 +103,13 @@ export interface SendActionsProps {
   } | null>
   /** Optional disable for save-state synchronization. */
   disabled?: boolean
+  /**
+   * Context for recording local (mailto / .eml) sends in the engagement log.
+   * When provided, a fire-and-forget POST is made after each local dispatch.
+   */
+  campaignId?: number
+  draftId?: number | null
+  selectedWorkerIds?: number[]
 }
 
 export function SendActions({
@@ -123,6 +130,9 @@ export function SendActions({
   onSendTestViaAN,
   onSaveToOutlook,
   disabled,
+  campaignId,
+  draftId,
+  selectedWorkerIds,
 }: SendActionsProps) {
   const [testOpen, setTestOpen] = useState(false)
   const [bccWarningOpen, setBccWarningOpen] = useState(false)
@@ -137,6 +147,20 @@ export function SendActions({
     () => detectRecipientTokens(`${subject}\n\n${bodyHtml}\n${bodyText}`),
     [subject, bodyHtml, bodyText],
   )
+
+  function recordLocalSend(method: 'mailto' | 'eml') {
+    if (!campaignId || !draftId || !selectedWorkerIds?.length) return
+    void fetch(
+      `/api/campaigns/${campaignId}/emails/${draftId}/record-local-send`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ worker_ids: selectedWorkerIds, method }),
+      },
+    ).catch(() => {
+      // fire-and-forget — logging failures must never block the UI
+    })
+  }
 
   function openInMailClient() {
     if (!hasBody) {
@@ -181,6 +205,7 @@ export function SendActions({
       })
       if (link.fits) {
         window.location.href = link.href
+        recordLocalSend('mailto')
         return
       }
       toast.info(
@@ -194,6 +219,7 @@ export function SendActions({
       bodyHtml: bodyHtmlResolved,
       bcc: recipientEmails,
     }, `oa-draft-${Date.now()}.eml`)
+    recordLocalSend('eml')
     toast.success('Draft downloaded — double-click to open in your mail app.')
   }
 

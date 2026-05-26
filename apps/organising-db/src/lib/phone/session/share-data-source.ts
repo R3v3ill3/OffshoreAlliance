@@ -72,5 +72,26 @@ export function buildShareDataSource({
         keepalive: true,
       });
     },
+
+    renewClaim: async (itemId: number) => {
+      const res = await fetchApi(`/api/call-share/${token}/renew`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_id: itemId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { renewed: false, claimed_at: null };
+      }
+      const renewed =
+        typeof (body as { renewed?: boolean }).renewed === "boolean"
+          ? (body as { renewed: boolean }).renewed
+          : false;
+      const claimedAt =
+        typeof (body as { claimed_at?: string | null }).claimed_at === "string"
+          ? (body as { claimed_at: string }).claimed_at
+          : null;
+      return { renewed, claimed_at: claimedAt };
+    },
   };
 }

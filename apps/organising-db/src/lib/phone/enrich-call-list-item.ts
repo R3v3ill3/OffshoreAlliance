@@ -42,6 +42,21 @@ export async function enrichCallListItem(
     recentAttempts = data ?? []
   }
 
+  // Cross-list dedup hint — surface "already called on another list" so the
+  // caller can decide whether to skip. Read via the SECURITY DEFINER helper
+  // so both share-link (admin) and staff (anon) clients can resolve it.
+  let crossListStatus: Record<string, unknown> | null = null
+  if (workerId) {
+    const { data } = await db.rpc('get_campaign_worker_call_status', {
+      p_campaign_id: campaignId,
+      p_worker_id: workerId,
+    })
+    const status = data as Record<string, unknown> | null
+    if (status && (status.list_id as number | null) !== (item.list_id as number | null)) {
+      crossListStatus = status
+    }
+  }
+
   const employers = w?.employers as Record<string, unknown> | null
   const worksites = w?.worksites as Record<string, unknown> | null
   const umt = w?.union_membership_type as
@@ -76,6 +91,7 @@ export async function enrichCallListItem(
     workers: undefined,
     connection,
     recent_attempts: recentAttempts,
+    cross_list_status: crossListStatus,
   }
 }
 

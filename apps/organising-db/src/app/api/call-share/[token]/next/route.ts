@@ -34,6 +34,7 @@ export async function GET(
       p_session_label: session.label,
       p_session_worker_id: session.workerId,
       p_claim_ttl_seconds: CLAIM_TTL_SECONDS,
+      p_share_token_id: tokenRow.token_id,
     });
     if (claimErr) throw claimErr;
     if (!itemId) {

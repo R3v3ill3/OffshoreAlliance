@@ -2,6 +2,21 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { enrichCallListItem, WORKER_SELECT } from '@/lib/phone/enrich-call-list-item'
 
+/**
+ * Authenticated staff "next contact" endpoint.
+ *
+ * Uses the same `claim_next_call_list_item` RPC the share-link dialer uses,
+ * tagging the claim with a staff session label so that:
+ *
+ *  - two staff users sharing the same call list never see the same contact,
+ *  - claims are visible in the coordinator dashboard alongside share-token
+ *    claims (W5),
+ *  - stale staff claims are auto-released via the RPC's TTL just like
+ *    share-link claims.
+ *
+ * Falls back to a deferred-callback peek before claiming a regular pending
+ * item, so callers who scheduled a callback see it the moment it's due.
+ */
 const CLAIM_TTL_SECONDS = 15 * 60
 
 export async function GET(
@@ -15,8 +30,10 @@ export async function GET(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const lid = parseInt(listId, 10)
+    if (!Number.isFinite(lid)) {
+      return NextResponse.json({ error: 'Invalid list id' }, { status: 400 })
+    }
 
-    // Derive campaign_id from the list record (needed for enrichment).
     const { data: list, error: listErr } = await supabase
       .from('call_lists')
       .select('priority_strategy, campaign_id')
@@ -30,74 +47,49 @@ export async function GET(
     if (!list) return NextResponse.json({ error: 'List not found' }, { status: 404 })
 
     const campaignId = list.campaign_id
+    const sessionLabel = `staff:${user.id}`
 
-    // Reset any in_progress items whose claim TTL has expired so they re-enter
-    // the pending queue. This handles the case where a share-link session claimed
-    // items but the session ended without recording any call outcomes, leaving
-    // items permanently invisible to the staff /next route.
-    const expiredThreshold = new Date(Date.now() - CLAIM_TTL_SECONDS * 1000).toISOString()
-    await supabase
-      .from('call_list_items')
-      .update({
-        status: 'pending',
-        claimed_at: null,
-        claimed_by_session_label: null,
-        claimed_by_worker_id: null,
-      })
-      .eq('list_id', lid)
-      .eq('status', 'in_progress')
-      .lt('claimed_at', expiredThreshold)
+    // Resolve the staff caller's worker id (used to attribute attempts and
+    // to surface their own claims in coordinator dashboards).
+    const { data: callerWorker } = await supabase
+      .from('workers')
+      .select('worker_id')
+      .eq('id', user.id)
+      .maybeSingle()
+    const sessionWorkerId = (callerWorker?.worker_id as number | null | undefined) ?? null
 
-    const { data: callbacksDue, error: callbackErr } = await supabase
-      .from('call_list_items')
-      .select(WORKER_SELECT)
-      .eq('list_id', lid)
-      .eq('status', 'deferred')
-      .lte('next_call_at', new Date().toISOString())
-      .order('next_call_at', { ascending: true })
-      .limit(1)
+    const { data: claimedItemId, error: claimErr } = await supabase.rpc(
+      'claim_next_call_list_item',
+      {
+        p_list_id: lid,
+        p_session_label: sessionLabel,
+        p_session_worker_id: sessionWorkerId,
+        p_claim_ttl_seconds: CLAIM_TTL_SECONDS,
+      },
+    )
 
-    if (callbackErr) {
-      console.error('GET /api/calls/lists/[listId]/next callbacks error:', callbackErr)
-      return NextResponse.json({ error: 'Failed to get next contact' }, { status: 500 })
+    if (claimErr) {
+      console.error('GET /api/calls/lists/[listId]/next claim rpc error:', claimErr)
+      return NextResponse.json({ error: 'Failed to claim next contact' }, { status: 500 })
     }
 
-    if (callbacksDue && callbacksDue.length > 0) {
-      return NextResponse.json(
-        await enrichCallListItem(supabase, callbacksDue[0] as Record<string, unknown>, campaignId)
-      )
-    }
-
-    let query = supabase
-      .from('call_list_items')
-      .select(WORKER_SELECT)
-      .eq('list_id', lid)
-      .eq('status', 'pending')
-      .limit(1)
-
-    switch (list.priority_strategy) {
-      case 'priority_score':
-        query = query.order('priority_score', { ascending: false })
-        break
-      case 'least_recently_contacted':
-        query = query.order('last_attempt_at', { ascending: true, nullsFirst: true })
-        break
-      default:
-        query = query.order('sort_order', { ascending: true })
-    }
-
-    const { data: items, error: itemsErr } = await query
-    if (itemsErr) {
-      console.error('GET /api/calls/lists/[listId]/next items error:', itemsErr)
-      return NextResponse.json({ error: 'Failed to get next contact' }, { status: 500 })
-    }
-
-    if (!items || items.length === 0) {
+    if (!claimedItemId) {
       return NextResponse.json({ done: true, message: 'No more contacts to call' })
     }
 
+    const { data: item, error: itemErr } = await supabase
+      .from('call_list_items')
+      .select(WORKER_SELECT)
+      .eq('item_id', claimedItemId)
+      .single()
+
+    if (itemErr || !item) {
+      console.error('GET /api/calls/lists/[listId]/next item fetch error:', itemErr)
+      return NextResponse.json({ error: 'Failed to load claimed contact' }, { status: 500 })
+    }
+
     return NextResponse.json(
-      await enrichCallListItem(supabase, items[0] as Record<string, unknown>, campaignId)
+      await enrichCallListItem(supabase, item as Record<string, unknown>, campaignId),
     )
   } catch (error) {
     console.error('GET /api/calls/lists/[listId]/next error:', error)

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Phone, Mail, Briefcase, MapPin, Clock, MessageCircle, Pencil, Copy, Check } from 'lucide-react'
+import { Phone, Mail, Briefcase, MapPin, Clock, MessageCircle, Pencil, Copy, Check, AlertTriangle } from 'lucide-react'
 import { formatAustralianPhoneDisplay } from '@/lib/phone/format-phone-display'
 import type { CallListItemWithWorker } from '@/types/planner-types'
 
@@ -14,7 +14,7 @@ interface ContactCardProps {
 }
 
 export function ContactCard({ contact, onEdit }: ContactCardProps) {
-  const { worker, connection, recent_attempts } = contact
+  const { worker, connection, recent_attempts, cross_list_status } = contact
   const [copied, setCopied] = useState(false)
 
   if (!worker) return null
@@ -147,6 +147,28 @@ export function ContactCard({ contact, onEdit }: ContactCardProps) {
                     <span className="line-clamp-2">{lastAttempt.overall_notes}</span>
                   </div>
                 )}
+              </div>
+            )}
+
+            {cross_list_status && (
+              <div className="mt-2 flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                <span>
+                  Also recently called via{' '}
+                  <strong>{cross_list_status.list_name}</strong>
+                  {cross_list_status.last_caller_session_label
+                    ? ` by ${cross_list_status.last_caller_session_label}`
+                    : ''}{' '}
+                  on{' '}
+                  {new Date(cross_list_status.last_attempt_at).toLocaleDateString('en-AU', {
+                    day: 'numeric',
+                    month: 'short',
+                  })}
+                  {cross_list_status.last_outcome_classification
+                    ? ` — ${cross_list_status.last_outcome_classification.replace(/_/g, ' ')}`
+                    : ''}
+                  .
+                </span>
               </div>
             )}
 

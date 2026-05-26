@@ -20,7 +20,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
-  Phone, Plus, Play, FileText, Users, Loader2, Edit, ExternalLink, Trash2,
+  Phone, Plus, Play, FileText, Users, Loader2, Edit, ExternalLink, Trash2, Activity,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { CallListWithStats } from '@/types/planner-types'
@@ -69,6 +69,14 @@ export function InlinePhoneOpsPanel({ campaignId }: InlinePhoneOpsPanelProps) {
           }
         />
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push(`/campaigns/${id}/phone/live`)}
+          >
+            <Activity className="h-4 w-4 mr-1" />
+            Live action
+          </Button>
           <Button
             variant="outline"
             size="sm"

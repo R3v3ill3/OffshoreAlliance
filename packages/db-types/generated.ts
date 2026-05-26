@@ -2118,6 +2118,7 @@ export type Database = {
           best_disposition: string | null
           claimed_at: string | null
           claimed_by_session_label: string | null
+          claimed_by_share_token_id: number | null
           claimed_by_worker_id: number | null
           created_at: string
           item_id: number
@@ -2137,6 +2138,7 @@ export type Database = {
           best_disposition?: string | null
           claimed_at?: string | null
           claimed_by_session_label?: string | null
+          claimed_by_share_token_id?: number | null
           claimed_by_worker_id?: number | null
           created_at?: string
           item_id?: number
@@ -2156,6 +2158,7 @@ export type Database = {
           best_disposition?: string | null
           claimed_at?: string | null
           claimed_by_session_label?: string | null
+          claimed_by_share_token_id?: number | null
           claimed_by_worker_id?: number | null
           created_at?: string
           item_id?: number
@@ -18195,6 +18198,7 @@ export type Database = {
           p_list_id: number
           p_session_label: string
           p_session_worker_id?: number
+          p_share_token_id?: number
         }
         Returns: number
       }
@@ -18419,6 +18423,22 @@ export type Database = {
       release_call_list_item_claim: {
         Args: { p_item_id: number; p_session_label: string }
         Returns: boolean
+      }
+      renew_call_list_item_claim: {
+        Args: {
+          p_claim_ttl_seconds?: number
+          p_item_id: number
+          p_session_label: string
+        }
+        Returns: Json
+      }
+      force_release_claims_for_token: {
+        Args: { p_token_id: number }
+        Returns: Json
+      }
+      get_campaign_worker_call_status: {
+        Args: { p_campaign_id: number; p_worker_id: number }
+        Returns: Json
       }
       request_campaign_edit_permission: {
         Args: { p_campaign_id: number; p_reason?: string }

@@ -669,6 +669,24 @@ export interface CallListItemWithWorker extends CallListItem {
     notes: string | null
   } | null
   recent_attempts?: CallAttempt[]
+  /**
+   * Cross-list dedup hint — most-recent attempt for this worker on this
+   * campaign from a DIFFERENT call list. Surfaced to the caller as a
+   * "called recently on List X by Alice" badge so we avoid double-dialling
+   * the same worker through parallel lists.
+   */
+  cross_list_status?: {
+    campaign_id: number
+    worker_id: number
+    list_id: number
+    list_name: string
+    last_attempt_id: number
+    last_attempt_at: string
+    last_dial_disposition: string | null
+    last_call_disposition: string | null
+    last_outcome_classification: string | null
+    last_caller_session_label: string | null
+  } | null
 }
 
 export interface CapturedObjectionPayload {

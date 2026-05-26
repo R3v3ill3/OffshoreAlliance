@@ -1,19 +1,20 @@
 'use client'
 
 /**
- * SendActions — the composer's footer bar with three send paths:
+ * SendActions — the composer's footer bar with four send paths:
  *   1. Push to Action Network (existing flow, identical behaviour).
- *   2. Open in mail client (BCC list): mailto for ≤30 recipients, else
- *      .eml download with X-Unsent: 1. Surfaces a recipient-variable
- *      warning if the body has tokens that can't resolve per-recipient.
- *   3. Send test (single recipient, via-AN or via-mail-client).
- *
- * All paths share the same resolved subject/body — the parent passes them
- * in as pre-resolved strings (campaign vars resolved, AN markers applied
- * or stripped as appropriate).
+ *   2. Save to Outlook drafts via OAuth (personalised per-recipient or
+ *      shared BCC). Requires the user to have connected their Microsoft
+ *      365 account in settings or via the inline CTA shown here.
+ *   3. Open in mail client universally (mailto for ≤30 recipients, else
+ *      .eml download with X-Unsent: 1). No auth required. Surfaces a
+ *      recipient-variable warning if the body has tokens that can't
+ *      resolve per-recipient.
+ *   4. Send test (single recipient, via-AN or via-mail-client).
  */
 
 import { useMemo, useState } from 'react'
+import { useOutlookConnection } from '@/lib/hooks/useOutlookConnection'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -44,6 +45,8 @@ import {
   AlertTriangle,
   TestTube2,
   ExternalLink,
+  Inbox,
+  Users as UsersIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -93,6 +96,11 @@ export interface SendActionsProps {
   onCreateMessage: () => void
   /** Handler for sending a single-recipient test via AN. */
   onSendTestViaAN: (recipient: string) => Promise<void>
+  /** Handler for saving drafts to the user's connected Outlook mailbox. */
+  onSaveToOutlook?: (mode: 'personalised' | 'bcc') => Promise<{
+    drafts_created: number
+    drafts_failed: number
+  } | null>
   /** Optional disable for save-state synchronization. */
   disabled?: boolean
 }
@@ -113,10 +121,17 @@ export function SendActions({
   onPushList,
   onCreateMessage,
   onSendTestViaAN,
+  onSaveToOutlook,
   disabled,
 }: SendActionsProps) {
   const [testOpen, setTestOpen] = useState(false)
   const [bccWarningOpen, setBccWarningOpen] = useState(false)
+  const [outlookBusy, setOutlookBusy] = useState<'personalised' | 'bcc' | null>(null)
+  const {
+    connection: outlook,
+    connect: connectOutlook,
+    disconnect: disconnectOutlook,
+  } = useOutlookConnection()
 
   const recipientTokensInBody = useMemo(
     () => detectRecipientTokens(`${subject}\n\n${bodyHtml}\n${bodyText}`),
@@ -187,6 +202,46 @@ export function SendActions({
     dispatchOpenInMailClient(replaceTokens)
   }
 
+  async function handleSaveToOutlook(mode: 'personalised' | 'bcc') {
+    if (!onSaveToOutlook) return
+    if (!outlook?.connected) {
+      connectOutlook()
+      return
+    }
+    if (!hasBody) {
+      toast.error('Write the email body first.')
+      return
+    }
+    if (recipientEmails.length === 0) {
+      toast.error('No recipients selected.')
+      return
+    }
+    setOutlookBusy(mode)
+    try {
+      const result = await onSaveToOutlook(mode)
+      if (result) {
+        if (mode === 'personalised') {
+          toast.success(
+            `${result.drafts_created} draft${result.drafts_created === 1 ? '' : 's'} saved to ${outlook.email}` +
+              (result.drafts_failed
+                ? ` (${result.drafts_failed} failed)`
+                : '. Open Outlook to review and send.'),
+          )
+        } else {
+          if (result.drafts_created > 0) {
+            toast.success(
+              `Draft saved to ${outlook.email}. Open Outlook to review and send.`,
+            )
+          } else {
+            toast.error('Outlook draft could not be created.')
+          }
+        }
+      }
+    } finally {
+      setOutlookBusy(null)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between border-t bg-background px-4 py-3">
       <div className="flex items-center gap-2 text-sm">
@@ -216,6 +271,92 @@ export function SendActions({
           <TestTube2 className="h-3.5 w-3.5 mr-1.5" />
           Send test…
         </Button>
+
+        {onSaveToOutlook && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={
+                  !hasBody || disabled || recipientEmails.length === 0 || !!outlookBusy
+                }
+              >
+                {outlookBusy ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                ) : (
+                  <Inbox className="h-3.5 w-3.5 mr-1.5" />
+                )}
+                {outlook?.connected ? 'Save to Outlook' : 'Outlook…'}
+                <ChevronDown className="h-3 w-3 ml-1.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80">
+              <DropdownMenuLabel className="text-[10px] uppercase tracking-wide">
+                Save drafts to your Outlook mailbox
+              </DropdownMenuLabel>
+              {outlook?.connected ? (
+                <>
+                  <div className="px-2 py-1.5 text-[11px] text-muted-foreground border-b">
+                    Connected as <strong>{outlook.email}</strong>
+                  </div>
+                  <DropdownMenuItem
+                    onClick={() => void handleSaveToOutlook('personalised')}
+                    className="flex-col items-start gap-0.5 py-2"
+                    disabled={!!outlookBusy}
+                  >
+                    <span className="text-sm flex items-center gap-1.5">
+                      <UsersIcon className="h-3.5 w-3.5" />
+                      Save personalised drafts ({recipientCount})
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      One draft per recipient with {`{{first_name}}`} resolved
+                      per-worker. Queued in your Outlook Drafts for review.
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => void handleSaveToOutlook('bcc')}
+                    className="flex-col items-start gap-0.5 py-2"
+                    disabled={!!outlookBusy}
+                  >
+                    <span className="text-sm flex items-center gap-1.5">
+                      <Mail className="h-3.5 w-3.5" />
+                      Save shared BCC draft
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      One draft with all {recipientCount} recipients in BCC.
+                      Recipient tokens replaced with collective phrasing
+                      (e.g. &ldquo;comrades&rdquo;).
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => void disconnectOutlook()}
+                    className="py-1.5 text-[11px] text-muted-foreground"
+                  >
+                    Disconnect Outlook
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                <DropdownMenuItem
+                  onClick={() => connectOutlook()}
+                  className="flex-col items-start gap-0.5 py-2"
+                >
+                  <span className="text-sm flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5" />
+                    Connect Outlook
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Authorise OA to save drafts to your Microsoft 365 mailbox.
+                    You&apos;ll be redirected to Microsoft to sign in.
+                  </span>
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

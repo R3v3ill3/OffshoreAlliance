@@ -14,6 +14,7 @@
  */
 export * from "./types";
 export * from "./use-claim-countdown";
+export * from "./use-claim-auto-renew";
 export * from "./use-share-bootstrap";
 export * from "./share-data-source";
 export * from "./use-script-variables";

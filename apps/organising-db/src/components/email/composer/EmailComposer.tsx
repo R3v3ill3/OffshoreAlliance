@@ -625,6 +625,78 @@ export function EmailComposer() {
     [recipients, selectedWorkerIds],
   )
 
+  // ------- Save-to-Outlook handler -----------------------------------
+  // The actual Graph calls happen server-side; we hand off worker IDs +
+  // mode and let /api/campaigns/[id]/emails/[draftId]/save-to-outlook
+  // resolve per-recipient tokens before creating each draft.
+  const handleSaveToOutlook = useCallback(
+    async (mode: 'personalised' | 'bcc') => {
+      if (!draftId) return null
+      if (!bodyText.trim()) {
+        toast.error('Body is empty — write or generate the email first.')
+        return null
+      }
+      // Save first so the server reads the latest body/subject.
+      await saveDraft(true)
+      const ids = recipients
+        .filter((r) => selectedWorkerIds.has(r.worker_id) && r.email)
+        .map((r) => r.worker_id)
+      if (ids.length === 0) {
+        toast.error('No recipients with valid email addresses.')
+        return null
+      }
+      announce(
+        mode === 'personalised'
+          ? `Creating ${ids.length} personalised Outlook drafts…`
+          : 'Creating shared BCC draft in Outlook…',
+      )
+      try {
+        const res = await fetchApi(
+          `/api/campaigns/${campaignId}/emails/${draftId}/save-to-outlook`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode, worker_ids: ids }),
+            timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
+          },
+        )
+        const data = await res.json()
+        if (!res.ok || !data.success) {
+          if (data?.needs_connection) {
+            toast.error(
+              'Outlook is not connected — use the dropdown to connect first.',
+            )
+          } else {
+            toast.error(data?.error || 'Save to Outlook failed.')
+          }
+          return null
+        }
+        announce(
+          `${data.drafts_created} draft${data.drafts_created === 1 ? '' : 's'} saved to Outlook.`,
+        )
+        return {
+          drafts_created: data.drafts_created as number,
+          drafts_failed: data.drafts_failed as number,
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Save to Outlook failed.')
+        return null
+      }
+    },
+    // saveDraft is captured by closure; including it would cause infinite
+    // re-renders since it captures most state. The handler is invoked
+    // by user interaction, not by render, so the stale-closure risk is low.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      draftId,
+      campaignId,
+      bodyText,
+      recipients,
+      selectedWorkerIds,
+      announce,
+    ],
+  )
+
   const handlePushList = useCallback(async () => {
     if (!draftId) return
     setIsPushingList(true)
@@ -871,6 +943,32 @@ export function EmailComposer() {
     saveDraft,
   ])
 
+  // ------- OAuth return toast -----------------------------------------
+  // When the user returns from Microsoft's consent screen the callback
+  // route appends ?oauth=connected|denied|error&oauth_detail=… to the
+  // returnTo URL. Surface that as a toast and strip the query so a page
+  // refresh doesn't repeat it.
+  useEffect(() => {
+    const status = searchParams.get('oauth')
+    if (!status) return
+    const detail = searchParams.get('oauth_detail') || ''
+    if (status === 'connected') {
+      toast.success(
+        detail ? `Outlook connected as ${detail}` : 'Outlook connected.',
+      )
+    } else if (status === 'denied') {
+      toast.error('Outlook connection denied. You can try again any time.')
+    } else if (status === 'error') {
+      toast.error(`Outlook connection error${detail ? `: ${detail}` : '.'}`)
+    }
+    // Strip query params without triggering a navigation.
+    const url = new URL(window.location.href)
+    url.searchParams.delete('oauth')
+    url.searchParams.delete('oauth_detail')
+    window.history.replaceState({}, '', url.toString())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // ------- Keyboard shortcuts -----------------------------------------
   useEffect(() => {
     function handler(e: KeyboardEvent) {
@@ -1078,6 +1176,7 @@ export function EmailComposer() {
         onPushList={handlePushList}
         onCreateMessage={handleCreateMessage}
         onSendTestViaAN={handleSendTestViaAN}
+        onSaveToOutlook={handleSaveToOutlook}
       />
 
       <EditEmailSetupDialog

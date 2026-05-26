@@ -33,16 +33,38 @@ export async function POST(
       .update({ revoked_at: new Date().toISOString() })
       .eq("list_id", numericListId)
       .is("revoked_at", null)
-      .gt("expires_at", new Date().toISOString());
+      .gt("expires_at", new Date().toISOString())
+      .select("token_id");
 
     if (typeof body.tokenId === "number" && Number.isFinite(body.tokenId)) {
       query = query.eq("token_id", body.tokenId);
     }
 
-    const { error: revokeErr } = await query;
+    const { data: revokedRows, error: revokeErr } = await query;
     if (revokeErr) throw revokeErr;
 
-    return NextResponse.json({ ok: true });
+    // Force-release any in-flight claims held by sessions that came in
+    // through the revoked tokens, so contacts return to the queue
+    // immediately instead of waiting out the 15-minute TTL.
+    let totalReleased = 0;
+    if (Array.isArray(revokedRows)) {
+      for (const row of revokedRows) {
+        const tokenId = (row as { token_id?: number }).token_id;
+        if (!tokenId) continue;
+        const { data: releaseRes } = await serverClient.rpc(
+          "force_release_claims_for_token",
+          { p_token_id: tokenId },
+        );
+        const releasedCount = (releaseRes as { released_count?: number } | null)?.released_count;
+        if (typeof releasedCount === "number") totalReleased += releasedCount;
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      revoked: revokedRows?.length ?? 0,
+      released_claims: totalReleased,
+    });
   } catch (error) {
     console.error("Revoke call share token error:", error);
     return NextResponse.json(

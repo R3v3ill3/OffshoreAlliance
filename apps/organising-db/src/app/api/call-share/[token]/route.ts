@@ -213,6 +213,53 @@ export async function GET(
       return { ...row, activity };
     });
 
+    // Objection bank (campaign-scoped + defaults). The mobile in-call sheet
+    // can't hit Supabase directly so we ship the bank alongside bootstrap.
+    const { data: objectionBank } = await admin
+      .from("call_objections")
+      .select("objection_id, label, description, is_default, sort_order")
+      .or(`campaign_id.is.null,campaign_id.eq.${campaignId}`)
+      .order("is_default", { ascending: false })
+      .order("sort_order");
+
+    // Expected issues (latest current situation analysis). May be empty.
+    const { data: situation } = await admin
+      .from("campaign_situation_analyses")
+      .select("top_issues")
+      .eq("campaign_id", campaignId)
+      .eq("is_current", true)
+      .maybeSingle();
+    const topIssues = ((situation?.top_issues as unknown[] | null) ?? []).map((entry, index) => {
+      const row = (entry ?? {}) as { label?: string; heat?: number; notes?: string };
+      return {
+        index,
+        label: row.label ?? "",
+        heat: row.heat ?? 3,
+        notes: row.notes ?? null,
+      };
+    });
+
+    // phone_call_actions whose list_ids array includes this list — gives us
+    // action_id (for attempt attribution) and selected_assessment_ids.
+    const { data: actionMatches } = await admin
+      .from("phone_call_actions")
+      .select("action_id, selected_assessment_ids, status, list_ids, created_at")
+      .contains("list_ids", [tokenRow.list_id])
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const action = actionMatches?.[0] ?? null;
+    let sessionAssessments: { activity_id: number; title: string }[] = [];
+    if (action?.selected_assessment_ids?.length) {
+      const { data: rows } = await admin
+        .from("campaign_activities")
+        .select("activity_id, title")
+        .in("activity_id", action.selected_assessment_ids);
+      const byId = new Map((rows ?? []).map((r) => [r.activity_id, r] as const));
+      sessionAssessments = action.selected_assessment_ids
+        .map((id: number) => byId.get(id))
+        .filter((r): r is { activity_id: number; title: string } => Boolean(r));
+    }
+
     return NextResponse.json({
       campaign: campaign ?? { campaign_id: campaignId, name: "" },
       call_list: listRecord,
@@ -220,6 +267,10 @@ export async function GET(
       linkedScripts: listRecord.call_list_scripts ?? [],
       outcome_definitions: outcomes ?? [],
       cta_ambitions: flattenedCtas,
+      objection_bank: objectionBank ?? [],
+      expected_issues: topIssues,
+      session_assessments: sessionAssessments,
+      action_id: action?.action_id ?? null,
       script_variable_context: await campaignScriptContext(admin, campaignId, tokenRow.issued_by),
       support_levels: SUPPORT_LEVELS,
       leader,

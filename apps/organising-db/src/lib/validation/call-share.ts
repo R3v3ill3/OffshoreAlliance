@@ -36,7 +36,12 @@ export const shareReleaseSchema = z.object({
   item_id: z.number().int().positive(),
 });
 
+export const shareRenewSchema = z.object({
+  item_id: z.number().int().positive(),
+});
+
 export type ShareTokenIssueRequest = z.infer<typeof shareTokenIssueSchema>;
 export type ShareAuthRequest = z.infer<typeof shareAuthSchema>;
 export type ShareAttemptRequest = z.infer<typeof shareAttemptSchema>;
 export type ShareReleaseRequest = z.infer<typeof shareReleaseSchema>;
+export type ShareRenewRequest = z.infer<typeof shareRenewSchema>;

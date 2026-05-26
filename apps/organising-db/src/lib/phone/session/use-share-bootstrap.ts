@@ -59,6 +59,10 @@ export function useShareBootstrap(token: string): {
         linkedScripts: CallSessionBootstrap["linkedScripts"];
         outcome_definitions: CallSessionBootstrap["outcomeDefinitions"];
         cta_ambitions: CallSessionBootstrap["ctaAmbitions"];
+        objection_bank?: CallSessionBootstrap["objectionBank"];
+        expected_issues?: CallSessionBootstrap["expectedIssues"];
+        session_assessments?: CallSessionBootstrap["sessionAssessments"];
+        action_id?: number | null;
         script_variable_context: Record<string, string | undefined>;
         caller: CallSessionCaller;
       };
@@ -70,6 +74,10 @@ export function useShareBootstrap(token: string): {
           linkedScripts: payload.linkedScripts ?? [],
           outcomeDefinitions: payload.outcome_definitions ?? [],
           ctaAmbitions: payload.cta_ambitions ?? [],
+          objectionBank: payload.objection_bank ?? [],
+          expectedIssues: payload.expected_issues ?? [],
+          sessionAssessments: payload.session_assessments ?? [],
+          actionId: payload.action_id ?? null,
           scriptContext: payload.script_variable_context ?? {},
         },
         caller: payload.caller,

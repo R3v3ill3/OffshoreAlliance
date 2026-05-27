@@ -23,14 +23,12 @@
 import { useMemo, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, ListChecks, Loader2, Share2 } from 'lucide-react'
+import { ArrowLeft, ListChecks, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { PathwayPicker } from '@/components/phone/orchestrator/PathwayPicker'
-import { IssueLinkDialog, type IssueLinkResult } from '@/components/share/issue-link-dialog'
-import { IssuedLinkResultDialog } from '@/components/share/issued-link-result-dialog'
 import type { Pathway } from '@/types/phone-call-action'
 
 export default function PhoneSetupPage() {
@@ -49,8 +47,6 @@ export default function PhoneSetupPage() {
 
   const [pathway, setPathway] = useState<Pathway | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [shareOpen, setShareOpen] = useState(false)
-  const [shareIssueResult, setShareIssueResult] = useState<IssueLinkResult | null>(null)
 
   // When action_id is present (build-list entry), fetch the row so we
   // can show "list already attached" and update its entry_branch later.
@@ -139,55 +135,14 @@ export default function PhoneSetupPage() {
       </div>
 
       {isBuildListEntry && (
-        <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-3 text-sm text-blue-800">
-          <div className="flex items-center gap-2">
-            <ListChecks className="h-4 w-4 flex-shrink-0" />
-            <span>
-              Call list <strong>#{attachedListId}</strong> is already attached
-              (from Build List). Pick a pathway below to continue.
-            </span>
-          </div>
-          <div className="mt-2 flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100"
-              onClick={() => setShareOpen(true)}
-            >
-              <Share2 className="h-3.5 w-3.5 mr-1" />
-              Share for mobile calling now
-            </Button>
-            <span className="text-xs text-blue-600">
-              You can share immediately and set up a script in parallel.
-            </span>
-          </div>
+        <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+          <ListChecks className="h-4 w-4 flex-shrink-0" />
+          <span>
+            Call list <strong>#{attachedListId}</strong> is already attached
+            (from Build List). Pick a pathway below to continue.
+          </span>
         </div>
       )}
-
-      <IssueLinkDialog
-        title="Share for mobile calling"
-        target={
-          shareOpen && attachedListId != null
-            ? {
-                title: `Call list #${attachedListId}`,
-                contextLabel: 'For call list',
-                endpoint: `/api/campaigns/${campaignId}/call-lists/${attachedListId}/share-token`,
-              }
-            : null
-        }
-        passwordHelp="Share this link with your callers — each person picks their name on sign-in and the system prevents anyone calling the same contact twice."
-        onClose={() => setShareOpen(false)}
-        onIssued={(result) => {
-          setShareOpen(false)
-          setShareIssueResult(result)
-        }}
-      />
-
-      <IssuedLinkResultDialog
-        title="Mobile-call link ready"
-        result={shareIssueResult}
-        onClose={() => setShareIssueResult(null)}
-      />
 
       <Card>
         <CardHeader>

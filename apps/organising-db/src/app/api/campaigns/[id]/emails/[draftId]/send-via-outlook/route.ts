@@ -43,6 +43,10 @@ import {
   resolveTemplateVariables,
 } from '@/lib/comms/template-variables'
 import { stripMergeFieldChips } from '@/lib/comms/chip-html'
+import {
+  loadCampaignEmailContext,
+  buildWorkerEmailContext,
+} from '@/lib/comms/campaign-email-context'
 import { recordEmailSend, tagWorkerEmailed } from '@/lib/comms/send-log'
 import { rewriteLinks } from '@/lib/comms/click-tracker'
 
@@ -196,60 +200,12 @@ export async function POST(
     )
   }
 
-  // 3. Campaign context.
-  const { data: campaign } = await supabase
-    .from('campaigns')
-    .select('campaign_id, name, organiser_id')
-    .eq('campaign_id', campaignId)
-    .maybeSingle()
-  const { data: timeline } = await supabase
-    .from('campaign_timelines')
-    .select('agreement_id')
-    .eq('campaign_id', campaignId)
-    .maybeSingle()
-  let employerName = ''
-  let agreementName = ''
-  if (timeline?.agreement_id) {
-    const { data: agreement } = await supabase
-      .from('agreements')
-      .select('agreement_name, employer_id')
-      .eq('agreement_id', timeline.agreement_id)
-      .maybeSingle()
-    agreementName = agreement?.agreement_name ?? ''
-    if (agreement?.employer_id) {
-      const { data: employer } = await supabase
-        .from('employers')
-        .select('employer_name')
-        .eq('employer_id', agreement.employer_id)
-        .maybeSingle()
-      employerName = employer?.employer_name ?? ''
-    }
-  }
-  let organiserName = ''
-  let organiserPhone = ''
-  if (campaign?.organiser_id) {
-    const { data: org } = await supabase
-      .from('organisers')
-      .select('organiser_name, phone')
-      .eq('organiser_id', campaign.organiser_id)
-      .maybeSingle()
-    organiserName = org?.organiser_name ?? ''
-    organiserPhone = org?.phone ?? ''
-  }
-
-  const campaignContext: Record<string, string | undefined> = {
-    employer_name: employerName || undefined,
-    agreement_name: agreementName || undefined,
-    campaign_name: campaign?.name ?? undefined,
-    organiser_name: organiserName || undefined,
-    organiser_phone: organiserPhone || undefined,
-    staff_email: user.email ?? undefined,
-    date: new Date().toLocaleDateString('en-AU', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    }),
-  }
+  // 3. Campaign context — shared loader matches client + save-to-outlook.
+  const campaignContext = await loadCampaignEmailContext(
+    supabase,
+    campaignId,
+    user.email ?? undefined,
+  )
 
   // 4. Acquire access token + verify Mail.Send scope.
   let tokenResult
@@ -287,15 +243,23 @@ export async function POST(
 
   const errors: Array<{ worker_id?: number; email?: string; error: string }> = []
   let sentCount = 0
+  const debugInfo: Record<string, unknown> = DEBUG
+    ? {
+        campaign_context: campaignContext,
+        input_subject: subjectTpl,
+        input_body_preview: bodySource.slice(0, 400),
+        body_was_html: isHtmlSource,
+        body_chip_spans_seen: /<span[^>]*data-merge-field=/i.test(rawBody),
+      }
+    : {}
 
   if (body.mode === 'personalised') {
     for (const worker of workers) {
       try {
-        const ctx = {
-          ...campaignContext,
-          first_name: worker.first_name ?? '',
-          last_name: worker.last_name ?? '',
-          occupation: worker.occupation ?? '',
+        const ctx = buildWorkerEmailContext(campaignContext, worker)
+        if (worker === workers[0]) {
+          dbg('first-recipient ctx', ctx)
+          if (DEBUG) debugInfo.first_recipient_ctx = ctx
         }
         const subjectResolved = body.subject_override
           ? subjectTpl
@@ -478,6 +442,7 @@ export async function POST(
     errors,
     batch_id: batchRow?.batch_id ?? null,
     mailbox: tokenResult.connection.email,
+    ...(DEBUG ? { debug: debugInfo } : {}),
   })
 }
 

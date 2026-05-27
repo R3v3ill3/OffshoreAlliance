@@ -86,6 +86,13 @@ export interface CallSessionDataSource {
    * (caller should treat as a lost claim).
    */
   renewClaim?(itemId: number): Promise<{ renewed: boolean; claimed_at: string | null }>;
+  /**
+   * Deprioritise a contact after the caller skips it: releases any held
+   * claim and moves the contact to the back of the queue so it won't
+   * surface again until all other pending contacts have been attempted.
+   * Optional — desktop staff sessions simply omit this.
+   */
+  skipContact?(itemId: number): Promise<void>;
 }
 
 /** Soft-claim TTL (matches `claim_next_call_list_item` default 15 min). */

@@ -177,10 +177,20 @@ export function MobileDialer({ token }: MobileDialerProps) {
     [fetchNext],
   );
 
-  const handleSkip = useCallback(() => {
+  const handleSkip = useCallback(async () => {
     setScreen({ kind: "loading_next" });
+    // Deprioritise the contact before claiming the next one so it moves to
+    // the back of the queue and won't be offered again immediately.
+    if (activeContact && dataSource?.skipContact) {
+      try {
+        await dataSource.skipContact(activeContact.item_id);
+      } catch {
+        // Non-critical — fetchNext proceeds regardless; the contact will
+        // surface again after the claim TTL expires.
+      }
+    }
     void fetchNext();
-  }, [fetchNext]);
+  }, [activeContact, dataSource, fetchNext]);
 
   const handleHandBack = useCallback(async () => {
     dialerTelemetry.handBack({ item_id: activeContact?.item_id ?? null });

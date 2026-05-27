@@ -73,6 +73,15 @@ export function buildShareDataSource({
       });
     },
 
+    skipContact: async (itemId: number) => {
+      await fetchApi(`/api/call-share/${token}/skip`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_id: itemId }),
+      });
+      // Non-critical — errors are intentionally swallowed by the caller.
+    },
+
     renewClaim: async (itemId: number) => {
       const res = await fetchApi(`/api/call-share/${token}/renew`, {
         method: "POST",

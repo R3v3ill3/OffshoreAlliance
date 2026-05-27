@@ -137,9 +137,10 @@ export function BuildListPanel({
   const withPhone = items.filter((i) => Boolean(i.worker?.phone?.trim())).length;
 
   const isCreating = buildList.createList.isPending;
+  const isAddingItems = buildList.addItems.isPending;
   const isMutating =
     isCreating ||
-    buildList.addItems.isPending ||
+    isAddingItems ||
     buildList.removeItems.isPending ||
     buildList.updateMeta.isPending ||
     buildList.fire.isPending;
@@ -299,7 +300,7 @@ export function BuildListPanel({
       }}
       className={cn(
         "sticky w-full md:w-[360px] lg:w-[400px]",
-        "rounded border bg-card shadow-sm flex flex-col print:hidden",
+        "rounded border bg-card shadow-sm flex flex-col print:hidden relative",
         highlighted && "ring-2 ring-primary ring-offset-2"
       )}
     >
@@ -465,6 +466,21 @@ export function BuildListPanel({
           canWrite={canWrite}
         />
       </footer>
+
+      {/* Processing overlay — shown while workers are being added to the list */}
+      {isAddingItems && (
+        <div className="absolute inset-0 rounded z-20 flex flex-col items-center justify-center gap-3 bg-card/75 backdrop-blur-[2px]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/eurekaflag.gif"
+            alt="Adding workers…"
+            className="h-24 w-auto"
+          />
+          <span className="text-sm font-medium text-foreground">
+            Adding workers to list…
+          </span>
+        </div>
+      )}
     </aside>
   );
 }

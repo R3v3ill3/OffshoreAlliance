@@ -73,6 +73,13 @@ export type WorkerTileProps = {
    * been added (and avoid re-adding them).
    */
   inBuildList?: boolean;
+  /**
+   * When true (Build list panel is open), reverses click behaviour: a single
+   * click selects/deselects the tile for drag-to-list, and a double-click
+   * opens the worker detail popup. Reverts to default (single click = open)
+   * when false or undefined.
+   */
+  buildListMode?: boolean;
 };
 
 export function WorkerTile({
@@ -92,6 +99,7 @@ export function WorkerTile({
   onDragEnd,
   onContactBadgeClick,
   inBuildList,
+  buildListMode,
 }: WorkerTileProps) {
   const mt = worker.member_role_type;
   const um = worker.union_membership_type;
@@ -157,11 +165,19 @@ export function WorkerTile({
     : "";
   const titleHsr = worker.is_hsr ? " Health and Safety Representative." : "";
   const titleOtherUnion = showOtherBadge && otherUnionTitle ? ` ${otherUnionTitle}.` : "";
-  const titleHints =
-    canWrite ? " Click to open, \u2318/Ctrl-click to select, Shift-click to add, right-click to move/copy." : "";
+  const titleHints = canWrite
+    ? buildListMode
+      ? " Click to select, double-click to open, right-click to move/copy."
+      : " Click to open, \u2318/Ctrl-click to select, Shift-click to add, right-click to move/copy."
+    : "";
 
   const handleClick = (e: MouseEvent<HTMLButtonElement>) => {
     if (!canWrite) return;
+    if (buildListMode) {
+      e.preventDefault();
+      onClick?.(worker.worker_id, ouId ?? null, "toggle-select");
+      return;
+    }
     const meta = e.metaKey || e.ctrlKey;
     const shift = e.shiftKey;
     if (meta || shift) {
@@ -170,6 +186,12 @@ export function WorkerTile({
     } else {
       onClick?.(worker.worker_id, ouId ?? null, "open");
     }
+  };
+
+  const handleDoubleClick = (e: MouseEvent<HTMLButtonElement>) => {
+    if (!canWrite || !buildListMode) return;
+    e.preventDefault();
+    onClick?.(worker.worker_id, ouId ?? null, "open");
   };
 
   const handleDragStart = (e: DragEvent<HTMLDivElement>) => {
@@ -292,6 +314,7 @@ export function WorkerTile({
         title={`${displayName}. ${titleRatings}.${titleAssessment}${titleDefaultHint}${titleMultiUnit}${titleHsr}${titleOtherUnion}${titleHints}`}
         aria-pressed={isSelected ? true : undefined}
         onClick={handleClick}
+        onDoubleClick={buildListMode ? handleDoubleClick : undefined}
         style={tileStyle}
         className={cn(
           "w-full h-full text-left text-[11px] leading-tight p-1.5 rounded border min-h-[3.25rem] flex flex-col gap-0.5 justify-between",

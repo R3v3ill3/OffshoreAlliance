@@ -804,6 +804,7 @@ export function CampaignWallChart({
             })
           }
           inBuildList={buildListOpen ? buildListWorkerIds.has(workerId) : undefined}
+          buildListMode={buildListOpen || undefined}
           onDragStartRefs={(id, tileOuId) => {
             if (selection.has(tileOuId, id)) {
               return selection

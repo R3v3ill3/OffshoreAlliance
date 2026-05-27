@@ -116,19 +116,44 @@ export interface EmailBodyEditorRef {
   replaceAllWith: (text: string) => void
 }
 
+// Email-safe HTML allowlist for export to Action Network (and our own
+// preview pane). Action Network accepts standard HTML email markup, so
+// we deliberately allow images, tables, divs/spans and inline styles —
+// stripping these silently breaks templates that include logos, banners
+// or layout tables, which is exactly the surprise behaviour organisers
+// hit when their richly-formatted templates land in AN as plain text.
+//
+// Security model: we still go through DOMPurify, which:
+//   - blocks <script>, <iframe>, event-handler attributes (onclick etc),
+//     javascript: URLs, and data: URLs in src/href by default;
+//   - sanitises inline `style` to drop expressions and `behavior:`.
+// Anything not on this list is silently dropped, so adding an entry is
+// always safe — adding a value to ALLOWED_ATTR needs more thought.
 const ALLOWED_TAGS_EXPORT = [
-  'p',
-  'br',
-  'strong',
-  'em',
-  'u',
-  'a',
-  'ul',
-  'ol',
-  'li',
-  'h2',
-  'h3',
-  'blockquote',
+  // Block + flow
+  'p', 'div', 'span', 'br', 'hr', 'pre',
+  // Text
+  'strong', 'b', 'em', 'i', 'u', 's', 'sub', 'sup', 'small', 'mark', 'code',
+  // Headings
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  // Links + media
+  'a', 'img', 'figure', 'figcaption',
+  // Lists + quotes
+  'ul', 'ol', 'li', 'blockquote',
+  // Tables (still common in HTML email layouts)
+  'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption', 'colgroup', 'col',
+]
+
+const ALLOWED_ATTR_EXPORT = [
+  'href', 'target', 'rel',
+  'src', 'alt', 'title',
+  'width', 'height',
+  'style', 'class', 'id',
+  'align', 'valign',
+  'cellpadding', 'cellspacing', 'border',
+  'colspan', 'rowspan',
+  'bgcolor', 'color',
+  'data-merge-field',
 ]
 
 function sanitizeForExport(html: string): string {
@@ -138,7 +163,10 @@ function sanitizeForExport(html: string): string {
   const stripped = stripMergeFieldChips(html)
   const result = DOMPurify.sanitize(stripped, {
     ALLOWED_TAGS: ALLOWED_TAGS_EXPORT,
-    ALLOWED_ATTR: ['href', 'target', 'rel'],
+    ALLOWED_ATTR: ALLOWED_ATTR_EXPORT,
+    // Allow http(s) and mailto in href/src; DOMPurify already blocks
+    // javascript: and data: by default which is what we want.
+    ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|tel:)/i,
   })
   return typeof result === 'string' ? result : String(result)
 }

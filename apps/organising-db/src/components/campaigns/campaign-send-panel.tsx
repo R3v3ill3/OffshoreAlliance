@@ -13,6 +13,7 @@ import {
 } from "@/lib/api/fetch-api";
 import { format } from "date-fns";
 import { resolveTemplateVariables, translateToActionNetwork } from "@/lib/comms/template-variables";
+import { toAnEditUrl } from "@/lib/api/action-network";
 import { toast } from "sonner";
 import {
   Mail,
@@ -267,7 +268,11 @@ export function CampaignSendPanel({
       const messageHref =
         createData.data?._links?.self?.href ?? "";
       const messageId = messageHref.split("/").pop() || "";
-      const administrativeUrl = (createData.data?.administrative_url as string | undefined) ?? null;
+      // Rewrite to /write so the user lands on the edit/compose page
+      // (where they can fix targeting + send) rather than /statistics.
+      const administrativeUrl = toAnEditUrl(
+        (createData.data?.administrative_url as string | undefined) ?? null,
+      );
 
       const sendStatsUpdate: Record<string, unknown> = administrativeUrl
         ? { administrative_url: administrativeUrl, an_tag_name: preparedTag?.tag_name ?? null }

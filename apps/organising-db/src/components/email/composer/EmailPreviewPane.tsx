@@ -88,22 +88,32 @@ export function EmailPreviewPane({
       bodyHtml && bodyHtml.trim()
         ? bodyHtml
         : textToHtmlBlocks(bodyText)
+    // Match the editor's export allowlist so what the user sees in
+    // preview is what gets sent to Action Network (or rendered in their
+    // mail client). Mismatched lists between editor and preview produced
+    // the bug where templates with images rendered fine in the editor
+    // but landed in AN as plain text.
     return DOMPurify.sanitize(resolveScriptVariables(html, previewContext), {
       ALLOWED_TAGS: [
-        'p',
-        'br',
-        'strong',
-        'em',
-        'u',
-        'a',
-        'ul',
-        'ol',
-        'li',
-        'h2',
-        'h3',
-        'blockquote',
+        'p', 'div', 'span', 'br', 'hr', 'pre',
+        'strong', 'b', 'em', 'i', 'u', 's', 'sub', 'sup', 'small', 'mark', 'code',
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'a', 'img', 'figure', 'figcaption',
+        'ul', 'ol', 'li', 'blockquote',
+        'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption',
+        'colgroup', 'col',
       ],
-      ALLOWED_ATTR: ['href', 'target', 'rel'],
+      ALLOWED_ATTR: [
+        'href', 'target', 'rel',
+        'src', 'alt', 'title',
+        'width', 'height',
+        'style', 'class', 'id',
+        'align', 'valign',
+        'cellpadding', 'cellspacing', 'border',
+        'colspan', 'rowspan',
+        'bgcolor', 'color',
+      ],
+      ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|tel:)/i,
     }) as string
   }, [bodyHtml, bodyText, previewContext])
 

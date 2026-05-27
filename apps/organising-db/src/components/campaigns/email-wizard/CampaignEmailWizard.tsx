@@ -24,6 +24,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/lib/supabase/auth-context'
+import { toAnEditUrl } from '@/lib/api/action-network'
 import { useGenerateDraft } from '@/lib/hooks/useGenerateDraft'
 import {
   fetchApi,
@@ -986,7 +987,11 @@ export function CampaignEmailWizard() {
 
       const messageHref = createData.data?._links?.self?.href ?? ''
       const messageId = messageHref.split('/').pop() || ''
-      const adminUrl = (createData.data?.administrative_url as string | undefined) ?? null
+      // Rewrite to the /write edit page (compose & send) instead of the
+      // statistics dashboard that AN's `administrative_url` points at.
+      const adminUrl = toAnEditUrl(
+        (createData.data?.administrative_url as string | undefined) ?? null,
+      )
 
       await supabase
         .from('campaign_comms_drafts')

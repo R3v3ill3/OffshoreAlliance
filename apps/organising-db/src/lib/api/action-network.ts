@@ -1,5 +1,30 @@
 const BASE_URL = "https://actionnetwork.org/api/v2";
 
+/**
+ * AN's `administrative_url` on a created message points at the statistics
+ * dashboard for that email (`/emails/{slug}` or `/emails/{slug}/statistics`).
+ * That's not what an organiser wants to land on after we've created a
+ * draft — they want the compose / edit-and-send page, which lives at
+ * `/emails/{slug}/write`.
+ *
+ * This helper rewrites the admin URL's path tail to `/write` while
+ * preserving everything else (host, slug, query string). When the input
+ * doesn't match the expected `/emails/{slug}` shape, it's returned
+ * unchanged so we never produce a worse URL than AN gave us.
+ */
+export function toAnEditUrl(adminUrl: string | null | undefined): string | null {
+  if (!adminUrl) return null;
+  try {
+    const url = new URL(adminUrl);
+    const match = url.pathname.match(/^(\/emails\/[^/]+)/);
+    if (!match) return adminUrl;
+    url.pathname = `${match[1]}/write`;
+    return url.toString();
+  } catch {
+    return adminUrl;
+  }
+}
+
 interface ActionNetworkConfig {
   apiKey: string;
 }

@@ -31,6 +31,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
+import { toAnEditUrl } from '@/lib/api/action-network'
 import { useAuth } from '@/lib/supabase/auth-context'
 import { useGenerateDraft } from '@/lib/hooks/useGenerateDraft'
 import {
@@ -897,7 +898,11 @@ export function EmailComposer() {
       if (!createData.success) throw new Error(createData.error)
       const messageHref = createData.data?._links?.self?.href ?? ''
       const messageId = messageHref.split('/').pop() || ''
-      const adminUrl = (createData.data?.administrative_url as string | undefined) ?? null
+      // AN's administrative_url is the stats dashboard for the email; the
+      // organiser wants the edit/compose page so they can finish setting
+      // up targeting and send. toAnEditUrl rewrites the path to /write.
+      const rawAdminUrl = (createData.data?.administrative_url as string | undefined) ?? null
+      const adminUrl = toAnEditUrl(rawAdminUrl)
       await supabase
         .from('campaign_comms_drafts')
         .update({

@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/lib/supabase/auth-context'
 import { useGenerateDraft } from '@/lib/hooks/useGenerateDraft'
 import { fetchApi, API_FETCH_TIMEOUT_LLM_MS, API_FETCH_TIMEOUT_UPLOAD_MS } from '@/lib/api/fetch-api'
+import { toAnEditUrl } from '@/lib/api/action-network'
 import { useWtpCategories } from '@/lib/hooks/usePlannerOptions'
 import { TemplatePicker } from '@/components/campaigns/planning/TemplatePicker'
 import type { TemplateRow } from '@/lib/hooks/useTemplateLibrary'
@@ -1106,7 +1107,11 @@ export function EmailWizardSteps() {
 
       const messageHref = createData.data?._links?.self?.href ?? ''
       const messageId = messageHref.split('/').pop() || ''
-      const adminUrl = (createData.data?.administrative_url as string | undefined) ?? null
+      // Rewrite to the edit/compose URL so organisers land on /write
+      // (where they can fix targeting + send) instead of /statistics.
+      const adminUrl = toAnEditUrl(
+        (createData.data?.administrative_url as string | undefined) ?? null,
+      )
 
       if (state.draftId) {
         await supabase

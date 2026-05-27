@@ -81,11 +81,16 @@ export async function syncCampaignTagsFromAN(
 /**
  * Push a tag to AN for specified campaign workers.
  *
- * Uses the Person Signup Helper (atomic upsert + add_tags by name) — the
- * canonical AN flow per https://actionnetwork.org/docs/v2/person_signup_helper.
- * The helper handles the existing-vs-new branch via email dedup, so we
- * don't need separate createPerson / addTagging calls. We still call
- * createTag first so the tag id is materialised for our local cache + log.
+ * Two-step flow per worker, matching push-list/route.ts:
+ *   1. Person Signup Helper for atomic upsert (email-dedup) + best-effort
+ *      `add_tags` by name. The helper can silently drop `add_tags` when
+ *      its tag-name index is stale, so we don't trust it alone.
+ *   2. Explicit POST /tags/{id}/taggings using canonical URLs. Idempotent
+ *      on (person, tag) — safe no-op if the helper already tagged them,
+ *      and the guaranteed path when it didn't.
+ *
+ * createTag is called first so the tag id is materialised for our local
+ * cache + log even before the workers loop runs.
  */
 export async function pushTagToCampaignWorkers(
   supabase: SupabaseClient,
@@ -96,9 +101,24 @@ export async function pushTagToCampaignWorkers(
   userId?: string
 ): Promise<TagSyncResult> {
   const tagResponse = await anClient.createTag(tagName);
-  const tagId = (tagResponse as any)?._links?.self?.href?.split("/").pop();
+  const tagId = (tagResponse as Record<string, Record<string, { href: string }>>)
+    ?._links?.self?.href?.split("/").pop();
 
   if (!tagId) throw new Error("Failed to create tag in Action Network");
+
+  // Fail-fast: confirm the tag is retrievable. If not, the API key is
+  // almost certainly a personal key (Tags resource is group-only on AN).
+  try {
+    await anClient.getTag(tagId);
+  } catch (err) {
+    throw new Error(
+      `Tag created (id: ${tagId}) but cannot be retrieved from Action Network. ` +
+        `This usually means ACTION_NETWORK_API_KEY is a personal API key — Tags ` +
+        `are only available with group-level keys. Detail: ${
+          err instanceof Error ? err.message : "Unknown error"
+        }`
+    );
+  }
 
   const { data: workers, error } = await supabase
     .from("workers")
@@ -130,6 +150,14 @@ export async function pushTagToCampaignWorkers(
         { add_tags: [tagName] }
       );
 
+      const embeddedTaggings = ((signupResult as Record<string, Record<string, unknown[]>>)
+        ?._embedded?.["osdi:taggings"] ?? []) as Array<Record<string, unknown>>;
+      const helperAppliedTag = embeddedTaggings.some((t) => {
+        const tagLinkHref =
+          ((t as Record<string, Record<string, { href: string }>>)?._links?.["osdi:tag"]?.href) ?? "";
+        return tagLinkHref.endsWith(`/tags/${tagId}`);
+      });
+
       const personHref =
         (signupResult as Record<string, Record<string, { href: string }>>)?._links?.self?.href ?? "";
       let anId = personHref.split("/").pop() || "";
@@ -144,11 +172,39 @@ export async function pushTagToCampaignWorkers(
         }
       }
 
-      if (anId && anId !== worker.action_network_id) {
+      if (!anId) {
+        errors.push(`Worker ${worker.worker_id}: could not resolve AN id after signup`);
+        continue;
+      }
+
+      if (anId !== worker.action_network_id) {
         await supabase
           .from("workers")
           .update({ action_network_id: anId })
           .eq("worker_id", worker.worker_id);
+      }
+
+      // Explicit tagging insurance — idempotent, URL-based, no name lookup.
+      let explicitOk = false;
+      try {
+        await anClient.addTaggingByPersonId(tagId, anId);
+        explicitOk = true;
+      } catch (tagErr) {
+        const msg = tagErr instanceof Error ? tagErr.message : "Unknown error";
+        console.error(
+          `[an-tag-sync] explicit tagging failed worker=${worker.worker_id}:`,
+          msg
+        );
+        if (!helperAppliedTag) {
+          errors.push(
+            `Worker ${worker.worker_id} (${worker.email}): person upserted (${anId}) but tagging failed: ${msg}`
+          );
+        }
+      }
+
+      if (!helperAppliedTag && !explicitOk) {
+        // Skip the local cache write — we don't believe the tag is on AN.
+        continue;
       }
 
       await supabase.from("worker_an_tags").upsert(

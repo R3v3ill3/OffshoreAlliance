@@ -95,12 +95,21 @@ export class ActionNetworkClient {
    *     against existing tags on your group's API key. Unknown names are
    *     silently ignored, so callers should ensure the tag is created first
    *     (POST /tags is idempotent by name; safe to call before this).
+   *   - On success the response includes `_embedded["osdi:taggings"]` listing
+   *     the taggings that were actually applied. Callers can inspect this
+   *     to detect the silent-ignore case.
    *   - Returns the resulting person resource with `_links.self.href` set to
    *     the canonical person URL.
    *
-   * This atomic upsert+tag replaces the legacy 2-call flow
-   * (`createPerson` then `addTaggingByPersonId`) and also halves the API
-   * pressure against AN's 4 req/sec rate limit.
+   * Important caveat observed in production: `add_tags` is best-effort.
+   * Even when the named tag exists, AN sometimes drops it (eventual
+   * consistency on the tag-name index right after a fresh POST /tags, or
+   * scope mismatches when a key spans multiple groups). Callers that
+   * MUST guarantee the tag is applied should follow this call with an
+   * explicit POST /tags/{id}/taggings via {@link addTaggingByPersonId}
+   * — that endpoint uses URL-based references (not name lookup), is
+   * idempotent per (person, tag), and so is safe as a belt-and-suspenders
+   * second step.
    */
   async signupPerson(
     person: ActionNetworkPerson,
@@ -198,7 +207,22 @@ export class ActionNetworkClient {
   }
 
   /**
-   * @deprecated Prefer {@link signupPerson} with `add_tags`. See above.
+   * Apply a tag to an existing person via canonical URL references.
+   *
+   * Per https://actionnetwork.org/docs/v2/taggings : POSTing to
+   * `/tags/{id}/taggings` with `_links["osdi:person"].href` is the
+   * authoritative way to associate a person with a tag. Crucially:
+   *
+   *   - Both tag and person are referenced by URL — there is no name
+   *     lookup, so it bypasses the eventual-consistency window where
+   *     {@link signupPerson}'s `add_tags` can silently drop a tag.
+   *   - The endpoint is idempotent on `(person, tag)`: AN returns the
+   *     existing tagging if one already exists, so calling this after
+   *     a successful `signupPerson({ add_tags })` is a safe no-op.
+   *
+   * This is intentionally NOT deprecated — we use it as a guaranteed
+   * fallback after the helper to insure against AN's silent-drop
+   * behavior on `add_tags`.
    */
   async addTaggingByPersonId(tagId: string, personId: string): Promise<ActionNetworkResponse> {
     return this.request(`/tags/${tagId}/taggings`, {
@@ -275,6 +299,18 @@ export class ActionNetworkClient {
       method: "POST",
       body: JSON.stringify({ name }),
     });
+  }
+
+  /**
+   * Look up a single tag by id. Used as a fail-fast verification right
+   * after {@link createTag} — if this 404s while createTag returned a
+   * tag id, the most likely cause is the API key not being a group-level
+   * key (per AN docs: "Tags are only available when using group API keys").
+   * Surfacing this immediately is much more useful than a confusing
+   * "0 verified on AN" later.
+   */
+  async getTag(tagId: string): Promise<ActionNetworkResponse> {
+    return this.request(`/tags/${tagId}`);
   }
 }
 

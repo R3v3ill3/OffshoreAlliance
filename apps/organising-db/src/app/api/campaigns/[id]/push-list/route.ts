@@ -243,11 +243,34 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to create tag in Action Network' }, { status: 500 })
     }
 
+    // Fail-fast: confirm the tag we just created is actually addressable.
+    // If this 404s, the API key likely isn't a group-level key — AN's
+    // Tags resource is group-only — and no tagging will ever succeed.
+    try {
+      await anClient.getTag(tagId)
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'Unknown error'
+      return NextResponse.json(
+        {
+          error:
+            `Tag was created (id: ${tagId}) but could not be retrieved from Action Network. ` +
+            `This usually means ACTION_NETWORK_API_KEY is a personal API key — Tags are only ` +
+            `available with group-level keys. Generate a group key under AN's "Start Organizing > ` +
+            `Details > API & Sync" and replace the env var.`,
+          detail,
+        },
+        { status: 500 },
+      )
+    }
+
     let contactsTagged = 0
     let contactsCreated = 0
     let contactsSkipped = 0
+    let helperTagApplied = 0
+    let fallbackTagApplied = 0
+    let tagFailures = 0
     const errors: string[] = []
-    const workerResults: Array<{ worker_id: number; name: string; status: 'tagged' | 'created' | 'skipped' | 'error'; detail?: string }> = []
+    const workerResults: Array<{ worker_id: number; name: string; status: 'tagged' | 'created' | 'skipped' | 'error'; detail?: string; tag_method?: 'helper' | 'explicit' | 'both' | 'none' }> = []
 
     for (const worker of workers) {
       const fullName = `${worker.first_name} ${worker.last_name}`
@@ -268,19 +291,30 @@ export async function POST(
           occupation: worker.occupation,
         })
 
-        // Atomic upsert + tag in a single AN call. Tags are matched by name
-        // against the tag we created above (idempotent by name on AN's side).
+        // Step 1: Atomic upsert + (best-effort) tag via Person Signup Helper.
+        // The helper matches `add_tags` by NAME and silently drops names it
+        // can't resolve — we still call it because it's the canonical upsert
+        // path, but we don't trust it to actually apply the tag.
         const signupResult = await anClient.signupPerson(anPerson, {
           add_tags: [finalTagName],
+        })
+
+        // Diagnostic: did the helper actually apply our tag? On success the
+        // response has `_embedded["osdi:taggings"]` listing the taggings it
+        // created; absence of our tag id in that list means AN silently
+        // dropped the `add_tags` request.
+        const embeddedTaggings = ((signupResult as Record<string, Record<string, unknown[]>>)
+          ?._embedded?.['osdi:taggings'] ?? []) as Array<Record<string, unknown>>
+        const helperAppliedTag = embeddedTaggings.some((t) => {
+          const tagLinkHref =
+            ((t as Record<string, Record<string, { href: string }>>)?._links?.['osdi:tag']?.href) ?? ''
+          return tagLinkHref.endsWith(`/tags/${tagId}`)
         })
 
         const personHref =
           (signupResult as Record<string, Record<string, { href: string }>>)?._links?.self?.href ?? ''
         let anId = personHref.split('/').pop() || ''
 
-        // Defensive: if the helper response shape was unexpected, look the
-        // person up by email so we still capture the AN id and confirm the
-        // record exists.
         if (!anId) {
           try {
             const found = await anClient.findPersonByEmail(worker.email)
@@ -299,6 +333,58 @@ export async function POST(
             name: fullName,
             status: 'skipped',
             detail: 'No AN ID returned from signup helper or email lookup',
+            tag_method: 'none',
+          })
+          continue
+        }
+
+        // Step 2: Insurance policy. POST /tags/{id}/taggings with the
+        // canonical person URL — no name lookup, idempotent on (person, tag).
+        // This is what guarantees the tag actually lands, regardless of
+        // whether the helper honored `add_tags` or silently dropped it.
+        let explicitTagApplied = false
+        let explicitTagError: string | null = null
+        try {
+          await anClient.addTaggingByPersonId(tagId, anId)
+          explicitTagApplied = true
+        } catch (tagErr) {
+          explicitTagError = tagErr instanceof Error ? tagErr.message : 'Unknown error'
+          console.error(
+            `[push-list] explicit tagging failed worker=${worker.worker_id} an=${anId}:`,
+            explicitTagError,
+          )
+        }
+
+        const tagApplied = helperAppliedTag || explicitTagApplied
+        const tagMethod: 'helper' | 'explicit' | 'both' | 'none' =
+          helperAppliedTag && explicitTagApplied
+            ? 'both'
+            : helperAppliedTag
+              ? 'helper'
+              : explicitTagApplied
+                ? 'explicit'
+                : 'none'
+
+        if (helperAppliedTag) helperTagApplied++
+        if (explicitTagApplied) fallbackTagApplied++
+
+        if (!tagApplied) {
+          // Person upserted but BOTH tagging paths failed — surface as error.
+          tagFailures++
+          contactsSkipped++
+          errors.push(
+            `Worker ${worker.worker_id} (${worker.email}): person upserted (${anId}) but tagging failed: ${
+              explicitTagError ?? 'helper silently ignored add_tags and explicit POST also failed'
+            }`,
+          )
+          workerResults.push({
+            worker_id: worker.worker_id,
+            name: fullName,
+            status: 'error',
+            detail: `Person upserted (AN ID: ${anId}) but tag was NOT applied: ${
+              explicitTagError ?? 'helper dropped add_tags and explicit tagging also failed'
+            }`,
+            tag_method: 'none',
           })
           continue
         }
@@ -328,7 +414,8 @@ export async function POST(
           worker_id: worker.worker_id,
           name: fullName,
           status: wasNew ? 'created' : 'tagged',
-          detail: `AN ID: ${anId}`,
+          detail: `AN ID: ${anId} · tag via ${tagMethod}`,
+          tag_method: tagMethod,
         })
 
         // Record the send in the engagement log if a draft is associated.
@@ -398,6 +485,11 @@ export async function POST(
       contacts_skipped: contactsSkipped,
       verified_tag_count: verifiedTagCount,
       verification_warning: verificationWarning,
+      tag_method_stats: {
+        helper_applied: helperTagApplied,
+        explicit_fallback_applied: fallbackTagApplied,
+        both_paths_failed: tagFailures,
+      },
       errors: errors.length > 0 ? errors : undefined,
       total_workers: workers.length,
       worker_results: workerResults,

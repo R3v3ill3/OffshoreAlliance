@@ -83,11 +83,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to create tag in Action Network' }, { status: 500 })
     }
 
+    // Fail-fast: if the tag we just created can't be retrieved, the API key
+    // is almost certainly a personal key (Tags resource is group-only on AN).
+    try {
+      await anClient.getTag(tagId)
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'Unknown error'
+      return NextResponse.json(
+        {
+          error:
+            `Tag was created (id: ${tagId}) but could not be retrieved from Action Network. ` +
+            `This usually means ACTION_NETWORK_API_KEY is a personal API key — Tags are only ` +
+            `available with group-level keys. Generate a group key under AN's "Start Organizing > ` +
+            `Details > API & Sync" and replace the env var.`,
+          detail,
+        },
+        { status: 500 },
+      )
+    }
+
     let contactsTagged = 0
     let contactsCreated = 0
     let contactsSkipped = 0
+    let helperTagApplied = 0
+    let fallbackTagApplied = 0
+    let tagFailures = 0
     const workerErrors: Array<{ worker_id: number; name: string; email: string | null; error: string }> = []
-    const workerResults: Array<{ worker_id: number; name: string; status: 'tagged' | 'created' | 'skipped' | 'error'; detail?: string }> = []
+    const workerResults: Array<{ worker_id: number; name: string; status: 'tagged' | 'created' | 'skipped' | 'error'; detail?: string; tag_method?: 'helper' | 'explicit' | 'both' | 'none' }> = []
 
     for (const row of workers) {
       const raw = row as Record<string, unknown>
@@ -123,18 +145,27 @@ export async function POST(req: NextRequest) {
           occupation: w.occupation,
         })
 
-        // Atomic upsert + tag in a single AN call (Person Signup Helper).
-        // Tags matched by name against the tag we created above.
+        // Step 1: Person Signup Helper — atomic upsert + best-effort tag.
+        // We don't trust `add_tags` to actually apply (helper silently
+        // drops names it can't resolve), but it's the canonical upsert.
         const signupResult = await anClient.signupPerson(anPerson, {
           add_tags: [finalTagName],
+        })
+
+        // Diagnostic: did the helper actually apply our tag? Inspect the
+        // returned `_embedded["osdi:taggings"]` for our tag id.
+        const embeddedTaggings = ((signupResult as Record<string, Record<string, unknown[]>>)
+          ?._embedded?.['osdi:taggings'] ?? []) as Array<Record<string, unknown>>
+        const helperAppliedTag = embeddedTaggings.some((t) => {
+          const tagLinkHref =
+            ((t as Record<string, Record<string, { href: string }>>)?._links?.['osdi:tag']?.href) ?? ''
+          return tagLinkHref.endsWith(`/tags/${tagId}`)
         })
 
         const personHref =
           (signupResult as Record<string, Record<string, { href: string }>>)?._links?.self?.href ?? ''
         let anId = personHref.split('/').pop() || ''
 
-        // Defensive fallback: look up by email if the helper response shape
-        // is unexpected (e.g. background-processed responses).
         if (!anId) {
           try {
             const found = await anClient.findPersonByEmail(w.email)
@@ -153,6 +184,59 @@ export async function POST(req: NextRequest) {
             name: fullName,
             status: 'skipped',
             detail: 'No AN ID returned from signup helper or email lookup',
+            tag_method: 'none',
+          })
+          continue
+        }
+
+        // Step 2: Insurance policy — explicit POST /tags/{id}/taggings using
+        // canonical URLs. Idempotent on (person, tag); guarantees the tag
+        // is applied even when the helper silently drops `add_tags`.
+        let explicitTagApplied = false
+        let explicitTagError: string | null = null
+        try {
+          await anClient.addTaggingByPersonId(tagId, anId)
+          explicitTagApplied = true
+        } catch (tagErr) {
+          explicitTagError = tagErr instanceof Error ? tagErr.message : 'Unknown error'
+          console.error(
+            `[push-standalone] explicit tagging failed worker=${w.worker_id} an=${anId}:`,
+            explicitTagError,
+          )
+        }
+
+        const tagApplied = helperAppliedTag || explicitTagApplied
+        const tagMethod: 'helper' | 'explicit' | 'both' | 'none' =
+          helperAppliedTag && explicitTagApplied
+            ? 'both'
+            : helperAppliedTag
+              ? 'helper'
+              : explicitTagApplied
+                ? 'explicit'
+                : 'none'
+
+        if (helperAppliedTag) helperTagApplied++
+        if (explicitTagApplied) fallbackTagApplied++
+
+        if (!tagApplied) {
+          tagFailures++
+          contactsSkipped++
+          workerErrors.push({
+            worker_id: w.worker_id,
+            name: fullName,
+            email: w.email,
+            error: `Person upserted (${anId}) but tag NOT applied: ${
+              explicitTagError ?? 'helper dropped add_tags and explicit tagging also failed'
+            }`,
+          })
+          workerResults.push({
+            worker_id: w.worker_id,
+            name: fullName,
+            status: 'error',
+            detail: `Person upserted (AN ID: ${anId}) but tag was NOT applied: ${
+              explicitTagError ?? 'helper dropped add_tags and explicit tagging also failed'
+            }`,
+            tag_method: 'none',
           })
           continue
         }
@@ -172,7 +256,8 @@ export async function POST(req: NextRequest) {
           worker_id: w.worker_id,
           name: fullName,
           status: wasNew ? 'created' : 'tagged',
-          detail: `AN ID: ${anId}`,
+          detail: `AN ID: ${anId} · tag via ${tagMethod}`,
+          tag_method: tagMethod,
         })
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Unknown error'
@@ -217,6 +302,11 @@ export async function POST(req: NextRequest) {
       contacts_skipped: contactsSkipped,
       verified_tag_count: verifiedTagCount,
       verification_warning: verificationWarning,
+      tag_method_stats: {
+        helper_applied: helperTagApplied,
+        explicit_fallback_applied: fallbackTagApplied,
+        both_paths_failed: tagFailures,
+      },
       total_workers: workers.length,
       errors: workerErrors.length > 0 ? workerErrors : undefined,
       worker_results: workerResults,

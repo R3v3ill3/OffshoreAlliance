@@ -24,6 +24,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 export interface CampaignEmailContext {
+  [key: string]: string | undefined
   employer_name?: string
   agreement_name?: string
   worksite_name?: string

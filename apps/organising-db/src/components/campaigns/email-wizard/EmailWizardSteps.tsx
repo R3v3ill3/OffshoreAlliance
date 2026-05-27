@@ -1016,9 +1016,11 @@ export function EmailWizardSteps() {
         preparedTag: {
           tag_id: data.tag_id,
           tag_href: data.tag_href,
+          tag_browser_url: data.tag_browser_url ?? null,
           tag_name: data.tag_name,
           contacts_tagged: data.contacts_tagged,
           contacts_created: data.contacts_created,
+          write_confirmed_count: data.write_confirmed_count ?? null,
           verified_tag_count: data.verified_tag_count ?? null,
           verification_warning: data.verification_warning ?? null,
         },
@@ -1026,9 +1028,33 @@ export function EmailWizardSteps() {
       if (data.worker_results) {
         setPushResults(data.worker_results)
       }
-      // Use AN's read-back to drive the toast tone — the legacy toast hid
-      // silent failures (e.g. 0 of 4 tagged) by always reporting success.
-      if (data.verification_warning) {
+      // Authoritative count is `write_confirmed_count` (server-side
+      // acknowledgement). The read-back can lag, so we don't treat
+      // `verified_tag_count < write_confirmed_count` as an error.
+      const writeConfirmed = data.write_confirmed_count
+      const isReadLag =
+        typeof writeConfirmed === 'number' &&
+        typeof data.verified_tag_count === 'number' &&
+        writeConfirmed > 0 &&
+        data.verified_tag_count < writeConfirmed
+      const realFailure =
+        typeof writeConfirmed === 'number' && writeConfirmed < pushed
+      if (realFailure) {
+        toast.warning(
+          data.verification_warning ??
+            `Only ${writeConfirmed} of ${pushed} taggings confirmed by Action Network.`,
+        )
+      } else if (isReadLag) {
+        toast.info(
+          `${writeConfirmed} taggings confirmed on AN. Read API still shows ${data.verified_tag_count} — normal lag, will catch up within 1–2 minutes.`,
+        )
+      } else if (typeof writeConfirmed === 'number') {
+        toast.success(
+          `${writeConfirmed} ${
+            writeConfirmed === 1 ? 'contact' : 'contacts'
+          } confirmed on AN tag "${data.tag_name}"`,
+        )
+      } else if (data.verification_warning) {
         toast.warning(data.verification_warning)
       } else if (typeof data.verified_tag_count === 'number') {
         toast.success(
@@ -1963,40 +1989,79 @@ export function EmailWizardSteps() {
                 {(() => {
                   const pt = state.preparedTag!
                   const pushed = pt.contacts_tagged + pt.contacts_created
-                  const hasWarning = !!pt.verification_warning
+                  const writeConfirmed = pt.write_confirmed_count
+                  const writeKnown = typeof writeConfirmed === 'number'
                   const verifiedKnown = typeof pt.verified_tag_count === 'number'
+                  // Read-replica lag: AN confirmed all writes but its read
+                  // API hasn't propagated yet. Surface as INFO not warning.
+                  const isReadLag =
+                    writeKnown &&
+                    verifiedKnown &&
+                    writeConfirmed > 0 &&
+                    (pt.verified_tag_count ?? 0) < writeConfirmed
+                  const realFailure = writeKnown && writeConfirmed < pushed
+                  const hasOtherWarning = !!pt.verification_warning && !isReadLag
+                  const tone = realFailure || hasOtherWarning
+                    ? 'bg-amber-50 border-amber-200 text-amber-900'
+                    : isReadLag
+                      ? 'bg-blue-50 border-blue-200 text-blue-900'
+                      : 'bg-green-50 border-green-200 text-green-800'
+                  const headline = realFailure
+                    ? `${writeConfirmed} of ${pushed} confirmed — push had errors`
+                    : isReadLag
+                      ? `${writeConfirmed} confirmed on AN — read API still propagating`
+                      : hasOtherWarning
+                        ? `${pushed} pushed — verification warning`
+                        : writeKnown
+                          ? `${writeConfirmed} ${writeConfirmed === 1 ? 'contact' : 'contacts'} confirmed on AN`
+                          : `${pushed} ${pushed === 1 ? 'contact' : 'contacts'} ready`
                   return (
-                    <div
-                      className={cn(
-                        'p-3 rounded-lg border space-y-1.5 text-sm',
-                        hasWarning
-                          ? 'bg-amber-50 border-amber-200 text-amber-900'
-                          : 'bg-green-50 border-green-200 text-green-800',
-                      )}
-                    >
+                    <div className={cn('p-3 rounded-lg border space-y-1.5 text-sm', tone)}>
                       <div className="flex items-center gap-2">
-                        {hasWarning ? (
+                        {realFailure || hasOtherWarning ? (
                           <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
                         ) : (
                           <CheckCircle className="h-5 w-5 text-green-600 shrink-0" />
                         )}
-                        <p className="font-medium">
-                          {hasWarning
-                            ? `${pushed} pushed — verification warning`
-                            : `${pushed} ${pushed === 1 ? 'contact' : 'contacts'} ready`}
-                        </p>
+                        <p className="font-medium">{headline}</p>
                       </div>
                       <p className="text-xs">
                         Tag: <code className="bg-white/60 px-1 rounded">{pt.tag_name}</code>
                         {pt.contacts_created > 0 && ` (${pt.contacts_created} new in AN)`}
                       </p>
-                      {verifiedKnown && (
+                      {writeKnown && (
+                        <p className="text-xs">
+                          Action Network <strong>confirmed {writeConfirmed}</strong>{' '}
+                          {writeConfirmed === 1 ? 'tagging write' : 'tagging writes'} server-side.
+                          {verifiedKnown && (
+                            <>
+                              {' '}
+                              Read API currently reports {pt.verified_tag_count}
+                              {isReadLag ? ' (will catch up within 1–2 minutes)' : ''}.
+                            </>
+                          )}
+                        </p>
+                      )}
+                      {!writeKnown && verifiedKnown && (
                         <p className="text-xs">
                           Action Network reports <strong>{pt.verified_tag_count}</strong>{' '}
                           {pt.verified_tag_count === 1 ? 'person' : 'people'} on this tag.
                         </p>
                       )}
-                      {hasWarning && <p className="text-xs">{pt.verification_warning}</p>}
+                      {hasOtherWarning && <p className="text-xs">{pt.verification_warning}</p>}
+                      {pt.tag_browser_url && (
+                        <p className="text-xs">
+                          <a
+                            href={pt.tag_browser_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline hover:no-underline"
+                          >
+                            Open this tag in Action Network →
+                          </a>{' '}
+                          (verifies you&apos;re looking at the same tag the API just wrote to)
+                        </p>
+                      )}
                       <p className="text-xs">
                         AN&apos;s API cannot set tag-based message targeting. Open the
                         draft in Action Network and add the include filter{' '}

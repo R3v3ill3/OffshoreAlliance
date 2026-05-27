@@ -252,8 +252,10 @@ export function CampaignEmailWizard() {
     tag_id: string
     tag_href: string
     tag_name: string
+    tag_browser_url?: string | null
     contacts_tagged: number
     contacts_created: number
+    write_confirmed_count?: number | null
     verified_tag_count?: number | null
     verification_warning?: string | null
   } | null>(null)
@@ -863,9 +865,11 @@ export function CampaignEmailWizard() {
       setPreparedTag({
         tag_id: data.tag_id,
         tag_href: data.tag_href,
+        tag_browser_url: data.tag_browser_url ?? null,
         tag_name: data.tag_name,
         contacts_tagged: data.contacts_tagged,
         contacts_created: data.contacts_created,
+        write_confirmed_count: data.write_confirmed_count ?? null,
         verified_tag_count: data.verified_tag_count ?? null,
         verification_warning: data.verification_warning ?? null,
       })
@@ -873,11 +877,33 @@ export function CampaignEmailWizard() {
         setPushResults(data.worker_results)
       }
 
-      // Surface either a hard success or a soft warning toast depending on
-      // whether AN's read-back matches what we believe we pushed. The old
-      // unconditional success toast hid silent failures (e.g. 0 of 4
-      // tagged) — see plan §2 Bug A.
-      if (data.verification_warning) {
+      // Toast tone uses the authoritative write-confirmation count in
+      // preference to the read-back, so AN read-replica lag doesn't get
+      // misreported as a failure (see plan §2 Bug A).
+      const writeConfirmed = data.write_confirmed_count
+      const isReadLag =
+        typeof writeConfirmed === 'number' &&
+        typeof data.verified_tag_count === 'number' &&
+        writeConfirmed > 0 &&
+        data.verified_tag_count < writeConfirmed
+      const realFailure =
+        typeof writeConfirmed === 'number' && writeConfirmed < pushed
+      if (realFailure) {
+        toast.warning(
+          data.verification_warning ??
+            `Only ${writeConfirmed} of ${pushed} taggings confirmed by Action Network.`,
+        )
+      } else if (isReadLag) {
+        toast.info(
+          `${writeConfirmed} taggings confirmed on AN. Read API still shows ${data.verified_tag_count} — normal lag, will catch up within 1–2 minutes.`,
+        )
+      } else if (typeof writeConfirmed === 'number') {
+        toast.success(
+          `${writeConfirmed} ${
+            writeConfirmed === 1 ? 'contact' : 'contacts'
+          } confirmed on AN tag "${data.tag_name}"`,
+        )
+      } else if (data.verification_warning) {
         toast.warning(data.verification_warning)
       } else if (typeof data.verified_tag_count === 'number') {
         toast.success(
@@ -1598,8 +1624,10 @@ export function CampaignEmailWizard() {
 interface PushResultCardProps {
   preparedTag: {
     tag_name: string
+    tag_browser_url?: string | null
     contacts_tagged: number
     contacts_created: number
+    write_confirmed_count?: number | null
     verified_tag_count?: number | null
     verification_warning?: string | null
   }
@@ -1611,28 +1639,73 @@ interface PushResultCardProps {
 function PushResultCard({ preparedTag, pushResults, showDetails, onToggleDetails }: PushResultCardProps) {
   const pushed = preparedTag.contacts_tagged + preparedTag.contacts_created
   const errored = (pushResults ?? []).filter((r) => r.status === 'error' || r.status === 'skipped')
-  const hasWarning = !!preparedTag.verification_warning
+  const writeConfirmed = preparedTag.write_confirmed_count
   const verifiedKnown = typeof preparedTag.verified_tag_count === 'number'
-  const tone = hasWarning
+  const writeKnown = typeof writeConfirmed === 'number'
+  // Read-replica lag: AN confirmed all writes server-side, but the read API
+  // hasn't propagated yet. Surface as INFO not warning — the data is there.
+  const isReadLag =
+    writeKnown &&
+    verifiedKnown &&
+    writeConfirmed > 0 &&
+    (preparedTag.verified_tag_count ?? 0) < writeConfirmed
+  const realFailure = writeKnown && writeConfirmed < pushed
+  const tone = realFailure
     ? 'border-amber-200 bg-amber-50 text-amber-900'
-    : 'border-green-200 bg-green-50 text-green-800'
+    : isReadLag
+      ? 'border-blue-200 bg-blue-50 text-blue-900'
+      : preparedTag.verification_warning
+        ? 'border-amber-200 bg-amber-50 text-amber-900'
+        : 'border-green-200 bg-green-50 text-green-800'
+  const headline = realFailure
+    ? 'List pushed with errors'
+    : isReadLag
+      ? 'List pushed — AN read API still propagating'
+      : preparedTag.verification_warning
+        ? 'List pushed with warnings'
+        : 'List pushed'
 
   return (
     <div className={cn('rounded-md border p-3 text-sm space-y-2', tone)}>
       <p className="font-medium">
-        {hasWarning ? 'List pushed with warnings' : 'List pushed'}: {pushed}{' '}
-        {pushed === 1 ? 'contact' : 'contacts'} tagged as{' '}
+        {headline}: {pushed} {pushed === 1 ? 'contact' : 'contacts'} tagged as{' '}
         <code className="bg-white/60 px-1 rounded">{preparedTag.tag_name}</code>.
       </p>
-      {verifiedKnown && (
+      {writeKnown && (
+        <p className="text-xs">
+          Action Network <strong>confirmed {writeConfirmed}</strong>{' '}
+          {writeConfirmed === 1 ? 'tagging write' : 'tagging writes'} server-side.
+          {verifiedKnown && (
+            <>
+              {' '}
+              Read API currently reports {preparedTag.verified_tag_count}
+              {isReadLag ? ' (will catch up within 1–2 minutes)' : ''}.
+            </>
+          )}
+        </p>
+      )}
+      {!writeKnown && verifiedKnown && (
         <p className="text-xs">
           Action Network reports{' '}
           <strong>{preparedTag.verified_tag_count}</strong>{' '}
           {preparedTag.verified_tag_count === 1 ? 'person' : 'people'} on this tag.
         </p>
       )}
-      {hasWarning && (
+      {preparedTag.verification_warning && !isReadLag && (
         <p className="text-xs">{preparedTag.verification_warning}</p>
+      )}
+      {preparedTag.tag_browser_url && (
+        <p className="text-xs">
+          <a
+            href={preparedTag.tag_browser_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:no-underline"
+          >
+            Open this tag in Action Network →
+          </a>{' '}
+          (verifies you&apos;re looking at the same tag the API just wrote to)
+        </p>
       )}
       <p className="text-xs">
         Note: AN&apos;s API cannot set tag-based message targeting. When you

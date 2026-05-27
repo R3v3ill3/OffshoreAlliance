@@ -24,6 +24,14 @@ interface ActionNetworkResponse {
   total_records?: number;
   total_pages?: number;
   page?: number;
+  /**
+   * AN's user-facing UI URL for this resource (when the resource has one).
+   * Tags, messages, and forms include this; people don't. Useful for
+   * deep-linking from our UI to AN's edit pages.
+   */
+  browser_url?: string;
+  identifiers?: string[];
+  name?: string;
 }
 
 export class ActionNetworkClient {
@@ -246,6 +254,33 @@ export class ActionNetworkClient {
   async getTaggingCount(tagId: string): Promise<number> {
     const response = await this.request(`/tags/${tagId}/taggings?page=1`);
     return typeof response.total_records === "number" ? response.total_records : 0;
+  }
+
+  /**
+   * Detailed tag verification — returns the count AND the canonical list
+   * of person resource hrefs that AN reports as tagged. This lets the
+   * caller prove that the specific people they just pushed are actually
+   * on the tag, not just that "some" count of people is on it.
+   *
+   * Useful when the count alone is ambiguous (e.g. a duplicate tag name
+   * existed at a different scope, so the count is non-zero but reflects
+   * unrelated people).
+   */
+  async getTaggingsDetailed(
+    tagId: string
+  ): Promise<{ total: number; person_hrefs: string[]; raw: ActionNetworkResponse }> {
+    const response = await this.request(`/tags/${tagId}/taggings?page=1`);
+    const total = typeof response.total_records === "number" ? response.total_records : 0;
+    const taggings = (response._embedded?.["osdi:taggings"] ?? []) as Array<
+      Record<string, unknown>
+    >;
+    const person_hrefs = taggings
+      .map((t) => {
+        const links = (t as Record<string, Record<string, { href: string }>>)?._links;
+        return links?.["osdi:person"]?.href ?? "";
+      })
+      .filter(Boolean);
+    return { total, person_hrefs, raw: response };
   }
 
   // Messages

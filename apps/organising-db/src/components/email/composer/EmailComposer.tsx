@@ -187,8 +187,10 @@ export function EmailComposer() {
     tag_id: string
     tag_href: string
     tag_name: string
+    tag_browser_url?: string | null
     contacts_tagged: number
     contacts_created: number
+    write_confirmed_count?: number | null
     verified_tag_count?: number | null
     verification_warning?: string | null
   } | null>(null)
@@ -755,18 +757,48 @@ export function EmailComposer() {
       setPreparedTag({
         tag_id: data.tag_id,
         tag_href: data.tag_href,
+        tag_browser_url: data.tag_browser_url ?? null,
         tag_name: data.tag_name,
         contacts_tagged: data.contacts_tagged,
         contacts_created: data.contacts_created,
+        write_confirmed_count: data.write_confirmed_count ?? null,
         verified_tag_count: data.verified_tag_count ?? null,
         verification_warning: data.verification_warning ?? null,
       })
       if (Array.isArray(data.worker_results)) {
         setPushResults(data.worker_results)
       }
-      // Drive toast tone from AN's read-back so we don't paper over silent
-      // failures (the legacy unconditional success toast hid 0-of-N pushes).
-      if (data.verification_warning) {
+      // Toast tone is driven by AN's authoritative write-confirmation:
+      //   - write_confirmed < pushed → real failure, warn
+      //   - write_confirmed == pushed but read lags → info (eventual consistency)
+      //   - write_confirmed == pushed and read agrees → success
+      const writeConfirmed = data.write_confirmed_count
+      const isReadLag =
+        typeof writeConfirmed === 'number' &&
+        typeof data.verified_tag_count === 'number' &&
+        writeConfirmed > 0 &&
+        data.verified_tag_count < writeConfirmed
+      const realFailure =
+        typeof writeConfirmed === 'number' && writeConfirmed < pushed
+      if (realFailure) {
+        toast.warning(
+          data.verification_warning ??
+            `Only ${writeConfirmed} of ${pushed} taggings confirmed by Action Network.`,
+        )
+        announce('Push to Action Network completed with errors.')
+      } else if (isReadLag) {
+        toast.info(
+          `${writeConfirmed} taggings confirmed on AN. Read API still shows ${data.verified_tag_count} — normal lag, will catch up within 1–2 minutes.`,
+        )
+        announce('List pushed; AN read API still propagating.')
+      } else if (typeof writeConfirmed === 'number') {
+        toast.success(
+          `${writeConfirmed} ${
+            writeConfirmed === 1 ? 'contact' : 'contacts'
+          } confirmed on AN tag "${data.tag_name}"`,
+        )
+        announce('List pushed and confirmed on Action Network.')
+      } else if (data.verification_warning) {
         toast.warning(data.verification_warning)
         announce('Push to Action Network completed with verification warning.')
       } else if (typeof data.verified_tag_count === 'number') {

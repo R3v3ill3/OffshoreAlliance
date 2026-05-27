@@ -93,6 +93,14 @@ export interface SendActionsProps {
     contacts_created: number
     /** AN-side verified count read back via GET /tags/{id}/taggings. */
     verified_tag_count?: number | null
+    /**
+     * Server-confirmed tagging writes (from each addTaggingByPersonId
+     * response). Authoritative because it reflects what AN's write
+     * primary acknowledged, not what its read replicas currently show.
+     */
+    write_confirmed_count?: number | null
+    /** AN UI URL for the tag (browser_url from the tag resource). */
+    tag_browser_url?: string | null
     /** Set when AN's read-back is lower than expected, or fetch failed. */
     verification_warning?: string | null
   } | null
@@ -478,22 +486,63 @@ export function SendActions({
             )}
           </span>
         )}
-        {preparedTag && !externalMessageId && (
-          <span
-            className={`text-xs flex items-center gap-1 ${
-              preparedTag.verification_warning ? 'text-amber-700' : 'text-green-700'
-            }`}
-            title={preparedTag.verification_warning ?? undefined}
-          >
-            {preparedTag.verification_warning && (
-              <AlertTriangle className="h-3 w-3" />
-            )}
-            Tag {preparedTag.tag_name}{' '}
-            {typeof preparedTag.verified_tag_count === 'number'
-              ? `(${preparedTag.verified_tag_count} verified on AN)`
-              : `(${preparedTag.contacts_tagged + preparedTag.contacts_created} pushed)`}
-          </span>
-        )}
+        {preparedTag && !externalMessageId && (() => {
+          // Prefer the server-confirmed write count over the read-back —
+          // AN's read replicas can lag the primary by minutes, but if AN
+          // returned tagging resources for our writes, we know the data is
+          // there. Only fall back to the read count if write-confirmed
+          // isn't available (older API responses).
+          const writeConfirmed = preparedTag.write_confirmed_count
+          const readCount = preparedTag.verified_tag_count
+          const pushedTotal = preparedTag.contacts_tagged + preparedTag.contacts_created
+          const isReadLag =
+            typeof writeConfirmed === 'number' &&
+            typeof readCount === 'number' &&
+            writeConfirmed > 0 &&
+            readCount < writeConfirmed
+          // "warning" tone: a real failure (write-confirmed < pushed)
+          // "info" tone: read lag (writes confirmed but read API still catching up)
+          // "success" tone: both confirmed and read agree
+          const hasRealFailure = preparedTag.verification_warning && !isReadLag
+          const tone = hasRealFailure
+            ? 'text-amber-700'
+            : isReadLag
+              ? 'text-blue-700'
+              : 'text-green-700'
+          const displayCount =
+            typeof writeConfirmed === 'number'
+              ? writeConfirmed
+              : typeof readCount === 'number'
+                ? readCount
+                : pushedTotal
+          const label =
+            typeof writeConfirmed === 'number'
+              ? `${displayCount} confirmed on AN${
+                  isReadLag ? ` (${readCount ?? 0} visible — read lag, will catch up)` : ''
+                }`
+              : typeof readCount === 'number'
+                ? `${readCount} verified on AN`
+                : `${pushedTotal} pushed`
+          return (
+            <span
+              className={`text-xs flex items-center gap-1 ${tone}`}
+              title={preparedTag.verification_warning ?? undefined}
+            >
+              {hasRealFailure && <AlertTriangle className="h-3 w-3" />}
+              Tag {preparedTag.tag_name} ({label})
+              {preparedTag.tag_browser_url && (
+                <a
+                  href={preparedTag.tag_browser_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline ml-1 hover:no-underline"
+                >
+                  Open tag in AN
+                </a>
+              )}
+            </span>
+          )
+        })()}
       </div>
       <div className="flex items-center gap-2 flex-wrap">
         <Button

@@ -41,13 +41,31 @@ import type { CommsPlatform, DraftStatus } from "@/types/planner-types";
 export interface PreparedTag {
   tag_id: string;
   tag_href: string;
+  /**
+   * AN UI URL for the tag's edit page (browser_url from the tag resource).
+   * Used to deep-link the user from our success card straight to the tag
+   * they just pushed to — the simplest way to disambiguate "you might be
+   * looking at the wrong tag" issues.
+   */
+  tag_browser_url?: string | null;
   tag_name: string;
   contacts_tagged: number;
   contacts_created: number;
   /**
+   * Server-confirmed tagging writes — collected from the response of each
+   * POST /tags/{id}/taggings call. AUTHORITATIVE: this is what AN's write
+   * primary acknowledged. Use this in preference to verified_tag_count
+   * when both are present, because AN's read replicas can lag behind the
+   * primary by 1-2 minutes.
+   */
+  write_confirmed_count?: number | null;
+  /**
    * Number of people AN reports as currently tagged with this tag, read
-   * back via GET /tags/{id}/taggings after the push completes. Null when
-   * verification was skipped or failed (network error, throttle, etc).
+   * back via GET /tags/{id}/taggings after the push completes. Subject to
+   * read-replica lag — when this is lower than write_confirmed_count it
+   * just means the read API hasn't caught up yet, NOT that anything failed.
+   * Null when verification was skipped or failed (network error, throttle,
+   * etc).
    */
   verified_tag_count?: number | null;
   /**

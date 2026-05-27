@@ -233,11 +233,22 @@ export async function POST(
     const randomSuffix = generateRandomSuffix()
     const finalTagName = tag_name || `${campaign?.name || `Campaign ${campaignId}`} - ${dateStr} - ${randomSuffix}`
 
+    const t0 = Date.now()
+    const timings: Record<string, number> = {}
+
+    const tCreate = Date.now()
     const tagResponse = await anClient.createTag(finalTagName)
+    timings.createTag_ms = Date.now() - tCreate
+
     const tagHref = (tagResponse as Record<string, unknown>)?._links
       ? ((tagResponse as Record<string, Record<string, { href: string }>>)._links.self?.href ?? '')
       : ''
     const tagId = tagHref.split('/').pop() || ''
+    // browser_url is AN's UI link to the tag's edit page — useful for
+    // proving to the user that the tag they're looking at in the AN UI
+    // is the same one our API key wrote to. Falls through to '' if not
+    // present (older AN responses didn't always include it).
+    const tagBrowserUrl = (tagResponse?.browser_url ?? '') as string
 
     if (!tagId) {
       return NextResponse.json({ error: 'Failed to create tag in Action Network' }, { status: 500 })
@@ -246,8 +257,14 @@ export async function POST(
     // Fail-fast: confirm the tag we just created is actually addressable.
     // If this 404s, the API key likely isn't a group-level key — AN's
     // Tags resource is group-only — and no tagging will ever succeed.
+    let tagBrowserUrlVerified = tagBrowserUrl
     try {
-      await anClient.getTag(tagId)
+      const tGet = Date.now()
+      const tagDetail = await anClient.getTag(tagId)
+      timings.getTag_ms = Date.now() - tGet
+      // Prefer browser_url from the GET (more authoritative than the POST
+      // response) but fall back to the create response.
+      if (tagDetail?.browser_url) tagBrowserUrlVerified = tagDetail.browser_url
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'Unknown error'
       return NextResponse.json(
@@ -258,6 +275,8 @@ export async function POST(
             `available with group-level keys. Generate a group key under AN's "Start Organizing > ` +
             `Details > API & Sync" and replace the env var.`,
           detail,
+          tag_id: tagId,
+          tag_href: tagHref,
         },
         { status: 500 },
       )
@@ -268,10 +287,12 @@ export async function POST(
     let contactsSkipped = 0
     let helperTagApplied = 0
     let fallbackTagApplied = 0
+    let writeConfirmedCount = 0 // AN returned a tagging resource confirming the write
     let tagFailures = 0
     const errors: string[] = []
-    const workerResults: Array<{ worker_id: number; name: string; status: 'tagged' | 'created' | 'skipped' | 'error'; detail?: string; tag_method?: 'helper' | 'explicit' | 'both' | 'none' }> = []
+    const workerResults: Array<{ worker_id: number; name: string; status: 'tagged' | 'created' | 'skipped' | 'error'; detail?: string; tag_method?: 'helper' | 'explicit' | 'both' | 'none'; an_id?: string; write_confirmed?: boolean }> = []
 
+    const tLoop = Date.now()
     for (const worker of workers) {
       const fullName = `${worker.first_name} ${worker.last_name}`
       try {
@@ -340,13 +361,29 @@ export async function POST(
 
         // Step 2: Insurance policy. POST /tags/{id}/taggings with the
         // canonical person URL — no name lookup, idempotent on (person, tag).
-        // This is what guarantees the tag actually lands, regardless of
-        // whether the helper honored `add_tags` or silently dropped it.
+        // We don't just throw away the response: AN returns the tagging
+        // resource with `_links.osdi:tag.href` pointing back at our tag,
+        // which is server-side proof the write was committed. We trust
+        // this over the subsequent read-back (AN has visible eventual
+        // consistency between the write primary and the read replicas).
         let explicitTagApplied = false
+        let explicitTagWriteConfirmed = false
         let explicitTagError: string | null = null
         try {
-          await anClient.addTaggingByPersonId(tagId, anId)
+          const tagging = await anClient.addTaggingByPersonId(tagId, anId)
           explicitTagApplied = true
+          const taggingTagHref =
+            (tagging as Record<string, Record<string, { href: string }>>)?._links?.['osdi:tag']?.href ?? ''
+          // Confirm the response references our tag — guards against AN
+          // accepting the write but routing it to a different tag at the
+          // same name (the cross-group-scope hazard).
+          if (taggingTagHref.endsWith(`/tags/${tagId}`)) {
+            explicitTagWriteConfirmed = true
+          } else {
+            console.warn(
+              `[push-list] tagging response references unexpected tag (expected ${tagId}, got ${taggingTagHref}) for worker=${worker.worker_id}`,
+            )
+          }
         } catch (tagErr) {
           explicitTagError = tagErr instanceof Error ? tagErr.message : 'Unknown error'
           console.error(
@@ -367,6 +404,7 @@ export async function POST(
 
         if (helperAppliedTag) helperTagApplied++
         if (explicitTagApplied) fallbackTagApplied++
+        if (explicitTagWriteConfirmed || helperAppliedTag) writeConfirmedCount++
 
         if (!tagApplied) {
           // Person upserted but BOTH tagging paths failed — surface as error.
@@ -385,6 +423,7 @@ export async function POST(
               explicitTagError ?? 'helper dropped add_tags and explicit tagging also failed'
             }`,
             tag_method: 'none',
+            an_id: anId,
           })
           continue
         }
@@ -414,8 +453,10 @@ export async function POST(
           worker_id: worker.worker_id,
           name: fullName,
           status: wasNew ? 'created' : 'tagged',
-          detail: `AN ID: ${anId} · tag via ${tagMethod}`,
+          detail: `AN ID: ${anId} · tag via ${tagMethod}${explicitTagWriteConfirmed ? ' · write confirmed' : ''}`,
           tag_method: tagMethod,
+          an_id: anId,
+          write_confirmed: explicitTagWriteConfirmed || helperAppliedTag,
         })
 
         // Record the send in the engagement log if a draft is associated.
@@ -438,25 +479,91 @@ export async function POST(
       }
     }
 
-    // Post-push verification: read taggings count from AN. A single GET is
-    // enough — the collection's total_records reflects all tagged people on
-    // AN's side, regardless of how the tag was populated. Compare with what
-    // we believe we pushed to surface silent failures.
+    timings.workerLoop_ms = Date.now() - tLoop
+
+    // Post-push verification has two layers:
+    //   1. Write-confirmation count (`writeConfirmedCount`) — collected
+    //      synchronously from each addTaggingByPersonId response. This
+    //      is what AN's primary acknowledged. AUTHORITATIVE.
+    //   2. Read-back via GET /tags/{id}/taggings — depends on AN's read
+    //      replicas, which lag the primary by seconds-to-minutes. We
+    //      retry after a brief delay to expose the lag clearly when it
+    //      occurs.
     const pushedCount = contactsTagged + contactsCreated
+    const pushedAnIds = workerResults
+      .filter((r) => r.status === 'tagged' || r.status === 'created')
+      .map((r) => r.an_id ?? '')
+      .filter(Boolean)
+
     let verifiedTagCount: number | null = null
+    let verifiedTagCountAfterDelay: number | null = null
+    let verifiedPersonHrefs: string[] = []
+    let verifiedMatchingPushed = 0
     let verificationWarning: string | null = null
     try {
-      verifiedTagCount = await anClient.getTaggingCount(tagId)
-      if (verifiedTagCount < pushedCount) {
+      const tVerify = Date.now()
+      const detailed = await anClient.getTaggingsDetailed(tagId)
+      timings.verify_ms = Date.now() - tVerify
+      verifiedTagCount = detailed.total
+      verifiedPersonHrefs = detailed.person_hrefs
+      verifiedMatchingPushed = pushedAnIds.filter((id) =>
+        verifiedPersonHrefs.some((h) => h.endsWith(`/people/${id}`)),
+      ).length
+
+      // Read replicas can lag the write primary on AN. If the immediate
+      // read shows fewer people than we wrote, give it ~3s and re-read
+      // before deciding whether to warn the user.
+      if (verifiedTagCount < writeConfirmedCount) {
+        await new Promise((r) => setTimeout(r, 3000))
+        const tVerify2 = Date.now()
+        const retry = await anClient.getTaggingsDetailed(tagId)
+        timings.verify_retry_ms = Date.now() - tVerify2
+        verifiedTagCountAfterDelay = retry.total
+        verifiedPersonHrefs = retry.person_hrefs
+        verifiedMatchingPushed = pushedAnIds.filter((id) =>
+          verifiedPersonHrefs.some((h) => h.endsWith(`/people/${id}`)),
+        ).length
+        // After the retry, prefer the higher count as the user-visible value.
+        if ((verifiedTagCountAfterDelay ?? 0) > (verifiedTagCount ?? 0)) {
+          verifiedTagCount = verifiedTagCountAfterDelay
+        }
+      }
+
+      // Decision tree for the warning:
+      //   a) Write was server-confirmed AND read agrees → success
+      //   b) Write was server-confirmed but read still lags → "info, not error"
+      //   c) Write was NOT confirmed for some workers → real failure
+      //   d) Read shows non-zero but the SPECIFIC people we pushed aren't
+      //      on it → cross-scope duplicate tag
+      if (writeConfirmedCount < pushedCount) {
         verificationWarning =
-          `Action Network reports ${verifiedTagCount} people on tag "${finalTagName}", ` +
-          `but we expected ${pushedCount}. Some recipients may not have been tagged — ` +
-          `check the per-worker results below or retry the push.`
+          `Action Network only confirmed ${writeConfirmedCount} of ${pushedCount} tagging writes. ` +
+          `Some recipients may not have been tagged — check the per-worker results.`
+      } else if ((verifiedTagCount ?? 0) < writeConfirmedCount) {
+        // Server confirmed all writes but the read still lags — this is
+        // the AN read-replica delay. Surface as a soft notice.
+        verificationWarning =
+          `Action Network confirmed all ${writeConfirmedCount} tagging writes, but its read API ` +
+          `still reports ${verifiedTagCount ?? 0}. This is normal eventual-consistency lag — the ` +
+          `tag will populate in the AN UI within 1–2 minutes. ${
+            tagBrowserUrlVerified ? `Open it directly: ${tagBrowserUrlVerified}` : ''
+          }`
+      } else if (pushedAnIds.length > 0 && verifiedMatchingPushed < pushedAnIds.length) {
+        verificationWarning =
+          `Action Network reports ${verifiedTagCount} people on tag "${finalTagName}" but only ` +
+          `${verifiedMatchingPushed} of the ${pushedAnIds.length} people we pushed are actually on it. ` +
+          `This usually means a tag with the same name exists at a different group/scope — check ` +
+          `that ACTION_NETWORK_API_KEY belongs to the group you're viewing in the AN UI.`
       }
     } catch (err) {
       verificationWarning = `Could not verify tag membership in Action Network: ${
         err instanceof Error ? err.message : 'Unknown error'
       }`
+    }
+
+    timings.total_ms = Date.now() - t0
+    if (timings.total_ms > 25000) {
+      console.warn(`[push-list] slow push: ${timings.total_ms}ms total`, timings)
     }
 
     await supabase.from('an_tag_sync_log').insert({
@@ -479,17 +586,25 @@ export async function POST(
       success: true,
       tag_id: tagId,
       tag_href: tagHref,
+      tag_browser_url: tagBrowserUrlVerified || null,
       tag_name: finalTagName,
       contacts_tagged: contactsTagged,
       contacts_created: contactsCreated,
       contacts_skipped: contactsSkipped,
+      // AN's write primary acknowledged this many taggings. Authoritative.
+      write_confirmed_count: writeConfirmedCount,
+      // AN's read API returned this many. Subject to read-replica lag.
       verified_tag_count: verifiedTagCount,
+      verified_tag_count_after_delay: verifiedTagCountAfterDelay,
+      verified_matching_pushed: verifiedMatchingPushed,
+      verified_person_hrefs: verifiedPersonHrefs,
       verification_warning: verificationWarning,
       tag_method_stats: {
         helper_applied: helperTagApplied,
         explicit_fallback_applied: fallbackTagApplied,
         both_paths_failed: tagFailures,
       },
+      timings_ms: timings,
       errors: errors.length > 0 ? errors : undefined,
       total_workers: workers.length,
       worker_results: workerResults,

@@ -43,6 +43,7 @@ import {
   resolveTemplateVariables,
 } from '@/lib/comms/template-variables'
 import { stripMergeFieldChips } from '@/lib/comms/chip-html'
+import { sanitiseEmailHtml } from '@/lib/comms/sanitise-email-html'
 import {
   loadCampaignEmailContext,
   buildWorkerEmailContext,
@@ -237,7 +238,9 @@ export async function POST(
   const isHtmlSource =
     !!body.body_html_override ||
     !!(draft.body_html && draft.body_html.trim())
-  const bodySource = isHtmlSource ? stripMergeFieldChips(rawBody) : rawBody
+  const bodySource = isHtmlSource
+    ? sanitiseEmailHtml(stripMergeFieldChips(rawBody))
+    : rawBody
   dbg('input subject', subjectTpl)
   dbg('input body (first 800)', bodySource)
 

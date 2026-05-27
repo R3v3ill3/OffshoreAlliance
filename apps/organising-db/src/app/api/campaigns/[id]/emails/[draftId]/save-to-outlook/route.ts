@@ -55,6 +55,7 @@ import {
   resolveTemplateVariables,
 } from '@/lib/comms/template-variables'
 import { stripMergeFieldChips } from '@/lib/comms/chip-html'
+import { sanitiseEmailHtml } from '@/lib/comms/sanitise-email-html'
 import {
   loadCampaignEmailContext,
   buildWorkerEmailContext,
@@ -240,8 +241,12 @@ export async function POST(
   // Defensive: strip any merge-field chip wrappers that may have escaped
   // the client-side sanitise step (e.g. legacy drafts, programmatic
   // setContent paths that bypassed onChange). Keeps raw `{{key}}` tokens
-  // intact for the resolver downstream.
-  const bodySource = isHtmlSource ? stripMergeFieldChips(rawBody) : rawBody
+  // intact for the resolver downstream. Then run a general HTML scrub
+  // to drop Outlook / Gmail paste cruft (data-outlook-id, style, etc.)
+  // before resolution + send.
+  const bodySource = isHtmlSource
+    ? sanitiseEmailHtml(stripMergeFieldChips(rawBody))
+    : rawBody
   dbg('input subject', subjectTpl)
   dbg('input body (first 800)', bodySource)
 

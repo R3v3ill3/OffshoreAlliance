@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ActionNetworkClient } from "@/lib/api/action-network";
+import { sanitiseEmailHtml } from "@/lib/comms/sanitise-email-html";
 
 function getClient(): ActionNetworkClient {
   const apiKey = process.env.ACTION_NETWORK_API_KEY;
@@ -83,9 +84,22 @@ export async function POST(request: NextRequest) {
       case "add_tagging":
         data = await client.addTagging(params.tagId, params.person);
         break;
-      case "create_message":
-        data = await client.createMessage(params.message);
+      case "create_message": {
+        // Defensively sanitise the body HTML before sending to AN.
+        // Strips Outlook / Gmail paste junk (data-outlook-id, style, etc.)
+        // that would otherwise leak into AN's auto-generated plain-text
+        // version of the email and reduce deliverability.
+        const messageInput = (params.message ?? {}) as Parameters<typeof client.createMessage>[0]
+        const sanitisedMessage = {
+          ...messageInput,
+          body:
+            typeof messageInput.body === 'string'
+              ? sanitiseEmailHtml(messageInput.body)
+              : messageInput.body,
+        }
+        data = await client.createMessage(sanitisedMessage)
         break;
+      }
       case "send_message":
         if (!params.messageId) {
           return NextResponse.json({ error: "Missing messageId parameter" }, { status: 400 });

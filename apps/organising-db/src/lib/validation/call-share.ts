@@ -4,6 +4,8 @@ export const shareTokenIssueSchema = z.object({
   password: z.string().min(6).max(128),
   expiresInHours: z.number().int().min(2).max(336),
   leaderWorkerId: z.number().int().positive().optional(),
+  /** Optional: pre-assigns this link to a specific worker so the mobile gate greets them by name. */
+  designatedWorkerId: z.number().int().positive().optional(),
 });
 
 export const shareAuthSchema = z.object({

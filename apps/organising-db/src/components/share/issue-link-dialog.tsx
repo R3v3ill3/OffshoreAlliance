@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Eye, EyeOff, Search, UserCheck, X } from "lucide-react";
 import { fetchApi } from "@/lib/api/fetch-api";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,6 +45,131 @@ export type IssueLinkDialogTarget = {
   contextLabel?: string;
 };
 
+interface WorkerOption {
+  worker_id: number;
+  first_name: string;
+  last_name: string;
+  occupation: string | null;
+}
+
+/**
+ * Internal combobox rendered when `workerSearchEndpoint` is provided.
+ * Debounces search at 250 ms; requires ≥2 chars before hitting the server.
+ */
+function WorkerSearchCombobox({
+  searchEndpoint,
+  value,
+  onChange,
+}: {
+  searchEndpoint: string;
+  value: WorkerOption | null;
+  onChange: (w: WorkerOption | null) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<WorkerOption[]>([]);
+  const [open, setOpen] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (q.length < 2) {
+      setResults([]);
+      return;
+    }
+    debounceRef.current = setTimeout(() => {
+      void fetchApi(`${searchEndpoint}?q=${encodeURIComponent(q)}`)
+        .then((r) => r.json())
+        .then((body: { workers?: WorkerOption[] }) => setResults(body.workers ?? []))
+        .catch(() => undefined);
+    }, 250);
+  }, [q, searchEndpoint]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  if (value) {
+    return (
+      <div className="flex items-center gap-2 rounded-md border bg-muted/50 px-3 py-2 text-sm">
+        <UserCheck className="h-4 w-4 shrink-0 text-primary" />
+        <span className="min-w-0 flex-1 truncate font-medium">
+          {value.first_name} {value.last_name}
+          {value.occupation ? (
+            <span className="ml-1 font-normal text-muted-foreground">· {value.occupation}</span>
+          ) : null}
+        </span>
+        <button
+          type="button"
+          aria-label="Clear assignment"
+          onClick={() => onChange(null)}
+          className="shrink-0 text-muted-foreground hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search by name… (leave blank to share broadly)"
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          className="pl-9 text-sm"
+        />
+      </div>
+      {open && results.length > 0 ? (
+        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+          {results.map((w) => (
+            <button
+              key={w.worker_id}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onChange(w);
+                setQ("");
+                setOpen(false);
+              }}
+              className="flex w-full items-start gap-2 border-b px-3 py-2 text-left text-sm last:border-0 hover:bg-accent"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">
+                  {w.first_name} {w.last_name}
+                </span>
+                {w.occupation ? (
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {w.occupation}
+                  </span>
+                ) : null}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {open && q.length >= 2 && results.length === 0 ? (
+        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover px-3 py-2 text-xs text-muted-foreground shadow-md">
+          No matching campaign members found.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function IssueLinkDialog({
   target,
   onClose,
@@ -53,6 +178,7 @@ export function IssueLinkDialog({
   passwordHelp = "The leader needs this password to open the form. Share it on a different channel from the link itself.",
   extraFields,
   extraPayload,
+  workerSearchEndpoint,
 }: {
   target: IssueLinkDialogTarget | null;
   onClose: () => void;
@@ -61,6 +187,13 @@ export function IssueLinkDialog({
   passwordHelp?: string;
   extraFields?: ReactNode;
   extraPayload?: Record<string, unknown>;
+  /**
+   * When provided, renders an "Assign to caller (optional)" worker search
+   * combobox. Pass the campaign workers search endpoint, e.g.
+   * `/api/campaigns/${campaignId}/workers`.
+   * The selected worker_id is sent as `designatedWorkerId` in the POST body.
+   */
+  workerSearchEndpoint?: string;
 }) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -68,6 +201,7 @@ export function IssueLinkDialog({
   const [customHours, setCustomHours] = useState<string>("48");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [designatedWorker, setDesignatedWorker] = useState<WorkerOption | null>(null);
   const open = target !== null;
 
   useEffect(() => {
@@ -77,6 +211,7 @@ export function IssueLinkDialog({
     setExpiryMode(String(DEFAULT_EXPIRY_HOURS));
     setCustomHours("48");
     setError(null);
+    setDesignatedWorker(null);
   }, [open]);
 
   function resolveExpiryHours(): number | null {
@@ -110,6 +245,9 @@ export function IssueLinkDialog({
           password,
           expiresInHours: hours,
           ...(extraPayload ?? {}),
+          ...(workerSearchEndpoint && designatedWorker
+            ? { designatedWorkerId: designatedWorker.worker_id }
+            : {}),
         }),
       });
       const json = (await res.json()) as {
@@ -207,6 +345,21 @@ export function IssueLinkDialog({
               </div>
             ) : null}
           </div>
+
+          {workerSearchEndpoint ? (
+            <div className="space-y-1">
+              <Label>Assign to caller (optional)</Label>
+              <WorkerSearchCombobox
+                searchEndpoint={workerSearchEndpoint}
+                value={designatedWorker}
+                onChange={setDesignatedWorker}
+              />
+              <p className="text-xs text-muted-foreground">
+                When assigned, the caller is greeted by name and identified automatically — no guessing
+                from a list. Leave blank to share broadly.
+              </p>
+            </div>
+          ) : null}
 
           {extraFields}
           {error ? <p className="text-sm text-destructive">{error}</p> : null}

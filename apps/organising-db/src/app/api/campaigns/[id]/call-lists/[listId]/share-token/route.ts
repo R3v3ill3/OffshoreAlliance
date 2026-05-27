@@ -42,7 +42,7 @@ export async function POST(
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    const { password, expiresInHours, leaderWorkerId } = parsed.data;
+    const { password, expiresInHours, leaderWorkerId, designatedWorkerId } = parsed.data;
 
     const { data: list, error: listError } = await serverClient
       .from("call_lists")
@@ -82,6 +82,22 @@ export async function POST(
       }
     }
 
+    if (designatedWorkerId != null) {
+      const { data: membership, error: membershipErr } = await serverClient
+        .from("campaign_worker_membership")
+        .select("worker_id")
+        .eq("campaign_id", campaignId)
+        .eq("worker_id", designatedWorkerId)
+        .maybeSingle();
+      if (membershipErr) throw membershipErr;
+      if (!membership) {
+        return NextResponse.json(
+          { error: "Designated caller must be a member of this campaign" },
+          { status: 400 },
+        );
+      }
+    }
+
     const raw = generateRawLeaderToken();
     const token_hash = hashLeaderToken(raw);
     const { hash: password_hash, algo: password_algo } = await hashPassword(password);
@@ -94,6 +110,7 @@ export async function POST(
       password_algo,
       issued_by: staff.user.id,
       leader_worker_id: leaderWorkerId ?? null,
+      designated_worker_id: designatedWorkerId ?? null,
       expires_at,
       failed_attempts: 0,
       locked_until: null,

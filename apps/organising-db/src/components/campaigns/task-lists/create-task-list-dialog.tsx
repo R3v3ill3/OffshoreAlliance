@@ -953,6 +953,7 @@ export function CreateTaskListDialog({
                   }
                 : null
             }
+            workerSearchEndpoint={`/api/campaigns/${campaignId}/workers`}
             passwordHelp="Share this link with your callers — each person picks their name on sign-in and the system prevents anyone calling the same contact twice."
             onClose={() => setPhoneShareOpen(false)}
             onIssued={(result) => {

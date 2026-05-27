@@ -576,6 +576,7 @@ export default function CallListDetailPage() {
               }
             : null
         }
+        workerSearchEndpoint={`/api/campaigns/${campaignId}/workers`}
         passwordHelp="You can share this one link with multiple callers — each person picks their name on sign-in and the system stops anyone from calling the same contact twice."
         extraPayload={{
           leaderWorkerId: bindLeader ? leaderWorkerIds[0] : undefined,

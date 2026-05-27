@@ -87,6 +87,8 @@ import {
   ExternalLink,
   Info,
   Link2,
+  Loader2,
+  Phone,
   Plus,
   Users,
   ListChecks,
@@ -98,6 +100,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { fetchApi } from "@/lib/api/fetch-api";
 import { IssueLinkDialog, type IssueLinkResult } from "@/components/share/issue-link-dialog";
 import { IssuedLinkResultDialog } from "@/components/share/issued-link-result-dialog";
 
@@ -279,6 +282,10 @@ export function CreateTaskListDialog({
   } | null>(null);
   const [issueLinkOpen, setIssueLinkOpen] = useState(false);
   const [issueResult, setIssueResult] = useState<IssueLinkResult | null>(null);
+  const [phoneCallListId, setPhoneCallListId] = useState<number | null>(null);
+  const [isCreatingCallList, setIsCreatingCallList] = useState(false);
+  const [phoneShareOpen, setPhoneShareOpen] = useState(false);
+  const [phoneShareIssueResult, setPhoneShareIssueResult] = useState<IssueLinkResult | null>(null);
 
   const initialState = useMemo<FormState>(() => {
     if (draft) {
@@ -662,6 +669,60 @@ export function CreateTaskListDialog({
                   </div>
                 )}
 
+                {savedResult.status === "active" && (
+                  <div className="rounded-md border bg-muted/30 p-4 space-y-3">
+                    <p className="text-sm font-medium">Also phone call this group</p>
+                    <p className="text-xs text-muted-foreground">
+                      Create a mobile calling link from these workers&apos; phone numbers so
+                      callers can start dialling immediately. Each caller picks their name
+                      on sign-in — the system prevents the same contact being called twice.
+                    </p>
+                    {phoneCallListId == null ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full sm:w-auto"
+                        disabled={isCreatingCallList}
+                        onClick={async () => {
+                          setIsCreatingCallList(true);
+                          try {
+                            const res = await fetchApi(
+                              `/api/campaigns/${campaignId}/task-lists/${savedResult.task_list_id}/create-call-list`,
+                              { method: "POST" },
+                            );
+                            const json = await res.json() as { list_id?: number; added?: number; error?: string };
+                            if (!res.ok) throw new Error(json.error ?? "Failed to create call list");
+                            setPhoneCallListId(json.list_id!);
+                            toast.success(`Call list created with ${json.added ?? 0} contacts`);
+                            setPhoneShareOpen(true);
+                          } catch (err) {
+                            toast.error(err instanceof Error ? err.message : "Failed to create call list");
+                          } finally {
+                            setIsCreatingCallList(false);
+                          }
+                        }}
+                      >
+                        {isCreatingCallList ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Phone className="h-4 w-4 mr-2" />
+                        )}
+                        Create &amp; share phone call link
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full sm:w-auto"
+                        onClick={() => setPhoneShareOpen(true)}
+                      >
+                        <Phone className="h-4 w-4 mr-2" />
+                        Share phone call link again
+                      </Button>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex flex-col sm:flex-row gap-2 pt-1">
                   <Button
                     type="button"
@@ -879,6 +940,30 @@ export function CreateTaskListDialog({
             title="Share link ready"
             result={issueResult}
             onClose={() => setIssueResult(null)}
+          />
+
+          <IssueLinkDialog
+            title="Share for mobile calling"
+            target={
+              phoneShareOpen && phoneCallListId != null
+                ? {
+                    title: `Call — ${savedResult.title}`,
+                    contextLabel: "For call list",
+                    endpoint: `/api/campaigns/${campaignId}/call-lists/${phoneCallListId}/share-token`,
+                  }
+                : null
+            }
+            passwordHelp="Share this link with your callers — each person picks their name on sign-in and the system prevents anyone calling the same contact twice."
+            onClose={() => setPhoneShareOpen(false)}
+            onIssued={(result) => {
+              setPhoneShareOpen(false);
+              setPhoneShareIssueResult(result);
+            }}
+          />
+          <IssuedLinkResultDialog
+            title="Mobile-call link ready"
+            result={phoneShareIssueResult}
+            onClose={() => setPhoneShareIssueResult(null)}
           />
         </>
       )}

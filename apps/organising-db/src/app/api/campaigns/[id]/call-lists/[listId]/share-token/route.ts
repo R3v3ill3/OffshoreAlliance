@@ -55,9 +55,6 @@ export async function POST(
     if (!list) {
       return NextResponse.json({ error: "Call list not found" }, { status: 404 });
     }
-    if (!list.script_id) {
-      return NextResponse.json({ error: "Call list needs an active script before sharing" }, { status: 400 });
-    }
     if ((list.total_items ?? 0) - (list.completed_items ?? 0) <= 0) {
       return NextResponse.json({ error: "Call list has no remaining contacts" }, { status: 400 });
     }

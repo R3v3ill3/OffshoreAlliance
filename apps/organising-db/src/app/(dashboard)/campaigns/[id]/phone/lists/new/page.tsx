@@ -18,8 +18,10 @@ import { Progress } from '@/components/ui/progress'
 import {
   ArrowLeft, ArrowRight, Phone, Users, ListChecks,
   Loader2, CheckCircle, ChevronUp, ChevronDown, GripVertical,
-  Filter, ArrowUpDown,
+  Filter, ArrowUpDown, Share2,
 } from 'lucide-react'
+import { IssueLinkDialog, type IssueLinkResult } from '@/components/share/issue-link-dialog'
+import { IssuedLinkResultDialog } from '@/components/share/issued-link-result-dialog'
 import { toast } from 'sonner'
 import type { CallListPriorityStrategy } from '@/types/planner-types'
 import type { AudienceDescriptor } from '@/lib/phone/audience-descriptor'
@@ -159,6 +161,8 @@ export default function NewCallListPage() {
     : STEPS_ALL
   const [createdListId, setCreatedListId] = useState<number | null>(null)
   const [populateResult, setPopulateResult] = useState<{ added: number; skipped_no_phone?: number } | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
+  const [shareIssueResult, setShareIssueResult] = useState<IssueLinkResult | null>(null)
   const [previewCount, setPreviewCount] = useState<{ total: number; withPhone: number } | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
 
@@ -1391,6 +1395,15 @@ export default function NewCallListPage() {
                         Start Calling
                       </Button>
                     )}
+                    {createdListId && (
+                      <Button
+                        variant="outline"
+                        onClick={() => setShareOpen(true)}
+                      >
+                        <Share2 className="h-4 w-4 mr-1" />
+                        Share for mobile calling
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       onClick={() => router.push(`/campaigns/${campaignId}/phone`)}
@@ -1406,6 +1419,31 @@ export default function NewCallListPage() {
       )}
         </>
       )}
+
+      <IssueLinkDialog
+        title="Share for mobile calling"
+        target={
+          shareOpen && createdListId != null
+            ? {
+                title: name || `Call list #${createdListId}`,
+                contextLabel: 'For call list',
+                endpoint: `/api/campaigns/${campaignId}/call-lists/${createdListId}/share-token`,
+              }
+            : null
+        }
+        passwordHelp="Share this link with your callers — each person picks their name on sign-in and the system prevents anyone calling the same contact twice."
+        onClose={() => setShareOpen(false)}
+        onIssued={(result) => {
+          setShareOpen(false)
+          setShareIssueResult(result)
+        }}
+      />
+
+      <IssuedLinkResultDialog
+        title="Mobile-call link ready"
+        result={shareIssueResult}
+        onClose={() => setShareIssueResult(null)}
+      />
     </div>
   )
 }

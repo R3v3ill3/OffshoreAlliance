@@ -21,7 +21,8 @@ type ConnectionEventType =
   | "lock_timeout"
   | "network_error"
   | "recovery_start"
-  | "recovery_end";
+  | "recovery_end"
+  | "deployment_mismatch";
 
 interface ConnectionEvent {
   ts: number;
@@ -50,6 +51,7 @@ const SENTRY_CAPTURE_TYPES = new Set<ConnectionEventType>([
   "session_lost",
   "lock_timeout",
   "network_error",
+  "deployment_mismatch",
 ]);
 
 const SENTRY_BREADCRUMB_LEVEL: Record<ConnectionEventType, "info" | "warning" | "error"> = {
@@ -64,6 +66,7 @@ const SENTRY_BREADCRUMB_LEVEL: Record<ConnectionEventType, "info" | "warning" | 
   session_lost: "warning",
   lock_timeout: "warning",
   network_error: "warning",
+  deployment_mismatch: "warning",
 };
 
 function forwardToSentry(entry: ConnectionEvent): void {
@@ -78,6 +81,7 @@ function forwardToSentry(entry: ConnectionEvent): void {
         detail: entry.detail,
         durationMs: entry.durationMs,
         traceId: entry.traceId,
+        pathname: typeof window !== "undefined" ? window.location.pathname : undefined,
       },
     });
   } catch {
@@ -98,6 +102,8 @@ function forwardToSentry(entry: ConnectionEvent): void {
           detail: entry.detail,
           durationMs: entry.durationMs,
           traceId: entry.traceId,
+          pathname: typeof window !== "undefined" ? window.location.pathname : undefined,
+          href: typeof window !== "undefined" ? window.location.href : undefined,
         },
       });
     } catch {
@@ -139,7 +145,8 @@ export function logConnectionEvent(event: Omit<ConnectionEvent, "ts">): void {
     event.type === "token_refresh_fail" ||
     event.type === "session_lost" ||
     event.type === "lock_timeout" ||
-    event.type === "network_error"
+    event.type === "network_error" ||
+    event.type === "deployment_mismatch"
   ) {
     console.warn("[connection-monitor]", event.type, event.detail ?? "", event.traceId ? `trace=${event.traceId}` : "");
   }
@@ -165,7 +172,8 @@ export function getHealthSummary(): {
       e.type === "api_error" ||
       e.type === "session_lost" ||
       e.type === "lock_timeout" ||
-      e.type === "network_error"
+      e.type === "network_error" ||
+      e.type === "deployment_mismatch"
   );
   const successes = recent.filter(
     (e) =>

@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { AuthProvider } from "@/lib/supabase/auth-context";
 import { DeviceProvider } from "@/contexts/device-context";
 import { createClient, coordinatedRefreshSession, getSessionWithTimeout } from "@/lib/supabase/client";
-import { forceLogoutToLogin, isLikelyAuthError } from "@/lib/supabase/session-recovery";
+import { forceLogoutToLogin, isLikelyAuthError, recoverSessionConnection } from "@/lib/supabase/session-recovery";
 import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
 import { logCookieDiagnostic } from "@/lib/supabase/cookie-diagnostics";
 import { installDiagnosticShims } from "@/lib/supabase/diagnostics-shim";
@@ -138,18 +138,47 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
           try {
             const { data, error } = await coordinatedRefreshSession("visibility-null-session");
             if (error || !data.session) {
-              logConnectionEvent({ type: "token_refresh_fail", detail: "visibility null session — refresh failed, force logout" });
-              forceLogoutToLogin("session_expired");
+              const result = await recoverSessionConnection({
+                supabase: createClient(),
+                queryClient,
+                source: "manual",
+                reloadOnSuccess: false,
+                redirectOnFailure: false,
+                validateWorkloadAccess: false,
+              });
+              if (result.ok) {
+                resetRecoveryFailureBudgets();
+                logConnectionEvent({ type: "token_refresh_ok", detail: "visibility null session recovered via full recovery" });
+                queryClient.invalidateQueries();
+                return;
+              }
+              const escalate = shouldEscalateVisibilityFailure();
+              logConnectionEvent({
+                type: "token_refresh_fail",
+                detail: `visibility null session unresolved (${result.reasonCode}); escalation=${escalate}`,
+              });
+              if (escalate) {
+                forceLogoutToLogin(result.reasonCode || "session_expired");
+              }
             } else {
+              resetRecoveryFailureBudgets();
               logConnectionEvent({ type: "token_refresh_ok", detail: "visibility null session recovered" });
               queryClient.invalidateQueries();
             }
           } catch {
-            logConnectionEvent({ type: "token_refresh_fail", detail: "visibility null session — exception, force logout" });
-            forceLogoutToLogin("session_check_error");
+            const escalate = shouldEscalateVisibilityFailure();
+            logConnectionEvent({
+              type: "token_refresh_fail",
+              detail: `visibility null session — exception; escalation=${escalate}`,
+            });
+            if (escalate) {
+              forceLogoutToLogin("session_check_error");
+            }
           }
           return;
         }
+
+        resetRecoveryFailureBudgets();
 
         const expiresAtMs = (session.expires_at ?? 0) * 1000;
         const now = Date.now();
@@ -173,6 +202,23 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
   // This heartbeat detects that condition by checking if the user_profiles query
   // returns the expected row for the current user.
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const visibilityNullSessionFailuresRef = useRef(0);
+  const heartbeatRecoveryFailuresRef = useRef(0);
+
+  const resetRecoveryFailureBudgets = () => {
+    visibilityNullSessionFailuresRef.current = 0;
+    heartbeatRecoveryFailuresRef.current = 0;
+  };
+
+  const shouldEscalateVisibilityFailure = () => {
+    visibilityNullSessionFailuresRef.current += 1;
+    return visibilityNullSessionFailuresRef.current >= 2;
+  };
+
+  const shouldEscalateHeartbeatFailure = () => {
+    heartbeatRecoveryFailuresRef.current += 1;
+    return heartbeatRecoveryFailuresRef.current >= 2;
+  };
   useEffect(() => {
     if (isShareDialerRoute) return;
 
@@ -209,9 +255,30 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
           const { data: refreshData, error: refreshError } =
             await coordinatedRefreshSession("heartbeat-auth-failure");
           if (refreshError || !refreshData.session) {
-            logConnectionEvent({ type: "token_refresh_fail", detail: "heartbeat recovery failed — force logout" });
-            forceLogoutToLogin("refresh_failed");
+            const result = await recoverSessionConnection({
+              supabase,
+              queryClient,
+              source: "query-cache-auth-error",
+              reloadOnSuccess: false,
+              redirectOnFailure: false,
+              validateWorkloadAccess: false,
+            });
+            if (result.ok) {
+              resetRecoveryFailureBudgets();
+              logConnectionEvent({ type: "token_refresh_ok", detail: "heartbeat recovery succeeded via full recovery" });
+              queryClient.invalidateQueries();
+              return;
+            }
+            const escalate = shouldEscalateHeartbeatFailure();
+            logConnectionEvent({
+              type: "token_refresh_fail",
+              detail: `heartbeat recovery unresolved (${result.reasonCode}); escalation=${escalate}`,
+            });
+            if (escalate) {
+              forceLogoutToLogin(result.reasonCode || "refresh_failed");
+            }
           } else {
+            resetRecoveryFailureBudgets();
             logConnectionEvent({ type: "token_refresh_ok", detail: "heartbeat recovery succeeded" });
             queryClient.invalidateQueries();
           }
@@ -226,6 +293,65 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
     };
   }, [queryClient]);
+
+  useEffect(() => {
+    const STORAGE_KEY = "oa:last-server-action-mismatch-reload-at";
+    const AUTO_RELOAD_COOLDOWN_MS = 60_000;
+    const ACTION_MISMATCH_PATTERN = /Failed to find Server Action/i;
+
+    const maybeRecoverFromServerActionMismatch = (message: string) => {
+      if (!ACTION_MISMATCH_PATTERN.test(message)) return;
+
+      let shouldReload = true;
+      try {
+        const previousRaw = window.sessionStorage.getItem(STORAGE_KEY);
+        const previous = previousRaw ? Number(previousRaw) : 0;
+        if (Number.isFinite(previous) && previous > 0 && Date.now() - previous < AUTO_RELOAD_COOLDOWN_MS) {
+          shouldReload = false;
+        }
+      } catch {
+        // best effort
+      }
+
+      logConnectionEvent({
+        type: "deployment_mismatch",
+        detail: `server-action-mismatch-detected; autoReload=${shouldReload}`,
+      });
+
+      if (!shouldReload) return;
+
+      try {
+        window.sessionStorage.setItem(STORAGE_KEY, String(Date.now()));
+      } catch {
+        // best effort
+      }
+
+      window.location.reload();
+    };
+
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      const message =
+        reason instanceof Error
+          ? reason.message
+          : typeof reason === "string"
+            ? reason
+            : JSON.stringify(reason);
+      maybeRecoverFromServerActionMismatch(message);
+    };
+
+    const onWindowError = (event: ErrorEvent) => {
+      const message = event.message || event.error?.message || "";
+      maybeRecoverFromServerActionMismatch(message);
+    };
+
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+    window.addEventListener("error", onWindowError);
+    return () => {
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
+      window.removeEventListener("error", onWindowError);
+    };
+  }, []);
 
   return (
     <DeviceProvider isMobile={isMobile}>

@@ -38,6 +38,10 @@ interface SignOutOptions {
 // Circuit breaker: prevent cascading recoveries within a short window
 let _lastRecoveryAttemptTs = 0;
 const CIRCUIT_BREAKER_WINDOW_MS = 30_000;
+const TRANSIENT_FAILURE_WINDOW_MS = 2 * 60_000;
+const TRANSIENT_FAILURE_ESCALATION_THRESHOLD = 3;
+let _transientFailureStreak = 0;
+let _lastTransientFailureTs = 0;
 
 /**
  * Flag set during intentional sign-out to prevent the onAuthStateChange
@@ -46,6 +50,21 @@ const CIRCUIT_BREAKER_WINDOW_MS = 30_000;
 let _intentionalSignOut = false;
 export function isIntentionalSignOut(): boolean {
   return _intentionalSignOut;
+}
+
+function resetTransientFailureStreak(): void {
+  _transientFailureStreak = 0;
+  _lastTransientFailureTs = 0;
+}
+
+function shouldEscalateTransientFailure(): boolean {
+  const now = Date.now();
+  if (now - _lastTransientFailureTs > TRANSIENT_FAILURE_WINDOW_MS) {
+    _transientFailureStreak = 0;
+  }
+  _transientFailureStreak += 1;
+  _lastTransientFailureTs = now;
+  return _transientFailureStreak >= TRANSIENT_FAILURE_ESCALATION_THRESHOLD;
 }
 
 function withTimeout<T>(promiseLike: PromiseLike<T>, timeoutMs: number, timeoutError: Error): Promise<T> {
@@ -346,17 +365,45 @@ export async function recoverSessionConnection({
       error instanceof Error && error.message.includes("Timed out")
         ? "session_check_timeout"
         : "session_check_error";
+    const message = readErrorMessage(error);
     logConnectionEvent({ type: "recovery_end", detail: `fail: ${reason}`, traceId });
-    return hardFailRecovery(queryClient, reason, readErrorMessage(error), redirectOnFailure, traceId);
+    const escalate = shouldEscalateTransientFailure();
+    if (redirectOnFailure && escalate) {
+      return hardFailRecovery(
+        queryClient,
+        reason,
+        `${message} (escalated after repeated transient failures)`,
+        true,
+        traceId,
+      );
+    }
+    return softFailRecovery(reason, `${message} (transient; will retry on next trigger)`, traceId);
   }
 
   if (sessionResult.error) {
     logConnectionEvent({ type: "recovery_end", detail: `fail: session error`, traceId });
-    return hardFailRecovery(
-      queryClient,
+    if (isLikelyAuthError(sessionResult.error)) {
+      return hardFailRecovery(
+        queryClient,
+        "session_check_error",
+        sessionResult.error.message,
+        redirectOnFailure,
+        traceId,
+      );
+    }
+    const escalate = shouldEscalateTransientFailure();
+    if (redirectOnFailure && escalate) {
+      return hardFailRecovery(
+        queryClient,
+        "session_check_error",
+        `${sessionResult.error.message} (escalated after repeated transient failures)`,
+        true,
+        traceId,
+      );
+    }
+    return softFailRecovery(
       "session_check_error",
-      sessionResult.error.message,
-      redirectOnFailure,
+      `${sessionResult.error.message} (non-auth session error; transient retry budget active)`,
       traceId,
     );
   }
@@ -374,6 +421,8 @@ export async function recoverSessionConnection({
       traceId,
     );
   }
+
+  resetTransientFailureStreak();
 
   // Step 3: Probe DB connectivity
   const probeStartedAt = Date.now();

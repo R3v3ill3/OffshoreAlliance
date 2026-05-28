@@ -159,26 +159,62 @@ export async function withAuthOpTimeout<T>(
 }
 
 /**
- * getSession() with a 6-second timeout. Use this everywhere outside
+ * Shared getSession() with a 12-second timeout. Use this everywhere outside
  * coordinatedRefreshSession (which has its own 12-second timeout) and
  * recoverSessionConnection (which has its own 15-second timeout).
+ *
+ * Heartbeat + visibility handlers can fire close together when a tab returns
+ * to focus. Reuse one in-flight getSession() call so they don't cascade into
+ * duplicate auth-client lock waits.
  *
  * Returns null on timeout rather than throwing, so callers can fall through
  * to recovery without try/catch boilerplate.
  */
+let _sessionPromise: Promise<Awaited<ReturnType<SupabaseClient["auth"]["getSession"]>>> | null = null;
+let _lastSessionSource: string | null = null;
+
+function coordinatedGetSession(
+  source: string,
+): Promise<Awaited<ReturnType<SupabaseClient["auth"]["getSession"]>>> {
+  if (_sessionPromise) {
+    logConnectionEvent({
+      type: "api_ok",
+      detail: `getSession-deduplicated: ${source} joined in-flight session check from ${_lastSessionSource}`,
+    });
+    return _sessionPromise;
+  }
+
+  _lastSessionSource = source;
+  const client = createClient();
+  _sessionPromise = client.auth.getSession().finally(() => {
+    _sessionPromise = null;
+    _lastSessionSource = null;
+  });
+  return _sessionPromise;
+}
+
 export async function getSessionWithTimeout(source: string): Promise<{
   session: Session | null;
   timedOut: boolean;
 }> {
-  const client = createClient();
   try {
     const { data: { session } } = await withAuthOpTimeout(
       `getSession:${source}`,
-      client.auth.getSession(),
+      coordinatedGetSession(source),
     );
     return { session: session ?? null, timedOut: false };
   } catch (error) {
     const isTimeout = (error as Error & { isAuthOpTimeout?: boolean })?.isAuthOpTimeout === true;
+    if (isTimeout) {
+      void coordinatedRefreshSession(`getSession-timeout:${source}`).catch((refreshError) => {
+        logConnectionEvent({
+          type: "token_refresh_fail",
+          detail: `getSession timeout refresh failed (${source}): ${
+            refreshError instanceof Error ? refreshError.message : String(refreshError)
+          }`,
+        });
+      });
+    }
     if (!isTimeout) {
       // Non-timeout errors are unusual but possible — log and treat as null session
       logConnectionEvent({

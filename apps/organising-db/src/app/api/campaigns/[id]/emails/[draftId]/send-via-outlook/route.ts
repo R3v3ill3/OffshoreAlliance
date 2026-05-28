@@ -44,6 +44,7 @@ import {
 } from '@/lib/comms/template-variables'
 import { stripMergeFieldChips } from '@/lib/comms/chip-html'
 import { sanitiseEmailHtml } from '@/lib/comms/sanitise-email-html'
+import { appendOASignature } from '@/lib/comms/oa-email-signature'
 import {
   loadCampaignEmailContext,
   buildWorkerEmailContext,
@@ -292,6 +293,7 @@ export async function POST(
           )
           if (rewritten) finalBodyHtml = rewritten.html
         }
+        finalBodyHtml = appendOASignature(finalBodyHtml)
 
         await sendMessage(tokenResult.accessToken, {
           subject: subjectResolved,
@@ -377,6 +379,7 @@ export async function POST(
         )
         if (rewritten) finalBodyHtml = rewritten.html
       }
+      finalBodyHtml = appendOASignature(finalBodyHtml)
 
       await sendMessage(tokenResult.accessToken, {
         subject: subjectResolved,

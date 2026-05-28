@@ -34,6 +34,7 @@ const ALLOWED_TAGS = new Set([
   'i',
   'u',
   'a',
+  'img',
   'ul',
   'ol',
   'li',
@@ -51,6 +52,9 @@ const ALLOWED_TAGS = new Set([
 // Per-tag attribute allowlist. Attributes NOT listed are removed.
 const ATTR_ALLOWLIST: Record<string, Set<string>> = {
   a: new Set(['href', 'target', 'rel']),
+  // img: preserve display attributes; style is kept because email HTML
+  // uses inline max-width/height for responsive sizing.
+  img: new Set(['src', 'alt', 'width', 'height', 'style']),
   // span: keep `data-merge-field` so chip preservation still works for
   // any code path that hasn't run stripMergeFieldChips first.
   span: new Set(['data-merge-field']),

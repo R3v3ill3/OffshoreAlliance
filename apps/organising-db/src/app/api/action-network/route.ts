@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ActionNetworkClient } from "@/lib/api/action-network";
-import { sanitiseEmailHtml } from "@/lib/comms/sanitise-email-html";
+import { sanitiseEmailHtml } from "@/lib/comms/sanitise-email-html"
+import { appendOASignature } from "@/lib/comms/oa-email-signature";
 
 function getClient(): ActionNetworkClient {
   const apiKey = process.env.ACTION_NETWORK_API_KEY;
@@ -90,12 +91,16 @@ export async function POST(request: NextRequest) {
         // that would otherwise leak into AN's auto-generated plain-text
         // version of the email and reduce deliverability.
         const messageInput = (params.message ?? {}) as Parameters<typeof client.createMessage>[0]
+        const sanitisedBody =
+          typeof messageInput.body === 'string'
+            ? sanitiseEmailHtml(messageInput.body)
+            : messageInput.body
         const sanitisedMessage = {
           ...messageInput,
           body:
-            typeof messageInput.body === 'string'
-              ? sanitiseEmailHtml(messageInput.body)
-              : messageInput.body,
+            typeof sanitisedBody === 'string'
+              ? appendOASignature(sanitisedBody)
+              : sanitisedBody,
         }
         data = await client.createMessage(sanitisedMessage)
         break;

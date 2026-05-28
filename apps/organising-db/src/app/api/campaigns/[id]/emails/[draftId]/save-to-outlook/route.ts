@@ -56,6 +56,7 @@ import {
 } from '@/lib/comms/template-variables'
 import { stripMergeFieldChips } from '@/lib/comms/chip-html'
 import { sanitiseEmailHtml } from '@/lib/comms/sanitise-email-html'
+import { appendOASignature } from '@/lib/comms/oa-email-signature'
 import {
   loadCampaignEmailContext,
   buildWorkerEmailContext,
@@ -308,6 +309,7 @@ export async function POST(
           const rewritten = await rewriteLinks(bodyResolved, sendId).catch(() => null)
           if (rewritten) finalBodyHtml = rewritten.html
         }
+        finalBodyHtml = appendOASignature(finalBodyHtml)
 
         const graphMsg = await createDraft(tokenResult.accessToken, {
           subject: subjectResolved,
@@ -409,6 +411,7 @@ export async function POST(
         const rewritten = await rewriteLinks(bodyHtmlBase, firstSendId).catch(() => null)
         if (rewritten) finalBodyHtml = rewritten.html
       }
+      finalBodyHtml = appendOASignature(finalBodyHtml)
 
       const graphMsg = await createDraft(tokenResult.accessToken, {
         subject: subjectResolved,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
@@ -1205,12 +1205,27 @@ export function CampaignWallChart({
         />
 
         <div
-          className={buildListOpen ? "flex flex-col xl:flex-row gap-3 items-start" : ""}
-          style={{ overflowAnchor: "none" }}
+          className={
+            buildListOpen
+              ? "flex flex-col gap-3 items-start lg:flex-row lg:h-[var(--build-list-area-height)] lg:max-h-[var(--build-list-area-height)] lg:min-h-0 print:!h-auto print:!max-h-none"
+              : ""
+          }
+          style={
+            buildListOpen
+              ? ({
+                  overflowAnchor: "none",
+                  "--build-list-area-height": `calc(100dvh - ${buildListStickyTopPx + 16}px)`,
+                } as CSSProperties)
+              : { overflowAnchor: "none" }
+          }
         >
         <div
           ref={unitsContainerRef}
-          className={`relative space-y-4 print:space-y-2 ${buildListOpen ? "flex-1 min-w-0 w-full" : ""}`}
+          className={`relative space-y-4 print:space-y-2 ${
+            buildListOpen
+              ? "flex-1 min-w-0 w-full lg:h-full lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-2 print:!h-auto print:!overflow-visible print:!pr-0"
+              : ""
+          }`}
         >
         {unassignedWorkerIds.length > 0 && (() => {
           const filter = getFilter(UNASSIGNED_KEY);

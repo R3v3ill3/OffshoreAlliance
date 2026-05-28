@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -89,6 +89,9 @@ export function BuildListPanel({
   const ownController = useBuildList({ campaignId });
   const buildList = controller ?? ownController;
   const list = buildList.detail.data ?? null;
+  const listId = list?.list_id ?? null;
+  const listName = list?.name ?? "";
+  const listPurpose = list?.default_purpose ?? null;
 
   // Local-only edits to the list metadata. Saved on blur / via Save button.
   const [name, setName] = useState("");
@@ -120,16 +123,22 @@ export function BuildListPanel({
 
   // Sync local fields when the active list changes / refetches.
   useEffect(() => {
-    if (list) {
-      setName(list.name);
-      setPurpose(list.default_purpose ?? "");
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setName(listName);
+      setPurpose(listPurpose ?? "");
+      if (listId == null) {
+        setOrganiserPick("");
+      }
       // organiserPick can't be re-derived from organiser_id alone (CampaignOrganiserSelect uses user-uuid keys); leave for re-confirm.
-    } else {
-      setName("");
-      setPurpose("");
-      setOrganiserPick("");
-    }
-  }, [list?.list_id, list?.name, list?.default_purpose]);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [listId, listName, listPurpose]);
 
   const items = list?.items ?? [];
   const itemCount = items.length;
@@ -296,11 +305,11 @@ export function BuildListPanel({
       // requested by parent) + 8px breathing room at the bottom.
       style={{
         top: `${stickyTopPx}px`,
-        maxHeight: `calc(100vh - ${stickyTopPx + 16}px)`,
+        maxHeight: `calc(100dvh - ${stickyTopPx + 16}px)`,
       }}
       className={cn(
-        "sticky w-full md:w-[360px] lg:w-[400px]",
-        "rounded border bg-card shadow-sm flex flex-col print:hidden relative",
+        "sticky z-30 w-full md:w-[360px] lg:w-[400px] lg:shrink-0 lg:self-start",
+        "rounded border bg-card shadow-sm flex flex-col print:hidden",
         highlighted && "ring-2 ring-primary ring-offset-2"
       )}
     >

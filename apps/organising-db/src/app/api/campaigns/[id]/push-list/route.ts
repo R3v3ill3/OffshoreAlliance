@@ -543,10 +543,15 @@ export async function POST(
         // Server confirmed all writes but the read still lags — this is
         // the AN read-replica delay. Surface as a soft notice.
         verificationWarning =
-          `Action Network confirmed all ${writeConfirmedCount} tagging writes, but its read API ` +
-          `still reports ${verifiedTagCount ?? 0}. This is normal eventual-consistency lag — the ` +
-          `tag will populate in the AN UI within 1–2 minutes. ${
-            tagBrowserUrlVerified ? `Open it directly: ${tagBrowserUrlVerified}` : ''
+          `Action Network confirmed all ${writeConfirmedCount} tagging writes. ` +
+          `The activists may take several minutes (occasionally longer) to appear ` +
+          `on AN's tag-detail page — this is normal AN read-replica behaviour, not ` +
+          `a failure. Your message can target this tag immediately and will reach ` +
+          `all ${writeConfirmedCount} recipients. To confirm membership now: open ` +
+          `the tag in AN, then run a multi-tag filter (Activists → Filter → Tags) ` +
+          `including this tag and one other — that query path is faster than the ` +
+          `tag-detail page.${
+            tagBrowserUrlVerified ? ` Open it directly: ${tagBrowserUrlVerified}` : ''
           }`
       } else if (pushedAnIds.length > 0 && verifiedMatchingPushed < pushedAnIds.length) {
         verificationWarning =

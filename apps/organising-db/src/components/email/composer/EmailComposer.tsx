@@ -789,7 +789,10 @@ export function EmailComposer() {
         announce('Push to Action Network completed with errors.')
       } else if (isReadLag) {
         toast.info(
-          `${writeConfirmed} taggings confirmed on AN. Read API still shows ${data.verified_tag_count} — normal lag, will catch up within 1–2 minutes.`,
+          `${writeConfirmed} taggings confirmed on AN. AN's tag-detail page may ` +
+            `still show ${data.verified_tag_count ?? 0} for several minutes — this ` +
+            `is normal AN behaviour. The targeting will work immediately.`,
+          { duration: 8000 },
         )
         announce('List pushed; AN read API still propagating.')
       } else if (typeof writeConfirmed === 'number') {

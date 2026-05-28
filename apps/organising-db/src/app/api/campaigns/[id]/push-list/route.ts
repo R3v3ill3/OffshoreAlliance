@@ -561,6 +561,20 @@ export async function POST(
       }`
     }
 
+    // AN read-replica warm-up. Production observation: querying
+    // /people/{id}/taggings on freshly-tagged people nudges AN's
+    // tag-detail index to refresh — the activist count in the AN UI
+    // catches up faster than without this. Fire-and-forget; the push
+    // is already complete by the time we hit this.
+    const samplePeople = pushedAnIds.slice(0, 3)
+    try {
+      await Promise.allSettled(
+        samplePeople.map((id) => anClient.getPersonTags(id)),
+      )
+    } catch {
+      // Never fail the push because of warm-up.
+    }
+
     timings.total_ms = Date.now() - t0
     if (timings.total_ms > 25000) {
       console.warn(`[push-list] slow push: ${timings.total_ms}ms total`, timings)

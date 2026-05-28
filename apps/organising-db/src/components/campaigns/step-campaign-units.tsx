@@ -91,6 +91,8 @@ interface StepCampaignUnitsProps {
   isPending: boolean;
   onBack: () => void;
   onContinue: () => void;
+  showBackButton?: boolean;
+  continueLabel?: string;
 }
 
 // ─── Reference data interfaces ────────────────────────────────────────────────
@@ -188,6 +190,8 @@ export function StepCampaignUnits({
   isPending,
   onBack,
   onContinue,
+  showBackButton = true,
+  continueLabel,
 }: StepCampaignUnitsProps) {
   const supabase = createClient();
   const { user } = useAuth();
@@ -1197,12 +1201,18 @@ export function StepCampaignUnits({
         )}
 
         <div className="flex items-center justify-between pt-2">
-          <Button variant="ghost" onClick={onBack} disabled={isPending}>
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Back
-          </Button>
-          <Button onClick={onContinue} disabled={isPending}>
-            {isPending ? "Saving…" : "Continue"}
+          {showBackButton && (
+            <Button variant="ghost" onClick={onBack} disabled={isPending}>
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              Back
+            </Button>
+          )}
+          <Button
+            onClick={onContinue}
+            disabled={isPending}
+            className={showBackButton ? undefined : "ml-auto"}
+          >
+            {isPending ? "Saving…" : (continueLabel ?? "Continue")}
           </Button>
         </div>
       </CardContent>

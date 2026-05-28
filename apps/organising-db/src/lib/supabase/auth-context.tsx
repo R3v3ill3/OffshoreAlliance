@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
-import { createClient, getSessionWithTimeout, coordinatedRefreshSession, withAuthOpTimeout } from "@/lib/supabase/client";
+import { createClient, getSessionWithTimeout, coordinatedRefreshSession, withAuthOpTimeout, resetClient } from "@/lib/supabase/client";
 import {
   performRobustSignOut,
   recoverSessionConnection,
@@ -13,6 +13,9 @@ import {
   type SessionRecoveryResult,
 } from "@/lib/supabase/session-recovery";
 import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
+import * as Sentry from "@sentry/nextjs";
+import posthog from "posthog-js";
+import { isPostHogEnabled } from "@/lib/posthog-config";
 import type { User } from "@supabase/supabase-js";
 import type { UserRole, UserProfile } from "@/types/database";
 
@@ -324,6 +327,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Attribute connection/auth telemetry to the signed-in user so Sentry +
+  // PostHog stop reporting "0 users impacted" / "Anonymous" for the connection
+  // issues. One-time per user change — not on the request hot path.
+  useEffect(() => {
+    if (user) {
+      try {
+        Sentry.setUser({ id: user.id, email: user.email ?? undefined });
+      } catch {
+        // best effort
+      }
+      try {
+        if (isPostHogEnabled() && (posthog as unknown as { __loaded?: boolean }).__loaded) {
+          posthog.identify(user.id, user.email ? { email: user.email } : undefined);
+        }
+      } catch {
+        // best effort
+      }
+    } else {
+      try {
+        Sentry.setUser(null);
+      } catch {
+        // best effort
+      }
+    }
+  }, [user]);
+
   const signOut = async () => {
     await performRobustSignOut({
       supabase,
@@ -347,8 +376,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setConnectionRecoveryInProgress(true);
     recoveryInFlightRef.current = true;
     try {
+      // Drop a potentially deadlocked auth client first, then recover with a
+      // fresh GoTrueClient (clears the stuck `lockAcquired` flag) rather than
+      // re-joining the stuck lock chain.
+      resetClient();
+      const freshClient = createClient();
       const result = await recoverSessionConnection({
-        supabase,
+        supabase: freshClient,
         queryClient,
         source: "menu-hard-refresh",
         reloadOnSuccess: true,

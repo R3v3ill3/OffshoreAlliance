@@ -26,6 +26,8 @@ interface StepWorkerEstimateProps {
   isPending: boolean;
   onBack: () => void;
   onContinue: () => void;
+  showBackButton?: boolean;
+  continueLabel?: string;
 }
 
 interface CountBreakdown {
@@ -44,6 +46,8 @@ export function StepWorkerEstimate({
   isPending,
   onBack,
   onContinue,
+  showBackButton = true,
+  continueLabel,
 }: StepWorkerEstimateProps) {
   const supabase = createClient();
   const { user } = useAuth();
@@ -271,12 +275,18 @@ export function StepWorkerEstimate({
         )}
 
         <div className="flex items-center justify-between pt-2">
-          <Button variant="ghost" onClick={onBack} disabled={isPending}>
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Back
-          </Button>
-          <Button onClick={onContinue} disabled={isPending}>
-            {isPending ? "Saving…" : "Continue"}
+          {showBackButton && (
+            <Button variant="ghost" onClick={onBack} disabled={isPending}>
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              Back
+            </Button>
+          )}
+          <Button
+            onClick={onContinue}
+            disabled={isPending}
+            className={showBackButton ? undefined : "ml-auto"}
+          >
+            {isPending ? "Saving…" : (continueLabel ?? "Continue")}
           </Button>
         </div>
       </CardContent>

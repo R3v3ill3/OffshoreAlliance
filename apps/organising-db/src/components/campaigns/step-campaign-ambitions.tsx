@@ -48,6 +48,9 @@ interface StepCampaignAmbitionsProps {
   onBack: () => void;
   onContinue: () => void;
   onSkip: () => void;
+  showBackButton?: boolean;
+  continueLabel?: string;
+  showSkipButton?: boolean;
 }
 
 interface CategoryTemplate {
@@ -181,6 +184,9 @@ export function StepCampaignAmbitions({
   onBack,
   onContinue,
   onSkip,
+  showBackButton = true,
+  continueLabel,
+  showSkipButton = true,
 }: StepCampaignAmbitionsProps) {
   const supabase = createClient();
 
@@ -541,16 +547,20 @@ export function StepCampaignAmbitions({
         })}
 
         <div className="flex items-center justify-between pt-2">
-          <Button variant="ghost" onClick={onBack} disabled={isPending}>
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Back
-          </Button>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onSkip} disabled={isPending}>
-              Skip for now
+          {showBackButton && (
+            <Button variant="ghost" onClick={onBack} disabled={isPending}>
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              Back
             </Button>
+          )}
+          <div className={`flex gap-2 ${showBackButton ? "" : "ml-auto"}`}>
+            {showSkipButton && (
+              <Button variant="outline" onClick={onSkip} disabled={isPending}>
+                Skip for now
+              </Button>
+            )}
             <Button onClick={onContinue} disabled={isPending}>
-              {isPending ? "Saving…" : "Continue"}
+              {isPending ? "Saving…" : (continueLabel ?? "Continue")}
             </Button>
           </div>
         </div>

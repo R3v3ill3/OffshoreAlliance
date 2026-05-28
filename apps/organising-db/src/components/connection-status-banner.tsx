@@ -2,13 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { WifiOff, RefreshCw, LogIn, Zap, ChevronDown, ChevronUp, Copy, Check } from "lucide-react";
+import { WifiOff, RefreshCw, LogIn, Zap, ChevronDown, ChevronUp, Copy, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getHealthSummary, getRecentEvents } from "@/lib/supabase/connection-monitor";
 import { forceLogoutToLogin, nuclearReset } from "@/lib/supabase/session-recovery";
 import { useAuth } from "@/lib/supabase/auth-context";
 
 const PUBLIC_PATHS = ["/login", "/auth"];
+
+// Number of recent (5-min window) lock timeouts before showing the quiet
+// "Reconnecting…" state. Matches the providers.tsx recovery threshold so the
+// pill appears right as automatic recovery kicks in.
+const LOCK_TIMEOUT_RECONNECT_THRESHOLD = 2;
 
 function formatEventTimestamp(ts: number): string {
   const d = new Date(ts);
@@ -76,7 +81,8 @@ function DiagnosticsDisclosure() {
 }
 
 export function ConnectionStatusBanner() {
-  const [errorCount, setErrorCount] = useState(0);
+  const [hardErrors, setHardErrors] = useState(0);
+  const [lockTimeouts, setLockTimeouts] = useState(0);
   const [lastDetail, setLastDetail] = useState<string | null>(null);
   const { user, loading, hardRefreshConnection, connectionRecoveryInProgress } = useAuth();
   const pathname = usePathname();
@@ -87,12 +93,13 @@ export function ConnectionStatusBanner() {
   useEffect(() => {
     const check = () => {
       const summary = getHealthSummary();
-      setErrorCount(summary.recentErrors);
+      setHardErrors(summary.hardErrors);
+      setLockTimeouts(summary.lockTimeouts);
       setLastDetail(summary.lastError?.detail ?? null);
     };
 
     check();
-    const interval = setInterval(check, 10_000);
+    const interval = setInterval(check, 5_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -136,8 +143,10 @@ export function ConnectionStatusBanner() {
     );
   }
 
-  // Show connection issues banner when errors are detected
-  if (errorCount >= 3) {
+  // Show the loud "connection issues" banner only for genuine (hard) errors.
+  // Self-healing auth-lock timeouts are handled separately below so we don't
+  // alarm the user while the reset-then-reload ladder is recovering silently.
+  if (hardErrors >= 3) {
     return (
       <div className="fixed bottom-4 right-4 z-50 max-w-sm animate-in slide-in-from-bottom-4 duration-300">
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 shadow-lg dark:border-amber-700 dark:bg-amber-950">
@@ -171,6 +180,30 @@ export function ConnectionStatusBanner() {
                 <Zap className="h-3 w-3" />
                 Full Reset
               </Button>
+            </div>
+          </div>
+          <DiagnosticsDisclosure />
+        </div>
+      </div>
+    );
+  }
+
+  // Quiet "reconnecting" state for self-healing auth-lock timeouts. The
+  // reset-then-reload recovery ladder in providers.tsx is already running; we
+  // just reassure the user instead of showing the alarming error banner.
+  if (lockTimeouts >= LOCK_TIMEOUT_RECONNECT_THRESHOLD) {
+    return (
+      <div className="fixed bottom-4 right-4 z-50 max-w-xs animate-in slide-in-from-bottom-4 duration-300">
+        <div className="rounded-lg border border-blue-300 bg-blue-50 p-3 shadow-lg dark:border-blue-800 dark:bg-blue-950">
+          <div className="flex items-start gap-3">
+            <Loader2 className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5 animate-spin" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                Reconnecting…
+              </p>
+              <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+                Re-establishing your secure session. You can keep working — no need to sign in again.
+              </p>
             </div>
           </div>
           <DiagnosticsDisclosure />

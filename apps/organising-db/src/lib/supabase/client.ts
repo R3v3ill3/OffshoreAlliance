@@ -57,6 +57,55 @@ function fetchWithTimeout(
   });
 }
 
+/**
+ * Acquire-wait / hold thresholds above which we record a `lock_contended`
+ * diagnostic. These give early visibility into auth-lock pressure BEFORE it
+ * escalates into a full deadlock (lock_timeout), which the navigator.locks
+ * shim in diagnostics-shim.ts cannot see now that we use processLock.
+ */
+const LOCK_ACQUIRE_WARN_MS = 2_000;
+const LOCK_HELD_WARN_MS = 5_000;
+
+/**
+ * Zero-await instrumentation wrapper around processLock.
+ *
+ * RESPONSIVENESS CONSTRAINT: this must NOT add any awaits, timers, or work to
+ * the hot path of lock acquisition. It only records timestamps and emits a
+ * diagnostic when a lock is slow to acquire or held a long time. The lock the
+ * Supabase auth client uses is `lock:<storageKey>`; auth-js calls this for
+ * getSession / getUser / refreshSession / signOut, so wrapping the single
+ * `lock` function we pass covers every auth operation.
+ */
+function instrumentedLock<R>(
+  name: string,
+  acquireTimeout: number,
+  fn: () => Promise<R>,
+): Promise<R> {
+  const requestedAt = Date.now();
+  const wrappedFn = (): Promise<R> => {
+    const acquiredAt = Date.now();
+    const acquireWaitMs = acquiredAt - requestedAt;
+    if (acquireWaitMs >= LOCK_ACQUIRE_WARN_MS) {
+      logConnectionEvent({
+        type: "lock_contended",
+        detail: `acquire wait ${acquireWaitMs}ms: ${name}`,
+        durationMs: acquireWaitMs,
+      });
+    }
+    return Promise.resolve(fn()).finally(() => {
+      const heldMs = Date.now() - acquiredAt;
+      if (heldMs >= LOCK_HELD_WARN_MS) {
+        logConnectionEvent({
+          type: "lock_contended",
+          detail: `held ${heldMs}ms: ${name}`,
+          durationMs: heldMs,
+        });
+      }
+    });
+  };
+  return processLock(name, acquireTimeout, wrappedFn);
+}
+
 let _client: SupabaseClient | undefined;
 
 export function createClient(): SupabaseClient {
@@ -107,7 +156,11 @@ export function createClient(): SupabaseClient {
         //
         // See plan: cuddly-herding-acorn.md (Workstream A).
         // Source: node_modules/@supabase/auth-js/src/lib/locks.ts (processLock).
-        lock: processLock,
+        //
+        // Wrapped with instrumentedLock for diagnostics (acquire-wait / hold
+        // time). The wrapper is a zero-await pass-through — it adds no latency
+        // to the lock path, only telemetry.
+        lock: instrumentedLock,
       },
     }
   ) as unknown as SupabaseClient;
@@ -173,6 +226,11 @@ export async function withAuthOpTimeout<T>(
 let _sessionPromise: Promise<Awaited<ReturnType<SupabaseClient["auth"]["getSession"]>>> | null = null;
 let _lastSessionSource: string | null = null;
 
+// Global mutex for token refresh (see coordinatedRefreshSession below). Declared
+// here so resetClient() can clear it without a use-before-declaration error.
+let _refreshPromise: Promise<AuthResponse> | null = null;
+let _lastRefreshSource: string | null = null;
+
 function coordinatedGetSession(
   source: string,
 ): Promise<Awaited<ReturnType<SupabaseClient["auth"]["getSession"]>>> {
@@ -186,11 +244,26 @@ function coordinatedGetSession(
 
   _lastSessionSource = source;
   const client = createClient();
-  _sessionPromise = client.auth.getSession().finally(() => {
-    _sessionPromise = null;
-    _lastSessionSource = null;
-  });
-  return _sessionPromise;
+  const promise = client.auth.getSession();
+  _sessionPromise = promise;
+
+  // Unpin when the call settles, OR after the auth-op budget if it never does.
+  //
+  // CRITICAL: without the timeout-based unpin, a deadlocked getSession() (the
+  // auth-js re-entrant lock path waits forever) leaves `_sessionPromise` pinned
+  // to a dead promise, so every later caller dedups onto a corpse and can never
+  // issue a fresh call — even after resetClient(). The guard (`=== promise`)
+  // ensures we never clear a newer in-flight promise.
+  const unpin = () => {
+    if (_sessionPromise === promise) {
+      _sessionPromise = null;
+      _lastSessionSource = null;
+    }
+  };
+  promise.then(unpin, unpin);
+  setTimeout(unpin, SUPABASE_AUTH_OP_TIMEOUT_MS);
+
+  return promise;
 }
 
 export async function getSessionWithTimeout(source: string): Promise<{
@@ -228,6 +301,14 @@ export async function getSessionWithTimeout(source: string): Promise<{
 
 export function resetClient(): void {
   _client = undefined;
+  // Drop any pinned in-flight promises too. A new client instance has a fresh
+  // `lockAcquired` flag, but if we kept the old (possibly deadlocked) promises
+  // here, coordinatedGetSession/RefreshSession would keep handing the stuck
+  // promise back instead of issuing a fresh call against the new client.
+  _sessionPromise = null;
+  _lastSessionSource = null;
+  _refreshPromise = null;
+  _lastRefreshSource = null;
 }
 
 /**
@@ -236,10 +317,10 @@ export function resetClient(): void {
  * directly. This prevents the "Invalid Refresh Token: Already Used" race
  * condition that occurs when multiple concurrent refreshes rotate the
  * single-use refresh token.
+ *
+ * (`_refreshPromise` / `_lastRefreshSource` are declared above, next to the
+ * getSession dedupe state, so resetClient() can clear them.)
  */
-let _refreshPromise: Promise<AuthResponse> | null = null;
-let _lastRefreshSource: string | null = null;
-
 export function coordinatedRefreshSession(source: string): Promise<AuthResponse> {
   if (_refreshPromise) {
     logConnectionEvent({
@@ -250,9 +331,19 @@ export function coordinatedRefreshSession(source: string): Promise<AuthResponse>
   }
   _lastRefreshSource = source;
   const client = createClient();
-  _refreshPromise = client.auth.refreshSession().finally(() => {
-    _refreshPromise = null;
-    _lastRefreshSource = null;
-  });
-  return _refreshPromise;
+  const promise = client.auth.refreshSession();
+  _refreshPromise = promise;
+
+  // Same unpin strategy as coordinatedGetSession: never leave a deadlocked
+  // refresh pinned forever, and never clobber a newer in-flight refresh.
+  const unpin = () => {
+    if (_refreshPromise === promise) {
+      _refreshPromise = null;
+      _lastRefreshSource = null;
+    }
+  };
+  promise.then(unpin, unpin);
+  setTimeout(unpin, SUPABASE_AUTH_OP_TIMEOUT_MS);
+
+  return promise;
 }

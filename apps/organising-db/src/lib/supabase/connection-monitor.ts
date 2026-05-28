@@ -7,6 +7,8 @@
  */
 
 import * as Sentry from "@sentry/nextjs";
+import posthog from "posthog-js";
+import { isPostHogEnabled } from "@/lib/posthog-config";
 
 const MAX_LOG_ENTRIES = 50;
 
@@ -19,6 +21,9 @@ type ConnectionEventType =
   | "session_lost"
   | "session_recovered"
   | "lock_timeout"
+  // Diagnostic-only: the auth processLock was acquired/held slowly but did NOT
+  // deadlock. Surfaces early lock pressure before it escalates to lock_timeout.
+  | "lock_contended"
   | "network_error"
   | "recovery_start"
   | "recovery_end"
@@ -65,6 +70,7 @@ const SENTRY_BREADCRUMB_LEVEL: Record<ConnectionEventType, "info" | "warning" | 
   token_refresh_fail: "warning",
   session_lost: "warning",
   lock_timeout: "warning",
+  lock_contended: "info",
   network_error: "warning",
   deployment_mismatch: "warning",
 };
@@ -113,19 +119,22 @@ function forwardToSentry(entry: ConnectionEvent): void {
 }
 
 /**
- * Forward to PostHog as a custom event. PostHog's posthog-js is loaded
- * lazily by initPostHogIfNeeded() in providers; if it hasn't initialised
- * we skip silently (no crash, no spam).
+ * Forward to PostHog as a custom event.
+ *
+ * IMPORTANT: we use the imported posthog-js module here, NOT `window.posthog`.
+ * The npm `posthog-js` import does not assign itself to `window.posthog`, so the
+ * previous `window.posthog` lookup silently no-op'd and zero connection events
+ * ever reached PostHog. posthog-js is initialised by initPostHogIfNeeded()
+ * (PostHogPageView); before that `__loaded` is false and we skip silently.
  */
 function forwardToPostHog(entry: ConnectionEvent): void {
   if (typeof window === "undefined") return;
-  // Read the global posthog object (set by posthog-js after init). We
-  // import it dynamically to avoid coupling and to handle the
-  // pre-initialisation case cleanly.
-  const ph = (window as unknown as { posthog?: { capture?: (event: string, props?: Record<string, unknown>) => void } }).posthog;
-  if (!ph?.capture) return;
+  if (!isPostHogEnabled()) return;
   try {
-    ph.capture("supabase_connection_event", {
+    // `__loaded` is set true by posthog-js once init() completes. Capturing
+    // before that would be dropped anyway; skip without spam.
+    if (!(posthog as unknown as { __loaded?: boolean }).__loaded) return;
+    posthog.capture("supabase_connection_event", {
       event_type: entry.type,
       detail: entry.detail,
       duration_ms: entry.durationMs,
@@ -160,21 +169,34 @@ export function getRecentEvents(): ConnectionEvent[] {
 }
 
 export function getHealthSummary(): {
+  /** All recent error-ish events (hard errors + lock timeouts). Back-compat. */
   recentErrors: number;
+  /**
+   * Genuine failures (not self-healing lock timeouts). Drives the loud
+   * "Connection issues detected" banner.
+   */
+  hardErrors: number;
+  /**
+   * Transient auth-lock acquire timeouts. These are auto-recovered by the
+   * reset-then-reload ladder, so they drive a quiet "Reconnecting" state
+   * rather than the loud error banner.
+   */
+  lockTimeouts: number;
   lastError: ConnectionEvent | null;
   lastSuccess: ConnectionEvent | null;
 } {
   const cutoff = Date.now() - 5 * 60 * 1000;
   const recent = eventLog.filter((e) => e.ts > cutoff);
-  const errors = recent.filter(
+  const hardErrors = recent.filter(
     (e) =>
       e.type === "token_refresh_fail" ||
       e.type === "api_error" ||
       e.type === "session_lost" ||
-      e.type === "lock_timeout" ||
       e.type === "network_error" ||
       e.type === "deployment_mismatch"
   );
+  const lockTimeouts = recent.filter((e) => e.type === "lock_timeout");
+  const errors = [...hardErrors, ...lockTimeouts];
   const successes = recent.filter(
     (e) =>
       e.type === "token_refresh_ok" ||
@@ -184,6 +206,8 @@ export function getHealthSummary(): {
 
   return {
     recentErrors: errors.length,
+    hardErrors: hardErrors.length,
+    lockTimeouts: lockTimeouts.length,
     lastError: errors.length > 0 ? errors[errors.length - 1] : null,
     lastSuccess: successes.length > 0 ? successes[successes.length - 1] : null,
   };

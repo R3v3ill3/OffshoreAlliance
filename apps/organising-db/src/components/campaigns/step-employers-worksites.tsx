@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -19,7 +20,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Building2, MapPin, Plus, X } from "lucide-react";
+import { toast } from "sonner";
 import type { CampaignScopeType } from "@/types/database";
+import type { PostgrestError } from "@supabase/supabase-js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -45,6 +48,8 @@ interface StepEmployersWorksitesProps {
   isPending: boolean;
   onBack: () => void;
   onContinue: () => void;
+  showBackButton?: boolean;
+  continueLabel?: string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -63,6 +68,15 @@ function isSingleSite(scope: CampaignScopeType | "" | null) {
 
 function isSiteFirst(scope: CampaignScopeType | "" | null) {
   return scope === "multi_employer_single_site";
+}
+
+function isUniqueViolation(error: unknown): error is PostgrestError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as PostgrestError).code === "23505"
+  );
 }
 
 // ─── Small sub-components ────────────────────────────────────────────────────
@@ -155,6 +169,9 @@ function AddEntityDialog({
   existingPlaceholder,
   newNamePlaceholder,
   isCreating,
+  createError,
+  onClearCreateError,
+  scopeNote,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -166,6 +183,9 @@ function AddEntityDialog({
   existingPlaceholder?: string;
   newNamePlaceholder?: string;
   isCreating: boolean;
+  createError?: string | null;
+  onClearCreateError?: () => void;
+  scopeNote?: string | null;
 }) {
   const [tab, setTab] = useState<"existing" | "new">("existing");
   const [search, setSearch] = useState("");
@@ -175,20 +195,37 @@ function AddEntityDialog({
     (i) => !excludeIds.includes(i.id) && (!search || i.label.toLowerCase().includes(search.toLowerCase()))
   );
 
-  function handleClose() {
-    setSearch("");
-    setNewName("");
-    setTab("existing");
-    onOpenChange(false);
+  function handleOpenChange(next: boolean) {
+    if (!next) {
+      setSearch("");
+      setNewName("");
+      setTab("existing");
+      onClearCreateError?.();
+    }
+    onOpenChange(next);
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>
+            Choose an existing record or create a new one to add to this campaign.
+          </DialogDescription>
         </DialogHeader>
-        <Tabs value={tab} onValueChange={(v) => setTab(v as "existing" | "new")}>
+        {scopeNote && (
+          <p className="text-sm text-muted-foreground rounded-md border border-dashed px-3 py-2 -mt-1">
+            {scopeNote}
+          </p>
+        )}
+        <Tabs
+          value={tab}
+          onValueChange={(v) => {
+            setTab(v as "existing" | "new");
+            onClearCreateError?.();
+          }}
+        >
           <TabsList className="w-full">
             <TabsTrigger value="existing" className="flex-1">
               Select existing
@@ -215,7 +252,7 @@ function AddEntityDialog({
                   className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-muted transition-colors"
                   onClick={() => {
                     onSelectExisting(item.id);
-                    handleClose();
+                    handleOpenChange(false);
                   }}
                 >
                   {item.label}
@@ -227,18 +264,23 @@ function AddEntityDialog({
             <Input
               placeholder={newNamePlaceholder ?? "Enter name…"}
               value={newName}
-              onChange={(e) => setNewName(e.target.value)}
+              onChange={(e) => {
+                setNewName(e.target.value);
+                onClearCreateError?.();
+              }}
             />
+            {createError && (
+              <p className="text-sm text-destructive" role="alert">
+                {createError}
+              </p>
+            )}
             <DialogFooter>
-              <Button variant="outline" onClick={handleClose}>
+              <Button variant="outline" onClick={() => handleOpenChange(false)}>
                 Cancel
               </Button>
               <Button
                 disabled={!newName.trim() || isCreating}
-                onClick={() => {
-                  onCreateNew(newName.trim());
-                  setNewName("");
-                }}
+                onClick={() => onCreateNew(newName.trim())}
               >
                 {isCreating ? "Creating…" : "Create & add"}
               </Button>
@@ -264,6 +306,8 @@ export function StepEmployersWorksites({
   isPending,
   onBack,
   onContinue,
+  showBackButton = true,
+  continueLabel,
 }: StepEmployersWorksitesProps) {
   const supabase = createClient();
   const { user } = useAuth();
@@ -271,6 +315,8 @@ export function StepEmployersWorksites({
 
   const [addEmployerOpen, setAddEmployerOpen] = useState(false);
   const [addWorksiteOpen, setAddWorksiteOpen] = useState(false);
+  const [employerCreateError, setEmployerCreateError] = useState<string | null>(null);
+  const [worksiteCreateError, setWorksiteCreateError] = useState<string | null>(null);
 
   // ── All entities ─────────────────────────────────────────────────────────
 
@@ -363,33 +409,91 @@ export function StepEmployersWorksites({
 
   const createEmployerMutation = useAuthAwareMutation({
     mutationFn: async (name: string) => {
+      const trimmed = name.trim();
+      const localMatch = allEmployers.find((e) => e.employer_name === trimmed);
+      if (localMatch) {
+        return { id: localMatch.employer_id, reusedExisting: true, name: trimmed };
+      }
+
       const { data, error } = await supabase
         .from("employers")
-        .insert({ employer_name: name })
+        .insert({ employer_name: trimmed })
         .select("employer_id")
         .single();
-      if (error) throw error;
-      return data.employer_id as number;
+
+      if (!error) {
+        return { id: data.employer_id as number, reusedExisting: false, name: trimmed };
+      }
+
+      if (isUniqueViolation(error)) {
+        const { data: existing } = await supabase
+          .from("employers")
+          .select("employer_id")
+          .eq("employer_name", trimmed)
+          .maybeSingle();
+        if (existing) {
+          return { id: existing.employer_id, reusedExisting: true, name: trimmed };
+        }
+      }
+
+      throw error;
     },
-    onSuccess: (id) => {
+    onSuccess: ({ id, reusedExisting, name }) => {
       queryClient.invalidateQueries({ queryKey: ["employers-active"] });
-      toggleEmployer(id);
+      handleAddEmployer(id);
+      setEmployerCreateError(null);
+      setAddEmployerOpen(false);
+      if (reusedExisting) {
+        toast.info(`"${name}" already exists — it has been selected instead.`);
+      }
+    },
+    onError: (error: Error) => {
+      setEmployerCreateError(error.message || "Could not create employer. Please try again.");
     },
   });
 
   const createWorksiteMutation = useAuthAwareMutation({
     mutationFn: async (name: string) => {
+      const trimmed = name.trim();
+      const localMatch = allWorksites.find((w) => w.worksite_name === trimmed);
+      if (localMatch) {
+        return { id: localMatch.worksite_id, reusedExisting: true, name: trimmed };
+      }
+
       const { data, error } = await supabase
         .from("worksites")
-        .insert({ worksite_name: name, worksite_type: "Other" })
+        .insert({ worksite_name: trimmed, worksite_type: "Other" })
         .select("worksite_id")
         .single();
-      if (error) throw error;
-      return data.worksite_id as number;
+
+      if (!error) {
+        return { id: data.worksite_id as number, reusedExisting: false, name: trimmed };
+      }
+
+      if (isUniqueViolation(error)) {
+        const { data: existing } = await supabase
+          .from("worksites")
+          .select("worksite_id")
+          .eq("worksite_name", trimmed)
+          .maybeSingle();
+        if (existing) {
+          return { id: existing.worksite_id, reusedExisting: true, name: trimmed };
+        }
+      }
+
+      throw error;
     },
-    onSuccess: (id) => {
+    onSuccess: ({ id, reusedExisting, name }) => {
       queryClient.invalidateQueries({ queryKey: ["worksites-active"] });
-      toggleWorksite(id);
+      handleAddWorksite(id);
+      setWorksiteCreateError(null);
+      setAddWorksiteOpen(false);
+      if (reusedExisting) {
+        toast.info(`"${name}" already exists — it has been selected instead.`);
+      }
+    },
+    onError: (error: Error) => {
+      setWorksiteCreateError(error.message || "Could not create worksite. Please try again.");
     },
   });
 
@@ -560,6 +664,18 @@ export function StepEmployersWorksites({
     campaignScope === "multi_employer_multi_site";
 
   const siteFirstMode = isSiteFirst(campaignScope);
+
+  const employerScopeNote = isSingleEmployer(campaignScope)
+    ? selectedEmployers.length > 0
+      ? "This campaign allows one employer. Selecting or creating another will replace your current selection."
+      : "This campaign allows one employer."
+    : null;
+
+  const worksiteScopeNote = isSingleSite(campaignScope)
+    ? selectedWorksites.length > 0
+      ? "This campaign allows one worksite. Selecting or creating another will replace your current selection."
+      : "This campaign allows one worksite."
+    : null;
 
   const eaHintText =
     replacedAgreementId && (eaEmployerSet.size > 0 || eaWorksiteSet.size > 0)
@@ -781,12 +897,18 @@ export function StepEmployersWorksites({
 
         {/* ── Navigation ─────────────────────────────────────────────────── */}
         <div className="flex gap-2">
-          <Button variant="outline" onClick={onBack}>
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Back
-          </Button>
-          <Button onClick={onContinue} disabled={isPending || !canContinue}>
-            {isPending ? "Saving…" : "Continue to workers"}
+          {showBackButton && (
+            <Button variant="outline" onClick={onBack}>
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              Back
+            </Button>
+          )}
+          <Button
+            onClick={onContinue}
+            disabled={isPending || !canContinue}
+            className={showBackButton ? undefined : "ml-auto"}
+          >
+            {isPending ? "Saving…" : (continueLabel ?? "Continue to workers")}
           </Button>
         </div>
       </CardContent>
@@ -803,6 +925,9 @@ export function StepEmployersWorksites({
         existingPlaceholder="Search employers…"
         newNamePlaceholder="Employer name"
         isCreating={createEmployerMutation.isPending}
+        createError={employerCreateError}
+        onClearCreateError={() => setEmployerCreateError(null)}
+        scopeNote={employerScopeNote}
       />
 
       {/* ── Add worksite dialog ───────────────────────────────────────────── */}
@@ -817,6 +942,9 @@ export function StepEmployersWorksites({
         existingPlaceholder="Search worksites…"
         newNamePlaceholder="Worksite name"
         isCreating={createWorksiteMutation.isPending}
+        createError={worksiteCreateError}
+        onClearCreateError={() => setWorksiteCreateError(null)}
+        scopeNote={worksiteScopeNote}
       />
     </Card>
   );

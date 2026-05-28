@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, Suspense, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { AuthProvider } from "@/lib/supabase/auth-context";
 import { DeviceProvider } from "@/contexts/device-context";
-import { createClient, coordinatedRefreshSession, getSessionWithTimeout } from "@/lib/supabase/client";
+import { createClient, coordinatedRefreshSession, getSessionWithTimeout, resetClient } from "@/lib/supabase/client";
 import { forceLogoutToLogin, isLikelyAuthError, recoverSessionConnection } from "@/lib/supabase/session-recovery";
 import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
 import { logCookieDiagnostic } from "@/lib/supabase/cookie-diagnostics";
@@ -107,6 +107,10 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
       // Diagnostic: log cookie state on every tab focus
       logCookieDiagnostic("visibility-return");
 
+      // p2: mark that a visibility-triggered auth probe is happening now, so the
+      // 60s heartbeat skips its own getSession during the post-focus burst.
+      lastVisibilityCheckAtRef.current = Date.now();
+
       // Proactively refresh the session when the user returns to the tab.
       // The browser may have throttled the Supabase background refresh timer
       // while the tab was hidden, leaving the token expired or close to expiry.
@@ -124,7 +128,10 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
           // in headers and remain functional. If the cached token is
           // genuinely invalid, the next real query will get a 401 and our
           // existing query-cache recovery path handles it cleanly.
-          logConnectionEvent({ type: "lock_timeout", detail: "visibility-getSession-timeout (bailing, no force-logout)" });
+          //
+          // handleLockTimeout records the timeout and, after repeated timeouts,
+          // runs the reset-then-reload ladder (never force-logout).
+          handleLockTimeout("visibility");
           return;
         }
 
@@ -204,10 +211,20 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const visibilityNullSessionFailuresRef = useRef(0);
   const heartbeatRecoveryFailuresRef = useRef(0);
+  // Consecutive auth-lock timeouts (getSession via visibility/heartbeat) with no
+  // healthy session in between. Drives the reset-then-reload recovery ladder.
+  const consecutiveLockTimeoutsRef = useRef(0);
+  // Timestamp of the last visibility-triggered getSession, so the heartbeat can
+  // skip its own probe during the post-focus burst window (reduces lock pressure
+  // at exactly the moment the deadlock tends to form).
+  const lastVisibilityCheckAtRef = useRef(0);
+  // Guards the recovery ladder so heartbeat + visibility can't run it twice.
+  const lockRecoveryInProgressRef = useRef(false);
 
   const resetRecoveryFailureBudgets = () => {
     visibilityNullSessionFailuresRef.current = 0;
     heartbeatRecoveryFailuresRef.current = 0;
+    consecutiveLockTimeoutsRef.current = 0;
   };
 
   const shouldEscalateVisibilityFailure = () => {
@@ -219,21 +236,124 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
     heartbeatRecoveryFailuresRef.current += 1;
     return heartbeatRecoveryFailuresRef.current >= 2;
   };
+
+  // Number of consecutive lock timeouts before we attempt automatic recovery.
+  // 1 could be a transient cross-tab refresh race; 2 (~2 min at the 60s
+  // heartbeat) indicates the auth client is genuinely deadlocked.
+  const LOCK_TIMEOUT_ESCALATION_THRESHOLD = 2;
+
+  /**
+   * Last-resort recovery from a stuck auth lock. A soft reload re-initialises
+   * the JS context (clearing auth-js's in-memory lock state, which resetClient
+   * alone cannot fully clear) while PRESERVING the auth cookies — so the user
+   * stays logged in. Guarded by a sessionStorage cooldown so we never loop.
+   */
+  const softReloadForLockDeadlock = () => {
+    const STORAGE_KEY = "oa:last-lock-deadlock-reload-at";
+    const COOLDOWN_MS = 90_000;
+    try {
+      const previousRaw = window.sessionStorage.getItem(STORAGE_KEY);
+      const previous = previousRaw ? Number(previousRaw) : 0;
+      if (Number.isFinite(previous) && previous > 0 && Date.now() - previous < COOLDOWN_MS) {
+        // Already reloaded recently and still stuck — stop, let the banner offer
+        // manual recovery rather than reload-loop.
+        logConnectionEvent({
+          type: "lock_timeout",
+          detail: "lock-deadlock: soft reload suppressed (cooldown) — manual recovery needed",
+        });
+        return;
+      }
+      window.sessionStorage.setItem(STORAGE_KEY, String(Date.now()));
+    } catch {
+      // best effort
+    }
+    logConnectionEvent({ type: "recovery_start", detail: "lock-deadlock: soft reload (cookies preserved, no logout)" });
+    window.location.reload();
+  };
+
+  /**
+   * Reset-then-reload recovery ladder for the auth-lock deadlock:
+   *   1. resetClient() — a fresh GoTrueClient clears the stuck `lockAcquired`
+   *      flag; probe once with a bounded getSession.
+   *   2. If still unhealthy, soft reload (preserves session, no logout).
+   * NEVER force-logs-out: a lock timeout is not a confirmed session loss.
+   */
+  const attemptLockDeadlockRecovery = async (source: string) => {
+    if (lockRecoveryInProgressRef.current) return;
+    lockRecoveryInProgressRef.current = true;
+    try {
+      logConnectionEvent({ type: "recovery_start", detail: `lock-deadlock (${source}): in-place client reset` });
+      resetClient();
+      const { session, timedOut } = await getSessionWithTimeout("lock-deadlock-recovery");
+      if (!timedOut && session?.user) {
+        consecutiveLockTimeoutsRef.current = 0;
+        logConnectionEvent({ type: "session_recovered", detail: "lock-deadlock: recovered via client reset (no reload)" });
+        await queryClient.invalidateQueries();
+        logConnectionEvent({ type: "recovery_end", detail: "lock-deadlock: in-place success" });
+        return;
+      }
+      logConnectionEvent({
+        type: "recovery_end",
+        detail: `lock-deadlock: client reset insufficient (timedOut=${timedOut}) — escalating to soft reload`,
+      });
+      softReloadForLockDeadlock();
+    } catch (err) {
+      logConnectionEvent({
+        type: "recovery_end",
+        detail: `lock-deadlock: recovery exception — ${err instanceof Error ? err.message : String(err)}`,
+      });
+      softReloadForLockDeadlock();
+    } finally {
+      lockRecoveryInProgressRef.current = false;
+    }
+  };
+
+  /**
+   * Records a lock timeout and triggers the recovery ladder once we've seen
+   * enough consecutive timeouts to be confident the auth client is deadlocked.
+   * Replaces the old "log and bail forever" behaviour that left the user stuck
+   * until they manually hit Full Reset (which logged them out).
+   */
+  const handleLockTimeout = (source: string) => {
+    consecutiveLockTimeoutsRef.current += 1;
+    logConnectionEvent({
+      type: "lock_timeout",
+      detail: `${source}-getSession-timeout (consecutive=${consecutiveLockTimeoutsRef.current})`,
+    });
+    if (consecutiveLockTimeoutsRef.current >= LOCK_TIMEOUT_ESCALATION_THRESHOLD) {
+      void attemptLockDeadlockRecovery(source);
+    }
+  };
   useEffect(() => {
     if (isShareDialerRoute) return;
 
     const HEARTBEAT_INTERVAL_MS = 60_000; // every 60 seconds
+    // p2: skip the heartbeat getSession if the visibility handler ran one within
+    // this window (avoids stacking concurrent auth ops onto the lock at focus).
+    const HEARTBEAT_VISIBILITY_DEDUPE_MS = 10_000;
 
     const heartbeat = async () => {
       try {
+        // p2: never probe auth while the tab is hidden. Throttled background
+        // getSession calls are the likely trigger for the lock orphan, and a
+        // hidden tab has nothing to render anyway.
+        if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+
+        // p2: don't duplicate a visibility-triggered getSession burst.
+        if (Date.now() - lastVisibilityCheckAtRef.current < HEARTBEAT_VISIBILITY_DEDUPE_MS) return;
+
         const { session, timedOut } = await getSessionWithTimeout("heartbeat");
         if (timedOut) {
-          // Auth client is stuck — log and bail. The visibility handler will
-          // pick up recovery on next tab focus.
-          logConnectionEvent({ type: "lock_timeout", detail: "heartbeat-getSession-timeout" });
+          // Auth client is stuck — record + run the reset-then-reload ladder
+          // (never force-logout). The old behaviour just logged and looped
+          // forever until the user manually nuke-reset (which logged them out).
+          handleLockTimeout("heartbeat");
           return;
         }
         if (!session?.user) return; // Not logged in — nothing to check
+
+        // Healthy getSession — the lock is working; clear the deadlock counter.
+        consecutiveLockTimeoutsRef.current = 0;
 
         const supabase = createClient();
         const { data, error } = await supabase

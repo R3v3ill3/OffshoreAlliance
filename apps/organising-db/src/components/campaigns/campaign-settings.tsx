@@ -32,6 +32,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { ArrowLeft, Save } from "lucide-react";
+import { toast } from "sonner";
 import {
   campaignOrganiserPickerValueForUser,
   resolveCampaignOrganiserId,
@@ -389,6 +390,10 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
       queryClient.invalidateQueries({ queryKey: ["campaign-settings", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["campaign", String(campaignId)] });
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      toast.success("Campaign basics saved.");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Could not save campaign basics.");
     },
   });
 
@@ -435,7 +440,13 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
         }
       });
     },
-    onSuccess: invalidateScope,
+    onSuccess: () => {
+      invalidateScope();
+      toast.success("Employers and worksites saved.");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Could not save employers and worksites.");
+    },
   });
 
   const saveEstimateMutation = useAuthAwareMutation({
@@ -450,7 +461,13 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
         .eq("campaign_id", campaignId);
       if (error) throw error;
     },
-    onSuccess: invalidateScope,
+    onSuccess: () => {
+      invalidateScope();
+      toast.success("Worker estimate saved.");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Could not save worker estimate.");
+    },
   });
 
   const saveUnitsMutation = useAuthAwareMutation({
@@ -523,7 +540,13 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
         }
       });
     },
-    onSuccess: invalidateScope,
+    onSuccess: () => {
+      invalidateScope();
+      toast.success("Campaign units saved.");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Could not save campaign units.");
+    },
   });
 
   const saveWorkersMutation = useAuthAwareMutation({
@@ -568,7 +591,13 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
         }
       });
     },
-    onSuccess: invalidateScope,
+    onSuccess: () => {
+      invalidateScope();
+      toast.success("Worker allocation saved.");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Could not save worker allocation.");
+    },
   });
 
   const saveAmbitionsMutation = useAuthAwareMutation({
@@ -653,7 +682,13 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
         }
       });
     },
-    onSuccess: invalidateScope,
+    onSuccess: () => {
+      invalidateScope();
+      toast.success("Campaign ambitions saved.");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Could not save campaign ambitions.");
+    },
   });
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -984,6 +1019,8 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
               isPending={saveScopeMutation.isPending}
               onBack={() => undefined}
               onContinue={() => saveScopeMutation.mutate()}
+              showBackButton={false}
+              continueLabel="Save employers & worksites"
             />
           </AccordionContent>
         </AccordionItem>
@@ -1010,6 +1047,8 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
               isPending={saveEstimateMutation.isPending}
               onBack={() => undefined}
               onContinue={() => saveEstimateMutation.mutate()}
+              showBackButton={false}
+              continueLabel="Save worker estimate"
             />
           </AccordionContent>
         </AccordionItem>
@@ -1038,6 +1077,8 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
               isPending={saveUnitsMutation.isPending}
               onBack={() => undefined}
               onContinue={() => saveUnitsMutation.mutate()}
+              showBackButton={false}
+              continueLabel="Save campaign units"
             />
           </AccordionContent>
         </AccordionItem>
@@ -1073,6 +1114,8 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
               isPending={saveWorkersMutation.isPending}
               onBack={() => undefined}
               onContinue={() => saveWorkersMutation.mutate()}
+              showBackButton={false}
+              continueLabel="Save worker allocation"
             />
           </AccordionContent>
         </AccordionItem>
@@ -1096,6 +1139,9 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
               onBack={() => undefined}
               onContinue={() => saveAmbitionsMutation.mutate()}
               onSkip={() => undefined}
+              showBackButton={false}
+              showSkipButton={false}
+              continueLabel="Save ambitions"
             />
           </AccordionContent>
         </AccordionItem>

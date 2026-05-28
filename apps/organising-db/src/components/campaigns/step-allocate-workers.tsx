@@ -62,6 +62,8 @@ interface StepAllocateWorkersProps {
   isPending: boolean;
   onBack: () => void;
   onContinue: () => void;
+  showBackButton?: boolean;
+  continueLabel?: string;
 }
 
 interface WorkerRow {
@@ -92,6 +94,8 @@ export function StepAllocateWorkers({
   isPending,
   onBack,
   onContinue,
+  showBackButton = true,
+  continueLabel,
 }: StepAllocateWorkersProps) {
   const supabase = createClient();
   const { user } = useAuth();
@@ -807,12 +811,18 @@ export function StepAllocateWorkers({
         )}
 
         <div className="flex gap-2 pt-2">
-          <Button variant="outline" onClick={onBack}>
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Back
-          </Button>
-          <Button onClick={onContinue} disabled={isPending}>
-            {isPending ? "Saving…" : "Next step"}
+          {showBackButton && (
+            <Button variant="outline" onClick={onBack}>
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              Back
+            </Button>
+          )}
+          <Button
+            onClick={onContinue}
+            disabled={isPending}
+            className={showBackButton ? undefined : "ml-auto"}
+          >
+            {isPending ? "Saving…" : (continueLabel ?? "Next step")}
           </Button>
         </div>
       </CardContent>

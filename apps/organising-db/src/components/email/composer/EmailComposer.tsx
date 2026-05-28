@@ -5,7 +5,7 @@
  *
  * Replaces the prior 3-step CampaignEmailWizard with a full-viewport
  * split-pane editor + preview, side-panel AI brief, collapsible recipient
- * drawer, and a 3-path send footer (Action Network / open in mail client /
+ * drawer, and a send footer (Action Network / Outlook / send test).
  * test).
  *
  * Preserved unchanged from the legacy wizard:
@@ -951,49 +951,6 @@ export function EmailComposer() {
     announce,
   ])
 
-  const handleSendTestViaAN = useCallback(
-    async (testRecipient: string) => {
-      if (!bodyText.trim()) {
-        toast.error('Body is empty.')
-        return
-      }
-      announce('Sending test via Action Network…')
-      try {
-        const resolvedSubject = `[TEST] ${translateToActionNetwork(
-          resolveTemplateVariables(subject, varContext),
-        )}`
-        const resolvedBody = translateToActionNetwork(
-          resolveTemplateVariables(bodyHtml || bodyText, varContext),
-        )
-        const createRes = await fetchApi('/api/action-network', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'create_message',
-            message: {
-              subject: resolvedSubject,
-              body: resolvedBody,
-              from: 'Offshore Alliance',
-              reply_to: 'info@offshorealliance.org.au',
-              recipients: [{ email_address: testRecipient }],
-            },
-          }),
-          timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
-        })
-        const data = await createRes.json()
-        if (!data.success) throw new Error(data.error)
-        toast.success('Test message queued in Action Network.')
-        announce('Test queued in Action Network.')
-      } catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : 'Test send failed',
-        )
-        announce('Test send failed.')
-      }
-    },
-    [subject, bodyHtml, bodyText, varContext, announce],
-  )
-
   // ------- Autosave (debounced) ---------------------------------------
   const saveDraft = useCallback(
     async (silent = true) => {
@@ -1338,7 +1295,6 @@ export function EmailComposer() {
         isPushingToAN={isPushingToAN}
         onPushList={handlePushList}
         onCreateMessage={handleCreateMessage}
-        onSendTestViaAN={handleSendTestViaAN}
         onSaveToOutlook={handleSaveToOutlook}
         campaignId={campaignId}
         draftId={draftId ?? null}

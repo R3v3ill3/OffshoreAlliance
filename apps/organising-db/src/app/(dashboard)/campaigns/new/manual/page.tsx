@@ -189,7 +189,7 @@ function ManualCreateForm() {
             disabled={!name || createMutation.isPending}
             className="self-start"
           >
-            {createMutation.isPending ? "Creating…" : "Create &amp; open settings"}
+            {createMutation.isPending ? "Creating…" : "Create and open settings"}
             <ArrowRight className="h-4 w-4 ml-1" />
           </Button>
         </CardContent>

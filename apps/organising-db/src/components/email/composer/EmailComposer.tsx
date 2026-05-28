@@ -194,6 +194,7 @@ export function EmailComposer() {
     write_confirmed_count?: number | null
     verified_tag_count?: number | null
     verification_warning?: string | null
+    worker_an_ids: string[]
   } | null>(null)
   const [pushResults, setPushResults] = useState<Array<{
     worker_id: number
@@ -755,6 +756,12 @@ export function EmailComposer() {
       const data = await res.json()
       if (!res.ok || !data.success) throw new Error(data.error || 'Push failed')
       const pushed = (data.contacts_tagged ?? 0) + (data.contacts_created ?? 0)
+      const workerAnIds = Array.isArray(data.worker_results)
+        ? (data.worker_results as Array<{ status: string; an_id?: string | null }>)
+            .filter((r) => r.status === 'tagged' || r.status === 'created')
+            .map((r) => r.an_id)
+            .filter((id): id is string => Boolean(id))
+        : []
       setPreparedTag({
         tag_id: data.tag_id,
         tag_href: data.tag_href,
@@ -765,6 +772,7 @@ export function EmailComposer() {
         write_confirmed_count: data.write_confirmed_count ?? null,
         verified_tag_count: data.verified_tag_count ?? null,
         verification_warning: data.verification_warning ?? null,
+        worker_an_ids: workerAnIds,
       })
       if (Array.isArray(data.worker_results)) {
         setPushResults(data.worker_results)

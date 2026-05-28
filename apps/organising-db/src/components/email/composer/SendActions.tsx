@@ -13,7 +13,7 @@
  *   4. Send test (single recipient, via-AN or via-mail-client).
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useOutlookConnection } from '@/lib/hooks/useOutlookConnection'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -87,6 +87,7 @@ export interface SendActionsProps {
   hasBody: boolean
   /** Existing AN tag identity, if push-list has already run. */
   preparedTag: {
+    tag_id: string
     tag_href: string
     tag_name: string
     contacts_tagged: number
@@ -103,6 +104,8 @@ export interface SendActionsProps {
     tag_browser_url?: string | null
     /** Set when AN's read-back is lower than expected, or fetch failed. */
     verification_warning?: string | null
+    /** AN person IDs returned by the push-list worker results. */
+    worker_an_ids: string[]
   } | null
   externalMessageId: string | null
   /** AN message admin URL captured from the create-message response. */
@@ -138,6 +141,16 @@ export interface SendActionsProps {
    * across the whole list vs. `{{first_name}}` varying per recipient).
    */
   recipientWorkers?: AnalysedRecipient[]
+}
+
+interface VerifyAnTagResult {
+  success: true
+  tag_total: number
+  expected_total: number
+  matched_in_tag: number
+  matched_per_person: number
+  consistent: boolean
+  tag_browser_url: string | null
 }
 
 export function SendActions({
@@ -180,6 +193,12 @@ export function SendActions({
     'personalised' | 'bcc' | null
   >(null)
   const [directSendBusy, setDirectSendBusy] = useState(false)
+  const [verifyAnBusy, setVerifyAnBusy] = useState(false)
+  const [verifyAnResult, setVerifyAnResult] = useState<VerifyAnTagResult | null>(null)
+
+  useEffect(() => {
+    setVerifyAnResult(null)
+  }, [preparedTag?.tag_id])
 
   const recipientTokensInBody = useMemo(
     () => detectRecipientTokens(`${subject}\n\n${bodyHtml}\n${bodyText}`),
@@ -206,6 +225,38 @@ export function SendActions({
     ).catch(() => {
       // fire-and-forget — logging failures must never block the UI
     })
+  }
+
+  async function handleVerifyAnTag() {
+    if (!campaignId || !preparedTag?.tag_id) {
+      toast.error('Composer is missing the Action Network tag context.')
+      return
+    }
+    if (preparedTag.worker_an_ids.length === 0) {
+      toast.error('No Action Network worker IDs are available to verify.')
+      return
+    }
+
+    setVerifyAnBusy(true)
+    try {
+      const params = new URLSearchParams({
+        tagId: preparedTag.tag_id,
+        sampleAnIds: preparedTag.worker_an_ids.join(','),
+      })
+      const res = await fetchApi(
+        `/api/campaigns/${campaignId}/verify-an-tag?${params.toString()}`,
+        { timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS },
+      )
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Action Network verification failed')
+      }
+      setVerifyAnResult(data as VerifyAnTagResult)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Action Network verification failed')
+    } finally {
+      setVerifyAnBusy(false)
+    }
   }
 
   function openInMailClient() {
@@ -500,15 +551,31 @@ export function SendActions({
             typeof readCount === 'number' &&
             writeConfirmed > 0 &&
             readCount < writeConfirmed
+          const verifyLabel = verifyAnResult
+            ? verifyAnResult.consistent &&
+              verifyAnResult.tag_total >= verifyAnResult.expected_total
+              ? `✓ Verified: ${verifyAnResult.tag_total} activists on tag`
+              : verifyAnResult.consistent &&
+                  verifyAnResult.tag_total < verifyAnResult.expected_total
+                ? `Tagging confirmed (${verifyAnResult.matched_per_person}/${verifyAnResult.expected_total} from person view). AN's tag list still shows ${verifyAnResult.tag_total}, will catch up.`
+                : `Only ${verifyAnResult.matched_per_person} of ${verifyAnResult.expected_total} confirmed on AN — investigate worker results`
+            : null
           // "warning" tone: a real failure (write-confirmed < pushed)
           // "info" tone: read lag (writes confirmed but read API still catching up)
           // "success" tone: both confirmed and read agree
           const hasRealFailure = preparedTag.verification_warning && !isReadLag
-          const tone = hasRealFailure
-            ? 'text-amber-700'
-            : isReadLag
-              ? 'text-blue-700'
-              : 'text-green-700'
+          const tone = verifyAnResult
+            ? verifyAnResult.consistent &&
+              verifyAnResult.tag_total >= verifyAnResult.expected_total
+              ? 'text-green-700'
+              : verifyAnResult.consistent
+                ? 'text-blue-700'
+                : 'text-amber-700'
+            : hasRealFailure
+              ? 'text-amber-700'
+              : isReadLag
+                ? 'text-blue-700'
+                : 'text-green-700'
           const displayCount =
             typeof writeConfirmed === 'number'
               ? writeConfirmed
@@ -516,19 +583,22 @@ export function SendActions({
                 ? readCount
                 : pushedTotal
           const label =
-            typeof writeConfirmed === 'number'
+            verifyLabel ??
+            (typeof writeConfirmed === 'number'
               ? `${displayCount} confirmed on AN${
                   isReadLag ? ` (${readCount ?? 0} visible — read lag, will catch up)` : ''
                 }`
               : typeof readCount === 'number'
                 ? `${readCount} verified on AN`
-                : `${pushedTotal} pushed`
+                : `${pushedTotal} pushed`)
           return (
             <span
-              className={`text-xs flex items-center gap-1 ${tone}`}
+              className={`text-xs flex items-center gap-1 flex-wrap ${tone}`}
               title={preparedTag.verification_warning ?? undefined}
             >
-              {hasRealFailure && <AlertTriangle className="h-3 w-3" />}
+              {(hasRealFailure || (verifyAnResult && !verifyAnResult.consistent)) && (
+                <AlertTriangle className="h-3 w-3" />
+              )}
               Tag {preparedTag.tag_name} ({label})
               {preparedTag.tag_browser_url && (
                 <a
@@ -540,6 +610,17 @@ export function SendActions({
                   Open tag in AN
                 </a>
               )}
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                onClick={() => void handleVerifyAnTag()}
+                disabled={verifyAnBusy || preparedTag.worker_an_ids.length === 0}
+                className="h-auto px-1 py-0 text-xs underline hover:no-underline"
+              >
+                {verifyAnBusy && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+                Verify with AN
+              </Button>
             </span>
           )
         })()}

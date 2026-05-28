@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-query";
 import { useState, useEffect, useRef, Suspense, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { AuthProvider } from "@/lib/supabase/auth-context";
 import { DeviceProvider } from "@/contexts/device-context";
 import { createClient, coordinatedRefreshSession, getSessionWithTimeout } from "@/lib/supabase/client";
@@ -25,6 +26,12 @@ function isNonRetryableStatus(error: unknown): boolean {
 }
 
 export function Providers({ children, isMobile }: { children: ReactNode; isMobile: boolean }) {
+  const pathname = usePathname();
+  // The /call/ route family uses cookie-based share sessions, not Supabase
+  // auth. Running auth heartbeats or visibility-change getSession calls here
+  // only produces lock_timeout noise when the OS Phone app steals focus.
+  const isShareDialerRoute = pathname?.startsWith("/call/") ?? false;
+
   const [queryClient] = useState(() => {
     const client = new QueryClient({
       queryCache: new QueryCache({
@@ -85,6 +92,8 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
   }, []);
 
   useEffect(() => {
+    if (isShareDialerRoute) return;
+
     const TOKEN_NEAR_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
 
     const visHandler = async () => {
@@ -165,6 +174,8 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
   // returns the expected row for the current user.
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
+    if (isShareDialerRoute) return;
+
     const HEARTBEAT_INTERVAL_MS = 60_000; // every 60 seconds
 
     const heartbeat = async () => {

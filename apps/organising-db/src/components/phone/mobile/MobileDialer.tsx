@@ -20,7 +20,7 @@ import { dialerTelemetry, tokenHint } from "@/lib/phone/telemetry";
 type ScreenState =
   | { kind: "queue" }
   | { kind: "contact"; contact: CallListItemWithWorker }
-  | { kind: "in_call"; contact: CallListItemWithWorker }
+  | { kind: "in_call"; contact: CallListItemWithWorker; autoStarted?: boolean }
   | { kind: "wrap_up" }
   | { kind: "lost_claim" }
   | { kind: "loading_next" };
@@ -287,7 +287,7 @@ export function MobileDialer({ token }: MobileDialerProps) {
         listName={dataSource.bootstrap.list.name}
         callerLabel={dataSource.caller.label}
         recentCrossListContact={recentCrossList}
-        onCallPlaced={() => setScreen({ kind: "in_call", contact: screen.contact })}
+        onCallPlaced={() => setScreen({ kind: "in_call", contact: screen.contact, autoStarted: true })}
         onSkip={handleSkip}
         onHandBack={handleHandBack}
         onLogout={dataSource.onLogout}
@@ -305,6 +305,7 @@ export function MobileDialer({ token }: MobileDialerProps) {
       <MobileCallSession
         contact={screen.contact}
         dataSource={dataSource}
+        autoStarted={screen.kind === "in_call" ? (screen.autoStarted ?? false) : false}
         onAttemptRecorded={handleAttemptRecorded}
         onSkipContact={handleSkip}
         onHandBack={handleHandBack}

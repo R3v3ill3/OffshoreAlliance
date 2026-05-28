@@ -53,6 +53,13 @@ const SKIP_REASONS: { value: string; label: string }[] = [
 interface MobileCallSessionProps {
   contact: CallListItemWithWorker;
   dataSource: CallSessionDataSource;
+  /**
+   * When true the component enters the post-dial state immediately on mount
+   * (dispatches START_DIAL) so the caller sees outcome options straight away
+   * after returning from the OS Phone app. Set by the parent when the user
+   * already tapped the dial button on the preceding contact screen.
+   */
+  autoStarted?: boolean;
   /** Called once the attempt is recorded; parent picks up the next contact. */
   onAttemptRecorded: (result: {
     attempt_id: number;
@@ -79,6 +86,7 @@ interface MobileCallSessionProps {
 export function MobileCallSession({
   contact,
   dataSource,
+  autoStarted = false,
   onAttemptRecorded,
   onSkipContact,
   onHandBack,
@@ -101,6 +109,19 @@ export function MobileCallSession({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const callStartTime = useRef<Date | null>(null);
+
+  // When arriving from the contact screen (autoStarted), the caller already
+  // tapped the dial button once. Skip the redundant second-tap by entering
+  // the post-dial state immediately so outcome options are visible on return
+  // from the OS Phone app.
+  useEffect(() => {
+    if (!autoStarted) return;
+    callStartTime.current = new Date();
+    dialerTelemetry.callPlaced({ item_id: contact.item_id, surface: "share_link" });
+    dispatch({ type: "START_DIAL" });
+    // Only run once on mount — `autoStarted` is intentionally excluded from deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Drive claim TTL renewal from the in-call surface. The polling renewal
   // covers quiet phases of a call; the `touch()` callback is wired to the

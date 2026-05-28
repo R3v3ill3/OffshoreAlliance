@@ -35,13 +35,18 @@ export function MobileCallButton({
 
   const handleClick = useCallback(async () => {
     hapticSubmit();
+    // Fire the callback BEFORE awaiting placeCall. On mobile the OS hands off
+    // to the Phone app mid-execution and may suspend this tab, preventing the
+    // promise continuation from running. Transitioning the screen first means
+    // the caller always sees the in-call UI when they return, regardless of
+    // whether the JS was frozen during the handoff.
+    onCallPlaced?.();
     try {
       await telephony.placeCall({
         phoneNumber,
         contactLabel,
         surface: "share_link",
       });
-      onCallPlaced?.();
     } catch (err) {
       console.error("placeCall failed", err);
     }

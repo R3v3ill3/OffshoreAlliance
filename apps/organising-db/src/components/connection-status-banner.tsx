@@ -84,6 +84,9 @@ export function ConnectionStatusBanner() {
   const [hardErrors, setHardErrors] = useState(0);
   const [lockTimeouts, setLockTimeouts] = useState(0);
   const [lastDetail, setLastDetail] = useState<string | null>(null);
+  // Whether the most recent connection signal is still an error (vs a success).
+  // Used to auto-dismiss the "Reconnecting…" pill once recovery succeeds.
+  const [latestSignalIsError, setLatestSignalIsError] = useState(false);
   const { user, loading, hardRefreshConnection, connectionRecoveryInProgress } = useAuth();
   const pathname = usePathname();
 
@@ -96,6 +99,9 @@ export function ConnectionStatusBanner() {
       setHardErrors(summary.hardErrors);
       setLockTimeouts(summary.lockTimeouts);
       setLastDetail(summary.lastError?.detail ?? null);
+      const lastErrorTs = summary.lastError?.ts ?? 0;
+      const lastSuccessTs = summary.lastSuccess?.ts ?? 0;
+      setLatestSignalIsError(lastErrorTs > lastSuccessTs);
     };
 
     check();
@@ -191,7 +197,8 @@ export function ConnectionStatusBanner() {
   // Quiet "reconnecting" state for self-healing auth-lock timeouts. The
   // reset-then-reload recovery ladder in providers.tsx is already running; we
   // just reassure the user instead of showing the alarming error banner.
-  if (lockTimeouts >= LOCK_TIMEOUT_RECONNECT_THRESHOLD) {
+  // Auto-dismisses once a success signal arrives (recovery worked).
+  if (lockTimeouts >= LOCK_TIMEOUT_RECONNECT_THRESHOLD && latestSignalIsError) {
     return (
       <div className="fixed bottom-4 right-4 z-50 max-w-xs animate-in slide-in-from-bottom-4 duration-300">
         <div className="rounded-lg border border-blue-300 bg-blue-50 p-3 shadow-lg dark:border-blue-800 dark:bg-blue-950">

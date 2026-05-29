@@ -201,10 +201,10 @@ Plumb `preparedTag.worker_an_ids` down to `SendActions` so the Verify button has
 
 ## Future work (deferred, separate concern)
 
-The Supabase auth-client `lock_timeout` cascade observed during tab-switches is a separate issue from AN tagging. The right fix lives in `apps/organising-db/src/lib/supabase/connection-monitor.ts`:
-
-1. Maintain an `inFlightSession: Promise<Session> | null` ref shared across heartbeat + visibility handlers
-2. Reuse the in-flight promise rather than issuing concurrent `getSession()` calls
-3. On lock timeout, call `supabase.auth.refreshSession()` explicitly to clear the stuck lock
-
-That fix is independent of AN and can ship in its own PR. Defer until the AN UX is settled.
+> **Resolved (May 2026).** The Supabase auth-client `lock_timeout` cascade
+> observed during tab-switches has been addressed in its own change. See
+> `docs/SUPABASE_DROPOUT_INVESTIGATION.md` → "Auth-lock deadlock cascade" for the
+> root cause (orphaned `processLock` after background-tab throttling leaving
+> `GoTrueClient.lockAcquired` stuck) and the fix (in-flight promise unpinning +
+> reset-then-reload recovery ladder + visibility-gated heartbeat). This section
+> is retained for history only; no further AN-side work is required.

@@ -56,6 +56,7 @@ This report maps each documented incident to diagnosis steps taken and fixes app
 | 2026-04-17 | Planner wizard hangs; “Create Plan” broken | Web Lock deadlock | Load timeout escape hatch; wizard navigation fix |
 | 2026-04-29–30 | Silent spinners on API-backed features (e.g. email Analyse) | Lane 2 hangs + no client timeout | `fetchApi()` with bounded timeouts + `X-Request-Id` |
 | 2026-05-04 | Users kicked to login during wizard (perceived crash) | Cross-tab lock steal + aggressive timeout | `processLock` instead of `navigator.locks`; 12s auth op timeout; visibility handler no longer force-logouts on timeout |
+| 2026-05-29 | Repeating `lock_timeout` every ~12s after tab background; banner + forced logout on Full Reset | **Auth-lock deadlock (H7)** — orphaned `processLock` leaves `lockAcquired` stuck; dead promises pinned in dedupe refs | Unpin dead promises + `resetClient()` clears refs; **reset-then-reload recovery ladder (no logout)**; visibility-gated heartbeat; quiet "Reconnecting…" UI; `instrumentedLock` + fixed PostHog forwarding. See dropout investigation §L |
 | 2026-04-02+ | RLS oversharing; cron snapshots empty | Permissions / wrong Supabase client | Documented; permission system migration; cron uses admin client |
 
 ---

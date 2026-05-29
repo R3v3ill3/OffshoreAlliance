@@ -80,8 +80,9 @@ Use one **primary** label per incident for the log (§F).
 | H4 | Supabase degraded/outage | Auth or DB unhealthy platform-wide | status.supabase.com, project 5xx, broad failures |
 | H5 | RLS / JWT surprise | Row rules or claims differ from expectation | Same query OK with service role, fails empty as user |
 | H6 | Browser / edge | Sleep, extensions, DNS split | Correlates with visibility, not backend logs |
+| H7 | **Auth-lock deadlock** | auth-js `processLock` orphaned (background-tab throttle) → `GoTrueClient.lockAcquired` stuck `true` → every `getSession()` waits forever | Repeating `lock_timeout` every ~12s in console + `[connection-monitor]`, **no** Supabase REST/Network errors, no 401/403. **Resolved — see §L.** |
 
-**Note:** Re-login fixing the issue **suggests H1 or H2 involving cookies**, not necessarily H4.
+**Note:** Re-login fixing the issue **suggests H1 or H2 involving cookies**, not necessarily H4. A pure `lock_timeout` cascade with no network errors is **H7**, not a session loss — do not force a logout.
 
 ---
 
@@ -122,6 +123,7 @@ Append rows as incidents occur.
 | Date (UTC) | User | Route / feature | Lane | Symptom | Primary H | Evidence summary | Ruled out | Notes |
 |------------|------|-----------------|------|---------|-----------|------------------|-----------|-------|
 | YYYY-MM-DD | | e.g. Email import Analyse | 2 | Spinner, no console error | H1? | Pending POST `/api/email-import/.../analyse` | H4 status green | Fixed after sign-out |
+| 2026-05 | (multiple) | App-wide after tab background | 1 | Repeating `lock_timeout` every ~12s, banner, forced logout on Full Reset | **H7** | `[connection-monitor] lock_timeout … getSession:heartbeat after 12000ms`; no REST errors, no 401/403 (Sentry `OFFSHORE_ALLIANCE-7/-8`) | H1/H4 (no cookie/network errors) | **Resolved — see §L.** Unpin dead promises + reset-then-reload ladder + visibility-gated heartbeat + no-logout-on-lock-timeout |
 
 ---
 
@@ -195,6 +197,68 @@ Trigger only after §D points somewhere specific:
 2. **Document Vercel max duration** and align `email-import` analyse `maxDuration` with Anthropic p95 + safety margin (separate product decision).
 3. **Keep §F incident log** — Patterns across rows validate H1 vs H3 vs H4 without argument.
 4. **Re-run §C** after any auth refactor — Regression matrix from [REPO_ORIENTATION §11](REPO_ORIENTATION_AND_SAFETY_GAPS.md).
+
+---
+
+## L. Resolved incident — auth-lock deadlock cascade (H7, May 2026)
+
+**Symptom.** After leaving a tab backgrounded (or laptop asleep), returning produced a
+repeating console cascade every ~12s with **no** Supabase REST errors and no 401/403:
+
+```
+[connection-monitor] lock_timeout auth-op-timeout: getSession:heartbeat after 12000ms
+[connection-monitor] lock_timeout heartbeat-getSession-timeout
+[connection-monitor] api_ok getSession-deduplicated: heartbeat joined in-flight session check
+[connection-monitor] token_refresh_ok refresh-deduplicated: getSession-timeout:heartbeat joined in-flight refresh
+```
+
+The "Connection issues detected" banner then appeared and users typically hit **Full
+Reset**, which logged them out — the painful part of the bug.
+
+**Root cause.** Browser timer throttling in a hidden tab can orphan an in-flight auth
+operation mid-`processLock`. auth-js (`@supabase/auth-js` `GoTrueClient`) leaves
+`lockAcquired = true`, so every subsequent `getSession()` takes the **re-entrant lock
+path which has no acquire timeout** and waits forever. Two app-level wrappers then
+amplified it:
+
+1. `coordinatedGetSession` / `coordinatedRefreshSession` pinned the **dead promise** in a
+   module-level ref (the `.finally` unpin never ran because the promise never settled), so
+   every later caller deduped onto the corpse — even after `resetClient()`.
+2. The 60s heartbeat kept firing **while the tab was hidden**, manufacturing fresh stuck
+   `getSession` calls.
+
+**Fix (shipped).**
+
+- **Unpin dead promises** — `coordinatedGetSession`/`coordinatedRefreshSession` now clear
+  their module ref when the call settles **or** after the auth-op budget, and `resetClient()`
+  clears both refs. ([`client.ts`](../apps/organising-db/src/lib/supabase/client.ts))
+- **Reset-then-reload recovery ladder** — after `LOCK_TIMEOUT_ESCALATION_THRESHOLD` (2)
+  consecutive `lock_timeout`s, `providers.tsx` calls `resetClient()` + one bounded
+  `getSession`; if still stuck it does a **single guarded soft reload** (sessionStorage
+  cooldown) which re-inits the JS context and **preserves the auth cookies (no logout)**.
+  ([`providers.tsx`](../apps/organising-db/src/components/providers.tsx))
+- **Never force-logout on a pure lock timeout** — `forceLogoutToLogin`/`nuclearReset` are
+  reserved for confirmed auth failure; a `lock_timeout` is H7, not a session loss.
+- **Visibility-gated heartbeat** — the heartbeat no-ops while `document.visibilityState !==
+  "visible"` and skips its probe if a visibility-triggered `getSession` ran in the last 10s.
+- **Quiet UI** — `getHealthSummary()` now separates `hardErrors` from `lockTimeouts`; the
+  banner shows a calm "Reconnecting…" pill for self-healing lock timeouts and reserves the
+  loud banner for `hardErrors >= 3`. ([`connection-status-banner.tsx`](../apps/organising-db/src/components/connection-status-banner.tsx))
+- **Observability** — `lock` passed to the Supabase client is wrapped with a **zero-await**
+  `instrumentedLock` that emits `lock_contended` for slow acquire/long hold; PostHog
+  forwarding now uses the imported `posthog-js` module (the old `window.posthog` lookup
+  silently dropped every `supabase_connection_event`); Sentry/PostHog identify the user in
+  [`auth-context.tsx`](../apps/organising-db/src/lib/supabase/auth-context.tsx).
+
+**Responsiveness note.** All of the above acts only on the *already-broken* path. The
+healthy path is unchanged: the lock wrapper adds no awaits, the unpin `setTimeout` is a
+guarded no-op when calls settle normally, and recovery only runs after 2 real timeouts.
+
+**How to recognise a regression.** Repeating `lock_timeout` with no REST/Network errors →
+H7. Confirm in PostHog via `supabase_connection_event` (`event_type = lock_timeout`) and in
+Sentry (`lock_timeout` / `lock_contended`). Expected post-fix behaviour: at most ~2 minutes
+of "Reconnecting…" then auto-recovery (in-place reset, or one soft reload) with the user
+still logged in.
 
 ---
 

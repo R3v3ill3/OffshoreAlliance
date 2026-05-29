@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ActionNetworkClient } from "@/lib/api/action-network";
 import { sanitiseEmailHtml } from "@/lib/comms/sanitise-email-html"
-import { appendOASignature } from "@/lib/comms/oa-email-signature";
+// import { appendOASignature } from "@/lib/comms/oa-email-signature" // re-enable with body line below if reverting from AN wrapper;
 
 function getClient(): ActionNetworkClient {
   const apiKey = process.env.ACTION_NETWORK_API_KEY;
@@ -95,12 +95,17 @@ export async function POST(request: NextRequest) {
           typeof messageInput.body === 'string'
             ? sanitiseEmailHtml(messageInput.body)
             : messageInput.body
+        // appendOASignature disabled — AN wrapper "OA Default" handles the
+        // footer for AN emails. Re-enable here if reverting to app-injected
+        // signature (and disable the AN wrapper default at the same time to
+        // avoid a double signature).
         const sanitisedMessage = {
           ...messageInput,
-          body:
-            typeof sanitisedBody === 'string'
-              ? appendOASignature(sanitisedBody)
-              : sanitisedBody,
+          body: sanitisedBody,
+          // body:
+          //   typeof sanitisedBody === 'string'
+          //     ? appendOASignature(sanitisedBody)
+          //     : sanitisedBody,
         }
         data = await client.createMessage(sanitisedMessage)
         break;

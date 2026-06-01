@@ -2,7 +2,16 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, resetClient, withAuthOpTimeout, isAuthLockTimeout } from "@/lib/supabase/client";
+
+// Bound each sign-in attempt so a jammed in-tab auth lock can't leave the
+// button stuck on "Signing in…" indefinitely. 8 s is below auth-js's own 5 s
+// acquire timeout for the contended case and comfortably above a healthy
+// round-trip, so we fail fast enough to reset + retry within a reasonable wait.
+const LOGIN_SIGNIN_TIMEOUT_MS = 8_000;
+
+const LOCK_BUSY_MESSAGE =
+  "The connection is recovering from a hiccup. Please wait a few seconds and try Sign In again.";
 
 const LOGIN_REASON_MESSAGES: Record<string, string> = {
   session_expired: "Your session expired. Please sign in again.",
@@ -22,26 +31,59 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = createClient();
   const reason = searchParams.get("reason");
   const reasonMessage = reason ? LOGIN_REASON_MESSAGES[reason] : null;
+
+  // One bounded sign-in attempt against a freshly-resolved client. Always
+  // re-reads createClient() so a preceding resetClient() takes effect.
+  const attemptSignIn = () =>
+    withAuthOpTimeout(
+      "login-signin",
+      createClient().auth.signInWithPassword({ email, password }),
+      LOGIN_SIGNIN_TIMEOUT_MS,
+    );
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      let result: Awaited<ReturnType<typeof attemptSignIn>>;
+      try {
+        result = await attemptSignIn();
+      } catch (err) {
+        // A jammed auth lock (either the re-entrant wait our timeout caught, or
+        // auth-js's ProcessLockAcquireTimeoutError) is NOT a credential failure.
+        // Drop the stuck GoTrueClient and retry once with a fresh one.
+        if (isAuthLockTimeout(err)) {
+          resetClient();
+          result = await attemptSignIn();
+        } else {
+          throw err;
+        }
+      }
 
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-    } else {
+      if (result.error) {
+        setError(result.error.message);
+        setLoading(false);
+        return;
+      }
+
       router.push("/campaigns");
       router.refresh();
+    } catch (err) {
+      // Still jammed after a reset + retry — the holding op self-clears once its
+      // fetch aborts (~20 s), so guide the user to wait briefly rather than show
+      // a confusing raw "Acquiring process lock…" timeout.
+      setError(
+        isAuthLockTimeout(err)
+          ? LOCK_BUSY_MESSAGE
+          : err instanceof Error
+            ? err.message
+            : "Sign in failed. Please try again.",
+      );
+      setLoading(false);
     }
   };
 

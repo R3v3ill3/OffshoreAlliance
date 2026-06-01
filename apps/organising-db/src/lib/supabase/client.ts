@@ -212,6 +212,29 @@ export async function withAuthOpTimeout<T>(
 }
 
 /**
+ * True when an error represents an auth-LOCK timeout — i.e. the in-tab auth
+ * lock is jammed, NOT a confirmed session loss. Callers must route these into
+ * the reset-then-reload recovery ladder and must NEVER force-logout on them.
+ *
+ * Two flavours, both meaning "the lock is stuck":
+ *   1. `isAuthOpTimeout` — our own withAuthOpTimeout wrapper (12 s) fired. This
+ *      is the re-entrant path in auth-js `_acquireLock`: the lock was already
+ *      held, so the queued op waited on a sibling that never resolved (the
+ *      re-entrant path has NO timeout of its own — our wrapper is the ceiling).
+ *   2. `isAcquireTimeout` — auth-js's `ProcessLockAcquireTimeoutError` (5 s,
+ *      message "Acquiring process lock … timed out"). A previous auth op is
+ *      still holding/queued in processLock, so this op could not ACQUIRE the
+ *      lock. This is the flavour Safari predominantly hits (background timer
+ *      throttling / ITP / Private Relay can orphan the first op). auth-js
+ *      documents detecting it via the `isAcquireTimeout` property — NOT
+ *      `instanceof` (the error subclasses don't set a custom `name`).
+ */
+export function isAuthLockTimeout(error: unknown): boolean {
+  const e = error as { isAuthOpTimeout?: boolean; isAcquireTimeout?: boolean } | null | undefined;
+  return e?.isAuthOpTimeout === true || e?.isAcquireTimeout === true;
+}
+
+/**
  * Shared getSession() with a 12-second timeout. Use this everywhere outside
  * coordinatedRefreshSession (which has its own 12-second timeout) and
  * recoverSessionConnection (which has its own 15-second timeout).
@@ -277,8 +300,17 @@ export async function getSessionWithTimeout(source: string): Promise<{
     );
     return { session: session ?? null, timedOut: false };
   } catch (error) {
-    const isTimeout = (error as Error & { isAuthOpTimeout?: boolean })?.isAuthOpTimeout === true;
-    if (isTimeout) {
+    const isAuthOpTimeout = (error as Error & { isAuthOpTimeout?: boolean })?.isAuthOpTimeout === true;
+    const isAcquireTimeout = (error as Error & { isAcquireTimeout?: boolean })?.isAcquireTimeout === true;
+    // Either flavour means the auth lock is jammed (see isAuthLockTimeout). We
+    // return timedOut:true for BOTH so callers route into the recovery ladder
+    // and never mistake a jammed lock for a null session / force-logout.
+    const isLockTimeout = isAuthOpTimeout || isAcquireTimeout;
+
+    if (isAuthOpTimeout) {
+      // The lock was HELD but the op under it ran long. A background refresh
+      // (deduped via the mutex) may resolve it, so fire one. withAuthOpTimeout
+      // already logged the lock_timeout event for this flavour.
       void coordinatedRefreshSession(`getSession-timeout:${source}`).catch((refreshError) => {
         logConnectionEvent({
           type: "token_refresh_fail",
@@ -287,15 +319,25 @@ export async function getSessionWithTimeout(source: string): Promise<{
           }`,
         });
       });
-    }
-    if (!isTimeout) {
-      // Non-timeout errors are unusual but possible — log and treat as null session
+    } else if (isAcquireTimeout) {
+      // processLock could not ACQUIRE the lock — a previous auth op is still
+      // holding/queued (deadlocked). Do NOT fire a refresh: it would queue
+      // behind the same jammed lock and also time out. Record a lock_timeout
+      // (nothing else logged one for this flavour — withAuthOpTimeout's timer
+      // never fired because the underlying call rejected first) so the caller's
+      // reset-then-reload ladder can engage.
+      logConnectionEvent({
+        type: "lock_timeout",
+        detail: `processLock acquire timeout (${source}): ${error instanceof Error ? error.message : String(error)}`,
+      });
+    } else {
+      // Genuinely unexpected error — log and treat as null session.
       logConnectionEvent({
         type: "api_error",
         detail: `getSessionWithTimeout exception (${source}): ${error instanceof Error ? error.message : String(error)}`,
       });
     }
-    return { session: null, timedOut: isTimeout };
+    return { session: null, timedOut: isLockTimeout };
   }
 }
 

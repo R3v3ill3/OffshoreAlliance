@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
-import { createClient, getSessionWithTimeout, coordinatedRefreshSession, withAuthOpTimeout, resetClient } from "@/lib/supabase/client";
+import { createClient, getSessionWithTimeout, coordinatedRefreshSession, withAuthOpTimeout, resetClient, isAuthLockTimeout } from "@/lib/supabase/client";
 import {
   performRobustSignOut,
   recoverSessionConnection,
@@ -186,8 +186,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setProfile(null);
             redirectToLogin("session_check_error");
           } catch (fallbackErr) {
-            const isFallbackTimeout =
-              (fallbackErr as { isAuthOpTimeout?: boolean })?.isAuthOpTimeout === true;
+            // Includes auth-js's ProcessLockAcquireTimeoutError (isAcquireTimeout):
+            // a jammed auth lock is NOT a confirmed session loss, so it must bail
+            // without force-logout exactly like our own auth-op timeout.
+            const isFallbackTimeout = isAuthLockTimeout(fallbackErr);
             if (isFallbackTimeout) {
               // Refresh also timed out — Supabase auth unreachable right now.
               // Do NOT force-logout; the session may be valid. The user can refresh.

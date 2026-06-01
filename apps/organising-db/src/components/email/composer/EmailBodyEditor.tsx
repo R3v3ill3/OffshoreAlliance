@@ -498,7 +498,7 @@ export const EmailBodyEditor = forwardRef<EmailBodyEditorRef, EmailBodyEditorPro
 
     if (mode === 'plain') {
       return (
-        <div className="flex flex-col">
+        <div className="flex flex-col h-full overflow-y-auto">
           <PlainMergeFieldToolbar
             onInsert={(key) => {
               const ta = plainRef.current
@@ -528,14 +528,14 @@ export const EmailBodyEditor = forwardRef<EmailBodyEditorRef, EmailBodyEditorPro
             value={plainValue}
             onChange={handlePlainChange}
             placeholder={placeholder ?? 'Write the email body in plain text.'}
-            className="w-full min-h-[420px] px-6 py-5 font-mono text-sm leading-relaxed resize-none outline-none border-t bg-background"
+            className="w-full flex-1 min-h-[420px] px-6 py-5 font-mono text-sm leading-relaxed resize-none outline-none border-t bg-background"
           />
         </div>
       )
     }
 
     return (
-      <div className="flex flex-col relative">
+      <div className="flex flex-col relative h-full overflow-y-auto">
         <EditorToolbar editor={editor} />
         {editor && (
           <SelectionFloatingToolbar
@@ -669,7 +669,7 @@ function EditorToolbar({ editor }: { editor: Editor | null }) {
     <div
       role="toolbar"
       aria-label="Email formatting"
-      className="flex items-center gap-0.5 flex-wrap px-3 py-1.5 bg-muted/30"
+      className="sticky top-0 z-10 flex items-center gap-0.5 flex-wrap px-3 py-1.5 bg-muted/90 backdrop-blur-sm shadow-sm"
     >
       <ToolbarToggle
         active={isActive('bold')}
@@ -790,7 +790,7 @@ function MergeFieldDropdown({ onPick }: { onPick: (key: string) => void }) {
           Merge field
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-72 p-1" align="start">
+      <PopoverContent className="w-72 p-1 max-h-80 overflow-y-auto" align="start">
         <p className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
           Recipient (resolved by Action Network)
         </p>
@@ -835,7 +835,7 @@ function PlainMergeFieldToolbar({
     <div
       role="toolbar"
       aria-label="Plain-text merge fields"
-      className="flex items-center gap-1 flex-wrap px-3 py-1.5 bg-muted/30 border-b"
+      className="sticky top-0 z-10 flex items-center gap-1 flex-wrap px-3 py-1.5 bg-muted/90 backdrop-blur-sm shadow-sm border-b"
     >
       <span className="text-[10px] uppercase tracking-wide text-muted-foreground mr-1">
         Recipient:

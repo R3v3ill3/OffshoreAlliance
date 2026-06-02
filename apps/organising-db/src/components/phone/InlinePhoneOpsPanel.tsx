@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/accordion'
 import { IssueLinkDialog, type IssueLinkResult } from '@/components/share/issue-link-dialog'
 import { IssuedLinkResultDialog } from '@/components/share/issued-link-result-dialog'
+import { OutreachCleanupPanel } from '@/components/campaigns/OutreachCleanupPanel'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-700',
@@ -217,6 +218,9 @@ export function InlinePhoneOpsPanel({ campaignId }: InlinePhoneOpsPanelProps) {
           </AccordionContent>
         </AccordionItem>
       </Accordion>
+
+      {/* Outreach cleanup — removes test phone actions and email drafts */}
+      <OutreachCleanupPanel campaignId={id} />
 
       <AlertDialog
         open={listPendingDelete != null}

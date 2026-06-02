@@ -98,6 +98,13 @@ export function useDeleteCallList(campaignId: number | string) {
       queryClient.invalidateQueries({ queryKey: ['call-lists', String(campaignId)] })
       queryClient.removeQueries({ queryKey: ['call-list', String(campaignId), String(listId)] })
       queryClient.removeQueries({ queryKey: ['call-list-items', String(campaignId), String(listId)] })
+      // Invalidate reporting views — they aggregate call_list data and become
+      // stale after a list is deleted (previously showed "0 of 0" phantom rows).
+      queryClient.invalidateQueries({ queryKey: ['call-campaign-summary', String(campaignId)] })
+      queryClient.invalidateQueries({ queryKey: ['call-outcome-summary', String(campaignId)] })
+      queryClient.invalidateQueries({ queryKey: ['call-section-funnel', String(campaignId)] })
+      // Invalidate the in-progress banner so it re-queries the action status.
+      queryClient.invalidateQueries({ queryKey: ['phone-call-actions', 'in-progress', String(campaignId)] })
     },
   })
 }

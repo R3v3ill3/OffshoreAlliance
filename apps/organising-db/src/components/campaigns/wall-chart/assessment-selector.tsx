@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo } from "react";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -112,6 +112,32 @@ export function useWallChartAssessmentOptions(campaignId: string) {
   return useQuery({
     queryKey: ["campaign-assessments-rated", campaignId],
     queryFn: () => fetchWallChartAssessmentOptions(supabase, campaignId),
+    // Assessments can be deleted on another sub-tab while this query is unmounted.
+    staleTime: 0,
+    refetchOnMount: "always",
+  });
+}
+
+/** Drop a deleted activity from the cached selector list immediately. */
+export function removeDeletedActivityFromWallChartCache(
+  queryClient: QueryClient,
+  campaignId: string,
+  activityId: number
+) {
+  queryClient.setQueryData<WallChartAssessmentOption[]>(
+    ["campaign-assessments-rated", campaignId],
+    (prev) => (prev ? prev.filter((o) => o.activity_id !== activityId) : [])
+  );
+}
+
+/** Refetch selector options even when the wall chart tab is not mounted. */
+export function refreshWallChartAssessmentOptions(
+  queryClient: QueryClient,
+  campaignId: string
+) {
+  void queryClient.refetchQueries({
+    queryKey: ["campaign-assessments-rated", campaignId],
+    type: "all",
   });
 }
 
@@ -130,7 +156,21 @@ export function AssessmentSelector({
   value,
   onChange,
 }: AssessmentSelectorProps) {
-  const { data: options = [], isLoading } = useWallChartAssessmentOptions(campaignId);
+  const { data: options = [], isLoading, refetch } = useWallChartAssessmentOptions(campaignId);
+
+  const handleSelectOpenChange = useCallback(
+    (open: boolean) => {
+      if (open) void refetch();
+    },
+    [refetch]
+  );
+
+  useEffect(() => {
+    if (value.kind !== "assessment") return;
+    if (isLoading) return;
+    if (options.some((o) => o.activity_id === value.activityId)) return;
+    onChange({ kind: "cumulative" });
+  }, [value, options, isLoading, onChange]);
 
   const selectValue =
     value.kind === "cumulative" ? CUMULATIVE_VALUE : String(value.activityId);
@@ -164,7 +204,12 @@ export function AssessmentSelector({
       <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
         Assessment view (campaign default)
       </Label>
-      <Select value={selectValue} onValueChange={handleChange} disabled={isLoading}>
+      <Select
+        value={selectValue}
+        onValueChange={handleChange}
+        onOpenChange={handleSelectOpenChange}
+        disabled={isLoading}
+      >
         <SelectTrigger className="h-8 text-xs">
           <SelectValue placeholder={isLoading ? "Loading…" : "Select assessment view…"} />
         </SelectTrigger>
@@ -243,7 +288,21 @@ export function UnitAssessmentViewControl({
   override,
   onChangeOverride,
 }: UnitAssessmentViewControlProps) {
-  const { data: options = [], isLoading } = useWallChartAssessmentOptions(campaignId);
+  const { data: options = [], isLoading, refetch } = useWallChartAssessmentOptions(campaignId);
+
+  const handleSelectOpenChange = useCallback(
+    (open: boolean) => {
+      if (open) void refetch();
+    },
+    [refetch]
+  );
+
+  useEffect(() => {
+    if (override?.kind !== "assessment") return;
+    if (isLoading) return;
+    if (options.some((o) => o.activity_id === override.activityId)) return;
+    onChangeOverride(undefined);
+  }, [override, options, isLoading, onChangeOverride]);
 
   const effective = override ?? campaignDefault;
   const selectValue =
@@ -288,7 +347,12 @@ export function UnitAssessmentViewControl({
       <Label className="text-[9px] uppercase tracking-wide text-muted-foreground">
         View
       </Label>
-      <Select value={selectValue} onValueChange={handleChange} disabled={isLoading}>
+      <Select
+        value={selectValue}
+        onValueChange={handleChange}
+        onOpenChange={handleSelectOpenChange}
+        disabled={isLoading}
+      >
         <SelectTrigger className="h-7 text-[10px] px-2">
           <SelectValue placeholder={isLoading ? "…" : "View"} />
         </SelectTrigger>

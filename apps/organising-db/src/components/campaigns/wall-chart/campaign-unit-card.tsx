@@ -1,8 +1,9 @@
 "use client";
 
 import { ReactNode, useState } from "react";
-import { GripVertical } from "lucide-react";
+import { GripVertical, ListPlus } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { cn } from "@/lib/utils/cn";
 import { WALL_CHART_GRID_CLASS } from "./rating-colour";
 import { humanizeOuType, ouDisplayName, type WallChartOU } from "./types";
 import {
@@ -66,6 +67,9 @@ export type CampaignUnitCardProps = {
    * receive what the user can see.
    */
   unitDragPayload?: { workerIds: number[] };
+  /** Fired when the unit drag handle starts / ends a drag (build list). */
+  onUnitDragSessionStart?: () => void;
+  onUnitDragSessionEnd?: () => void;
 };
 
 const PLACEHOLDER_CAP = 24;
@@ -87,6 +91,8 @@ export function CampaignUnitCard({
   nested,
   unfilledSlots,
   unitDragPayload,
+  onUnitDragSessionStart,
+  onUnitDragSessionEnd,
 }: CampaignUnitCardProps) {
   const title = ou ? ouDisplayName(ou) : (fallbackTitle ?? "Unit");
   const typeChip = ou?.ou_type ? humanizeOuType(ou.ou_type) : null;
@@ -157,12 +163,20 @@ export function CampaignUnitCard({
                       "text/plain",
                       `${unitDragPayload.workerIds.length} workers from ${title}`
                     );
+                    onUnitDragSessionStart?.();
                   }}
-                  className="inline-flex h-5 w-5 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground active:cursor-grabbing print:hidden"
+                  onDragEnd={() => onUnitDragSessionEnd?.()}
+                  className={cn(
+                    "inline-flex h-7 shrink-0 cursor-grab items-center gap-1 rounded-md border-2 border-dashed border-green-500",
+                    "bg-green-500/10 px-2 text-[10px] font-semibold leading-none text-green-800",
+                    "hover:bg-green-500/20 active:cursor-grabbing dark:text-green-300 print:hidden"
+                  )}
                   title={`Drag to add ${unitDragPayload.workerIds.length} visible worker${unitDragPayload.workerIds.length === 1 ? "" : "s"} from "${title}" into the build list`}
                   aria-label={`Drag entire unit ${title} into the build list`}
                 >
-                  <GripVertical className="h-3.5 w-3.5" aria-hidden />
+                  <GripVertical className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+                  <ListPlus className="h-3 w-3 shrink-0" aria-hidden />
+                  <span>Add unit</span>
                 </span>
               )}
               <h3 className="text-sm font-semibold leading-tight truncate">{title}</h3>

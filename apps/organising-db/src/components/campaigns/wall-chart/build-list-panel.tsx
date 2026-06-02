@@ -74,6 +74,8 @@ export type BuildListPanelProps = {
    * (e.g. the campaign summary header). Defaults to 8px.
    */
   stickyTopPx?: number;
+  /** True while the user is dragging from the wall chart into this panel. */
+  wallChartDragActive?: boolean;
 };
 
 export function BuildListPanel({
@@ -84,6 +86,7 @@ export function BuildListPanel({
   controller,
   onTaskDraftCreated,
   stickyTopPx = 8,
+  wallChartDragActive = false,
 }: BuildListPanelProps) {
   const router = useRouter();
   const ownController = useBuildList({ campaignId });
@@ -397,7 +400,12 @@ export function BuildListPanel({
           />
         )}
 
-        <DropZone canWrite={canWrite} hasItems={items.length > 0} onDrop={onPanelDrop} />
+        <DropZone
+          canWrite={canWrite}
+          hasItems={items.length > 0}
+          wallChartDragActive={wallChartDragActive}
+          onDrop={onPanelDrop}
+        />
 
         {items.length > 0 ? (
           <div className="space-y-1.5">
@@ -457,7 +465,7 @@ export function BuildListPanel({
         ) : (
           <p className="text-xs text-muted-foreground italic px-1">
             {canWrite
-              ? "Drag worker tiles or unit-card handles into the box above to start. Hold Shift and click tiles to multi-select first, then drag any selected tile to add the whole batch."
+              ? "Click tiles to select (bold green border); click again to deselect, or click more to add to selection. Press and hold any selected tile and drag it into the box above to add the group. Double-click opens worker details; unit-card handles add a whole unit."
               : "You don't have permission to build lists for this campaign."}
           </p>
         )}
@@ -497,13 +505,16 @@ export function BuildListPanel({
 function DropZone({
   canWrite,
   hasItems,
+  wallChartDragActive,
   onDrop,
 }: {
   canWrite: boolean;
   hasItems: boolean;
+  wallChartDragActive: boolean;
   onDrop: (e: React.DragEvent<HTMLDivElement>) => void;
 }) {
   const [over, setOver] = useState(false);
+  const highlighted = wallChartDragActive && canWrite;
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     if (!canWrite) return;
@@ -518,6 +529,14 @@ function DropZone({
     if (!over) setOver(true);
   };
 
+  const label = over
+    ? "Drop to add to list"
+    : highlighted
+      ? "Drag tiles here"
+      : hasItems
+        ? "Drop more workers or whole units here"
+        : "Drop worker tiles, unit cards, or a multi-selection here";
+
   return (
     <div
       onDragOver={handleDragOver}
@@ -527,18 +546,19 @@ function DropZone({
         onDrop(e);
       }}
       className={cn(
-        "rounded border-2 border-dashed p-3 text-center text-xs transition-colors",
-        over
-          ? "border-primary bg-primary/10 text-primary"
-          : "border-muted-foreground/30 bg-muted/30 text-muted-foreground"
+        "rounded border-2 border-dashed text-center text-xs transition-all duration-200",
+        over || highlighted
+          ? "border-primary bg-primary/10 text-primary font-medium"
+          : "border-muted-foreground/30 bg-muted/30 text-muted-foreground",
+        highlighted && !over ? "scale-[1.02] p-5 shadow-sm" : "p-3"
       )}
-      aria-label="Drop zone — drop worker tiles or unit cards to add to the list"
+      aria-label={
+        highlighted
+          ? "Drop zone — drag tiles here to add to the list"
+          : "Drop zone — drop worker tiles or unit cards to add to the list"
+      }
     >
-      {over
-        ? "Drop to add to list"
-        : hasItems
-          ? "Drop more workers or whole units here"
-          : "Drop worker tiles, unit cards, or a multi-selection here"}
+      {label}
     </div>
   );
 }

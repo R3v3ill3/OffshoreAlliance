@@ -63,6 +63,8 @@ export type WorkerTileProps = {
    * this tile). Returning an empty array aborts the drag.
    */
   onDragStartRefs?: (workerId: number, ouId: number | null) => WorkerDragRef[];
+  /** Called when a drag successfully starts (after payload is set). */
+  onDragSessionStart?: () => void;
   /** Called when the drag ends (regardless of drop success). */
   onDragEnd?: () => void;
   /** Phone / email icon → open worker sheet with that field focused (when canWrite). */
@@ -96,6 +98,7 @@ export function WorkerTile({
   onCopy,
   isSelected,
   onDragStartRefs,
+  onDragSessionStart,
   onDragEnd,
   onContactBadgeClick,
   inBuildList,
@@ -214,6 +217,7 @@ export function WorkerTile({
       "text/plain",
       refs.length === 1 ? displayName : `${refs.length} workers`
     );
+    onDragSessionStart?.();
   };
 
   const largeBadgeDisplay = isAssessmentMode && assessment

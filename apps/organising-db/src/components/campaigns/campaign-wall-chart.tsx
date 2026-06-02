@@ -194,6 +194,16 @@ export function CampaignWallChart({
     },
     [pathname, router, wallChartSearchParams]
   );
+  const [buildListWallDragActive, setBuildListWallDragActive] = useState(false);
+  const onBuildListWallDragStart = useCallback(() => {
+    setBuildListWallDragActive(true);
+  }, []);
+  const onBuildListWallDragEnd = useCallback(() => {
+    setBuildListWallDragActive(false);
+  }, []);
+  useEffect(() => {
+    if (!buildListOpen) setBuildListWallDragActive(false);
+  }, [buildListOpen]);
   // buildListController is declared further down once workerById / ratingByWorker
   // are available, so the optimistic add can hydrate placeholders from the
   // wall chart's already-loaded worker data.
@@ -821,6 +831,8 @@ export function CampaignWallChart({
               fromOuType: tileOuId != null ? (ouTypeById.get(tileOuId) ?? null) : null,
             }];
           }}
+          onDragSessionStart={buildListOpen ? onBuildListWallDragStart : undefined}
+          onDragEnd={buildListOpen ? onBuildListWallDragEnd : undefined}
         />
       );
     },
@@ -839,6 +851,8 @@ export function CampaignWallChart({
       buildListOpen,
       buildListWorkerIds,
       workerDetail,
+      onBuildListWallDragStart,
+      onBuildListWallDragEnd,
     ]
   );
 
@@ -1276,6 +1290,10 @@ export function CampaignWallChart({
                   ? { workerIds: sorted }
                   : undefined
               }
+              onUnitDragSessionStart={
+                buildListOpen ? onBuildListWallDragStart : undefined
+              }
+              onUnitDragSessionEnd={buildListOpen ? onBuildListWallDragEnd : undefined}
               summary={
                 <UnitSummaryMetrics
                   metrics={unassignedMetrics}
@@ -1420,6 +1438,12 @@ export function CampaignWallChart({
                         buildListOpen && canWrite && sorted.length > 0
                           ? { workerIds: sorted }
                           : undefined
+                      }
+                      onUnitDragSessionStart={
+                        buildListOpen ? onBuildListWallDragStart : undefined
+                      }
+                      onUnitDragSessionEnd={
+                        buildListOpen ? onBuildListWallDragEnd : undefined
                       }
                       headerBadges={
                         (childrenByParent.get(ou.ou_id)?.length ?? 0) > 0 ? (
@@ -1605,6 +1629,12 @@ export function CampaignWallChart({
                                         ? { workerIds: childSorted }
                                         : undefined
                                     }
+                                    onUnitDragSessionStart={
+                                      buildListOpen ? onBuildListWallDragStart : undefined
+                                    }
+                                    onUnitDragSessionEnd={
+                                      buildListOpen ? onBuildListWallDragEnd : undefined
+                                    }
                                     nested
                                     summary={
                                       childMetrics && childIds.length > 0 ? (
@@ -1670,6 +1700,7 @@ export function CampaignWallChart({
             onClose={() => setBuildListOpen(false)}
             controller={buildListController}
             stickyTopPx={buildListStickyTopPx}
+            wallChartDragActive={buildListWallDragActive}
             onTaskDraftCreated={(draft) => {
               setTaskListFiredDraft({
                 task_list_id: draft.task_list_id,

@@ -52,6 +52,10 @@ import { CampaignWorkerNameButton } from "./campaign-worker-detail-provider";
 import { CreateAssessmentDialog } from "./assessments/create-assessment-dialog";
 import { ActivityAmbitionLinksPanel } from "./assessments/activity-ambition-links-panel";
 import { invalidateCampaignAmbitionCaches } from "@/lib/hooks/useCampaignAmbitionContext";
+import {
+  removeDeletedActivityFromWallChartCache,
+  refreshWallChartAssessmentOptions,
+} from "./wall-chart/assessment-selector";
 import { CampaignTaskListsSection } from "./campaign-task-lists";
 import { AssessmentsTabCharts } from "./AssessmentsTabCharts";
 
@@ -257,10 +261,9 @@ export function CampaignAssessmentsSection({
       if (error) throw error;
     },
     onSuccess: (_data, activityId) => {
+      removeDeletedActivityFromWallChartCache(queryClient, campaignId, activityId);
+      refreshWallChartAssessmentOptions(queryClient, campaignId);
       queryClient.invalidateQueries({ queryKey: ["campaign-activities", campaignId] });
-      queryClient.invalidateQueries({
-        queryKey: ["campaign-assessments-rated", campaignId],
-      });
       queryClient.invalidateQueries({
         queryKey: ["campaign-assessment-options", campaignId],
       });

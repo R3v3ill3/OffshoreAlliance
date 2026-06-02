@@ -55,6 +55,10 @@ export function invalidateCampaignAmbitionCaches(
   const cid = String(campaignId);
   queryClient.invalidateQueries({ queryKey: ["campaign-ambitions-assessable", cid] });
   queryClient.invalidateQueries({ queryKey: ["campaign-assessments-rated", cid] });
+  void queryClient.refetchQueries({
+    queryKey: ["campaign-assessments-rated", cid],
+    type: "all",
+  });
   queryClient.invalidateQueries({ queryKey: ["campaign-activities", cid] });
   queryClient.invalidateQueries({ queryKey: ["campaign-assessment-options", cid] });
   queryClient.invalidateQueries({ queryKey: ["campaign-stage-plans-ambitions", cid] });

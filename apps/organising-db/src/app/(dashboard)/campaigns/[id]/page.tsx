@@ -56,6 +56,7 @@ import { CampaignEmployersWorksitesCard } from "@/components/campaigns/campaign-
 import { CampaignCommsSection } from "@/components/campaigns/campaign-comms-section";
 import { CampaignOverviewMetrics } from "@/components/campaigns/CampaignOverviewMetrics";
 import { InlinePhoneOpsPanel } from "@/components/phone/InlinePhoneOpsPanel";
+import { OutreachCleanupPanel } from "@/components/campaigns/OutreachCleanupPanel";
 import { SituationAnalysisCard } from "@/components/campaigns/planning/SituationAnalysisCard";
 import { SituationAnalysisEditSheet } from "@/components/campaigns/situation-analysis/SituationAnalysisEditSheet";
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
@@ -749,6 +750,11 @@ export default function CampaignDetailPage() {
               </Card>
             </TabsContent>
           </Tabs>
+
+          {/* Cleanup panel — always visible on the Outreach tab regardless of sub-tab */}
+          <div className="mt-6">
+            <OutreachCleanupPanel campaignId={id} />
+          </div>
         </TabsContent>
 
         <TabsContent value="library">

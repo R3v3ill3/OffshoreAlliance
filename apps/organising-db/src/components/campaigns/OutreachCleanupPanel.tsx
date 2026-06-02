@@ -25,13 +25,13 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Trash2, Phone, Mail, Loader2 } from 'lucide-react'
+import { Trash2, Phone, Mail, ClipboardList, ListTodo, Loader2 } from 'lucide-react'
 
 interface OutreachCleanupPanelProps {
   campaignId: string | number
 }
 
-type CleanupScope = 'phone_actions' | 'email_drafts' | 'all'
+type CleanupScope = 'phone_actions' | 'email_drafts' | 'assessments' | 'task_lists' | 'all'
 
 interface PhoneActionRow {
   action_id: number
@@ -47,6 +47,20 @@ interface EmailDraftRow {
   status: string
   title: string | null
   subject: string | null
+  created_at: string
+}
+
+interface AssessmentRow {
+  activity_id: number
+  title: string
+  activity_kind: string
+  created_at: string
+}
+
+interface TaskListRow {
+  task_list_id: number
+  status: string
+  activity_id: number | null
   created_at: string
 }
 
@@ -90,6 +104,37 @@ export function OutreachCleanupPanel({ campaignId }: OutreachCleanupPanelProps) 
     enabled: !!user,
   })
 
+  const { data: assessments = [], refetch: refetchAssessments } = useQuery<AssessmentRow[]>({
+    queryKey: ['cleanup-assessments', id],
+    queryFn: async () => {
+      if (!user) return []
+      const { data, error } = await supabase
+        .from('campaign_activities')
+        .select('activity_id, title, activity_kind, created_at')
+        .eq('campaign_id', Number(id))
+        .eq('activity_kind', 'assessment')
+        .order('created_at', { ascending: false })
+      if (error) return []
+      return (data ?? []) as AssessmentRow[]
+    },
+    enabled: !!user,
+  })
+
+  const { data: taskLists = [], refetch: refetchTaskLists } = useQuery<TaskListRow[]>({
+    queryKey: ['cleanup-task-lists', id],
+    queryFn: async () => {
+      if (!user) return []
+      const { data, error } = await supabase
+        .from('campaign_task_lists')
+        .select('task_list_id, status, activity_id, created_at')
+        .eq('campaign_id', Number(id))
+        .order('created_at', { ascending: false })
+      if (error) return []
+      return (data ?? []) as TaskListRow[]
+    },
+    enabled: !!user,
+  })
+
   const cleanupMutation = useMutation({
     mutationFn: async (scope: CleanupScope) => {
       const res = await fetchApi(`/api/campaigns/${id}/cleanup`, {
@@ -110,9 +155,10 @@ export function OutreachCleanupPanel({ campaignId }: OutreachCleanupPanelProps) 
       if (d.call_lists_deleted) parts.push(`${d.call_lists_deleted} call list${d.call_lists_deleted !== 1 ? 's' : ''}`)
       if (d.email_drafts_deleted) parts.push(`${d.email_drafts_deleted} email draft${d.email_drafts_deleted !== 1 ? 's' : ''}`)
       if (d.email_lists_deleted) parts.push(`${d.email_lists_deleted} email list${d.email_lists_deleted !== 1 ? 's' : ''}`)
+      if (d.assessments_deleted) parts.push(`${d.assessments_deleted} assessment${d.assessments_deleted !== 1 ? 's' : ''}`)
+      if (d.task_lists_deleted) parts.push(`${d.task_lists_deleted} task list${d.task_lists_deleted !== 1 ? 's' : ''}`)
       toast.success(parts.length > 0 ? `Deleted: ${parts.join(', ')}` : 'Nothing to delete')
 
-      // Invalidate all related queries
       if (scope === 'phone_actions' || scope === 'all') {
         queryClient.invalidateQueries({ queryKey: ['phone-call-actions', 'in-progress', id] })
         queryClient.invalidateQueries({ queryKey: ['call-lists', id] })
@@ -125,6 +171,22 @@ export function OutreachCleanupPanel({ campaignId }: OutreachCleanupPanelProps) 
         queryClient.invalidateQueries({ queryKey: ['email-draft', 'in-progress', id] })
         queryClient.invalidateQueries({ queryKey: ['campaign-comms-drafts', Number(id)] })
         void refetchEmail()
+      }
+      if (scope === 'assessments' || scope === 'all') {
+        queryClient.invalidateQueries({ queryKey: ['campaign-activities', Number(id)] })
+        queryClient.invalidateQueries({ queryKey: ['campaign-activities', id] })
+        queryClient.invalidateQueries({ queryKey: ['campaign-activity-ratings'] })
+        queryClient.invalidateQueries({ queryKey: ['campaign-rating-summary', Number(id)] })
+        // Deleting assessments may cascade-delete linked task lists too.
+        queryClient.invalidateQueries({ queryKey: ['campaign-task-lists', Number(id)] })
+        queryClient.invalidateQueries({ queryKey: ['task-list-progress-batch', Number(id)] })
+        void refetchAssessments()
+        void refetchTaskLists()
+      }
+      if (scope === 'task_lists' || scope === 'all') {
+        queryClient.invalidateQueries({ queryKey: ['campaign-task-lists', Number(id)] })
+        queryClient.invalidateQueries({ queryKey: ['task-list-progress-batch', Number(id)] })
+        void refetchTaskLists()
       }
     },
     onError: (err) => {
@@ -143,11 +205,16 @@ export function OutreachCleanupPanel({ campaignId }: OutreachCleanupPanelProps) 
 
   const phoneCount = phoneActions.length
   const emailCount = emailDrafts.length
+  const assessmentCount = assessments.length
+  const taskListCount = taskLists.length
+  const totalCount = phoneCount + emailCount + assessmentCount + taskListCount
 
   const scopeLabel: Record<CleanupScope, string> = {
     phone_actions: 'all phone call actions and call lists',
     email_drafts: 'all email drafts and email lists',
-    all: 'all phone and email test data',
+    assessments: 'all assessments (including their ratings, linked task lists, and call attempt data)',
+    task_lists: 'all task lists (including items, leader tokens, and form events)',
+    all: 'all phone, email, assessment, and task list test data',
   }
 
   return (
@@ -157,105 +224,106 @@ export function OutreachCleanupPanel({ campaignId }: OutreachCleanupPanelProps) 
           <AccordionTrigger className="text-sm font-semibold py-3 hover:no-underline text-muted-foreground">
             <span className="flex items-center gap-2">
               <Trash2 className="h-4 w-4" />
-              Outreach Cleanup
-              {(phoneCount > 0 || emailCount > 0) && (
+              Test Data Cleanup
+              {totalCount > 0 && (
                 <Badge variant="secondary" className="text-xs font-normal">
-                  {phoneCount + emailCount} items
+                  {totalCount} items
                 </Badge>
               )}
             </span>
           </AccordionTrigger>
           <AccordionContent className="pb-4 space-y-4">
             <p className="text-xs text-muted-foreground">
-              Remove phone call actions and email drafts created during testing. This
-              permanently deletes the records and clears the in-progress banners.
+              Remove test data created during development. Each section shows what will be deleted.
+              Cascading deletes are handled automatically — see inline notes for details.
             </p>
 
             {/* Phone actions */}
-            <Card className="border-dashed">
-              <CardContent className="p-3 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Phone className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Phone Call Actions</span>
-                    <Badge variant="secondary" className="text-xs">{phoneCount}</Badge>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    disabled={phoneCount === 0 || cleanupMutation.isPending}
-                    onClick={() => setPendingScope('phone_actions')}
-                  >
-                    {cleanupMutation.isPending && cleanupMutation.variables === 'phone_actions' ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-3 w-3" />
-                    )}
-                    Delete All
-                  </Button>
-                </div>
-                {phoneActions.length > 0 ? (
-                  <div className="space-y-1 max-h-40 overflow-y-auto">
-                    {phoneActions.map((a) => (
-                      <div key={a.action_id} className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Badge
-                          variant={a.status === 'in_progress' ? 'warning' : 'secondary'}
-                          className="text-xs shrink-0"
-                        >
-                          {a.status}
-                        </Badge>
-                        <span className="truncate">{a.entry_branch}</span>
-                        <span className="shrink-0">{a.list_ids?.length ?? 0} list{(a.list_ids?.length ?? 0) !== 1 ? 's' : ''}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">No phone call actions found.</p>
-                )}
-              </CardContent>
-            </Card>
+            <CleanupSection
+              icon={<Phone className="h-4 w-4 text-muted-foreground" />}
+              label="Phone Call Actions"
+              count={phoneCount}
+              scope="phone_actions"
+              isPending={cleanupMutation.isPending}
+              pendingScope={cleanupMutation.variables}
+              onDelete={() => setPendingScope('phone_actions')}
+              note="Also removes all call lists, items, and attempt records for this campaign."
+            >
+              {phoneActions.map((a) => (
+                <ItemRow key={a.action_id}>
+                  <Badge variant={a.status === 'in_progress' ? 'warning' : 'secondary'} className="text-xs shrink-0">
+                    {a.status}
+                  </Badge>
+                  <span className="truncate">{a.entry_branch}</span>
+                  <span className="shrink-0 text-muted-foreground/70">{a.list_ids?.length ?? 0} list{(a.list_ids?.length ?? 0) !== 1 ? 's' : ''}</span>
+                </ItemRow>
+              ))}
+            </CleanupSection>
 
             {/* Email drafts */}
-            <Card className="border-dashed">
-              <CardContent className="p-3 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Email / Comms Drafts</span>
-                    <Badge variant="secondary" className="text-xs">{emailCount}</Badge>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    disabled={emailCount === 0 || cleanupMutation.isPending}
-                    onClick={() => setPendingScope('email_drafts')}
-                  >
-                    {cleanupMutation.isPending && cleanupMutation.variables === 'email_drafts' ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-3 w-3" />
-                    )}
-                    Delete All
-                  </Button>
-                </div>
-                {emailDrafts.length > 0 ? (
-                  <div className="space-y-1 max-h-40 overflow-y-auto">
-                    {emailDrafts.map((d) => (
-                      <div key={d.draft_id} className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Badge variant="secondary" className="text-xs shrink-0">{d.status}</Badge>
-                        <Badge variant="outline" className="text-xs shrink-0">{d.platform}</Badge>
-                        <span className="truncate">{d.title ?? d.subject ?? 'Untitled'}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">No email drafts found.</p>
-                )}
-              </CardContent>
-            </Card>
+            <CleanupSection
+              icon={<Mail className="h-4 w-4 text-muted-foreground" />}
+              label="Email / Comms Drafts"
+              count={emailCount}
+              scope="email_drafts"
+              isPending={cleanupMutation.isPending}
+              pendingScope={cleanupMutation.variables}
+              onDelete={() => setPendingScope('email_drafts')}
+              note="Also removes associated email lists and recipient items."
+            >
+              {emailDrafts.map((d) => (
+                <ItemRow key={d.draft_id}>
+                  <Badge variant="secondary" className="text-xs shrink-0">{d.status}</Badge>
+                  <Badge variant="outline" className="text-xs shrink-0">{d.platform}</Badge>
+                  <span className="truncate">{d.title ?? d.subject ?? 'Untitled'}</span>
+                </ItemRow>
+              ))}
+            </CleanupSection>
+
+            {/* Assessments */}
+            <CleanupSection
+              icon={<ClipboardList className="h-4 w-4 text-muted-foreground" />}
+              label="Assessments"
+              count={assessmentCount}
+              scope="assessments"
+              isPending={cleanupMutation.isPending}
+              pendingScope={cleanupMutation.variables}
+              onDelete={() => setPendingScope('assessments')}
+              note="Cascades: ratings, ambitions, linked task lists, call attempt assessment records. Phone action references are cleared first."
+            >
+              {assessments.map((a) => (
+                <ItemRow key={a.activity_id}>
+                  <span className="truncate font-medium">{a.title || 'Untitled assessment'}</span>
+                </ItemRow>
+              ))}
+            </CleanupSection>
+
+            {/* Task lists */}
+            <CleanupSection
+              icon={<ListTodo className="h-4 w-4 text-muted-foreground" />}
+              label="Task Lists"
+              count={taskListCount}
+              scope="task_lists"
+              isPending={cleanupMutation.isPending}
+              pendingScope={cleanupMutation.variables}
+              onDelete={() => setPendingScope('task_lists')}
+              note="Cascades: list items, leader tokens, form events. Worker list fire references are cleared first. Activity ratings written by leaders are not removed."
+            >
+              {taskLists.map((t) => (
+                <ItemRow key={t.task_list_id}>
+                  <Badge variant={t.status === 'active' ? 'success' : 'secondary'} className="text-xs shrink-0">
+                    {t.status}
+                  </Badge>
+                  <span className="truncate text-muted-foreground/70">id {t.task_list_id}</span>
+                  {t.activity_id && (
+                    <span className="shrink-0 text-muted-foreground/70">linked to activity {t.activity_id}</span>
+                  )}
+                </ItemRow>
+              ))}
+            </CleanupSection>
 
             {/* Delete all */}
-            {(phoneCount > 0 || emailCount > 0) && (
+            {totalCount > 0 && (
               <Button
                 variant="destructive"
                 size="sm"
@@ -268,7 +336,7 @@ export function OutreachCleanupPanel({ campaignId }: OutreachCleanupPanelProps) 
                 ) : (
                   <Trash2 className="h-4 w-4" />
                 )}
-                Delete All Phone & Email Data
+                Delete All Test Data
               </Button>
             )}
           </AccordionContent>
@@ -278,12 +346,11 @@ export function OutreachCleanupPanel({ campaignId }: OutreachCleanupPanelProps) 
       <AlertDialog open={pendingScope != null} onOpenChange={(open) => { if (!open) setPendingScope(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete outreach data?</AlertDialogTitle>
+            <AlertDialogTitle>Delete test data?</AlertDialogTitle>
             <AlertDialogDescription>
               This will permanently delete{' '}
               {pendingScope ? scopeLabel[pendingScope] : ''}{' '}
-              for this campaign. Call attempts, outcomes, and recipient lists will also be
-              removed. This cannot be undone.
+              for this campaign. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -299,5 +366,70 @@ export function OutreachCleanupPanel({ campaignId }: OutreachCleanupPanelProps) 
         </AlertDialogContent>
       </AlertDialog>
     </>
+  )
+}
+
+function CleanupSection({
+  icon,
+  label,
+  count,
+  scope,
+  isPending,
+  pendingScope,
+  onDelete,
+  note,
+  children,
+}: {
+  icon: React.ReactNode
+  label: string
+  count: number
+  scope: CleanupScope
+  isPending: boolean
+  pendingScope: CleanupScope | undefined
+  onDelete: () => void
+  note: string
+  children: React.ReactNode
+}) {
+  return (
+    <Card className="border-dashed">
+      <CardContent className="p-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {icon}
+            <span className="text-sm font-medium">{label}</span>
+            <Badge variant="secondary" className="text-xs">{count}</Badge>
+          </div>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={count === 0 || isPending}
+            onClick={onDelete}
+          >
+            {isPending && pendingScope === scope ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Trash2 className="h-3 w-3" />
+            )}
+            Delete All
+          </Button>
+        </div>
+        {count > 0 ? (
+          <div className="space-y-1 max-h-32 overflow-y-auto">
+            {children}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">No {label.toLowerCase()} found.</p>
+        )}
+        <p className="text-xs text-muted-foreground/70 italic">{note}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function ItemRow({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 text-xs text-muted-foreground py-0.5">
+      {children}
+    </div>
   )
 }

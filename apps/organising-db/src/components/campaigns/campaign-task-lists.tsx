@@ -17,7 +17,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Activity as ActivityIcon } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Activity as ActivityIcon, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   IssueLinkDialog,
   type IssueLinkResult,
@@ -91,6 +102,8 @@ export function CampaignTaskListsSection({
   // Phase 6 — slide-over progress panel.
   const [activityPanelTarget, setActivityPanelTarget] =
     useState<ActivityPanelTarget | null>(null);
+  const [taskListPendingDelete, setTaskListPendingDelete] =
+    useState<TaskListRow | null>(null);
 
   const { data: taskLists = [] } = useQuery({
     queryKey: ["campaign-task-lists", campaignId],
@@ -146,6 +159,32 @@ export function CampaignTaskListsSection({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-task-lists", campaignId] });
+    },
+  });
+
+  const deleteTaskList = useAuthAwareMutation({
+    mutationFn: async (taskListId: number) => {
+      const res = await fetchApi(
+        `/api/campaigns/${campaignId}/task-lists/${taskListId}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(
+          (j as { error?: string }).error ?? "Failed to delete task list"
+        );
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaign-task-lists", campaignId] });
+      queryClient.invalidateQueries({
+        queryKey: ["task-list-progress-batch", campaignId],
+      });
+      toast.success("Task list deleted");
+      setTaskListPendingDelete(null);
+    },
+    onError: (err) => {
+      toast.error((err as Error).message || "Failed to delete task list");
     },
   });
 
@@ -329,6 +368,18 @@ export function CampaignTaskListsSection({
                                 </Button>
                               </>
                             )}
+                            {canWrite && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="text-muted-foreground hover:text-destructive"
+                                title="Delete task list"
+                                onClick={() => setTaskListPendingDelete(row)}
+                              >
+                                <Trash2 size={14} />
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
                       );
@@ -414,6 +465,52 @@ export function CampaignTaskListsSection({
           if (!o) setActivityPanelTarget(null);
         }}
       />
+
+      <AlertDialog
+        open={taskListPendingDelete != null}
+        onOpenChange={(open) => {
+          if (!open && !deleteTaskList.isPending) setTaskListPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete task list?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {taskListPendingDelete?.status === "draft" ? (
+                <>
+                  This permanently removes the draft “
+                  {taskListPendingDelete?.title || "Untitled"}” and its assigned
+                  workers. This cannot be undone.
+                </>
+              ) : (
+                <>
+                  This permanently removes “
+                  {taskListPendingDelete?.title || "Untitled"}”, its assigned
+                  workers, and revokes any active leader links. Ratings already
+                  submitted on the linked activity are kept. This cannot be undone.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteTaskList.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteTaskList.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                if (taskListPendingDelete) {
+                  deleteTaskList.mutate(taskListPendingDelete.task_list_id);
+                }
+              }}
+            >
+              {deleteTaskList.isPending ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

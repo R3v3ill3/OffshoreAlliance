@@ -50,7 +50,7 @@ import { formatWorkerLabel } from "@/lib/workers/format-worker-label";
 import type { CampaignActivity } from "@/types/database";
 import { CampaignWorkerNameButton } from "./campaign-worker-detail-provider";
 import { CreateAssessmentDialog } from "./assessments/create-assessment-dialog";
-import { CreateTaskListDialog } from "./task-lists/create-task-list-dialog";
+import { CampaignTaskListsSection } from "./campaign-task-lists";
 import { AssessmentsTabCharts } from "./AssessmentsTabCharts";
 
 type PrimitiveValue = string | number | boolean | null;
@@ -127,7 +127,6 @@ export function CampaignAssessmentsSection({
   const supabase = createClient();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [taskListDialogOpen, setTaskListDialogOpen] = useState(false);
   const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null);
   const [activityPendingDelete, setActivityPendingDelete] = useState<CampaignActivity | null>(null);
 
@@ -603,9 +602,6 @@ export function CampaignAssessmentsSection({
           <CardTitle className="text-lg">Tasks & assessments</CardTitle>
           {canWrite && (
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => setTaskListDialogOpen(true)}>
-                New task list
-              </Button>
               <Button size="sm" onClick={() => setDialogOpen(true)}>
                 Add assessment
               </Button>
@@ -1020,6 +1016,12 @@ export function CampaignAssessmentsSection({
         </CardContent>
       </Card>
 
+      {/* Leader task lists — same data and management surface as the
+          Plan & Execution → Task Lists tab. Embedded here so tasks created
+          via any pathway (plan, wall-chart build list, phone call) can be
+          reviewed, edited, and deleted from the workforce assessments view. */}
+      <CampaignTaskListsSection campaignId={campaignId} canWrite={canWrite} />
+
       <Dialog open={seedDialogOpen} onOpenChange={setSeedDialogOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
@@ -1069,12 +1071,7 @@ export function CampaignAssessmentsSection({
         campaignId={campaignId}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-      />
-
-      <CreateTaskListDialog
-        campaignId={campaignId}
-        open={taskListDialogOpen}
-        onOpenChange={setTaskListDialogOpen}
+        lockKind="assessment"
       />
 
       <AlertDialog

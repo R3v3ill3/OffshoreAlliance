@@ -117,6 +117,8 @@ export function CampaignWorkerAssignmentPicker({
   onAssignPrimaryChange,
   unassignedFilterMode = "target",
   excludedWorkerIds,
+  excludedWorkerLabel,
+  showUnallocatedElsewhereFilter = false,
   compact = false,
   feedback,
 }: {
@@ -134,6 +136,8 @@ export function CampaignWorkerAssignmentPicker({
   unassignedFilterMode?: "target" | "any";
   /** Hide workers already committed to another draft target in the current flow. */
   excludedWorkerIds?: Set<number>;
+  excludedWorkerLabel?: string;
+  showUnallocatedElsewhereFilter?: boolean;
   compact?: boolean;
   feedback?: string | null;
 }) {
@@ -144,6 +148,7 @@ export function CampaignWorkerAssignmentPicker({
   const [roleFilter, setRoleFilter] = useState("__all__");
   const [membershipFilter, setMembershipFilter] = useState("__all__");
   const [showOnlyUnassigned, setShowOnlyUnassigned] = useState(true);
+  const [showOnlyUnallocatedElsewhere, setShowOnlyUnallocatedElsewhere] = useState(false);
   const [sortBy, setSortBy] = useState<"name" | "employer" | "worksite" | "role" | "unit_count">("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
@@ -266,6 +271,7 @@ export function CampaignWorkerAssignmentPicker({
       if (excludedWorkerIds?.has(worker.worker_id) && !selectedWorkerIds.has(worker.worker_id)) {
         return false;
       }
+      if (showOnlyUnallocatedElsewhere && worker.unit_count > 0) return false;
       if (loweredSearch && !worker.label.toLowerCase().includes(loweredSearch)) return false;
       return true;
     });
@@ -287,6 +293,7 @@ export function CampaignWorkerAssignmentPicker({
     rows,
     search,
     showOnlyUnassigned,
+    showOnlyUnallocatedElsewhere,
     sortBy,
     sortDir,
     excludedWorkerIds,
@@ -383,13 +390,29 @@ export function CampaignWorkerAssignmentPicker({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox
-              checked={showOnlyUnassigned}
-              onCheckedChange={(checked) => setShowOnlyUnassigned(checked === true)}
-            />
-            Show only unassigned workers
-          </label>
+          {!excludedWorkerLabel && (
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={showOnlyUnassigned}
+                onCheckedChange={(checked) => setShowOnlyUnassigned(checked === true)}
+              />
+              Show only unassigned workers
+            </label>
+          )}
+          {excludedWorkerLabel && (
+            <Badge variant="secondary" className="font-normal">
+              {excludedWorkerLabel}
+            </Badge>
+          )}
+          {showUnallocatedElsewhereFilter && (
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={showOnlyUnallocatedElsewhere}
+                onCheckedChange={(checked) => setShowOnlyUnallocatedElsewhere(checked === true)}
+              />
+              Unallocated elsewhere
+            </label>
+          )}
           {showPrimaryCheckbox && (
             <label className="flex items-center gap-2 text-sm">
               <Checkbox
@@ -430,6 +453,7 @@ export function CampaignWorkerAssignmentPicker({
       <div className={`rounded-md border overflow-auto ${compact ? "max-h-64" : "max-h-80"}`}>
         <div className="sticky top-0 z-10 border-b bg-muted/80 backdrop-blur px-3 py-2">
           <div className="flex flex-wrap items-center gap-2 text-xs">
+            <Badge variant="outline">{rows.length} total campaign workers</Badge>
             <Badge variant="secondary">{selectedCount} selected</Badge>
             <Badge variant="outline">{filteredWorkers.length} in view</Badge>
             <Badge variant={selectedAlreadyAssignedCount > 0 ? "warning" : "outline"}>

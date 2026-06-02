@@ -299,6 +299,16 @@ export function CreateOrganisingUnitDialog({
     }
     return ids;
   }, [activeAssignmentTarget?.key, allocatedDraftKeys, assignmentsByDraftKey, draftAssignmentTargets]);
+  const committedWorkerIdsInGroup = useMemo(() => {
+    const ids = new Set<number>();
+    for (const target of draftAssignmentTargets) {
+      if (!allocatedDraftKeys.has(target.key)) continue;
+      for (const workerId of assignmentsByDraftKey[target.key] ?? []) {
+        ids.add(workerId);
+      }
+    }
+    return ids;
+  }, [allocatedDraftKeys, assignmentsByDraftKey, draftAssignmentTargets]);
   const hasUnallocatedSelections = draftAssignmentTargets.some(
     (target) => (assignmentsByDraftKey[target.key]?.size ?? 0) > 0 && !allocatedDraftKeys.has(target.key)
   );
@@ -531,8 +541,16 @@ export function CreateOrganisingUnitDialog({
 
   function allocateActiveWorkers() {
     if (!activeAssignmentTarget) return;
-    const selectedCount = assignmentsByDraftKey[activeAssignmentTarget.key]?.size ?? 0;
-    if (selectedCount === 0) return;
+    const selected = assignmentsByDraftKey[activeAssignmentTarget.key] ?? new Set<number>();
+    const nextSelected = new Set(
+      [...selected].filter((workerId) => !committedWorkerIdsForOtherTargets.has(workerId))
+    );
+    if (nextSelected.size === 0) return;
+
+    setAssignmentsByDraftKey((prev) => ({
+      ...prev,
+      [activeAssignmentTarget.key]: nextSelected,
+    }));
 
     const nextAllocated = new Set(allocatedDraftKeys);
     nextAllocated.add(activeAssignmentTarget.key);
@@ -914,22 +932,42 @@ export function CreateOrganisingUnitDialog({
                     <Users className="h-4 w-4 text-muted-foreground" />
                     <p className="text-sm font-medium">Add workers to {activeAssignmentTarget.name}</p>
                   </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <Badge variant="secondary">
+                      {committedWorkerIdsInGroup.size} allocated in this group
+                    </Badge>
+                    <Badge variant="outline">
+                      {draftAssignmentTargets.length} unit
+                      {draftAssignmentTargets.length === 1 ? "" : "s"} in group
+                    </Badge>
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    Select workers for this unit, then click Allocate selected workers to save this unit&apos;s allocation before moving to the next unit.
+                    Select workers for this unit, then click Allocate selected workers to save this unit&apos;s allocation before moving to the next unit. Workers allocated to another unit in this new group are hidden by default.
                   </p>
                   <CampaignWorkerAssignmentPicker
                     key={activeAssignmentTarget.key}
                     campaignId={campaignId}
                     targetOuId={null}
                     selectedWorkerIds={assignmentsByDraftKey[activeAssignmentTarget.key] ?? new Set<number>()}
-                    onSelectedWorkerIdsChange={(next) =>
+                    onSelectedWorkerIdsChange={(next) => {
+                      const cleaned = new Set(
+                        [...next].filter((workerId) => !committedWorkerIdsForOtherTargets.has(workerId))
+                      );
                       setAssignmentsByDraftKey((prev) => ({
                         ...prev,
-                        [activeAssignmentTarget.key]: next,
-                      }))
-                    }
-                    unassignedFilterMode="any"
+                        [activeAssignmentTarget.key]: cleaned,
+                      }));
+                      setAllocatedDraftKeys((prev) => {
+                        if (!prev.has(activeAssignmentTarget.key)) return prev;
+                        const copy = new Set(prev);
+                        copy.delete(activeAssignmentTarget.key);
+                        return copy;
+                      });
+                    }}
+                    unassignedFilterMode="target"
                     excludedWorkerIds={committedWorkerIdsForOtherTargets}
+                    excludedWorkerLabel="Showing workers unallocated in this new group"
+                    showUnallocatedElsewhereFilter
                     compact
                   />
                   <div className="flex flex-wrap items-center gap-2">

@@ -288,7 +288,7 @@ export function WorkerTile({
   const tileStyle = isDelegate
     ? {
         backgroundImage:
-          "linear-gradient(rgba(15, 23, 42, 0.28), rgba(15, 23, 42, 0.28)), url('/heritage_Eurka_static.png')",
+          "linear-gradient(rgba(15, 23, 42, 0.4), rgba(15, 23, 42, 0.4)), url('/Eurekastd.png')",
         backgroundPosition: "center",
         backgroundSize: "cover",
       }
@@ -319,9 +319,15 @@ export function WorkerTile({
         className={cn(
           "w-full h-full text-left text-[11px] leading-tight p-1.5 rounded border min-h-[3.25rem] flex flex-col gap-0.5 justify-between",
           isDelegate ? "text-white shadow-sm" : ratingBgClass(colourSource),
-          isActivist ? "border-2 border-blue-900 dark:border-blue-400" : null,
+          isActivist && !(buildListMode && isSelected)
+            ? "border-2 border-blue-900 dark:border-blue-400"
+            : null,
           canWrite ? "cursor-pointer hover:opacity-90" : null,
-          isSelected ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : null
+          buildListMode && isSelected
+            ? "border-4 border-green-500"
+            : isSelected
+              ? "ring-2 ring-primary ring-offset-1 ring-offset-background"
+              : null
         )}
       >
         <div className="flex items-start justify-between gap-1 w-full">

@@ -432,6 +432,15 @@ export function useAddAmbition() {
       queryClient.invalidateQueries({
         queryKey: ['campaign-ambitions-by-stage', variables.campaign_id],
       })
+      queryClient.invalidateQueries({
+        queryKey: ['campaign-ambitions-assessable', String(variables.campaign_id)],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['campaign-assessments-rated', String(variables.campaign_id)],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['campaign-stage-plans-ambitions', String(variables.campaign_id)],
+      })
     },
   })
 }
@@ -476,6 +485,15 @@ export function useUpdateAmbition() {
       })
       queryClient.invalidateQueries({
         queryKey: ['campaign-ambitions-by-stage', variables.campaign_id],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['campaign-ambitions-assessable', String(variables.campaign_id)],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['campaign-assessments-rated', String(variables.campaign_id)],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['campaign-stage-plans-ambitions', String(variables.campaign_id)],
       })
     },
   })

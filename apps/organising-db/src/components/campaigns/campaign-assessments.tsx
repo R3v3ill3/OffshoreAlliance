@@ -50,6 +50,8 @@ import { formatWorkerLabel } from "@/lib/workers/format-worker-label";
 import type { CampaignActivity } from "@/types/database";
 import { CampaignWorkerNameButton } from "./campaign-worker-detail-provider";
 import { CreateAssessmentDialog } from "./assessments/create-assessment-dialog";
+import { ActivityAmbitionLinksPanel } from "./assessments/activity-ambition-links-panel";
+import { invalidateCampaignAmbitionCaches } from "@/lib/hooks/useCampaignAmbitionContext";
 import { CampaignTaskListsSection } from "./campaign-task-lists";
 import { AssessmentsTabCharts } from "./AssessmentsTabCharts";
 
@@ -194,7 +196,13 @@ export function CampaignAssessmentsSection({
     },
   });
 
-  const activityForRates = selectedActivityId ?? activities[0]?.activity_id ?? null;
+  const assessmentActivities = useMemo(
+    () => activities.filter((a) => a.activity_kind === "assessment"),
+    [activities]
+  );
+
+  const activityForRates =
+    selectedActivityId ?? assessmentActivities[0]?.activity_id ?? null;
 
   const { data: ratingsForActivity = [] } = useQuery({
     queryKey: ["campaign-activity-ratings", activityForRates],
@@ -256,6 +264,8 @@ export function CampaignAssessmentsSection({
       queryClient.invalidateQueries({
         queryKey: ["campaign-assessment-options", campaignId],
       });
+      queryClient.invalidateQueries({ queryKey: ["activity-ambition-links", activityId] });
+      invalidateCampaignAmbitionCaches(queryClient, campaignId);
       queryClient.invalidateQueries({ queryKey: ["campaign-activity-ratings"] });
       queryClient.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
       queryClient.removeQueries({ queryKey: ["activity-delete-impact", activityId] });
@@ -421,7 +431,9 @@ export function CampaignAssessmentsSection({
     });
   }, [members, ratingMap, summaryMap]);
 
-  const selectedActivity = activities.find((activity) => activity.activity_id === activityForRates);
+  const selectedActivity = assessmentActivities.find(
+    (activity) => activity.activity_id === activityForRates
+  );
 
   const availableFields = useMemo(() => {
     const keys = new Set<string>(CORE_ASSESSMENT_FIELDS);
@@ -615,11 +627,11 @@ export function CampaignAssessmentsSection({
           )}
         </CardHeader>
         <CardContent className="space-y-4">
-          {activities.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No activities yet.</p>
+          {assessmentActivities.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No assessments yet.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
-              {activities.map((activity) => (
+              {assessmentActivities.map((activity) => (
                 <div
                   key={activity.activity_id}
                   className="inline-flex items-stretch rounded-md border bg-background shadow-sm overflow-hidden"
@@ -657,6 +669,15 @@ export function CampaignAssessmentsSection({
                 </div>
               ))}
             </div>
+          )}
+
+          {activityForRates && selectedActivity && (
+            <ActivityAmbitionLinksPanel
+              campaignId={campaignId}
+              activityId={activityForRates}
+              activityTitle={selectedActivity.title}
+              canWrite={canWrite}
+            />
           )}
 
           <AssessmentsTabCharts campaignId={campaignId} />

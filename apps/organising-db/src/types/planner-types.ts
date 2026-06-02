@@ -90,12 +90,20 @@ export const STAGE_NAMES: Record<StageNumber, string> = {
  * bargaining_to_win    = Stages 7–11 (Bargaining to Win / B2W)
  * post_settlement      = After ratification (no active stage plans)
  */
-export type Phase = 'preparing_to_bargain' | 'bargaining_to_win' | 'post_settlement'
+export type Phase =
+  | 'preparing_to_bargain'
+  | 'bargaining_to_win'
+  | 'post_settlement'
+  | 'standalone_activities'
+
+/** Stage 0 — ambitions outside the P2W/B2W sequence. */
+export const STANDALONE_STAGE_NUMBER = 0 as const
 
 export const PHASE_NAMES: Record<Phase, string> = {
   preparing_to_bargain: 'Preparing to Bargain',
   bargaining_to_win: 'Bargaining to Win',
   post_settlement: 'Post Settlement',
+  standalone_activities: 'Standalone activities',
 }
 
 /**

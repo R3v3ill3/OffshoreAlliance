@@ -250,6 +250,12 @@ export function CampaignAssessmentsSection({
     },
     onSuccess: (_data, activityId) => {
       queryClient.invalidateQueries({ queryKey: ["campaign-activities", campaignId] });
+      queryClient.invalidateQueries({
+        queryKey: ["campaign-assessments-rated", campaignId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["campaign-assessment-options", campaignId],
+      });
       queryClient.invalidateQueries({ queryKey: ["campaign-activity-ratings"] });
       queryClient.invalidateQueries({ queryKey: ["campaign-rating-summary", campaignId] });
       queryClient.removeQueries({ queryKey: ["activity-delete-impact", activityId] });

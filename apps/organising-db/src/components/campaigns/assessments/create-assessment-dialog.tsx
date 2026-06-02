@@ -222,6 +222,14 @@ export function CreateAssessmentDialog({
       queryClient.invalidateQueries({
         queryKey: ["campaign-ambition-links", campaignId, activity_id],
       });
+      // Wall-chart rating selectors, assessment charts, and phone pickers use
+      // separate query keys from the activities list — refresh them immediately.
+      queryClient.invalidateQueries({
+        queryKey: ["campaign-assessments-rated", campaignId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["campaign-assessment-options", campaignId],
+      });
       toast.success("Assessment created");
       resetForm();
       onOpenChange(false);

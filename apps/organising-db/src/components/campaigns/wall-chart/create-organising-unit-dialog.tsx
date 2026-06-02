@@ -199,6 +199,7 @@ export function CreateOrganisingUnitDialog({
   const [placementAfterOuId, setPlacementAfterOuId] = useState("");
   const [activeAssignmentKey, setActiveAssignmentKey] = useState("");
   const [assignmentsByDraftKey, setAssignmentsByDraftKey] = useState<Record<string, Set<number>>>({});
+  const [allocatedDraftKeys, setAllocatedDraftKeys] = useState<Set<string>>(new Set());
 
   const { data: existingOus = [] } = useQuery<ExistingOu[]>({
     queryKey: ["campaign-ous-for-create-dialog", campaignId],
@@ -283,6 +284,23 @@ export function CreateOrganisingUnitDialog({
   const selectedAssignmentTotal = Object.values(assignmentsByDraftKey).reduce(
     (sum, selected) => sum + selected.size,
     0
+  );
+  const committedAssignmentTotal = draftAssignmentTargets.reduce((sum, target) => {
+    if (!allocatedDraftKeys.has(target.key)) return sum;
+    return sum + (assignmentsByDraftKey[target.key]?.size ?? 0);
+  }, 0);
+  const committedWorkerIdsForOtherTargets = useMemo(() => {
+    const ids = new Set<number>();
+    for (const target of draftAssignmentTargets) {
+      if (target.key === activeAssignmentTarget?.key || !allocatedDraftKeys.has(target.key)) continue;
+      for (const workerId of assignmentsByDraftKey[target.key] ?? []) {
+        ids.add(workerId);
+      }
+    }
+    return ids;
+  }, [activeAssignmentTarget?.key, allocatedDraftKeys, assignmentsByDraftKey, draftAssignmentTargets]);
+  const hasUnallocatedSelections = draftAssignmentTargets.some(
+    (target) => (assignmentsByDraftKey[target.key]?.size ?? 0) > 0 && !allocatedDraftKeys.has(target.key)
   );
 
   const invalidate = () => {
@@ -426,6 +444,7 @@ export function CreateOrganisingUnitDialog({
       }
 
       const assignmentRows = createdTargets.flatMap((target) => {
+        if (!allocatedDraftKeys.has(target.key)) return [];
         const selected = assignmentsByDraftKey[target.key] ?? new Set<number>();
         return [...selected].map((workerId) => ({
           ou_id: target.ouId,
@@ -477,6 +496,7 @@ export function CreateOrganisingUnitDialog({
     setPlacementAfterOuId("");
     setAssignmentsByDraftKey({});
     setActiveAssignmentKey("");
+    setAllocatedDraftKeys(new Set());
     resetGroupState();
   }
 
@@ -507,6 +527,24 @@ export function CreateOrganisingUnitDialog({
       setActiveAssignmentKey(draftAssignmentTargets[0].key);
     }
     setStep("workers");
+  }
+
+  function allocateActiveWorkers() {
+    if (!activeAssignmentTarget) return;
+    const selectedCount = assignmentsByDraftKey[activeAssignmentTarget.key]?.size ?? 0;
+    if (selectedCount === 0) return;
+
+    const nextAllocated = new Set(allocatedDraftKeys);
+    nextAllocated.add(activeAssignmentTarget.key);
+    setAllocatedDraftKeys(nextAllocated);
+
+    const nextTarget =
+      draftAssignmentTargets.find(
+        (target) => target.key !== activeAssignmentTarget.key && !nextAllocated.has(target.key)
+      ) ??
+      draftAssignmentTargets.find((target) => target.key !== activeAssignmentTarget.key) ??
+      activeAssignmentTarget;
+    setActiveAssignmentKey(nextTarget.key);
   }
 
   const isPending = createOrganisingUnits.isPending;
@@ -844,6 +882,7 @@ export function CreateOrganisingUnitDialog({
               {draftAssignmentTargets.map((target) => {
                 const selectedCount = assignmentsByDraftKey[target.key]?.size ?? 0;
                 const active = activeAssignmentTarget?.key === target.key;
+                const allocated = allocatedDraftKeys.has(target.key);
                 return (
                   <button
                     key={target.key}
@@ -853,7 +892,14 @@ export function CreateOrganisingUnitDialog({
                       active ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"
                     }`}
                   >
-                    <span className="block font-medium">{target.name}</span>
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="block font-medium">{target.name}</span>
+                      {allocated && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          Allocated
+                        </Badge>
+                      )}
+                    </span>
                     <span className={active ? "text-primary-foreground/80" : "text-muted-foreground"}>
                       {selectedCount} selected
                     </span>
@@ -868,6 +914,9 @@ export function CreateOrganisingUnitDialog({
                     <Users className="h-4 w-4 text-muted-foreground" />
                     <p className="text-sm font-medium">Add workers to {activeAssignmentTarget.name}</p>
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Select workers for this unit, then click Allocate selected workers to save this unit&apos;s allocation before moving to the next unit.
+                  </p>
                   <CampaignWorkerAssignmentPicker
                     key={activeAssignmentTarget.key}
                     campaignId={campaignId}
@@ -880,8 +929,23 @@ export function CreateOrganisingUnitDialog({
                       }))
                     }
                     unassignedFilterMode="any"
+                    excludedWorkerIds={committedWorkerIdsForOtherTargets}
                     compact
                   />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      onClick={allocateActiveWorkers}
+                      disabled={(assignmentsByDraftKey[activeAssignmentTarget.key]?.size ?? 0) === 0}
+                    >
+                      Allocate selected workers
+                    </Button>
+                    {allocatedDraftKeys.has(activeAssignmentTarget.key) && (
+                      <p className="text-xs text-muted-foreground">
+                        Saved for {activeAssignmentTarget.name}. You can still change the selection and allocate again.
+                      </p>
+                    )}
+                  </div>
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">Set up a unit before assigning workers.</p>
@@ -921,8 +985,11 @@ export function CreateOrganisingUnitDialog({
               </ul>
             </div>
             <p className="text-xs text-muted-foreground">
-              {selectedAssignmentTotal} worker assignment
-              {selectedAssignmentTotal === 1 ? "" : "s"} will be added after the units are created.
+              {committedAssignmentTotal} allocated worker assignment
+              {committedAssignmentTotal === 1 ? "" : "s"} will be added after the units are created.
+              {selectedAssignmentTotal > committedAssignmentTotal
+                ? " Some selected workers have not been allocated yet."
+                : ""}
             </p>
           </div>
         )}
@@ -971,7 +1038,12 @@ export function CreateOrganisingUnitDialog({
           )}
 
           {step === "workers" && (
-            <Button type="button" disabled={isPending} onClick={() => setStep("review")}>
+            <Button
+              type="button"
+              disabled={isPending || hasUnallocatedSelections}
+              onClick={() => setStep("review")}
+              title={hasUnallocatedSelections ? "Allocate selected workers before reviewing" : undefined}
+            >
               Next: review
             </Button>
           )}

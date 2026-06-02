@@ -116,6 +116,7 @@ export function CampaignWorkerAssignmentPicker({
   assignPrimary = false,
   onAssignPrimaryChange,
   unassignedFilterMode = "target",
+  excludedWorkerIds,
   compact = false,
   feedback,
 }: {
@@ -131,6 +132,8 @@ export function CampaignWorkerAssignmentPicker({
    * `any` is better for pre-create wizard drafts: hide workers already in any OU.
    */
   unassignedFilterMode?: "target" | "any";
+  /** Hide workers already committed to another draft target in the current flow. */
+  excludedWorkerIds?: Set<number>;
   compact?: boolean;
   feedback?: string | null;
 }) {
@@ -260,6 +263,9 @@ export function CampaignWorkerAssignmentPicker({
       ) {
         return false;
       }
+      if (excludedWorkerIds?.has(worker.worker_id) && !selectedWorkerIds.has(worker.worker_id)) {
+        return false;
+      }
       if (loweredSearch && !worker.label.toLowerCase().includes(loweredSearch)) return false;
       return true;
     });
@@ -283,6 +289,8 @@ export function CampaignWorkerAssignmentPicker({
     showOnlyUnassigned,
     sortBy,
     sortDir,
+    excludedWorkerIds,
+    selectedWorkerIds,
     unassignedFilterMode,
     worksiteFilter,
   ]);

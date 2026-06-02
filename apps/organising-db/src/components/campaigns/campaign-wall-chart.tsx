@@ -1790,6 +1790,15 @@ export function CampaignWallChart({
         onOpenChange={setCreateUnitOpen}
         campaignId={campaignId}
         displayOrder={nextDisplayOrder}
+        onCreated={(focusOuId) => {
+          window.setTimeout(() => {
+            const el = document.querySelector<HTMLElement>(`[data-ou-id="${focusOuId}"]`);
+            if (!el) return;
+            el.scrollIntoView({ behavior: "smooth", block: "start" });
+            setHighlightedOuId(focusOuId);
+            window.setTimeout(() => setHighlightedOuId(null), 2500);
+          }, 250);
+        }}
       />
 
       {/* CreateAssessmentDialog is mounted in the campaign page so the

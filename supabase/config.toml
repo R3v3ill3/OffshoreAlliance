@@ -1,0 +1,20 @@
+# Supabase CLI configuration.
+#
+# IMPORTANT — DEPLOYMENT MODEL (read before changing):
+# This project uses TWO SEPARATE Supabase projects, NOT Supabase Branching:
+#   - PRODUCTION : gteygwfgjvczanmrwgbr  (git: main  -> Vercel Production)
+#   - DEVELOPMENT: dpnnmkhabysfdogllsyh  (git: develop -> Vercel Preview)
+#
+# Migrations are applied MANUALLY via `supabase db push` against each project
+# (see docs/DEV_PROD_ENVIRONMENT.md). Do NOT reconnect the Supabase GitHub
+# "Branching" integration — replaying this migration history from zero fails and
+# previously corrupted the production branch's migration status.
+#
+# `project_id` below is only a LOCAL label for the Supabase CLI; the remote
+# project is selected explicitly with `supabase link --project-ref <ref>`.
+
+project_id = "offshore-alliance"
+
+[db]
+# Match the hosted Postgres major version (prod & dev are both Postgres 17).
+major_version = 17

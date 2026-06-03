@@ -5,8 +5,8 @@ import { useState, useEffect, useRef, Suspense, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { AuthProvider } from "@/lib/supabase/auth-context";
 import { DeviceProvider } from "@/contexts/device-context";
-import { createClient, coordinatedRefreshSession, getSessionWithTimeout, resetClient } from "@/lib/supabase/client";
-import { forceLogoutToLogin, isLikelyAuthError, recoverSessionConnection } from "@/lib/supabase/session-recovery";
+import { resetClient, refreshSessionViaServer, getKnownExpiryMs } from "@/lib/supabase/client";
+import { forceLogoutToLogin, isLikelyAuthError } from "@/lib/supabase/session-recovery";
 import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
 import { logCookieDiagnostic } from "@/lib/supabase/cookie-diagnostics";
 import { installDiagnosticShims } from "@/lib/supabase/diagnostics-shim";
@@ -27,10 +27,15 @@ function isNonRetryableStatus(error: unknown): boolean {
 
 export function Providers({ children, isMobile }: { children: ReactNode; isMobile: boolean }) {
   const pathname = usePathname();
-  // The /call/ route family uses cookie-based share sessions, not Supabase
-  // auth. Running auth heartbeats or visibility-change getSession calls here
-  // only produces lock_timeout noise when the OS Phone app steals focus.
-  const isShareDialerRoute = pathname?.startsWith("/call/") ?? false;
+  // Routes that do NOT use a Supabase user session. The /call/ and /leader/task
+  // families use cookie-based share sessions; /login and /auth are pre-auth.
+  // Running the auth heartbeat / visibility refresh on these only produces
+  // noise (and, on /login, would loop a no-session server refresh).
+  const isUnauthRoute =
+    (pathname?.startsWith("/call/") ?? false) ||
+    (pathname?.startsWith("/leader/task") ?? false) ||
+    (pathname?.startsWith("/login") ?? false) ||
+    (pathname?.startsWith("/auth") ?? false);
 
   const [queryClient] = useState(() => {
     const client = new QueryClient({
@@ -47,20 +52,28 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
             if (queryCacheRecoveryGuard.inProgress) return;
             queryCacheRecoveryGuard.inProgress = true;
 
-            coordinatedRefreshSession("query-cache-onError")
-              .then(({ data, error: refreshError }) => {
-                if (!refreshError && data.session) {
-                  logConnectionEvent({ type: "token_refresh_ok", detail: "query-cache soft refresh" });
+            // Recover via the SERVER (reliable cookie refresh) rather than a
+            // client-side refresh, which can hang and produce lock_timeouts.
+            refreshSessionViaServer("query-cache-onError")
+              .then((result) => {
+                if (result.ok) {
+                  logConnectionEvent({ type: "token_refresh_ok", detail: "query-cache server refresh" });
                   return client.invalidateQueries();
                 }
+                if (result.reason === "no_session") {
+                  logConnectionEvent({ type: "token_refresh_fail", detail: "query-cache server refresh: no session" });
+                  forceLogoutToLogin("refresh_failed");
+                  return;
+                }
+                // Transient (timeout / network) — do NOT log out; the next
+                // query retry or the heartbeat will recover.
                 logConnectionEvent({
                   type: "token_refresh_fail",
-                  detail: `query-cache refresh failed: ${refreshError?.message ?? "no session"}`,
+                  detail: `query-cache server refresh transient: ${result.reason}`,
                 });
-                forceLogoutToLogin("refresh_failed");
               })
               .catch(() => {
-                logConnectionEvent({ type: "token_refresh_fail", detail: "query-cache refresh exception" });
+                logConnectionEvent({ type: "token_refresh_fail", detail: "query-cache server refresh exception" });
               })
               .finally(() => {
                 queryCacheRecoveryGuard.inProgress = false;
@@ -92,9 +105,12 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
   }, []);
 
   useEffect(() => {
-    if (isShareDialerRoute) return;
+    if (isUnauthRoute) return;
 
-    const TOKEN_NEAR_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
+    // Refresh on focus when the token is within this window of expiry (or when
+    // we don't yet know the expiry). A quick tab-switch with a comfortably
+    // fresh token does NOTHING — no network, no client getSession.
+    const VISIBILITY_REFRESH_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 
     const visHandler = async () => {
       logConnectionEvent({
@@ -107,116 +123,41 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
       // Diagnostic: log cookie state on every tab focus
       logCookieDiagnostic("visibility-return");
 
-      // p2: mark that a visibility-triggered auth probe is happening now, so the
-      // 60s heartbeat skips its own getSession during the post-focus burst.
+      // Mark the visibility probe time so the 60s heartbeat skips its own check
+      // during the post-focus window.
       lastVisibilityCheckAtRef.current = Date.now();
 
-      // Proactively refresh the session when the user returns to the tab.
-      // The browser may have throttled the Supabase background refresh timer
-      // while the tab was hidden, leaving the token expired or close to expiry.
-      try {
-        const { session, timedOut } = await getSessionWithTimeout("visibility");
-
-        if (timedOut) {
-          // getSession exceeded the 12s budget. This is most often a sibling
-          // tab racing the same refresh — both tabs hit Supabase's auth
-          // service simultaneously, one wins, the other queues and is slow.
-          //
-          // CRITICAL: do NOT escalate to forceLogoutToLogin here. The
-          // underlying auth call may still complete after we've timed out;
-          // queries already running in this tab use the cached access token
-          // in headers and remain functional. If the cached token is
-          // genuinely invalid, the next real query will get a 401 and our
-          // existing query-cache recovery path handles it cleanly.
-          //
-          // handleLockTimeout records the timeout and, after repeated timeouts,
-          // runs the reset-then-reload ladder (never force-logout).
-          handleLockTimeout("visibility");
-          return;
-        }
-
-        if (!session) {
-          // Genuine null session (getSession returned null without timing
-          // out). This is a real session-loss signal — try to recover, and
-          // only force-logout on confirmed refresh failure.
-          logConnectionEvent({ type: "session_lost", detail: "visibility-null-session" });
-          logCookieDiagnostic("visibility-null-session");
-
-          try {
-            const { data, error } = await coordinatedRefreshSession("visibility-null-session");
-            if (error || !data.session) {
-              const result = await recoverSessionConnection({
-                supabase: createClient(),
-                queryClient,
-                source: "manual",
-                reloadOnSuccess: false,
-                redirectOnFailure: false,
-                validateWorkloadAccess: false,
-              });
-              if (result.ok) {
-                resetRecoveryFailureBudgets();
-                logConnectionEvent({ type: "token_refresh_ok", detail: "visibility null session recovered via full recovery" });
-                queryClient.invalidateQueries();
-                return;
-              }
-              const escalate = shouldEscalateVisibilityFailure();
-              logConnectionEvent({
-                type: "token_refresh_fail",
-                detail: `visibility null session unresolved (${result.reasonCode}); escalation=${escalate}`,
-              });
-              if (escalate) {
-                forceLogoutToLogin(result.reasonCode || "session_expired");
-              }
-            } else {
-              resetRecoveryFailureBudgets();
-              logConnectionEvent({ type: "token_refresh_ok", detail: "visibility null session recovered" });
-              queryClient.invalidateQueries();
-            }
-          } catch {
-            const escalate = shouldEscalateVisibilityFailure();
-            logConnectionEvent({
-              type: "token_refresh_fail",
-              detail: `visibility null session — exception; escalation=${escalate}`,
-            });
-            if (escalate) {
-              forceLogoutToLogin("session_check_error");
-            }
-          }
-          return;
-        }
-
+      // Decide CHEAPLY whether a refresh is needed. We deliberately do NOT call
+      // the client's getSession() here: near expiry it fires an in-line network
+      // token refresh that stalls after the tab wakes (the lock_timeout
+      // cascade). Instead we read the last-known expiry and, if stale, refresh
+      // via the SERVER — the reliable path.
+      const expMs = getKnownExpiryMs();
+      const needsRefresh = expMs === null || expMs - Date.now() < VISIBILITY_REFRESH_WINDOW_MS;
+      if (!needsRefresh) {
         resetRecoveryFailureBudgets();
-
-        const expiresAtMs = (session.expires_at ?? 0) * 1000;
-        const now = Date.now();
-
-        if (expiresAtMs - now < TOKEN_NEAR_EXPIRY_MS) {
-          logConnectionEvent({ type: "token_refresh_ok", detail: "proactive visibility refresh" });
-          coordinatedRefreshSession("visibility-refresh");
-        }
-      } catch {
-        // best effort — failure here is non-fatal; normal recovery paths still apply
+        return;
       }
+
+      await runServerRefresh("visibility");
     };
 
     document.addEventListener("visibilitychange", visHandler);
     return () => document.removeEventListener("visibilitychange", visHandler);
-  }, [queryClient]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryClient, isUnauthRoute]);
 
-  // Fix 7: Auth session heartbeat — periodic probe to detect silent auth failures.
-  // When the auth token expires but the Supabase client silently uses it, queries
-  // return empty results (RLS blocks access for the 'anon' role) with no errors.
-  // This heartbeat detects that condition by checking if the user_profiles query
-  // returns the expected row for the current user.
+  // Refs backing the auth heartbeat + recovery budgets.
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Consecutive `no_session` responses from the server refresh, per source.
+  // Require 2 in a row before redirecting to login (one can be transient).
   const visibilityNullSessionFailuresRef = useRef(0);
   const heartbeatRecoveryFailuresRef = useRef(0);
-  // Consecutive auth-lock timeouts (getSession via visibility/heartbeat) with no
-  // healthy session in between. Drives the reset-then-reload recovery ladder.
+  // Consecutive transient server-refresh failures with no success in between.
+  // Drives the soft-reload recovery ladder.
   const consecutiveLockTimeoutsRef = useRef(0);
-  // Timestamp of the last visibility-triggered getSession, so the heartbeat can
-  // skip its own probe during the post-focus burst window (reduces lock pressure
-  // at exactly the moment the deadlock tends to form).
+  // Timestamp of the last visibility-triggered refresh, so the heartbeat can
+  // skip its own refresh during the post-focus window.
   const lastVisibilityCheckAtRef = useRef(0);
   // Guards the recovery ladder so heartbeat + visibility can't run it twice.
   const lockRecoveryInProgressRef = useRef(false);
@@ -237,10 +178,10 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
     return heartbeatRecoveryFailuresRef.current >= 2;
   };
 
-  // Number of consecutive lock timeouts before we attempt automatic recovery.
-  // 1 could be a transient cross-tab refresh race; 2 (~2 min at the 60s
-  // heartbeat) indicates the auth client is genuinely deadlocked.
-  const LOCK_TIMEOUT_ESCALATION_THRESHOLD = 2;
+  // Number of consecutive transient server-refresh failures before we attempt
+  // automatic recovery. The server refresh itself times out at 8s, so 3
+  // consecutive failures indicates a genuine problem (not a one-off blip).
+  const SERVER_REFRESH_FAILURE_THRESHOLD = 3;
 
   /**
    * Last-resort recovery from a stuck auth lock. A soft reload re-initialises
@@ -272,35 +213,43 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
   };
 
   /**
-   * Reset-then-reload recovery ladder for the auth-lock deadlock:
-   *   1. resetClient() — a fresh GoTrueClient clears the stuck `lockAcquired`
-   *      flag; probe once with a bounded getSession.
-   *   2. If still unhealthy, soft reload (preserves session, no logout).
-   * NEVER force-logs-out: a lock timeout is not a confirmed session loss.
+   * Recovery ladder, SERVER-FIRST. Used only when the normal server refresh has
+   * failed repeatedly:
+   *   1. resetClient() — drop a fresh GoTrueClient (clears any jammed in-memory
+   *      auth lock that a soft reload would otherwise be needed to clear).
+   *   2. refreshSessionViaServer() — the reliable cookie-based refresh.
+   *   3. If the server path itself fails, soft reload (re-inits JS + lets the
+   *      middleware refresh the cookie on the reloaded request).
+   * NEVER force-logs-out on a transient failure: a refresh timeout is not a
+   * confirmed session loss. Only a confirmed `no_session` redirects to login.
    */
   const attemptLockDeadlockRecovery = async (source: string) => {
     if (lockRecoveryInProgressRef.current) return;
     lockRecoveryInProgressRef.current = true;
     try {
-      logConnectionEvent({ type: "recovery_start", detail: `lock-deadlock (${source}): in-place client reset` });
+      logConnectionEvent({ type: "recovery_start", detail: `auth-recovery (${source}): client reset + server refresh` });
       resetClient();
-      const { session, timedOut } = await getSessionWithTimeout("lock-deadlock-recovery");
-      if (!timedOut && session?.user) {
-        consecutiveLockTimeoutsRef.current = 0;
-        logConnectionEvent({ type: "session_recovered", detail: "lock-deadlock: recovered via client reset (no reload)" });
+      const result = await refreshSessionViaServer(`recovery:${source}`);
+      if (result.ok) {
+        resetRecoveryFailureBudgets();
         await queryClient.invalidateQueries();
-        logConnectionEvent({ type: "recovery_end", detail: "lock-deadlock: in-place success" });
+        logConnectionEvent({ type: "recovery_end", detail: `auth-recovery (${source}): server refresh restored session` });
+        return;
+      }
+      if (result.reason === "no_session") {
+        logConnectionEvent({ type: "recovery_end", detail: `auth-recovery (${source}): server reports no session — redirecting` });
+        forceLogoutToLogin("session_expired");
         return;
       }
       logConnectionEvent({
         type: "recovery_end",
-        detail: `lock-deadlock: client reset insufficient (timedOut=${timedOut}) — escalating to soft reload`,
+        detail: `auth-recovery (${source}): server refresh failed (${result.reason}) — escalating to soft reload`,
       });
       softReloadForLockDeadlock();
     } catch (err) {
       logConnectionEvent({
         type: "recovery_end",
-        detail: `lock-deadlock: recovery exception — ${err instanceof Error ? err.message : String(err)}`,
+        detail: `auth-recovery (${source}): exception — ${err instanceof Error ? err.message : String(err)}`,
       });
       softReloadForLockDeadlock();
     } finally {
@@ -309,100 +258,72 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
   };
 
   /**
-   * Records a lock timeout and triggers the recovery ladder once we've seen
-   * enough consecutive timeouts to be confident the auth client is deadlocked.
-   * Replaces the old "log and bail forever" behaviour that left the user stuck
-   * until they manually hit Full Reset (which logged them out).
+   * Shared refresh path for the visibility handler and heartbeat. Refreshes the
+   * session via the SERVER and branches on the tagged result:
+   *   ok          → clear failure budgets, invalidate queries (refetch fresh).
+   *   no_session  → genuine logout candidate; redirect only after 2 in a row.
+   *   transient   → count it; escalate to the recovery ladder after a few.
+   * NEVER hangs the UI: refreshSessionViaServer is bounded at 8s and never
+   * throws.
    */
-  const handleLockTimeout = (source: string) => {
+  const runServerRefresh = async (source: "visibility" | "heartbeat") => {
+    const result = await refreshSessionViaServer(source);
+
+    if (result.ok) {
+      resetRecoveryFailureBudgets();
+      logConnectionEvent({ type: "token_refresh_ok", detail: `server refresh ok (${source})` });
+      queryClient.invalidateQueries();
+      return;
+    }
+
+    if (result.reason === "no_session") {
+      logConnectionEvent({ type: "session_lost", detail: `server refresh: no session (${source})` });
+      const escalate =
+        source === "visibility" ? shouldEscalateVisibilityFailure() : shouldEscalateHeartbeatFailure();
+      if (escalate) forceLogoutToLogin("session_expired");
+      return;
+    }
+
+    // Transient (timeout / network / http / error) — do NOT log out.
     consecutiveLockTimeoutsRef.current += 1;
     logConnectionEvent({
-      type: "lock_timeout",
-      detail: `${source}-getSession-timeout (consecutive=${consecutiveLockTimeoutsRef.current})`,
+      type: "network_error",
+      detail: `server refresh transient (${source}, ${result.reason}); consecutive=${consecutiveLockTimeoutsRef.current}`,
     });
-    if (consecutiveLockTimeoutsRef.current >= LOCK_TIMEOUT_ESCALATION_THRESHOLD) {
+    if (consecutiveLockTimeoutsRef.current >= SERVER_REFRESH_FAILURE_THRESHOLD) {
       void attemptLockDeadlockRecovery(source);
     }
   };
+  // Auth session heartbeat — keeps the token fresh PROACTIVELY so it never
+  // expires silently (which used to make RLS return empty results, or make the
+  // next getSession() fire a hanging client-side refresh). It checks the
+  // last-known expiry locally and only refreshes — via the SERVER — when the
+  // token is close to expiry. No client getSession(), no per-tick network call
+  // while the token is healthy.
   useEffect(() => {
-    if (isShareDialerRoute) return;
+    if (isUnauthRoute) return;
 
     const HEARTBEAT_INTERVAL_MS = 60_000; // every 60 seconds
-    // p2: skip the heartbeat getSession if the visibility handler ran one within
-    // this window (avoids stacking concurrent auth ops onto the lock at focus).
+    // Skip the heartbeat refresh if the visibility handler just ran one.
     const HEARTBEAT_VISIBILITY_DEDUPE_MS = 10_000;
+    // Refresh when the token is within this window of expiry.
+    const HEARTBEAT_REFRESH_AHEAD_MS = 4 * 60 * 1000; // 4 minutes
 
     const heartbeat = async () => {
       try {
-        // p2: never probe auth while the tab is hidden. Throttled background
-        // getSession calls are the likely trigger for the lock orphan, and a
-        // hidden tab has nothing to render anyway.
+        // Never probe while hidden — a hidden tab has nothing to render, and
+        // background timer throttling is what historically orphaned auth ops.
         if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
 
-        // p2: don't duplicate a visibility-triggered getSession burst.
+        // Don't duplicate a visibility-triggered refresh burst.
         if (Date.now() - lastVisibilityCheckAtRef.current < HEARTBEAT_VISIBILITY_DEDUPE_MS) return;
 
-        const { session, timedOut } = await getSessionWithTimeout("heartbeat");
-        if (timedOut) {
-          // Auth client is stuck — record + run the reset-then-reload ladder
-          // (never force-logout). The old behaviour just logged and looped
-          // forever until the user manually nuke-reset (which logged them out).
-          handleLockTimeout("heartbeat");
-          return;
-        }
-        if (!session?.user) return; // Not logged in — nothing to check
+        // Cheap no-op while the token still has comfortable life left — NO
+        // network and NO client getSession (which is what used to hang).
+        const expMs = getKnownExpiryMs();
+        if (expMs !== null && expMs - Date.now() > HEARTBEAT_REFRESH_AHEAD_MS) return;
 
-        // Healthy getSession — the lock is working; clear the deadlock counter.
-        consecutiveLockTimeoutsRef.current = 0;
-
-        const supabase = createClient();
-        const { data, error } = await supabase
-          .from("user_profiles")
-          .select("user_id")
-          .eq("user_id", session.user.id)
-          .maybeSingle();
-
-        if (!error && !data) {
-          // Query succeeded (no error) but returned 0 rows for our own profile.
-          // This means the token is expired/invalid and RLS is silently blocking.
-          logConnectionEvent({
-            type: "api_error",
-            detail: "heartbeat: profile query returned null — likely auth failure",
-          });
-          logCookieDiagnostic("heartbeat-null-profile");
-
-          // Attempt recovery
-          const { data: refreshData, error: refreshError } =
-            await coordinatedRefreshSession("heartbeat-auth-failure");
-          if (refreshError || !refreshData.session) {
-            const result = await recoverSessionConnection({
-              supabase,
-              queryClient,
-              source: "query-cache-auth-error",
-              reloadOnSuccess: false,
-              redirectOnFailure: false,
-              validateWorkloadAccess: false,
-            });
-            if (result.ok) {
-              resetRecoveryFailureBudgets();
-              logConnectionEvent({ type: "token_refresh_ok", detail: "heartbeat recovery succeeded via full recovery" });
-              queryClient.invalidateQueries();
-              return;
-            }
-            const escalate = shouldEscalateHeartbeatFailure();
-            logConnectionEvent({
-              type: "token_refresh_fail",
-              detail: `heartbeat recovery unresolved (${result.reasonCode}); escalation=${escalate}`,
-            });
-            if (escalate) {
-              forceLogoutToLogin(result.reasonCode || "refresh_failed");
-            }
-          } else {
-            resetRecoveryFailureBudgets();
-            logConnectionEvent({ type: "token_refresh_ok", detail: "heartbeat recovery succeeded" });
-            queryClient.invalidateQueries();
-          }
-        }
+        await runServerRefresh("heartbeat");
       } catch {
         // best effort — don't let heartbeat failures cascade
       }
@@ -412,7 +333,8 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
     return () => {
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
     };
-  }, [queryClient]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryClient, isUnauthRoute]);
 
   useEffect(() => {
     const STORAGE_KEY = "oa:last-server-action-mismatch-reload-at";

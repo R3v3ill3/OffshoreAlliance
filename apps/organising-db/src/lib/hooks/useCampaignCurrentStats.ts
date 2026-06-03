@@ -128,9 +128,6 @@ export function useCampaignCurrentStats(campaignId: number | string) {
         .eq('campaign_id', cid)
       if (error) throw error
       const rows = (data ?? []) as MemberRow[]
-      // #region agent log
-      fetch('http://127.0.0.1:7485/ingest/91b5d340-cda7-4f2d-9be2-7828537c993f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3dd855'},body:JSON.stringify({sessionId:'3dd855',location:'useCampaignCurrentStats.ts:members-queryFn',message:'current-stats fetched campaign-members (partial worker join)',data:{campaignId:cid,rowCount:rows.length,hasWorkerJoin:rows[0]?.worker!=null,selectShape:'partial-no-names'},timestamp:Date.now(),hypothesisId:'H1-H4'})}).catch(()=>{});
-      // #endregion
       return rows
     },
     staleTime: 30_000,

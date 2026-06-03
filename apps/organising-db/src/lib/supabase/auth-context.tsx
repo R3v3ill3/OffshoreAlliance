@@ -3,13 +3,12 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
-import { createClient, getSessionWithTimeout, coordinatedRefreshSession, withAuthOpTimeout, resetClient, isAuthLockTimeout } from "@/lib/supabase/client";
+import { createClient, getSessionWithTimeout, resetClient, refreshSessionViaServer, setKnownExpiry } from "@/lib/supabase/client";
 import {
   performRobustSignOut,
   recoverSessionConnection,
   isIntentionalSignOut,
   forceLogoutToLogin,
-  isLikelyAuthError,
   type SessionRecoveryResult,
 } from "@/lib/supabase/session-recovery";
 import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
@@ -133,8 +132,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Two attempts with a 350 ms gap between them. getSessionWithTimeout
       // adds a 12 s ceiling per attempt so a stuck auth client can't hold
       // the loading state forever. On timeout, we fall through to a
-      // coordinatedRefreshSession fallback (see below) rather than
-      // force-logging out — a timeout is not a confirmed session loss.
+      // SERVER refresh fallback (see below) rather than force-logging out —
+      // a timeout is not a confirmed session loss.
       let getSessionSession: Awaited<ReturnType<typeof getSessionWithTimeout>>["session"] = null;
       let getSessionTimedOut = false;
       let getSessionError: unknown = null;
@@ -157,69 +156,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       try {
         if (getSessionTimedOut) {
-          // getSession timed out on both attempts. This can happen during a
-          // Vercel cold start or when Supabase auth is under load. A timeout
-          // is NOT a confirmed session loss — the underlying call may still
-          // complete. Unlike a null session (definitive logout signal), we
-          // should not force-logout here.
+          // getSession timed out on both attempts. This happens when the
+          // client's in-line token refresh stalls (cold network after wake,
+          // Vercel cold start, Supabase under load). A timeout is NOT a
+          // confirmed session loss.
           //
-          // Strategy: try coordinatedRefreshSession as a fallback. This
-          // matches the visibility handler in providers.tsx which bails
-          // without force-logout on getSession timeout.
-          logConnectionEvent({ type: "lock_timeout", detail: "auth init: getSession timed out — attempting refresh fallback" });
-          try {
-            const refreshResult = await withAuthOpTimeout(
-              "auth-context-init-fallback",
-              coordinatedRefreshSession("auth-context-init-fallback"),
-            );
-            if (!refreshResult.error && refreshResult.data.session) {
-              // Refresh succeeded — proceed with the recovered session.
-              const recoveredUser = refreshResult.data.session.user;
+          // Strategy: refresh via the SERVER (reliable cookie path), then read
+          // the now-fresh session from a reset client. This avoids the
+          // client-side refresh that just hung.
+          logConnectionEvent({ type: "lock_timeout", detail: "auth init: getSession timed out — attempting server refresh fallback" });
+          const serverResult = await refreshSessionViaServer("auth-context-init-fallback");
+
+          if (serverResult.ok) {
+            // Cookie is fresh now; read it via a reset client (no client-side
+            // network refresh, so this returns immediately).
+            resetClient();
+            const { session: recovered } = await getSessionWithTimeout("auth-context-init-after-server-refresh");
+            const recoveredUser = recovered?.user ?? null;
+            if (recoveredUser) {
+              setKnownExpiry(recovered?.expires_at);
               setUser(recoveredUser);
               const profileData = await fetchProfile(recoveredUser.id);
               setProfile(profileData);
               return; // setLoading(false) fires via finally
             }
-            // Refresh returned no session — genuinely missing.
-            logConnectionEvent({ type: "token_refresh_fail", detail: "auth init: refresh fallback returned no session" });
+            // Server said ok but the client still can't read a session — unusual.
+            logConnectionEvent({ type: "network_error", detail: "auth init: server refresh ok but client session empty — bailing" });
+            setUser(null);
+            setProfile(null);
+            return;
+          }
+
+          if (serverResult.reason === "no_session") {
+            // Server confirms there is no session — genuine logout.
+            logConnectionEvent({ type: "token_refresh_fail", detail: "auth init: server refresh reports no session" });
             setUser(null);
             setProfile(null);
             redirectToLogin("session_check_error");
-          } catch (fallbackErr) {
-            // Includes auth-js's ProcessLockAcquireTimeoutError (isAcquireTimeout):
-            // a jammed auth lock is NOT a confirmed session loss, so it must bail
-            // without force-logout exactly like our own auth-op timeout.
-            const isFallbackTimeout = isAuthLockTimeout(fallbackErr);
-            if (isFallbackTimeout) {
-              // Refresh also timed out — Supabase auth unreachable right now.
-              // Do NOT force-logout; the session may be valid. The user can refresh.
-              logConnectionEvent({
-                type: "network_error",
-                detail: "auth init: refresh fallback also timed out — bailing without force-logout",
-              });
-              setUser(null);
-              setProfile(null);
-              // bail: setLoading(false) via finally; no redirect
-            } else if (isLikelyAuthError(fallbackErr)) {
-              // Confirmed auth error from the refresh.
-              logConnectionEvent({
-                type: "token_refresh_fail",
-                detail: `auth init: refresh fallback auth error: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
-              });
-              setUser(null);
-              setProfile(null);
-              redirectToLogin("session_check_error");
-            } else {
-              // Network or unexpected error — not a confirmed auth failure.
-              logConnectionEvent({
-                type: "network_error",
-                detail: `auth init: refresh fallback exception: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
-              });
-              setUser(null);
-              setProfile(null);
-              // bail without force-logout
-            }
+            return;
           }
+
+          // Transient (timeout / network) — do NOT force-logout; the session
+          // may be valid. The heartbeat/visibility refresh will recover.
+          logConnectionEvent({
+            type: "network_error",
+            detail: `auth init: server refresh transient (${serverResult.reason}) — bailing without force-logout`,
+          });
+          setUser(null);
+          setProfile(null);
           return; // setLoading(false) fires via finally
         }
 
@@ -236,6 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const session = getSessionSession;
         const currentUser = session?.user ?? null;
+        setKnownExpiry(session?.expires_at);
         setUser(currentUser);
 
         if (currentUser) {
@@ -256,6 +241,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (event, session) => {
         if (event === "TOKEN_REFRESHED" && session) {
           logConnectionEvent({ type: "token_refresh_ok", detail: "onAuthStateChange" });
+          setKnownExpiry(session.expires_at);
           setUser((prev) => {
             if (prev?.id === session.user.id) return prev;
             return session.user;
@@ -292,6 +278,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (result.ok) {
               const { data: { session: newSession } } = await supabase.auth.getSession();
               const recoveredUser = newSession?.user ?? null;
+              setKnownExpiry(newSession?.expires_at);
               setUser(recoveredUser);
               if (recoveredUser) {
                 const profileData = await fetchProfile(recoveredUser.id);
@@ -307,6 +294,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         const sessionUser = session?.user ?? null;
+        setKnownExpiry(session?.expires_at);
         setUser(sessionUser);
         if (sessionUser) {
           setProfile((prev) => {

@@ -81,6 +81,7 @@ Use one **primary** label per incident for the log (§F).
 | H5 | RLS / JWT surprise | Row rules or claims differ from expectation | Same query OK with service role, fails empty as user |
 | H6 | Browser / edge | Sleep, extensions, DNS split | Correlates with visibility, not backend logs |
 | H7 | **Auth-lock deadlock** | auth-js `processLock` orphaned (background-tab throttle) → `GoTrueClient.lockAcquired` stuck `true` → every `getSession()` waits forever | Repeating `lock_timeout` every ~12s in console + `[connection-monitor]`, **no** Supabase REST/Network errors, no 401/403. **Resolved — see §L.** |
+| H8 | **Client-side token-refresh hang** | token stale after idle (`autoRefreshToken: false`) → first `getSession()` on wake fires a blocking client refresh that stalls past 12s; a fresh client hangs identically | `auth-op-timeout: getSession:…` **including on `lock-deadlock-recovery`** (fresh client), after a hidden period; server refresh path healthy. **Resolved — see §M.** |
 
 **Note:** Re-login fixing the issue **suggests H1 or H2 involving cookies**, not necessarily H4. A pure `lock_timeout` cascade with no network errors is **H7**, not a session loss — do not force a logout.
 
@@ -259,6 +260,86 @@ H7. Confirm in PostHog via `supabase_connection_event` (`event_type = lock_timeo
 Sentry (`lock_timeout` / `lock_contended`). Expected post-fix behaviour: at most ~2 minutes
 of "Reconnecting…" then auto-recovery (in-place reset, or one soft reload) with the user
 still logged in.
+
+---
+
+## M. Resolved incident — client-side token-refresh hang (H8, June 2026)
+
+**Symptom.** After the §L fix shipped, the forced-logout cascade stopped (PostHog
+confirms: every `circuit_breaker` / `force-logout` event is from 29 May only). But a
+*distinct* stall remained — most often after the tab was hidden a while (e.g. 16 min):
+
+```
+01:32:46 [visibility_change] visible
+01:33:38 [lock_timeout] auth-op-timeout: getSession:heartbeat after 12000ms
+01:34:38 [lock_timeout] heartbeat-getSession-timeout (consecutive=2)
+01:34:38 [recovery_start] lock-deadlock (heartbeat): in-place client reset
+01:34:51 [lock_timeout] auth-op-timeout: getSession:lock-deadlock-recovery after 12000ms
+01:34:51 [recovery_end] lock-deadlock: client reset insufficient — escalating to soft reload
+```
+
+**Root cause (different from H7).** The `auth-op-timeout` here is **not** lock
+contention — it's `getSession()` performing a **blocking network token refresh**.
+`@supabase/auth-js` `__loadSession()` returns instantly *only* while the access token has
+more than `EXPIRY_MARGIN_MS` (= `3 × 30s` = **90s**) of life left; otherwise it calls
+`_callRefreshToken()` (network, with an internal retry loop). Because we set
+`autoRefreshToken: false`, **nothing refreshes the token in the background**, so after any
+idle/hidden period the token is stale and the first `getSession()` on wake fires a
+client-side refresh — exactly when the network is coldest (laptop wake / Wi-Fi reconnect).
+That refresh stalls past our 12s `withAuthOpTimeout`.
+
+Evidence it is the *refresh* (not the lock): the recovery probe runs on a **fresh**
+client (`resetClient()`, so `lockAcquired = false`), yet it **also** times out at exactly
+12000ms — only possible if `getSession` is doing a network refresh, not waiting on a lock.
+The `auth.refresh_tokens` chain confirms the access-token lifetime is ~1h (not the 24h the
+`cookie-options.ts` comment claims — that's the cookie maxAge), and the incident token was
+~3h stale. The **server-side** refresh path stayed healthy throughout (the chain kept
+rotating; a full reload recovered precisely because the middleware refreshes server-side).
+
+Consequence of the old recovery ladder: `resetClient()` + a client `getSession` probe is
+**futile** for this mode — the fresh client re-reads the same stale cookie and re-fires the
+same hanging refresh. Every recent `recovery_end` said *"client reset insufficient →
+escalating to soft reload"*, so users waited ~12s (heartbeat) + ~12s (probe) = **~24s**
+before the reload that actually fixed it.
+
+**Fix (shipped).** Route refresh and recovery through the **server**, and stop using the
+client `getSession()` as a probe:
+
+- **Server refresh endpoint** — [`/api/auth/refresh`](../apps/organising-db/src/app/api/auth/refresh/route.ts)
+  runs the cookie-based refresh via `@supabase/ssr` (`getUser()` refresh-on-expiry, plus a
+  proactive rotate when <5min to expiry). After it returns, the browser cookie holds a
+  fresh token, so the client's next `getSession()`/query needs no network refresh.
+- **`refreshSessionViaServer()`** ([`client.ts`](../apps/organising-db/src/lib/supabase/client.ts)) —
+  bounded at **8s**, never throws, returns a tagged result (`ok` / `no_session` /
+  `timeout` / …). Also a tiny **known-expiry store** (`setKnownExpiry`/`getKnownExpiryMs`)
+  so the heartbeat can decide *locally* whether a refresh is even needed.
+- **Visibility + heartbeat no longer call client `getSession()`** ([`providers.tsx`](../apps/organising-db/src/components/providers.tsx)) —
+  on focus / every 60s, they check the known expiry and only refresh **via the server** when
+  the token is within the window (10min on focus, 4min for the heartbeat). A healthy token =
+  zero network, zero auth-lock pressure. The old `user_profiles` silent-RLS probe is gone
+  (proactive refresh prevents the silent-expiry condition it detected).
+- **Server-first recovery ladder** — the recovery probe's futile client `getSession` is
+  replaced by `resetClient()` + `refreshSessionViaServer()`; soft reload only if the
+  **server** path also fails. Saves ~12s per incident and avoids the full reload in the
+  common case.
+- **Single-writer model** — only the middleware and `/api/auth/refresh` rotate tokens
+  (the client never does), which keeps `autoRefreshToken: false` while removing the stale
+  token that made `getSession` hang. This also avoids the "Invalid Refresh Token: Already
+  Used" race that motivated disabling auto-refresh in the first place.
+- **Cleanup** — removed leftover `127.0.0.1:7485` agent-debug `fetch()` calls in
+  `useCampaignCurrentStats.ts` / `useAssessmentDistributions.ts` (the
+  `ERR_CONNECTION_REFUSED` console noise; unrelated to the stall).
+
+**How to recognise a regression.** `auth-op-timeout: getSession:…` events returning, or
+`network_error: server refresh transient (…)` repeating. Confirm in PostHog
+(`supabase_connection_event`): healthy state is mostly `token_refresh_ok` with `server
+refresh ok`, few `lock_timeout`, and `recovery_*` only rarely. If `lock_timeout` returns,
+check whether the Supabase **JWT expiry** was lowered (shorter tokens = more refreshes =
+more hang exposure) and whether `/api/auth/refresh` is reachable/fast.
+
+**Open follow-up (optional, not code).** Consider raising the Supabase JWT expiry from ~1h
+so refreshes (and any residual hang exposure) are less frequent — weigh against the
+security trade-off of longer-lived access tokens.
 
 ---
 

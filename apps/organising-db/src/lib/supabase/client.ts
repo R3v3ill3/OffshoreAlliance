@@ -235,6 +235,100 @@ export function isAuthLockTimeout(error: unknown): boolean {
 }
 
 /**
+ * Known access-token expiry (ms since epoch), updated whenever we learn it
+ * from a session or a server refresh. Lets the heartbeat / visibility handlers
+ * decide CHEAPLY whether a refresh is needed WITHOUT calling the client's
+ * getSession() — which is itself the thing that hangs (it fires an in-line
+ * network token refresh when the token is within 90s of expiry; after a wake
+ * that refresh stalls and produces the lock_timeout cascade).
+ */
+let _knownExpiresAtMs: number | null = null;
+
+export function setKnownExpiry(expiresAtSeconds: number | null | undefined): void {
+  _knownExpiresAtMs = expiresAtSeconds ? expiresAtSeconds * 1000 : null;
+}
+
+export function getKnownExpiryMs(): number | null {
+  return _knownExpiresAtMs;
+}
+
+/**
+ * How long to wait for the server refresh round-trip before giving up. Kept
+ * well under SUPABASE_AUTH_OP_TIMEOUT_MS so a slow server path fails over to a
+ * retry/soft-reload fast instead of the old 12s + 12s stall.
+ */
+const SERVER_REFRESH_TIMEOUT_MS = 8_000;
+
+export type ServerRefreshReason =
+  | "ok"
+  | "no_session"
+  | "error"
+  | "timeout"
+  | "network"
+  | "http"
+  | "exception";
+
+export interface ServerRefreshResult {
+  ok: boolean;
+  expiresAt: number | null;
+  reason: ServerRefreshReason;
+}
+
+/**
+ * Refresh the Supabase session via the SERVER (/api/auth/refresh), which runs
+ * the cookie-based refresh through @supabase/ssr.
+ *
+ * This is the RELIABLE refresh path. The server↔Supabase network stays warm
+ * even when the CLIENT's own refresh hangs (right after the laptop wakes /
+ * Wi-Fi reconnects, which is when getSession()'s in-line refresh stalls and
+ * produces the lock_timeout cascade). On success the browser cookie holds a
+ * fresh token, so the client's next getSession()/query reads it WITHOUT a
+ * network refresh.
+ *
+ * Never throws — returns a tagged result so callers can branch:
+ *   ok          → token refreshed; cookie updated; invalidate queries.
+ *   no_session  → server confirms no session (genuine logout candidate).
+ *   timeout/... → transient; do NOT log out, retry on next tick.
+ */
+export async function refreshSessionViaServer(
+  source: string,
+  timeoutMs: number = SERVER_REFRESH_TIMEOUT_MS,
+): Promise<ServerRefreshResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`/api/auth/refresh?src=${encodeURIComponent(source)}`, {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      return { ok: false, expiresAt: null, reason: "http" };
+    }
+    const json = (await res.json()) as {
+      ok?: boolean;
+      expiresAt?: number | null;
+      reason?: ServerRefreshReason;
+    };
+    if (json?.expiresAt) setKnownExpiry(json.expiresAt);
+    if (json?.ok) {
+      return { ok: true, expiresAt: json.expiresAt ?? null, reason: "ok" };
+    }
+    return {
+      ok: false,
+      expiresAt: json?.expiresAt ?? null,
+      reason: json?.reason ?? "error",
+    };
+  } catch (error) {
+    const aborted = (error as Error)?.name === "AbortError";
+    return { ok: false, expiresAt: null, reason: aborted ? "timeout" : "network" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Shared getSession() with a 12-second timeout. Use this everywhere outside
  * coordinatedRefreshSession (which has its own 12-second timeout) and
  * recoverSessionConnection (which has its own 15-second timeout).

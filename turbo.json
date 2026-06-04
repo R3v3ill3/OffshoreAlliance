@@ -25,7 +25,20 @@
         "OAUTH_TOKEN_ENCRYPTION_KEY",
         "MICROSOFT_CLIENT_SECRET",
         "MICROSOFT_REDIRECT_URI",
-        "MICROSOFT_CLIENT_ID"
+        "MICROSOFT_CLIENT_ID",
+        "DEBUG_EMAIL_RESOLVE",
+        "SUPABASE_URL",
+        "SUPABASE_ANON_KEY",
+        "SUPABASE_JWT_SECRET",
+        "SUPABASE_PUBLISHABLE_KEY",
+        "SUPABASE_SECRET_KEY",
+        "POSTGRES_URL",
+        "POSTGRES_PRISMA_URL",
+        "POSTGRES_URL_NON_POOLING",
+        "POSTGRES_USER",
+        "POSTGRES_HOST",
+        "POSTGRES_PASSWORD",
+        "POSTGRES_DATABASE"
       ],
       "outputs": [".next/**", "!.next/cache/**"]
     },

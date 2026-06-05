@@ -64,7 +64,6 @@ import {
   Search,
   ChevronDown,
 } from "lucide-react";
-import { invalidateEmployerQueries } from "@/lib/query-invalidation/employers";
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -538,7 +537,7 @@ function EmployerWizardInner() {
     setError(null);
     setApplyResult(null);
     snapshotRef.current = null;
-    invalidateEmployerQueries(queryClient);
+    queryClient.invalidateQueries({ queryKey: ["wizard-employers"] });
     queryClient.invalidateQueries({ queryKey: ["wizard-worksites"] });
   }, [queryClient]);
 
@@ -967,7 +966,10 @@ function EmployerWizardInner() {
       setStep("done");
 
       if (result.success) {
-        invalidateEmployerQueries(queryClient);
+        queryClient.invalidateQueries({ queryKey: ["employers"] });
+        queryClient.invalidateQueries({ queryKey: ["employers-all"] });
+        queryClient.invalidateQueries({ queryKey: ["wizard-employers"] });
+        queryClient.invalidateQueries({ queryKey: ["overview-all-employers"] });
         queryClient.invalidateQueries({ queryKey: ["worksites"] });
         queryClient.invalidateQueries({
           queryKey: ["principal-employer-eba-summary"],

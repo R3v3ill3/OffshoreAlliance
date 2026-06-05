@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Users, Info } from "lucide-react";
+import { ArrowLeft, Info, Upload, Users } from "lucide-react";
+import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 
 interface StepWorkerEstimateProps {
   selectedEmployers: number[];
@@ -28,6 +29,7 @@ interface StepWorkerEstimateProps {
   onContinue: () => void;
   showBackButton?: boolean;
   continueLabel?: string;
+  campaignId?: number | null;
 }
 
 interface CountBreakdown {
@@ -48,9 +50,12 @@ export function StepWorkerEstimate({
   onContinue,
   showBackButton = true,
   continueLabel,
+  campaignId,
 }: StepWorkerEstimateProps) {
   const supabase = createClient();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [importOpen, setImportOpen] = useState(false);
 
   const { data: counts, isPending: countsLoading } = useQuery<CountBreakdown>({
     queryKey: [
@@ -212,6 +217,25 @@ export function StepWorkerEstimate({
           )}
         </div>
 
+        {/* Import workers */}
+        {campaignId != null && (
+          <div className="flex items-center gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2 shrink-0"
+              onClick={() => setImportOpen(true)}
+            >
+              <Upload className="h-4 w-4" />
+              Import workers
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Import workers not yet in the system — the count above refreshes automatically after import.
+            </p>
+          </div>
+        )}
+
         {/* Estimate input */}
         <div className="space-y-2">
           <Label>Total worker estimate</Label>
@@ -290,6 +314,19 @@ export function StepWorkerEstimate({
           </Button>
         </div>
       </CardContent>
+
+      {campaignId != null && (
+        <WorkerImportWizard
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          campaignId={campaignId}
+          onComplete={() => {
+            queryClient.invalidateQueries({
+              queryKey: ["campaign-wizard-worker-counts", selectedEmployers, selectedWorksites, worksiteSectorWide],
+            });
+          }}
+        />
+      )}
     </Card>
   );
 }

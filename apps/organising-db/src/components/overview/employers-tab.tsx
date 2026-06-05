@@ -36,6 +36,7 @@ import { Plus, Star, GitMerge } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { buildAliasLines } from "@/lib/utils/employer-merge-helpers";
 import { TermHint } from "@/components/ui/term-hint";
+import { invalidateEmployerQueries } from "@/lib/query-invalidation/employers";
 
 const EMPLOYER_CATEGORIES: EmployerCategory[] = [
   "Principal_Employer",
@@ -81,6 +82,7 @@ export function EmployersTab() {
   const [error, setError] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [scopeFilter, setScopeFilter] = useState<string>("all");
+  const [tableVersion, setTableVersion] = useState(0);
   const [mergeSelectedIds, setMergeSelectedIds] = useState<Set<string>>(
     () => new Set()
   );
@@ -286,11 +288,8 @@ export function EmployersTab() {
       setMergeDialogOpen(false);
       setMergeSelectedIds(new Set());
       setMergeSurvivorId(null);
-      await queryClient.invalidateQueries({ queryKey: ["employers"] });
-      await queryClient.invalidateQueries({ queryKey: ["employers-all"] });
-      await queryClient.invalidateQueries({ queryKey: ["wizard-employers"] });
-      await queryClient.invalidateQueries({ queryKey: ["overview-all-employers"] });
-      await queryClient.invalidateQueries({ queryKey: ["employer-scope-links"] });
+      await invalidateEmployerQueries(queryClient);
+      setTableVersion((version) => version + 1);
     } catch (err) {
       setMergeError(err instanceof Error ? err.message : "Merge failed.");
     } finally {
@@ -423,7 +422,8 @@ export function EmployersTab() {
       return;
     }
 
-    await queryClient.invalidateQueries({ queryKey: ["employers"] });
+    await invalidateEmployerQueries(queryClient);
+    setTableVersion((version) => version + 1);
     setDialogOpen(false);
     resetDialog();
   };
@@ -855,6 +855,7 @@ export function EmployersTab() {
       </div>
 
       <DataTable
+        key={tableVersion}
         data={filteredEmployers as (Employer & Record<string, unknown>)[]}
         columns={columns as Column<Employer & Record<string, unknown>>[]}
         searchPlaceholder="Search employers..."

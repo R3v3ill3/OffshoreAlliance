@@ -71,20 +71,14 @@ export function DataTable<T extends Record<string, unknown>>({
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(initialPageSize);
   const pageSizeStorageKey = `organising-db:rows-per-page:${pathname}`;
-
-  useEffect(() => {
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(() => {
+    if (typeof window === "undefined") return initialPageSize;
     const storedPageSize = window.localStorage.getItem(pageSizeStorageKey);
-    if (!storedPageSize) return;
-
-    const parsedPageSize = Number(storedPageSize);
-    if (!PERSISTED_PAGE_SIZES.has(parsedPageSize)) return;
-
-    setPageSize(parsedPageSize);
-    setPage(0);
-  }, [pageSizeStorageKey]);
+    const parsedPageSize = storedPageSize ? Number(storedPageSize) : initialPageSize;
+    return PERSISTED_PAGE_SIZES.has(parsedPageSize) ? parsedPageSize : initialPageSize;
+  });
 
   useEffect(() => {
     if (!PERSISTED_PAGE_SIZES.has(pageSize)) return;
@@ -115,7 +109,9 @@ export function DataTable<T extends Record<string, unknown>>({
   }, [filtered, sortKey, sortDir]);
 
   const totalPages = Math.ceil(sorted.length / pageSize);
-  const paged = sorted.slice(page * pageSize, (page + 1) * pageSize);
+  const lastPage = Math.max(totalPages - 1, 0);
+  const currentPage = Math.min(page, lastPage);
+  const paged = sorted.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
   const visibleRowIds = useMemo(
     () => (selection ? paged.map((item) => selection.rowId(item)) : []),
@@ -364,14 +360,14 @@ export function DataTable<T extends Record<string, unknown>>({
 
         <div className="flex items-center gap-1">
           <span className="text-sm text-muted-foreground mr-2">
-            Page {page + 1} of {Math.max(totalPages, 1)}
+            Page {currentPage + 1} of {Math.max(totalPages, 1)}
           </span>
           <Button
             variant="outline"
             size="icon"
             className="h-8 w-8"
             onClick={() => setPage(0)}
-            disabled={page === 0}
+            disabled={currentPage === 0}
           >
             <ChevronsLeft className="h-4 w-4" />
           </Button>
@@ -379,8 +375,8 @@ export function DataTable<T extends Record<string, unknown>>({
             variant="outline"
             size="icon"
             className="h-8 w-8"
-            onClick={() => setPage(page - 1)}
-            disabled={page === 0}
+            onClick={() => setPage(currentPage - 1)}
+            disabled={currentPage === 0}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -388,8 +384,8 @@ export function DataTable<T extends Record<string, unknown>>({
             variant="outline"
             size="icon"
             className="h-8 w-8"
-            onClick={() => setPage(page + 1)}
-            disabled={page >= totalPages - 1}
+            onClick={() => setPage(currentPage + 1)}
+            disabled={currentPage >= totalPages - 1}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -398,7 +394,7 @@ export function DataTable<T extends Record<string, unknown>>({
             size="icon"
             className="h-8 w-8"
             onClick={() => setPage(totalPages - 1)}
-            disabled={page >= totalPages - 1}
+            disabled={currentPage >= totalPages - 1}
           >
             <ChevronsRight className="h-4 w-4" />
           </Button>

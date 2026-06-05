@@ -60,6 +60,7 @@ import {
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { format } from "date-fns";
 import { TermHint } from "@/components/ui/term-hint";
+import { invalidateEmployerQueries } from "@/lib/query-invalidation/employers";
 
 const EMPLOYER_CATEGORIES: EmployerCategory[] = [
   "Principal_Employer",
@@ -389,10 +390,7 @@ export default function EmployerDetailPage() {
 
     await queryClient.invalidateQueries({ queryKey: ["employer", id] });
     await queryClient.invalidateQueries({ queryKey: ["employer-children", id] });
-    await queryClient.invalidateQueries({ queryKey: ["employers"] });
-    await queryClient.invalidateQueries({ queryKey: ["employers-all"] });
-    await queryClient.invalidateQueries({ queryKey: ["overview-all-employers"] });
-    await queryClient.invalidateQueries({ queryKey: ["employer-scope-links"] });
+    await invalidateEmployerQueries(queryClient);
     setEditing(false);
     setEditForm({});
     setSaving(false);

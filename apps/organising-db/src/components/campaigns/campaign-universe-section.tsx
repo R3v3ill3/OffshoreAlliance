@@ -36,6 +36,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Building2, MapPin, Plus, Trash2 } from "lucide-react";
+import { invalidateEmployerQueries } from "@/lib/query-invalidation/employers";
 
 const SCOPE_KEYS = {
   employers: (cid: string) => ["campaign-universe-employers", cid] as const,
@@ -267,7 +268,7 @@ export function CampaignUniverseSection({
     },
     onSuccess: () => {
       invalidateScope();
-      queryClient.invalidateQueries({ queryKey: ["employers-active-universe"] });
+      invalidateEmployerQueries(queryClient);
       setEmployerDialog(false);
       setEmployerSearch("");
     },

@@ -23,6 +23,7 @@ import { ArrowLeft, Building2, MapPin, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import type { CampaignScopeType } from "@/types/database";
 import type { PostgrestError } from "@supabase/supabase-js";
+import { invalidateEmployerQueries } from "@/lib/query-invalidation/employers";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -439,7 +440,7 @@ export function StepEmployersWorksites({
       throw error;
     },
     onSuccess: ({ id, reusedExisting, name }) => {
-      queryClient.invalidateQueries({ queryKey: ["employers-active"] });
+      invalidateEmployerQueries(queryClient);
       handleAddEmployer(id);
       setEmployerCreateError(null);
       setAddEmployerOpen(false);

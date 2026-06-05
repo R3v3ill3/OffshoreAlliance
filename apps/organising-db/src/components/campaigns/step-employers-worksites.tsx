@@ -19,11 +19,12 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Building2, MapPin, Plus, X } from "lucide-react";
+import { ArrowLeft, Building2, MapPin, Plus, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import type { CampaignScopeType } from "@/types/database";
 import type { PostgrestError } from "@supabase/supabase-js";
 import { invalidateEmployerQueries } from "@/lib/query-invalidation/employers";
+import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -51,6 +52,7 @@ interface StepEmployersWorksitesProps {
   onContinue: () => void;
   showBackButton?: boolean;
   continueLabel?: string;
+  campaignId?: number | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -309,6 +311,7 @@ export function StepEmployersWorksites({
   onContinue,
   showBackButton = true,
   continueLabel,
+  campaignId,
 }: StepEmployersWorksitesProps) {
   const supabase = createClient();
   const { user } = useAuth();
@@ -316,6 +319,7 @@ export function StepEmployersWorksites({
 
   const [addEmployerOpen, setAddEmployerOpen] = useState(false);
   const [addWorksiteOpen, setAddWorksiteOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [employerCreateError, setEmployerCreateError] = useState<string | null>(null);
   const [worksiteCreateError, setWorksiteCreateError] = useState<string | null>(null);
 
@@ -704,6 +708,18 @@ export function StepEmployersWorksites({
                   <MapPin className="h-3.5 w-3.5" />
                   {worksiteLabel}
                 </Label>
+                {campaignId != null && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 text-xs"
+                    onClick={() => setImportOpen(true)}
+                  >
+                    <Upload className="h-3 w-3" />
+                    Import workers
+                  </Button>
+                )}
               </div>
               <EntityList
                 items={allWorksiteItems}
@@ -728,16 +744,30 @@ export function StepEmployersWorksites({
                       </Badge>
                     )}
                   </Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-7 gap-1 text-xs"
-                    onClick={() => setAddEmployerOpen(true)}
-                  >
-                    <Plus className="h-3 w-3" />
-                    Add employer
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    {campaignId != null && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1 text-xs"
+                        onClick={() => setImportOpen(true)}
+                      >
+                        <Upload className="h-3 w-3" />
+                        Import workers
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 text-xs"
+                      onClick={() => setAddEmployerOpen(true)}
+                    >
+                      <Plus className="h-3 w-3" />
+                      Add employer
+                    </Button>
+                  </div>
                 </div>
                 <EntityList
                   items={displayedEmployerItems}
@@ -761,16 +791,30 @@ export function StepEmployersWorksites({
                   <Building2 className="h-3.5 w-3.5" />
                   {employerLabel}
                 </Label>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 gap-1 text-xs"
-                  onClick={() => setAddEmployerOpen(true)}
-                >
-                  <Plus className="h-3 w-3" />
-                  Add employer
-                </Button>
+                <div className="flex items-center gap-1">
+                  {campaignId != null && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 text-xs"
+                      onClick={() => setImportOpen(true)}
+                    >
+                      <Upload className="h-3 w-3" />
+                      Import workers
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 text-xs"
+                    onClick={() => setAddEmployerOpen(true)}
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add employer
+                  </Button>
+                </div>
               </div>
               <EntityList
                 items={displayedEmployerItems}
@@ -812,16 +856,30 @@ export function StepEmployersWorksites({
                       )}
                   </Label>
                   {(!worksiteGated || selectedEmployers.length > 0) && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 gap-1 text-xs"
-                      onClick={() => setAddWorksiteOpen(true)}
-                    >
-                      <Plus className="h-3 w-3" />
-                      Add worksite
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      {campaignId != null && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 gap-1 text-xs"
+                          onClick={() => setImportOpen(true)}
+                        >
+                          <Upload className="h-3 w-3" />
+                          Import workers
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1 text-xs"
+                        onClick={() => setAddWorksiteOpen(true)}
+                      >
+                        <Plus className="h-3 w-3" />
+                        Add worksite
+                      </Button>
+                    </div>
                   )}
                 </div>
 
@@ -947,6 +1005,19 @@ export function StepEmployersWorksites({
         onClearCreateError={() => setWorksiteCreateError(null)}
         scopeNote={worksiteScopeNote}
       />
+
+      {/* ── Import workers wizard ─────────────────────────────────────────── */}
+      {campaignId != null && (
+        <WorkerImportWizard
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          campaignId={campaignId}
+          onComplete={() => {
+            invalidateEmployerQueries(queryClient);
+            queryClient.invalidateQueries({ queryKey: ["worksites-active"] });
+          }}
+        />
+      )}
     </Card>
   );
 }

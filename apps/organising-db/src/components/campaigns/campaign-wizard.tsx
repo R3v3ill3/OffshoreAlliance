@@ -1790,6 +1790,7 @@ export function CampaignWizard() {
           isPending={saveScopeMutation.isPending}
           onBack={() => setStep(1)}
           onContinue={() => saveScopeMutation.mutate()}
+          campaignId={campaignId}
         />
       )}
 
@@ -1819,6 +1820,7 @@ export function CampaignWizard() {
           isPending={saveEstimateMutation.isPending}
           onBack={() => setStep(3)}
           onContinue={() => saveEstimateMutation.mutate()}
+          campaignId={campaignId}
         />
       )}
 

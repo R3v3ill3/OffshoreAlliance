@@ -1,0 +1,371 @@
+{
+  "count": 10,
+  "series": {
+    "A": "Set up a campaign",
+    "B": "Units, groups & subgroups",
+    "C": "Wall charts",
+    "D": "Tasking",
+    "E": "Assessments & ratings"
+  },
+  "clips": [
+    {
+      "id": "A1",
+      "title": "Add an employer",
+      "series": "A",
+      "durationSec": 42,
+      "summary": "Create an employer record, set its category and (optional) parent company.",
+      "tags": [
+        "employer",
+        "company",
+        "add employer",
+        "parent company",
+        "ABN",
+        "category",
+        "setup"
+      ],
+      "associatedRoutes": [
+        "/employers",
+        "/employers/*"
+      ],
+      "routeWeight": 10,
+      "prerequisites": [],
+      "upNext": [
+        "A2",
+        "A3",
+        "A4"
+      ],
+      "transcriptPath": "A1.transcript.txt",
+      "videoPath": "A1.mp4",
+      "downloadable": true,
+      "seriesName": "Set up a campaign",
+      "order": 0,
+      "video": "/help-videos/A1.mp4",
+      "vtt": "/help-videos/A1.vtt",
+      "transcript": "/help-videos/A1.transcript.txt"
+    },
+    {
+      "id": "A2",
+      "title": "Add worksites & link them to employers",
+      "series": "A",
+      "durationSec": 43,
+      "summary": "Create a worksite and set its Principal Employer vs Operator; plot it on the map.",
+      "tags": [
+        "worksite",
+        "site",
+        "platform",
+        "FPSO",
+        "principal employer",
+        "operator",
+        "offshore"
+      ],
+      "associatedRoutes": [
+        "/worksites",
+        "/worksites/*"
+      ],
+      "routeWeight": 10,
+      "prerequisites": [
+        "A1"
+      ],
+      "upNext": [
+        "A3",
+        "A1",
+        "A4"
+      ],
+      "transcriptPath": "A2.transcript.txt",
+      "videoPath": "A2.mp4",
+      "downloadable": true,
+      "seriesName": "Set up a campaign",
+      "order": 1,
+      "video": "/help-videos/A2.mp4",
+      "vtt": "/help-videos/A2.vtt",
+      "transcript": "/help-videos/A2.transcript.txt"
+    },
+    {
+      "id": "A4",
+      "title": "Create a campaign — the manual way",
+      "series": "A",
+      "durationSec": 39,
+      "summary": "Create a campaign via Manual create (not the wizard) and land in Settings.",
+      "tags": [
+        "create campaign",
+        "manual",
+        "new campaign",
+        "bargaining",
+        "campaign type",
+        "status"
+      ],
+      "associatedRoutes": [
+        "/campaigns",
+        "/campaigns/new/manual"
+      ],
+      "routeWeight": 10,
+      "prerequisites": [
+        "A1",
+        "A2",
+        "A3"
+      ],
+      "upNext": [
+        "A5",
+        "A3",
+        "B1"
+      ],
+      "transcriptPath": "A4.transcript.txt",
+      "videoPath": "A4.mp4",
+      "downloadable": true,
+      "seriesName": "Set up a campaign",
+      "order": 3,
+      "video": "/help-videos/A4.mp4",
+      "vtt": "/help-videos/A4.vtt",
+      "transcript": "/help-videos/A4.transcript.txt"
+    },
+    {
+      "id": "A5",
+      "title": "Configure a campaign from Settings",
+      "series": "A",
+      "durationSec": 43,
+      "summary": "Tour the campaign Settings accordion; each section saves independently.",
+      "tags": [
+        "campaign settings",
+        "configure",
+        "accordion",
+        "basics",
+        "ambitions",
+        "worker estimate"
+      ],
+      "associatedRoutes": [
+        "/campaigns/*/settings"
+      ],
+      "routeWeight": 9,
+      "prerequisites": [
+        "A4"
+      ],
+      "upNext": [
+        "B1",
+        "A4",
+        "A3"
+      ],
+      "transcriptPath": "A5.transcript.txt",
+      "videoPath": "A5.mp4",
+      "downloadable": true,
+      "seriesName": "Set up a campaign",
+      "order": 4,
+      "video": "/help-videos/A5.mp4",
+      "vtt": "/help-videos/A5.vtt",
+      "transcript": "/help-videos/A5.transcript.txt"
+    },
+    {
+      "id": "B1",
+      "title": "Organising units, groups & subgroups — explained",
+      "series": "B",
+      "durationSec": 44,
+      "summary": "What organising units, group containers and member subgroups are, and how they relate.",
+      "tags": [
+        "organising unit",
+        "OU",
+        "group",
+        "subgroup",
+        "container",
+        "shift",
+        "department",
+        "structure"
+      ],
+      "associatedRoutes": [
+        "/campaigns/*"
+      ],
+      "routeWeight": 3,
+      "prerequisites": [],
+      "upNext": [
+        "B2",
+        "B3",
+        "C1"
+      ],
+      "transcriptPath": "B1.transcript.txt",
+      "videoPath": "B1.mp4",
+      "downloadable": true,
+      "seriesName": "Units, groups & subgroups",
+      "order": 5,
+      "video": "/help-videos/B1.mp4",
+      "vtt": "/help-videos/B1.vtt",
+      "transcript": "/help-videos/B1.transcript.txt"
+    },
+    {
+      "id": "C1",
+      "title": "The wall chart, explained",
+      "series": "C",
+      "durationSec": 42,
+      "summary": "Read the wall chart: unit cards, worker tiles, colours, badges and empty slots.",
+      "tags": [
+        "wall chart",
+        "tiles",
+        "colours",
+        "badges",
+        "unit card",
+        "empty slots"
+      ],
+      "associatedRoutes": [
+        "/campaigns/*"
+      ],
+      "routeWeight": 9,
+      "prerequisites": [
+        "B1",
+        "E1"
+      ],
+      "upNext": [
+        "C2",
+        "C3",
+        "E1"
+      ],
+      "transcriptPath": "C1.transcript.txt",
+      "videoPath": "C1.mp4",
+      "downloadable": true,
+      "seriesName": "Wall charts",
+      "order": 8,
+      "video": "/help-videos/C1.mp4",
+      "vtt": "/help-videos/C1.vtt",
+      "transcript": "/help-videos/C1.transcript.txt"
+    },
+    {
+      "id": "C2",
+      "title": "Filter, sort & switch views",
+      "series": "C",
+      "durationSec": 36,
+      "summary": "Narrow the wall chart with filters, switch cumulative vs per-assessment, and toggle list view.",
+      "tags": [
+        "filter",
+        "sort",
+        "list view",
+        "cumulative rating",
+        "assessment view",
+        "search workers"
+      ],
+      "associatedRoutes": [
+        "/campaigns/*"
+      ],
+      "routeWeight": 8,
+      "prerequisites": [
+        "C1"
+      ],
+      "upNext": [
+        "C3",
+        "C1",
+        "E2"
+      ],
+      "transcriptPath": "C2.transcript.txt",
+      "videoPath": "C2.mp4",
+      "downloadable": true,
+      "seriesName": "Wall charts",
+      "order": 9,
+      "video": "/help-videos/C2.mp4",
+      "vtt": "/help-videos/C2.vtt",
+      "transcript": "/help-videos/C2.transcript.txt"
+    },
+    {
+      "id": "C3",
+      "title": "Build a list and fire it",
+      "series": "C",
+      "durationSec": 32,
+      "summary": "Build a worker list on the wall chart, set a purpose, and fire it into a tasking pathway.",
+      "tags": [
+        "build list",
+        "fire",
+        "drag",
+        "purpose",
+        "email",
+        "phone",
+        "activist task",
+        "recipients"
+      ],
+      "associatedRoutes": [
+        "/campaigns/*"
+      ],
+      "routeWeight": 8,
+      "prerequisites": [
+        "C1"
+      ],
+      "upNext": [
+        "D1",
+        "D2",
+        "D4"
+      ],
+      "transcriptPath": "C3.transcript.txt",
+      "videoPath": "C3.mp4",
+      "downloadable": true,
+      "seriesName": "Wall charts",
+      "order": 10,
+      "video": "/help-videos/C3.mp4",
+      "vtt": "/help-videos/C3.vtt",
+      "transcript": "/help-videos/C3.transcript.txt"
+    },
+    {
+      "id": "E1",
+      "title": "The rating scale, explained",
+      "series": "E",
+      "durationSec": 37,
+      "summary": "The six rating states (1 Supportive leader … 5 Oppositional leader + Unassessed) and their colours.",
+      "tags": [
+        "rating",
+        "scale",
+        "supportive leader",
+        "supporter",
+        "neutral",
+        "opposed",
+        "unassessed",
+        "colours"
+      ],
+      "associatedRoutes": [
+        "/campaigns/*"
+      ],
+      "routeWeight": 3,
+      "prerequisites": [],
+      "upNext": [
+        "E2",
+        "E3",
+        "C1"
+      ],
+      "transcriptPath": "E1.transcript.txt",
+      "videoPath": "E1.mp4",
+      "downloadable": true,
+      "seriesName": "Assessments & ratings",
+      "order": 11,
+      "video": "/help-videos/E1.mp4",
+      "vtt": "/help-videos/E1.vtt",
+      "transcript": "/help-videos/E1.transcript.txt"
+    },
+    {
+      "id": "E2",
+      "title": "Create and configure an assessment",
+      "series": "E",
+      "durationSec": 33,
+      "summary": "Create an assessment from a template or custom; choose binary vs 1–5 and link to ambitions.",
+      "tags": [
+        "assessment",
+        "create assessment",
+        "template",
+        "binary",
+        "scale",
+        "ambition link",
+        "snapshot"
+      ],
+      "associatedRoutes": [
+        "/campaigns/*"
+      ],
+      "routeWeight": 8,
+      "prerequisites": [
+        "E1"
+      ],
+      "upNext": [
+        "E3",
+        "E1",
+        "C1"
+      ],
+      "transcriptPath": "E2.transcript.txt",
+      "videoPath": "E2.mp4",
+      "downloadable": true,
+      "seriesName": "Assessments & ratings",
+      "order": 12,
+      "video": "/help-videos/E2.mp4",
+      "vtt": "/help-videos/E2.vtt",
+      "transcript": "/help-videos/E2.transcript.txt"
+    }
+  ]
+}

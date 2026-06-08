@@ -1,0 +1,6 @@
+The wall chart is your campaign at a glance. Every column is a unit, and every tile is a worker.
+Each unit card shows its name, its type, and how many workers you expect.
+A worker's tile is coloured by their rating, from supportive leaders through to opposed.
+Grey slots show where you still have people to find.
+Up here you can switch between the cumulative view and a single assessment.
+Read at a glance who's with you and where to focus. Next, filter the chart to answer questions.

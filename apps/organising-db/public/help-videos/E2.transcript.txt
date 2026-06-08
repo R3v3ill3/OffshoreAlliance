@@ -1,0 +1,6 @@
+An assessment is a snapshot of where your workers stand on one question.
+To add one, click Add assessment.
+Pick a template, or build a custom one, and give it a title.
+Toggle binary for a simple yes or no, or leave it for the one-to-five scale.
+You can link it to your ambitions so ratings roll up to your goals.
+Click Create, and your assessment is ready to use.

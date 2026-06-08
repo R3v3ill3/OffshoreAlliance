@@ -1,0 +1,7 @@
+Worksites are where the work actually happens. Platforms, F P S Os, and gas plants.
+From the Worksites page, click Add Worksite.
+Give the worksite a name.
+Choose its type. Here, an F P S O.
+Set the Principal Employer, the asset owner, and the Operator that runs it day to day.
+Mark it offshore if it's out at sea, then click Save Worksite.
+Your worksite is created and linked to its employer. Next, bring in the workforce.

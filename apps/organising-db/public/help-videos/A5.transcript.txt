@@ -1,0 +1,6 @@
+Settings is your campaign's control panel. Fill it in any order. Each section saves on its own.
+Start with Basics, for the description, start date, and timeframe.
+Employers and worksites links the companies and sites you're organising.
+Worker estimate records how many workers you expect.
+Campaign units and Allocate workers structure your workforce. Each has its own guide.
+And Campaign ambitions captures your goals. That's your campaign, configured.

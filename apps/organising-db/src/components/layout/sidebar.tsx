@@ -18,6 +18,7 @@ import {
   Loader2,
   MailOpen,
   Compass,
+  GraduationCap,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ export const navItems = [
   { href: "/worksites", label: "Worksites", icon: MapPin },
   { href: "/upcoming-projects", label: "Upcoming Projects", icon: Compass },
   { href: "/reports", label: "Reports", icon: BarChart3 },
+  { href: "/help", label: "Guides", icon: GraduationCap },
 ];
 
 export const adminItems = [

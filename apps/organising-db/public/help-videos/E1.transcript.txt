@@ -1,0 +1,5 @@
+Every worker gets a rating, and the colour tells you where they stand.
+One and two are your supporters. Supportive leaders, and supporters.
+Three is neutral. Undecided, or not yet engaged.
+Four and five are opposed. Opposed, and oppositional leaders.
+And grey means unassessed. Not missing, just not yet measured. The colours mean the same everywhere in the app.

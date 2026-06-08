@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
-import { createClient, getSessionWithTimeout, resetClient, refreshSessionViaServer, setKnownExpiry } from "@/lib/supabase/client";
+import { createClient, resetClient, refreshSessionViaServer, setKnownExpiry } from "@/lib/supabase/client";
 import {
   performRobustSignOut,
   recoverSessionConnection,
@@ -70,6 +70,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const recoveryInFlightRef = useRef(false);
 
+  /**
+   * Synchronous mirror of `user` so the async init/recovery branches can tell
+   * whether onAuthStateChange has ALREADY established a valid session before
+   * deciding to clear it. A getSession timeout is NOT a confirmed logout, so we
+   * must never downgrade an established session to null on those paths.
+   */
+  const userRef = useRef<User | null>(null);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
   const wait = (ms: number) =>
     new Promise<void>((resolve) => {
       setTimeout(resolve, ms);
@@ -128,117 +139,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [supabase]);
 
   useEffect(() => {
-    const initSession = async () => {
-      // Two attempts with a 350 ms gap between them. getSessionWithTimeout
-      // adds a 12 s ceiling per attempt so a stuck auth client can't hold
-      // the loading state forever. On timeout, we fall through to a
-      // SERVER refresh fallback (see below) rather than force-logging out —
-      // a timeout is not a confirmed session loss.
-      let getSessionSession: Awaited<ReturnType<typeof getSessionWithTimeout>>["session"] = null;
-      let getSessionTimedOut = false;
-      let getSessionError: unknown = null;
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        try {
-          const result = await getSessionWithTimeout("auth-context-init");
-          getSessionSession = result.session;
-          getSessionTimedOut = result.timedOut;
-          getSessionError = null;
-        } catch (err) {
-          getSessionError = err;
-          getSessionSession = null;
-          getSessionTimedOut = false;
-        }
-        if (!getSessionError && !getSessionTimedOut) break;
-        if (attempt === 0) {
-          await wait(350);
-        }
+    // INITIAL_SESSION-based init.
+    //
+    // We deliberately do NOT call getSession() at mount. auth-js holds the auth
+    // lock while awaiting our INITIAL_SESSION callback (which runs fetchProfile),
+    // and a concurrent getSession() at startup takes auth-js's RE-ENTRANT lock
+    // path — which has no timeout — and wedges on the lock's drain queue, never
+    // resolving (the "getSession:auth-context-init" lock_timeout cascade that
+    // then nulled a valid session). INITIAL_SESSION is the reliable signal:
+    // auth-js always emits it once after initialize, reading the session under
+    // the lock it already holds. We populate user/profile from that event
+    // (handled in onAuthStateChange below) and use a SERVER-refresh fallback
+    // only if it never arrives.
+    let initialSessionHandled = false;
+    const INITIAL_SESSION_FALLBACK_MS = 8_000;
+    const fallbackTimer = setTimeout(async () => {
+      if (initialSessionHandled) return;
+      // INITIAL_SESSION did not arrive — the auth client may be wedged. Recover
+      // via the SERVER refresh (reliable cookie path), NOT the client getSession
+      // that can hang. A timeout here is NOT a confirmed logout.
+      logConnectionEvent({
+        type: "lock_timeout",
+        detail: "auth init: INITIAL_SESSION not received within budget — server refresh fallback",
+      });
+      const serverResult = await refreshSessionViaServer("auth-context-init-fallback");
+      if (initialSessionHandled) return;
+      if (serverResult.reason === "no_session") {
+        logConnectionEvent({ type: "token_refresh_fail", detail: "auth init fallback: server reports no session" });
+        setUser(null);
+        setProfile(null);
+        redirectToLogin("session_check_error");
+      } else if (!serverResult.ok && !userRef.current) {
+        // Transient (timeout/network) and nothing established yet — do NOT
+        // force-logout; the heartbeat/visibility refresh will recover.
+        logConnectionEvent({ type: "network_error", detail: `auth init fallback: transient (${serverResult.reason})` });
+      } else {
+        // Session is valid (server ok) or already established — keep it and just
+        // resolve the loading state so the UI isn't stuck.
+        logConnectionEvent({ type: "api_ok", detail: "auth init fallback: session valid — resolving loading" });
       }
-
-      try {
-        if (getSessionTimedOut) {
-          // getSession timed out on both attempts. This happens when the
-          // client's in-line token refresh stalls (cold network after wake,
-          // Vercel cold start, Supabase under load). A timeout is NOT a
-          // confirmed session loss.
-          //
-          // Strategy: refresh via the SERVER (reliable cookie path), then read
-          // the now-fresh session from a reset client. This avoids the
-          // client-side refresh that just hung.
-          logConnectionEvent({ type: "lock_timeout", detail: "auth init: getSession timed out — attempting server refresh fallback" });
-          const serverResult = await refreshSessionViaServer("auth-context-init-fallback");
-
-          if (serverResult.ok) {
-            // Cookie is fresh now; read it via a reset client (no client-side
-            // network refresh, so this returns immediately).
-            resetClient();
-            const { session: recovered } = await getSessionWithTimeout("auth-context-init-after-server-refresh");
-            const recoveredUser = recovered?.user ?? null;
-            if (recoveredUser) {
-              setKnownExpiry(recovered?.expires_at);
-              setUser(recoveredUser);
-              const profileData = await fetchProfile(recoveredUser.id);
-              setProfile(profileData);
-              return; // setLoading(false) fires via finally
-            }
-            // Server said ok but the client still can't read a session — unusual.
-            logConnectionEvent({ type: "network_error", detail: "auth init: server refresh ok but client session empty — bailing" });
-            setUser(null);
-            setProfile(null);
-            return;
-          }
-
-          if (serverResult.reason === "no_session") {
-            // Server confirms there is no session — genuine logout.
-            logConnectionEvent({ type: "token_refresh_fail", detail: "auth init: server refresh reports no session" });
-            setUser(null);
-            setProfile(null);
-            redirectToLogin("session_check_error");
-            return;
-          }
-
-          // Transient (timeout / network) — do NOT force-logout; the session
-          // may be valid. The heartbeat/visibility refresh will recover.
-          logConnectionEvent({
-            type: "network_error",
-            detail: `auth init: server refresh transient (${serverResult.reason}) — bailing without force-logout`,
-          });
-          setUser(null);
-          setProfile(null);
-          return; // setLoading(false) fires via finally
-        }
-
-        if (getSessionError) {
-          // Non-timeout error from getSessionWithTimeout (unusual — it catches internally).
-          const message =
-            getSessionError instanceof Error ? getSessionError.message : String(getSessionError);
-          logConnectionEvent({ type: "token_refresh_fail", detail: `auth init getSession error: ${message}` });
-          setUser(null);
-          setProfile(null);
-          redirectToLogin("session_check_error");
-          return;
-        }
-
-        const session = getSessionSession;
-        const currentUser = session?.user ?? null;
-        setKnownExpiry(session?.expires_at);
-        setUser(currentUser);
-
-        if (currentUser) {
-          const profileData = await fetchProfile(currentUser.id);
-          setProfile(profileData);
-        } else {
-          setProfile(null);
-          redirectToLogin("session_expired");
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initSession();
+      setLoading(false);
+    }, INITIAL_SESSION_FALLBACK_MS);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (event === "INITIAL_SESSION") {
+          // Primary init path (replaces the old getSession-at-mount). auth-js
+          // emits this once after initialize with the current session.
+          initialSessionHandled = true;
+          clearTimeout(fallbackTimer);
+          const initialUser = session?.user ?? null;
+          setKnownExpiry(session?.expires_at);
+          setUser(initialUser);
+          if (initialUser) {
+            const profileData = await fetchProfile(initialUser.id);
+            setProfile(profileData);
+          } else {
+            setProfile(null);
+            redirectToLogin("session_expired");
+          }
+          setLoading(false);
+          return;
+        }
+
         if (event === "TOKEN_REFRESHED" && session) {
           logConnectionEvent({ type: "token_refresh_ok", detail: "onAuthStateChange" });
           setKnownExpiry(session.expires_at);
@@ -305,15 +268,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setProfile(profileData);
         } else {
           setProfile(null);
-          if (event !== "INITIAL_SESSION") {
-            redirectToLogin("session_expired");
-          }
+          // INITIAL_SESSION is handled earlier (and returns); any other event
+          // reaching here with no user means the session is gone — go to login.
+          redirectToLogin("session_expired");
         }
         setLoading(false);
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(fallbackTimer);
+      subscription.unsubscribe();
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

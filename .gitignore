@@ -45,3 +45,8 @@ docs/HOW_TO_VIDEOS_AGENT_PROMPTS.md
 scripts/video-pipeline/node_modules/
 scripts/video-pipeline/output/
 scripts/video-pipeline/.env
+
+# How-to video media published into the app for local testing (large binaries;
+# regenerate with scripts/video-pipeline/publish-to-app.mjs). To test on the
+# develop deploy, either remove this line to commit them, or host in storage.
+apps/organising-db/public/help-videos/*.mp4

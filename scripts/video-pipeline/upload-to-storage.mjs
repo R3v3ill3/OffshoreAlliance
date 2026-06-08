@@ -6,14 +6,27 @@ import { chromium } from "playwright";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { BASE_URL, VIEWPORT, ROOT } from "./config.mjs";
+import { BASE_URL, VIEWPORT, ROOT, OUT } from "./config.mjs";
 import { login } from "./lib/auth.mjs";
 import { captureSupabaseAuth } from "./lib/cleanup.mjs";
 
-const MEDIA = path.resolve(ROOT, "../../apps/organising-db/public/help-videos");
 const ENV_FILE = path.resolve(ROOT, "../../apps/organising-db/.env.local");
 const BUCKET = "help-videos";
 const mimeOf = (f) => (f.endsWith(".mp4") ? "video/mp4" : f.endsWith(".vtt") ? "text/vtt" : "text/plain");
+
+// Gather <id>.mp4/.vtt/.transcript.txt from the pipeline output dir (always on disk).
+async function gatherFiles() {
+  const out = [];
+  for (const d of await fsp.readdir(OUT, { withFileTypes: true })) {
+    if (!d.isDirectory()) continue;
+    const id = d.name;
+    for (const ext of ["mp4", "vtt", "transcript.txt"]) {
+      const full = path.join(OUT, id, `${id}.${ext}`);
+      try { await fsp.access(full); out.push({ name: `${id}.${ext}`, full }); } catch {}
+    }
+  }
+  return out;
+}
 
 function parseEnv(file) {
   const out = {};
@@ -27,21 +40,23 @@ function parseEnv(file) {
   return out;
 }
 
-async function uploadAll(label, { origin, apikey, token }) {
-  const files = (await fsp.readdir(MEDIA)).filter((f) => /\.(mp4|vtt|txt)$/.test(f));
+async function uploadAll(label, { origin, apikey, token }, files) {
   let ok = 0, fail = 0;
   for (const f of files) {
-    const body = await fsp.readFile(path.join(MEDIA, f));
-    const res = await fetch(`${origin}/storage/v1/object/${BUCKET}/${encodeURIComponent(f)}`, {
+    const body = await fsp.readFile(f.full);
+    const res = await fetch(`${origin}/storage/v1/object/${BUCKET}/${encodeURIComponent(f.name)}`, {
       method: "POST",
-      headers: { authorization: `Bearer ${token}`, apikey, "content-type": mimeOf(f), "x-upsert": "true" },
+      headers: { authorization: `Bearer ${token}`, apikey, "content-type": mimeOf(f.name), "x-upsert": "true" },
       body,
     });
     if (res.ok) ok++;
-    else { fail++; console.log(`  [${label}] FAIL ${f}: ${res.status} ${(await res.text().catch(() => "")).slice(0, 140)}`); }
+    else { fail++; console.log(`  [${label}] FAIL ${f.name}: ${res.status} ${(await res.text().catch(() => "")).slice(0, 140)}`); }
   }
   console.log(`[${label}] origin=${origin} → uploaded ${ok}, failed ${fail} (of ${files.length})`);
 }
+
+const FILES = await gatherFiles();
+console.log(`Found ${FILES.length} files to upload: ${[...new Set(FILES.map((f) => f.name.split(".")[0]))].join(", ")}`);
 
 const target = process.env.TARGET || "both";
 

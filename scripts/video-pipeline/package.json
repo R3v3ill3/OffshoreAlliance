@@ -1,0 +1,15 @@
+{
+  "name": "oa-video-pipeline",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "description": "Automated how-to video capture pipeline: Playwright drives the develop app and records video; narration via the local edge-tts app (Natasha en-AU); ffmpeg assembles the final mp4.",
+  "scripts": {
+    "discover": "node discover.mjs",
+    "tts": "node tts.mjs",
+    "a1": "node clips/a1.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  }
+}

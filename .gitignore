@@ -36,3 +36,12 @@ next-env.d.ts
 
 # Claude Code worktrees (local-only; never commit)
 .claude/worktrees/
+
+# How-to video agent prompts — filled-in copy contains a live DEV credential.
+# Keep only the placeholder template (…AGENT_PROMPTS.template.md) in git.
+docs/HOW_TO_VIDEOS_AGENT_PROMPTS.md
+
+# Video capture pipeline — local build + large media outputs (source scripts ARE committed)
+scripts/video-pipeline/node_modules/
+scripts/video-pipeline/output/
+scripts/video-pipeline/.env

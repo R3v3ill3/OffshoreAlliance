@@ -12,22 +12,32 @@ export type AgreementOrgRole = "organiser" | "lead" | "industrial_officer";
 
 export type AgreementStatus = "Current" | "Expired" | "Under_Negotiation" | "Terminated";
 
-export type WorksiteType =
-  | "FPSO"
-  | "FPU"
-  | "FLNG"
-  | "Platform"
-  | "Onshore_LNG"
-  | "Gas_Plant"
-  | "Drill_Centre"
-  | "Region"
-  | "Heliport"
-  | "Pipeline"
-  | "Airfield"
-  | "Onshore_Facilities"
-  | "CPF"
-  | "Gas_Field"
-  | "Other";
+// Single source of truth for worksite types. Adding a type is a one-line change
+// here plus a CHECK-constraint migration (worksites_worksite_type_check). Every
+// type picker imports this list, so new entries appear everywhere automatically.
+export const WORKSITE_TYPES = [
+  "FPSO",
+  "FPU",
+  "FLNG",
+  "Platform",
+  "Onshore_LNG",
+  "Gas_Plant",
+  "Drill_Centre",
+  "Region",
+  "Heliport",
+  "Pipeline",
+  "Airfield",
+  "Onshore_Facilities",
+  "CPF",
+  "Gas_Field",
+  "Vessel",
+  "Supply_Vessel",
+  "Accommodation_Vessel",
+  "Vessel_Other",
+  "Other",
+] as const;
+
+export type WorksiteType = (typeof WORKSITE_TYPES)[number];
 
 export type EmployerCategory =
   | "Producer"

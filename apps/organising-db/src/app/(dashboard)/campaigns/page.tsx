@@ -2,10 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import dynamic from "next/dynamic";
-import { Plus, Wand2, ExternalLink, Trash2, Megaphone, FileStack, Mail, Phone, Settings as SettingsIcon } from "lucide-react";
+import { Plus, Wand2, ExternalLink, Trash2, Megaphone, FileStack, Mail, Phone, Upload, Settings as SettingsIcon } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -28,6 +28,11 @@ import {
 import { CampaignsDashboard } from "@/components/campaigns/CampaignsDashboard";
 
 const TemplatesTab = dynamic(() => import("@/components/campaigns/templates-tab").then((m) => ({ default: m.TemplatesTab })), { ssr: false });
+
+const CampaignImportWizard = dynamic(
+  () => import("@/components/import/campaign-import-wizard").then((m) => ({ default: m.CampaignImportWizard })),
+  { ssr: false }
+);
 
 interface StagePlanSummary {
   plan_id: number;
@@ -118,9 +123,11 @@ export default function CampaignsPage() {
   const router = useRouter();
   const { user, profile, canWrite } = useAuth();
   const supabase = createClient();
+  const queryClient = useQueryClient();
 
   const [deleteTarget, setDeleteTarget] = useState<CampaignDeleteTarget | null>(null);
   const [createSelectorOpen, setCreateSelectorOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   /** When null, filter defaults to the signed-in user's organiser (if any), else "all". */
   const [organiserFilterOverride, setOrganiserFilterOverride] = useState<string | null>(null);
 
@@ -288,6 +295,14 @@ export default function CampaignsPage() {
     <div className="space-y-6">
       <CampaignDeleteDialog campaign={deleteTarget} onClose={() => setDeleteTarget(null)} />
 
+      {canWrite && (
+        <CampaignImportWizard
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          onComplete={() => queryClient.invalidateQueries({ queryKey: ["campaigns"] })}
+        />
+      )}
+
       {/* Campaign creation selector dialog */}
       <Dialog open={createSelectorOpen} onOpenChange={setCreateSelectorOpen}>
         <DialogContent className="max-w-lg">
@@ -371,6 +386,14 @@ export default function CampaignsPage() {
                 <Phone className="h-4 w-4 shrink-0" />
                 Phone wizard
               </Link>
+              <button
+                type="button"
+                onClick={() => setImportOpen(true)}
+                className={tabBarActionClassName}
+              >
+                <Upload className="h-4 w-4 shrink-0" />
+                Import lists
+              </button>
             </div>
           )}
         </div>

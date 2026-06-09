@@ -65,6 +65,25 @@ export async function makeCard({ title, subtitle, seconds, out, bg = "0x0b1220" 
   ]);
 }
 
+// A full-frame card with narration baked in (for the overview chapters).
+export async function makeNarratedCard({ title, subtitle, audio, seconds, out, bg = "0x0b1220" }) {
+  const font = await fontFile();
+  const draws = [];
+  if (font && title)
+    draws.push(`drawtext=fontfile='${font}':text='${esc(title)}':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=(h/2)-70:line_spacing=12`);
+  if (font && subtitle)
+    draws.push(`drawtext=fontfile='${font}':text='${esc(subtitle)}':fontcolor=0x9fb3c8:fontsize=38:x=(w-text_w)/2:y=(h/2)+40`);
+  await run([
+    "-f", "lavfi", "-i", `color=c=${bg}:s=1920x1080:r=30:d=${seconds}`,
+    "-i", audio,
+    "-vf", draws.length ? draws.join(",") : "null",
+    "-t", String(seconds),
+    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "30",
+    "-c:a", "aac", "-ar", "48000", "-ac", "2", "-shortest",
+    out,
+  ]);
+}
+
 // Recorded walkthrough + narration + optional lower-third title for the first
 // few seconds. Output normalized to the same codec params as the cards.
 export async function buildMain({ video, audio, lowerThird, out, lowerSeconds = 4.5, trimStart = 0 }) {

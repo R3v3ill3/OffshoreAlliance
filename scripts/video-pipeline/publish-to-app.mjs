@@ -1,5 +1,7 @@
-// Copy produced clips into the Next.js app's public/ so /help can serve them
-// locally, and write a web manifest the /help page reads.
+// Write the /help manifest pointing at Supabase Storage object paths.
+// The app builds full URLs from NEXT_PUBLIC_SUPABASE_URL, so each environment
+// (develop->DEV, main->PROD) serves from its own bucket. Upload the actual media
+// with upload-to-storage.mjs. No binaries are copied into the app.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { OUT, ROOT } from "./config.mjs";
@@ -7,6 +9,7 @@ import { OUT, ROOT } from "./config.mjs";
 const APP_PUBLIC = path.resolve(ROOT, "../../apps/organising-db/public");
 const DEST = path.join(APP_PUBLIC, "help-videos");
 await fs.mkdir(DEST, { recursive: true });
+const BUCKET = "help-videos";
 
 const SERIES_NAME = {
   A: "Set up a campaign",
@@ -22,27 +25,21 @@ const clips = [];
 for (const d of dirs) {
   if (!d.isDirectory()) continue;
   const id = d.name;
-  const base = path.join(OUT, id);
   let mf;
-  try { mf = JSON.parse(await fs.readFile(path.join(base, `${id}.manifest.json`), "utf8")); } catch { continue; }
-  // copy assets that exist
-  const copy = async (fname) => {
-    try { await fs.copyFile(path.join(base, fname), path.join(DEST, fname)); return `/help-videos/${fname}`; }
-    catch { return null; }
-  };
-  const video = await copy(`${id}.mp4`);
-  if (!video) continue;
-  const vtt = await copy(`${id}.vtt`);
-  const transcript = await copy(`${id}.transcript.txt`);
+  try { mf = JSON.parse(await fs.readFile(path.join(OUT, id, `${id}.manifest.json`), "utf8")); } catch { continue; }
+  // require the mp4 to have been produced
+  try { await fs.access(path.join(OUT, id, `${id}.mp4`)); } catch { continue; }
   clips.push({
     ...mf,
     seriesName: SERIES_NAME[mf.series] || mf.series,
     order: JOURNEY.indexOf(id) === -1 ? 999 : JOURNEY.indexOf(id),
-    video, vtt, transcript,
+    // storage object paths (app prefixes with <SUPABASE_URL>/storage/v1/object/public/)
+    video: `${BUCKET}/${id}.mp4`,
+    vtt: `${BUCKET}/${id}.vtt`,
+    transcript: `${BUCKET}/${id}.transcript.txt`,
   });
 }
 clips.sort((a, b) => a.order - b.order);
-const manifest = { count: clips.length, series: SERIES_NAME, clips };
-await fs.writeFile(path.join(DEST, "manifest.json"), JSON.stringify(manifest, null, 2));
-console.log(`Published ${clips.length} clips to ${DEST}`);
+await fs.writeFile(path.join(DEST, "manifest.json"), JSON.stringify({ count: clips.length, series: SERIES_NAME, storage: BUCKET, clips }, null, 2));
+console.log(`Wrote manifest (${clips.length} clips, storage paths) → ${path.join(DEST, "manifest.json")}`);
 console.log("Order:", clips.map((c) => c.id).join(", "));

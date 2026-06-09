@@ -7,6 +7,7 @@
     "D": "Tasking",
     "E": "Assessments & ratings"
   },
+  "storage": "help-videos",
   "clips": [
     {
       "id": "A1",
@@ -39,9 +40,9 @@
       "downloadable": true,
       "seriesName": "Set up a campaign",
       "order": 0,
-      "video": "/help-videos/A1.mp4",
-      "vtt": "/help-videos/A1.vtt",
-      "transcript": "/help-videos/A1.transcript.txt"
+      "video": "help-videos/A1.mp4",
+      "vtt": "help-videos/A1.vtt",
+      "transcript": "help-videos/A1.transcript.txt"
     },
     {
       "id": "A2",
@@ -76,9 +77,9 @@
       "downloadable": true,
       "seriesName": "Set up a campaign",
       "order": 1,
-      "video": "/help-videos/A2.mp4",
-      "vtt": "/help-videos/A2.vtt",
-      "transcript": "/help-videos/A2.transcript.txt"
+      "video": "help-videos/A2.mp4",
+      "vtt": "help-videos/A2.vtt",
+      "transcript": "help-videos/A2.transcript.txt"
     },
     {
       "id": "A4",
@@ -114,9 +115,9 @@
       "downloadable": true,
       "seriesName": "Set up a campaign",
       "order": 3,
-      "video": "/help-videos/A4.mp4",
-      "vtt": "/help-videos/A4.vtt",
-      "transcript": "/help-videos/A4.transcript.txt"
+      "video": "help-videos/A4.mp4",
+      "vtt": "help-videos/A4.vtt",
+      "transcript": "help-videos/A4.transcript.txt"
     },
     {
       "id": "A5",
@@ -149,9 +150,9 @@
       "downloadable": true,
       "seriesName": "Set up a campaign",
       "order": 4,
-      "video": "/help-videos/A5.mp4",
-      "vtt": "/help-videos/A5.vtt",
-      "transcript": "/help-videos/A5.transcript.txt"
+      "video": "help-videos/A5.mp4",
+      "vtt": "help-videos/A5.vtt",
+      "transcript": "help-videos/A5.transcript.txt"
     },
     {
       "id": "B1",
@@ -184,9 +185,9 @@
       "downloadable": true,
       "seriesName": "Units, groups & subgroups",
       "order": 5,
-      "video": "/help-videos/B1.mp4",
-      "vtt": "/help-videos/B1.vtt",
-      "transcript": "/help-videos/B1.transcript.txt"
+      "video": "help-videos/B1.mp4",
+      "vtt": "help-videos/B1.vtt",
+      "transcript": "help-videos/B1.transcript.txt"
     },
     {
       "id": "C1",
@@ -220,9 +221,9 @@
       "downloadable": true,
       "seriesName": "Wall charts",
       "order": 8,
-      "video": "/help-videos/C1.mp4",
-      "vtt": "/help-videos/C1.vtt",
-      "transcript": "/help-videos/C1.transcript.txt"
+      "video": "help-videos/C1.mp4",
+      "vtt": "help-videos/C1.vtt",
+      "transcript": "help-videos/C1.transcript.txt"
     },
     {
       "id": "C2",
@@ -255,9 +256,9 @@
       "downloadable": true,
       "seriesName": "Wall charts",
       "order": 9,
-      "video": "/help-videos/C2.mp4",
-      "vtt": "/help-videos/C2.vtt",
-      "transcript": "/help-videos/C2.transcript.txt"
+      "video": "help-videos/C2.mp4",
+      "vtt": "help-videos/C2.vtt",
+      "transcript": "help-videos/C2.transcript.txt"
     },
     {
       "id": "C3",
@@ -292,9 +293,9 @@
       "downloadable": true,
       "seriesName": "Wall charts",
       "order": 10,
-      "video": "/help-videos/C3.mp4",
-      "vtt": "/help-videos/C3.vtt",
-      "transcript": "/help-videos/C3.transcript.txt"
+      "video": "help-videos/C3.mp4",
+      "vtt": "help-videos/C3.vtt",
+      "transcript": "help-videos/C3.transcript.txt"
     },
     {
       "id": "E1",
@@ -327,9 +328,9 @@
       "downloadable": true,
       "seriesName": "Assessments & ratings",
       "order": 11,
-      "video": "/help-videos/E1.mp4",
-      "vtt": "/help-videos/E1.vtt",
-      "transcript": "/help-videos/E1.transcript.txt"
+      "video": "help-videos/E1.mp4",
+      "vtt": "help-videos/E1.vtt",
+      "transcript": "help-videos/E1.transcript.txt"
     },
     {
       "id": "E2",
@@ -363,9 +364,9 @@
       "downloadable": true,
       "seriesName": "Assessments & ratings",
       "order": 12,
-      "video": "/help-videos/E2.mp4",
-      "vtt": "/help-videos/E2.vtt",
-      "transcript": "/help-videos/E2.transcript.txt"
+      "video": "help-videos/E2.mp4",
+      "vtt": "help-videos/E2.vtt",
+      "transcript": "help-videos/E2.transcript.txt"
     }
   ]
 }

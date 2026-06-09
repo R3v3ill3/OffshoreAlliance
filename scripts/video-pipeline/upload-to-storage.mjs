@@ -72,7 +72,7 @@ if (target === "dev" || target === "both") {
   const auth = await ap.catch(() => null);
   await b.close();
   if (!auth) throw new Error("DEV: could not capture Supabase auth");
-  await uploadAll("DEV", { origin: auth.origin, apikey: auth.apikey, token: auth.authorization.replace(/^Bearer\s+/i, "") });
+  await uploadAll("DEV", { origin: auth.origin, apikey: auth.apikey, token: auth.authorization.replace(/^Bearer\s+/i, "") }, FILES);
 }
 
 if (target === "prod" || target === "both") {
@@ -81,6 +81,6 @@ if (target === "prod" || target === "both") {
   const key = env.SUPABASE_SERVICE_ROLE_KEY;
   if (!origin || !key) throw new Error("PROD: missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local");
   if (!origin.includes("gteygwfgjvczanmrwgbr")) console.log(`  [PROD] note: .env.local URL is ${origin}`);
-  await uploadAll("PROD", { origin, apikey: key, token: key });
+  await uploadAll("PROD", { origin, apikey: key, token: key }, FILES);
 }
 console.log("UPLOAD_DONE");

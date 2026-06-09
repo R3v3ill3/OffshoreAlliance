@@ -1,6 +1,7 @@
 {
-  "count": 10,
+  "count": 11,
   "series": {
+    "O": "Overview",
     "A": "Set up a campaign",
     "B": "Units, groups & subgroups",
     "C": "Wall charts",
@@ -9,6 +10,39 @@
   },
   "storage": "help-videos",
   "clips": [
+    {
+      "id": "OVERVIEW",
+      "title": "OffshoreAlliance campaigns: the big picture",
+      "series": "O",
+      "durationSec": 95,
+      "summary": "The big-picture walkthrough: setup, structure, wall chart, assessments, and tasking — and how they connect.",
+      "tags": [
+        "overview",
+        "big picture",
+        "workflow",
+        "getting started",
+        "campaign"
+      ],
+      "associatedRoutes": [
+        "/campaigns",
+        "/campaigns/*"
+      ],
+      "routeWeight": 2,
+      "prerequisites": [],
+      "upNext": [
+        "A1",
+        "B1",
+        "C1"
+      ],
+      "transcriptPath": "OVERVIEW.transcript.txt",
+      "videoPath": "OVERVIEW.mp4",
+      "downloadable": true,
+      "seriesName": "Overview",
+      "order": -1,
+      "video": "help-videos/OVERVIEW.mp4",
+      "vtt": "help-videos/OVERVIEW.vtt",
+      "transcript": "help-videos/OVERVIEW.transcript.txt"
+    },
     {
       "id": "A1",
       "title": "Add an employer",

@@ -21,7 +21,7 @@ interface Clip {
 }
 interface Manifest { count: number; series: Record<string, string>; clips: Clip[] }
 
-const SERIES_ORDER = ["A", "B", "C", "D", "E"];
+const SERIES_ORDER = ["O", "A", "B", "C", "D", "E"];
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
 
 // Media lives in the per-environment Supabase Storage "help-videos" bucket.

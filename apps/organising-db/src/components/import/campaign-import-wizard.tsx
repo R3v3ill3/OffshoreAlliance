@@ -48,7 +48,6 @@ import {
 } from "lucide-react";
 import {
   autoMapCampaignHeader,
-  splitCompanyName,
   CAMPAIGN_MAPPABLE_FIELDS,
   type CampaignMappableField,
   type CampaignAnalyseResponse,
@@ -224,7 +223,6 @@ export function CampaignImportWizard({ open, onOpenChange, onComplete }: Campaig
 
   // Upload
   const [fileNames, setFileNames] = useState<string[]>([]);
-  const [headers, setHeaders] = useState<string[]>([]);
   const [headerRows, setHeaderRows] = useState<Record<string, string>[]>([]);
   const [columnMappings, setColumnMappings] = useState<ColumnMapping[]>([]);
 
@@ -315,7 +313,6 @@ export function CampaignImportWizard({ open, onOpenChange, onComplete }: Campaig
     setNewCampaignStatus("planning");
     setNewCampaignOrganiserId(null);
     setFileNames([]);
-    setHeaders([]);
     setHeaderRows([]);
     setColumnMappings([]);
     setWorkerRows([]);
@@ -366,7 +363,6 @@ export function CampaignImportWizard({ open, onOpenChange, onComplete }: Campaig
         names.push(json.fileName);
       }
       setFileNames(names);
-      setHeaders(headerSet);
       setHeaderRows(allRows);
       setColumnMappings(headerSet.map((h) => ({ header: h, field: autoMapCampaignHeader(h) })));
       setStep("column_mapping");

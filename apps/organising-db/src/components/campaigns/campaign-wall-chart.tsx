@@ -33,7 +33,13 @@ import { Badge } from "@/components/ui/badge";
 import { MoreVertical, Layers, Trash2 } from "lucide-react";
 import { DeleteOrganisingUnitDialog, type DeleteUnitWorker } from "./wall-chart/delete-organising-unit-dialog";
 import { SplitUnitDialog, type SplitMember } from "./wall-chart/split-unit-dialog";
-import { humanizeOuType, ouDisplayName } from "./wall-chart/types";
+import { humanizeOuType, ouDisplayName, type ListActivityChannel } from "./wall-chart/types";
+import { useCampaignWorkerListActivity } from "@/lib/hooks/useCampaignWorkerListActivity";
+import {
+  ListBadgeSelector,
+  UnitListBadgeControl,
+  effectiveBadgesForScope,
+} from "./wall-chart/list-badge-selector";
 import { collapseActivityRatingsToWorkerMap } from "@/lib/utils/collapse-activity-ratings";
 import {
   AssessmentSelector,
@@ -336,6 +342,19 @@ export function CampaignWallChart({
   const [unitAssessmentOverride, setUnitAssessmentOverride] = useState<
     Map<number, AssessmentSelection>
   >(() => new Map());
+
+  // Which list-activity badges (phone / email / activist list / sms) show on
+  // worker tiles. Campaign-level default, overridable per unit (undefined =
+  // inherit default). Default off so tiles stay uncluttered until opted in.
+  const [campaignBadgeDefault, setCampaignBadgeDefault] = useState<
+    Set<ListActivityChannel>
+  >(() => new Set());
+  const [unitBadgeOverride, setUnitBadgeOverride] = useState<
+    Map<number, Set<ListActivityChannel> | undefined>
+  >(() => new Map());
+
+  const { byWorker: listActivityByWorker } =
+    useCampaignWorkerListActivity(campaignId);
 
   const activityIdsForRatings = useMemo(
     () => activityIdsForWallChartSelections(campaignAssessmentDefault, unitAssessmentOverride),
@@ -781,6 +800,10 @@ export function CampaignWallChart({
           : new Map<number, ActivityRating>();
       const activityRating =
         effective.kind === "assessment" ? rMap.get(workerId) ?? null : null;
+      const enabledListBadges = effectiveBadgesForScope(
+        unitBadgeOverride.get(scopeKey),
+        campaignBadgeDefault
+      );
       return (
         <WorkerTile
           key={`${ouId ?? "u"}-${workerId}`}
@@ -793,6 +816,8 @@ export function CampaignWallChart({
           selection={effective}
           campaignId={campaignId}
           activityRating={activityRating}
+          enabledListBadges={enabledListBadges}
+          listActivityRows={listActivityByWorker.get(workerId)}
           isSelected={selection.has(ouId, workerId)}
           onClick={(id, tileOuId, kind) => {
             if (kind === "toggle-select") {
@@ -847,6 +872,9 @@ export function CampaignWallChart({
       campaignAssessmentDefault,
       unitAssessmentOverride,
       activityRatingsByActivityId,
+      campaignBadgeDefault,
+      unitBadgeOverride,
+      listActivityByWorker,
       campaignId,
       buildListOpen,
       buildListWorkerIds,
@@ -1142,6 +1170,12 @@ export function CampaignWallChart({
               onChange={setParticipationSource}
             />
           }
+          listBadgeSelector={
+            <ListBadgeSelector
+              value={campaignBadgeDefault}
+              onChange={setCampaignBadgeDefault}
+            />
+          }
           overlayToggle={
             <Button
               type="button"
@@ -1318,6 +1352,18 @@ export function CampaignWallChart({
                       });
                     }}
                   />
+                  <UnitListBadgeControl
+                    campaignDefault={campaignBadgeDefault}
+                    override={unitBadgeOverride.get(UNASSIGNED_KEY)}
+                    onChangeOverride={(next) => {
+                      setUnitBadgeOverride((prev) => {
+                        const copy = new Map(prev);
+                        if (next === undefined) copy.delete(UNASSIGNED_KEY);
+                        else copy.set(UNASSIGNED_KEY, next);
+                        return copy;
+                      });
+                    }}
+                  />
                   <WallChartFilterBar
                     state={filter}
                     onChange={(next) => setFilter(UNASSIGNED_KEY, next)}
@@ -1473,6 +1519,18 @@ export function CampaignWallChart({
                             override={unitAssessmentOverride.get(ou.ou_id)}
                             onChangeOverride={(next) => {
                               setUnitAssessmentOverride((prev) => {
+                                const copy = new Map(prev);
+                                if (next === undefined) copy.delete(ou.ou_id);
+                                else copy.set(ou.ou_id, next);
+                                return copy;
+                              });
+                            }}
+                          />
+                          <UnitListBadgeControl
+                            campaignDefault={campaignBadgeDefault}
+                            override={unitBadgeOverride.get(ou.ou_id)}
+                            onChangeOverride={(next) => {
+                              setUnitBadgeOverride((prev) => {
                                 const copy = new Map(prev);
                                 if (next === undefined) copy.delete(ou.ou_id);
                                 else copy.set(ou.ou_id, next);

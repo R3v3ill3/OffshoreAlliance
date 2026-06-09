@@ -22,6 +22,8 @@ export type WallChartSummaryHeaderProps = {
   participationLabel?: string;
   /** Slot for the relationship overlay toggle (Phase 8). */
   overlayToggle?: ReactNode;
+  /** Slot for the campaign-level list-activity badge selector. */
+  listBadgeSelector?: ReactNode;
   rightSlot?: ReactNode;
   /**
    * Slot for the campaign-level AssessmentSelector. Rendered above the
@@ -47,6 +49,7 @@ export function WallChartSummaryHeader({
   participationSelector,
   participationLabel,
   overlayToggle,
+  listBadgeSelector,
   rightSlot,
   assessmentSelector,
   isStuck,
@@ -78,6 +81,7 @@ export function WallChartSummaryHeader({
             )}
           >
             {participationSelector}
+            {listBadgeSelector}
             <div className="inline-flex rounded border bg-background overflow-hidden">
               <Button
                 type="button"

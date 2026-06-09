@@ -48,6 +48,41 @@ export type WallChartRatingSummary = {
   supportive_activity_count: number;
 };
 
+/**
+ * Channels a worker can have list membership on within a campaign. Mirrors
+ * `vw_campaign_worker_list_activity.channel`. `sms` has no list table yet, so
+ * it is always empty until an SMS-list feature lands.
+ */
+export type ListActivityChannel = "phone" | "email" | "task" | "sms";
+
+/** Ordered set of channels, used for the badge selector + tile rendering. */
+export const LIST_ACTIVITY_CHANNELS: readonly ListActivityChannel[] = [
+  "phone",
+  "email",
+  "task",
+  "sms",
+] as const;
+
+/** Short, user-facing label per channel (badge selector + detail tab). */
+export const LIST_ACTIVITY_CHANNEL_LABELS: Record<ListActivityChannel, string> = {
+  phone: "Phone",
+  email: "Email",
+  task: "Activist list",
+  sms: "SMS",
+};
+
+/** One row of the worker list-activity view (a single worker on a single list). */
+export type WorkerListActivityRow = {
+  channel: ListActivityChannel;
+  campaign_id: number;
+  worker_id: number;
+  list_id: number;
+  list_name: string | null;
+  list_status: string | null;
+  item_status: string | null;
+  added_at: string | null;
+};
+
 /** Source of tile colouring + unit summary metrics on the wall chart. */
 export type AssessmentSelection =
   | { kind: "cumulative" }

@@ -11,14 +11,17 @@ import { assessmentNumericForWallChart, ratingBgClass, ratingBorderTextClass } f
 import type {
   ActivityRating,
   AssessmentSelection,
+  ListActivityChannel,
   WallChartRatingSummary,
   WallChartWorker,
   WallChartWorkerContactFocusField,
+  WorkerListActivityRow,
 } from "./types";
 import { CumulativeRatingPopover, InlineRatingPopover } from "./inline-rating-popover";
 import {
   BuildListCheck,
   CumulativeRatingDot,
+  ListActivityBadges,
   MultiUnitIndicator,
   WorkerBadgeRow,
 } from "./worker-badges";
@@ -82,6 +85,10 @@ export type WorkerTileProps = {
    * when false or undefined.
    */
   buildListMode?: boolean;
+  /** Channels for which list-activity badges should render on this tile. */
+  enabledListBadges?: ReadonlySet<ListActivityChannel>;
+  /** This worker's list-membership rows within the campaign (for badges). */
+  listActivityRows?: WorkerListActivityRow[];
 };
 
 export function WorkerTile({
@@ -103,6 +110,8 @@ export function WorkerTile({
   onContactBadgeClick,
   inBuildList,
   buildListMode,
+  enabledListBadges,
+  listActivityRows,
 }: WorkerTileProps) {
   const mt = worker.member_role_type;
   const um = worker.union_membership_type;
@@ -348,11 +357,19 @@ export function WorkerTile({
           </div>
           <div className="shrink-0">{largeBadgeRendered}</div>
         </div>
-        <WorkerBadgeRow
-          worker={worker}
-          canWrite={canWrite}
-          onContactBadgeClick={onContactBadgeClick}
-        />
+        <div className="flex items-center gap-1 flex-wrap w-full">
+          <WorkerBadgeRow
+            worker={worker}
+            canWrite={canWrite}
+            onContactBadgeClick={onContactBadgeClick}
+          />
+          {enabledListBadges && enabledListBadges.size > 0 ? (
+            <ListActivityBadges
+              enabledChannels={enabledListBadges}
+              rows={listActivityRows}
+            />
+          ) : null}
+        </div>
       </button>
       {inMultipleUnits ? <MultiUnitIndicator otherUnitNames={otherUnitNames} /> : null}
       {inBuildList ? <BuildListCheck /> : null}

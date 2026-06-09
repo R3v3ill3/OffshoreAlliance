@@ -1,6 +1,11 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { resetClient, coordinatedRefreshSession } from "@/lib/supabase/client";
+import {
+  createClient,
+  resetClient,
+  refreshSessionViaServer,
+  getSessionWithTimeout,
+} from "@/lib/supabase/client";
 import { logConnectionEvent, generateTraceId } from "@/lib/supabase/connection-monitor";
 
 type RecoverySource = "menu-hard-refresh" | "query-cache-auth-error" | "auth-change" | "manual";
@@ -8,10 +13,12 @@ type FailureReason =
   | "session_check_timeout"
   | "session_check_error"
   | "missing_session"
+  | "refresh_transient"
   | "probe_timeout"
   | "probe_error"
   | "workload_probe_error"
-  | "circuit_breaker";
+  | "circuit_breaker"
+  | "soft_reload";
 
 export interface SessionRecoveryResult {
   ok: boolean;
@@ -21,7 +28,6 @@ export interface SessionRecoveryResult {
 }
 
 interface RecoverSessionOptions {
-  supabase: SupabaseClient;
   queryClient: QueryClient;
   source: RecoverySource;
   reloadOnSuccess?: boolean;
@@ -278,15 +284,67 @@ function softFailRecovery(
 }
 
 /**
- * Graduated session recovery with circuit breaker:
- * 1. Check circuit breaker to prevent cascading recoveries
- * 2. Try a coordinated token refresh (mutex-protected)
- * 3. Verify session via getSession
- * 4. Probe DB connectivity
- * 5. Only redirect to login if session is confirmed missing after refresh attempt
+ * Soft reload that PRESERVES the auth cookies (no logout). Re-initialises the
+ * whole JS context (fresh GoTrueClient, fresh sockets) and lets the middleware
+ * refresh the session server-side on the reloaded request — the path that has
+ * always recovered, including on Edge after sleeping-tab wakes.
+ *
+ * Guarded by a sessionStorage cooldown (shared with the providers.tsx
+ * lock-deadlock ladder) so we never reload-loop.
+ */
+const SOFT_RELOAD_STORAGE_KEY = "oa:last-lock-deadlock-reload-at";
+const SOFT_RELOAD_COOLDOWN_MS = 90_000;
+
+function softReloadPreservingAuth(reason: string, traceId: string): SessionRecoveryResult {
+  try {
+    const previousRaw = window.sessionStorage.getItem(SOFT_RELOAD_STORAGE_KEY);
+    const previous = previousRaw ? Number(previousRaw) : 0;
+    if (Number.isFinite(previous) && previous > 0 && Date.now() - previous < SOFT_RELOAD_COOLDOWN_MS) {
+      logConnectionEvent({
+        type: "recovery_end",
+        detail: `soft reload suppressed (cooldown): ${reason}`,
+        traceId,
+      });
+      return {
+        ok: false,
+        message:
+          "Still reconnecting. Please wait a few seconds and try again — you do not need to sign out.",
+        reasonCode: "soft_reload",
+        redirectedToLogin: false,
+      };
+    }
+    window.sessionStorage.setItem(SOFT_RELOAD_STORAGE_KEY, String(Date.now()));
+  } catch {
+    // best effort
+  }
+  logConnectionEvent({
+    type: "recovery_end",
+    detail: `soft reload (cookies preserved, no logout): ${reason}`,
+    traceId,
+  });
+  window.location.reload();
+  return {
+    ok: true,
+    message: "Reloading to restore the connection…",
+    reasonCode: "soft_reload",
+    redirectedToLogin: false,
+  };
+}
+
+/**
+ * Graduated session recovery, SERVER-FIRST, with circuit breaker:
+ * 1. Check circuit breaker to prevent cascading recoveries.
+ * 2. Refresh the session via the SERVER (/api/auth/refresh) — the reliable
+ *    cookie path. The client-side refreshSession()/getSession() pipeline this
+ *    used to call is exactly what hangs after a tab wake (H8), which made the
+ *    "Refresh connection" button itself fail with session_check_timeout.
+ * 3. On success, drop the (possibly wedged) browser client and verify the
+ *    fresh client can read the session locally, then probe DB connectivity.
+ * 4. Only redirect to login when the SERVER confirms there is no session.
+ * 5. For user-initiated recovery, transient failures escalate to a soft
+ *    reload (cookies preserved — no logout) instead of stranding the user.
  */
 export async function recoverSessionConnection({
-  supabase,
   queryClient,
   source,
   reloadOnSuccess = true,
@@ -296,11 +354,14 @@ export async function recoverSessionConnection({
   const traceId = generateTraceId();
   const now = Date.now();
 
+  // User explicitly asked for recovery (menu / banner button). These flows may
+  // escalate to a soft reload on transient failure rather than soft-failing.
+  const isUserInitiated = source === "menu-hard-refresh" || source === "manual";
+
   // Circuit breaker: skip if recovery was attempted very recently.
   // Exception: menu-initiated hard refresh always bypasses the breaker so the
   // user is never silently trapped on a broken page.
-  const isBypassSource = source === "menu-hard-refresh";
-  if (!isBypassSource && now - _lastRecoveryAttemptTs < CIRCUIT_BREAKER_WINDOW_MS) {
+  if (!isUserInitiated && now - _lastRecoveryAttemptTs < CIRCUIT_BREAKER_WINDOW_MS) {
     const elapsed = now - _lastRecoveryAttemptTs;
     logConnectionEvent({
       type: "recovery_start",
@@ -323,96 +384,90 @@ export async function recoverSessionConnection({
   }
 
   _lastRecoveryAttemptTs = now;
-  logConnectionEvent({ type: "recovery_start", detail: `${source}`, traceId });
+  logConnectionEvent({ type: "recovery_start", detail: `${source} (server-first)`, traceId });
 
-  // Step 1: Always try a coordinated token refresh first
-  try {
-    const { data, error } = await withTimeout(
-      coordinatedRefreshSession(`recovery:${source}`),
-      12_000,
-      new Error("Timed out refreshing session"),
+  // Step 1: Server-side cookie refresh — the reliable path (bounded at 8s,
+  // never throws). After it returns ok, the browser cookie holds a fresh
+  // token, so the client needs NO network refresh.
+  const serverResult = await refreshSessionViaServer(`recovery:${source}`);
+
+  if (serverResult.reason === "no_session") {
+    // The SERVER confirms there is no session — genuine logout.
+    logConnectionEvent({ type: "recovery_end", detail: `fail: server reports no session`, traceId });
+    return hardFailRecovery(
+      queryClient,
+      "missing_session",
+      "No active session found. Redirecting to login.",
+      redirectOnFailure,
+      traceId,
     );
-    if (!error && data.session) {
-      logConnectionEvent({ type: "token_refresh_ok", detail: `refreshed via recovery: ${source}`, traceId });
-      await queryClient.invalidateQueries();
-      logConnectionEvent({ type: "recovery_end", detail: `success after refresh: ${source}`, traceId });
-
-      if (reloadOnSuccess) {
-        window.location.reload();
-      }
-
-      return {
-        ok: true,
-        message: "Session refreshed successfully.",
-        reasonCode: "refreshed",
-        redirectedToLogin: false,
-      };
-    }
-  } catch {
-    // Fall through to session check
   }
 
-  // Step 2: Check session state (with generous timeout)
-  let sessionResult: Awaited<ReturnType<typeof supabase.auth.getSession>>;
-  try {
-    sessionResult = await withTimeout(
-      supabase.auth.getSession(),
-      15_000,
-      new Error("Timed out while checking Supabase session"),
-    );
-  } catch (error: unknown) {
-    const reason =
-      error instanceof Error && error.message.includes("Timed out")
-        ? "session_check_timeout"
-        : "session_check_error";
-    const message = readErrorMessage(error);
-    logConnectionEvent({ type: "recovery_end", detail: `fail: ${reason}`, traceId });
-    const escalate = shouldEscalateTransientFailure();
-    if (redirectOnFailure && escalate) {
-      return hardFailRecovery(
-        queryClient,
-        reason,
-        `${message} (escalated after repeated transient failures)`,
-        true,
-        traceId,
-      );
-    }
-    return softFailRecovery(reason, `${message} (transient; will retry on next trigger)`, traceId);
-  }
-
-  if (sessionResult.error) {
-    logConnectionEvent({ type: "recovery_end", detail: `fail: session error`, traceId });
-    if (isLikelyAuthError(sessionResult.error)) {
-      return hardFailRecovery(
-        queryClient,
-        "session_check_error",
-        sessionResult.error.message,
-        redirectOnFailure,
-        traceId,
-      );
+  if (!serverResult.ok) {
+    // Transient (timeout / network / http / exception) — NOT a confirmed
+    // session loss. Never force-logout on these.
+    logConnectionEvent({
+      type: "recovery_end",
+      detail: `fail: server refresh transient (${serverResult.reason})`,
+      traceId,
+    });
+    if (isUserInitiated) {
+      // The user is looking at a broken page and asked us to fix it. A soft
+      // reload re-establishes sockets and lets the middleware refresh the
+      // cookie — the path that has always recovered.
+      return softReloadPreservingAuth(`server refresh ${serverResult.reason} (${source})`, traceId);
     }
     const escalate = shouldEscalateTransientFailure();
     if (redirectOnFailure && escalate) {
       return hardFailRecovery(
         queryClient,
-        "session_check_error",
-        `${sessionResult.error.message} (escalated after repeated transient failures)`,
+        "refresh_transient",
+        `Server refresh failed (${serverResult.reason}) repeatedly — escalated.`,
         true,
         traceId,
       );
     }
     return softFailRecovery(
-      "session_check_error",
-      `${sessionResult.error.message} (non-auth session error; transient retry budget active)`,
+      "refresh_transient",
+      `Server refresh failed (${serverResult.reason}); transient, will retry on next trigger.`,
       traceId,
     );
   }
 
-  const session = sessionResult.data.session;
-  const user = session?.user ?? null;
+  logConnectionEvent({ type: "token_refresh_ok", detail: `server refresh via recovery: ${source}`, traceId });
 
-  if (!user) {
-    logConnectionEvent({ type: "recovery_end", detail: `fail: missing session`, traceId });
+  // Step 2: Drop the possibly-wedged browser client and verify the fresh one
+  // can read the (now fresh) session locally. With a fresh token this is a
+  // local cookie read — no network refresh, so a timeout here means the auth
+  // client itself is jammed and only a reload will clear it.
+  resetClient();
+  const freshClient = createClient();
+  const { session, timedOut } = await getSessionWithTimeout(`recovery:${source}`);
+
+  if (timedOut) {
+    logConnectionEvent({ type: "recovery_end", detail: `fail: session_check_timeout (post-refresh)`, traceId });
+    if (isUserInitiated) {
+      return softReloadPreservingAuth(`post-refresh getSession timeout (${source})`, traceId);
+    }
+    const escalate = shouldEscalateTransientFailure();
+    if (redirectOnFailure && escalate) {
+      return hardFailRecovery(
+        queryClient,
+        "session_check_timeout",
+        "Session check timed out repeatedly after server refresh — escalated.",
+        true,
+        traceId,
+      );
+    }
+    return softFailRecovery(
+      "session_check_timeout",
+      "Session check timed out after server refresh (transient; will retry on next trigger).",
+      traceId,
+    );
+  }
+
+  if (!session) {
+    logConnectionEvent({ type: "recovery_end", detail: `fail: missing session (post-refresh)`, traceId });
     return hardFailRecovery(
       queryClient,
       "missing_session",
@@ -424,11 +479,11 @@ export async function recoverSessionConnection({
 
   resetTransientFailureStreak();
 
-  // Step 3: Probe DB connectivity
+  // Step 3: Probe DB connectivity (Lane 1) with the fresh client.
   const probeStartedAt = Date.now();
   try {
     const probeResult = await withTimeout(
-      supabase.from("user_profiles").select("user_id").eq("user_id", user.id).maybeSingle(),
+      freshClient.from("user_profiles").select("user_id").eq("user_id", session.user.id).maybeSingle(),
       12_000,
       new Error("Timed out while validating database connection"),
     );
@@ -440,6 +495,9 @@ export async function recoverSessionConnection({
         return hardFailRecovery(queryClient, "probe_error", buildErrorSummary(probeResult.error), redirectOnFailure, traceId);
       }
       logConnectionEvent({ type: "recovery_end", detail: `soft-fail: probe error`, traceId });
+      if (isUserInitiated) {
+        return softReloadPreservingAuth(`probe error (${source})`, traceId);
+      }
       return softFailRecovery("probe_error", buildErrorSummary(probeResult.error), traceId);
     }
   } catch (error: unknown) {
@@ -448,12 +506,17 @@ export async function recoverSessionConnection({
         ? "probe_timeout"
         : "probe_error";
     logConnectionEvent({ type: "recovery_end", detail: `soft-fail: ${reason}`, traceId });
+    if (isUserInitiated) {
+      // Session is valid (server confirmed) but Lane 1 is stalled — typical
+      // Edge post-wake socket stall. A reload re-establishes the sockets.
+      return softReloadPreservingAuth(`${reason} (${source})`, traceId);
+    }
     return softFailRecovery(reason, readErrorMessage(error), traceId);
   }
 
   // Step 4: Optional workload probe
   if (validateWorkloadAccess) {
-    const workloadProbeResult = await supabase.rpc("get_workload_dashboard_data", {
+    const workloadProbeResult = await freshClient.rpc("get_workload_dashboard_data", {
       p_filter_organiser: null,
       p_filter_status: null,
       p_filter_days: null,

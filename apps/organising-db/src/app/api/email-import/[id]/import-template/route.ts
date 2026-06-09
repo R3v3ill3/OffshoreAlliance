@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { applyVariableReplacements } from '@/lib/comms/template-variables'
+import { stripImportedEmailSignatureBlocks } from '@/lib/comms/sanitise-email-html'
 
 export async function POST(
   req: NextRequest,
@@ -63,6 +64,13 @@ export async function POST(
       }
       subjectLine = applyVariableReplacements(subjectLine, acceptedReplacements)
     }
+
+    const screenedContent = stripImportedEmailSignatureBlocks({
+      bodyText,
+      bodyHtml,
+    })
+    bodyText = screenedContent.bodyText
+    bodyHtml = screenedContent.bodyHtml
 
     const usedVariableKeys = [...new Set(acceptedReplacements.map((r) => r.variable))]
     const variables = usedVariableKeys.length > 0

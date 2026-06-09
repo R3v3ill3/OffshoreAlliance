@@ -1,7 +1,7 @@
 import { createBrowserClient } from "@supabase/ssr";
 // processLock is re-exported by supabase-js from auth-js. Importing from
 // supabase-js avoids declaring a direct auth-js dependency.
-import { processLock, type SupabaseClient, type AuthResponse, type Session } from "@supabase/supabase-js";
+import { processLock, type SupabaseClient, type Session } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import { getCookieOptions } from "@/lib/supabase/cookie-options";
 import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
@@ -119,16 +119,16 @@ export function createClient(): SupabaseClient {
       auth: {
         // Disable the Supabase client's built-in background auto-refresh timer.
         // The timer runs independently of all our coordination code
-        // (coordinatedRefreshSession, visibility handler, middleware), and when
-        // it consumes a refresh token that was already rotated by the middleware,
-        // it triggers an unrecoverable "Invalid Refresh Token: Already Used"
-        // error that corrupts the auth state.
+        // (visibility handler, heartbeat, middleware), and when it consumes a
+        // refresh token that was already rotated by the middleware, it triggers
+        // an unrecoverable "Invalid Refresh Token: Already Used" error that
+        // corrupts the auth state.
         //
-        // Token refresh is handled by:
-        // 1. Middleware (server-side, on every page navigation)
-        // 2. Visibility handler (client-side, on tab focus)
-        // 3. Pre-mutation guard (client-side, before writes)
-        // All three go through coordinatedRefreshSession() which deduplicates.
+        // SINGLE-WRITER MODEL: the client NEVER rotates tokens. Refresh is
+        // handled exclusively server-side by:
+        // 1. Middleware (on every page navigation)
+        // 2. POST /api/auth/refresh via refreshSessionViaServer() (visibility
+        //    handler, heartbeat, pre-mutation guard, recovery ladder)
         autoRefreshToken: false,
 
         // PRIMARY FIX for the cross-tab connection-loss issue.
@@ -152,7 +152,8 @@ export function createClient(): SupabaseClient {
         //   - Cookie writes are last-writer-wins with the same value.
         //   - SIGNED_IN / SIGNED_OUT / TOKEN_REFRESHED still propagate cross-tab
         //     via auth-js's BroadcastChannel (unaffected by removing the lock).
-        //   - Our coordinatedRefreshSession() mutex serializes within a tab.
+        //   - The client never rotates tokens (single-writer model), so there
+        //     is no cross-tab refresh race to serialize.
         //
         // See plan: cuddly-herding-acorn.md (Workstream A).
         // Source: node_modules/@supabase/auth-js/src/lib/locks.ts (processLock).
@@ -329,24 +330,17 @@ export async function refreshSessionViaServer(
 }
 
 /**
- * Shared getSession() with a 12-second timeout. Use this everywhere outside
- * coordinatedRefreshSession (which has its own 12-second timeout) and
- * recoverSessionConnection (which has its own 15-second timeout).
+ * Shared getSession() with a 12-second timeout.
  *
- * Heartbeat + visibility handlers can fire close together when a tab returns
- * to focus. Reuse one in-flight getSession() call so they don't cascade into
- * duplicate auth-client lock waits.
+ * Multiple callers can fire close together (e.g. recovery + auth-context).
+ * Reuse one in-flight getSession() call so they don't cascade into duplicate
+ * auth-client lock waits.
  *
  * Returns null on timeout rather than throwing, so callers can fall through
  * to recovery without try/catch boilerplate.
  */
 let _sessionPromise: Promise<Awaited<ReturnType<SupabaseClient["auth"]["getSession"]>>> | null = null;
 let _lastSessionSource: string | null = null;
-
-// Global mutex for token refresh (see coordinatedRefreshSession below). Declared
-// here so resetClient() can clear it without a use-before-declaration error.
-let _refreshPromise: Promise<AuthResponse> | null = null;
-let _lastRefreshSource: string | null = null;
 
 function coordinatedGetSession(
   source: string,
@@ -402,16 +396,23 @@ export async function getSessionWithTimeout(source: string): Promise<{
     const isLockTimeout = isAuthOpTimeout || isAcquireTimeout;
 
     if (isAuthOpTimeout) {
-      // The lock was HELD but the op under it ran long. A background refresh
-      // (deduped via the mutex) may resolve it, so fire one. withAuthOpTimeout
+      // The lock was HELD but the op under it ran long — usually getSession's
+      // in-line client refresh stalling (H8). Refresh via the SERVER (the
+      // reliable cookie path): once the cookie holds a fresh token, the next
+      // getSession returns locally without a network refresh. withAuthOpTimeout
       // already logged the lock_timeout event for this flavour.
-      void coordinatedRefreshSession(`getSession-timeout:${source}`).catch((refreshError) => {
-        logConnectionEvent({
-          type: "token_refresh_fail",
-          detail: `getSession timeout refresh failed (${source}): ${
-            refreshError instanceof Error ? refreshError.message : String(refreshError)
-          }`,
-        });
+      void refreshSessionViaServer(`getSession-timeout:${source}`).then((result) => {
+        if (result.ok) {
+          logConnectionEvent({
+            type: "token_refresh_ok",
+            detail: `server refresh after getSession timeout (${source})`,
+          });
+        } else {
+          logConnectionEvent({
+            type: "token_refresh_fail",
+            detail: `server refresh after getSession timeout failed (${source}): ${result.reason}`,
+          });
+        }
       });
     } else if (isAcquireTimeout) {
       // processLock could not ACQUIRE the lock — a previous auth op is still
@@ -437,49 +438,17 @@ export async function getSessionWithTimeout(source: string): Promise<{
 
 export function resetClient(): void {
   _client = undefined;
-  // Drop any pinned in-flight promises too. A new client instance has a fresh
-  // `lockAcquired` flag, but if we kept the old (possibly deadlocked) promises
-  // here, coordinatedGetSession/RefreshSession would keep handing the stuck
-  // promise back instead of issuing a fresh call against the new client.
+  // Drop any pinned in-flight promise too. A new client instance has a fresh
+  // `lockAcquired` flag, but if we kept the old (possibly deadlocked) promise
+  // here, coordinatedGetSession would keep handing the stuck promise back
+  // instead of issuing a fresh call against the new client.
   _sessionPromise = null;
   _lastSessionSource = null;
-  _refreshPromise = null;
-  _lastRefreshSource = null;
 }
 
-/**
- * Global mutex for token refresh. All code paths that need to refresh
- * the session MUST use this instead of calling supabase.auth.refreshSession()
- * directly. This prevents the "Invalid Refresh Token: Already Used" race
- * condition that occurs when multiple concurrent refreshes rotate the
- * single-use refresh token.
- *
- * (`_refreshPromise` / `_lastRefreshSource` are declared above, next to the
- * getSession dedupe state, so resetClient() can clear them.)
- */
-export function coordinatedRefreshSession(source: string): Promise<AuthResponse> {
-  if (_refreshPromise) {
-    logConnectionEvent({
-      type: "token_refresh_ok",
-      detail: `refresh-deduplicated: ${source} joined in-flight refresh from ${_lastRefreshSource}`,
-    });
-    return _refreshPromise;
-  }
-  _lastRefreshSource = source;
-  const client = createClient();
-  const promise = client.auth.refreshSession();
-  _refreshPromise = promise;
-
-  // Same unpin strategy as coordinatedGetSession: never leave a deadlocked
-  // refresh pinned forever, and never clobber a newer in-flight refresh.
-  const unpin = () => {
-    if (_refreshPromise === promise) {
-      _refreshPromise = null;
-      _lastRefreshSource = null;
-    }
-  };
-  promise.then(unpin, unpin);
-  setTimeout(unpin, SUPABASE_AUTH_OP_TIMEOUT_MS);
-
-  return promise;
-}
+// NOTE: there is deliberately NO client-side refreshSession() helper any more.
+// The client never rotates tokens (single-writer model — see the
+// autoRefreshToken comment above). All refresh goes through the middleware or
+// refreshSessionViaServer(); rotating client-side risks both the
+// "Invalid Refresh Token: Already Used" race and the post-wake network stall
+// (H8) that produced the lock_timeout cascades.

@@ -28,16 +28,25 @@ import {
   type NonOaUnionOptionRow,
   type UnionMembershipTypeOption,
 } from "@/components/workers/membership-non-oa-fields";
+import { ClipboardList, Mail, MessageSquare, Phone } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { WorkerRelationshipsTab } from "./worker-relationships-tab";
 import { RatingPicker } from "../assessments/rating-picker";
 import { CreateTaskListDialog } from "../task-lists/create-task-list-dialog";
+import { useCampaignWorkerListActivity } from "@/lib/hooks/useCampaignWorkerListActivity";
 import type {
+  ListActivityChannel,
   WallChartOU,
   WallChartRoleType,
   WallChartWorker,
   WallChartWorkerContactFocusField,
+  WorkerListActivityRow,
 } from "./types";
-import { ouDisplayName } from "./types";
+import {
+  LIST_ACTIVITY_CHANNELS,
+  LIST_ACTIVITY_CHANNEL_LABELS,
+  ouDisplayName,
+} from "./types";
 
 type OccupationOption = {
   occupation_id: number;
@@ -132,7 +141,7 @@ export function WorkerDetailSheet({
     <Tabs defaultValue="details" className="mt-2">
       <TabsList className="grid grid-cols-4 w-full">
         <TabsTrigger value="details">Details</TabsTrigger>
-        <TabsTrigger value="ratings">Ratings</TabsTrigger>
+        <TabsTrigger value="ratings">Activity</TabsTrigger>
         <TabsTrigger value="units">Units</TabsTrigger>
         <TabsTrigger value="relationships">Relationships</TabsTrigger>
       </TabsList>
@@ -974,6 +983,85 @@ function RemoveFromCampaignPanel({
 // Ratings — activity-level rating history for this worker in this campaign.
 // ---------------------------------------------------------------------------
 
+const LIST_SECTION_ICONS: Record<ListActivityChannel, LucideIcon> = {
+  phone: Phone,
+  email: Mail,
+  task: ClipboardList,
+  sms: MessageSquare,
+};
+
+/**
+ * Read-only summary of which lists this worker has been added to within the
+ * campaign (phone / email / activist task / sms), grouped by channel. Powers
+ * the "Activity" tab list section.
+ */
+function WorkerListMembershipSection({
+  campaignId,
+  workerId,
+}: {
+  campaignId: string;
+  workerId: number;
+}) {
+  const { byWorker, isLoading } = useCampaignWorkerListActivity(campaignId);
+  const rows = byWorker.get(workerId) ?? [];
+
+  const byChannel = useMemo(() => {
+    const map = new Map<ListActivityChannel, WorkerListActivityRow[]>();
+    for (const row of rows) {
+      const list = map.get(row.channel);
+      if (list) list.push(row);
+      else map.set(row.channel, [row]);
+    }
+    return map;
+  }, [rows]);
+
+  return (
+    <div className="rounded border p-3 space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Lists
+      </p>
+      {isLoading ? (
+        <p className="text-xs text-muted-foreground">Loading…</p>
+      ) : (
+        <div className="space-y-2">
+          {LIST_ACTIVITY_CHANNELS.map((channel) => {
+            const Icon = LIST_SECTION_ICONS[channel];
+            const channelRows = byChannel.get(channel) ?? [];
+            const label = LIST_ACTIVITY_CHANNEL_LABELS[channel];
+            return (
+              <div key={channel} className="flex items-start gap-2 text-xs">
+                <Icon className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <span className="font-medium">{label}</span>
+                  {channel === "sms" && channelRows.length === 0 ? (
+                    <span className="text-muted-foreground"> · not yet available</span>
+                  ) : channelRows.length === 0 ? (
+                    <span className="text-muted-foreground"> · not on any list</span>
+                  ) : (
+                    <ul className="mt-0.5 space-y-0.5">
+                      {channelRows.map((r) => (
+                        <li key={`${r.list_id}`} className="text-muted-foreground">
+                          <span className="text-foreground">
+                            {r.list_name?.trim() || `List #${r.list_id}`}
+                          </span>
+                          {r.list_status ? ` · ${r.list_status}` : ""}
+                          {r.added_at
+                            ? ` · added ${new Date(r.added_at).toLocaleDateString()}`
+                            : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RatingsTab({
   campaignId,
   workerId,
@@ -1098,6 +1186,8 @@ function RatingsTab({
 
   return (
     <div className="py-3 space-y-4">
+      <WorkerListMembershipSection campaignId={campaignId} workerId={workerId} />
+
       {canWrite && (
         <div className="flex items-center justify-between rounded border bg-muted/20 px-3 py-2">
           <span className="text-xs text-muted-foreground">

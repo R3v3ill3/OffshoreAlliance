@@ -12,6 +12,7 @@ await fs.mkdir(DEST, { recursive: true });
 const BUCKET = "help-videos";
 
 const SERIES_NAME = {
+  O: "Overview",
   A: "Set up a campaign",
   B: "Units, groups & subgroups",
   C: "Wall charts",
@@ -32,7 +33,7 @@ for (const d of dirs) {
   clips.push({
     ...mf,
     seriesName: SERIES_NAME[mf.series] || mf.series,
-    order: JOURNEY.indexOf(id) === -1 ? 999 : JOURNEY.indexOf(id),
+    order: id === "OVERVIEW" ? -1 : JOURNEY.indexOf(id) === -1 ? 999 : JOURNEY.indexOf(id),
     // storage object paths (app prefixes with <SUPABASE_URL>/storage/v1/object/public/)
     video: `${BUCKET}/${id}.mp4`,
     vtt: `${BUCKET}/${id}.vtt`,

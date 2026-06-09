@@ -7,6 +7,7 @@ import {
   fetchApi,
   API_FETCH_TIMEOUT_LLM_MS,
 } from '@/lib/api/fetch-api'
+import { stripImportedEmailSignatureBlocks } from '@/lib/comms/sanitise-email-html'
 import { toast } from 'sonner'
 
 interface TemplateFilters {
@@ -54,9 +55,28 @@ export function useTemplateLibrary(filters?: TemplateFilters) {
 
       const { data, error } = await query
       if (error) throw error
-      return (data ?? []) as unknown as TemplateRow[]
+      return ((data ?? []) as unknown as TemplateRow[]).map(screenTemplateForWizardUse)
     },
   })
+}
+
+function screenTemplateForWizardUse(template: TemplateRow): TemplateRow {
+  if (template.platform !== 'email') return template
+
+  const screened = stripImportedEmailSignatureBlocks({
+    bodyText: template.body_text,
+    bodyHtml: template.body_html,
+  })
+
+  if (screened.bodyText === template.body_text && screened.bodyHtml === template.body_html) {
+    return template
+  }
+
+  return {
+    ...template,
+    body_text: screened.bodyText,
+    body_html: screened.bodyHtml,
+  }
 }
 
 export function useCreateTemplate() {

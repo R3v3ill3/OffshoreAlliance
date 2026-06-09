@@ -1,7 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { Check, Mail, Phone } from "lucide-react";
+import { Check, ClipboardList, Mail, MessageSquare, Phone } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { isWorkerMemberLike } from "@/lib/campaign/constants";
 import {
@@ -10,9 +11,13 @@ import {
   shouldShowOtherUnionBadge,
 } from "@/lib/workers/other-union-display";
 import { ratingBorderTextClass } from "./rating-colour";
-import type {
-  WallChartWorker,
-  WallChartWorkerContactFocusField,
+import {
+  LIST_ACTIVITY_CHANNELS,
+  LIST_ACTIVITY_CHANNEL_LABELS,
+  type ListActivityChannel,
+  type WallChartWorker,
+  type WallChartWorkerContactFocusField,
+  type WorkerListActivityRow,
 } from "./types";
 
 export type WorkerContactBadgeKind = WallChartWorkerContactFocusField;
@@ -220,6 +225,79 @@ export function WorkerContactBadge({
     >
       <Icon className={cn(iconClass, "mx-auto")} aria-hidden />
     </span>
+  );
+}
+
+const LIST_ACTIVITY_ICONS: Record<ListActivityChannel, LucideIcon> = {
+  phone: Phone,
+  email: Mail,
+  task: ClipboardList,
+  sms: MessageSquare,
+};
+
+/**
+ * Small "on a list" badges shown on the wall-chart tile: one per channel
+ * (phone / email / activist list / sms) that is BOTH enabled in the badge
+ * selector AND one the worker actually belongs to within the campaign.
+ */
+export function ListActivityBadges({
+  enabledChannels,
+  rows,
+  className,
+}: {
+  enabledChannels: ReadonlySet<ListActivityChannel>;
+  rows: WorkerListActivityRow[] | undefined;
+  className?: string;
+}) {
+  if (enabledChannels.size === 0 || !rows || rows.length === 0) return null;
+
+  const byChannel = new Map<ListActivityChannel, WorkerListActivityRow[]>();
+  for (const row of rows) {
+    const list = byChannel.get(row.channel);
+    if (list) list.push(row);
+    else byChannel.set(row.channel, [row]);
+  }
+
+  const shown = LIST_ACTIVITY_CHANNELS.filter(
+    (channel) => enabledChannels.has(channel) && (byChannel.get(channel)?.length ?? 0) > 0
+  );
+  if (shown.length === 0) return null;
+
+  return (
+    <div className={cn("flex items-center gap-0.5", className)}>
+      {shown.map((channel) => {
+        const Icon = LIST_ACTIVITY_ICONS[channel];
+        const channelRows = byChannel.get(channel) ?? [];
+        const label = LIST_ACTIVITY_CHANNEL_LABELS[channel];
+        const names = channelRows
+          .map((r) => {
+            const name = r.list_name?.trim() || `List #${r.list_id}`;
+            const date = r.added_at
+              ? ` (${new Date(r.added_at).toLocaleDateString()})`
+              : "";
+            return `${name}${date}`;
+          })
+          .join(", ");
+        const title = `On ${channelRows.length} ${label.toLowerCase()} list${
+          channelRows.length === 1 ? "" : "s"
+        }: ${names}`;
+        return (
+          <span
+            key={channel}
+            title={title}
+            aria-label={title}
+            className="inline-flex shrink-0 items-center gap-px rounded-sm border border-emerald-500/40 bg-emerald-500/15 px-0.5 py-px text-emerald-700 dark:text-emerald-300"
+          >
+            <Icon className="h-2.5 w-2.5" aria-hidden />
+            {channelRows.length > 1 ? (
+              <span className="text-[8px] font-semibold leading-none">
+                {channelRows.length}
+              </span>
+            ) : null}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 

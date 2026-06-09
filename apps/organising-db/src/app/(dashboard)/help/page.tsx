@@ -24,6 +24,13 @@ interface Manifest { count: number; series: Record<string, string>; clips: Clip[
 const SERIES_ORDER = ["A", "B", "C", "D", "E"];
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
 
+// Media lives in the per-environment Supabase Storage "help-videos" bucket.
+// Manifest stores object paths (e.g. "help-videos/A1.mp4"); build the full URL
+// from this env's Supabase URL so develop->DEV and main->PROD each serve their own.
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const mediaUrl = (p?: string | null) =>
+  !p ? "" : /^https?:\/\//.test(p) || p.startsWith("/") ? p : `${SUPABASE_URL}/storage/v1/object/public/${p}`;
+
 export default function HelpPage() {
   const [data, setData] = useState<Manifest | null>(null);
   const [error, setError] = useState(false);
@@ -98,8 +105,8 @@ export default function HelpPage() {
               onEnded={() => setEnded(true)}
               onPlay={() => setEnded(false)}
             >
-              <source src={selected.video} type="video/mp4" />
-              {selected.vtt && <track kind="captions" src={selected.vtt} srcLang="en" label="English" default />}
+              <source src={mediaUrl(selected.video)} type="video/mp4" />
+              {selected.vtt && <track kind="captions" src={mediaUrl(selected.vtt)} srcLang="en" label="English" default />}
             </video>
 
             {ended && upNextClips.length > 0 && (
@@ -138,7 +145,7 @@ export default function HelpPage() {
             <p className="mt-1 text-muted-foreground">{selected.summary}</p>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <a
-                href={selected.video}
+                href={mediaUrl(selected.video)}
                 download
                 className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-accent"
               >

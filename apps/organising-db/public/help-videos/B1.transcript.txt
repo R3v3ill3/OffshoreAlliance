@@ -1,5 +1,0 @@
-An organising unit is a group of workers you organise as a block. By shift, department, worksite, or crew.
-Here we have three units. Day Shift, Night Shift, and Maintenance.
-Units of the same type can be bundled under a group container. A named header, like Shifts.
-Workers are never on the container itself, only on its member units, the subgroups.
-And a worker can be in just one group per type. You can't be on both Day and Night shift. Next, let's create some.

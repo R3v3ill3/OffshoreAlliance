@@ -1,6 +1,0 @@
-Filters turn the wall chart into an answer machine. Narrow it to ask a question.
-Filter by rating. For example, show only your supportive workers.
-Switch between the cumulative view and a single assessment.
-Group the chart by unit type, like shift or department.
-Or switch to a list view for a sortable table.
-Found your cohort? Next, build a list from it.

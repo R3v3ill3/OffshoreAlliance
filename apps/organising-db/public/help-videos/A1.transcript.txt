@@ -1,7 +1,0 @@
-Employers are the companies your campaign organises against, so this is where setup begins.
-From the Employers page, click Add Employer.
-Give the employer a name. This field is required.
-Set the category. Here we'll choose Principal Employer.
-You can keep it standalone, or place it under a parent company.
-When you're ready, click Save Employer.
-And that's it. Your employer is created. Next, add the worksites it operates.

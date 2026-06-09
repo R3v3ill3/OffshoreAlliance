@@ -1,7 +1,0 @@
-Ready to start organising? You can create a campaign in seconds.
-Click Create campaign. Notice there are two paths.
-We'll take the manual path. The guided wizard is a separate guide.
-Give the campaign a name.
-Set the type and status. Bargaining, and Planning.
-Then click Create and open settings.
-Your campaign is created, and you land on its Settings page to configure it.

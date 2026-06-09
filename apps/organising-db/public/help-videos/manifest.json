@@ -1,5 +1,5 @@
 {
-  "count": 11,
+  "count": 13,
   "series": {
     "O": "Overview",
     "A": "Set up a campaign",
@@ -401,6 +401,78 @@
       "video": "help-videos/E2.mp4",
       "vtt": "help-videos/E2.vtt",
       "transcript": "help-videos/E2.transcript.txt"
+    },
+    {
+      "id": "D1",
+      "title": "Email tasking: reach a cohort by email",
+      "series": "D",
+      "durationSec": 36,
+      "summary": "Start an email from your campaign — draft first or build the recipient list first; both end at the send step.",
+      "tags": [
+        "email",
+        "compose",
+        "send",
+        "recipients",
+        "comms",
+        "broadcast",
+        "tasking"
+      ],
+      "associatedRoutes": [
+        "/campaigns/*/email/*"
+      ],
+      "routeWeight": 9,
+      "prerequisites": [
+        "C3"
+      ],
+      "upNext": [
+        "D2",
+        "D4",
+        "C3"
+      ],
+      "transcriptPath": "D1.transcript.txt",
+      "videoPath": "D1.mp4",
+      "downloadable": true,
+      "seriesName": "Tasking",
+      "order": 14,
+      "video": "help-videos/D1.mp4",
+      "vtt": "help-videos/D1.vtt",
+      "transcript": "help-videos/D1.transcript.txt"
+    },
+    {
+      "id": "D2",
+      "title": "Phone tasking: build a call list & scripts",
+      "series": "D",
+      "durationSec": 40,
+      "summary": "Create a call list in the 5-step wizard — details, build, call order, and script.",
+      "tags": [
+        "phone",
+        "call list",
+        "script",
+        "call order",
+        "priority",
+        "dialer setup"
+      ],
+      "associatedRoutes": [
+        "/campaigns/*/phone",
+        "/campaigns/*/phone/lists/*"
+      ],
+      "routeWeight": 9,
+      "prerequisites": [
+        "C3"
+      ],
+      "upNext": [
+        "D3",
+        "D1",
+        "D4"
+      ],
+      "transcriptPath": "D2.transcript.txt",
+      "videoPath": "D2.mp4",
+      "downloadable": true,
+      "seriesName": "Tasking",
+      "order": 15,
+      "video": "help-videos/D2.mp4",
+      "vtt": "help-videos/D2.vtt",
+      "transcript": "help-videos/D2.transcript.txt"
     }
   ]
 }

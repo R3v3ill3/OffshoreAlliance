@@ -82,6 +82,7 @@ Use one **primary** label per incident for the log (§F).
 | H6 | Browser / edge | Sleep, extensions, DNS split | Correlates with visibility, not backend logs |
 | H7 | **Auth-lock deadlock** | auth-js `processLock` orphaned (background-tab throttle) → `GoTrueClient.lockAcquired` stuck `true` → every `getSession()` waits forever | Repeating `lock_timeout` every ~12s in console + `[connection-monitor]`, **no** Supabase REST/Network errors, no 401/403. **Resolved — see §L.** |
 | H8 | **Client-side token-refresh hang** | token stale after idle (`autoRefreshToken: false`) → first `getSession()` on wake fires a blocking client refresh that stalls past 12s; a fresh client hangs identically | `auth-op-timeout: getSession:…` **including on `lock-deadlock-recovery`** (fresh client), after a hidden period; server refresh path healthy. **Resolved — see §M.** |
+| H9 | **Recovery paths left on the client pipeline** | The H8 fix migrated background refresh (visibility/heartbeat/query-cache) to the server, but the *user-facing* recovery paths (menu "Refresh connection", SIGNED_OUT recovery, pre-mutation guard) still ran client `refreshSession()` → `getSession()` — the exact H8 hang — so the recovery tool itself failed after wake and users escalated to manual sign-out | `recovery_start menu-hard-refresh` → ~27s → `recovery_end fail: session_check_timeout`, then `session_lost signout: auth-context`; `lock_timeout getSession:ensureValidSession`; refresh-token chain shows **zero rotations** during the broken session. Worse on Edge (sleeping tabs / efficiency mode stall the client network path after wake). **Resolved — see §N.** |
 
 **Note:** Re-login fixing the issue **suggests H1 or H2 involving cookies**, not necessarily H4. A pure `lock_timeout` cascade with no network errors is **H7**, not a session loss — do not force a logout.
 
@@ -125,6 +126,7 @@ Append rows as incidents occur.
 |------------|------|-----------------|------|---------|-----------|------------------|-----------|-------|
 | YYYY-MM-DD | | e.g. Email import Analyse | 2 | Spinner, no console error | H1? | Pending POST `/api/email-import/.../analyse` | H4 status green | Fixed after sign-out |
 | 2026-05 | (multiple) | App-wide after tab background | 1 | Repeating `lock_timeout` every ~12s, banner, forced logout on Full Reset | **H7** | `[connection-monitor] lock_timeout … getSession:heartbeat after 12000ms`; no REST errors, no 401/403 (Sentry `OFFSHORE_ALLIANCE-7/-8`) | H1/H4 (no cookie/network errors) | **Resolved — see §L.** Unpin dead promises + reset-then-reload ladder + visibility-gated heartbeat + no-logout-on-lock-timeout |
+| 2026-06-05 / 06-09 | 2 users (Chrome + Edge) | "Refresh connection" menu action after idle/wake | 1 | Recovery itself hung ~27s then `fail: session_check_timeout`; users manually signed out | **H9** | PostHog: 14/31 `menu-hard-refresh` attempts failed in 10 days, all successes pre-June 4; `auth.refresh_tokens` shows zero rotations during the broken Edge session; Jun 4 `lock_timeout getSession:ensureValidSession` | H4 (Supabase healthy), H7 (fresh client, no contention) | **Resolved — see §N.** Server-first recovery + soft-reload escalation; client-side rotation removed |
 
 ---
 
@@ -291,10 +293,13 @@ That refresh stalls past our 12s `withAuthOpTimeout`.
 Evidence it is the *refresh* (not the lock): the recovery probe runs on a **fresh**
 client (`resetClient()`, so `lockAcquired = false`), yet it **also** times out at exactly
 12000ms — only possible if `getSession` is doing a network refresh, not waiting on a lock.
-The `auth.refresh_tokens` chain confirms the access-token lifetime is ~1h (not the 24h the
-`cookie-options.ts` comment claims — that's the cookie maxAge), and the incident token was
-~3h stale. The **server-side** refresh path stayed healthy throughout (the chain kept
-rotating; a full reload recovered precisely because the middleware refreshes server-side).
+The `auth.refresh_tokens` chain suggested an access-token lifetime of ~1h, and the incident
+token was ~3h stale. **Correction (2026-06-10): the dashboard setting was checked — access
+token expiry is actually 86400s (24h), matching the `cookie-options.ts` comment.** The ~1h
+inference was wrong; the H8 mechanism is unchanged but the stale-token condition only
+arises after longer idle gaps (>24h since last refresh) than first thought. The
+**server-side** refresh path stayed healthy throughout (the chain kept rotating; a full
+reload recovered precisely because the middleware refreshes server-side).
 
 Consequence of the old recovery ladder: `resetClient()` + a client `getSession` probe is
 **futile** for this mode — the fresh client re-reads the same stale cookie and re-fires the
@@ -337,9 +342,81 @@ refresh ok`, few `lock_timeout`, and `recovery_*` only rarely. If `lock_timeout`
 check whether the Supabase **JWT expiry** was lowered (shorter tokens = more refreshes =
 more hang exposure) and whether `/api/auth/refresh` is reachable/fast.
 
-**Open follow-up (optional, not code).** Consider raising the Supabase JWT expiry from ~1h
-so refreshes (and any residual hang exposure) are less frequent — weigh against the
-security trade-off of longer-lived access tokens.
+**Open follow-up — resolved 2026-06-10.** The Supabase JWT expiry was confirmed in the
+dashboard as 86400s (24h), already long; no change needed. The only remaining question is
+the inverse one (whether 24h is acceptable for revocation responsiveness) — a
+product/security decision, not a connectivity issue.
+
+---
+
+## N. Resolved incident — recovery paths left on the client pipeline (H9, June 2026)
+
+**Symptom.** After the §M (H8) fix shipped (~June 3–4), the background `lock_timeout`
+cascade stopped, but users were still ending up back at the login page. PostHog showed the
+sequence: `recovery_start menu-hard-refresh` → ~27 s → `recovery_end fail:
+session_check_timeout` → user manually signs out (`session_lost signout: auth-context`).
+14 of 31 menu-hard-refresh attempts failed this way in 10 days; **every success predates
+June 4**. Anecdotally worse on Microsoft Edge. One real-user `lock_timeout` remained:
+`getSession:ensureValidSession` (pre-mutation guard, June 4).
+
+**Root cause.** The H8 migration moved the *background* refresh paths
+(visibility/heartbeat/query-cache) to the server, but the *user-facing* recovery paths were
+never migrated:
+
+1. `recoverSessionConnection` (menu "Refresh connection", banner button, SIGNED_OUT
+   recovery) still ran client `refreshSession()` (12 s hang after wake — the H8 mode) and
+   then `getSession()` which queued behind the same jammed `processLock` (15 s timeout) —
+   a guaranteed 27 s failure in exactly the situations users click the button.
+2. `ensureValidSession` / `withSessionGuard` / `useAuthAwareMutation` retry still called
+   client `getSession()` (12 s hang) and rotated tokens client-side — violating the
+   single-writer model and re-exposing the "Invalid Refresh Token: Already Used" race.
+3. `getSessionWithTimeout`'s timeout side-effect fired *another* client-side refresh,
+   re-poisoning the lock.
+
+The `auth.refresh_tokens` chain for the affected Edge user confirms it: **zero rotations**
+during the entire broken session — no recovery mechanism ever refreshed the token; only a
+manual sign-out/sign-in "fixed" it.
+
+**Why Edge is worse.** Edge's sleeping tabs + efficiency mode stall the browser↔Supabase
+network path after wake more aggressively (and for longer) than Chrome/Safari. Any
+*client-side* refresh therefore hangs disproportionately on Edge, while the same-origin
+server path (`/api/auth/refresh`, middleware) stays healthy — which is why a full page
+reload always recovered. Additionally, a laptop-sleep wake with the tab still visible fires
+**no `visibilitychange` event**, so the visibility refresh never ran in that scenario.
+
+**Fix (shipped).** Complete the single-writer model — the client now NEVER rotates tokens:
+
+- **`recoverSessionConnection` is server-first** ([`session-recovery.ts`](../apps/organising-db/src/lib/supabase/session-recovery.ts)):
+  `refreshSessionViaServer()` (8 s bound) → on `no_session` only, redirect to login → on
+  success, `resetClient()` + bounded local session read + DB probe. Max ~8 s before a
+  decision instead of 27 s of hanging.
+- **Soft-reload escalation for user-initiated recovery** — when the user clicked the
+  button and the server path is transiently failing (or Lane 1 is socket-stalled), do a
+  guarded soft reload (cookies preserved, **no logout**) instead of soft-failing and
+  stranding them. Shares the 90 s cooldown with the providers.tsx ladder.
+- **`ensureValidSession` uses known expiry + server refresh** — no client `getSession()`,
+  no client rotation; transient refresh failures no longer block mutations.
+- **Mutation/session-guard retries refresh via the server.**
+- **`getSessionWithTimeout` timeout side-effect** now pokes `refreshSessionViaServer()`
+  instead of a client refresh. `coordinatedRefreshSession()` is deleted entirely.
+- **Wake coverage** ([`providers.tsx`](../apps/organising-db/src/components/providers.tsx)) —
+  `online` and `pageshow (persisted)` listeners run the same known-expiry check as the
+  visibility handler, covering laptop-sleep wakes where the tab stayed visible (the Edge
+  scenario with no `visibilitychange`).
+- **Hardening** — `cookie-diagnostics.ts` no longer lets a malformed cookie
+  (`decodeURIComponent` URIError) kill the visibility handler before the refresh runs;
+  the auth-change recovery in `auth-context.tsx` reads the post-recovery session via the
+  bounded helper on the fresh client instead of an unbounded `getSession()` on the stale
+  pre-reset client reference.
+
+**How to recognise a regression.** `recovery_end fail: session_check_timeout` returning in
+PostHog, or `session_lost signout: auth-context` shortly after `recovery_start
+menu-hard-refresh`. Healthy post-fix pattern: `recovery_start … (server-first)` →
+`token_refresh_ok server refresh via recovery` → `recovery_end success`, or a single
+`recovery_end soft reload (cookies preserved…)` with the user still signed in afterwards.
+
+**Note on telemetry noise.** Sentry `lock_timeout` events from `HeadlessChrome` on
+`/employers` (June 8) are automation (how-to-video tooling), not real users.
 
 ---
 

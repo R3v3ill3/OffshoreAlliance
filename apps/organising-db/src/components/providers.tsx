@@ -112,26 +112,21 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
     // fresh token does NOTHING — no network, no client getSession.
     const VISIBILITY_REFRESH_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 
-    const visHandler = async () => {
-      logConnectionEvent({
-        type: "visibility_change",
-        detail: document.visibilityState,
-      });
-
+    // Shared wake-up check. Decides CHEAPLY whether a refresh is needed. We
+    // deliberately do NOT call the client's getSession() here: near expiry it
+    // fires an in-line network token refresh that stalls after the tab wakes
+    // (the lock_timeout cascade). Instead we read the last-known expiry and,
+    // if stale, refresh via the SERVER — the reliable path.
+    const checkTokenOnWake = async (trigger: string) => {
       if (document.visibilityState !== "visible") return;
 
-      // Diagnostic: log cookie state on every tab focus
-      logCookieDiagnostic("visibility-return");
+      // Diagnostic: log cookie state on every wake-up
+      logCookieDiagnostic(trigger);
 
-      // Mark the visibility probe time so the 60s heartbeat skips its own check
-      // during the post-focus window.
+      // Mark the probe time so the 60s heartbeat skips its own check during
+      // the post-wake window.
       lastVisibilityCheckAtRef.current = Date.now();
 
-      // Decide CHEAPLY whether a refresh is needed. We deliberately do NOT call
-      // the client's getSession() here: near expiry it fires an in-line network
-      // token refresh that stalls after the tab wakes (the lock_timeout
-      // cascade). Instead we read the last-known expiry and, if stale, refresh
-      // via the SERVER — the reliable path.
       const expMs = getKnownExpiryMs();
       const needsRefresh = expMs === null || expMs - Date.now() < VISIBILITY_REFRESH_WINDOW_MS;
       if (!needsRefresh) {
@@ -142,8 +137,37 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
       await runServerRefresh("visibility");
     };
 
+    const visHandler = async () => {
+      logConnectionEvent({
+        type: "visibility_change",
+        detail: document.visibilityState,
+      });
+      await checkTokenOnWake("visibility-return");
+    };
+
+    // Laptop sleep / Edge sleeping-tab resume can happen WITHOUT a
+    // visibilitychange (the tab was visible the whole time). The `online`
+    // event fires when the network comes back, and `pageshow` with
+    // `persisted` fires on bfcache restores — both moments where the token
+    // may have gone stale while no timer was running.
+    const onlineHandler = () => {
+      logConnectionEvent({ type: "visibility_change", detail: "network-online" });
+      void checkTokenOnWake("network-online");
+    };
+    const pageshowHandler = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      logConnectionEvent({ type: "visibility_change", detail: "bfcache-restore" });
+      void checkTokenOnWake("bfcache-restore");
+    };
+
     document.addEventListener("visibilitychange", visHandler);
-    return () => document.removeEventListener("visibilitychange", visHandler);
+    window.addEventListener("online", onlineHandler);
+    window.addEventListener("pageshow", pageshowHandler);
+    return () => {
+      document.removeEventListener("visibilitychange", visHandler);
+      window.removeEventListener("online", onlineHandler);
+      window.removeEventListener("pageshow", pageshowHandler);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient, isUnauthRoute]);
 

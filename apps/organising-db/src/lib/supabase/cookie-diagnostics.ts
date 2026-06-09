@@ -71,7 +71,14 @@ function readSupabaseCookies(): { names: string[]; reassembled: string | null } 
       const authMatch = name.match(/^sb-[^-]+-auth-token(?:\.(\d+))?$/);
       if (authMatch) {
         const chunkIndex = authMatch[1] ?? "0";
-        authChunks.set(chunkIndex, decodeURIComponent(value));
+        try {
+          authChunks.set(chunkIndex, decodeURIComponent(value));
+        } catch {
+          // Malformed percent-encoding must not throw out of a diagnostic —
+          // an uncaught URIError here would kill the visibility handler
+          // before it reaches the token refresh. Use the raw value.
+          authChunks.set(chunkIndex, value);
+        }
       }
     }
   }

@@ -3,7 +3,13 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
-import { createClient, resetClient, refreshSessionViaServer, setKnownExpiry } from "@/lib/supabase/client";
+import {
+  createClient,
+  resetClient,
+  refreshSessionViaServer,
+  setKnownExpiry,
+  getSessionWithTimeout,
+} from "@/lib/supabase/client";
 import {
   performRobustSignOut,
   recoverSessionConnection,
@@ -231,7 +237,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           recoveryInFlightRef.current = true;
           try {
             const result = await recoverSessionConnection({
-              supabase,
               queryClient,
               source: "auth-change",
               reloadOnSuccess: false,
@@ -239,7 +244,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               validateWorkloadAccess: false,
             });
             if (result.ok) {
-              const { data: { session: newSession } } = await supabase.auth.getSession();
+              // Recovery resets the client singleton, so read the session via
+              // the bounded shared helper (fresh client, local cookie read) —
+              // NOT the stale `supabase` reference captured at mount.
+              const { session: newSession } = await getSessionWithTimeout("auth-change-recovered");
               const recoveredUser = newSession?.user ?? null;
               setKnownExpiry(newSession?.expires_at);
               setUser(recoveredUser);
@@ -332,13 +340,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setConnectionRecoveryInProgress(true);
     recoveryInFlightRef.current = true;
     try {
-      // Drop a potentially deadlocked auth client first, then recover with a
-      // fresh GoTrueClient (clears the stuck `lockAcquired` flag) rather than
-      // re-joining the stuck lock chain.
+      // Drop a potentially deadlocked auth client first. Recovery is
+      // SERVER-FIRST (refreshSessionViaServer → fresh client → probe), so a
+      // wedged GoTrueClient can no longer make the recovery itself hang.
       resetClient();
-      const freshClient = createClient();
       const result = await recoverSessionConnection({
-        supabase: freshClient,
         queryClient,
         source: "menu-hard-refresh",
         reloadOnSuccess: true,

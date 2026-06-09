@@ -121,6 +121,28 @@ export function sanitiseEmailHtml(html: string): string {
   return out
 }
 
+export interface ScreenedEmailTemplateContent {
+  bodyText: string
+  bodyHtml: string | null
+}
+
+/**
+ * Imported email templates sometimes carry an Outlook/Gmail signature as
+ * literal HTML inside `body_text`. The email wizard renders `body_text` in a
+ * textarea, so those snippets show up as a large block of code instead of as
+ * images. Strip those trailing image/signature HTML blocks when a template is
+ * accessed; Outlook exports get the managed OA signature later in the flow.
+ */
+export function stripImportedEmailSignatureBlocks(params: {
+  bodyText: string
+  bodyHtml?: string | null
+}): ScreenedEmailTemplateContent {
+  return {
+    bodyText: stripSignatureBlocksFromText(params.bodyText),
+    bodyHtml: params.bodyHtml ? stripSignatureBlocksFromHtml(params.bodyHtml) : null,
+  }
+}
+
 /**
  * Extract `name="value"` / `name='value'` / boolean attributes from a
  * tag's raw attribute string. Tolerates Outlook's quirks (unquoted
@@ -147,6 +169,98 @@ function escapeAttr(value: string): string {
     .replace(/"/g, '&quot;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+}
+
+const ENCODED_OR_RAW_IMG_RE = /<img\b|&lt;img\b/i
+const ENCODED_OR_RAW_TAG_RE = /<\/?[a-z][^>]*>|&lt;\/?[a-z][\s\S]*?&gt;/i
+const ENCODED_OR_RAW_TAG_GLOBAL_RE = /<\/?[a-z][^>]*>|&lt;\/?[a-z][\s\S]*?&gt;/gi
+const HTML_SIGNATURE_SUFFIX_RE =
+  /\s*(?:<|&lt;)(?:div|table|tbody|tr|td|span|p|style|!--)\b[\s\S]*(?:<|&lt;)img\b[\s\S]*$/i
+const HTML_IMG_RE = /<img\b/i
+const HTML_SIGNATURE_MARKER_RE =
+  /cid:|data:image|mso-|v:imagedata|xmlns:v|qrcode|logo|banner|signature|offshore alliance|join the offshore/i
+
+function stripSignatureBlocksFromText(text: string): string {
+  if (!text || !ENCODED_OR_RAW_IMG_RE.test(text)) return text
+
+  const lineStripped = stripTrailingLiteralHtmlLines(text)
+  if (lineStripped !== text) return lineStripped
+
+  const suffixMatch = text.match(HTML_SIGNATURE_SUFFIX_RE)
+  if (suffixMatch?.index && suffixMatch.index > 0 && isLikelySignatureBlock(suffixMatch[0])) {
+    return text.slice(0, suffixMatch.index).trimEnd()
+  }
+
+  return text
+}
+
+function stripTrailingLiteralHtmlLines(text: string): string {
+  const lines = text.split(/\r?\n/)
+  let imageLine = -1
+
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    if (ENCODED_OR_RAW_IMG_RE.test(lines[i])) {
+      imageLine = i
+      break
+    }
+  }
+
+  if (imageLine === -1) return text
+
+  let start = imageLine
+  while (start > 0 && isHtmlCodeLine(lines[start - 1])) {
+    start -= 1
+  }
+
+  const suffix = lines.slice(start).join('\n')
+  if (!isLikelySignatureBlock(suffix)) return text
+
+  return lines.slice(0, start).join('\n').trimEnd()
+}
+
+function stripSignatureBlocksFromHtml(html: string): string {
+  if (!html || !HTML_IMG_RE.test(html)) return html
+
+  const lastImageIndex = html.toLowerCase().lastIndexOf('<img')
+  if (lastImageIndex === -1) return html
+
+  const candidateStart = findHtmlSignatureStart(html, lastImageIndex)
+  if (candidateStart <= 0) return html
+
+  const suffix = html.slice(candidateStart)
+  if (!isLikelySignatureBlock(suffix)) return html
+
+  return html.slice(0, candidateStart).trimEnd()
+}
+
+function findHtmlSignatureStart(html: string, imageIndex: number): number {
+  const lower = html.toLowerCase()
+  const blockCandidates = ['<table', '<div']
+    .map((tag) => lower.lastIndexOf(tag, imageIndex))
+    .filter((index) => index >= 0)
+
+  if (blockCandidates.length > 0) return Math.max(...blockCandidates)
+
+  const inlineCandidates = ['<p', '<a']
+    .map((tag) => lower.lastIndexOf(tag, imageIndex))
+    .filter((index) => index >= 0)
+
+  if (inlineCandidates.length > 0) return Math.max(...inlineCandidates)
+
+  return imageIndex
+}
+
+function isHtmlCodeLine(line: string): boolean {
+  const trimmed = line.trim()
+  if (!trimmed) return true
+  return ENCODED_OR_RAW_TAG_RE.test(trimmed) || /^(style=|class=|width=|height=|src=|alt=)/i.test(trimmed)
+}
+
+function isLikelySignatureBlock(block: string): boolean {
+  if (!ENCODED_OR_RAW_IMG_RE.test(block) && !HTML_IMG_RE.test(block)) return false
+
+  const tagCount = (block.match(ENCODED_OR_RAW_TAG_GLOBAL_RE) ?? []).length
+  return tagCount >= 2 || HTML_SIGNATURE_MARKER_RE.test(block) || block.length > 120
 }
 
 /**

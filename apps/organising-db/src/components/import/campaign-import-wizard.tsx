@@ -643,13 +643,28 @@ export function CampaignImportWizard({ open, onOpenChange, onComplete }: Campaig
         }),
         timeoutMs: API_FETCH_TIMEOUT_STREAM_MS,
       });
-      const json = (await res.json()) as CampaignImportApplyResponse | { error: string };
-      if ("error" in json) {
-        setError(json.error);
+      const json = (await res.json().catch(() => null)) as
+        | CampaignImportApplyResponse
+        | { error?: string }
+        | null;
+      if (!json || typeof json !== "object") {
+        setError("The server returned an unexpected response. Please try again.");
         setIsLoading(false);
         return;
       }
-      setResult(json);
+      if ("error" in json && json.error) {
+        setError(String(json.error));
+        setIsLoading(false);
+        return;
+      }
+      if (!("stats" in json)) {
+        setError(
+          "The import didn’t complete — the server returned no result (it may have timed out or run low on memory). Try splitting the file into smaller imports."
+        );
+        setIsLoading(false);
+        return;
+      }
+      setResult(json as CampaignImportApplyResponse);
       setStep("done");
       onComplete?.();
     } catch (e) {
@@ -1348,16 +1363,16 @@ export function CampaignImportWizard({ open, onOpenChange, onComplete }: Campaig
               Import {result.success ? "complete" : "completed with some errors"}.
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs">
-              {Object.entries(result.stats).map(([k, v]) => (
+              {Object.entries(result.stats ?? {}).map(([k, v]) => (
                 <div key={k} className="flex justify-between border rounded px-2 py-1">
                   <span className="text-muted-foreground">{k.replace(/([A-Z])/g, " $1").toLowerCase()}</span>
-                  <span className="font-medium">{v}</span>
+                  <span className="font-medium">{String(v)}</span>
                 </div>
               ))}
             </div>
-            {result.errors.length > 0 && (
+            {(result.errors?.length ?? 0) > 0 && (
               <div className="border rounded-md p-2 max-h-[200px] overflow-auto text-xs text-destructive space-y-0.5">
-                {result.errors.map((e, i) => (<p key={i}>{e}</p>))}
+                {(result.errors ?? []).map((e, i) => (<p key={i}>{e}</p>))}
               </div>
             )}
             <DialogFooter>

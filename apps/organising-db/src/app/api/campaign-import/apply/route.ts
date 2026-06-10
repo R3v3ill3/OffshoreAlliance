@@ -91,9 +91,11 @@ export async function POST(req: NextRequest) {
     assignmentsCreated: 0,
     listItemsCreated: 0,
   };
-
-  // ── 1. Resolve / create campaign ────────────────────────────────────────
   let campaignId = body.campaignId ?? null;
+  let listId: number | null = null;
+
+  try {
+  // ── 1. Resolve / create campaign ────────────────────────────────────────
   if (!campaignId) {
     if (!body.newCampaign?.name?.trim()) {
       return NextResponse.json({ error: "A campaign name is required to create a new campaign" }, { status: 400 });
@@ -185,10 +187,12 @@ export async function POST(req: NextRequest) {
   for (const batch of chunk(worksiteCreateKeys, CHUNK)) {
     const rows = batch.map((v) => {
       const employerId = employerIdForKey(v.employerKey);
+      // Keep keys identical across the batch — PostgREST rejects bulk inserts
+      // whose objects don't all share the same columns.
       return {
         worksite_name: v.canonicalName,
         worksite_type: v.newWorksiteType || "Other",
-        ...(employerId ? { principal_employer_id: employerId } : {}),
+        principal_employer_id: employerId ?? null,
       };
     });
     const { data, error } = await supabase.from("worksites").insert(rows).select("worksite_id");
@@ -553,7 +557,6 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 8. Campaign worker list + items (batched) ───────────────────────────
-  let listId: number | null = null;
   if (assigned.length > 0) {
     const { data: list, error: listError } = await supabase
       .from("campaign_worker_lists")
@@ -602,6 +605,11 @@ export async function POST(req: NextRequest) {
     errors: errors.length > 0 ? errors.join("\n") : null,
     imported_by: user.id,
   });
+  } catch (e) {
+    // Never let an unexpected error become an empty 500 — the client renders the
+    // returned stats/errors, so surface the failure as a normal result instead.
+    errors.push(`Import failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
 
   const result: CampaignImportApplyResponse = {
     success: errors.length === 0,

@@ -34,6 +34,11 @@ export function useBatchSaveActivityRatings(campaignId: string | number) {
   >({
     mutationFn: async (args) => {
       if (args.workerIds.length === 0) return { upserted: 0 };
+      // DB constraint `car_rating_or_binary_chk` requires one of rating /
+      // binary_value. Fail with a clear message instead of an opaque 400.
+      if (args.rating === null && args.binaryValue === null) {
+        throw new Error("Select a rating before saving.");
+      }
       const now = new Date().toISOString();
       const rows = args.workerIds.map((workerId) => ({
         activity_id: args.activityId,

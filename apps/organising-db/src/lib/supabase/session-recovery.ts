@@ -438,11 +438,18 @@ export async function recoverSessionConnection({
 
   // Step 2: Drop the possibly-wedged browser client and verify the fresh one
   // can read the (now fresh) session locally. With a fresh token this is a
-  // local cookie read — no network refresh, so a timeout here means the auth
-  // client itself is jammed and only a reload will clear it.
+  // local cookie read — no network refresh. BUT: auth-js's processLock queue
+  // is module-global, so if a wedged op from before the reset still HOLDS the
+  // lock, even the fresh client queues behind it. Use a short 5s budget — a
+  // healthy read is instant, and when the global lock is jammed only a reload
+  // clears it, so fail over fast rather than waiting the full 12s.
   resetClient();
   const freshClient = createClient();
-  const { session, timedOut } = await getSessionWithTimeout(`recovery:${source}`);
+  const POST_REFRESH_SESSION_READ_TIMEOUT_MS = 5_000;
+  const { session, timedOut } = await getSessionWithTimeout(
+    `recovery:${source}`,
+    POST_REFRESH_SESSION_READ_TIMEOUT_MS,
+  );
 
   if (timedOut) {
     logConnectionEvent({ type: "recovery_end", detail: `fail: session_check_timeout (post-refresh)`, traceId });

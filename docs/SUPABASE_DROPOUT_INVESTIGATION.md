@@ -127,6 +127,7 @@ Append rows as incidents occur.
 | YYYY-MM-DD | | e.g. Email import Analyse | 2 | Spinner, no console error | H1? | Pending POST `/api/email-import/.../analyse` | H4 status green | Fixed after sign-out |
 | 2026-05 | (multiple) | App-wide after tab background | 1 | Repeating `lock_timeout` every ~12s, banner, forced logout on Full Reset | **H7** | `[connection-monitor] lock_timeout … getSession:heartbeat after 12000ms`; no REST errors, no 401/403 (Sentry `OFFSHORE_ALLIANCE-7/-8`) | H1/H4 (no cookie/network errors) | **Resolved — see §L.** Unpin dead promises + reset-then-reload ladder + visibility-gated heartbeat + no-logout-on-lock-timeout |
 | 2026-06-05 / 06-09 | 2 users (Chrome + Edge) | "Refresh connection" menu action after idle/wake | 1 | Recovery itself hung ~27s then `fail: session_check_timeout`; users manually signed out | **H9** | PostHog: 14/31 `menu-hard-refresh` attempts failed in 10 days, all successes pre-June 4; `auth.refresh_tokens` shows zero rotations during the broken Edge session; Jun 4 `lock_timeout getSession:ensureValidSession` | H4 (Supabase healthy), H7 (fresh client, no contention) | **Resolved — see §N.** Server-first recovery + soft-reload escalation; client-side rotation removed |
+| 2026-06-10 | troyburton | Navigate to /campaigns after wake; rating save | 1 | Infinite loading (no console error); separate 400 on rating upsert | **H9 residual** | Post-refresh `getSession` timed out on a fresh client (module-global processLock); Postgres log: `car_rating_or_binary_chk` violation 04:33 UTC | H4 (DB healthy) | **Resolved — see §N.1.** Lock acquire clamp + focus gate + refresh dedupe; rating popover canSave guards |
 
 ---
 
@@ -417,6 +418,42 @@ menu-hard-refresh`. Healthy post-fix pattern: `recovery_start … (server-first)
 
 **Note on telemetry noise.** Sentry `lock_timeout` events from `HeadlessChrome` on
 `/employers` (June 8) are automation (how-to-video tooling), not real users.
+
+### N.1 Follow-up (2026-06-10 incident) — the global-lock silent hang
+
+The first day live exposed a residual mode. Telemetry (03:26 / 04:11 UTC): the server-first
+recovery's step 1 succeeded in ~1.4 s, but the post-refresh `getSession()` on a **fresh
+client** still timed out at 12 s before the soft reload recovered. Inspection of the
+installed `@supabase/auth-js` shows why: **`processLock`'s queue is module-global** (keyed
+by lock name), so it **survives `resetClient()`**. One wedged holder — typically a query's
+`_getAccessToken()` → `getSession()` firing an in-line client refresh on a post-wake cold
+network — blocks every later auth op AND every data query, with no timeout and no error.
+That is the "infinite loading spinner, empty console" report: queries hang while *waiting
+to acquire the lock*, before any fetch (so the 20 s fetch timeout never applies).
+
+Fixes (shipped on top of §N):
+
+- **Lock acquire clamp** (`client.ts` `instrumentedLock`): infinite acquire waits
+  (`acquireTimeout = -1`) are clamped to **15 s**, converting the silent hang into a
+  `ProcessLockAcquireTimeoutError` that every consumer already handles (queries →
+  `isLikelyAuthError` → server refresh → retry; recovery → ladder; login → reset+retry).
+- **Focus gate** (`providers.tsx`, React Query `focusManager`): the refetch-on-focus burst
+  now waits for the token-freshness check. Fresh token → refetch immediately; stale token →
+  one server refresh first, then refetch with the fresh cookie — so queries never need the
+  in-line client refresh that wedges the lock.
+- **Server-refresh dedupe** (`client.ts`): concurrent wake-time callers (visibility, focus
+  gate, heartbeat, query-cache, mutation guards) share one POST `/api/auth/refresh`.
+- **Faster recovery failover**: the post-refresh local session read in
+  `recoverSessionConnection` is budgeted at 5 s (was 12 s) — when the global lock is
+  jammed, only a reload clears it, so fail over fast.
+
+**Unrelated bug found in the same incident:** the console 400 on
+`campaign_activity_ratings?on_conflict=…` was the DB check constraint
+`car_rating_or_binary_chk` (row with both `rating` and `binary_value` null). The wall-chart
+`InlineRatingPopover` / `CumulativeRatingPopover` allowed Save with nothing selected. Fixed
+with proper `canSave` guards plus a friendly hook-level validation error in
+`useSaveActivityRating` / `useBatchSaveActivityRatings`. (The Radix
+`Missing Description for DialogContent` console warning is cosmetic and unrelated.)
 
 ---
 

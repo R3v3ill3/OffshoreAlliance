@@ -76,9 +76,13 @@ export function InlineRatingPopover({
     setOpen(next);
   };
 
+  // A value must actually be selected: a row with BOTH rating and
+  // binary_value null violates the `car_rating_or_binary_chk` DB constraint
+  // (PostgREST 400). To clear a rating, use the delete action in the worker
+  // detail sheet.
   const canSave =
     !save.isPending &&
-    (isBinary ? value.binary_value !== null || value.rating === null : true);
+    (isBinary ? value.binary_value !== null : value.rating !== null);
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
@@ -222,10 +226,12 @@ export function CumulativeRatingPopover({
 
   const isBinary = selectedOption?.is_binary ?? false;
 
+  // Same constraint guard as InlineRatingPopover: one of rating /
+  // binary_value must be selected or the DB rejects the row with a 400.
   const canSave =
     !save.isPending &&
     selectedOption != null &&
-    (isBinary ? value.binary_value !== null : true);
+    (isBinary ? value.binary_value !== null : value.rating !== null);
 
   const withRatings = options.filter((o) => o.last_rated_at != null);
   const withoutRatings = options.filter((o) => o.last_rated_at == null);

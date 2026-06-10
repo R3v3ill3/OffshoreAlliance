@@ -38,6 +38,11 @@ export function useSaveActivityRating({
 
   return useAuthAwareMutation<void, Error, SaveActivityRatingArgs>({
     mutationFn: async (args) => {
+      // DB constraint `car_rating_or_binary_chk` requires one of rating /
+      // binary_value. Fail with a clear message instead of an opaque 400.
+      if (args.rating === null && args.binary_value === null) {
+        throw new Error("Select a rating before saving.");
+      }
       const payload = {
         activity_id: args.activityId,
         worker_id: args.workerId,

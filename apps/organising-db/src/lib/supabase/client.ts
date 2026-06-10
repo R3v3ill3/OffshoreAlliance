@@ -67,6 +67,26 @@ const LOCK_ACQUIRE_WARN_MS = 2_000;
 const LOCK_HELD_WARN_MS = 5_000;
 
 /**
+ * Ceiling on how long ANY auth operation may wait to ACQUIRE the auth lock.
+ *
+ * auth-js calls most public methods with `acquireTimeout = -1` (wait forever),
+ * and `processLock`'s queue is MODULE-GLOBAL (keyed by lock name) — it
+ * survives `resetClient()`. So one wedged holder (e.g. getSession's in-line
+ * token refresh stalling on a post-wake cold network) silently blocks every
+ * subsequent auth op AND every data query (supabase-js `_getAccessToken` →
+ * `getSession()` → this lock) with NO timeout and NO error: the classic
+ * "infinite loading spinner with nothing in the console".
+ *
+ * Clamping the acquire wait converts that silent hang into a
+ * ProcessLockAcquireTimeoutError (`isAcquireTimeout`), which every consumer
+ * already handles: queries route through isLikelyAuthError → server refresh →
+ * retry; getSessionWithTimeout returns timedOut → recovery ladder; login
+ * resets and retries. The holder itself is bounded by the 20s fetch timeout,
+ * so waiters clamped at 15s recover shortly after the holder clears.
+ */
+const LOCK_ACQUIRE_MAX_WAIT_MS = 15_000;
+
+/**
  * Zero-await instrumentation wrapper around processLock.
  *
  * RESPONSIVENESS CONSTRAINT: this must NOT add any awaits, timers, or work to
@@ -103,7 +123,10 @@ function instrumentedLock<R>(
       }
     });
   };
-  return processLock(name, acquireTimeout, wrappedFn);
+  // Clamp infinite waits (see LOCK_ACQUIRE_MAX_WAIT_MS above). Non-negative
+  // timeouts requested by auth-js are preserved as-is.
+  const boundedAcquireTimeout = acquireTimeout < 0 ? LOCK_ACQUIRE_MAX_WAIT_MS : acquireTimeout;
+  return processLock(name, boundedAcquireTimeout, wrappedFn);
 }
 
 let _client: SupabaseClient | undefined;
@@ -291,9 +314,26 @@ export interface ServerRefreshResult {
  *   no_session  → server confirms no session (genuine logout candidate).
  *   timeout/... → transient; do NOT log out, retry on next tick.
  */
-export async function refreshSessionViaServer(
+// Dedupe concurrent server refreshes: visibility handler, heartbeat, focus
+// gate, query-cache recovery, and mutation guards can all fire around the same
+// wake-up moment. One POST serves them all (and avoids back-to-back rotations).
+let _serverRefreshInFlight: Promise<ServerRefreshResult> | null = null;
+
+export function refreshSessionViaServer(
   source: string,
   timeoutMs: number = SERVER_REFRESH_TIMEOUT_MS,
+): Promise<ServerRefreshResult> {
+  if (_serverRefreshInFlight) return _serverRefreshInFlight;
+  const promise = doRefreshSessionViaServer(source, timeoutMs).finally(() => {
+    if (_serverRefreshInFlight === promise) _serverRefreshInFlight = null;
+  });
+  _serverRefreshInFlight = promise;
+  return promise;
+}
+
+async function doRefreshSessionViaServer(
+  source: string,
+  timeoutMs: number,
 ): Promise<ServerRefreshResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -377,7 +417,10 @@ function coordinatedGetSession(
   return promise;
 }
 
-export async function getSessionWithTimeout(source: string): Promise<{
+export async function getSessionWithTimeout(
+  source: string,
+  timeoutMs: number = SUPABASE_AUTH_OP_TIMEOUT_MS,
+): Promise<{
   session: Session | null;
   timedOut: boolean;
 }> {
@@ -385,6 +428,7 @@ export async function getSessionWithTimeout(source: string): Promise<{
     const { data: { session } } = await withAuthOpTimeout(
       `getSession:${source}`,
       coordinatedGetSession(source),
+      timeoutMs,
     );
     return { session: session ?? null, timedOut: false };
   } catch (error) {

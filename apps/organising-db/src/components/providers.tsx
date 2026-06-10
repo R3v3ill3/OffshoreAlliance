@@ -1,6 +1,6 @@
 "use client";
 
-import { QueryClient, QueryClientProvider, QueryCache } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, QueryCache, focusManager } from "@tanstack/react-query";
 import { useState, useEffect, useRef, Suspense, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { AuthProvider } from "@/lib/supabase/auth-context";
@@ -14,6 +14,11 @@ import { PostHogPageView } from "@/components/posthog-page-view";
 import "../../../../sentry.client.config";
 
 const queryCacheRecoveryGuard = { inProgress: false };
+
+// Refresh-ahead window for tab-focus / wake checks (visibility handler,
+// focus gate, online/pageshow). When the known token expiry is inside this
+// window — or unknown — the wake path refreshes via the server first.
+const VISIBILITY_REFRESH_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 
 function isNonRetryableStatus(error: unknown): boolean {
   const status =
@@ -107,10 +112,10 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
   useEffect(() => {
     if (isUnauthRoute) return;
 
-    // Refresh on focus when the token is within this window of expiry (or when
-    // we don't yet know the expiry). A quick tab-switch with a comfortably
-    // fresh token does NOTHING — no network, no client getSession.
-    const VISIBILITY_REFRESH_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+    // Refresh on focus when the token is within VISIBILITY_REFRESH_WINDOW_MS
+    // of expiry (or when we don't yet know the expiry). A quick tab-switch
+    // with a comfortably fresh token does NOTHING — no network, no client
+    // getSession.
 
     // Shared wake-up check. Decides CHEAPLY whether a refresh is needed. We
     // deliberately do NOT call the client's getSession() here: near expiry it
@@ -170,6 +175,53 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient, isUnauthRoute]);
+
+  // Mirror of isUnauthRoute for the focus gate below (registered once).
+  const isUnauthRouteRef = useRef(isUnauthRoute);
+  useEffect(() => {
+    isUnauthRouteRef.current = isUnauthRoute;
+  }, [isUnauthRoute]);
+
+  // FOCUS GATE — make React Query's refetch-on-focus wait for the token check.
+  //
+  // By default React Query refetches every stale query the instant the tab
+  // becomes visible. If the access token went stale while the machine slept,
+  // that refetch burst races our server refresh: each query's
+  // `_getAccessToken` → `getSession()` sees the stale token and fires an
+  // IN-LINE CLIENT-SIDE refresh under the global auth lock — on a post-wake
+  // cold network that refresh stalls, the lock jams, and every query hangs
+  // with no error (the infinite-spinner mode).
+  //
+  // Gating focus delivery means: token comfortably fresh → refetch
+  // immediately (zero added latency); token stale/unknown → one server
+  // refresh first (deduped with the visibility handler's), THEN refetch with
+  // the fresh cookie so no query ever needs a client-side refresh.
+  useEffect(() => {
+    focusManager.setEventListener((handleFocus) => {
+      const onVisibilityChange = () => {
+        if (document.visibilityState !== "visible") {
+          handleFocus(false);
+          return;
+        }
+        if (isUnauthRouteRef.current) {
+          handleFocus(true);
+          return;
+        }
+        const expMs = getKnownExpiryMs();
+        const stale = expMs === null || expMs - Date.now() < VISIBILITY_REFRESH_WINDOW_MS;
+        if (!stale) {
+          handleFocus(true);
+          return;
+        }
+        // refreshSessionViaServer is bounded (8s) and never throws; release
+        // the refetch burst regardless of outcome — a failed refresh routes
+        // queries into the normal error/recovery path instead of a silent hang.
+        refreshSessionViaServer("focus-gate").finally(() => handleFocus(true));
+      };
+      window.addEventListener("visibilitychange", onVisibilityChange, false);
+      return () => window.removeEventListener("visibilitychange", onVisibilityChange);
+    });
+  }, []);
 
   // Refs backing the auth heartbeat + recovery budgets.
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);

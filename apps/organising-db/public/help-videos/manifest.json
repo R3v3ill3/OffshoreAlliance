@@ -1,5 +1,5 @@
 {
-  "count": 16,
+  "count": 19,
   "series": {
     "O": "Overview",
     "A": "Set up a campaign",
@@ -116,6 +116,45 @@
       "transcript": "help-videos/A2.transcript.txt"
     },
     {
+      "id": "A3",
+      "title": "Import workers from a list (Excel)",
+      "series": "A",
+      "durationSec": 49,
+      "summary": "Run the worker import wizard end to end — upload a spreadsheet, let it auto-map your columns, map values and an employer, and import (with duplicate checking).",
+      "tags": [
+        "import",
+        "workers",
+        "excel",
+        "spreadsheet",
+        "upload",
+        "column mapping",
+        "dedup",
+        "members"
+      ],
+      "associatedRoutes": [
+        "/workers",
+        "/workers/*"
+      ],
+      "routeWeight": 10,
+      "prerequisites": [
+        "A1",
+        "A2"
+      ],
+      "upNext": [
+        "A4",
+        "A5",
+        "B1"
+      ],
+      "transcriptPath": "A3.transcript.txt",
+      "videoPath": "A3.mp4",
+      "downloadable": true,
+      "seriesName": "Set up a campaign",
+      "order": 2,
+      "video": "help-videos/A3.mp4",
+      "vtt": "help-videos/A3.vtt",
+      "transcript": "help-videos/A3.transcript.txt"
+    },
+    {
       "id": "A4",
       "title": "Create a campaign — the manual way",
       "series": "A",
@@ -222,6 +261,77 @@
       "video": "help-videos/B1.mp4",
       "vtt": "help-videos/B1.vtt",
       "transcript": "help-videos/B1.transcript.txt"
+    },
+    {
+      "id": "B2",
+      "title": "Create organising units and groups",
+      "series": "B",
+      "durationSec": 38,
+      "summary": "Build a campaign's organising units — add a single unit, let it auto-fill by rule, and bundle several units into a group.",
+      "tags": [
+        "create unit",
+        "organising unit",
+        "group",
+        "campaign units",
+        "assignment rules",
+        "shift",
+        "work area"
+      ],
+      "associatedRoutes": [
+        "/campaigns/*"
+      ],
+      "routeWeight": 8,
+      "prerequisites": [
+        "B1"
+      ],
+      "upNext": [
+        "B3",
+        "C1",
+        "B1"
+      ],
+      "transcriptPath": "B2.transcript.txt",
+      "videoPath": "B2.mp4",
+      "downloadable": true,
+      "seriesName": "Units, groups & subgroups",
+      "order": 6,
+      "video": "help-videos/B2.mp4",
+      "vtt": "help-videos/B2.vtt",
+      "transcript": "help-videos/B2.transcript.txt"
+    },
+    {
+      "id": "B3",
+      "title": "Allocate workers to units",
+      "series": "B",
+      "durationSec": 36,
+      "summary": "Put workers into organising units — open a unit's assign panel, tick the workers, mark a primary unit, and assign them in bulk. A worker can sit in more than one unit.",
+      "tags": [
+        "allocate workers",
+        "assign",
+        "organising unit",
+        "multi-unit",
+        "primary unit",
+        "bulk assign"
+      ],
+      "associatedRoutes": [
+        "/campaigns/*"
+      ],
+      "routeWeight": 8,
+      "prerequisites": [
+        "B2"
+      ],
+      "upNext": [
+        "C1",
+        "C2",
+        "E3"
+      ],
+      "transcriptPath": "B3.transcript.txt",
+      "videoPath": "B3.mp4",
+      "downloadable": true,
+      "seriesName": "Units, groups & subgroups",
+      "order": 7,
+      "video": "help-videos/B3.mp4",
+      "vtt": "help-videos/B3.vtt",
+      "transcript": "help-videos/B3.transcript.txt"
     },
     {
       "id": "C1",

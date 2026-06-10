@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
-import type { Worksite, Employer, WorksiteType } from "@/types/database";
+import type { Worksite, Employer } from "@/types/database";
+import { WORKSITE_TYPES } from "@/types/database";
 import type { Database } from "@oa/db-types";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -30,24 +31,6 @@ import {
 import { Plus, List, MapIcon } from "lucide-react";
 import { TermHint } from "@/components/ui/term-hint";
 import { WorksiteMap } from "@/components/maps/worksite-map";
-
-const WORKSITE_TYPES: WorksiteType[] = [
-  "FPSO",
-  "FPU",
-  "FLNG",
-  "Platform",
-  "Onshore_LNG",
-  "Gas_Plant",
-  "Drill_Centre",
-  "Region",
-  "Heliport",
-  "Pipeline",
-  "Airfield",
-  "Onshore_Facilities",
-  "CPF",
-  "Gas_Field",
-  "Other",
-];
 
 type EmployerRole = {
   role_type: string;

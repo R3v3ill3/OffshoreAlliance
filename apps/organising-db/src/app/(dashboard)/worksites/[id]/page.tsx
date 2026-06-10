@@ -19,6 +19,7 @@ import type {
   WorkScope,
   Project,
 } from "@/types/database";
+import { WORKSITE_TYPES } from "@/types/database";
 import type { Database } from "@oa/db-types";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -78,26 +79,8 @@ import { EditEmployerRoleDialog } from "@/components/worksites/edit-employer-rol
 import { TermHint } from "@/components/ui/term-hint";
 import { WorksiteDetailMap } from "@/components/maps/worksite-detail-map";
 
-const WORKSITE_TYPES: WorksiteType[] = [
-  "FPSO",
-  "FPU",
-  "FLNG",
-  "Platform",
-  "Onshore_LNG",
-  "Gas_Plant",
-  "Drill_Centre",
-  "Region",
-  "Heliport",
-  "Pipeline",
-  "Airfield",
-  "Onshore_Facilities",
-  "CPF",
-  "Gas_Field",
-  "Other",
-];
-
 function worksiteTypeIcon(type: string) {
-  const vesselTypes = ["FPSO", "FPU", "FLNG", "Vessel"];
+  const vesselTypes = ["FPSO", "FPU", "FLNG", "Vessel", "Supply_Vessel", "Accommodation_Vessel", "Vessel_Other"];
   if (vesselTypes.includes(type)) {
     return <Ship className="h-10 w-10 text-muted-foreground/30" />;
   }

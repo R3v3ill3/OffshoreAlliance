@@ -48,7 +48,8 @@ import {
   UserPlus,
   SkipForward,
 } from "lucide-react";
-import type { Worksite, WorksiteType } from "@/types/database";
+import type { Worksite } from "@/types/database";
+import { WORKSITE_TYPES } from "@/types/database";
 import type { MembershipImportType, ParsedMembershipRow } from "@/app/api/membership-import/parse/route";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -162,12 +163,6 @@ interface UnionMembershipTypeRow {
 }
 
 // ─── Fuzzy employer scoring ───────────────────────────────────────────────────
-
-const WORKSITE_TYPES: WorksiteType[] = [
-  "FPSO", "FPU", "FLNG", "Platform", "Onshore_LNG", "Gas_Plant",
-  "Drill_Centre", "Region", "Heliport", "Pipeline", "Airfield",
-  "Onshore_Facilities", "CPF", "Gas_Field", "Other",
-];
 
 const EMPLOYER_CATEGORIES = [
   { value: "Producer", label: "Producer" },

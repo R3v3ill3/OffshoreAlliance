@@ -18,6 +18,7 @@ import type {
   WorkerImportRowResult,
 } from "@/app/api/worker-import/apply/route";
 import type { Worksite, WorksiteType } from "@/types/database";
+import { WORKSITE_TYPES } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -2502,25 +2503,7 @@ export function WorkerImportWizard({
                         <SelectValue placeholder="Select type..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {(
-                          [
-                            "FPSO",
-                            "FPU",
-                            "FLNG",
-                            "Platform",
-                            "Onshore_LNG",
-                            "Gas_Plant",
-                            "Drill_Centre",
-                            "Region",
-                            "Heliport",
-                            "Pipeline",
-                            "Airfield",
-                            "Onshore_Facilities",
-                            "CPF",
-                            "Gas_Field",
-                            "Other",
-                          ] as WorksiteType[]
-                        ).map((t) => (
+                        {WORKSITE_TYPES.map((t) => (
                           <SelectItem key={t} value={t}>
                             {t.replace(/_/g, " ")}
                           </SelectItem>

@@ -55,6 +55,7 @@ import {
 } from "lucide-react";
 
 import type { Cluster } from "@/lib/utils/cluster-utils";
+import { WORKSITE_TYPES } from "@/types/database";
 import type {
   EmployerProposal,
   WorksiteProposal,
@@ -158,12 +159,6 @@ const STEP_INDEX: Record<WizardStep, number> = Object.fromEntries(
 
 const EMPLOYER_CATEGORIES = [
   "Producer", "Major_Contractor", "Subcontractor", "Labour_Hire", "Specialist",
-];
-
-const WORKSITE_TYPES = [
-  "FPSO", "FPU", "FLNG", "Platform", "Vessel", "Onshore_LNG", "Gas_Plant",
-  "Drill_Centre", "Region", "Heliport", "Pipeline", "Airfield",
-  "Onshore_Facilities", "CPF", "Gas_Field", "Other",
 ];
 
 const OCCUPATION_CATEGORIES = [

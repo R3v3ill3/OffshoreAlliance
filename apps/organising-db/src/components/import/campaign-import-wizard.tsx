@@ -46,6 +46,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { WORKSITE_TYPES } from "@/types/database";
 import {
   autoMapCampaignHeader,
   CAMPAIGN_MAPPABLE_FIELDS,
@@ -88,10 +89,6 @@ const STEPS: { id: WizardStep; label: string }[] = [
 
 const MERGE_PREFIX = "merge::";
 const EMPLOYER_CATEGORIES = ["Producer", "Major_Contractor", "Subcontractor", "Labour_Hire", "Specialist"];
-const WORKSITE_TYPES = [
-  "FPSO", "FPU", "FLNG", "Platform", "Onshore_LNG", "Gas_Plant", "Drill_Centre",
-  "Region", "Heliport", "Pipeline", "Airfield", "Onshore_Facilities", "CPF", "Gas_Field", "Other",
-];
 
 interface ColumnMapping {
   header: string;

@@ -373,7 +373,7 @@
       "id": "C2",
       "title": "Filter, sort & switch views",
       "series": "C",
-      "durationSec": 36,
+      "durationSec": 38,
       "summary": "Narrow the wall chart with filters, switch cumulative vs per-assessment, and toggle list view.",
       "tags": [
         "filter",
@@ -408,7 +408,7 @@
       "id": "C3",
       "title": "Build a list and fire it",
       "series": "C",
-      "durationSec": 32,
+      "durationSec": 33,
       "summary": "Build a worker list on the wall chart, set a purpose, and fire it into a tasking pathway.",
       "tags": [
         "build list",

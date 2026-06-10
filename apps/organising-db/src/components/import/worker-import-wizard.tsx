@@ -701,6 +701,45 @@ export function WorkerImportWizard({
     return columnMappings.some((m) => m.field === "assessment");
   }
 
+  function hasOuColumn() {
+    return columnMappings.some((m) => m.field === "organising_unit");
+  }
+
+  function scoreOu(raw: string, ou: { name: string }): number {
+    const tokenize = (s: string) =>
+      s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
+    const a = new Set(tokenize(raw));
+    const b = new Set(tokenize(ou.name));
+    const intersection = [...a].filter((t) => b.has(t)).length;
+    const union = new Set([...a, ...b]).size;
+    return union === 0 ? 0 : intersection / union;
+  }
+
+  function buildOuResolutions(): OuResolution[] {
+    const ouCol = columnMappings.find((m) => m.field === "organising_unit")?.header ?? "";
+    if (!ouCol) return [];
+    const unique = [
+      ...new Set(headerRows.map((r) => String(r[ouCol] ?? "").trim()).filter(Boolean)),
+    ];
+    return unique.map((val) => {
+      const scored = campaignOus
+        .map((ou) => ({ ...ou, score: scoreOu(val, ou) }))
+        .filter((c) => c.score > 0.15)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5);
+      const top = scored[0];
+      const autoAccept = top != null && top.score >= 0.8;
+      return {
+        rawValue: val,
+        occurrences: headerRows.filter((r) => String(r[ouCol] ?? "").trim() === val).length,
+        ouId: autoAccept ? top.ou_id : null,
+        ouName: autoAccept ? top.name : null,
+        candidates: scored,
+        confirmed: autoAccept,
+      };
+    });
+  }
+
   function worksitePrincipalEmployerId(worksite: Worksite): number | null {
     return (worksite as Worksite & { principal_employer_id?: number | null }).principal_employer_id ?? null;
   }
@@ -877,12 +916,14 @@ export function WorkerImportWizard({
           (s) =>
             s.id !== "column_mapping" &&
             s.id !== "occupation_matching" &&
-            s.id !== "assessment_mapping"
+            s.id !== "assessment_mapping" &&
+            s.id !== "ou_matching"
         )
       : ALL_STEPS.filter(
           (s) =>
             (s.id !== "occupation_matching" || hasOccupationColumn()) &&
-            (s.id !== "assessment_mapping" || hasAssessmentColumn())
+            (s.id !== "assessment_mapping" || hasAssessmentColumn()) &&
+            (s.id !== "ou_matching" || (hasOuColumn() && numericCampaignId != null))
         );
     return steps.filter(
       (s) =>
@@ -946,6 +987,13 @@ export function WorkerImportWizard({
     setAssessmentResolutions([]);
     setWorksiteSearch({});
     setNewWorksiteRoleType("Other");
+    setOuResolutions([]);
+    setOuSearch({});
+    setCreateOuFor(null);
+    setNewOuName("");
+    setNewOuType("");
+    setIsCreatingOu(false);
+    setCreateOuError(null);
     setOccupationResolutions([]);
     setOccupationSearch({});
     setSelectedEmployerId(null);
@@ -1097,6 +1145,10 @@ export function WorkerImportWizard({
       setWorksiteResolutions([]);
     }
 
+    // Eagerly build OU resolutions so the step is ready when reached
+    setOuResolutions(buildOuResolutions());
+    setOuSearch({});
+
     // Eagerly build occupation resolutions so the step is ready when reached
     setOccupationResolutions(buildOccupationResolutions());
     setOccupationSearch({});
@@ -1157,6 +1209,8 @@ export function WorkerImportWizard({
         })
       );
       setStep("worksite_matching");
+    } else if (hasOuColumn() && numericCampaignId != null && ouResolutions.length > 0) {
+      setStep("ou_matching");
     } else if (hasOccupationColumn()) {
       setStep("occupation_matching");
     } else {
@@ -1165,6 +1219,16 @@ export function WorkerImportWizard({
   }
 
   function proceedFromWorksiteMatching() {
+    if (hasOuColumn() && numericCampaignId != null && ouResolutions.length > 0) {
+      setStep("ou_matching");
+    } else if (hasOccupationColumn()) {
+      setStep("occupation_matching");
+    } else {
+      proceedToRowReview();
+    }
+  }
+
+  function proceedFromOuMatching() {
     if (hasOccupationColumn()) {
       setStep("occupation_matching");
     } else {
@@ -1226,8 +1290,59 @@ export function WorkerImportWizard({
     }
   }
 
+  function resolveOu(rawValue: string, ou: { ou_id: number; name: string; ou_type: string } | null) {
+    setOuResolutions((prev) =>
+      prev.map((r) =>
+        r.rawValue === rawValue
+          ? {
+              ...r,
+              ouId: ou?.ou_id ?? null,
+              ouName: ou?.name ?? null,
+              confirmed: true,
+            }
+          : r
+      )
+    );
+  }
+
+  async function handleCreateOu(rawValue: string) {
+    if (!newOuName.trim() || !newOuType || !numericCampaignId) return;
+    setIsCreatingOu(true);
+    setCreateOuError(null);
+    try {
+      const response = await fetchApi("/api/worker-import/organising-units", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignId: numericCampaignId,
+          name: newOuName.trim(),
+          ouType: newOuType,
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok || !json.success) {
+        throw new Error(json.error ?? "Failed to create organising unit");
+      }
+      resolveOu(rawValue, json.ou as { ou_id: number; name: string; ou_type: string });
+      await queryClient.invalidateQueries({ queryKey: ["import-campaign-ous", numericCampaignId] });
+      setOuResolutions((prev) =>
+        prev.map((r) =>
+          r.rawValue === rawValue ? { ...r, createdDuringImport: true } : r
+        )
+      );
+      setCreateOuFor(null);
+      setNewOuName("");
+      setNewOuType("");
+    } catch (err) {
+      setCreateOuError(err instanceof Error ? err.message : "Failed to create organising unit");
+    } finally {
+      setIsCreatingOu(false);
+    }
+  }
+
   function proceedToRowReview() {
     const resolutionMap = new Map(worksiteResolutions.map((r) => [r.groupName, r]));
+    const ouResMap = new Map(ouResolutions.map((r) => [r.rawValue, r]));
     const occResMap = new Map(occupationResolutions.map((r) => [r.rawValue, r]));
     const assessmentCols = assessmentResolutions.map((assessment) => assessment.columnHeader);
 
@@ -1253,6 +1368,7 @@ export function WorkerImportWizard({
       const emailCol = columnMappings.find((m) => m.field === "email")?.header ?? "";
       const phoneCol = columnMappings.find((m) => m.field === "phone")?.header ?? "";
       const worksiteCol = columnMappings.find((m) => m.field === "worksite")?.header ?? "";
+      const ouCol = columnMappings.find((m) => m.field === "organising_unit")?.header ?? "";
       const occupationCol = columnMappings.find((m) => m.field === "occupation")?.header ?? "";
       const membershipCol = columnMappings.find((m) => m.field === "membership_status")?.header ?? "";
       const roleTypeCol = columnMappings.find((m) => m.field === "member_role_type")?.header ?? "";
@@ -1267,6 +1383,8 @@ export function WorkerImportWizard({
             ? String(row[worksiteCol] ?? "").trim()
             : "";
           const resolution = resolutionMap.get(rawWorksiteVal);
+          const rawOuVal = ouCol ? String(row[ouCol] ?? "").trim() : "";
+          const ouRes = ouResMap.get(rawOuVal);
 
           let firstName = "";
           let lastName = "";
@@ -1383,6 +1501,8 @@ export function WorkerImportWizard({
             groupName: rawWorksiteVal,
             resolvedWorksiteId: resolution?.worksiteId ?? null,
             resolvedWorksiteName: resolution?.worksiteName ?? null,
+            resolvedOuId: ouRes?.confirmed ? (ouRes.ouId ?? null) : null,
+            resolvedOuName: ouRes?.confirmed ? (ouRes.ouName ?? null) : null,
             rawOccupation,
             resolvedOccupationId: occRes?.confirmed ? (occRes.resolvedOccupationId ?? null) : null,
             createOccupationName: occRes?.confirmed ? occRes.createOccupationName : null,
@@ -1406,6 +1526,8 @@ export function WorkerImportWizard({
           groupName: g.groupName,
           resolvedWorksiteId: resolution?.worksiteId ?? null,
           resolvedWorksiteName: resolution?.worksiteName ?? null,
+          resolvedOuId: null,
+          resolvedOuName: null,
           rawOccupation: null,
           resolvedOccupationId: null,
           createOccupationName: null,
@@ -1591,6 +1713,7 @@ export function WorkerImportWizard({
         createSpecialisationNames: row.createSpecialisationNames ?? [],
         assessmentEvents: row.assessmentEvents ?? [],
         nonOaUnionBadgeInitials,
+        ouId: row.resolvedOuId ?? null,
         action,
         existingWorkerId,
       };
@@ -2687,6 +2810,258 @@ export function WorkerImportWizard({
     );
   }
 
+  function renderOuMatching() {
+    const allConfirmed = ouResolutions.every((r) => r.confirmed);
+    const OU_TYPES: CampaignOuType[] = [
+      "shift",
+      "department",
+      "network",
+      "job_type",
+      "worksite",
+      "employer",
+      "ethnic_community",
+      "crew_rotation",
+      "accommodation",
+      "work_area",
+      "custom",
+    ];
+
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          {ouResolutions.length} unique organising unit
+          {ouResolutions.length !== 1 ? "s" : ""} detected. Confirm or override
+          the mapping for each.
+        </p>
+
+        <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+          {ouResolutions.map((resolution) => {
+            const workerCount = headerRows.filter((r) => {
+              const col = columnMappings.find((m) => m.field === "organising_unit")?.header ?? "";
+              return String(r[col] ?? "").trim() === resolution.rawValue;
+            }).length;
+
+            const searchTerm = ouSearch[resolution.rawValue] ?? "";
+            const filteredOus = searchTerm
+              ? campaignOus.filter((ou) =>
+                  ou.name.toLowerCase().includes(searchTerm.toLowerCase())
+                )
+              : [];
+
+            return (
+              <div
+                key={resolution.rawValue}
+                className="border rounded-lg p-4 space-y-3"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-medium text-sm">{resolution.rawValue}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {workerCount} worker{workerCount !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  {resolution.confirmed ? (
+                    <Badge variant="default" className="gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      {resolution.ouName ?? "No Unit"}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline">Needs Review</Badge>
+                  )}
+                </div>
+
+                {resolution.candidates.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Suggested matches — click to select:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {resolution.candidates.map((c) => {
+                        const isSelected =
+                          resolution.confirmed && resolution.ouId === c.ou_id;
+                        return (
+                          <Button
+                            key={c.ou_id}
+                            variant={isSelected ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => resolveOu(resolution.rawValue, { ou_id: c.ou_id, name: c.name, ou_type: c.ou_type })}
+                            className="h-8 text-xs gap-1.5"
+                          >
+                            {isSelected && (
+                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                            )}
+                            <Badge
+                              variant={isSelected ? "secondary" : "outline"}
+                              className="text-[10px] px-1 py-0 h-4"
+                            >
+                              {c.ou_type.replace(/_/g, " ")}
+                            </Badge>
+                            {c.name}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Search organising units..."
+                    value={searchTerm}
+                    onChange={(e) =>
+                      setOuSearch((prev) => ({
+                        ...prev,
+                        [resolution.rawValue]: e.target.value,
+                      }))
+                    }
+                    className="pl-8 h-8 text-sm"
+                  />
+                  {searchTerm && filteredOus.length > 0 && (
+                    <div className="absolute z-10 top-full left-0 right-0 mt-1 border rounded-md bg-background shadow-md max-h-40 overflow-y-auto">
+                      {filteredOus.map((ou) => (
+                        <button
+                          key={ou.ou_id}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
+                          onClick={() => {
+                            resolveOu(resolution.rawValue, ou);
+                            setOuSearch((prev) => ({
+                              ...prev,
+                              [resolution.rawValue]: "",
+                            }));
+                          }}
+                        >
+                          {ou.name}
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            {ou.ou_type.replace(/_/g, " ")}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {createOuFor === resolution.rawValue ? (
+                  <div className="border rounded-md p-3 space-y-2 bg-muted/30">
+                    <p className="text-xs font-medium">New organising unit</p>
+                    <Input
+                      placeholder="Unit name"
+                      value={newOuName}
+                      onChange={(e) => setNewOuName(e.target.value)}
+                      className="h-8 text-sm"
+                      autoFocus
+                    />
+                    <Select
+                      value={newOuType}
+                      onValueChange={(v) => setNewOuType(v as CampaignOuType)}
+                    >
+                      <SelectTrigger className="h-8 text-sm">
+                        <SelectValue placeholder="Select unit type..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {OU_TYPES.map((t) => (
+                          <SelectItem key={t} value={t}>
+                            {t.replace(/_/g, " ")}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {createOuError && (
+                      <p className="text-xs text-destructive">{createOuError}</p>
+                    )}
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={!newOuName.trim() || !newOuType || isCreatingOu}
+                        onClick={() => handleCreateOu(resolution.rawValue)}
+                      >
+                        {isCreatingOu ? (
+                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        ) : (
+                          <Plus className="h-3 w-3 mr-1" />
+                        )}
+                        Create &amp; assign
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          setCreateOuFor(null);
+                          setNewOuName("");
+                          setNewOuType("");
+                          setCreateOuError(null);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="flex gap-2">
+                  <Button
+                    variant={
+                      resolution.confirmed && !resolution.ouId ? "default" : "outline"
+                    }
+                    size="sm"
+                    onClick={() =>
+                      setOuResolutions((prev) =>
+                        prev.map((r) =>
+                          r.rawValue === resolution.rawValue
+                            ? { ...r, ouId: null, ouName: null, confirmed: true }
+                            : r
+                        )
+                      )
+                    }
+                    className="text-xs h-7 gap-1"
+                  >
+                    {resolution.confirmed && !resolution.ouId ? (
+                      <CheckCircle2 className="h-3 w-3" />
+                    ) : (
+                      <X className="h-3 w-3" />
+                    )}
+                    No Unit
+                  </Button>
+                  {createOuFor !== resolution.rawValue && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-7 gap-1"
+                      onClick={() => {
+                        setCreateOuFor(resolution.rawValue);
+                        setNewOuName(resolution.rawValue);
+                        setNewOuType("custom");
+                        setCreateOuError(null);
+                      }}
+                    >
+                      <Plus className="h-3 w-3" />
+                      Create new
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setStep("worksite_matching")}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back
+          </Button>
+          <Button onClick={proceedFromOuMatching} disabled={!allConfirmed}>
+            {hasOccupationColumn() ? (
+              <>Match Occupations <ArrowRight className="h-4 w-4 ml-1" /></>
+            ) : (
+              <>Review Rows <ArrowRight className="h-4 w-4 ml-1" /></>
+            )}
+          </Button>
+        </DialogFooter>
+      </div>
+    );
+  }
+
   function renderRowReview() {
     const warningCount = reviewRows.filter((r) => r.parseWarnings.length > 0).length;
     const noMembershipTypeCount = reviewRows.filter(
@@ -2696,8 +3071,11 @@ export function WorkerImportWizard({
       (sum, row) => sum + (row.assessmentEvents?.length ?? 0),
       0
     );
-    const backStep: WizardStep =
-      worksiteResolutions.length > 0 ? "worksite_matching" : "employer_selection";
+    const backStep: WizardStep = ouResolutions.length > 0
+      ? "ou_matching"
+      : worksiteResolutions.length > 0
+      ? "worksite_matching"
+      : "employer_selection";
 
     return (
       <div className="space-y-4">
@@ -2967,8 +3345,11 @@ export function WorkerImportWizard({
   function renderOccupationMatching() {
     const allConfirmed = occupationResolutions.every((r) => r.confirmed);
 
-    const backStep: WizardStep =
-      worksiteResolutions.length > 0 ? "worksite_matching" : "employer_selection";
+    const backStep: WizardStep = ouResolutions.length > 0
+      ? "ou_matching"
+      : worksiteResolutions.length > 0
+      ? "worksite_matching"
+      : "employer_selection";
 
     return (
       <div className="space-y-4">
@@ -3726,6 +4107,7 @@ export function WorkerImportWizard({
             {step === "assessment_mapping" && renderAssessmentMapping()}
             {step === "employer_selection" && renderEmployerSelection()}
             {step === "worksite_matching" && renderWorksiteMatching()}
+            {step === "ou_matching" && renderOuMatching()}
             {step === "occupation_matching" && renderOccupationMatching()}
             {step === "row_review" && renderRowReview()}
             {step === "dedup_check" && renderDedupCheck()}

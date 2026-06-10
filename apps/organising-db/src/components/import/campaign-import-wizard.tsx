@@ -691,6 +691,27 @@ export function CampaignImportWizard({ open, onOpenChange, onComplete }: Campaig
     return m;
   }, [vesselResolutions]);
 
+  const employerNameByKey = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const e of employerResolutions) m.set(e.key, e.canonicalName);
+    return m;
+  }, [employerResolutions]);
+
+  const vesselLabelByKey = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const v of vesselResolutions) {
+      const emp = employerNameByKey.get(v.employerKey) ?? "";
+      m.set(v.key, emp ? `${emp} · ${v.canonicalName}` : v.canonicalName);
+    }
+    return m;
+  }, [vesselResolutions, employerNameByKey]);
+
+  const vesselByKeyMap = useMemo(() => {
+    const m = new Map<string, VesselResolution>();
+    for (const v of vesselResolutions) m.set(v.key, v);
+    return m;
+  }, [vesselResolutions]);
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
@@ -927,9 +948,20 @@ export function CampaignImportWizard({ open, onOpenChange, onComplete }: Campaig
                   {employerResolutions.map((e, idx) => (
                     <TableRow key={e.key} className={e.mergeIntoKey ? "opacity-40 bg-muted/30" : e.action === "create" ? "bg-blue-50/40" : ""}>
                       <TableCell className="p-2 text-xs font-medium">
-                        {e.canonicalName}
+                        {e.action === "create" && !e.mergeIntoKey ? (
+                          <Input
+                            value={e.canonicalName}
+                            onChange={(ev) => setEmployerResolutions((prev) => prev.map((x, i) => (i === idx ? { ...x, canonicalName: ev.target.value } : x)))}
+                            className="h-7 text-xs"
+                            aria-label="New employer name"
+                          />
+                        ) : (
+                          <>
+                            {e.canonicalName}
+                            {e.mergeIntoKey && <span className="text-muted-foreground ml-1">→ {employerNameByKey.get(e.mergeIntoKey) ?? e.mergeIntoKey}</span>}
+                          </>
+                        )}
                         {e.variants.length > 1 && <Badge variant="secondary" className="ml-1 text-[10px]">{e.variants.length}</Badge>}
-                        {e.mergeIntoKey && <span className="text-muted-foreground ml-1">→ {e.mergeIntoKey}</span>}
                       </TableCell>
                       <TableCell className="p-2 text-xs text-muted-foreground">{e.count}</TableCell>
                       <TableCell className="p-2">
@@ -999,7 +1031,9 @@ export function CampaignImportWizard({ open, onOpenChange, onComplete }: Campaig
         {step === "vessel_match" && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Within each employer, match vessels/worksites to existing records or create them. Generic values become an “Unspecified vessel” unit.
+              Within each employer, match vessels/worksites to existing records or create them. If the same vessel
+              appears under more than one employer, set the second one to <span className="font-medium">Match → “Same worksite as”</span> and
+              pick the other employer’s vessel — one shared worksite is created, with a unit under each employer. Generic values become an “Unspecified vessel” unit.
             </p>
             <div className="border rounded-lg overflow-auto max-h-[440px] divide-y">
               {employerResolutions.filter((e) => !e.mergeIntoKey).map((e) => {
@@ -1016,10 +1050,27 @@ export function CampaignImportWizard({ open, onOpenChange, onComplete }: Campaig
                           const idx = vesselResolutions.findIndex((x) => x.key === v.key);
                           return (
                             <TableRow key={v.key} className={v.action === "create" ? "bg-blue-50/40" : v.action === "unspecified" ? "opacity-70" : ""}>
-                              <TableCell className="p-1.5 text-xs font-medium w-[200px]">
-                                <Ship className="inline h-3 w-3 mr-1 text-muted-foreground" />
-                                {v.canonicalName}
-                                {v.variants.length > 1 && <Badge variant="secondary" className="ml-1 text-[10px]">{v.variants.length}</Badge>}
+                              <TableCell className="p-1.5 text-xs font-medium w-[210px]">
+                                {v.action === "create" && !v.mergeIntoKey ? (
+                                  <div className="flex items-center gap-1">
+                                    <Ship className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                    <Input
+                                      value={v.canonicalName}
+                                      onChange={(ev) => setVesselResolutions((prev) => prev.map((x, i) => (i === idx ? { ...x, canonicalName: ev.target.value } : x)))}
+                                      className="h-7 text-xs"
+                                      aria-label="New worksite name"
+                                    />
+                                  </div>
+                                ) : (
+                                  <>
+                                    <Ship className="inline h-3 w-3 mr-1 text-muted-foreground" />
+                                    {v.canonicalName}
+                                    {v.variants.length > 1 && <Badge variant="secondary" className="ml-1 text-[10px]">{v.variants.length}</Badge>}
+                                    {v.mergeIntoKey && (
+                                      <span className="text-muted-foreground ml-1">→ {vesselLabelByKey.get(v.mergeIntoKey) ?? "shared"}</span>
+                                    )}
+                                  </>
+                                )}
                               </TableCell>
                               <TableCell className="p-1.5 text-xs text-muted-foreground w-12">{v.count}</TableCell>
                               <TableCell className="p-1.5 w-[110px]">
@@ -1057,10 +1108,15 @@ export function CampaignImportWizard({ open, onOpenChange, onComplete }: Campaig
                                         ))}
                                       </SelectGroup>
                                       <SelectGroup>
-                                        <SelectLabel>Merge into another vessel</SelectLabel>
-                                        {vessels.filter((o) => o.key !== v.key && !o.isGeneric).map((o) => (
-                                          <SelectItem key={o.key} value={`${MERGE_PREFIX}${o.key}`}>{o.canonicalName}</SelectItem>
-                                        ))}
+                                        <SelectLabel>Same worksite as (any employer)</SelectLabel>
+                                        {vesselResolutions
+                                          .filter((o) => o.key !== v.key && !o.isGeneric && !o.mergeIntoKey)
+                                          .map((o) => (
+                                            <SelectItem key={o.key} value={`${MERGE_PREFIX}${o.key}`}>
+                                              {(employerNameByKey.get(o.employerKey) ?? o.employerKey)} · {o.canonicalName}
+                                              {o.action === "create" ? " (new)" : ""}
+                                            </SelectItem>
+                                          ))}
                                       </SelectGroup>
                                     </SelectContent>
                                   </Select>
@@ -1224,7 +1280,13 @@ export function CampaignImportWizard({ open, onOpenChange, onComplete }: Campaig
             {buildOus && (
               <div className="border rounded-lg overflow-auto max-h-[360px] p-2 space-y-2">
                 {employerResolutions.filter((e) => !e.mergeIntoKey).map((e) => {
-                  const vessels = (vesselsByEmployer.get(e.key) ?? []).filter((v) => !v.mergeIntoKey);
+                  // Hide a vessel only when it folds into another vessel under the SAME
+                  // employer; one shared across employers still becomes a unit here.
+                  const vessels = (vesselsByEmployer.get(e.key) ?? []).filter((v) => {
+                    if (!v.mergeIntoKey) return true;
+                    const target = vesselByKeyMap.get(v.mergeIntoKey);
+                    return !target || target.employerKey !== v.employerKey;
+                  });
                   return (
                     <div key={e.key} className="text-xs">
                       <p className="font-semibold flex items-center gap-1"><Building2 className="h-3 w-3" /> {e.canonicalName} <span className="text-muted-foreground">({e.count})</span></p>
@@ -1232,6 +1294,7 @@ export function CampaignImportWizard({ open, onOpenChange, onComplete }: Campaig
                         {vessels.map((v) => (
                           <li key={v.key} className="flex items-center gap-1 text-muted-foreground">
                             <Ship className="h-2.5 w-2.5" /> {v.canonicalName} <span>({v.count})</span>
+                            {v.mergeIntoKey && <span className="text-[10px] text-primary/70">shared</span>}
                           </li>
                         ))}
                       </ul>

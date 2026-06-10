@@ -182,21 +182,29 @@ export async function POST(req: NextRequest) {
         }
       }
       worksiteIdBySurvivorKey.set(key, worksiteId);
-      // Link worksite to its employer when we have both.
-      if (worksiteId && employerId) {
-        await supabase
-          .from("employer_worksite_roles")
-          .upsert(
-            { employer_id: employerId, worksite_id: worksiteId, role_type: "Operator", is_current: true },
-            { onConflict: "employer_id,worksite_id,role_type", ignoreDuplicates: true }
-          );
-      }
     } catch (err) {
       errors.push(`Vessel "${vessel.canonicalName}": ${err instanceof Error ? err.message : "unknown error"}`);
     }
   }
+  const vesselByKey = new Map(body.vessels.map((v) => [v.key, v] as const));
   const worksiteIdForKey = (key: string): number | null =>
     worksiteIdBySurvivorKey.get(resolveVesselKey(key)) ?? null;
+
+  // Link EVERY vessel's employer to its (possibly shared) worksite, so a vessel
+  // that appears under multiple employers records an operator role for each one
+  // — not just the employer that happened to create the worksite.
+  for (const vessel of body.vessels) {
+    const wsId = worksiteIdForKey(vessel.key);
+    const empId = employerIdForKey(vessel.employerKey);
+    if (wsId && empId) {
+      await supabase
+        .from("employer_worksite_roles")
+        .upsert(
+          { employer_id: empId, worksite_id: wsId, role_type: "Operator", is_current: true },
+          { onConflict: "employer_id,worksite_id,role_type", ignoreDuplicates: true }
+        );
+    }
+  }
 
   // ── 4. campaign_employers + campaign_worksites junctions ────────────────
   for (const employerId of new Set(employerIdBySurvivorKey.values())) {
@@ -334,7 +342,9 @@ export async function POST(req: NextRequest) {
         assigned.push({
           workerId,
           employerKey: resolveEmployerKey(row.employerKey),
-          vesselKey: resolveVesselKey(row.vesselKey),
+          // Keep the worker's ORIGINAL vessel key; the root (shared worksite) is
+          // resolved per-employer in the OU step so each employer keeps its unit.
+          vesselKey: row.vesselKey,
         });
       }
     } catch (err) {
@@ -343,8 +353,12 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 7. Build two-tier OU structure + assignments ────────────────────────
-  // vesselKey -> leaf unit ou_id (built lazily). Records workers per unit too.
-  const unitOuIdByVesselKey = new Map<string, number>();
+  // `${employerKey}::${rootVesselKey}` -> leaf unit ou_id. Keyed by employer so a
+  // vessel shared across employers gets ONE unit per employer (each pointing at the
+  // same shared worksite record), preserving the employer → worksite grouping.
+  const unitOuIdByUnitKey = new Map<string, number>();
+  const unitKeyFor = (employerKey: string, vesselKey: string) =>
+    `${employerKey}::${resolveVesselKey(vesselKey)}`;
   if (body.buildOus) {
     const containerOuIdByEmployerKey = new Map<string, number>();
 
@@ -386,13 +400,15 @@ export async function POST(req: NextRequest) {
     }
 
     async function ensureUnit(employerKey: string, vesselKey: string): Promise<number | null> {
-      if (unitOuIdByVesselKey.has(vesselKey)) return unitOuIdByVesselKey.get(vesselKey)!;
+      const rootKey = resolveVesselKey(vesselKey);
+      const unitKey = `${employerKey}::${rootKey}`;
+      if (unitOuIdByUnitKey.has(unitKey)) return unitOuIdByUnitKey.get(unitKey)!;
       const containerId = await ensureContainer(employerKey);
       if (!containerId) return null;
-      const vessel = vesselBySurvivorKey.get(vesselKey);
-      const isUnspecified = vesselKey.endsWith(`||${UNSPECIFIED_VESSEL_KEY}`);
-      const name = vessel?.canonicalName ?? (isUnspecified ? "Unspecified vessel" : vesselKey.split("||").pop() ?? "Unit");
-      const worksiteId = worksiteIdForKey(vesselKey);
+      const vessel = vesselByKey.get(vesselKey) ?? vesselBySurvivorKey.get(rootKey);
+      const isUnspecified = rootKey.endsWith(`||${UNSPECIFIED_VESSEL_KEY}`);
+      const name = vessel?.canonicalName ?? (isUnspecified ? "Unspecified vessel" : rootKey.split("||").pop() ?? "Unit");
+      const worksiteId = worksiteIdForKey(rootKey);
       const employerId = employerIdForKey(employerKey);
       const { data, error } = await supabase
         .from("campaign_organising_units")
@@ -409,7 +425,7 @@ export async function POST(req: NextRequest) {
         .select("ou_id")
         .single();
       if (error) throw error;
-      unitOuIdByVesselKey.set(vesselKey, data.ou_id);
+      unitOuIdByUnitKey.set(unitKey, data.ou_id);
       stats.unitsCreated++;
       return data.ou_id;
     }
@@ -461,7 +477,7 @@ export async function POST(req: NextRequest) {
           list_id: listId,
           worker_id: a.workerId,
           sort_order: i,
-          source_ou_id: unitOuIdByVesselKey.get(a.vesselKey) ?? null,
+          source_ou_id: unitOuIdByUnitKey.get(unitKeyFor(a.employerKey, a.vesselKey)) ?? null,
         }));
       if (items.length > 0) {
         const { error: itemsError } = await supabase

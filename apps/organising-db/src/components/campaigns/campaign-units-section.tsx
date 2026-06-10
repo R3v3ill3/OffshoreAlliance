@@ -237,6 +237,33 @@ export function CampaignUnitsSection({
     },
   });
 
+  // Options for employer/worksite ID rules so the user picks a real record
+  // (and a valid numeric id) instead of typing a raw id into a text box.
+  const { data: ruleEmployers = [] } = useQuery({
+    queryKey: ["rule-employers"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employers")
+        .select("employer_id, employer_name")
+        .eq("is_active", true)
+        .order("employer_name");
+      if (error) throw error;
+      return (data ?? []) as { employer_id: number; employer_name: string }[];
+    },
+  });
+
+  const { data: ruleWorksites = [] } = useQuery({
+    queryKey: ["rule-worksites"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worksites")
+        .select("worksite_id, worksite_name")
+        .order("worksite_name");
+      if (error) throw error;
+      return (data ?? []) as { worksite_id: number; worksite_name: string }[];
+    },
+  });
+
   const { data: ous = [] } = useQuery({
     queryKey: ["campaign-ous", campaignId],
     queryFn: async () => {
@@ -614,6 +641,9 @@ export function CampaignUnitsSection({
       };
       if (!f.value.trim()) throw new Error("Rule value is required");
       const isIdDimension = f.dimension_type === "employer" || f.dimension_type === "worksite";
+      if (isIdDimension && !Number.isFinite(Number(f.value))) {
+        throw new Error(`Choose a ${f.dimension_type} from the list.`);
+      }
       const payload: Record<string, unknown> = {
         campaign_id: Number(campaignId),
         ou_id: ouId,
@@ -1424,22 +1454,47 @@ export function CampaignUnitsSection({
                         </SelectContent>
                       </Select>
 
-                      <Input
-                        className="h-8"
-                        placeholder="value (text or id)"
-                        value={ruleFormByOu[ou.ou_id]?.value ?? ""}
-                        onChange={(e) =>
+                      {(() => {
+                        const dim = ruleFormByOu[ou.ou_id]?.dimension_type ?? "occupation";
+                        const setVal = (val: string) =>
                           setRuleFormByOu((prev) => ({
                             ...prev,
                             [ou.ou_id]: {
                               include: prev[ou.ou_id]?.include ?? true,
                               dimension_type: prev[ou.ou_id]?.dimension_type ?? "occupation",
                               operator: prev[ou.ou_id]?.operator ?? "contains",
-                              value: e.target.value,
+                              value: val,
                             },
-                          }))
+                          }));
+                        if (dim === "employer" || dim === "worksite") {
+                          const opts =
+                            dim === "employer"
+                              ? ruleEmployers.map((e) => ({ id: e.employer_id, name: e.employer_name }))
+                              : ruleWorksites.map((w) => ({ id: w.worksite_id, name: w.worksite_name }));
+                          return (
+                            <Select value={ruleFormByOu[ou.ou_id]?.value ?? ""} onValueChange={setVal}>
+                              <SelectTrigger className="h-8">
+                                <SelectValue placeholder={`Select ${dim}…`} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {opts.map((o) => (
+                                  <SelectItem key={o.id} value={String(o.id)}>
+                                    {o.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          );
                         }
-                      />
+                        return (
+                          <Input
+                            className="h-8"
+                            placeholder="value (text)"
+                            value={ruleFormByOu[ou.ou_id]?.value ?? ""}
+                            onChange={(e) => setVal(e.target.value)}
+                          />
+                        );
+                      })()}
 
                       <Button
                         variant="outline"

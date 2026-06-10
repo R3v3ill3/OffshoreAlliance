@@ -17,7 +17,7 @@ import type {
   WorkerImportRow,
   WorkerImportRowResult,
 } from "@/app/api/worker-import/apply/route";
-import type { Worksite, WorksiteType } from "@/types/database";
+import type { CampaignOuType, Worksite, WorksiteType } from "@/types/database";
 import { WORKSITE_TYPES } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,6 +71,7 @@ type WizardStep =
   | "assessment_mapping"
   | "employer_selection"
   | "worksite_matching"
+  | "ou_matching"
   | "occupation_matching"
   | "row_review"
   | "dedup_check"
@@ -88,6 +89,7 @@ type MappableField =
   | "email"
   | "phone"
   | "worksite"
+  | "organising_unit"
   | "occupation"
   | "assessment"
   | "membership_status"
@@ -112,6 +114,16 @@ interface WorksiteResolution {
   createdDuringImport?: boolean;
 }
 
+interface OuResolution {
+  rawValue: string;
+  occurrences: number;
+  ouId: number | null;
+  ouName: string | null;
+  candidates: { ou_id: number; name: string; ou_type: string; score: number }[];
+  confirmed: boolean;
+  createdDuringImport?: boolean;
+}
+
 interface ValueResolution {
   columnHeader: string;
   targetField: "membership_status" | "member_role_type";
@@ -132,6 +144,8 @@ interface ReviewRow extends ParsedWorkerRow {
   groupName: string;
   resolvedWorksiteId: number | null;
   resolvedWorksiteName: string | null;
+  resolvedOuId: number | null;
+  resolvedOuName: string | null;
   /** Notes from a mapped column or user-entered */
   notes: string | null;
   /** Join date from mapped column (ISO date string or null) */
@@ -259,6 +273,7 @@ const ALL_STEPS: { id: WizardStep; label: string }[] = [
   { id: "assessment_mapping", label: "Assessments" },
   { id: "employer_selection", label: "Employer" },
   { id: "worksite_matching", label: "Worksites" },
+  { id: "ou_matching", label: "Units" },
   { id: "occupation_matching", label: "Occupations" },
   { id: "row_review", label: "Review Rows" },
   { id: "dedup_check", label: "Dedup" },
@@ -275,6 +290,7 @@ const MAPPABLE_FIELDS: { value: MappableField; label: string }[] = [
   { value: "email", label: "Email" },
   { value: "phone", label: "Phone / Mobile" },
   { value: "worksite", label: "Worksite" },
+  { value: "organising_unit", label: "Organising unit / team" },
   { value: "occupation", label: "Occupation / Job Title" },
   { value: "assessment", label: "Assessment Column (map values)" },
   { value: "membership_status", label: "Membership Status (map values)" },
@@ -315,6 +331,13 @@ function autoMapHeader(header: string): MappableField {
   )
     return "phone";
   if (["worksite", "site", "location", "worklocation"].includes(h)) return "worksite";
+  if (
+    [
+      "organisingunit", "ou", "unit", "team", "group", "crew",
+      "orgunit", "organicunit", "organisationunit", "organizingunit",
+    ].includes(h)
+  )
+    return "organising_unit";
   if (
     [
       "occupation", "jobtitle", "job", "trade", "position", "role",
@@ -463,6 +486,13 @@ export function WorkerImportWizard({
   const [newWorksiteRoleType, setNewWorksiteRoleType] = useState("Other");
   const [isCreatingWorksite, setIsCreatingWorksite] = useState(false);
   const [createWorksiteError, setCreateWorksiteError] = useState<string | null>(null);
+  const [ouResolutions, setOuResolutions] = useState<OuResolution[]>([]);
+  const [ouSearch, setOuSearch] = useState<Record<string, string>>({});
+  const [createOuFor, setCreateOuFor] = useState<string | null>(null);
+  const [newOuName, setNewOuName] = useState("");
+  const [newOuType, setNewOuType] = useState<CampaignOuType | "">("");
+  const [isCreatingOu, setIsCreatingOu] = useState(false);
+  const [createOuError, setCreateOuError] = useState<string | null>(null);
   const [bulkUnionMembershipId, setBulkUnionMembershipId] = useState("");
   const [selectedEmployerId, setSelectedEmployerId] = useState<number | null>(null);
   const [selectedEmployerName, setSelectedEmployerName] = useState<string | null>(null);
@@ -603,6 +633,21 @@ export function WorkerImportWizard({
       return data ?? [];
     },
     enabled: open,
+  });
+
+  const { data: campaignOus = [] } = useQuery<{ ou_id: number; name: string; ou_type: string }[]>({
+    queryKey: ["import-campaign-ous", numericCampaignId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("campaign_organising_units")
+        .select("ou_id, name, ou_type")
+        .eq("campaign_id", numericCampaignId!)
+        .eq("is_group_container", false)
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: open && numericCampaignId != null,
   });
 
   const { data: campaignAssessments = [] } = useQuery<CampaignAssessment[]>({

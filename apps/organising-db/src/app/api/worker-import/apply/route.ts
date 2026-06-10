@@ -56,6 +56,8 @@ export interface WorkerImportRow {
   assessmentEvents?: WorkerImportAssessmentEvent[];
   /** When membership resolves to non_oa_member, matched to non_oa_union_options.badge_initials */
   nonOaUnionBadgeInitials?: string | null;
+  /** Resolved campaign_organising_units.ou_id to assign the worker to */
+  ouId?: number | null;
   // Dedup decision
   action: "create" | "update" | "skip";
   existingWorkerId?: number;
@@ -237,6 +239,23 @@ async function maybeAddWorkerToCampaign(
     .upsert(
       { campaign_id: campaignId, worker_id: workerId },
       { onConflict: "campaign_id,worker_id", ignoreDuplicates: true }
+    );
+  if (error) throw error;
+}
+
+async function maybeAssignWorkerToOu(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  campaignId: number | null | undefined,
+  workerId: number,
+  ouId: number | null | undefined
+): Promise<void> {
+  if (!campaignId || !ouId) return;
+  const { error } = await supabase
+    .from("campaign_worker_ou")
+    .upsert(
+      { ou_id: ouId, worker_id: workerId, assignment_source: "manual" },
+      { onConflict: "ou_id,worker_id", ignoreDuplicates: true }
     );
   if (error) throw error;
 }
@@ -522,6 +541,7 @@ export async function POST(request: NextRequest) {
         await maybeInsertOccupationAlias(supabase, canonicalOccupationId, row.rawOccupation, user.id);
         await syncWorkerExtras(supabase, workerId, additionalOccupationIds, specialisationIds);
         await maybeAddWorkerToCampaign(supabase, campaignId, workerId);
+        await maybeAssignWorkerToOu(supabase, campaignId, workerId, row.ouId);
         await recordAssessmentEvents(supabase, workerId, row, activityIdByColumn, user.id);
       } catch (error) {
         rowErrors.push(error instanceof Error ? error.message : String(error));

@@ -3,14 +3,26 @@ import { createClient } from "@/lib/supabase/server";
 import type {
   CampaignImportApplyRequest,
   CampaignImportApplyResponse,
-  ApplyEmployer,
   ApplyVessel,
 } from "@/lib/import/campaign-import-shared";
+
+// This route fans out a lot of inserts; allow a generous server budget. All the
+// heavy work is batched (see below) so a normal import completes in seconds, but
+// very large lists or slow DB round-trips still need headroom.
+export const runtime = "nodejs";
+export const maxDuration = 300;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supa = any;
 
 const UNSPECIFIED_VESSEL_KEY = "__unspecified__";
+const CHUNK = 200;
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
 // ─── Fold helpers (follow mergeIntoKey chains) ───────────────────────────────
 
@@ -28,22 +40,19 @@ function buildKeyResolver<T extends { key: string; mergeIntoKey?: string | null 
   };
 }
 
-async function ensureOccupation(supabase: Supa, name: string): Promise<number> {
-  const trimmed = name.trim();
-  const { data: existing } = await supabase
-    .from("occupations")
-    .select("occupation_id")
-    .ilike("canonical_name", trimmed)
-    .limit(1)
-    .maybeSingle();
-  if (existing?.occupation_id) return existing.occupation_id;
-  const { data, error } = await supabase
-    .from("occupations")
-    .insert({ canonical_name: trimmed, is_active: true })
-    .select("occupation_id")
-    .single();
-  if (error) throw error;
-  return data.occupation_id;
+/** Insert rows in batches; on a batch error, retry that batch row-by-row so a
+ *  single bad/duplicate row can't sink the whole import. Best-effort: failures
+ *  are swallowed (used for non-critical aliases). */
+async function bestEffortInsert(supabase: Supa, table: string, rows: Record<string, unknown>[]): Promise<void> {
+  if (rows.length === 0) return;
+  for (const batch of chunk(rows, CHUNK)) {
+    const { error } = await supabase.from(table).insert(batch);
+    if (error) {
+      for (const row of batch) {
+        await supabase.from(table).insert(row);
+      }
+    }
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -105,155 +114,205 @@ export async function POST(req: NextRequest) {
     campaignId = created.campaign_id;
   }
 
-  // ── 2. Resolve / create employers ───────────────────────────────────────
-  const resolveEmployerKey = buildKeyResolver(body.employers as ApplyEmployer[]);
-  const empBySurvivorKey = new Map<string, ApplyEmployer>();
-  for (const e of body.employers) {
-    if (!e.mergeIntoKey) empBySurvivorKey.set(e.key, e);
-  }
+  // ── 2. Resolve / create employers (batched) ─────────────────────────────
+  const resolveEmployerKey = buildKeyResolver(body.employers);
+  const empBySurvivorKey = new Map(body.employers.filter((e) => !e.mergeIntoKey).map((e) => [e.key, e] as const));
   const employerIdBySurvivorKey = new Map<string, number>();
-  for (const [key, emp] of empBySurvivorKey) {
-    try {
-      let employerId = emp.matchedEmployerId ?? null;
-      if (emp.action === "create") {
-        const { data, error } = await supabase
+  const employerCreateKeys = [...empBySurvivorKey.values()].filter((e) => e.action === "create");
+  for (const e of empBySurvivorKey.values()) {
+    if (e.action !== "create" && e.matchedEmployerId) employerIdBySurvivorKey.set(e.key, e.matchedEmployerId);
+  }
+  for (const batch of chunk(employerCreateKeys, CHUNK)) {
+    const { data, error } = await supabase
+      .from("employers")
+      .insert(batch.map((e) => ({ employer_name: e.canonicalName, employer_category: e.newCategory || null })))
+      .select("employer_id");
+    if (error || !data || data.length !== batch.length) {
+      // Fall back row-by-row to isolate failures.
+      for (const e of batch) {
+        const { data: d, error: er } = await supabase
           .from("employers")
-          .insert({ employer_name: emp.canonicalName, employer_category: emp.newCategory || null })
+          .insert({ employer_name: e.canonicalName, employer_category: e.newCategory || null })
           .select("employer_id")
           .single();
-        if (error) throw error;
-        employerId = data.employer_id;
-        stats.employersCreated++;
-      }
-      if (employerId) {
-        employerIdBySurvivorKey.set(key, employerId);
-        // Persist spelling variants as aliases (source must be 'merge'|'manual').
-        const canonLower = emp.canonicalName.toLowerCase().trim();
-        for (const variant of emp.variants) {
-          const vLower = variant.toLowerCase().trim();
-          if (!vLower || vLower === canonLower) continue;
-          await supabase
-            .from("employer_name_aliases")
-            .insert({ employer_id: employerId, alias_name: variant.trim(), source: "manual", created_by: user.id });
+        if (er) errors.push(`Employer "${e.canonicalName}": ${er.message}`);
+        else {
+          employerIdBySurvivorKey.set(e.key, d.employer_id);
+          stats.employersCreated++;
         }
       }
-    } catch (err) {
-      errors.push(`Employer "${emp.canonicalName}": ${err instanceof Error ? err.message : "unknown error"}`);
+    } else {
+      data.forEach((d: { employer_id: number }, i: number) => {
+        employerIdBySurvivorKey.set(batch[i].key, d.employer_id);
+        stats.employersCreated++;
+      });
     }
   }
   const employerIdForKey = (key: string): number | null =>
     employerIdBySurvivorKey.get(resolveEmployerKey(key)) ?? null;
 
-  // ── 3. Resolve / create vessels (worksites) ─────────────────────────────
-  const resolveVesselKey = buildKeyResolver(body.vessels as ApplyVessel[]);
-  const vesselBySurvivorKey = new Map<string, ApplyVessel>();
-  for (const v of body.vessels) {
-    if (!v.mergeIntoKey) vesselBySurvivorKey.set(v.key, v);
+  // Employer aliases (best-effort, source must be 'merge'|'manual').
+  {
+    const aliasRows: Record<string, unknown>[] = [];
+    for (const e of empBySurvivorKey.values()) {
+      const empId = employerIdBySurvivorKey.get(e.key);
+      if (!empId) continue;
+      const canon = e.canonicalName.toLowerCase().trim();
+      for (const v of e.variants) {
+        const vl = v.toLowerCase().trim();
+        if (!vl || vl === canon) continue;
+        aliasRows.push({ employer_id: empId, alias_name: v.trim(), source: "manual", created_by: user.id });
+      }
+    }
+    await bestEffortInsert(supabase, "employer_name_aliases", aliasRows);
   }
+
+  // ── 3. Resolve / create worksites (batched) ─────────────────────────────
+  const resolveVesselKey = buildKeyResolver(body.vessels as ApplyVessel[]);
+  const vesselByKey = new Map(body.vessels.map((v) => [v.key, v] as const));
+  const vesselBySurvivorKey = new Map(body.vessels.filter((v) => !v.mergeIntoKey).map((v) => [v.key, v] as const));
   const worksiteIdBySurvivorKey = new Map<string, number | null>();
-  for (const [key, vessel] of vesselBySurvivorKey) {
-    try {
-      const employerId = employerIdForKey(vessel.employerKey);
-      if (vessel.action === "unspecified" || vessel.canonicalName === "Unspecified vessel") {
-        worksiteIdBySurvivorKey.set(key, null);
-        continue;
-      }
-      let worksiteId = vessel.matchedWorksiteId ?? null;
-      if (vessel.action === "create") {
-        const { data, error } = await supabase
-          .from("worksites")
-          .insert({
-            worksite_name: vessel.canonicalName,
-            worksite_type: vessel.newWorksiteType || "Other",
-            ...(employerId ? { principal_employer_id: employerId } : {}),
-          })
-          .select("worksite_id")
-          .single();
-        if (error) throw error;
-        worksiteId = data.worksite_id;
-        stats.worksitesCreated++;
-        const canonLower = vessel.canonicalName.toLowerCase().trim();
-        for (const variant of vessel.variants) {
-          const vLower = variant.toLowerCase().trim();
-          if (!vLower || vLower === canonLower) continue;
-          await supabase
-            .from("worksite_name_aliases")
-            .insert({ worksite_id: worksiteId, alias_name: variant.trim(), source: "import", created_by: user.id });
-        }
-      }
-      worksiteIdBySurvivorKey.set(key, worksiteId);
-    } catch (err) {
-      errors.push(`Vessel "${vessel.canonicalName}": ${err instanceof Error ? err.message : "unknown error"}`);
+  const worksiteCreateKeys: ApplyVessel[] = [];
+  for (const v of vesselBySurvivorKey.values()) {
+    if (v.action === "unspecified" || v.canonicalName === "Unspecified vessel") {
+      worksiteIdBySurvivorKey.set(v.key, null);
+    } else if (v.action === "create") {
+      worksiteCreateKeys.push(v);
+    } else {
+      worksiteIdBySurvivorKey.set(v.key, v.matchedWorksiteId ?? null);
     }
   }
-  const vesselByKey = new Map(body.vessels.map((v) => [v.key, v] as const));
+  for (const batch of chunk(worksiteCreateKeys, CHUNK)) {
+    const rows = batch.map((v) => {
+      const employerId = employerIdForKey(v.employerKey);
+      return {
+        worksite_name: v.canonicalName,
+        worksite_type: v.newWorksiteType || "Other",
+        ...(employerId ? { principal_employer_id: employerId } : {}),
+      };
+    });
+    const { data, error } = await supabase.from("worksites").insert(rows).select("worksite_id");
+    if (error || !data || data.length !== batch.length) {
+      for (let i = 0; i < batch.length; i++) {
+        const { data: d, error: er } = await supabase.from("worksites").insert(rows[i]).select("worksite_id").single();
+        if (er) errors.push(`Vessel "${batch[i].canonicalName}": ${er.message}`);
+        else {
+          worksiteIdBySurvivorKey.set(batch[i].key, d.worksite_id);
+          stats.worksitesCreated++;
+        }
+      }
+    } else {
+      data.forEach((d: { worksite_id: number }, i: number) => {
+        worksiteIdBySurvivorKey.set(batch[i].key, d.worksite_id);
+        stats.worksitesCreated++;
+      });
+    }
+  }
   const worksiteIdForKey = (key: string): number | null =>
     worksiteIdBySurvivorKey.get(resolveVesselKey(key)) ?? null;
 
-  // Link EVERY vessel's employer to its (possibly shared) worksite, so a vessel
-  // that appears under multiple employers records an operator role for each one
-  // — not just the employer that happened to create the worksite.
-  for (const vessel of body.vessels) {
-    const wsId = worksiteIdForKey(vessel.key);
-    const empId = employerIdForKey(vessel.employerKey);
-    if (wsId && empId) {
+  // Worksite aliases (best-effort) for newly created worksites.
+  {
+    const aliasRows: Record<string, unknown>[] = [];
+    for (const v of worksiteCreateKeys) {
+      const wsId = worksiteIdBySurvivorKey.get(v.key);
+      if (!wsId) continue;
+      const canon = v.canonicalName.toLowerCase().trim();
+      for (const variant of v.variants) {
+        const vl = variant.toLowerCase().trim();
+        if (!vl || vl === canon) continue;
+        aliasRows.push({ worksite_id: wsId, alias_name: variant.trim(), source: "import", created_by: user.id });
+      }
+    }
+    await bestEffortInsert(supabase, "worksite_name_aliases", aliasRows);
+  }
+
+  // Link every vessel's employer to its (possibly shared) worksite — one row per
+  // operator, so a vessel under multiple employers records a role for each.
+  {
+    const seen = new Set<string>();
+    const roleRows: Record<string, unknown>[] = [];
+    for (const vessel of body.vessels) {
+      const wsId = worksiteIdForKey(vessel.key);
+      const empId = employerIdForKey(vessel.employerKey);
+      if (!wsId || !empId) continue;
+      const k = `${empId}:${wsId}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      roleRows.push({ employer_id: empId, worksite_id: wsId, role_type: "Operator", is_current: true });
+    }
+    for (const batch of chunk(roleRows, CHUNK)) {
       await supabase
         .from("employer_worksite_roles")
-        .upsert(
-          { employer_id: empId, worksite_id: wsId, role_type: "Operator", is_current: true },
-          { onConflict: "employer_id,worksite_id,role_type", ignoreDuplicates: true }
-        );
+        .upsert(batch, { onConflict: "employer_id,worksite_id,role_type", ignoreDuplicates: true });
     }
   }
 
-  // ── 4. campaign_employers + campaign_worksites junctions ────────────────
-  for (const employerId of new Set(employerIdBySurvivorKey.values())) {
-    await supabase
-      .from("campaign_employers")
-      .upsert({ campaign_id: campaignId, employer_id: employerId }, { onConflict: "campaign_id,employer_id", ignoreDuplicates: true });
+  // ── 4. campaign_employers + campaign_worksites junctions (batched) ──────
+  const employerIds = [...new Set(employerIdBySurvivorKey.values())];
+  for (const batch of chunk(employerIds.map((employer_id) => ({ campaign_id: campaignId, employer_id })), CHUNK)) {
+    await supabase.from("campaign_employers").upsert(batch, { onConflict: "campaign_id,employer_id", ignoreDuplicates: true });
   }
-  for (const worksiteId of new Set([...worksiteIdBySurvivorKey.values()].filter((w): w is number => w != null))) {
-    const { data: existing } = await supabase
+  const worksiteIds = [...new Set([...worksiteIdBySurvivorKey.values()].filter((w): w is number => w != null))];
+  if (worksiteIds.length > 0) {
+    const { data: existingCw } = await supabase
       .from("campaign_worksites")
-      .select("id")
+      .select("worksite_id")
       .eq("campaign_id", campaignId)
-      .eq("worksite_id", worksiteId)
-      .limit(1);
-    if (!existing || existing.length === 0) {
-      await supabase.from("campaign_worksites").insert({ campaign_id: campaignId, worksite_id: worksiteId });
+      .in("worksite_id", worksiteIds);
+    const have = new Set((existingCw ?? []).map((r: { worksite_id: number }) => r.worksite_id));
+    const toAdd = worksiteIds.filter((w) => !have.has(w)).map((worksite_id) => ({ campaign_id: campaignId, worksite_id }));
+    for (const batch of chunk(toAdd, CHUNK)) {
+      await supabase.from("campaign_worksites").insert(batch);
     }
   }
 
-  // ── 5. Occupation + status lookups ──────────────────────────────────────
+  // ── 5. Occupation + status lookups (batched) ────────────────────────────
   const occupationIdByRaw = new Map<string, number | null>();
-  for (const occ of body.occupations) {
-    try {
+  {
+    const createNames = [
+      ...new Set(
+        body.occupations.filter((o) => o.action === "create" && o.createName?.trim()).map((o) => o.createName!.trim())
+      ),
+    ];
+    const occIdByName = new Map<string, number>();
+    if (createNames.length > 0) {
+      const { data: existing } = await supabase
+        .from("occupations")
+        .select("occupation_id, canonical_name")
+        .in("canonical_name", createNames);
+      for (const o of existing ?? []) occIdByName.set(o.canonical_name.toLowerCase(), o.occupation_id);
+      const toCreate = createNames.filter((n) => !occIdByName.has(n.toLowerCase()));
+      for (const batch of chunk(toCreate, CHUNK)) {
+        const { data, error } = await supabase
+          .from("occupations")
+          .insert(batch.map((canonical_name) => ({ canonical_name, is_active: true })))
+          .select("occupation_id, canonical_name");
+        if (!error && data) {
+          for (const o of data) occIdByName.set(o.canonical_name.toLowerCase(), o.occupation_id);
+        } else {
+          errors.push(`Occupations: ${error?.message ?? "batch insert failed"}`);
+        }
+      }
+    }
+    const aliasRows: Record<string, unknown>[] = [];
+    for (const occ of body.occupations) {
       if (occ.action === "skip") {
         occupationIdByRaw.set(occ.rawValue.toLowerCase(), null);
         continue;
       }
-      let occupationId = occ.matchedOccupationId ?? null;
-      if (occ.action === "create" && occ.createName?.trim()) {
-        occupationId = await ensureOccupation(supabase, occ.createName);
+      const occId =
+        occ.action === "create" && occ.createName?.trim()
+          ? occIdByName.get(occ.createName.trim().toLowerCase()) ?? null
+          : occ.matchedOccupationId ?? null;
+      occupationIdByRaw.set(occ.rawValue.toLowerCase(), occId);
+      if (occId && occ.rawValue.trim() && occ.rawValue.trim().toLowerCase() !== (occ.createName ?? "").trim().toLowerCase()) {
+        aliasRows.push({ occupation_id: occId, alias_name: occ.rawValue.trim(), source: "import", created_by: user.id });
       }
-      occupationIdByRaw.set(occ.rawValue.toLowerCase(), occupationId);
-      // Record the raw job title as an alias for future matching.
-      if (occupationId) {
-        const { data: canon } = await supabase
-          .from("occupations")
-          .select("canonical_name")
-          .eq("occupation_id", occupationId)
-          .single();
-        if (canon && canon.canonical_name.toLowerCase().trim() !== occ.rawValue.toLowerCase().trim()) {
-          await supabase
-            .from("occupation_aliases")
-            .insert({ occupation_id: occupationId, alias_name: occ.rawValue.trim(), source: "import", created_by: user.id });
-        }
-      }
-    } catch (err) {
-      errors.push(`Occupation "${occ.rawValue}": ${err instanceof Error ? err.message : "unknown error"}`);
     }
+    await bestEffortInsert(supabase, "occupation_aliases", aliasRows);
   }
+
   const membershipIdByRaw = new Map<string, number | null>();
   for (const s of body.statuses) membershipIdByRaw.set(s.rawValue.toLowerCase(), s.membershipTypeId);
 
@@ -264,155 +323,179 @@ export async function POST(req: NextRequest) {
     (unionTypes ?? []).find((t: { type_name: string }) => t.type_name === "resigned_member")?.union_membership_type_id ??
     null;
 
-  // ── 6. Upsert workers ───────────────────────────────────────────────────
-  interface Assigned {
-    workerId: number;
-    employerKey: string;
-    vesselKey: string;
+  // ── 6. Plan + batch worker upserts ──────────────────────────────────────
+  function workerDataFor(row: CampaignImportApplyRequest["rows"][number]): Record<string, unknown> {
+    const occupationId = row.rawOccupation ? occupationIdByRaw.get(row.rawOccupation.toLowerCase()) ?? null : null;
+    const membershipTypeId = row.rawStatus ? membershipIdByRaw.get(row.rawStatus.toLowerCase()) ?? null : null;
+    const isResigned = resignedMembershipId != null && membershipTypeId === resignedMembershipId;
+    const noteParts: string[] = [];
+    if (row.notes?.trim()) noteParts.push(row.notes.trim());
+    if (row.rawStatus?.trim()) noteParts.push(`Account status: ${row.rawStatus.trim()}`);
+    return {
+      first_name: row.firstName.trim(),
+      last_name: row.lastName.trim(),
+      preferred_name: row.preferredName || null,
+      reference_id: row.referenceId || null,
+      email: row.email || null,
+      phone: row.phone || null,
+      union_membership_type_id: membershipTypeId,
+      employer_id: employerIdForKey(row.employerKey),
+      worksite_id: worksiteIdForKey(row.vesselKey),
+      canonical_occupation_id: occupationId,
+      notes: noteParts.length > 0 ? noteParts.join(" — ") : null,
+      is_active: !isResigned,
+      updated_at: new Date().toISOString(),
+    };
   }
-  const assigned: Assigned[] = [];
-  const workerIdByReference = new Map<string, number>();
+
+  const rowWorkerId = new Map<number, number>(); // rowIndex -> worker_id
+  const createList: { rowIndex: number; data: Record<string, unknown> }[] = [];
+  const createIdxByRef = new Map<string, number>(); // reference -> createList index
+  const rowCreateIdx = new Map<number, number>(); // rowIndex -> createList index
 
   for (const row of body.rows) {
     if (row.action === "skip") {
       stats.workersSkipped++;
       continue;
     }
-    try {
-      const employerId = employerIdForKey(row.employerKey);
-      const worksiteId = worksiteIdForKey(row.vesselKey);
-      const occupationId = row.rawOccupation
-        ? occupationIdByRaw.get(row.rawOccupation.toLowerCase()) ?? null
-        : null;
-      const membershipTypeId = row.rawStatus
-        ? membershipIdByRaw.get(row.rawStatus.toLowerCase()) ?? null
-        : null;
-      const isResigned = resignedMembershipId != null && membershipTypeId === resignedMembershipId;
+    const data = workerDataFor(row);
+    if (row.action === "update" && row.existingWorkerId) {
+      const { error } = await supabase.from("workers").update(data).eq("worker_id", row.existingWorkerId);
+      if (error) errors.push(`Worker ${row.firstName} ${row.lastName}: ${error.message}`);
+      else {
+        rowWorkerId.set(row.rowIndex, row.existingWorkerId);
+        stats.workersUpdated++;
+      }
+      continue;
+    }
+    // create — collapse within-batch duplicates that share a reference id.
+    if (row.referenceId && createIdxByRef.has(row.referenceId)) {
+      rowCreateIdx.set(row.rowIndex, createIdxByRef.get(row.referenceId)!);
+      continue;
+    }
+    const idx = createList.length;
+    createList.push({ rowIndex: row.rowIndex, data });
+    rowCreateIdx.set(row.rowIndex, idx);
+    if (row.referenceId) createIdxByRef.set(row.referenceId, idx);
+  }
 
-      const noteParts: string[] = [];
-      if (row.notes?.trim()) noteParts.push(row.notes.trim());
-      if (row.rawStatus?.trim()) noteParts.push(`Account status: ${row.rawStatus.trim()}`);
-      const notes = noteParts.length > 0 ? noteParts.join(" — ") : null;
-
-      const workerData: Record<string, unknown> = {
-        first_name: row.firstName.trim(),
-        last_name: row.lastName.trim(),
-        preferred_name: row.preferredName || null,
-        reference_id: row.referenceId || null,
-        email: row.email || null,
-        phone: row.phone || null,
-        union_membership_type_id: membershipTypeId,
-        employer_id: employerId,
-        worksite_id: worksiteId,
-        canonical_occupation_id: occupationId,
-        notes,
-        is_active: !isResigned,
-        updated_at: new Date().toISOString(),
-      };
-
-      // Guard against double-creating the same member from multiple files.
-      let action = row.action;
-      let existingWorkerId = row.existingWorkerId;
-      if (action === "create" && row.referenceId) {
-        const seen = workerIdByReference.get(row.referenceId);
-        if (seen) {
-          action = "update";
-          existingWorkerId = seen;
+  const createdIds: (number | null)[] = new Array(createList.length).fill(null);
+  for (let start = 0; start < createList.length; start += CHUNK) {
+    const slice = createList.slice(start, start + CHUNK);
+    const { data, error } = await supabase.from("workers").insert(slice.map((s) => s.data)).select("worker_id");
+    if (!error && data && data.length === slice.length) {
+      data.forEach((d: { worker_id: number }, i: number) => {
+        createdIds[start + i] = d.worker_id;
+        stats.workersCreated++;
+      });
+    } else {
+      for (let i = 0; i < slice.length; i++) {
+        const { data: d, error: er } = await supabase.from("workers").insert(slice[i].data).select("worker_id").single();
+        if (er) errors.push(`Worker insert failed (row ${slice[i].rowIndex}): ${er.message}`);
+        else {
+          createdIds[start + i] = d.worker_id;
+          stats.workersCreated++;
         }
       }
+    }
+  }
+  for (const [rowIndex, idx] of rowCreateIdx) {
+    const id = createdIds[idx];
+    if (id != null) rowWorkerId.set(rowIndex, id);
+  }
 
-      let workerId: number | null = null;
-      if (action === "update" && existingWorkerId) {
-        const { error } = await supabase.from("workers").update(workerData).eq("worker_id", existingWorkerId);
-        if (error) throw error;
-        workerId = existingWorkerId;
-        stats.workersUpdated++;
-      } else {
-        const { data, error } = await supabase.from("workers").insert(workerData).select("worker_id").single();
-        if (error) throw error;
-        workerId = data.worker_id;
-        stats.workersCreated++;
-      }
+  // assigned: every non-skip row that resolved to a worker.
+  const assigned = body.rows
+    .filter((row) => row.action !== "skip" && rowWorkerId.has(row.rowIndex))
+    .map((row) => ({
+      workerId: rowWorkerId.get(row.rowIndex)!,
+      employerKey: resolveEmployerKey(row.employerKey),
+      vesselKey: row.vesselKey, // original; root resolved per-employer in OU step
+    }));
 
-      if (workerId) {
-        if (row.referenceId) workerIdByReference.set(row.referenceId, workerId);
-        await supabase
-          .from("campaign_worker_membership")
-          .upsert({ campaign_id: campaignId, worker_id: workerId }, { onConflict: "campaign_id,worker_id", ignoreDuplicates: true });
-        assigned.push({
-          workerId,
-          employerKey: resolveEmployerKey(row.employerKey),
-          // Keep the worker's ORIGINAL vessel key; the root (shared worksite) is
-          // resolved per-employer in the OU step so each employer keeps its unit.
-          vesselKey: row.vesselKey,
-        });
-      }
-    } catch (err) {
-      errors.push(`Worker ${row.firstName} ${row.lastName}: ${err instanceof Error ? err.message : "unknown error"}`);
+  // Campaign membership (batched, deduped).
+  {
+    const workerIds = [...new Set(assigned.map((a) => a.workerId))];
+    for (const batch of chunk(workerIds.map((worker_id) => ({ campaign_id: campaignId, worker_id })), CHUNK)) {
+      await supabase.from("campaign_worker_membership").upsert(batch, { onConflict: "campaign_id,worker_id", ignoreDuplicates: true });
     }
   }
 
-  // ── 7. Build two-tier OU structure + assignments ────────────────────────
-  // `${employerKey}::${rootVesselKey}` -> leaf unit ou_id. Keyed by employer so a
-  // vessel shared across employers gets ONE unit per employer (each pointing at the
-  // same shared worksite record), preserving the employer → worksite grouping.
+  // ── 7. Build two-tier OU structure + assignments (batched) ──────────────
+  // unitKey `${employerKey}::${rootVesselKey}` -> ou_id. Keyed by employer so a
+  // vessel shared across employers gets one unit per employer (each pointing at
+  // the same shared worksite), preserving the employer → worksite grouping.
   const unitOuIdByUnitKey = new Map<string, number>();
-  const unitKeyFor = (employerKey: string, vesselKey: string) =>
-    `${employerKey}::${resolveVesselKey(vesselKey)}`;
-  if (body.buildOus) {
-    const containerOuIdByEmployerKey = new Map<string, number>();
-
-    async function ensureContainer(employerKey: string): Promise<number | null> {
-      if (containerOuIdByEmployerKey.has(employerKey)) return containerOuIdByEmployerKey.get(employerKey)!;
-      const emp = empBySurvivorKey.get(employerKey);
-      const name = emp?.canonicalName ?? employerKey;
-      const employerId = employerIdForKey(employerKey);
-      // Reuse an existing employer container of the same name if present.
-      const { data: existing } = await supabase
-        .from("campaign_organising_units")
-        .select("ou_id")
-        .eq("campaign_id", campaignId)
-        .eq("ou_type", "employer")
-        .eq("is_group_container", true)
-        .ilike("name", name)
-        .limit(1)
-        .maybeSingle();
-      let containerId = existing?.ou_id ?? null;
-      if (!containerId) {
-        const { data, error } = await supabase
-          .from("campaign_organising_units")
-          .insert({
+  const workerOuId = new Map<number, number>(); // worker_id -> their unit ou_id (for list source_ou_id)
+  if (body.buildOus && assigned.length > 0) {
+    // Containers: reuse existing employer group containers, create the rest.
+    const containerIdByEmployerKey = new Map<string, number>();
+    const employerKeys = [...new Set(assigned.map((a) => a.employerKey))];
+    const { data: existingContainers } = await supabase
+      .from("campaign_organising_units")
+      .select("ou_id, name")
+      .eq("campaign_id", campaignId)
+      .eq("ou_type", "employer")
+      .eq("is_group_container", true);
+    const containerByName = new Map<string, number>();
+    for (const c of existingContainers ?? []) containerByName.set(String(c.name).toLowerCase(), c.ou_id);
+    const containersToCreate: { employerKey: string; name: string; row: Record<string, unknown> }[] = [];
+    for (const ek of employerKeys) {
+      const name = empBySurvivorKey.get(ek)?.canonicalName ?? ek;
+      const existing = containerByName.get(name.toLowerCase());
+      if (existing) {
+        containerIdByEmployerKey.set(ek, existing);
+      } else {
+        const employerId = employerIdForKey(ek);
+        containersToCreate.push({
+          employerKey: ek,
+          name,
+          row: {
             campaign_id: campaignId,
             ou_type: "employer",
             name,
             is_group_container: true,
             source: "manual",
             unit_basis: employerId ? { employer_id: employerId } : null,
-          })
-          .select("ou_id")
-          .single();
-        if (error) throw error;
-        containerId = data.ou_id;
-        stats.groupsCreated++;
+          },
+        });
       }
-      containerOuIdByEmployerKey.set(employerKey, containerId);
-      return containerId;
     }
-
-    async function ensureUnit(employerKey: string, vesselKey: string): Promise<number | null> {
-      const rootKey = resolveVesselKey(vesselKey);
-      const unitKey = `${employerKey}::${rootKey}`;
-      if (unitOuIdByUnitKey.has(unitKey)) return unitOuIdByUnitKey.get(unitKey)!;
-      const containerId = await ensureContainer(employerKey);
-      if (!containerId) return null;
-      const vessel = vesselByKey.get(vesselKey) ?? vesselBySurvivorKey.get(rootKey);
-      const isUnspecified = rootKey.endsWith(`||${UNSPECIFIED_VESSEL_KEY}`);
-      const name = vessel?.canonicalName ?? (isUnspecified ? "Unspecified vessel" : rootKey.split("||").pop() ?? "Unit");
-      const worksiteId = worksiteIdForKey(rootKey);
-      const employerId = employerIdForKey(employerKey);
+    for (let start = 0; start < containersToCreate.length; start += CHUNK) {
+      const slice = containersToCreate.slice(start, start + CHUNK);
       const { data, error } = await supabase
         .from("campaign_organising_units")
-        .insert({
+        .insert(slice.map((s) => s.row))
+        .select("ou_id");
+      if (!error && data && data.length === slice.length) {
+        data.forEach((d: { ou_id: number }, i: number) => {
+          containerIdByEmployerKey.set(slice[i].employerKey, d.ou_id);
+          stats.groupsCreated++;
+        });
+      } else {
+        errors.push(`OU groups: ${error?.message ?? "batch insert failed"}`);
+      }
+    }
+
+    // Units: one per (employer, shared-worksite).
+    const unitDefs: { unitKey: string; row: Record<string, unknown> }[] = [];
+    const unitKeySeen = new Set<string>();
+    for (const a of assigned) {
+      const rootKey = resolveVesselKey(a.vesselKey);
+      const unitKey = `${a.employerKey}::${rootKey}`;
+      if (unitKeySeen.has(unitKey)) continue;
+      const containerId = containerIdByEmployerKey.get(a.employerKey);
+      if (!containerId) continue;
+      unitKeySeen.add(unitKey);
+      const isUnspecified = rootKey.endsWith(`||${UNSPECIFIED_VESSEL_KEY}`);
+      const name =
+        vesselByKey.get(a.vesselKey)?.canonicalName ??
+        (isUnspecified ? "Unspecified vessel" : rootKey.split("||").pop() ?? "Unit");
+      const worksiteId = worksiteIdForKey(rootKey);
+      const employerId = employerIdForKey(a.employerKey);
+      unitDefs.push({
+        unitKey,
+        row: {
           campaign_id: campaignId,
           ou_type: "worksite",
           name,
@@ -421,34 +504,55 @@ export async function POST(req: NextRequest) {
           is_group_container: false,
           source: "manual",
           unit_basis: { ...(worksiteId ? { worksite_id: worksiteId } : {}), ...(employerId ? { employer_id: employerId } : {}) },
-        })
-        .select("ou_id")
-        .single();
-      if (error) throw error;
-      unitOuIdByUnitKey.set(unitKey, data.ou_id);
-      stats.unitsCreated++;
-      return data.ou_id;
+        },
+      });
+    }
+    for (let start = 0; start < unitDefs.length; start += CHUNK) {
+      const slice = unitDefs.slice(start, start + CHUNK);
+      const { data, error } = await supabase
+        .from("campaign_organising_units")
+        .insert(slice.map((s) => s.row))
+        .select("ou_id");
+      if (!error && data && data.length === slice.length) {
+        data.forEach((d: { ou_id: number }, i: number) => {
+          unitOuIdByUnitKey.set(slice[i].unitKey, d.ou_id);
+          stats.unitsCreated++;
+        });
+      } else {
+        errors.push(`OU units: ${error?.message ?? "batch insert failed"}`);
+      }
     }
 
+    // Assignments: one worksite unit per worker (a campaign enforces that a worker
+    // belongs to only one worksite group). Batched, with a row-by-row fallback so a
+    // single trigger rejection (e.g. on re-import) can't drop a whole batch.
+    const assignRows: Record<string, unknown>[] = [];
     for (const a of assigned) {
-      try {
-        const ouId = await ensureUnit(a.employerKey, a.vesselKey);
-        if (!ouId) continue;
-        const { error } = await supabase
-          .from("campaign_worker_ou")
-          .upsert(
-            { ou_id: ouId, worker_id: a.workerId, is_primary: true, assignment_source: "manual" },
-            { onConflict: "ou_id,worker_id", ignoreDuplicates: true }
-          );
-        if (error) throw error;
-        stats.assignmentsCreated++;
-      } catch (err) {
-        errors.push(`OU assignment for worker ${a.workerId}: ${err instanceof Error ? err.message : "unknown error"}`);
+      if (workerOuId.has(a.workerId)) continue;
+      const ouId = unitOuIdByUnitKey.get(`${a.employerKey}::${resolveVesselKey(a.vesselKey)}`);
+      if (!ouId) continue;
+      workerOuId.set(a.workerId, ouId);
+      assignRows.push({ ou_id: ouId, worker_id: a.workerId, is_primary: true, assignment_source: "manual" });
+    }
+    for (const batch of chunk(assignRows, CHUNK)) {
+      const { error } = await supabase
+        .from("campaign_worker_ou")
+        .upsert(batch, { onConflict: "ou_id,worker_id", ignoreDuplicates: true });
+      if (!error) {
+        stats.assignmentsCreated += batch.length;
+      } else {
+        for (const r of batch) {
+          const { error: e } = await supabase
+            .from("campaign_worker_ou")
+            .upsert(r, { onConflict: "ou_id,worker_id", ignoreDuplicates: true });
+          if (e) errors.push(`OU assignment (worker ${r.worker_id as number}): ${e.message}`);
+          else stats.assignmentsCreated++;
+        }
       }
     }
   }
 
-  // ── 8. Campaign worker list + items ─────────────────────────────────────
+  // ── 8. Campaign worker list + items (batched) ───────────────────────────
   let listId: number | null = null;
   if (assigned.length > 0) {
     const { data: list, error: listError } = await supabase
@@ -477,14 +581,14 @@ export async function POST(req: NextRequest) {
           list_id: listId,
           worker_id: a.workerId,
           sort_order: i,
-          source_ou_id: unitOuIdByUnitKey.get(unitKeyFor(a.employerKey, a.vesselKey)) ?? null,
+          source_ou_id: workerOuId.get(a.workerId) ?? null,
         }));
-      if (items.length > 0) {
+      for (const batch of chunk(items, CHUNK)) {
         const { error: itemsError } = await supabase
           .from("campaign_worker_list_items")
-          .upsert(items, { onConflict: "list_id,worker_id", ignoreDuplicates: true });
+          .upsert(batch, { onConflict: "list_id,worker_id", ignoreDuplicates: true });
         if (itemsError) errors.push(`Failed to add list items: ${itemsError.message}`);
-        else stats.listItemsCreated = items.length;
+        else stats.listItemsCreated += batch.length;
       }
     }
   }

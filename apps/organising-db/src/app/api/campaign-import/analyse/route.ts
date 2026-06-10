@@ -33,6 +33,9 @@ import {
   type StatusAnalyseProposal,
 } from "@/lib/import/campaign-import-shared";
 
+export const runtime = "nodejs";
+export const maxDuration = 120;
+
 const UNKNOWN_EMPLOYER = "Unknown";
 const UNSPECIFIED_VESSEL_KEY = "__unspecified__";
 

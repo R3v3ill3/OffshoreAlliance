@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { fetchApi, API_FETCH_TIMEOUT_UPLOAD_MS } from "@/lib/api/fetch-api";
+import { fetchApi, API_FETCH_TIMEOUT_UPLOAD_MS, API_FETCH_TIMEOUT_STREAM_MS } from "@/lib/api/fetch-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -641,7 +641,7 @@ export function CampaignImportWizard({ open, onOpenChange, onComplete }: Campaig
           statuses: statusResolutions.map((s) => ({ rawValue: s.rawValue, membershipTypeId: s.membershipTypeId })),
           rows,
         }),
-        timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
+        timeoutMs: API_FETCH_TIMEOUT_STREAM_MS,
       });
       const json = (await res.json()) as CampaignImportApplyResponse | { error: string };
       if ("error" in json) {

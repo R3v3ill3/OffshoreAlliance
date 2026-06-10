@@ -4,7 +4,32 @@ const CAMPAIGN = "Acme Energy EBA 2026 — DEMO";
 
 async function moveText(page, ctx, text) {
   const loc = page.locator(`text=${text}`).first();
-  if (await loc.count()) await ctx.move(loc);
+  if (await loc.count()) await ctx.move(loc).catch(() => {});
+}
+
+// The wall-chart tiles render below the campaign summary + assessment
+// distribution blocks, so the page must be scrolled before the worker tiles
+// are on screen. moveTo() only moves the synthetic cursor to an element's
+// current box — it does NOT scroll — so scroll explicitly first.
+async function showTiles(page, { center = true } = {}) {
+  const tile = page.locator('[data-worker-id]').first();
+  if (await tile.count()) {
+    await tile.scrollIntoViewIfNeeded().catch(() => {});
+    if (center) await tile.evaluate((el) => el.scrollIntoView({ block: "center" })).catch(() => {});
+    await page.waitForTimeout(400);
+  }
+}
+async function showTop(page) {
+  const sel = page.locator('button:has-text("Cumulative")').first();
+  if (await sel.count()) {
+    await sel.scrollIntoViewIfNeeded().catch(() => {});
+    await sel.evaluate((el) => el.scrollIntoView({ block: "center" })).catch(() => {});
+    await page.waitForTimeout(300);
+  }
+}
+async function moveTile(page, ctx, n) {
+  const t = page.locator('[data-worker-id]').nth(n);
+  if (await t.count()) await ctx.move(t).catch(() => {});
 }
 
 await runClip({
@@ -33,22 +58,48 @@ await runClip({
     "Read at a glance who's with you and where to focus. Next, filter the chart to answer questions.",
   ],
   steps: [
-    async (page) => { await page.mouse.move(900, 360, { steps: 16 }); await page.mouse.move(640, 480, { steps: 14 }); },
-    async (page, ctx) => { await moveText(page, ctx, "Day Shift"); },
+    // 0 — scroll the worker tiles into view and sweep across them.
     async (page, ctx) => {
-      // move into the Day Shift card body where worker tiles sit
-      const card = page.locator("text=Day Shift").first();
-      const box = await card.boundingBox();
-      if (box) { await page.mouse.move(box.x + 60, box.y + 80, { steps: 18 }); await page.mouse.move(box.x + 160, box.y + 80, { steps: 12 }); }
+      await showTiles(page);
+      await moveTile(page, ctx, 0);
+      await page.waitForTimeout(400);
+      await moveTile(page, ctx, 2);
     },
-    async (page) => {
-      const card = await page.locator("text=Day Shift").first().boundingBox();
-      if (card) await page.mouse.move(card.x + 360, card.y + 90, { steps: 16 });
-    },
+    // 1 — the unit card header (name / type / estimate).
     async (page, ctx) => {
+      await moveText(page, ctx, "Day Shift");
+    },
+    // 2 — a worker tile, coloured by rating.
+    async (page, ctx) => {
+      await moveTile(page, ctx, 1);
+      await page.waitForTimeout(500);
+      await moveTile(page, ctx, 3);
+    },
+    // 3 — grey/empty slots: scroll a little further down the chart.
+    async (page, ctx) => {
+      await page.evaluate(() => window.scrollBy(0, 230)).catch(() => {});
+      await page.waitForTimeout(400);
+      const tiles = page.locator('[data-worker-id]');
+      const cnt = await tiles.count();
+      if (cnt > 6) await ctx.move(tiles.nth(cnt - 2)).catch(() => {});
+      else await page.mouse.move(900, 620, { steps: 14 });
+    },
+    // 4 — back up to the assessment selector; open it to show the choices.
+    async (page, ctx) => {
+      await showTop(page);
       const sel = page.locator('button:has-text("Cumulative")').first();
-      if (await sel.count()) { await ctx.move(sel); await page.waitForTimeout(500); await sel.click().catch(() => {}); await page.waitForTimeout(900); await page.keyboard.press("Escape"); }
+      if (await sel.count()) {
+        await ctx.move(sel); await page.waitForTimeout(400);
+        await sel.click().catch(() => {});
+        await page.waitForTimeout(800);
+        await page.keyboard.press("Escape").catch(() => {});
+      }
     },
-    async (page, ctx) => { await moveText(page, ctx, "Assessment distribution"); await page.waitForTimeout(500); await page.mouse.move(760, 520, { steps: 14 }); },
+    // 5 — settle back on the tiles.
+    async (page, ctx) => {
+      await showTiles(page);
+      await moveTile(page, ctx, 0);
+      await page.waitForTimeout(400);
+    },
   ],
 });

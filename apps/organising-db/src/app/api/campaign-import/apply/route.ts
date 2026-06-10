@@ -124,30 +124,49 @@ export async function POST(req: NextRequest) {
   for (const e of empBySurvivorKey.values()) {
     if (e.action !== "create" && e.matchedEmployerId) employerIdBySurvivorKey.set(e.key, e.matchedEmployerId);
   }
-  for (const batch of chunk(employerCreateKeys, CHUNK)) {
-    const { data, error } = await supabase
-      .from("employers")
-      .insert(batch.map((e) => ({ employer_name: e.canonicalName, employer_category: e.newCategory || null })))
-      .select("employer_id");
-    if (error || !data || data.length !== batch.length) {
-      // Fall back row-by-row to isolate failures.
-      for (const e of batch) {
-        const { data: d, error: er } = await supabase
-          .from("employers")
-          .insert({ employer_name: e.canonicalName, employer_category: e.newCategory || null })
-          .select("employer_id")
-          .single();
-        if (er) errors.push(`Employer "${e.canonicalName}": ${er.message}`);
-        else {
-          employerIdBySurvivorKey.set(e.key, d.employer_id);
-          stats.employersCreated++;
+  // Find-or-create by exact name — employer_name is UNIQUE, so a name that
+  // already exists (a prior run, or a duplicate within this file) is reused
+  // instead of throwing a duplicate-key error.
+  {
+    const createNames = [...new Set(employerCreateKeys.map((e) => e.canonicalName.trim()))];
+    const idByName = new Map<string, number>();
+    if (createNames.length > 0) {
+      const { data: existing } = await supabase
+        .from("employers")
+        .select("employer_id, employer_name")
+        .in("employer_name", createNames);
+      for (const e of existing ?? []) idByName.set(e.employer_name.toLowerCase(), e.employer_id);
+      const toCreate = createNames.filter((n) => !idByName.has(n.toLowerCase()));
+      for (const batch of chunk(toCreate, CHUNK)) {
+        const rows = batch.map((name) => ({
+          employer_name: name,
+          employer_category: employerCreateKeys.find((e) => e.canonicalName.trim() === name)?.newCategory || null,
+        }));
+        const { data, error } = await supabase.from("employers").insert(rows).select("employer_id, employer_name");
+        if (!error && data) {
+          for (const e of data) {
+            idByName.set(e.employer_name.toLowerCase(), e.employer_id);
+            stats.employersCreated++;
+          }
+        } else {
+          for (const r of rows) {
+            const { data: d, error: er } = await supabase
+              .from("employers")
+              .insert(r)
+              .select("employer_id, employer_name")
+              .single();
+            if (er) errors.push(`Employer "${r.employer_name}": ${er.message}`);
+            else {
+              idByName.set(d.employer_name.toLowerCase(), d.employer_id);
+              stats.employersCreated++;
+            }
+          }
         }
       }
-    } else {
-      data.forEach((d: { employer_id: number }, i: number) => {
-        employerIdBySurvivorKey.set(batch[i].key, d.employer_id);
-        stats.employersCreated++;
-      });
+    }
+    for (const e of employerCreateKeys) {
+      const id = idByName.get(e.canonicalName.trim().toLowerCase());
+      if (id != null) employerIdBySurvivorKey.set(e.key, id);
     }
   }
   const employerIdForKey = (key: string): number | null =>
@@ -184,32 +203,54 @@ export async function POST(req: NextRequest) {
       worksiteIdBySurvivorKey.set(v.key, v.matchedWorksiteId ?? null);
     }
   }
-  for (const batch of chunk(worksiteCreateKeys, CHUNK)) {
-    const rows = batch.map((v) => {
-      const employerId = employerIdForKey(v.employerKey);
-      // Keep keys identical across the batch — PostgREST rejects bulk inserts
-      // whose objects don't all share the same columns.
-      return {
-        worksite_name: v.canonicalName,
-        worksite_type: v.newWorksiteType || "Other",
-        principal_employer_id: employerId ?? null,
-      };
-    });
-    const { data, error } = await supabase.from("worksites").insert(rows).select("worksite_id");
-    if (error || !data || data.length !== batch.length) {
-      for (let i = 0; i < batch.length; i++) {
-        const { data: d, error: er } = await supabase.from("worksites").insert(rows[i]).select("worksite_id").single();
-        if (er) errors.push(`Vessel "${batch[i].canonicalName}": ${er.message}`);
-        else {
-          worksiteIdBySurvivorKey.set(batch[i].key, d.worksite_id);
-          stats.worksitesCreated++;
+  // Find-or-create by exact name — worksite_name is UNIQUE, so reuse an existing
+  // worksite (or one already created earlier this run) instead of duplicating it.
+  {
+    const createNames = [...new Set(worksiteCreateKeys.map((v) => v.canonicalName.trim()))];
+    const idByName = new Map<string, number>();
+    if (createNames.length > 0) {
+      const { data: existing } = await supabase
+        .from("worksites")
+        .select("worksite_id, worksite_name")
+        .in("worksite_name", createNames);
+      for (const w of existing ?? []) idByName.set(w.worksite_name.toLowerCase(), w.worksite_id);
+      const toCreate = createNames.filter((n) => !idByName.has(n.toLowerCase()));
+      for (const batch of chunk(toCreate, CHUNK)) {
+        const rows = batch.map((name) => {
+          const v = worksiteCreateKeys.find((x) => x.canonicalName.trim() === name);
+          const employerId = v ? employerIdForKey(v.employerKey) : null;
+          // Keys identical across the batch — PostgREST rejects mixed columns.
+          return {
+            worksite_name: name,
+            worksite_type: v?.newWorksiteType || "Other",
+            principal_employer_id: employerId ?? null,
+          };
+        });
+        const { data, error } = await supabase.from("worksites").insert(rows).select("worksite_id, worksite_name");
+        if (!error && data) {
+          for (const w of data) {
+            idByName.set(w.worksite_name.toLowerCase(), w.worksite_id);
+            stats.worksitesCreated++;
+          }
+        } else {
+          for (const r of rows) {
+            const { data: d, error: er } = await supabase
+              .from("worksites")
+              .insert(r)
+              .select("worksite_id, worksite_name")
+              .single();
+            if (er) errors.push(`Vessel "${r.worksite_name}": ${er.message}`);
+            else {
+              idByName.set(d.worksite_name.toLowerCase(), d.worksite_id);
+              stats.worksitesCreated++;
+            }
+          }
         }
       }
-    } else {
-      data.forEach((d: { worksite_id: number }, i: number) => {
-        worksiteIdBySurvivorKey.set(batch[i].key, d.worksite_id);
-        stats.worksitesCreated++;
-      });
+    }
+    for (const v of worksiteCreateKeys) {
+      const id = idByName.get(v.canonicalName.trim().toLowerCase());
+      if (id != null) worksiteIdBySurvivorKey.set(v.key, id);
     }
   }
   const worksiteIdForKey = (key: string): number | null =>

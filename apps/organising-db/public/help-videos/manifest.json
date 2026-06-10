@@ -1,5 +1,5 @@
 {
-  "count": 13,
+  "count": 16,
   "series": {
     "O": "Overview",
     "A": "Set up a campaign",
@@ -403,6 +403,43 @@
       "transcript": "help-videos/E2.transcript.txt"
     },
     {
+      "id": "E3",
+      "title": "Rate workers",
+      "series": "E",
+      "durationSec": 36,
+      "summary": "Set ratings inline on the wall chart — pick an assessment, quick-rate a worker on the 1–5 scale, and read cumulative vs per-assessment support.",
+      "tags": [
+        "rate workers",
+        "rating",
+        "inline",
+        "quick rate",
+        "cumulative",
+        "assessment ratings",
+        "colours"
+      ],
+      "associatedRoutes": [
+        "/campaigns/*"
+      ],
+      "routeWeight": 8,
+      "prerequisites": [
+        "E1",
+        "E2"
+      ],
+      "upNext": [
+        "D1",
+        "D2",
+        "C3"
+      ],
+      "transcriptPath": "E3.transcript.txt",
+      "videoPath": "E3.mp4",
+      "downloadable": true,
+      "seriesName": "Assessments & ratings",
+      "order": 13,
+      "video": "help-videos/E3.mp4",
+      "vtt": "help-videos/E3.vtt",
+      "transcript": "help-videos/E3.transcript.txt"
+    },
+    {
       "id": "D1",
       "title": "Email tasking: reach a cohort by email",
       "series": "D",
@@ -473,6 +510,83 @@
       "video": "help-videos/D2.mp4",
       "vtt": "help-videos/D2.vtt",
       "transcript": "help-videos/D2.transcript.txt"
+    },
+    {
+      "id": "D3",
+      "title": "Phone tasking: running a calling session",
+      "series": "D",
+      "durationSec": 47,
+      "summary": "Work a call list in the dialer — log the dial outcome, follow the script, record the result and support level, then move to the next contact.",
+      "tags": [
+        "phone",
+        "calling",
+        "dialer",
+        "call session",
+        "outcome",
+        "support level",
+        "notes",
+        "tasking"
+      ],
+      "associatedRoutes": [
+        "/campaigns/*/phone/call/*",
+        "/campaigns/*/phone/live"
+      ],
+      "routeWeight": 9,
+      "prerequisites": [
+        "D2"
+      ],
+      "upNext": [
+        "D4",
+        "D2",
+        "D1"
+      ],
+      "transcriptPath": "D3.transcript.txt",
+      "videoPath": "D3.mp4",
+      "downloadable": true,
+      "seriesName": "Tasking",
+      "order": 16,
+      "video": "help-videos/D3.mp4",
+      "vtt": "help-videos/D3.vtt",
+      "transcript": "help-videos/D3.transcript.txt"
+    },
+    {
+      "id": "D4",
+      "title": "Activist tasking: task lists & the leader webform",
+      "series": "D",
+      "durationSec": 57,
+      "summary": "Give a worker leader a list of crewmates to assess and recruit, then see the secure web form they fill in — ratings flow straight back into the campaign.",
+      "tags": [
+        "activist",
+        "task list",
+        "leader",
+        "webform",
+        "delegate",
+        "membership ask",
+        "peer assessment",
+        "tasking"
+      ],
+      "associatedRoutes": [
+        "/campaigns/*",
+        "/leader/task/*"
+      ],
+      "routeWeight": 8,
+      "prerequisites": [
+        "C3",
+        "E1"
+      ],
+      "upNext": [
+        "E1",
+        "D3",
+        "C3"
+      ],
+      "transcriptPath": "D4.transcript.txt",
+      "videoPath": "D4.mp4",
+      "downloadable": true,
+      "seriesName": "Tasking",
+      "order": 17,
+      "video": "help-videos/D4.mp4",
+      "vtt": "help-videos/D4.vtt",
+      "transcript": "help-videos/D4.transcript.txt"
     }
   ]
 }

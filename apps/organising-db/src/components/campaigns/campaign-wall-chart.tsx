@@ -21,6 +21,7 @@ import {
   useCampaignWorkerDetail,
 } from "./campaign-worker-detail-provider";
 import { CampaignUnitCard } from "./wall-chart/campaign-unit-card";
+import { UnitRatingControl } from "./wall-chart/unit-rating-control";
 import { WorkerTile } from "./wall-chart/worker-tile";
 import {
   DropdownMenu,
@@ -1586,6 +1587,16 @@ export function CampaignWallChart({
                           </Badge>
                         ) : null
                       }
+                      ratingControl={
+                        <UnitRatingControl
+                          ouId={ou.ou_id}
+                          rating={ou.user_rating}
+                          childRatings={childList.map((c) => c.user_rating)}
+                          isContainer={!!ou.is_group_container}
+                          canWrite={canWrite}
+                          campaignId={campaignId}
+                        />
+                      }
                       summary={
                         unitMetrics && ids.length > 0 ? (
                           <UnitSummaryMetrics
@@ -1805,6 +1816,14 @@ export function CampaignWallChart({
                                       buildListOpen ? onBuildListWallDragEnd : undefined
                                     }
                                     nested
+                                    ratingControl={
+                                      <UnitRatingControl
+                                        ouId={child.ou_id}
+                                        rating={child.user_rating}
+                                        canWrite={canWrite}
+                                        campaignId={campaignId}
+                                      />
+                                    }
                                     summaryCollapsible
                                     hideHeaderDetailsWhenSummaryCollapsed
                                     summary={

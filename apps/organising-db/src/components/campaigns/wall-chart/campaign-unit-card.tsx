@@ -57,6 +57,8 @@ export type CampaignUnitCardProps = {
   subUnits?: ReactNode;
   /** Optional chips/badges shown next to the unit name (e.g. sub-unit count). */
   headerBadges?: ReactNode;
+  /** Optional subjective unit-rating control rendered in the header. */
+  ratingControl?: ReactNode;
   /** Visual nesting indent — used when this card is itself a sub-unit. */
   nested?: boolean;
   /**
@@ -97,6 +99,7 @@ export function CampaignUnitCard({
   dropDisabled,
   subUnits,
   headerBadges,
+  ratingControl,
   nested,
   unfilledSlots,
   unitDragPayload,
@@ -230,6 +233,7 @@ export function CampaignUnitCard({
                 <span className="text-foreground font-medium">{assessmentLabel}</span>
               </p>
             )}
+            {ratingControl && <div className="mt-1">{ratingControl}</div>}
           </div>
           {toolbar && <div className="flex items-center gap-1 print:hidden">{toolbar}</div>}
         </div>

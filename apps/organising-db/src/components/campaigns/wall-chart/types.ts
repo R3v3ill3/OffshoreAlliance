@@ -138,6 +138,8 @@ export type WallChartOU = {
   /** FK to the group container OU that owns this member unit. Null for standalone units. */
   ou_group_id?: number | null;
   parent_ou_id?: number | null;
+  /** Subjective organiser rating, 1 (extremely strong) .. 5 (hostile). */
+  user_rating?: number | null;
 };
 
 export type WallChartOUAssignment = {

@@ -41,6 +41,7 @@ import { CheckCircle2, ChevronDown, XCircle, Pencil, Lightbulb, RefreshCw, Trash
 import type { CampaignOuType, OuCandidateStatus } from "@/types/database";
 import { generateOuCandidatesFromWtp } from "@/lib/campaign/generate-ou-candidates";
 import { recomputeOuAssignments } from "@/lib/campaign/recompute-ou-assignments";
+import { UNIT_RATING_LEVELS, unitRatingLevel, averageSubunitRating } from "@/lib/campaign/unit-rating";
 import {
   getCampaignMembershipStatus,
   type CampaignMembershipStatus,
@@ -699,6 +700,25 @@ export function CampaignUnitsSection({
     onError: (e: Error) => window.alert(e.message || "Could not remove rule"),
   });
 
+  const rateUnit = useAuthAwareMutation({
+    mutationFn: async ({ ouId, rating }: { ouId: number; rating: number | null }) => {
+      const scoped = supabase as unknown as {
+        from: (t: string) => {
+          update: (v: Record<string, unknown>) => {
+            eq: (c: string, val: unknown) => Promise<{ error: Error | null }>;
+          };
+        };
+      };
+      const { error } = await scoped
+        .from("campaign_organising_units")
+        .update({ user_rating: rating })
+        .eq("ou_id", ouId);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignId] }),
+    onError: (e: Error) => window.alert(e.message || "Could not save rating"),
+  });
+
   const recomputeRules = useAuthAwareMutation({
     mutationFn: async () => recomputeOuAssignments(supabase, Number(campaignId)),
     onSuccess: () => {
@@ -1138,6 +1158,10 @@ export function CampaignUnitsSection({
                         .map((a) => a.worker_id)
                     ).size
                   : 0;
+                const ownRating = (ou as { user_rating?: number | null }).user_rating ?? null;
+                const childAvgRating = averageSubunitRating(
+                  childList.map((c) => (c as { user_rating?: number | null }).user_rating ?? null)
+                );
                 const showSubUnitRows =
                   !nested && childList.length > 0
                     ? (subUnitViewByParent.get(ou.ou_id) ?? "unit") === "subunit"
@@ -1198,6 +1222,41 @@ export function CampaignUnitsSection({
                     {showUnitDetails && ou.commonality_logic && (
                       <p className="text-xs text-muted-foreground mt-0.5 italic">{ou.commonality_logic}</p>
                     )}
+                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                      <span className="text-[11px] text-muted-foreground">Rating:</span>
+                      {UNIT_RATING_LEVELS.map((lvl) => {
+                        const selected = ownRating === lvl.value;
+                        return (
+                          <button
+                            key={lvl.value}
+                            type="button"
+                            disabled={!canWrite || rateUnit.isPending}
+                            title={lvl.label}
+                            aria-label={`Rate ${lvl.value} — ${lvl.label}`}
+                            onClick={() => rateUnit.mutate({ ouId: ou.ou_id, rating: selected ? null : lvl.value })}
+                            className={`h-5 w-5 rounded text-[10px] font-semibold ${lvl.bg} ${lvl.text} ${
+                              selected ? "ring-2 ring-offset-1 ring-foreground" : "opacity-50 hover:opacity-100"
+                            } ${canWrite ? "" : "cursor-default"}`}
+                          >
+                            {lvl.value}
+                          </button>
+                        );
+                      })}
+                      {(() => {
+                        const lvl = unitRatingLevel(ownRating);
+                        return lvl ? (
+                          <Badge className={`${lvl.bg} ${lvl.text} border-transparent text-[10px]`}>{lvl.label}</Badge>
+                        ) : null;
+                      })()}
+                      {isContainer && childAvgRating != null && (() => {
+                        const lvl = unitRatingLevel(childAvgRating);
+                        return lvl ? (
+                          <Badge className={`${lvl.bg} ${lvl.text} border-transparent text-[10px]`}>
+                            Sub-unit avg {childAvgRating.toFixed(1)} · {lvl.label}
+                          </Badge>
+                        ) : null;
+                      })()}
+                    </div>
                   </div>
                   {(childList.length > 0 || canWrite) && (
                     <div className="flex gap-2 flex-shrink-0">

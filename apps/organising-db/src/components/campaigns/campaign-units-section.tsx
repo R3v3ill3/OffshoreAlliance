@@ -607,13 +607,18 @@ export function CampaignUnitsSection({
         is_primary: assignPrimary && workerIdsToAssign.length === 1,
         assignment_source: "manual",
       }));
+      // Upsert so workers already in the unit are skipped rather than failing the
+      // whole batch on the (ou_id, worker_id) unique constraint.
       const { error } = await (supabase as unknown as {
         from: (table: string) => {
-          insert: (row: Record<string, unknown>[]) => Promise<{ error: Error | null }>;
+          upsert: (
+            rows: Record<string, unknown>[],
+            opts: { onConflict: string; ignoreDuplicates: boolean }
+          ) => Promise<{ error: Error | null }>;
         };
       })
         .from("campaign_worker_ou")
-        .insert(rows);
+        .upsert(rows, { onConflict: "ou_id,worker_id", ignoreDuplicates: true });
       if (error) throw error;
       return { inserted: rows.length };
     },
@@ -628,6 +633,12 @@ export function CampaignUnitsSection({
       setAssignDialog(null);
       resetAssignDialogState();
       setTimeout(() => setAssignFeedback(null), 4500);
+    },
+    onError: (e: Error) => {
+      const msg = /group/i.test(e.message)
+        ? "Some of these workers already belong to a different group of the same type in this campaign, so they can't also be assigned here."
+        : e.message || "Could not assign workers.";
+      setAssignFeedback(msg);
     },
   });
 
@@ -664,6 +675,22 @@ export function CampaignUnitsSection({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-unit-rules", campaignId] });
     },
+  });
+
+  const deleteRule = useAuthAwareMutation({
+    mutationFn: async (ruleId: number) => {
+      const scoped = supabase as unknown as {
+        from: (table: string) => {
+          delete: () => { eq: (col: string, value: unknown) => Promise<{ error: Error | null }> };
+        };
+      };
+      const { error } = await scoped.from("campaign_unit_rules").delete().eq("rule_id", ruleId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaign-unit-rules", campaignId] });
+    },
+    onError: (e: Error) => window.alert(e.message || "Could not remove rule"),
   });
 
   const recomputeRules = useAuthAwareMutation({
@@ -1400,6 +1427,17 @@ export function CampaignUnitsSection({
                             : r.dimension_type === "worksite"
                             ? ruleWorksites.find((w) => w.worksite_id === r.value_int)?.worksite_name ?? r.value_int ?? "—"
                             : r.value_text ?? r.value_int ?? "—"}
+                          {canWrite && (
+                            <button
+                              type="button"
+                              className="ml-1 leading-none opacity-70 hover:opacity-100"
+                              title="Remove rule"
+                              onClick={() => deleteRule.mutate(r.rule_id)}
+                              disabled={deleteRule.isPending}
+                            >
+                              ×
+                            </button>
+                          )}
                         </Badge>
                       ))}
                     </div>

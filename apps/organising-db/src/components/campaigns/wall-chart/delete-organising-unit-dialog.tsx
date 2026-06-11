@@ -161,6 +161,17 @@ export function DeleteOrganisingUnitDialog({
         }
       }
 
+      // Group container: delete its sub-units first (their worker assignments
+      // cascade away). Removing children before the parent also avoids the FK
+      // ON DELETE SET NULL path that trips the group-consistency trigger.
+      if (childOuIds.length > 0) {
+        const { error: childErr } = await supabase
+          .from("campaign_organising_units")
+          .delete()
+          .in("ou_id", childOuIds);
+        if (childErr) throw childErr;
+      }
+
       const { error: delOuErr } = await supabase
         .from("campaign_organising_units")
         .delete()
@@ -231,15 +242,25 @@ export function DeleteOrganisingUnitDialog({
       <AlertDialog open={open} onOpenChange={onOpenChange}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Cannot delete unit yet</AlertDialogTitle>
+            <AlertDialogTitle>Delete group and its sub-units?</AlertDialogTitle>
             <AlertDialogDescription>
-              <strong>{unitTitle}</strong> has {childOuIds.length} sub-unit
-              {childOuIds.length === 1 ? "" : "s"}. Delete or reassign workers in those sub-units
-              first, then delete the sub-units before removing this unit.
+              <strong>{unitTitle}</strong> is a group with {childOuIds.length} sub-unit
+              {childOuIds.length === 1 ? "" : "s"}. Deleting it also removes those sub-units and
+              their assignment rules. Workers stay in the campaign but lose their unit assignment.
+              This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Close</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteMutation.mutate(new Map())}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending
+                ? "Deleting…"
+                : `Delete group + ${childOuIds.length} sub-unit${childOuIds.length === 1 ? "" : "s"}`}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

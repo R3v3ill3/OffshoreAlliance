@@ -522,24 +522,47 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Units: one per (employer, shared-worksite).
+    // Units: one per (employer, CANONICAL worksite_id when available, else raw vessel string).
+    // This deduplicates vessels that appear under different raw strings but resolve to the
+    // same worksite (e.g. "Valaris DPS-1" and "DPS-1" → worksite_id=194).
+    // "Unspecified" vessels are collapsed to a single per-group unit regardless of their
+    // raw name variant ("Unspecified vessel", "Unspecified", "Unspecified - Offshore", etc.).
     const unitDefs: { unitKey: string; row: Record<string, unknown> }[] = [];
     const unitKeySeen = new Set<string>();
     for (const a of assigned) {
       const rootKey = resolveVesselKey(a.vesselKey);
-      const unitKey = `${a.employerKey}::${rootKey}`;
-      if (unitKeySeen.has(unitKey)) continue;
-      const containerId = containerIdByEmployerKey.get(a.employerKey);
-      if (!containerId) continue;
-      unitKeySeen.add(unitKey);
       const isUnspecified = rootKey.endsWith(`||${UNSPECIFIED_VESSEL_KEY}`);
-      const name =
-        vesselByKey.get(a.vesselKey)?.canonicalName ??
-        (isUnspecified ? "Unspecified vessel" : rootKey.split("||").pop() ?? "Unit");
       const worksiteId = worksiteIdForKey(rootKey);
       const employerId = employerIdForKey(a.employerKey);
+
+      // Build a stable dedup key:
+      // - For known worksites: use employer + worksite_id so all raw name variants map to one unit.
+      // - For unspecified: one canonical per employer group.
+      // - For unknown worksites: fall back to the raw vessel string.
+      const dedupeKey = isUnspecified
+        ? `${a.employerKey}::__unspecified__`
+        : worksiteId != null
+          ? `${a.employerKey}::ws:${worksiteId}`
+          : `${a.employerKey}::${rootKey}`;
+
+      if (unitKeySeen.has(dedupeKey)) {
+        // Map this assignment's original unit key to the already-registered unit.
+        const existingUnitKey = unitOuIdByUnitKey.get(dedupeKey);
+        if (existingUnitKey != null) {
+          unitOuIdByUnitKey.set(`${a.employerKey}::${rootKey}`, existingUnitKey);
+        }
+        continue;
+      }
+      const containerId = containerIdByEmployerKey.get(a.employerKey);
+      if (!containerId) continue;
+      unitKeySeen.add(dedupeKey);
+
+      const name = isUnspecified
+        ? "Unspecified vessel"
+        : vesselByKey.get(a.vesselKey)?.canonicalName ?? rootKey.split("||").pop() ?? "Unit";
+
       unitDefs.push({
-        unitKey,
+        unitKey: dedupeKey,
         row: {
           campaign_id: campaignId,
           ou_type: "worksite",
@@ -548,26 +571,47 @@ export async function POST(req: NextRequest) {
           ou_group_id: containerId,
           is_group_container: false,
           source: "manual",
-          unit_basis: { ...(worksiteId ? { worksite_id: worksiteId } : {}), ...(employerId ? { employer_id: employerId } : {}) },
+          unit_basis: {
+            ...(worksiteId ? { worksite_id: worksiteId } : {}),
+            ...(employerId ? { employer_id: employerId } : {}),
+          },
         },
       });
+      // Also map the original raw vessel key so assignment lookup works.
+      // (Will be set again once the ou_id is known below.)
     }
-    // Reuse existing sub-units (by container + name) so re-importing into the
-    // same campaign updates the structure in place instead of duplicating it.
+    // Reuse existing sub-units by container + worksite_id (preferred) or name.
+    // This handles re-imports without creating duplicate units.
     const containerIds = [...new Set(unitDefs.map((u) => u.row.parent_ou_id as number))];
-    const existingUnitByKey = new Map<string, number>();
+    const existingUnitByWorksiteKey = new Map<string, number>(); // `${containerId}::ws:${worksiteId}`
+    const existingUnitByName = new Map<string, number>();        // `${containerId}::${name lower}`
     if (containerIds.length > 0) {
       const { data: existingUnits } = await supabase
         .from("campaign_organising_units")
-        .select("ou_id, parent_ou_id, name")
+        .select("ou_id, parent_ou_id, name, unit_basis")
         .eq("campaign_id", campaignId)
         .in("parent_ou_id", containerIds);
       for (const u of existingUnits ?? []) {
-        existingUnitByKey.set(`${u.parent_ou_id}::${String(u.name).toLowerCase()}`, u.ou_id);
+        const wsId = (u.unit_basis as Record<string, unknown> | null)?.worksite_id;
+        if (wsId != null) {
+          existingUnitByWorksiteKey.set(`${u.parent_ou_id}::ws:${wsId}`, u.ou_id);
+        }
+        existingUnitByName.set(`${u.parent_ou_id}::${String(u.name).toLowerCase()}`, u.ou_id);
       }
     }
     const unitsToInsert = unitDefs.filter((u) => {
-      const existing = existingUnitByKey.get(`${u.row.parent_ou_id}::${String(u.row.name).toLowerCase()}`);
+      const cid = u.row.parent_ou_id as number;
+      const wsId = (u.row.unit_basis as Record<string, unknown> | null)?.worksite_id;
+      // Try worksite_id match first (most reliable dedup).
+      if (wsId != null) {
+        const existing = existingUnitByWorksiteKey.get(`${cid}::ws:${wsId}`);
+        if (existing != null) {
+          unitOuIdByUnitKey.set(u.unitKey, existing);
+          return false;
+        }
+      }
+      // Fall back to name match.
+      const existing = existingUnitByName.get(`${cid}::${String(u.row.name).toLowerCase()}`);
       if (existing != null) {
         unitOuIdByUnitKey.set(u.unitKey, existing);
         return false;
@@ -590,13 +634,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Assignments: one worksite unit per worker (a campaign enforces that a worker
-    // belongs to only one worksite group). Batched, with a row-by-row fallback so a
-    // single trigger rejection (e.g. on re-import) can't drop a whole batch.
+    // Assignments: one worksite unit per worker.
     const assignRows: Record<string, unknown>[] = [];
     for (const a of assigned) {
       if (workerOuId.has(a.workerId)) continue;
-      const ouId = unitOuIdByUnitKey.get(`${a.employerKey}::${resolveVesselKey(a.vesselKey)}`);
+      const rootKey = resolveVesselKey(a.vesselKey);
+      const isUnspecified = rootKey.endsWith(`||${UNSPECIFIED_VESSEL_KEY}`);
+      const worksiteId = worksiteIdForKey(rootKey);
+      const dedupeKey = isUnspecified
+        ? `${a.employerKey}::__unspecified__`
+        : worksiteId != null
+          ? `${a.employerKey}::ws:${worksiteId}`
+          : `${a.employerKey}::${rootKey}`;
+      const ouId = unitOuIdByUnitKey.get(dedupeKey) ?? unitOuIdByUnitKey.get(`${a.employerKey}::${rootKey}`);
       if (!ouId) continue;
       workerOuId.set(a.workerId, ouId);
       assignRows.push({ ou_id: ouId, worker_id: a.workerId, is_primary: true, assignment_source: "manual" });

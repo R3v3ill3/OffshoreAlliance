@@ -59,6 +59,7 @@ import {
   DeleteOrganisingUnitDialog,
   type DeleteUnitWorker,
 } from "./wall-chart/delete-organising-unit-dialog";
+import { MergeUnitsDialog } from "./wall-chart/merge-units-dialog";
 import { CampaignWorkerNameButton } from "./campaign-worker-detail-provider";
 import { CampaignWorkerAssignmentPicker } from "./campaign-worker-assignment-picker";
 import type { WallChartOU } from "./wall-chart/types";
@@ -216,6 +217,9 @@ export function CampaignUnitsSection({
   // OU currently being split into sub-units.
   const [splitTargetOu, setSplitTargetOu] = useState<WallChartOU | null>(null);
   const [deleteTargetOuId, setDeleteTargetOuId] = useState<number | null>(null);
+  // Units selected for merging (at most one group of near-duplicates at a time).
+  const [mergeOuIds, setMergeOuIds] = useState<number[]>([]);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [subUnitViewByParent, setSubUnitViewByParent] = useState<Map<number, "unit" | "subunit">>(
     () => new Map()
   );
@@ -1133,6 +1137,21 @@ export function CampaignUnitsSection({
                 <Button size="sm" onClick={() => setOuDialog(true)}>
                   Add unit
                 </Button>
+                {ous.length >= 2 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    title="Select two or more similar units to merge them into one"
+                    onClick={() => {
+                      // Open merge picker — start with nothing selected so the
+                      // user can tick the units they want to merge.
+                      setMergeOuIds([]);
+                      setMergeDialogOpen(true);
+                    }}
+                  >
+                    Merge units
+                  </Button>
+                )}
               </>
             )}
           </div>
@@ -2249,6 +2268,85 @@ export function CampaignUnitsSection({
           }}
         />
       )}
+
+      {/* Merge-unit picker dialog */}
+      {mergeDialogOpen && mergeOuIds.length < 2 && (
+        <Dialog open={mergeDialogOpen} onOpenChange={setMergeDialogOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Select units to merge</DialogTitle>
+              <DialogDescription>
+                Tick at least two units to merge them. All workers from every selected unit will
+                move to the one you choose as the survivor.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="max-h-80 overflow-y-auto space-y-1 py-2">
+              {ousTyped
+                .filter((o) => !o.is_group_container)
+                .map((ou) => {
+                  const checked = mergeOuIds.includes(ou.ou_id);
+                  const workerCount = (ouAssignments as { ou_id: number }[]).filter(
+                    (a) => a.ou_id === ou.ou_id
+                  ).length;
+                  return (
+                    <Label
+                      key={ou.ou_id}
+                      className="flex items-center gap-3 rounded-md border px-3 py-2 cursor-pointer hover:bg-muted/50"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(v) =>
+                          setMergeOuIds((prev) =>
+                            v ? [...prev, ou.ou_id] : prev.filter((id) => id !== ou.ou_id)
+                          )
+                        }
+                      />
+                      <span className="flex-1 text-sm truncate">{ou.name}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {workerCount} worker{workerCount !== 1 ? "s" : ""}
+                      </span>
+                    </Label>
+                  );
+                })}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setMergeDialogOpen(false); setMergeOuIds([]); }}>
+                Cancel
+              </Button>
+              <Button
+                disabled={mergeOuIds.length < 2}
+                onClick={() => {/* Advance to survivor picker by keeping dialog open — the condition below takes over */}}
+              >
+                Choose survivor ({mergeOuIds.length} selected)
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Merge-unit survivor dialog (once ≥2 units selected) */}
+      {mergeDialogOpen && mergeOuIds.length >= 2 && (() => {
+        const mergeTargets = ousTyped.filter((o) => mergeOuIds.includes(o.ou_id)) as WallChartOU[];
+        const workerCountByOu = new Map<number, number>();
+        for (const ou of mergeTargets) {
+          workerCountByOu.set(
+            ou.ou_id,
+            (ouAssignments as { ou_id: number }[]).filter((a) => a.ou_id === ou.ou_id).length
+          );
+        }
+        return (
+          <MergeUnitsDialog
+            open
+            onOpenChange={(v) => {
+              setMergeDialogOpen(v);
+              if (!v) setMergeOuIds([]);
+            }}
+            campaignId={campaignId}
+            ous={mergeTargets}
+            workerCountByOu={workerCountByOu}
+          />
+        );
+      })()}
     </div>
   );
 }

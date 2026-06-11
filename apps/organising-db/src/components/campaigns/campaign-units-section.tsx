@@ -2304,7 +2304,7 @@ export function CampaignUnitsSection({
             </DialogHeader>
             <div className="max-h-80 overflow-y-auto space-y-1 py-2">
               {ousTyped
-                .filter((o) => !o.is_group_container)
+                .filter((o) => !(o as { is_group_container?: boolean }).is_group_container)
                 .map((ou) => {
                   const checked = mergeOuIds.includes(ou.ou_id);
                   const workerCount = (ouAssignments as { ou_id: number }[]).filter(

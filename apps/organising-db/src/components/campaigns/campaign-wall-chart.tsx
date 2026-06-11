@@ -159,6 +159,26 @@ function scopeAssessmentFilterAndSort(
   };
 }
 
+type UnitHierarchyViewMode = "unit" | "subunit";
+
+const hierarchyViewKey = (campaignId: string) => `wallchart:subUnitView:${campaignId}`;
+
+function readHierarchyView(campaignId: string): Map<number, UnitHierarchyViewMode> {
+  if (typeof window === "undefined") return new Map();
+  try {
+    const raw = window.localStorage.getItem(hierarchyViewKey(campaignId));
+    if (!raw) return new Map();
+    const parsed = JSON.parse(raw) as Record<string, UnitHierarchyViewMode>;
+    return new Map(
+      Object.entries(parsed)
+        .filter(([, mode]) => mode === "unit" || mode === "subunit")
+        .map(([id, mode]) => [Number(id), mode])
+    );
+  } catch {
+    return new Map();
+  }
+}
+
 export function CampaignWallChart({
   campaignId,
   canWrite,
@@ -658,6 +678,29 @@ export function CampaignWallChart({
   const campaignGreySlots = Math.max(0, estimate - named);
 
   const [displayMode, setDisplayMode] = useDisplayMode(campaignId);
+  const [hierarchyViewByParent, setHierarchyViewByParent] = useState<
+    Map<number, UnitHierarchyViewMode>
+  >(() => readHierarchyView(campaignId));
+  const setHierarchyViewForParent = useCallback(
+    (parentOuId: number, mode: UnitHierarchyViewMode) => {
+      setHierarchyViewByParent((prev) => {
+        const next = new Map(prev);
+        next.set(parentOuId, mode);
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem(
+              hierarchyViewKey(campaignId),
+              JSON.stringify(Object.fromEntries(next))
+            );
+          } catch {
+            // ignore
+          }
+        }
+        return next;
+      });
+    },
+    [campaignId]
+  );
   const [participationSource, setParticipationSource] = useState<ParticipationSource>({
     kind: "any",
   });
@@ -1421,7 +1464,36 @@ export function CampaignWallChart({
                   </div>
                 )}
                 {groupOus.map((ou) => {
-                  const ids = visibleWorkersForOu(ou.ou_id);
+                  const childList = childrenByParent.get(ou.ou_id) ?? [];
+                  const hasSubUnits = childList.length > 0;
+                  const showSubUnitCards =
+                    hasSubUnits && (hierarchyViewByParent.get(ou.ou_id) ?? "unit") === "subunit";
+                  const rollupSourceOuByWorker = new Map<number, number>();
+                  const rolledUpWorkerIds: number[] = [];
+                  const addRollupWorker = (workerId: number, sourceOuId: number) => {
+                    if (rollupSourceOuByWorker.has(workerId)) return;
+                    rollupSourceOuByWorker.set(workerId, sourceOuId);
+                    rolledUpWorkerIds.push(workerId);
+                  };
+                  if (hasSubUnits && !showSubUnitCards) {
+                    for (const wid of visibleWorkersForOu(ou.ou_id)) {
+                      addRollupWorker(wid, ou.ou_id);
+                    }
+                    for (const child of childList) {
+                      for (const wid of workersByOu.get(child.ou_id) ?? []) {
+                        addRollupWorker(wid, child.ou_id);
+                      }
+                    }
+                    rolledUpWorkerIds.sort(compareWorkerIds);
+                  }
+                  const ids =
+                    hasSubUnits && !showSubUnitCards
+                      ? rolledUpWorkerIds
+                      : visibleWorkersForOu(ou.ou_id);
+                  const sourceOuForWorker = (workerId: number) =>
+                    hasSubUnits && !showSubUnitCards
+                      ? rollupSourceOuByWorker.get(workerId) ?? ou.ou_id
+                      : ou.ou_id;
                   const est = ou.total_workers_estimated ?? 0;
                   const filter = getFilter(ou.ou_id);
                   const fa = scopeAssessmentFilterAndSort(
@@ -1449,15 +1521,29 @@ export function CampaignWallChart({
                     }
                   );
                   const placeholders = Math.max(0, est - ids.length);
-                  const unitMetrics = metricsByOu.get(ou.ou_id);
-                  const allInUnitSelected =
-                    sorted.length > 0 &&
-                    sorted.every((wid) => selection.has(ou.ou_id, wid));
                   const effScope = effectiveAssessmentForScope(
                     ou.ou_id,
                     campaignAssessmentDefault,
                     unitAssessmentOverride
                   );
+                  const unitMetrics =
+                    hasSubUnits && !showSubUnitCards
+                      ? computeMetrics(
+                          ids,
+                          workerById,
+                          ratingByWorker,
+                          participationPredicate,
+                          buildAssessmentMetricsInput(effScope, activityRatingsByActivityId),
+                          {
+                            multiUnitWorkerIds: new Set(
+                              ids.filter((id) => (unitsByWorker.get(id)?.length ?? 0) > 1)
+                            ),
+                          }
+                        )
+                      : metricsByOu.get(ou.ou_id);
+                  const allInUnitSelected =
+                    sorted.length > 0 &&
+                    sorted.every((wid) => selection.has(sourceOuForWorker(wid), wid));
                   const scopeAssessmentTitle =
                     effScope.kind === "assessment" ? effScope.title : null;
                   const assessmentLabelForCard =
@@ -1492,11 +1578,11 @@ export function CampaignWallChart({
                         buildListOpen ? onBuildListWallDragEnd : undefined
                       }
                       headerBadges={
-                        (childrenByParent.get(ou.ou_id)?.length ?? 0) > 0 ? (
+                        hasSubUnits ? (
                           <Badge variant="secondary" className="text-[10px] gap-1">
                             <Layers className="h-3 w-3" />
-                            {childrenByParent.get(ou.ou_id)!.length} sub-unit
-                            {childrenByParent.get(ou.ou_id)!.length === 1 ? "" : "s"}
+                            {childList.length} sub-unit
+                            {childList.length === 1 ? "" : "s"}
                           </Badge>
                         ) : null
                       }
@@ -1538,6 +1624,28 @@ export function CampaignWallChart({
                               });
                             }}
                           />
+                          {hasSubUnits && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs print:hidden"
+                              onClick={() =>
+                                setHierarchyViewForParent(
+                                  ou.ou_id,
+                                  showSubUnitCards ? "unit" : "subunit"
+                                )
+                              }
+                              aria-pressed={showSubUnitCards}
+                              title={
+                                showSubUnitCards
+                                  ? "Collapse sub-units into this unit"
+                                  : "Show each sub-unit separately"
+                              }
+                            >
+                              {showSubUnitCards ? "Unit view" : "Show sub-units"}
+                            </Button>
+                          )}
                           {canWrite && !ou.is_group_container && (
                             <Button
                               type="button"
@@ -1565,7 +1673,10 @@ export function CampaignWallChart({
                                   selection.clear();
                                 } else {
                                   selection.addAll(
-                                    sorted.map((wid) => ({ ouId: ou.ou_id, workerId: wid }))
+                                    sorted.map((wid) => ({
+                                      ouId: sourceOuForWorker(wid),
+                                      workerId: wid,
+                                    }))
                                   );
                                 }
                               }}
@@ -1631,9 +1742,9 @@ export function CampaignWallChart({
                         </div>
                       }
                       subUnits={
-                        (childrenByParent.get(ou.ou_id)?.length ?? 0) > 0 ? (
+                        showSubUnitCards ? (
                           <div className="space-y-3">
-                            {(childrenByParent.get(ou.ou_id) ?? []).map((child) => {
+                            {childList.map((child) => {
                               const childIds = workersByOu.get(child.ou_id) ?? [];
                               const childFilter = getFilter(child.ou_id);
                               const childFa = scopeAssessmentFilterAndSort(
@@ -1694,6 +1805,8 @@ export function CampaignWallChart({
                                       buildListOpen ? onBuildListWallDragEnd : undefined
                                     }
                                     nested
+                                    summaryCollapsible
+                                    hideHeaderDetailsWhenSummaryCollapsed
                                     summary={
                                       childMetrics && childIds.length > 0 ? (
                                         <UnitSummaryMetrics
@@ -1733,7 +1846,9 @@ export function CampaignWallChart({
                         ) : null
                       }
                     >
-                      {sorted.map((wid) => renderTile(wid, ou.ou_id, ou.ou_id))}
+                      {sorted.map((wid) =>
+                        renderTile(wid, sourceOuForWorker(wid), ou.ou_id)
+                      )}
                     </CampaignUnitCard>
                     </div>
                   );

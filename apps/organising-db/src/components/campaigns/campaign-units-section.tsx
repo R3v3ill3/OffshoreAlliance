@@ -37,7 +37,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { CheckCircle2, XCircle, Pencil, Lightbulb, RefreshCw, Trash2, Layers, MoreVertical } from "lucide-react";
+import { CheckCircle2, ChevronDown, XCircle, Pencil, Lightbulb, RefreshCw, Trash2, Layers, MoreVertical } from "lucide-react";
 import type { CampaignOuType, OuCandidateStatus } from "@/types/database";
 import { generateOuCandidatesFromWtp } from "@/lib/campaign/generate-ou-candidates";
 import { recomputeOuAssignments } from "@/lib/campaign/recompute-ou-assignments";
@@ -215,6 +215,12 @@ export function CampaignUnitsSection({
   // OU currently being split into sub-units.
   const [splitTargetOu, setSplitTargetOu] = useState<WallChartOU | null>(null);
   const [deleteTargetOuId, setDeleteTargetOuId] = useState<number | null>(null);
+  const [subUnitViewByParent, setSubUnitViewByParent] = useState<Map<number, "unit" | "subunit">>(
+    () => new Map()
+  );
+  const [expandedSubUnitDetails, setExpandedSubUnitDetails] = useState<Set<number>>(
+    () => new Set()
+  );
 
   const { data: members = [] } = useQuery({
     queryKey: ["campaign-members", campaignId],
@@ -938,6 +944,21 @@ export function CampaignUnitsSection({
     unitSelection?.ouId === ouId && unitSelection.workerIds.has(workerId);
   const getUnitSelectionCount = (ouId: number) =>
     unitSelection?.ouId === ouId ? unitSelection.workerIds.size : 0;
+  const setParentSubUnitView = (parentOuId: number, mode: "unit" | "subunit") => {
+    setSubUnitViewByParent((prev) => {
+      const next = new Map(prev);
+      next.set(parentOuId, mode);
+      return next;
+    });
+  };
+  const toggleSubUnitDetails = (ouId: number) => {
+    setExpandedSubUnitDetails((prev) => {
+      const next = new Set(prev);
+      if (next.has(ouId)) next.delete(ouId);
+      else next.add(ouId);
+      return next;
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -1117,6 +1138,11 @@ export function CampaignUnitsSection({
                         .map((a) => a.worker_id)
                     ).size
                   : 0;
+                const showSubUnitRows =
+                  !nested && childList.length > 0
+                    ? (subUnitViewByParent.get(ou.ou_id) ?? "unit") === "subunit"
+                    : false;
+                const showUnitDetails = !nested || expandedSubUnitDetails.has(ou.ou_id);
                 return (
               <div
                 key={ou.ou_id}
@@ -1144,22 +1170,52 @@ export function CampaignUnitsSection({
                           sub-unit
                         </Badge>
                       )}
+                      {nested && (
+                        <button
+                          type="button"
+                          className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                          onClick={() => toggleSubUnitDetails(ou.ou_id)}
+                          aria-expanded={showUnitDetails}
+                          aria-label={showUnitDetails ? "Hide sub-unit details" : "Show sub-unit details"}
+                          title={showUnitDetails ? "Hide details" : "Show details"}
+                        >
+                          <ChevronDown
+                            className={`h-4 w-4 transition-transform ${showUnitDetails ? "rotate-180" : ""}`}
+                            aria-hidden
+                          />
+                        </button>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {ou.ou_type?.replace(/_/g, " ")}
-                      {ou.total_workers_estimated != null && ` · est. ${ou.total_workers_estimated}`}
-                      {ou.source && ou.source !== "manual" && (
+                      {showUnitDetails && ou.total_workers_estimated != null && ` · est. ${ou.total_workers_estimated}`}
+                      {showUnitDetails && ou.source && ou.source !== "manual" && (
                         <Badge variant="outline" className="ml-1.5 text-[10px] px-1 py-0">
                           {ou.source.replace(/_/g, " ")}
                         </Badge>
                       )}
                     </p>
-                    {ou.commonality_logic && (
+                    {showUnitDetails && ou.commonality_logic && (
                       <p className="text-xs text-muted-foreground mt-0.5 italic">{ou.commonality_logic}</p>
                     )}
                   </div>
-                  {canWrite && (
+                  {(childList.length > 0 || canWrite) && (
                     <div className="flex gap-2 flex-shrink-0">
+                    {!nested && childList.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setParentSubUnitView(ou.ou_id, showSubUnitRows ? "unit" : "subunit")
+                        }
+                        aria-pressed={showSubUnitRows}
+                      >
+                        {showSubUnitRows ? "Unit view" : "Show sub-units"}
+                      </Button>
+                    )}
+                    {canWrite && (
+                      <>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -1247,20 +1303,48 @@ export function CampaignUnitsSection({
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+                      </>
+                    )}
                     </div>
                   )}
                 </div>
 
+                {showUnitDetails && (
+                <>
                 {/* Per-OU worker list with checkboxes, bulk actions, and per-row remove */}
                 {(() => {
-                  const ouWorkers = ouAssignments.filter(
-                    (a: { ou_id: number }) => a.ou_id === ou.ou_id
-                  );
+                  const useRolledSubUnitWorkers = !nested && childList.length > 0 && !showSubUnitRows;
+                  type AssignmentDisplayRow = {
+                    id: number;
+                    ou_id: number;
+                    worker_id: number;
+                    is_primary: boolean;
+                    assignment_source?: string | null;
+                    source_name?: string | null;
+                  };
+                  const childNameById = new Map(childList.map((c) => [c.ou_id, c.name]));
+                  const directRows = (ouAssignments as AssignmentDisplayRow[])
+                    .filter((a) => a.ou_id === ou.ou_id)
+                    .map((a) => ({ ...a, source_name: null }));
+                  const childRows = useRolledSubUnitWorkers
+                    ? (ouAssignments as AssignmentDisplayRow[])
+                        .filter((a) => childNameById.has(a.ou_id))
+                        .map((a) => ({ ...a, source_name: childNameById.get(a.ou_id) ?? null }))
+                    : [];
+                  const childWorkerIds = new Set(childRows.map((a) => a.worker_id));
+                  const ouWorkers = useRolledSubUnitWorkers
+                    ? [
+                        ...childRows,
+                        ...directRows.filter((a) => !childWorkerIds.has(a.worker_id)),
+                      ]
+                    : directRows;
                   const ouWorkerIds = (ouWorkers as { worker_id: number }[]).map(
                     (a) => a.worker_id
                   );
-                  const selCount = getUnitSelectionCount(ou.ou_id);
+                  const allowBulkSelection = !useRolledSubUnitWorkers;
+                  const selCount = allowBulkSelection ? getUnitSelectionCount(ou.ou_id) : 0;
                   const allSelected =
+                    allowBulkSelection &&
                     ouWorkerIds.length > 0 &&
                     ouWorkerIds.every((id) => isUnitWorkerSelected(ou.ou_id, id));
 
@@ -1321,7 +1405,7 @@ export function CampaignUnitsSection({
                         <table className="w-full text-xs">
                           <thead>
                             <tr className="border-b">
-                              {canWrite && (
+                              {canWrite && allowBulkSelection && (
                                 <th className="w-8 px-1 py-1">
                                   <Checkbox
                                     checked={allSelected}
@@ -1342,25 +1426,20 @@ export function CampaignUnitsSection({
                             </tr>
                           </thead>
                           <tbody>
-                            {(ouWorkers as unknown[]).map((a) => {
-                              const row = a as {
-                                id: number;
-                                worker_id: number;
-                                is_primary: boolean;
-                                assignment_source?: string | null;
-                              };
+                            {(ouWorkers as AssignmentDisplayRow[]).map((row) => {
                               const memberOption = memberOptions.find(
                                 (m) => m.worker_id === row.worker_id
                               );
                               const displayName =
                                 memberOption?.label ?? `Worker #${row.worker_id}`;
-                              const selected = isUnitWorkerSelected(ou.ou_id, row.worker_id);
+                              const selected =
+                                allowBulkSelection && isUnitWorkerSelected(ou.ou_id, row.worker_id);
                               return (
                                 <tr
-                                  key={row.id}
+                                  key={`${row.ou_id}-${row.id}`}
                                   className={selected ? "bg-primary/5" : undefined}
                                 >
-                                  {canWrite && (
+                                  {canWrite && allowBulkSelection && (
                                     <td className="px-1 py-1">
                                       <Checkbox
                                         checked={selected}
@@ -1377,6 +1456,7 @@ export function CampaignUnitsSection({
                                     </CampaignWorkerNameButton>
                                   </td>
                                   <td className="px-1 py-1 text-muted-foreground space-x-1">
+                                    {row.source_name && <span>[{row.source_name}]</span>}
                                     {row.is_primary && <span>(primary)</span>}
                                     {row.assignment_source === "rule" && <span>[rule]</span>}
                                     {multiUnitWorkerIds.has(row.worker_id) && (
@@ -1393,7 +1473,7 @@ export function CampaignUnitsSection({
                                         title="Remove from unit"
                                         onClick={() =>
                                           setRemoveConfirmState({
-                                            ouId: ou.ou_id,
+                                            ouId: row.ou_id,
                                             workerIds: [row.worker_id],
                                           })
                                         }
@@ -1573,9 +1653,11 @@ export function CampaignUnitsSection({
                     </div>
                   )}
                 </div>
+                </>
+                )}
 
                 {/* Render children (sub-units) nested under their parent */}
-                {!nested && childList.length > 0 && (
+                {showSubUnitRows && (
                   <div className="space-y-3 pl-4 border-l-2 border-muted">
                     {childList.map((c) => renderOuRow(c, true))}
                   </div>

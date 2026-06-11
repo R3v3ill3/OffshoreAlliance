@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode, useState } from "react";
-import { GripVertical, ListPlus } from "lucide-react";
+import { ChevronDown, GripVertical, ListPlus } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { cn } from "@/lib/utils/cn";
 import { WALL_CHART_GRID_CLASS } from "./rating-colour";
@@ -24,6 +24,12 @@ export type CampaignUnitCardProps = {
   estimate?: number | null;
   /** Optional summary metric content rendered in the header band. */
   summary?: ReactNode;
+  /** When true, render the summary behind a chevron toggle. */
+  summaryCollapsible?: boolean;
+  /** Initial open state for a collapsible summary. Defaults to closed. */
+  summaryInitiallyExpanded?: boolean;
+  /** Hide worker count + assessment label while a collapsible summary is closed. */
+  hideHeaderDetailsWhenSummaryCollapsed?: boolean;
   /** Optional toolbar rendered next to the title (filters/sort). */
   toolbar?: ReactNode;
   /** Worker tiles. */
@@ -80,6 +86,9 @@ export function CampaignUnitCard({
   workerCount,
   estimate,
   summary,
+  summaryCollapsible,
+  summaryInitiallyExpanded = false,
+  hideHeaderDetailsWhenSummaryCollapsed,
   toolbar,
   children,
   placeholders = 0,
@@ -101,8 +110,13 @@ export function CampaignUnitCard({
 
   const dropEnabled = !!onWorkerDrop && !dropDisabled;
   const [isDragOver, setIsDragOver] = useState(false);
+  const [summaryExpanded, setSummaryExpanded] = useState(summaryInitiallyExpanded);
 
   const targetOuId: number | null = ou?.ou_id ?? null;
+  const canToggleSummary = Boolean(summaryCollapsible && summary);
+  const showSummary = Boolean(summary && (!canToggleSummary || summaryExpanded));
+  const showHeaderDetails =
+    !hideHeaderDetailsWhenSummaryCollapsed || !canToggleSummary || summaryExpanded;
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     if (!dropEnabled) return;
@@ -186,11 +200,31 @@ export function CampaignUnitCard({
                 </span>
               )}
               {headerBadges}
+              {canToggleSummary && (
+                <button
+                  type="button"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground print:hidden"
+                  onClick={() => setSummaryExpanded((v) => !v)}
+                  aria-expanded={summaryExpanded}
+                  aria-label={summaryExpanded ? "Hide unit summary" : "Show unit summary"}
+                  title={summaryExpanded ? "Hide summary" : "Show summary"}
+                >
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 transition-transform",
+                      summaryExpanded && "rotate-180"
+                    )}
+                    aria-hidden
+                  />
+                </button>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {workerCount} named{est > 0 && ` / ${est} est.`}{unfilledSlots != null && unfilledSlots > 0 && ` · ${unfilledSlots} unfilled`}
-            </p>
-            {assessmentLabel && (
+            {showHeaderDetails && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {workerCount} named{est > 0 && ` / ${est} est.`}{unfilledSlots != null && unfilledSlots > 0 && ` · ${unfilledSlots} unfilled`}
+              </p>
+            )}
+            {showHeaderDetails && assessmentLabel && (
               <p className="text-[10px] text-muted-foreground mt-0.5">
                 Assessing:{" "}
                 <span className="text-foreground font-medium">{assessmentLabel}</span>
@@ -199,7 +233,7 @@ export function CampaignUnitCard({
           </div>
           {toolbar && <div className="flex items-center gap-1 print:hidden">{toolbar}</div>}
         </div>
-        {summary && <div className="pt-1">{summary}</div>}
+        {showSummary && <div className="pt-1">{summary}</div>}
       </CardHeader>
       <CardContent>
         <div className={WALL_CHART_GRID_CLASS}>

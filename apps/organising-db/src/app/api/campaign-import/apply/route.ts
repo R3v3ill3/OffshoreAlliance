@@ -552,8 +552,30 @@ export async function POST(req: NextRequest) {
         },
       });
     }
-    for (let start = 0; start < unitDefs.length; start += CHUNK) {
-      const slice = unitDefs.slice(start, start + CHUNK);
+    // Reuse existing sub-units (by container + name) so re-importing into the
+    // same campaign updates the structure in place instead of duplicating it.
+    const containerIds = [...new Set(unitDefs.map((u) => u.row.parent_ou_id as number))];
+    const existingUnitByKey = new Map<string, number>();
+    if (containerIds.length > 0) {
+      const { data: existingUnits } = await supabase
+        .from("campaign_organising_units")
+        .select("ou_id, parent_ou_id, name")
+        .eq("campaign_id", campaignId)
+        .in("parent_ou_id", containerIds);
+      for (const u of existingUnits ?? []) {
+        existingUnitByKey.set(`${u.parent_ou_id}::${String(u.name).toLowerCase()}`, u.ou_id);
+      }
+    }
+    const unitsToInsert = unitDefs.filter((u) => {
+      const existing = existingUnitByKey.get(`${u.row.parent_ou_id}::${String(u.row.name).toLowerCase()}`);
+      if (existing != null) {
+        unitOuIdByUnitKey.set(u.unitKey, existing);
+        return false;
+      }
+      return true;
+    });
+    for (let start = 0; start < unitsToInsert.length; start += CHUNK) {
+      const slice = unitsToInsert.slice(start, start + CHUNK);
       const { data, error } = await supabase
         .from("campaign_organising_units")
         .insert(slice.map((s) => s.row))

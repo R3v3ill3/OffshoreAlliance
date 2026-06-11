@@ -133,14 +133,22 @@ export async function recomputeOuAssignments(
     .eq("campaign_id", campaignId);
   if (rulesError) throw rulesError;
 
-  const ruleRows = (rules ?? []) as RuleRow[];
+  const allRuleRows = (rules ?? []) as RuleRow[];
+
+  // Group container OUs (employer groups) cannot hold workers directly — the
+  // database trigger rejects it. Drop any rules targeting a container so a
+  // stray rule can't make the whole recompute fail.
+  const { data: campaignOusRaw, error: campaignOusError } = await scoped
+    .from("campaign_organising_units")
+    .select("ou_id, is_group_container")
+    .eq("campaign_id", campaignId);
+  if (campaignOusError) throw campaignOusError;
+  const campaignOuRows = (campaignOusRaw ?? []) as { ou_id: number; is_group_container?: boolean }[];
+  const containerOuIds = new Set(campaignOuRows.filter((o) => o.is_group_container).map((o) => o.ou_id));
+  const ruleRows = allRuleRows.filter((r) => !containerOuIds.has(r.ou_id));
+
   if (ruleRows.length === 0) {
-    const { data: campaignOus, error: ousError } = await scoped
-      .from("campaign_organising_units")
-      .select("ou_id")
-      .eq("campaign_id", campaignId);
-    if (ousError) throw ousError;
-    const ouIds = ((campaignOus ?? []) as { ou_id: number }[]).map((r) => r.ou_id);
+    const ouIds = campaignOuRows.map((r) => r.ou_id);
     if (ouIds.length > 0) {
       const { error: clearError } = await scoped
         .from("campaign_worker_ou")

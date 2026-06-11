@@ -1079,6 +1079,17 @@ export function CampaignUnitsSection({
             (() => {
               const renderOuRow = (ou: AnyOu, nested: boolean) => {
                 const childList = childrenByParent.get(ou.ou_id) ?? [];
+                // Employer "group container" units hold no workers directly — their
+                // members live in the vessel sub-units. Surface the rolled-up count
+                // and hide assign/rule controls that the DB would reject.
+                const isContainer = (ou as { is_group_container?: boolean }).is_group_container === true;
+                const rolledWorkerCount = isContainer
+                  ? new Set(
+                      (ouAssignments as { ou_id: number; worker_id: number }[])
+                        .filter((a) => childList.some((c) => c.ou_id === a.ou_id))
+                        .map((a) => a.worker_id)
+                    ).size
+                  : 0;
                 return (
               <div
                 key={ou.ou_id}
@@ -1094,6 +1105,11 @@ export function CampaignUnitsSection({
                         <Badge variant="secondary" className="text-[10px] gap-1">
                           <Layers className="h-3 w-3" />
                           {childList.length} sub-unit{childList.length === 1 ? "" : "s"}
+                        </Badge>
+                      )}
+                      {isContainer && (
+                        <Badge variant="outline" className="text-[10px]">
+                          {rolledWorkerCount} worker{rolledWorkerCount === 1 ? "" : "s"} in sub-units
                         </Badge>
                       )}
                       {nested && (
@@ -1137,17 +1153,19 @@ export function CampaignUnitsSection({
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setAssignDialog({ ou_id: ou.ou_id, name: ou.name });
-                        resetAssignDialogState();
-                        setAssignFeedback(null);
-                      }}
-                    >
-                      Assign worker
-                    </Button>
+                    {!isContainer && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setAssignDialog({ ou_id: ou.ou_id, name: ou.name });
+                          resetAssignDialogState();
+                          setAssignFeedback(null);
+                        }}
+                      >
+                        Assign worker
+                      </Button>
+                    )}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
@@ -1183,15 +1201,17 @@ export function CampaignUnitsSection({
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => {
-                            setAssignDialog({ ou_id: ou.ou_id, name: ou.name });
-                            resetAssignDialogState();
-                            setAssignFeedback(null);
-                          }}
-                        >
-                          Assign workers
-                        </DropdownMenuItem>
+                        {!isContainer && (
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setAssignDialog({ ou_id: ou.ou_id, name: ou.name });
+                              resetAssignDialogState();
+                              setAssignFeedback(null);
+                            }}
+                          >
+                            Assign workers
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
                           onClick={() => setDeleteTargetOuId(ou.ou_id)}
@@ -1375,12 +1395,20 @@ export function CampaignUnitsSection({
                       {(rulesByOu[ou.ou_id] ?? []).map((r) => (
                         <Badge key={r.rule_id} variant={r.include ? "info" : "destructive"}>
                           {r.include ? "Include" : "Exclude"} {r.dimension_type}:{" "}
-                          {r.value_text ?? r.value_int ?? "—"}
+                          {r.dimension_type === "employer"
+                            ? ruleEmployers.find((e) => e.employer_id === r.value_int)?.employer_name ?? r.value_int ?? "—"
+                            : r.dimension_type === "worksite"
+                            ? ruleWorksites.find((w) => w.worksite_id === r.value_int)?.worksite_name ?? r.value_int ?? "—"
+                            : r.value_text ?? r.value_int ?? "—"}
                         </Badge>
                       ))}
                     </div>
                   )}
-                  {canWrite && (
+                  {isContainer ? (
+                    <p className="text-xs text-muted-foreground">
+                      This is an employer group — assign workers and rules to the vessel units within it (shown below), not to the group itself.
+                    </p>
+                  ) : canWrite && (
                     <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
                       <Select
                         value={(ruleFormByOu[ou.ou_id]?.include ?? true) ? "include" : "exclude"}

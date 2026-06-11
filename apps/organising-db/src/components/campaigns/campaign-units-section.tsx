@@ -189,6 +189,7 @@ export function CampaignUnitsSection({
     Record<number, { include: boolean; dimension_type: string; operator: string; value: string }>
   >({});
   const [generateMessage, setGenerateMessage] = useState<string | null>(null);
+  const [recomputeMessage, setRecomputeMessage] = useState<string | null>(null);
 
   // Per-OU bulk selection. Only one OU can have an active selection at a time.
   const [unitSelection, setUnitSelection] = useState<{
@@ -653,6 +654,25 @@ export function CampaignUnitsSection({
     },
   });
 
+  const recomputeRules = useAuthAwareMutation({
+    mutationFn: async () => recomputeOuAssignments(supabase, Number(campaignId)),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
+      const inserted = result?.inserted ?? 0;
+      setRecomputeMessage(
+        inserted > 0
+          ? `Rules assigned ${inserted} worker${inserted === 1 ? "" : "s"} to matching units.`
+          : "No campaign workers matched the current rules."
+      );
+      setTimeout(() => setRecomputeMessage(null), 5000);
+    },
+    onError: (e: Error) => {
+      setRecomputeMessage(e.message || "Could not recompute rule assignments.");
+      setTimeout(() => setRecomputeMessage(null), 6000);
+    },
+  });
+
   const addRule = useAuthAwareMutation({
     mutationFn: async (ouId: number) => {
       const f = ruleFormByOu[ouId] ?? {
@@ -685,7 +705,11 @@ export function CampaignUnitsSection({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-unit-rules", campaignId] });
+      // Apply the new rule immediately so the user sees its effect without a
+      // separate "Recompute rules" click.
+      recomputeRules.mutate();
     },
+    onError: (e: Error) => window.alert(e.message || "Could not add rule"),
   });
 
   const deleteRule = useAuthAwareMutation({
@@ -700,6 +724,9 @@ export function CampaignUnitsSection({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-unit-rules", campaignId] });
+      // Re-apply the remaining rules so removing a rule withdraws its
+      // rule-sourced assignments straight away.
+      recomputeRules.mutate();
     },
     onError: (e: Error) => window.alert(e.message || "Could not remove rule"),
   });
@@ -721,14 +748,6 @@ export function CampaignUnitsSection({
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignId] }),
     onError: (e: Error) => window.alert(e.message || "Could not save rating"),
-  });
-
-  const recomputeRules = useAuthAwareMutation({
-    mutationFn: async () => recomputeOuAssignments(supabase, Number(campaignId)),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
-      queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
-    },
   });
 
   const removeFromUnitMutation = useAuthAwareMutation({
@@ -1157,6 +1176,9 @@ export function CampaignUnitsSection({
           </div>
           {generateMessage && (
             <p className="text-xs text-muted-foreground mt-1">{generateMessage}</p>
+          )}
+          {recomputeMessage && (
+            <p className="w-full text-xs text-muted-foreground mt-1">{recomputeMessage}</p>
           )}
         </CardHeader>
         <CardContent className="space-y-4">

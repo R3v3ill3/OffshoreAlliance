@@ -4,6 +4,7 @@ import {
   createClient,
   resetClient,
   refreshSessionViaServer,
+  signOutViaServer,
   getSessionWithTimeout,
 } from "@/lib/supabase/client";
 import { logConnectionEvent, generateTraceId } from "@/lib/supabase/connection-monitor";
@@ -202,12 +203,14 @@ function clearSupabaseBrowserState(): void {
 /**
  * Explicitly clear all Supabase auth cookies from document.cookie.
  *
- * This is CRITICAL because supabase.auth.signOut() is the only other place
- * that clears cookies, and it goes through the auth client — which may be in
- * a broken/hung state (causing the 5-second timeout in performRobustSignOut
- * to fire without actually clearing cookies). When that happens, the stale
- * cookies persist, and any new Supabase client created after resetClient()
- * reads them and re-enters the same broken state.
+ * This is CRITICAL because sign-out otherwise relies on the auth client /
+ * server response to clear cookies, either of which can be delayed on a
+ * degraded connection (the old client-side auth.signOut() hung the full 5s
+ * timeout without clearing cookies). When that happens, the stale cookies
+ * persist, and any new Supabase client created after resetClient() reads them
+ * and re-enters the same broken state — and middleware can bounce /login back
+ * to /campaigns on the still-present cookie. Clearing them here synchronously
+ * guarantees the device is signed out locally regardless of the network.
  *
  * We expire cookies for both the explicit domain (.uconstruct.app) and
  * hostname-only variants to handle any domain mismatch scenarios.
@@ -556,7 +559,6 @@ export async function recoverSessionConnection({
 }
 
 export async function performRobustSignOut({
-  supabase,
   queryClient,
   source = "manual",
 }: SignOutOptions): Promise<void> {
@@ -570,19 +572,29 @@ export async function performRobustSignOut({
   }
   queryClient.clear();
 
-  try {
-    const { error } = await withTimeout(
-      supabase.auth.signOut(),
-      5000,
-      new Error("Timed out while signing out"),
-    );
-    if (error) {
-      console.warn("[session-recovery] signOut error", error.message);
-    }
-  } catch (error: unknown) {
-    console.warn("[session-recovery] signOut exception", readErrorMessage(error));
+  // Revoke the session via the SERVER, NOT the in-tab auth client. After wake /
+  // on a degraded connection, supabase.auth.signOut() goes through the same
+  // wedged GoTrueClient that hangs getSession(), so it used to block the full
+  // 5s timeout every time (see docs/SUPABASE_DROPOUT_INVESTIGATION.md — the
+  // Jun 2026 sign-out-hang finding). signOutViaServer is bounded at 3s, never
+  // throws, and uses `keepalive` so the revoke finishes even after we redirect.
+  //
+  // We await it (bounded) BEFORE clearing local cookies so the request is sent
+  // while the session cookie is still present (the server needs it to revoke).
+  const result = await signOutViaServer(source);
+  if (!result.ok) {
+    // Non-fatal: the local clear below still signs the user out on this device,
+    // and an un-revoked refresh token expires on its own.
+    logConnectionEvent({
+      type: "token_refresh_fail",
+      detail: `server signout did not confirm (${source}): ${result.reason}`,
+    });
   }
 
+  // Always clear browser-local auth state and redirect, regardless of whether
+  // the server revoke confirmed. Clearing cookies here (synchronously) is what
+  // stops middleware from bouncing /login → /campaigns on a still-present
+  // cookie before the server response is applied.
   clearSupabaseBrowserState();
   goToLogin("signed_out");
 }

@@ -370,6 +370,69 @@ async function doRefreshSessionViaServer(
 }
 
 /**
+ * How long to wait for the server sign-out round-trip before giving up. The
+ * request is sent with `keepalive`, so even if we stop awaiting at this bound
+ * the revoke still completes in the background after we redirect. Kept short so
+ * a degraded connection can't make signing out feel like a hang (the old
+ * client-side auth.signOut() blocked the full 5s timeout every time).
+ */
+const SERVER_SIGNOUT_TIMEOUT_MS = 3_000;
+
+export type ServerSignOutReason =
+  | "ok"
+  | "error"
+  | "timeout"
+  | "network"
+  | "http"
+  | "exception";
+
+export interface ServerSignOutResult {
+  ok: boolean;
+  reason: ServerSignOutReason;
+}
+
+/**
+ * Sign out via the SERVER (/api/auth/signout), which revokes the session and
+ * clears the auth cookies through a fresh per-request @supabase/ssr client.
+ *
+ * This is the RELIABLE sign-out path. The client's own auth.signOut() goes
+ * through the in-tab GoTrueClient, which after wake / on a degraded connection
+ * is the same wedged path that hangs getSession() — so it used to block the
+ * full 5s sign-out timeout. The server path stays responsive.
+ *
+ * `keepalive: true` lets the request finish even after the caller navigates to
+ * /login. Callers should still clear browser-local auth state themselves before
+ * redirecting (so middleware doesn't bounce /login → /campaigns on a cookie
+ * that the server response hasn't cleared yet).
+ *
+ * Never throws — returns a tagged result.
+ */
+export async function signOutViaServer(
+  source: string,
+  timeoutMs: number = SERVER_SIGNOUT_TIMEOUT_MS,
+): Promise<ServerSignOutResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`/api/auth/signout?src=${encodeURIComponent(source)}`, {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      keepalive: true,
+      signal: controller.signal,
+    });
+    if (!res.ok) return { ok: false, reason: "http" };
+    const json = (await res.json()) as { ok?: boolean; reason?: ServerSignOutReason };
+    return { ok: json?.ok === true, reason: json?.ok ? "ok" : json?.reason ?? "error" };
+  } catch (error) {
+    const aborted = (error as Error)?.name === "AbortError";
+    return { ok: false, reason: aborted ? "timeout" : "network" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Shared getSession() with a 12-second timeout.
  *
  * Multiple callers can fire close together (e.g. recovery + auth-context).

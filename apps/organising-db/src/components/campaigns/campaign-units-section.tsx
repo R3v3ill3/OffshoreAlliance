@@ -59,6 +59,7 @@ import {
   DeleteOrganisingUnitDialog,
   type DeleteUnitWorker,
 } from "./wall-chart/delete-organising-unit-dialog";
+import { MergeUnitsDialog } from "./wall-chart/merge-units-dialog";
 import { CampaignWorkerNameButton } from "./campaign-worker-detail-provider";
 import { CampaignWorkerAssignmentPicker } from "./campaign-worker-assignment-picker";
 import type { WallChartOU } from "./wall-chart/types";
@@ -188,6 +189,7 @@ export function CampaignUnitsSection({
     Record<number, { include: boolean; dimension_type: string; operator: string; value: string }>
   >({});
   const [generateMessage, setGenerateMessage] = useState<string | null>(null);
+  const [recomputeMessage, setRecomputeMessage] = useState<string | null>(null);
 
   // Per-OU bulk selection. Only one OU can have an active selection at a time.
   const [unitSelection, setUnitSelection] = useState<{
@@ -216,6 +218,9 @@ export function CampaignUnitsSection({
   // OU currently being split into sub-units.
   const [splitTargetOu, setSplitTargetOu] = useState<WallChartOU | null>(null);
   const [deleteTargetOuId, setDeleteTargetOuId] = useState<number | null>(null);
+  // Units selected for merging (at most one group of near-duplicates at a time).
+  const [mergeOuIds, setMergeOuIds] = useState<number[]>([]);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [subUnitViewByParent, setSubUnitViewByParent] = useState<Map<number, "unit" | "subunit">>(
     () => new Map()
   );
@@ -649,6 +654,25 @@ export function CampaignUnitsSection({
     },
   });
 
+  const recomputeRules = useAuthAwareMutation({
+    mutationFn: async () => recomputeOuAssignments(supabase, Number(campaignId)),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
+      const inserted = result?.inserted ?? 0;
+      setRecomputeMessage(
+        inserted > 0
+          ? `Rules assigned ${inserted} worker${inserted === 1 ? "" : "s"} to matching units.`
+          : "No campaign workers matched the current rules."
+      );
+      setTimeout(() => setRecomputeMessage(null), 5000);
+    },
+    onError: (e: Error) => {
+      setRecomputeMessage(e.message || "Could not recompute rule assignments.");
+      setTimeout(() => setRecomputeMessage(null), 6000);
+    },
+  });
+
   const addRule = useAuthAwareMutation({
     mutationFn: async (ouId: number) => {
       const f = ruleFormByOu[ouId] ?? {
@@ -681,7 +705,11 @@ export function CampaignUnitsSection({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-unit-rules", campaignId] });
+      // Apply the new rule immediately so the user sees its effect without a
+      // separate "Recompute rules" click.
+      recomputeRules.mutate();
     },
+    onError: (e: Error) => window.alert(e.message || "Could not add rule"),
   });
 
   const deleteRule = useAuthAwareMutation({
@@ -696,6 +724,9 @@ export function CampaignUnitsSection({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-unit-rules", campaignId] });
+      // Re-apply the remaining rules so removing a rule withdraws its
+      // rule-sourced assignments straight away.
+      recomputeRules.mutate();
     },
     onError: (e: Error) => window.alert(e.message || "Could not remove rule"),
   });
@@ -717,14 +748,6 @@ export function CampaignUnitsSection({
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignId] }),
     onError: (e: Error) => window.alert(e.message || "Could not save rating"),
-  });
-
-  const recomputeRules = useAuthAwareMutation({
-    mutationFn: async () => recomputeOuAssignments(supabase, Number(campaignId)),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
-      queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
-    },
   });
 
   const removeFromUnitMutation = useAuthAwareMutation({
@@ -1133,11 +1156,29 @@ export function CampaignUnitsSection({
                 <Button size="sm" onClick={() => setOuDialog(true)}>
                   Add unit
                 </Button>
+                {ous.length >= 2 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    title="Select two or more similar units to merge them into one"
+                    onClick={() => {
+                      // Open merge picker — start with nothing selected so the
+                      // user can tick the units they want to merge.
+                      setMergeOuIds([]);
+                      setMergeDialogOpen(true);
+                    }}
+                  >
+                    Merge units
+                  </Button>
+                )}
               </>
             )}
           </div>
           {generateMessage && (
             <p className="text-xs text-muted-foreground mt-1">{generateMessage}</p>
+          )}
+          {recomputeMessage && (
+            <p className="w-full text-xs text-muted-foreground mt-1">{recomputeMessage}</p>
           )}
         </CardHeader>
         <CardContent className="space-y-4">
@@ -2249,6 +2290,85 @@ export function CampaignUnitsSection({
           }}
         />
       )}
+
+      {/* Merge-unit picker dialog */}
+      {mergeDialogOpen && mergeOuIds.length < 2 && (
+        <Dialog open={mergeDialogOpen} onOpenChange={setMergeDialogOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Select units to merge</DialogTitle>
+              <DialogDescription>
+                Tick at least two units to merge them. All workers from every selected unit will
+                move to the one you choose as the survivor.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="max-h-80 overflow-y-auto space-y-1 py-2">
+              {ousTyped
+                .filter((o) => !(o as { is_group_container?: boolean }).is_group_container)
+                .map((ou) => {
+                  const checked = mergeOuIds.includes(ou.ou_id);
+                  const workerCount = (ouAssignments as { ou_id: number }[]).filter(
+                    (a) => a.ou_id === ou.ou_id
+                  ).length;
+                  return (
+                    <Label
+                      key={ou.ou_id}
+                      className="flex items-center gap-3 rounded-md border px-3 py-2 cursor-pointer hover:bg-muted/50"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(v) =>
+                          setMergeOuIds((prev) =>
+                            v ? [...prev, ou.ou_id] : prev.filter((id) => id !== ou.ou_id)
+                          )
+                        }
+                      />
+                      <span className="flex-1 text-sm truncate">{ou.name}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {workerCount} worker{workerCount !== 1 ? "s" : ""}
+                      </span>
+                    </Label>
+                  );
+                })}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setMergeDialogOpen(false); setMergeOuIds([]); }}>
+                Cancel
+              </Button>
+              <Button
+                disabled={mergeOuIds.length < 2}
+                onClick={() => {/* Advance to survivor picker by keeping dialog open — the condition below takes over */}}
+              >
+                Choose survivor ({mergeOuIds.length} selected)
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Merge-unit survivor dialog (once ≥2 units selected) */}
+      {mergeDialogOpen && mergeOuIds.length >= 2 && (() => {
+        const mergeTargets = ousTyped.filter((o) => mergeOuIds.includes(o.ou_id)) as WallChartOU[];
+        const workerCountByOu = new Map<number, number>();
+        for (const ou of mergeTargets) {
+          workerCountByOu.set(
+            ou.ou_id,
+            (ouAssignments as { ou_id: number }[]).filter((a) => a.ou_id === ou.ou_id).length
+          );
+        }
+        return (
+          <MergeUnitsDialog
+            open
+            onOpenChange={(v) => {
+              setMergeDialogOpen(v);
+              if (!v) setMergeOuIds([]);
+            }}
+            campaignId={campaignId}
+            ous={mergeTargets}
+            workerCountByOu={workerCountByOu}
+          />
+        );
+      })()}
     </div>
   );
 }

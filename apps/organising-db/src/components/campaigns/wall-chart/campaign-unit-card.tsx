@@ -30,6 +30,15 @@ export type CampaignUnitCardProps = {
   summaryInitiallyExpanded?: boolean;
   /** Hide worker count + assessment label while a collapsible summary is closed. */
   hideHeaderDetailsWhenSummaryCollapsed?: boolean;
+  /**
+   * When true the worker-tile grid (CardContent) is hidden behind a toggle.
+   * Use for compact sub-unit rows inside large employer group containers so
+   * the organiser sees names/counts at a glance and expands only the vessels
+   * they need.
+   */
+  contentCollapsible?: boolean;
+  /** Whether the tile grid starts expanded when contentCollapsible is true. Defaults to false. */
+  contentInitiallyExpanded?: boolean;
   /** Optional toolbar rendered next to the title (filters/sort). */
   toolbar?: ReactNode;
   /** Worker tiles. */
@@ -91,6 +100,8 @@ export function CampaignUnitCard({
   summaryCollapsible,
   summaryInitiallyExpanded = false,
   hideHeaderDetailsWhenSummaryCollapsed,
+  contentCollapsible,
+  contentInitiallyExpanded = false,
   toolbar,
   children,
   placeholders = 0,
@@ -114,6 +125,7 @@ export function CampaignUnitCard({
   const dropEnabled = !!onWorkerDrop && !dropDisabled;
   const [isDragOver, setIsDragOver] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(summaryInitiallyExpanded);
+  const [contentExpanded, setContentExpanded] = useState(contentInitiallyExpanded);
 
   const targetOuId: number | null = ou?.ou_id ?? null;
   const canToggleSummary = Boolean(summaryCollapsible && summary);
@@ -235,10 +247,28 @@ export function CampaignUnitCard({
             )}
             {ratingControl && <div className="mt-1">{ratingControl}</div>}
           </div>
-          {toolbar && <div className="flex items-center gap-1 print:hidden">{toolbar}</div>}
+          <div className="flex items-center gap-1">
+            {contentCollapsible && (
+              <button
+                type="button"
+                className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground print:hidden"
+                onClick={() => setContentExpanded((v) => !v)}
+                aria-expanded={contentExpanded}
+                aria-label={contentExpanded ? "Collapse unit" : "Expand unit"}
+                title={contentExpanded ? "Collapse" : "Show workers"}
+              >
+                <ChevronDown
+                  className={cn("h-4 w-4 transition-transform", contentExpanded && "rotate-180")}
+                  aria-hidden
+                />
+              </button>
+            )}
+            {toolbar && <div className="flex items-center gap-1 print:hidden">{toolbar}</div>}
+          </div>
         </div>
         {showSummary && <div className="pt-1">{summary}</div>}
       </CardHeader>
+      {(!contentCollapsible || contentExpanded) && (
       <CardContent>
         <div className={WALL_CHART_GRID_CLASS}>
           {children}
@@ -263,6 +293,7 @@ export function CampaignUnitCard({
           </div>
         )}
       </CardContent>
+      )}
     </Card>
   );
 }

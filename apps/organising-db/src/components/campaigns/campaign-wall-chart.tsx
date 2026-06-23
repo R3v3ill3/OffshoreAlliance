@@ -702,6 +702,39 @@ export function CampaignWallChart({
     },
     [campaignId]
   );
+
+  /** Returns true when every parent OU with children is currently in sub-unit view. */
+  const allParentsExpanded = useMemo(() => {
+    const parents = ous.filter((o) => (childrenByParent.get(o.ou_id)?.length ?? 0) > 0);
+    if (parents.length === 0) return false;
+    return parents.every((o) => {
+      const stored = hierarchyViewByParent.get(o.ou_id);
+      if (stored !== undefined) return stored === "subunit";
+      return !!o.is_group_container;
+    });
+  }, [ous, childrenByParent, hierarchyViewByParent]);
+
+  const setAllHierarchyViews = useCallback(
+    (mode: UnitHierarchyViewMode) => {
+      const parents = ous.filter((o) => (childrenByParent.get(o.ou_id)?.length ?? 0) > 0);
+      setHierarchyViewByParent((prev) => {
+        const next = new Map(prev);
+        for (const o of parents) next.set(o.ou_id, mode);
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem(
+              hierarchyViewKey(campaignId),
+              JSON.stringify(Object.fromEntries(next))
+            );
+          } catch {
+            // ignore
+          }
+        }
+        return next;
+      });
+    },
+    [ous, childrenByParent, campaignId]
+  );
   const [participationSource, setParticipationSource] = useState<ParticipationSource>({
     kind: "any",
   });
@@ -1275,7 +1308,18 @@ export function CampaignWallChart({
                 onOpenCreateUnit={() => setCreateUnitOpen(true)}
                 onDeleteUnit={canWrite ? (ou) => setDeleteTargetOu(ou) : undefined}
               />
-            </div>
+              {ous.some((o) => (childrenByParent.get(o.ou_id)?.length ?? 0) > 0) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs print:hidden"
+                  onClick={() => setAllHierarchyViews(allParentsExpanded ? "unit" : "subunit")}
+                  title={allParentsExpanded ? "Collapse all groups" : "Expand all groups"}
+                >
+                  {allParentsExpanded ? "Collapse all" : "Expand all"}
+                </Button>
+              )}            </div>
           }
         />
         </div>
@@ -1468,7 +1512,16 @@ export function CampaignWallChart({
                   const childList = childrenByParent.get(ou.ou_id) ?? [];
                   const hasSubUnits = childList.length > 0;
                   const showSubUnitCards =
-                    hasSubUnits && (hierarchyViewByParent.get(ou.ou_id) ?? "unit") === "subunit";
+                    hasSubUnits &&
+                    (hierarchyViewByParent.get(ou.ou_id) ??
+                      (ou.is_group_container ? "subunit" : "unit")) === "subunit";
+                  // When showing sub-unit cards, only render visible children.
+                  // Hidden children still count toward roll-up metrics (childList
+                  // is unchanged) but their cards are omitted to respect the
+                  // unit-visibility setting.
+                  const visibleChildList = showSubUnitCards
+                    ? childList.filter((c) => !unitVisibility.hiddenOuIds.has(c.ou_id))
+                    : childList;
                   const rollupSourceOuByWorker = new Map<number, number>();
                   const rolledUpWorkerIds: number[] = [];
                   const addRollupWorker = (workerId: number, sourceOuId: number) => {
@@ -1542,6 +1595,38 @@ export function CampaignWallChart({
                           }
                         )
                       : metricsByOu.get(ou.ou_id);
+                  // Group-level roll-up summary for an employer group: aggregate the
+                  // container's own + every sub-unit's workers so the group card shows
+                  // the same summary metrics (as a dropdown) that sub-units already do.
+                  const groupRollupIds = hasSubUnits
+                    ? (() => {
+                        const seen = new Set<number>();
+                        const out: number[] = [];
+                        const add = (wid: number) => {
+                          if (seen.has(wid)) return;
+                          seen.add(wid);
+                          out.push(wid);
+                        };
+                        for (const wid of workersByOu.get(ou.ou_id) ?? []) add(wid);
+                        for (const child of childList)
+                          for (const wid of workersByOu.get(child.ou_id) ?? []) add(wid);
+                        return out;
+                      })()
+                    : [];
+                  const groupMetrics = hasSubUnits
+                    ? computeMetrics(
+                        groupRollupIds,
+                        workerById,
+                        ratingByWorker,
+                        participationPredicate,
+                        buildAssessmentMetricsInput(effScope, activityRatingsByActivityId),
+                        {
+                          multiUnitWorkerIds: new Set(
+                            groupRollupIds.filter((id) => (unitsByWorker.get(id)?.length ?? 0) > 1)
+                          ),
+                        }
+                      )
+                    : null;
                   const allInUnitSelected =
                     sorted.length > 0 &&
                     sorted.every((wid) => selection.has(sourceOuForWorker(wid), wid));
@@ -1584,6 +1669,11 @@ export function CampaignWallChart({
                             <Layers className="h-3 w-3" />
                             {childList.length} sub-unit
                             {childList.length === 1 ? "" : "s"}
+                            {visibleChildList.length < childList.length && (
+                              <span className="text-muted-foreground">
+                                {" "}({visibleChildList.length} visible)
+                              </span>
+                            )}
                           </Badge>
                         ) : null
                       }
@@ -1597,8 +1687,19 @@ export function CampaignWallChart({
                           campaignId={campaignId}
                         />
                       }
+                      summaryCollapsible={hasSubUnits}
                       summary={
-                        unitMetrics && ids.length > 0 ? (
+                        hasSubUnits ? (
+                          groupMetrics && groupRollupIds.length > 0 ? (
+                            <UnitSummaryMetrics
+                              metrics={groupMetrics}
+                              mode={displayMode}
+                              compact
+                              assessmentTitle={scopeAssessmentTitle}
+                              participationLabel={participationSourceLabel(participationSource)}
+                            />
+                          ) : null
+                        ) : unitMetrics && ids.length > 0 ? (
                           <UnitSummaryMetrics
                             metrics={unitMetrics}
                             mode={displayMode}
@@ -1650,8 +1751,8 @@ export function CampaignWallChart({
                               aria-pressed={showSubUnitCards}
                               title={
                                 showSubUnitCards
-                                  ? "Collapse sub-units into this unit"
-                                  : "Show each sub-unit separately"
+                                  ? "Collapse into single unit view"
+                                  : "Show vessel units separately"
                               }
                             >
                               {showSubUnitCards ? "Unit view" : "Show sub-units"}
@@ -1755,7 +1856,7 @@ export function CampaignWallChart({
                       subUnits={
                         showSubUnitCards ? (
                           <div className="space-y-3">
-                            {childList.map((child) => {
+                            {visibleChildList.map((child) => {
                               const childIds = workersByOu.get(child.ou_id) ?? [];
                               const childFilter = getFilter(child.ou_id);
                               const childFa = scopeAssessmentFilterAndSort(
@@ -1816,6 +1917,8 @@ export function CampaignWallChart({
                                       buildListOpen ? onBuildListWallDragEnd : undefined
                                     }
                                     nested
+                                    contentCollapsible={!!ou.is_group_container}
+                                    contentInitiallyExpanded={!ou.is_group_container}
                                     ratingControl={
                                       <UnitRatingControl
                                         ouId={child.ou_id}
@@ -1839,22 +1942,106 @@ export function CampaignWallChart({
                                     }
                                     toolbar={
                                       canWrite ? (
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          variant="outline"
-                                          className="h-7 px-2 text-xs print:hidden"
-                                          onClick={() => {
-                                            setAddWorkerContextOu(child);
-                                            setAddWorkerFormKey((k) => k + 1);
-                                            setAddWorkerOpen(true);
-                                          }}
-                                          title="Add worker to this unit"
-                                        >
-                                          Add worker
-                                        </Button>
+                                        <div className="flex items-center gap-1">
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 px-2 text-xs print:hidden"
+                                            onClick={() => {
+                                              setAddWorkerContextOu(child);
+                                              setAddWorkerFormKey((k) => k + 1);
+                                              setAddWorkerOpen(true);
+                                            }}
+                                            title="Add worker to this unit"
+                                          >
+                                            Add worker
+                                          </Button>
+                                          <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                              <Button type="button" size="icon" variant="ghost" className="h-7 w-7 print:hidden" aria-label="Unit actions">
+                                                <MoreVertical className="h-4 w-4" />
+                                              </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end" className="w-48">
+                                              <DropdownMenuItem
+                                                onClick={() => setSplitTargetOu(child)}
+                                                disabled={(workersByOu.get(child.ou_id) ?? []).length === 0}
+                                              >
+                                                <Layers className="h-4 w-4 mr-2" /> Split into sub-units
+                                              </DropdownMenuItem>
+                                              <DropdownMenuSeparator />
+                                              <DropdownMenuItem
+                                                className="text-destructive focus:text-destructive"
+                                                onClick={() => setDeleteTargetOu(child)}
+                                              >
+                                                <Trash2 className="h-4 w-4 mr-2" /> Delete unit
+                                              </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                          </DropdownMenu>
+                                        </div>
                                       ) : null
                                     }
+                                    subUnits={(() => {
+                                      // Render depth-2 sub-units (grandchildren) when
+                                      // the Phase-2 three-level model is in use.
+                                      const grandchildren = (childrenByParent.get(child.ou_id) ?? []).filter(
+                                        (gc) => !unitVisibility.hiddenOuIds.has(gc.ou_id)
+                                      );
+                                      if (grandchildren.length === 0) return null;
+                                      return (
+                                        <div className="space-y-2">
+                                          {grandchildren.map((gc) => {
+                                            const gcIds = workersByOu.get(gc.ou_id) ?? [];
+                                            const gcFilter = getFilter(gc.ou_id);
+                                            const gcFa = scopeAssessmentFilterAndSort(
+                                              gc.ou_id,
+                                              campaignAssessmentDefault,
+                                              unitAssessmentOverride,
+                                              activityRatingsByActivityId
+                                            );
+                                            const gcFiltered = applyFilters(gcIds, workerById, ratingByWorker, gcFilter, gcFa.activityRatings, gcFa.ratingCtx);
+                                            const gcSorted = applySort(gcFiltered, workerById, ratingByWorker, gcFilter.sort, {
+                                              ...(gcFa.sortAssessment ? { assessmentSort: gcFa.sortAssessment } : {}),
+                                              relationshipLinks: allLinks,
+                                            });
+                                            return (
+                                              <div key={gc.ou_id} data-ou-id={gc.ou_id}>
+                                                <CampaignUnitCard
+                                                  ou={gc}
+                                                  workerCount={gcSorted.length}
+                                                  estimate={gc.total_workers_estimated ?? 0}
+                                                  placeholders={0}
+                                                  assessmentLabel="Cumulative"
+                                                  onWorkerDrop={handleWorkerDrop}
+                                                  dropDisabled={!canWrite}
+                                                  nested
+                                                  contentCollapsible
+                                                  ratingControl={
+                                                    <UnitRatingControl
+                                                      ouId={gc.ou_id}
+                                                      rating={gc.user_rating}
+                                                      canWrite={canWrite}
+                                                      campaignId={campaignId}
+                                                    />
+                                                  }
+                                                  toolbar={
+                                                    canWrite ? (
+                                                      <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs print:hidden"
+                                                        onClick={() => { setAddWorkerContextOu(gc); setAddWorkerFormKey((k) => k + 1); setAddWorkerOpen(true); }}
+                                                        title="Add worker to this sub-unit"
+                                                      >Add worker</Button>
+                                                    ) : null
+                                                  }
+                                                >
+                                                  {gcSorted.map((wid) => renderTile(wid, gc.ou_id, gc.ou_id))}
+                                                </CampaignUnitCard>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      );
+                                    })()}
                                   >
                                     {childSorted.map((wid) => renderTile(wid, child.ou_id, child.ou_id))}
                                   </CampaignUnitCard>

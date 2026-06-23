@@ -7,6 +7,7 @@ import { DataTable, type Column } from "@/components/data-tables/data-table";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ChevronDown, ChevronRight, Layers } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils/cn";
@@ -147,6 +148,8 @@ export function WorkforceListView({
   const [filter, setFilter] = useState<FilterState>(DEFAULT_FILTER);
   const [selection, setSelection] = useState<ReadonlySet<string>>(new Set());
   const [assessment, setAssessment] = useState<AssessmentSelection>({ kind: "cumulative" });
+  const [groupedView, setGroupedView] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
 
   const { data: members = [] } = useQuery({
     queryKey: ["campaign-members-full", campaignId],
@@ -573,6 +576,55 @@ export function WorkforceListView({
     filter.employerIds.size +
     filter.worksiteIds.size;
 
+  // For grouped view: bucket filtered rows by their employer group (ou_group_id
+  // of their primary unit, or "—" for ungrouped/unassigned).
+  const groupedRows = useMemo(() => {
+    if (!groupedView) return null;
+    const buckets = new Map<string, { label: string; ouId: number | null; rows: Row[] }>();
+    const unassignedKey = "__unassigned__";
+    for (const r of filteredRows) {
+      const primaryOu = r.primary_ou_id != null ? ouById.get(r.primary_ou_id) ?? null : null;
+      const containerOuId =
+        primaryOu != null
+          ? ((primaryOu as WallChartOU & { ou_group_id?: number | null }).ou_group_id ??
+             // if primary OU is itself a container, use it directly
+             (primaryOu.is_group_container ? primaryOu.ou_id : null))
+          : null;
+      const key = containerOuId != null ? String(containerOuId) : unassignedKey;
+      if (!buckets.has(key)) {
+        const containerOu = containerOuId != null ? ouById.get(containerOuId) ?? null : null;
+        buckets.set(key, {
+          label: containerOu ? ouDisplayName(containerOu) : "Unassigned / No group",
+          ouId: containerOuId,
+          rows: [],
+        });
+      }
+      buckets.get(key)!.rows.push(r);
+    }
+    // Sort buckets: named groups first (by display_order then name), unassigned last.
+    const named = [...buckets.entries()]
+      .filter(([k]) => k !== unassignedKey)
+      .sort(([, a], [, b]) => {
+        const ouA = a.ouId != null ? ouById.get(a.ouId) : null;
+        const ouB = b.ouId != null ? ouById.get(b.ouId) : null;
+        const ordA = (ouA as WallChartOU & { display_order?: number | null } | null)?.display_order ?? 999;
+        const ordB = (ouB as WallChartOU & { display_order?: number | null } | null)?.display_order ?? 999;
+        if (ordA !== ordB) return ordA - ordB;
+        return a.label.localeCompare(b.label);
+      });
+    const unassigned = buckets.get(unassignedKey);
+    return unassigned ? [...named, [unassignedKey, unassigned] as const] : named;
+  }, [groupedView, filteredRows, ouById]);
+
+  const toggleGroup = useCallback((key: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
   return (
     <Card>
       <CardContent className="py-4 space-y-3">
@@ -601,6 +653,19 @@ export function WorkforceListView({
               />
             </PopoverContent>
           </Popover>
+          {filterOptions.groups.length > 0 && (
+            <Button
+              type="button"
+              variant={groupedView ? "secondary" : "outline"}
+              size="sm"
+              className="h-8 text-xs gap-1"
+              onClick={() => { setGroupedView((v) => !v); setCollapsedGroups(new Set()); }}
+              title={groupedView ? "Switch to flat list" : "Group rows by employer"}
+            >
+              <Layers className="h-3.5 w-3.5" />
+              {groupedView ? "Flat list" : "Group by employer"}
+            </Button>
+          )}
         </div>
         <WorkforceBulkToolbar
           campaignId={campaignId}
@@ -610,6 +675,114 @@ export function WorkforceListView({
           onClearSelection={() => setSelection(new Set())}
           onActionComplete={() => setSelection(new Set())}
         />
+        {groupedView && groupedRows ? (
+          <div className="space-y-2">
+            {groupedRows.map(([key, bucket]) => {
+              const isCollapsed = collapsedGroups.has(key);
+              const allSelected = bucket.rows.length > 0 && bucket.rows.every((r) => selection.has(r.id));
+              return (
+                <div key={key} className="border rounded-md overflow-hidden">
+                  {/* Group header */}
+                  <button
+                    type="button"
+                    className="w-full flex items-center gap-2 px-3 py-2 bg-muted/40 hover:bg-muted/60 text-left"
+                    onClick={() => toggleGroup(key)}
+                  >
+                    {isCollapsed ? (
+                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    )}
+                    <span className="font-semibold text-sm flex-1 truncate">{bucket.label}</span>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {bucket.rows.length} worker{bucket.rows.length !== 1 ? "s" : ""}
+                    </span>
+                    {/* Roll-up rating dots */}
+                    <span className="flex items-center gap-1 shrink-0">
+                      {(() => {
+                        const vals = bucket.rows.map((r) => r.cumulative).filter((v): v is number => v != null);
+                        if (vals.length === 0) return null;
+                        const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+                        return <CumulativeRatingDot value={avg} />;
+                      })()}
+                    </span>
+                  </button>
+                  {/* Group rows */}
+                  {!isCollapsed && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b bg-muted/20">
+                            <th className="w-8 px-2 py-1.5">
+                              <Checkbox
+                                checked={allSelected}
+                                onCheckedChange={(v) =>
+                                  toggleAllVisible(bucket.rows.map((r) => r.id), !!v)
+                                }
+                              />
+                            </th>
+                            <th className="px-3 py-1.5 text-left text-xs font-semibold text-muted-foreground">Worker</th>
+                            <th className="px-3 py-1.5 text-left text-xs font-semibold text-muted-foreground">Unit</th>
+                            <th className="px-3 py-1.5 text-left text-xs font-semibold text-muted-foreground">Occupation</th>
+                            <th className="px-3 py-1.5 text-left text-xs font-semibold text-muted-foreground">Role</th>
+                            <th className="px-3 py-1.5 text-left text-xs font-semibold text-muted-foreground">Membership</th>
+                            <th className="px-3 py-1.5 text-right text-xs font-semibold text-muted-foreground">Rating</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bucket.rows.map((r) => (
+                            <tr
+                              key={r.id}
+                              className={cn(
+                                "border-b last:border-0 hover:bg-muted/30 cursor-pointer",
+                                selection.has(r.id) && "bg-primary/5"
+                              )}
+                              onClick={() => toggleRow(r.id, !selection.has(r.id))}
+                            >
+                              <td className="px-2 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                                <Checkbox
+                                  checked={selection.has(r.id)}
+                                  onCheckedChange={(v) => toggleRow(r.id, !!v)}
+                                />
+                              </td>
+                              <td className="px-3 py-1.5">
+                                <div className="flex flex-col gap-0.5 min-w-0">
+                                  <button
+                                    type="button"
+                                    className="text-left font-medium hover:underline flex items-center gap-1.5 min-w-0"
+                                    onClick={(e) => { e.stopPropagation(); workerDetail?.openWorkerDetail(r.worker_id); }}
+                                  >
+                                    <CumulativeRatingDot value={r.cumulative} />
+                                    <span className="truncate">{r.full_name}</span>
+                                  </button>
+                                  <WorkerBadgeRow
+                                    worker={r.worker}
+                                    canWrite={canWrite}
+                                    showBargainingRepBadge
+                                    onContactBadgeClick={(wid, field) =>
+                                      workerDetail?.openWorkerDetail(wid, { focusField: field })
+                                    }
+                                  />
+                                </div>
+                              </td>
+                              <td className="px-3 py-1.5 text-xs">{r.unit_name}</td>
+                              <td className="px-3 py-1.5 text-xs text-muted-foreground">{r.occupation_name}</td>
+                              <td className="px-3 py-1.5 text-xs">{r.union_role_name}</td>
+                              <td className="px-3 py-1.5 text-xs text-muted-foreground">{r.membership_name}</td>
+                              <td className="px-3 py-1.5 text-right">
+                                <RatingPill value={r.cumulative} />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
         <DataTable<Row>
           data={filteredRows}
           columns={columns}
@@ -630,6 +803,7 @@ export function WorkforceListView({
             onToggleAllVisible: toggleAllVisible,
           }}
         />
+        )}
       </CardContent>
     </Card>
   );

@@ -173,8 +173,12 @@ export function CampaignWorkerAssignmentPicker({
     },
   });
 
+  // NB: distinct query keys (not the canonical ["campaign-ous", campaignId] /
+  // ["campaign-worker-ou", ...]). This picker selects only a subset of columns;
+  // sharing those keys would poison the wall-chart / units caches with rows that
+  // lack parent_ou_id/ou_group_id (breaking the group hierarchy) and is_primary.
   const { data: ous = [] } = useQuery({
-    queryKey: ["campaign-ous", campaignId],
+    queryKey: ["campaign-ou-ids", campaignId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaign_organising_units")
@@ -188,7 +192,7 @@ export function CampaignWorkerAssignmentPicker({
   const ouIdsKey = ous.map((o) => o.ou_id).join(",");
 
   const { data: ouAssignments = [] } = useQuery({
-    queryKey: ["campaign-worker-ou", campaignId, ouIdsKey],
+    queryKey: ["campaign-ou-ids", campaignId, "assignments", ouIdsKey],
     queryFn: async () => {
       const ouIds = ous.map((o) => o.ou_id);
       if (ouIds.length === 0) return [] as OuAssignmentRow[];

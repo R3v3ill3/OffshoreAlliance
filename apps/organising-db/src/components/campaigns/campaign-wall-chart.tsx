@@ -1595,6 +1595,38 @@ export function CampaignWallChart({
                           }
                         )
                       : metricsByOu.get(ou.ou_id);
+                  // Group-level roll-up summary for an employer group: aggregate the
+                  // container's own + every sub-unit's workers so the group card shows
+                  // the same summary metrics (as a dropdown) that sub-units already do.
+                  const groupRollupIds = hasSubUnits
+                    ? (() => {
+                        const seen = new Set<number>();
+                        const out: number[] = [];
+                        const add = (wid: number) => {
+                          if (seen.has(wid)) return;
+                          seen.add(wid);
+                          out.push(wid);
+                        };
+                        for (const wid of workersByOu.get(ou.ou_id) ?? []) add(wid);
+                        for (const child of childList)
+                          for (const wid of workersByOu.get(child.ou_id) ?? []) add(wid);
+                        return out;
+                      })()
+                    : [];
+                  const groupMetrics = hasSubUnits
+                    ? computeMetrics(
+                        groupRollupIds,
+                        workerById,
+                        ratingByWorker,
+                        participationPredicate,
+                        buildAssessmentMetricsInput(effScope, activityRatingsByActivityId),
+                        {
+                          multiUnitWorkerIds: new Set(
+                            groupRollupIds.filter((id) => (unitsByWorker.get(id)?.length ?? 0) > 1)
+                          ),
+                        }
+                      )
+                    : null;
                   const allInUnitSelected =
                     sorted.length > 0 &&
                     sorted.every((wid) => selection.has(sourceOuForWorker(wid), wid));
@@ -1655,8 +1687,19 @@ export function CampaignWallChart({
                           campaignId={campaignId}
                         />
                       }
+                      summaryCollapsible={hasSubUnits}
                       summary={
-                        unitMetrics && ids.length > 0 ? (
+                        hasSubUnits ? (
+                          groupMetrics && groupRollupIds.length > 0 ? (
+                            <UnitSummaryMetrics
+                              metrics={groupMetrics}
+                              mode={displayMode}
+                              compact
+                              assessmentTitle={scopeAssessmentTitle}
+                              participationLabel={participationSourceLabel(participationSource)}
+                            />
+                          ) : null
+                        ) : unitMetrics && ids.length > 0 ? (
                           <UnitSummaryMetrics
                             metrics={unitMetrics}
                             mode={displayMode}

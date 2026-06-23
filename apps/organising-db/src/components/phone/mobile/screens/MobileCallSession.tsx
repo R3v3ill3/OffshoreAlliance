@@ -28,6 +28,10 @@ import { MobileOutcomeWheel } from "@/components/phone/mobile/in-call/MobileOutc
 import { MobileCallbackPicker } from "@/components/phone/mobile/in-call/MobileCallbackPicker";
 import { useScriptVariables } from "@/lib/phone/session/use-script-variables";
 import { useClaimAutoRenew } from "@/lib/phone/session/use-claim-auto-renew";
+import {
+  buildCallAttemptPayload,
+  buildSkipAttemptPayload,
+} from "@/lib/phone/session/build-attempt-payload";
 import { hapticError, hapticSuccess, hapticTap } from "@/lib/phone/haptics";
 import { dialerTelemetry } from "@/lib/phone/telemetry";
 import type { CallSessionDataSource } from "@/lib/phone/session/types";
@@ -36,9 +40,6 @@ import type {
   CallDisposition,
   CallListItemWithWorker,
   CallScriptSection,
-  CapturedAssessmentRatingPayload,
-  CapturedCtaRatingPayload,
-  RecordCallAttemptRequest,
   SupportLevel,
 } from "@/types/planner-types";
 
@@ -207,51 +208,26 @@ export function MobileCallSession({
       ? Math.round((Date.now() - callStartTime.current.getTime()) / 1000)
       : null;
 
-    const stepOutcomes = sections.map((section, index) => ({
-      section_id: section.section_id,
-      reached: stepReached.has(index),
-      outcome_value: null,
-      notes: stepNotes[index] || null,
-      sort_order: index,
-    }));
-
-    const ctaPayload: CapturedCtaRatingPayload[] = Array.from(ctaRatings.entries())
-      .filter(([, value]) => value.rating != null || value.binary_value != null)
-      .map(([id, value]) => ({
-        cta_ambition_id: id,
-        rating: value.rating,
-        binary_value: value.binary_value,
-        notes: value.notes,
-      }));
-
-    const assessmentPayload: CapturedAssessmentRatingPayload[] = Array.from(
-      assessmentValues.entries(),
-    )
-      .filter(([, value]) => value.rating != null || (value.notes ?? "").trim().length > 0)
-      .map(([activity_id, value]) => ({
-        activity_id,
-        rating: value.rating,
-        notes: value.notes,
-      }));
-
-    const attempt: RecordCallAttemptRequest = {
-      list_item_id: contact.item_id,
-      script_id: activeScript?.script_id ?? bootstrap.list.script_id ?? null,
-      dial_disposition: flowState.dialDisposition ?? "no_answer",
-      call_disposition: callDisposition,
-      overall_notes: notes.trim() || null,
-      callback_datetime: callbackAt,
-      support_level_assessed: supportLevel,
-      cta_response: null,
-      duration_seconds: duration,
-      outcome_classification: outcome,
-      step_outcomes: isConnected ? stepOutcomes : [],
+    const attempt = buildCallAttemptPayload({
+      contact,
+      scriptId: activeScript?.script_id ?? bootstrap.list.script_id ?? null,
+      dialDisposition: flowState.dialDisposition,
+      callDisposition,
+      notes,
+      callbackAt,
+      supportLevel,
+      outcome,
+      durationSeconds: duration,
+      sections,
+      stepReached,
+      stepNotes,
+      isConnected,
       objections: flowState.capturedObjections,
       issues: flowState.capturedIssues,
-      cta_ratings: ctaPayload,
-      assessment_ratings: assessmentPayload,
-      action_id: bootstrap.actionId,
-    };
+      ctaRatings,
+      assessmentValues,
+      actionId: bootstrap.actionId,
+    });
 
     try {
       const result = await dataSource.recordAttempt(attempt);
@@ -302,14 +278,13 @@ export function MobileCallSession({
 
   const handleSkipWithReason = useCallback(
     async (reason: string) => {
-      const attempt: RecordCallAttemptRequest = {
-        list_item_id: contact.item_id,
-        script_id: activeScript?.script_id ?? bootstrap.list.script_id ?? null,
-        dial_disposition: "no_answer",
-        overall_notes: `[skipped: ${reason}]${notes ? `\n${notes}` : ""}`,
-        outcome_classification: "unable_to_reach",
-        action_id: bootstrap.actionId,
-      };
+      const attempt = buildSkipAttemptPayload({
+        contact,
+        scriptId: activeScript?.script_id ?? bootstrap.list.script_id ?? null,
+        reason,
+        notes,
+        actionId: bootstrap.actionId,
+      });
       try {
         await dataSource.recordAttempt(attempt);
         dialerTelemetry.skipUsed({ item_id: contact.item_id, reason });

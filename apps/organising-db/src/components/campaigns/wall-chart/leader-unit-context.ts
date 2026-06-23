@@ -40,8 +40,11 @@ export function useLeaderUnitContext(args: {
   const supabase = createClient();
   const campaignId = args.campaignId;
 
+  // Distinct keys — this context orders OUs differently (by name) and keys by a
+  // stringified id, so it must not share the canonical ["campaign-ous"] /
+  // ["campaign-worker-ou"] caches that drive the wall-chart hierarchy + ordering.
   const { data: ous = [] } = useQuery({
-    queryKey: ["campaign-ous", String(campaignId ?? "")],
+    queryKey: ["leader-ctx-ous", String(campaignId ?? "")],
     queryFn: async () => {
       if (campaignId == null) return [] as WallChartOU[];
       const { data, error } = await supabase
@@ -58,7 +61,7 @@ export function useLeaderUnitContext(args: {
   const ouIdsKey = ous.map((o) => o.ou_id).join(",");
 
   const { data: assignments = [] } = useQuery({
-    queryKey: ["campaign-worker-ou", String(campaignId ?? ""), ouIdsKey],
+    queryKey: ["leader-ctx-ous", String(campaignId ?? ""), "assignments", ouIdsKey],
     queryFn: async () => {
       if (campaignId == null || ous.length === 0) return [] as WallChartOUAssignment[];
       const ids = ous.map((o) => o.ou_id);

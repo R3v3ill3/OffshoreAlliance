@@ -1,13 +1,12 @@
 "use client";
 
-import { CheckCircle2, KeyRound, Loader2, Search, UserCircle, UserCheck } from "lucide-react";
+import { CheckCircle2, KeyRound, Loader2, Search, UserCheck, UserCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { tokens } from "@/lib/ui/dialer-tokens";
 import { usePasswordGate } from "@/lib/phone/session/use-password-gate";
 
-interface MobilePasswordGateProps {
+interface DesktopGateProps {
   token: string;
   campaignName: string | null;
   callListName: string | null;
@@ -16,26 +15,11 @@ interface MobilePasswordGateProps {
 }
 
 /**
- * Mobile password + identity gate.
- *
- * Identity has three states:
- *  1. `designated` — the token was issued specifically for this worker; show
- *     a "Welcome, [Name] — is that you?" confirmation and skip the search.
- *  2. `search`  — debounced server-side search (≥2 chars) plus a "not listed"
- *     free-text fallback.  Also shown when the caller clicks "Not me" on a
- *     designated token.
- *  3. `loading` — transient while identity-options loads.
- *
- * All gate logic lives in `usePasswordGate`; this component is the mobile
- * layout. The desktop dialer renders the same logic with `DesktopGate`.
+ * Desktop password + identity gate. Centred card layout backed by the shared
+ * `usePasswordGate` hook (same logic as the mobile gate: designated /
+ * remembered / search identity, debounced server search, lockout handling).
  */
-export function MobilePasswordGate({
-  token,
-  campaignName,
-  callListName,
-  onSuccess,
-}: MobilePasswordGateProps) {
-  const gate = usePasswordGate(token, onSuccess);
+export function DesktopGate({ token, campaignName, callListName, onSuccess }: DesktopGateProps) {
   const {
     password,
     setPassword,
@@ -55,18 +39,17 @@ export function MobilePasswordGate({
     clearWorker,
     onNameInputChange,
     submit,
-  } = gate;
+  } = usePasswordGate(token, onSuccess);
 
   return (
-    <div className={tokens.layout.mobileScreen}>
-      <div className="px-5 pt-6">
-        {/* ── Header ── */}
-        <div className="mb-5 flex items-start gap-3">
+    <div className="flex min-h-[100dvh] items-center justify-center bg-muted/20 px-4 py-10">
+      <div className="w-full max-w-md rounded-2xl border bg-card p-8 shadow-sm">
+        <div className="mb-6 flex items-start gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
             <KeyRound className="h-6 w-6" />
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className={tokens.type.hero}>Start calling</h1>
+            <h1 className="text-2xl font-semibold leading-tight tracking-tight">Start calling</h1>
             <p className="text-sm text-muted-foreground">
               {campaignName ? campaignName : "Phone calling action"}
               {callListName ? ` · ${callListName}` : ""}
@@ -91,8 +74,7 @@ export function MobilePasswordGate({
                 Loading…
               </div>
             ) : identityMode.kind === "designated" ? (
-              /* ── Designated / remembered greeting ── */
-              <div className="rounded-xl border bg-card px-4 py-3">
+              <div className="rounded-xl border bg-background px-4 py-3">
                 <div className="flex items-start gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                     {isDesignated ? (
@@ -133,9 +115,7 @@ export function MobilePasswordGate({
                 </button>
               </div>
             ) : (
-              /* ── Search mode ── */
               <div className="space-y-1.5">
-                {/* Worker selected from search */}
                 {sessionWorkerId != null ? (
                   <div className="flex items-center gap-2 rounded-xl border bg-primary/5 px-3 py-2.5 text-sm">
                     <UserCheck className="h-4 w-4 shrink-0 text-primary" />
@@ -164,7 +144,7 @@ export function MobilePasswordGate({
                       />
                     </div>
                     {searchResults.length > 0 ? (
-                      <div className="max-h-44 overflow-y-auto rounded-xl border bg-card">
+                      <div className="max-h-52 overflow-y-auto rounded-xl border bg-background">
                         {searchResults.map((opt) => (
                           <button
                             key={opt.worker_id}
@@ -201,33 +181,33 @@ export function MobilePasswordGate({
             )}
           </div>
 
-          {/* ── Your name field (always visible; pre-filled from selection) ── */}
+          {/* ── Your name field ── */}
           <div className="space-y-1.5">
-            <Label htmlFor="caller-name">
+            <Label htmlFor="desktop-caller-name">
               {identityMode.kind === "search" && sessionWorkerId == null
                 ? "Your name (if not listed above)"
                 : "Your name"}
             </Label>
             <Input
-              id="caller-name"
+              id="desktop-caller-name"
               autoComplete="name"
               value={sessionLabel}
               onChange={(e) => onNameInputChange(e.target.value)}
               placeholder="Name shown to organisers"
-              className="h-12 text-base"
+              className="h-11"
             />
           </div>
 
           {/* ── Password ── */}
           <div className="space-y-1.5">
-            <Label htmlFor="call-password">Password</Label>
+            <Label htmlFor="desktop-call-password">Password</Label>
             <Input
-              id="call-password"
+              id="desktop-call-password"
               type="password"
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="h-12 text-base"
+              className="h-11"
             />
           </div>
 
@@ -236,29 +216,19 @@ export function MobilePasswordGate({
               {error}
             </p>
           ) : null}
-        </form>
-      </div>
 
-      <div className={tokens.layout.mobileActionBar}>
-        <Button
-          type="button"
-          className={tokens.buttons.actionPrimary}
-          disabled={submitting || !password}
-          onClick={() => void submit()}
-        >
-          {submitting ? (
-            <Loader2
-              className="h-5 w-5 animate-spin motion-reduce:animate-none"
-              aria-hidden="true"
-            />
-          ) : (
-            <KeyRound className="h-5 w-5" aria-hidden="true" />
-          )}
-          Start calling
-        </Button>
-        <p className="text-center text-[11px] text-muted-foreground">
-          Your name is shown to organisers in the live action dashboard.
-        </p>
+          <Button type="submit" className="h-11 w-full gap-2" disabled={submitting || !password}>
+            {submitting ? (
+              <Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            ) : (
+              <KeyRound className="h-5 w-5" aria-hidden="true" />
+            )}
+            Start calling
+          </Button>
+          <p className="text-center text-[11px] text-muted-foreground">
+            Your name is shown to organisers in the live action dashboard.
+          </p>
+        </form>
       </div>
     </div>
   );

@@ -18,3 +18,6 @@ export * from "./use-claim-auto-renew";
 export * from "./use-share-bootstrap";
 export * from "./share-data-source";
 export * from "./use-script-variables";
+export * from "./use-dialer-surface";
+export * from "./use-password-gate";
+export * from "./build-attempt-payload";

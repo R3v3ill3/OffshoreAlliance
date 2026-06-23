@@ -653,11 +653,11 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
             variant="outline"
             size="sm"
             className="h-8 text-xs"
-            title="Create a shareable mobile-calling link for this list"
+            title="Create a shareable calling link for this list — opens a phone or desktop layout automatically"
             onClick={() => setShareOpen(true)}
           >
             <Share2 className="h-3.5 w-3.5 mr-1" />
-            Share for mobile
+            Share call list
           </Button>
         )}
 
@@ -1105,7 +1105,7 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
       )}
 
       <IssueLinkDialog
-        title="Share for mobile calling"
+        title="Share this call list"
         target={
           shareOpen && list
             ? {
@@ -1116,7 +1116,7 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
             : null
         }
         workerSearchEndpoint={`/api/campaigns/${campaignId}/workers`}
-        passwordHelp="You can share this one link with multiple callers — each person picks their name on sign-in and the system stops anyone from calling the same contact twice."
+        passwordHelp="One link works on phone and desktop — it opens a tap-to-dial layout on phones and a record-the-outcome layout on computers. Share it with multiple callers; each person picks their name on sign-in and the system stops anyone from calling the same contact twice."
         onClose={() => setShareOpen(false)}
         onIssued={(result) => {
           setShareOpen(false)
@@ -1125,7 +1125,7 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
       />
 
       <IssuedLinkResultDialog
-        title="Mobile-call link ready"
+        title="Call link ready"
         result={shareIssueResult}
         onClose={() => setShareIssueResult(null)}
       />

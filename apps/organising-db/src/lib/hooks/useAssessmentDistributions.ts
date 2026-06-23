@@ -63,8 +63,12 @@ export function useAssessmentDistributions(campaignId: string) {
   });
 
   // 3. Organising units
+  // Distinct keys (not the canonical ["campaign-ous"] / ["campaign-worker-ou"]).
+  // This hook selects a column subset (no parent_ou_id / ou_group_id), so sharing
+  // those keys would poison the wall-chart / units caches and flatten the group
+  // hierarchy — exactly the "renders flat until you refresh the units tab" bug.
   const { data: ous = [], isLoading: loadingOus } = useQuery({
-    queryKey: ["campaign-ous", campaignId],
+    queryKey: ["assessment-dist-ous", campaignId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaign_organising_units")
@@ -80,7 +84,7 @@ export function useAssessmentDistributions(campaignId: string) {
 
   // 4. Worker-OU assignments
   const { data: ouAssign = [], isLoading: loadingOuAssign } = useQuery({
-    queryKey: ["campaign-worker-ou", campaignId, ouIdsKey],
+    queryKey: ["assessment-dist-ous", campaignId, "assignments", ouIdsKey],
     queryFn: async () => {
       if (ous.length === 0) return [];
       const { data, error } = await supabase

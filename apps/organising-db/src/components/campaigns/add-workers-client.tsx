@@ -149,8 +149,11 @@ export function AddWorkersClient({ campaignId, campaignName }: AddWorkersClientP
     enabled: !!user,
   });
 
+  // Distinct key — this only selects a column subset, so it must not share the
+  // canonical ["campaign-ous", cid] cache (which carries the full OU shape used
+  // for the group hierarchy on the wall chart / units views).
   const { data: campaignOus = [] } = useQuery({
-    queryKey: ["campaign-ous", cid],
+    queryKey: ["campaign-ou-min", cid],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaign_organising_units")

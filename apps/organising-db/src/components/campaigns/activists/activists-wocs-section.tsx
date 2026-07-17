@@ -18,8 +18,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ActivistRegister } from "./activist-register";
 import { ActivistTaskingBoard } from "./activist-tasking-board";
 import { WocsPanel } from "./wocs-panel";
+import { StructureTestsPanel } from "./structure-tests-panel";
 
-const VIEWS = ["register", "tasking", "wocs"] as const;
+const VIEWS = ["register", "tasking", "wocs", "structure-tests"] as const;
 type SectionView = (typeof VIEWS)[number];
 
 export function ActivistsWocsSection({
@@ -53,6 +54,7 @@ export function ActivistsWocsSection({
         <TabsTrigger value="register">Register</TabsTrigger>
         <TabsTrigger value="tasking">4A Tasking</TabsTrigger>
         <TabsTrigger value="wocs">WOCs</TabsTrigger>
+        <TabsTrigger value="structure-tests">Structure Tests</TabsTrigger>
       </TabsList>
 
       <TabsContent value="register">
@@ -68,6 +70,12 @@ export function ActivistsWocsSection({
       <TabsContent value="wocs">
         {view === "wocs" && (
           <WocsPanel campaignId={campaignId} canWrite={canWrite} />
+        )}
+      </TabsContent>
+
+      <TabsContent value="structure-tests">
+        {view === "structure-tests" && (
+          <StructureTestsPanel campaignId={campaignId} canWrite={canWrite} />
         )}
       </TabsContent>
     </Tabs>

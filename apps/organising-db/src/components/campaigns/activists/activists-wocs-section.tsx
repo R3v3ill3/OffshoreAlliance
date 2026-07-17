@@ -17,8 +17,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ActivistRegister } from "./activist-register";
 import { ActivistTaskingBoard } from "./activist-tasking-board";
+import { WocsPanel } from "./wocs-panel";
 
-const VIEWS = ["register", "tasking"] as const;
+const VIEWS = ["register", "tasking", "wocs"] as const;
 type SectionView = (typeof VIEWS)[number];
 
 export function ActivistsWocsSection({
@@ -51,6 +52,7 @@ export function ActivistsWocsSection({
       <TabsList className="mb-4">
         <TabsTrigger value="register">Register</TabsTrigger>
         <TabsTrigger value="tasking">4A Tasking</TabsTrigger>
+        <TabsTrigger value="wocs">WOCs</TabsTrigger>
       </TabsList>
 
       <TabsContent value="register">
@@ -60,6 +62,12 @@ export function ActivistsWocsSection({
       <TabsContent value="tasking">
         {view === "tasking" && (
           <ActivistTaskingBoard campaignId={campaignId} canWrite={canWrite} />
+        )}
+      </TabsContent>
+
+      <TabsContent value="wocs">
+        {view === "wocs" && (
+          <WocsPanel campaignId={campaignId} canWrite={canWrite} />
         )}
       </TabsContent>
     </Tabs>

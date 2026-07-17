@@ -141,6 +141,7 @@ export function ActivistTaskDialog({
   workerOptions,
   open,
   onOpenChange,
+  wocMeetingId,
 }: {
   campaignId: string;
   canWrite: boolean;
@@ -150,6 +151,8 @@ export function ActivistTaskDialog({
   workerOptions: WorkerOption[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** When creating from a WOC meeting, link the task to that meeting. */
+  wocMeetingId?: number | null;
 }) {
   if (!open) return null;
   return (
@@ -161,6 +164,7 @@ export function ActivistTaskDialog({
       defaultWorkerId={defaultWorkerId}
       workerOptions={workerOptions}
       onOpenChange={onOpenChange}
+      wocMeetingId={wocMeetingId}
     />
   );
 }
@@ -172,6 +176,7 @@ function ActivistTaskDialogInner({
   defaultWorkerId,
   workerOptions,
   onOpenChange,
+  wocMeetingId,
 }: {
   campaignId: string;
   canWrite: boolean;
@@ -179,6 +184,7 @@ function ActivistTaskDialogInner({
   defaultWorkerId?: number;
   workerOptions: WorkerOption[];
   onOpenChange: (open: boolean) => void;
+  wocMeetingId?: number | null;
 }) {
   const supabase = createClient();
   const queryClient = useQueryClient();
@@ -243,6 +249,7 @@ function ActivistTaskDialogInner({
             insert: {
               campaign_id: Number(campaignId),
               worker_id: Number(form.worker_id),
+              set_in_woc_meeting_id: wocMeetingId ?? null,
               ...shared,
             },
           },

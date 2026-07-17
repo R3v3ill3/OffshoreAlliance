@@ -70,6 +70,7 @@ import { SectionPlansTab } from "@/components/campaigns/section-planning/Section
 import { CampaignStageCoveragePanel } from "@/components/campaigns/CampaignStageCoveragePanel";
 import { CampaignWorkerDetailProvider } from "@/components/campaigns/campaign-worker-detail-provider";
 import { ActivistsWocsSection } from "@/components/campaigns/activists/activists-wocs-section";
+import { CoveragePanel } from "@/components/campaigns/activists/coverage-panel";
 import {
   VALID_TABS,
   resolveTabParams,
@@ -702,8 +703,11 @@ export default function CampaignDetailPage() {
               <WorkforceBoard campaignId={id} canWrite={!!canWrite} />
             </TabsContent>
 
-            <TabsContent value="campaign-units">
+            <TabsContent value="campaign-units" className="space-y-6">
               <CampaignUnitsSection campaignId={id} canWrite={!!canWrite} />
+              {activeSub === "campaign-units" && (
+                <CoveragePanel campaignId={id} canWrite={!!canWrite} />
+              )}
             </TabsContent>
 
             <TabsContent value="activists">

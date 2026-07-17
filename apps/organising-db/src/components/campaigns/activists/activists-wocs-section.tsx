@@ -16,8 +16,9 @@ import { useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ActivistRegister } from "./activist-register";
+import { ActivistTaskingBoard } from "./activist-tasking-board";
 
-const VIEWS = ["register"] as const;
+const VIEWS = ["register", "tasking"] as const;
 type SectionView = (typeof VIEWS)[number];
 
 export function ActivistsWocsSection({
@@ -49,10 +50,17 @@ export function ActivistsWocsSection({
     <Tabs value={view} onValueChange={setView}>
       <TabsList className="mb-4">
         <TabsTrigger value="register">Register</TabsTrigger>
+        <TabsTrigger value="tasking">4A Tasking</TabsTrigger>
       </TabsList>
 
       <TabsContent value="register">
         <ActivistRegister campaignId={campaignId} canWrite={canWrite} />
+      </TabsContent>
+
+      <TabsContent value="tasking">
+        {view === "tasking" && (
+          <ActivistTaskingBoard campaignId={campaignId} canWrite={canWrite} />
+        )}
       </TabsContent>
     </Tabs>
   );

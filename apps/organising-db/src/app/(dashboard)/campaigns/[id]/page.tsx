@@ -69,6 +69,7 @@ import { LibrarySection } from "@/components/campaigns/library/campaign-library"
 import { SectionPlansTab } from "@/components/campaigns/section-planning/SectionPlansTab";
 import { CampaignStageCoveragePanel } from "@/components/campaigns/CampaignStageCoveragePanel";
 import { CampaignWorkerDetailProvider } from "@/components/campaigns/campaign-worker-detail-provider";
+import { ActivistsWocsSection } from "@/components/campaigns/activists/activists-wocs-section";
 import {
   VALID_TABS,
   resolveTabParams,
@@ -583,6 +584,7 @@ export default function CampaignDetailPage() {
               <TabsTrigger value="campaign-units">Campaign Units</TabsTrigger>
               <TabsTrigger value="universe">Scope</TabsTrigger>
               <TabsTrigger value="assessments">Assessments</TabsTrigger>
+              <TabsTrigger value="activists">Activists &amp; WOCs</TabsTrigger>
               <TabsTrigger value="foundational-readiness">Foundational Readiness</TabsTrigger>
             </TabsList>
 
@@ -702,6 +704,12 @@ export default function CampaignDetailPage() {
 
             <TabsContent value="campaign-units">
               <CampaignUnitsSection campaignId={id} canWrite={!!canWrite} />
+            </TabsContent>
+
+            <TabsContent value="activists">
+              {activeSub === "activists" && (
+                <ActivistsWocsSection campaignId={id} canWrite={!!canWrite} />
+              )}
             </TabsContent>
 
             <TabsContent value="foundational-readiness">

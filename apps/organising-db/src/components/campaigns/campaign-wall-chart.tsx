@@ -21,6 +21,12 @@ import {
   useCampaignWorkerDetail,
 } from "./campaign-worker-detail-provider";
 import { CampaignUnitCard } from "./wall-chart/campaign-unit-card";
+import { UnitCoverageBadge } from "./activists/unit-coverage-badge";
+import {
+  useCoverageMap,
+  useWocRepresentationByUnit,
+} from "./activists/use-coverage-data";
+import type { CoverageMapRow } from "./activists/types";
 import { UnitRatingControl } from "./wall-chart/unit-rating-control";
 import { WorkerTile } from "./wall-chart/worker-tile";
 import {
@@ -333,6 +339,18 @@ export function CampaignWallChart({
 
   const { data: allLinks = [] } = useAllLeaderLinks(campaignId);
   const unitsContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Coverage Map + WOC representation signals for unit-card badges
+  // (own query keys — never the canonical ["campaign-ous"] cache).
+  const { data: coverageRows = [] } = useCoverageMap(campaignId);
+  const { byUnit: wocRepByUnit } = useWocRepresentationByUnit(campaignId);
+  const coverageByOu = useMemo(() => {
+    const m = new Map<number, CoverageMapRow>();
+    for (const r of coverageRows) {
+      if (r.ou_id != null) m.set(r.ou_id, r);
+    }
+    return m;
+  }, [coverageRows]);
 
   const { data: members = [] } = useQuery({
     queryKey: ["campaign-members-full", campaignId],
@@ -1664,18 +1682,24 @@ export function CampaignWallChart({
                         buildListOpen ? onBuildListWallDragEnd : undefined
                       }
                       headerBadges={
-                        hasSubUnits ? (
-                          <Badge variant="secondary" className="text-[10px] gap-1">
-                            <Layers className="h-3 w-3" />
-                            {childList.length} sub-unit
-                            {childList.length === 1 ? "" : "s"}
-                            {visibleChildList.length < childList.length && (
-                              <span className="text-muted-foreground">
-                                {" "}({visibleChildList.length} visible)
-                              </span>
-                            )}
-                          </Badge>
-                        ) : null
+                        <>
+                          {hasSubUnits && (
+                            <Badge variant="secondary" className="text-[10px] gap-1">
+                              <Layers className="h-3 w-3" />
+                              {childList.length} sub-unit
+                              {childList.length === 1 ? "" : "s"}
+                              {visibleChildList.length < childList.length && (
+                                <span className="text-muted-foreground">
+                                  {" "}({visibleChildList.length} visible)
+                                </span>
+                              )}
+                            </Badge>
+                          )}
+                          <UnitCoverageBadge
+                            coverage={coverageByOu.get(ou.ou_id) ?? null}
+                            wocState={wocRepByUnit.get(ou.ou_id) ?? null}
+                          />
+                        </>
                       }
                       ratingControl={
                         <UnitRatingControl
@@ -1919,6 +1943,12 @@ export function CampaignWallChart({
                                     nested
                                     contentCollapsible={!!ou.is_group_container}
                                     contentInitiallyExpanded={!ou.is_group_container}
+                                    headerBadges={
+                                      <UnitCoverageBadge
+                                        coverage={coverageByOu.get(child.ou_id) ?? null}
+                                        wocState={wocRepByUnit.get(child.ou_id) ?? null}
+                                      />
+                                    }
                                     ratingControl={
                                       <UnitRatingControl
                                         ouId={child.ou_id}
@@ -2017,6 +2047,12 @@ export function CampaignWallChart({
                                                   dropDisabled={!canWrite}
                                                   nested
                                                   contentCollapsible
+                                                  headerBadges={
+                                                    <UnitCoverageBadge
+                                                      coverage={coverageByOu.get(gc.ou_id) ?? null}
+                                                      wocState={wocRepByUnit.get(gc.ou_id) ?? null}
+                                                    />
+                                                  }
                                                   ratingControl={
                                                     <UnitRatingControl
                                                       ouId={gc.ou_id}

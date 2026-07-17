@@ -69,6 +69,9 @@ import { LibrarySection } from "@/components/campaigns/library/campaign-library"
 import { SectionPlansTab } from "@/components/campaigns/section-planning/SectionPlansTab";
 import { CampaignStageCoveragePanel } from "@/components/campaigns/CampaignStageCoveragePanel";
 import { CampaignWorkerDetailProvider } from "@/components/campaigns/campaign-worker-detail-provider";
+import { ActivistsWocsSection } from "@/components/campaigns/activists/activists-wocs-section";
+import { CoveragePanel } from "@/components/campaigns/activists/coverage-panel";
+import { ActivistOverviewCard } from "@/components/campaigns/activists/activist-overview-card";
 import {
   VALID_TABS,
   resolveTabParams,
@@ -406,6 +409,7 @@ export default function CampaignDetailPage() {
 
         <TabsContent value="overview" className="space-y-6">
           <CampaignOverviewMetrics campaignId={campaignId} campaignLabel={campaign?.name ?? undefined} />
+          <ActivistOverviewCard campaignId={id} />
           <CampaignEmployersWorksitesCard campaignId={id} />
           <Card>
             <CardContent className="pt-6">
@@ -583,6 +587,7 @@ export default function CampaignDetailPage() {
               <TabsTrigger value="campaign-units">Campaign Units</TabsTrigger>
               <TabsTrigger value="universe">Scope</TabsTrigger>
               <TabsTrigger value="assessments">Assessments</TabsTrigger>
+              <TabsTrigger value="activists">Activists &amp; WOCs</TabsTrigger>
               <TabsTrigger value="foundational-readiness">Foundational Readiness</TabsTrigger>
             </TabsList>
 
@@ -700,8 +705,17 @@ export default function CampaignDetailPage() {
               <WorkforceBoard campaignId={id} canWrite={!!canWrite} />
             </TabsContent>
 
-            <TabsContent value="campaign-units">
+            <TabsContent value="campaign-units" className="space-y-6">
               <CampaignUnitsSection campaignId={id} canWrite={!!canWrite} />
+              {activeSub === "campaign-units" && (
+                <CoveragePanel campaignId={id} canWrite={!!canWrite} />
+              )}
+            </TabsContent>
+
+            <TabsContent value="activists">
+              {activeSub === "activists" && (
+                <ActivistsWocsSection campaignId={id} canWrite={!!canWrite} />
+              )}
             </TabsContent>
 
             <TabsContent value="foundational-readiness">

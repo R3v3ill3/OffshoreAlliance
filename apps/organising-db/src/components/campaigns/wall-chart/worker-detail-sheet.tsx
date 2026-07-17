@@ -31,6 +31,7 @@ import {
 import { ClipboardList, Mail, MessageSquare, Phone } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { WorkerRelationshipsTab } from "./worker-relationships-tab";
+import { WorkerDevelopmentTab } from "../activists/worker-development-tab";
 import { RatingPicker } from "../assessments/rating-picker";
 import { CreateTaskListDialog } from "../task-lists/create-task-list-dialog";
 import { useCampaignWorkerListActivity } from "@/lib/hooks/useCampaignWorkerListActivity";
@@ -139,11 +140,12 @@ export function WorkerDetailSheet({
 }: WorkerDetailSheetProps) {
   return (
     <Tabs defaultValue="details" className="mt-2">
-      <TabsList className="grid grid-cols-4 w-full">
+      <TabsList className="grid grid-cols-5 w-full">
         <TabsTrigger value="details">Details</TabsTrigger>
         <TabsTrigger value="ratings">Activity</TabsTrigger>
         <TabsTrigger value="units">Units</TabsTrigger>
         <TabsTrigger value="relationships">Relationships</TabsTrigger>
+        <TabsTrigger value="development">Development</TabsTrigger>
       </TabsList>
 
       <TabsContent value="details">
@@ -177,6 +179,14 @@ export function WorkerDetailSheet({
           primaryOuId={primaryOuId}
           canWrite={canWrite}
           onRequestCopyToUnit={onRequestCopyToUnit}
+        />
+      </TabsContent>
+
+      <TabsContent value="development">
+        <WorkerDevelopmentTab
+          campaignId={campaignId}
+          workerId={workerId}
+          canWrite={canWrite}
         />
       </TabsContent>
 

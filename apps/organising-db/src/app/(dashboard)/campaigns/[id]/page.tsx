@@ -71,6 +71,7 @@ import { CampaignStageCoveragePanel } from "@/components/campaigns/CampaignStage
 import { CampaignWorkerDetailProvider } from "@/components/campaigns/campaign-worker-detail-provider";
 import { ActivistsWocsSection } from "@/components/campaigns/activists/activists-wocs-section";
 import { CoveragePanel } from "@/components/campaigns/activists/coverage-panel";
+import { ActivistOverviewCard } from "@/components/campaigns/activists/activist-overview-card";
 import {
   VALID_TABS,
   resolveTabParams,
@@ -408,6 +409,7 @@ export default function CampaignDetailPage() {
 
         <TabsContent value="overview" className="space-y-6">
           <CampaignOverviewMetrics campaignId={campaignId} campaignLabel={campaign?.name ?? undefined} />
+          <ActivistOverviewCard campaignId={id} />
           <CampaignEmployersWorksitesCard campaignId={id} />
           <Card>
             <CardContent className="pt-6">

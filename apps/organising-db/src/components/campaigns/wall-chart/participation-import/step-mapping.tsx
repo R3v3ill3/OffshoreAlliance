@@ -70,6 +70,35 @@ export function StepMapping({ controller }: { controller: ParticipationImportCon
     setColumnMap({ ...columnMap, [field]: header ?? undefined });
   }
 
+  // AN sync mode: no columns to map — just the recorded value + options.
+  if (source?.kind === "an") {
+    return (
+      <div className="space-y-5">
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold">Participation value</h3>
+          <p className="text-xs text-muted-foreground">
+            {importRows.length} participant{importRows.length === 1 ? "" : "s"} from
+            “{source.action.title}” will be recorded as:
+          </p>
+          <RatingTargetSelect
+            value={fixedTarget}
+            onChange={setFixedTarget}
+            isBinary={isBinary}
+            ratingLabels={ratingLabels}
+          />
+        </section>
+        <ImportOptions
+          conflictPolicy={conflictPolicy}
+          setConflictPolicy={setConflictPolicy}
+          nonResponders={nonResponders}
+          setNonResponders={setNonResponders}
+          isBinary={isBinary}
+          ratingLabels={ratingLabels}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       {/* ── Identity columns ── */}
@@ -194,59 +223,85 @@ export function StepMapping({ controller }: { controller: ParticipationImportCon
         )}
       </section>
 
-      {/* ── Options ── */}
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold">Options</h3>
-        <div className="space-y-1">
-          <Label className="text-xs">
-            If a worker already has an entry on this assessment
-          </Label>
-          <RadioGroup
-            value={conflictPolicy}
-            onValueChange={(v) => setConflictPolicy(v as "overwrite" | "fill_blanks")}
-            className="flex flex-col gap-1.5"
-          >
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="overwrite" id="cp-overwrite" />
-              <Label htmlFor="cp-overwrite" className="text-xs font-normal">
-                Update it with the imported value (conflicts listed before applying)
-              </Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="fill_blanks" id="cp-fill" />
-              <Label htmlFor="cp-fill" className="text-xs font-normal">
-                Keep the existing entry — only fill blanks
-              </Label>
-            </div>
-          </RadioGroup>
-        </div>
-        <div className="space-y-2">
+      <ImportOptions
+        conflictPolicy={conflictPolicy}
+        setConflictPolicy={setConflictPolicy}
+        nonResponders={nonResponders}
+        setNonResponders={setNonResponders}
+        isBinary={isBinary}
+        ratingLabels={ratingLabels}
+      />
+    </div>
+  );
+}
+
+function ImportOptions({
+  conflictPolicy,
+  setConflictPolicy,
+  nonResponders,
+  setNonResponders,
+  isBinary,
+  ratingLabels,
+}: {
+  conflictPolicy: "overwrite" | "fill_blanks";
+  setConflictPolicy: (v: "overwrite" | "fill_blanks") => void;
+  nonResponders: ParticipationImportController["nonResponders"];
+  setNonResponders: ParticipationImportController["setNonResponders"];
+  isBinary: boolean;
+  ratingLabels: Record<string, string> | null;
+}) {
+  return (
+    <section className="space-y-3">
+      <h3 className="text-sm font-semibold">Options</h3>
+      <div className="space-y-1">
+        <Label className="text-xs">
+          If a worker already has an entry on this assessment
+        </Label>
+        <RadioGroup
+          value={conflictPolicy}
+          onValueChange={(v) => setConflictPolicy(v as "overwrite" | "fill_blanks")}
+          className="flex flex-col gap-1.5"
+        >
           <div className="flex items-center gap-2">
-            <Checkbox
-              id="opt-nonresponders"
-              checked={nonResponders.enabled}
-              onCheckedChange={(checked) =>
-                setNonResponders({ ...nonResponders, enabled: checked === true })
-              }
-            />
-            <Label htmlFor="opt-nonresponders" className="text-xs font-normal">
-              Also record a value for workforce members <strong>not</strong> in this
-              import (never overwrites an existing entry)
+            <RadioGroupItem value="overwrite" id="cp-overwrite" />
+            <Label htmlFor="cp-overwrite" className="text-xs font-normal">
+              Update it with the imported value (conflicts listed before applying)
             </Label>
           </div>
-          {nonResponders.enabled && (
-            <div className="flex items-center gap-3 pl-6">
-              <Label className="text-xs">Record non-responders as</Label>
-              <RatingTargetSelect
-                value={nonResponders.target}
-                onChange={(target) => setNonResponders({ ...nonResponders, target })}
-                isBinary={isBinary}
-                ratingLabels={ratingLabels}
-              />
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <RadioGroupItem value="fill_blanks" id="cp-fill" />
+            <Label htmlFor="cp-fill" className="text-xs font-normal">
+              Keep the existing entry — only fill blanks
+            </Label>
+          </div>
+        </RadioGroup>
+      </div>
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="opt-nonresponders"
+            checked={nonResponders.enabled}
+            onCheckedChange={(checked) =>
+              setNonResponders({ ...nonResponders, enabled: checked === true })
+            }
+          />
+          <Label htmlFor="opt-nonresponders" className="text-xs font-normal">
+            Also record a value for workforce members <strong>not</strong> in this
+            import (never overwrites an existing entry)
+          </Label>
         </div>
-      </section>
-    </div>
+        {nonResponders.enabled && (
+          <div className="flex items-center gap-3 pl-6">
+            <Label className="text-xs">Record non-responders as</Label>
+            <RatingTargetSelect
+              value={nonResponders.target}
+              onChange={(target) => setNonResponders({ ...nonResponders, target })}
+              isBinary={isBinary}
+              ratingLabels={ratingLabels}
+            />
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

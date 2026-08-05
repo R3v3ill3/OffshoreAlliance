@@ -1,6 +1,11 @@
 # Action Network Participation Import — Implementation Plan
 
-**Status:** PROPOSED — awaiting answers to the clarifying questions at the end before implementation.
+**Status:** IMPLEMENTED (Phases 1 + 2, Aug 2026). Decisions taken: API sync
+records binary participation "yes"; matching runs against the whole worker DB
+with add-to-campaign defaults; unmatched rows default to create-worker +
+add-to-campaign (deselectable); overwrite by default with conflicts listed;
+non-responder marking available but off by default; all four AN action types
+supported; manual re-sync only; API key stays in Vercel env vars.
 
 **Goal:** From `Campaigns → [campaign] → Workforce → Wall Chart / List`, let a user import
 participation and support data for an Action Network (AN) action (survey, form, petition,

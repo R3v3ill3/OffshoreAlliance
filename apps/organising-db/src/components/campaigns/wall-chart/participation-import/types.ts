@@ -27,6 +27,8 @@ export interface AnParticipantRow {
   given_name: string;
   family_name: string;
   responded_at: string | null;
+  /** Worker already known via workers.action_network_id. */
+  resolved_worker_id: number | null;
 }
 
 export interface AnActionSummary {
@@ -60,6 +62,9 @@ export interface ImportRow {
   lastName: string;
   rawResponse: string | null;
   target: ResponseValueTarget;
+  /** AN sync mode: pre-resolved worker + AN person id. */
+  resolvedWorkerId?: number | null;
+  anPersonId?: string | null;
 }
 
 export interface RowDecision {

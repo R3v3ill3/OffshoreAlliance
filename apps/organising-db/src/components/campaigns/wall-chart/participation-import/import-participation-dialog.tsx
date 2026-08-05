@@ -66,7 +66,7 @@ export function ImportParticipationDialog({
         </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto py-1 pr-1">
-          {step === "source" && <StepSource controller={controller} />}
+          {step === "source" && <StepSource campaignId={campaignId} controller={controller} />}
           {step === "assessment" && (
             <StepAssessment campaignId={campaignId} controller={controller} />
           )}

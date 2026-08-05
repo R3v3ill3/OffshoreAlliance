@@ -6,6 +6,10 @@ import { toast } from "sonner";
 import { fetchApi, API_FETCH_TIMEOUT_UPLOAD_MS } from "@/lib/api/fetch-api";
 import {
   autoMapParticipationHeader,
+  type AnActionListItem,
+  type AnFetchResponse,
+  type AnResolvedPerson,
+  type AnResolvePeopleResponse,
   type ParticipationApplyPreview,
   type ParticipationApplyRequest,
   type ParticipationApplyResult,
@@ -15,6 +19,7 @@ import {
   type ResponseValueTarget,
 } from "@/lib/import/participation-import-shared";
 import type {
+  AnParticipantRow,
   AssessmentChoice,
   ColumnMap,
   ImportRow,
@@ -23,6 +28,8 @@ import type {
   WizardSource,
   WizardStep,
 } from "./types";
+
+const RESOLVE_CHUNK = 25;
 
 function splitFullName(raw: string): { firstName: string; lastName: string } {
   const cleaned = raw.replace(/\s*\([^)]*\)\s*/g, " ").trim();
@@ -119,13 +126,103 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
     [campaignId]
   );
 
-  /** Phase 2: seed the wizard from an AN action's participant list. */
-  const useAnSource = useCallback((src: Extract<WizardSource, { kind: "an" }>) => {
-    setSource(src);
-    setResponseColumn(null);
-    setFixedTarget({ kind: "binary", value: "yes" });
-    setStep("assessment");
-  }, []);
+  // ── Source: AN API sync ─────────────────────────────────────────────────────
+
+  const [anProgress, setAnProgress] = useState<string | null>(null);
+
+  /**
+   * Pull an AN action's participants: fast local resolution first (workers
+   * with a stored action_network_id), then person fetches for the rest in
+   * small chunks with progress feedback.
+   */
+  const loadAnAction = useCallback(
+    async (action: AnActionListItem) => {
+      setBusy(true);
+      setError(null);
+      setAnProgress("Fetching participants from Action Network…");
+      try {
+        const res = await fetchApi(
+          `/api/campaigns/${campaignId}/participation-import/fetch-an`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              resource_type: action.resource_type,
+              resource_id: action.id,
+            }),
+            timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
+          }
+        );
+        const json: AnFetchResponse | { success: false; error?: string } = await res.json();
+        if (!json.success) throw new Error(("error" in json && json.error) || "Fetch failed");
+
+        const respondedById = new Map<string, string | null>([
+          ...json.known.map((k) => [k.an_person_id, k.responded_at] as const),
+          ...json.unknown.map((u) => [u.an_person_id, u.responded_at] as const),
+        ]);
+
+        const resolved: AnResolvedPerson[] = [];
+        const unknownIds = json.unknown.map((u) => u.an_person_id);
+        for (let i = 0; i < unknownIds.length; i += RESOLVE_CHUNK) {
+          setAnProgress(
+            `Fetching participant details… ${Math.min(i + RESOLVE_CHUNK, unknownIds.length)} of ${unknownIds.length}`
+          );
+          const chunk = unknownIds.slice(i, i + RESOLVE_CHUNK);
+          const resolveRes = await fetchApi(
+            `/api/campaigns/${campaignId}/participation-import/resolve-people`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ids: chunk }),
+              timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
+            }
+          );
+          const resolveJson: AnResolvePeopleResponse | { success: false; error?: string } =
+            await resolveRes.json();
+          if (!resolveJson.success) {
+            throw new Error(("error" in resolveJson && resolveJson.error) || "Person fetch failed");
+          }
+          resolved.push(...resolveJson.people);
+        }
+
+        const participants: AnParticipantRow[] = [
+          ...json.known.map((k) => ({
+            an_person_id: k.an_person_id,
+            emails: k.email ? [k.email] : [],
+            phones: k.phone ? [k.phone] : [],
+            given_name: k.first_name,
+            family_name: k.last_name,
+            responded_at: k.responded_at,
+            resolved_worker_id: k.worker_id,
+          })),
+          ...resolved.map((p) => ({
+            an_person_id: p.an_person_id,
+            emails: p.emails,
+            phones: p.phones,
+            given_name: p.given_name,
+            family_name: p.family_name,
+            responded_at: respondedById.get(p.an_person_id) ?? null,
+            resolved_worker_id: null,
+          })),
+        ];
+
+        if (participants.length === 0) {
+          throw new Error("This action has no participants yet.");
+        }
+
+        setSource({ kind: "an", action, participants });
+        setResponseColumn(null);
+        setFixedTarget({ kind: "binary", value: "yes" });
+        setStep("assessment");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Action Network fetch failed");
+      } finally {
+        setBusy(false);
+        setAnProgress(null);
+      }
+    },
+    [campaignId]
+  );
 
   // ── Distinct response values (CSV mode) ────────────────────────────────────
 
@@ -183,6 +280,8 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
         lastName: p.family_name,
         rawResponse: null,
         target: fixedTarget,
+        resolvedWorkerId: p.resolved_worker_id,
+        anPersonId: p.an_person_id,
       }));
     }
     const { rows } = source.csv;
@@ -247,6 +346,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
             phones: r.phones.slice(0, 5),
             firstName: r.firstName,
             lastName: r.lastName,
+            resolved_worker_id: r.resolvedWorkerId ?? null,
           })),
           activity_id: assessment.mode === "existing" ? assessment.option.activity_id : null,
         }),
@@ -325,6 +425,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
             rating,
             binary_value: binary,
             notes,
+            an_person_id: row.anPersonId ?? null,
           };
         }
         if (decision.action === "create" && row.firstName && row.lastName) {
@@ -341,6 +442,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
             rating,
             binary_value: binary,
             notes,
+            an_person_id: row.anPersonId ?? null,
           };
         }
         return { key: res.key, action: "skip" };
@@ -470,7 +572,8 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
     setError,
     source,
     uploadFile,
-    useAnSource,
+    loadAnAction,
+    anProgress,
     assessment,
     setAssessment,
     columnMap,

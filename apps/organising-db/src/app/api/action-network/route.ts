@@ -1,17 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ActionNetworkClient } from "@/lib/api/action-network";
+import { getAnClient as getSharedAnClient, AN_NOT_CONFIGURED_ERROR } from "@/lib/api/an-client";
+import { createClient as createSupabaseClient } from "@/lib/supabase/server";
 import { sanitiseEmailHtml } from "@/lib/comms/sanitise-email-html"
 // import { appendOASignature } from "@/lib/comms/oa-email-signature" // re-enable with body line below if reverting from AN wrapper;
 
 function getClient(): ActionNetworkClient {
-  const apiKey = process.env.ACTION_NETWORK_API_KEY;
-  if (!apiKey || apiKey === "your-action-network-key-here") {
-    throw new Error("Action Network API key not configured");
+  const client = getSharedAnClient();
+  if (!client) throw new Error(AN_NOT_CONFIGURED_ERROR);
+  return client;
+}
+
+/** This passthrough proxies the group's AN key — never expose it unauthenticated. */
+async function requireUser(): Promise<NextResponse | null> {
+  const supabase = await createSupabaseClient();
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+  if (error || !user) {
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
-  return new ActionNetworkClient({ apiKey });
+  return null;
 }
 
 export async function GET(request: NextRequest) {
+  const authFail = await requireUser();
+  if (authFail) return authFail;
   try {
     const client = getClient();
     const { searchParams } = new URL(request.url);
@@ -63,6 +78,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authFail = await requireUser();
+  if (authFail) return authFail;
   try {
     const client = getClient();
     const body = await request.json();

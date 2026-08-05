@@ -34,7 +34,8 @@ export interface MatchableWorker {
   in_campaign: boolean;
 }
 
-export type MatchMethod = "email" | "phone" | "name";
+/** "an_id" = pre-resolved via workers.action_network_id (AN sync mode). */
+export type MatchMethod = "email" | "phone" | "name" | "an_id";
 
 export type MatchDisposition =
   | "auto" // tier 1-2: safe to apply without user action

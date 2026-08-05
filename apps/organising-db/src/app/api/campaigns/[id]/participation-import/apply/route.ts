@@ -12,6 +12,7 @@ const valueFields = {
   binary_value: z.string().trim().min(1).max(30).nullable(),
   notes: z.string().max(2000).nullish(),
   add_to_campaign: z.boolean(),
+  an_person_id: z.string().max(100).nullish(),
 };
 
 const applyRowSchema = z.discriminatedUnion("action", [
@@ -324,6 +325,7 @@ export async function POST(
           last_name: r.new_worker.last_name,
           email: r.new_worker.email,
           phone: r.new_worker.phone,
+          action_network_id: r.an_person_id ?? null,
         }))
       )
       .select("worker_id");
@@ -334,6 +336,21 @@ export async function POST(
       );
     }
     for (const w of created) createdWorkerIds.push(w.worker_id);
+  }
+
+  // 4b. Backfill action_network_id on matched workers that don't have one
+  //     yet (AN sync mode). Never overwrites an existing id.
+  const backfillRows = existingActionRows.filter((r) => r.an_person_id);
+  for (let i = 0; i < backfillRows.length; i += 20) {
+    await Promise.all(
+      backfillRows.slice(i, i + 20).map((r) =>
+        supabase
+          .from("workers")
+          .update({ action_network_id: r.an_person_id as string })
+          .eq("worker_id", r.worker_id)
+          .is("action_network_id", null)
+      )
+    );
   }
 
   // 5. Campaign membership for matched workers flagged add_to_campaign and

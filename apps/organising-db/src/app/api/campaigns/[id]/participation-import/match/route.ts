@@ -22,6 +22,7 @@ const matchSchema = z.object({
         phones: z.array(z.string()).max(5),
         firstName: z.string(),
         lastName: z.string(),
+        resolved_worker_id: z.number().int().positive().nullish(),
       })
     )
     .min(1)
@@ -67,11 +68,15 @@ export async function POST(
     return NextResponse.json({ success: false, error: message }, { status: 400 });
   }
 
-  // Normalised lookup inputs across every row.
+  // Rows pre-resolved by AN person id skip fuzzy matching entirely.
+  const resolvedRows = body.rows.filter((r) => r.resolved_worker_id != null);
+  const unresolvedRows = body.rows.filter((r) => r.resolved_worker_id == null);
+
+  // Normalised lookup inputs across the unresolved rows.
   const emailSet = new Set<string>();
   const phoneSet = new Set<string>();
   const nameKeySet = new Set<string>();
-  for (const row of body.rows) {
+  for (const row of unresolvedRows) {
     for (const e of row.emails) {
       const n = normaliseEmail(e);
       if (n) emailSet.add(n);
@@ -105,7 +110,32 @@ export async function POST(
     email: string | null;
     phone: string | null;
   }>;
-  const candidateIds = candidateRows.map((c) => c.worker_id);
+
+  // Fetch details for pre-resolved workers (AN sync mode).
+  const resolvedWorkerIds = Array.from(
+    new Set(resolvedRows.map((r) => r.resolved_worker_id as number))
+  );
+  const resolvedWorkers = new Map<
+    number,
+    { worker_id: number; first_name: string; last_name: string; preferred_name: string | null; email: string | null; phone: string | null }
+  >();
+  if (resolvedWorkerIds.length > 0) {
+    const { data: workers, error: wErr } = await supabase
+      .from("workers")
+      .select("worker_id, first_name, last_name, preferred_name, email, phone")
+      .in("worker_id", resolvedWorkerIds);
+    if (wErr) {
+      return NextResponse.json(
+        { success: false, error: `Worker lookup failed: ${wErr.message}` },
+        { status: 500 }
+      );
+    }
+    for (const w of workers ?? []) resolvedWorkers.set(w.worker_id, w);
+  }
+
+  const candidateIds = Array.from(
+    new Set([...candidateRows.map((c) => c.worker_id), ...resolvedWorkerIds])
+  );
 
   // Which candidates are already in this campaign's workforce?
   const inCampaign = new Set<number>();
@@ -155,8 +185,8 @@ export async function POST(
     in_campaign: inCampaign.has(c.worker_id),
   }));
 
-  const results = matchRows(
-    body.rows.map((r) => ({
+  const matched = matchRows(
+    unresolvedRows.map((r) => ({
       key: r.key,
       emails: r.emails,
       phones: r.phones,
@@ -165,28 +195,59 @@ export async function POST(
     })),
     matchable
   );
+  const matchedByKey = new Map(matched.map((m) => [m.key, m]));
+
+  const toCandidate = (
+    worker: {
+      worker_id: number;
+      first_name: string;
+      last_name: string;
+      preferred_name?: string | null;
+      email: string | null;
+      phone: string | null;
+    },
+    method: ParticipationMatchCandidate["method"],
+    inCampaignFlag: boolean
+  ): ParticipationMatchCandidate => {
+    const existing = existingByWorker.get(worker.worker_id);
+    return {
+      worker_id: worker.worker_id,
+      first_name: worker.first_name,
+      last_name: worker.last_name,
+      preferred_name: worker.preferred_name ?? null,
+      email: worker.email,
+      phone: worker.phone,
+      in_campaign: inCampaignFlag,
+      method,
+      existing_rating: existing?.rating ?? null,
+      existing_binary_value: existing?.binary_value ?? null,
+    };
+  };
 
   const response: ParticipationMatchResponse = {
     success: true,
-    results: results.map((r) => ({
-      key: r.key,
-      disposition: r.disposition,
-      candidates: r.candidates.map((c): ParticipationMatchCandidate => {
-        const existing = existingByWorker.get(c.worker.worker_id);
-        return {
-          worker_id: c.worker.worker_id,
-          first_name: c.worker.first_name,
-          last_name: c.worker.last_name,
-          preferred_name: c.worker.preferred_name ?? null,
-          email: c.worker.email,
-          phone: c.worker.phone,
-          in_campaign: c.worker.in_campaign,
-          method: c.method,
-          existing_rating: existing?.rating ?? null,
-          existing_binary_value: existing?.binary_value ?? null,
-        };
-      }),
-    })),
+    results: body.rows.map((row) => {
+      if (row.resolved_worker_id != null) {
+        const worker = resolvedWorkers.get(row.resolved_worker_id);
+        if (worker) {
+          return {
+            key: row.key,
+            disposition: "auto" as const,
+            candidates: [toCandidate(worker, "an_id", inCampaign.has(worker.worker_id))],
+          };
+        }
+        // Stored AN id points at a deleted worker — treat as unmatched.
+        return { key: row.key, disposition: "unmatched" as const, candidates: [] };
+      }
+      const m = matchedByKey.get(row.key);
+      return {
+        key: row.key,
+        disposition: m?.disposition ?? ("unmatched" as const),
+        candidates: (m?.candidates ?? []).map((c) =>
+          toCandidate(c.worker, c.method, c.worker.in_campaign)
+        ),
+      };
+    }),
   };
 
   return NextResponse.json(response);

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -26,8 +27,33 @@ export function StepAssessment({
   campaignId: string;
   controller: ParticipationImportController;
 }) {
-  const { assessment, setAssessment } = controller;
+  const { assessment, setAssessment, source } = controller;
   const { data: options = [], isLoading } = useWallChartAssessmentOptions(campaignId);
+
+  // Seed a sensible default when the step is first entered: a linked AN
+  // action re-syncs into its existing assessment; otherwise a new binary
+  // participation assessment (AN mode) or an empty new assessment (CSV).
+  useEffect(() => {
+    if (assessment) return;
+    if (source?.kind === "an") {
+      const linked =
+        source.action.linked_activity_id != null
+          ? options.find((o) => o.activity_id === source.action.linked_activity_id)
+          : undefined;
+      if (linked) {
+        setAssessment({ mode: "existing", option: linked });
+        return;
+      }
+      setAssessment({
+        mode: "new",
+        title: `Participation — ${source.action.title}`,
+        isBinary: true,
+        supporterOutcomeValue: "yes",
+      });
+      return;
+    }
+    setAssessment({ mode: "new", title: "", isBinary: true, supporterOutcomeValue: "yes" });
+  }, [assessment, source, options, setAssessment]);
 
   const mode = assessment?.mode ?? "new";
 

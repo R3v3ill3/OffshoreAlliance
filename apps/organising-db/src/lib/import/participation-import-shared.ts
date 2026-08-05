@@ -98,6 +98,8 @@ export interface ParticipationMatchRequestRow {
   phones: string[];
   firstName: string;
   lastName: string;
+  /** Pre-resolved worker (matched on workers.action_network_id in AN sync mode). */
+  resolved_worker_id?: number | null;
 }
 
 export interface ParticipationMatchRequest {
@@ -142,6 +144,8 @@ export type ParticipationApplyRow =
       rating: number | null;
       binary_value: string | null;
       notes?: string | null;
+      /** AN sync mode: backfills workers.action_network_id when unset. */
+      an_person_id?: string | null;
     }
   | {
       key: string;
@@ -156,6 +160,8 @@ export type ParticipationApplyRow =
       rating: number | null;
       binary_value: string | null;
       notes?: string | null;
+      /** AN sync mode: stored as the new worker's action_network_id. */
+      an_person_id?: string | null;
     }
   | { key: string; action: "skip" };
 
@@ -234,4 +240,64 @@ export interface ParticipationApplyResult {
   workers_created: number;
   memberships_added: number;
   non_responders_marked: number;
+}
+
+// ─── AN API sync (Phase 2) ───────────────────────────────────────────────────
+
+export type AnResourceType = "form" | "survey" | "petition" | "event";
+
+export interface AnActionListItem {
+  resource_type: AnResourceType;
+  id: string;
+  title: string;
+  browser_url: string | null;
+  created_date: string | null;
+  /** Participation count as reported by AN (submissions/signatures/…). */
+  total_records: number | null;
+  /** Assessment already linked to this action, if any (enables re-sync). */
+  linked_activity_id: number | null;
+  linked_activity_title: string | null;
+}
+
+export interface AnActionsResponse {
+  success: true;
+  actions: AnActionListItem[];
+}
+
+export interface AnFetchRequest {
+  resource_type: AnResourceType;
+  resource_id: string;
+}
+
+/** Participant already known to us via workers.action_network_id. */
+export interface AnKnownParticipant {
+  an_person_id: string;
+  worker_id: number;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  phone: string | null;
+  responded_at: string | null;
+}
+
+export interface AnFetchResponse {
+  success: true;
+  total_records: number;
+  truncated: boolean;
+  known: AnKnownParticipant[];
+  /** AN person ids that need a person fetch to get identity details. */
+  unknown: { an_person_id: string; responded_at: string | null }[];
+}
+
+export interface AnResolvedPerson {
+  an_person_id: string;
+  emails: string[];
+  phones: string[];
+  given_name: string;
+  family_name: string;
+}
+
+export interface AnResolvePeopleResponse {
+  success: true;
+  people: AnResolvedPerson[];
 }

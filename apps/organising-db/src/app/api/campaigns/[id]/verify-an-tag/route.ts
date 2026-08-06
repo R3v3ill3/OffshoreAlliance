@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { ActionNetworkClient } from '@/lib/api/action-network'
+import { getAnClient as getSharedAnClient, AN_NOT_CONFIGURED_ERROR } from '@/lib/api/an-client'
 
 function getAnClient(): ActionNetworkClient {
-  const apiKey = process.env.ACTION_NETWORK_API_KEY
-  if (!apiKey || apiKey === 'your-action-network-key-here') {
-    throw new Error('Action Network API key not configured')
-  }
-  return new ActionNetworkClient({ apiKey })
+  const client = getSharedAnClient()
+  if (!client) throw new Error(AN_NOT_CONFIGURED_ERROR)
+  return client
 }
 
 function parseSampleAnIds(raw: string | null): string[] {

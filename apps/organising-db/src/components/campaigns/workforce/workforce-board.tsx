@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { LayoutGrid, List } from "lucide-react";
+import { Download, LayoutGrid, List } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { CampaignWallChart } from "../campaign-wall-chart";
+import { ImportParticipationDialog } from "../wall-chart/participation-import/import-participation-dialog";
 import { WorkforceListView } from "./workforce-list-view";
 
 export type WorkforceView = "wall-chart" | "list";
@@ -42,13 +43,36 @@ export function WorkforceBoard({
     [pathname, router, searchParams]
   );
 
+  const [importOpen, setImportOpen] = useState(false);
+
   return (
     <div className="space-y-3">
-      <ViewToggle view={view} onChange={setView} />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <ViewToggle view={view} onChange={setView} />
+        {canWrite && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={() => setImportOpen(true)}
+          >
+            <Download className="h-3.5 w-3.5" aria-hidden />
+            Import participation
+          </Button>
+        )}
+      </div>
       {view === "list" ? (
         <WorkforceListView campaignId={campaignId} canWrite={canWrite} />
       ) : (
         <CampaignWallChart campaignId={campaignId} canWrite={canWrite} />
+      )}
+      {canWrite && (
+        <ImportParticipationDialog
+          campaignId={campaignId}
+          open={importOpen}
+          onOpenChange={setImportOpen}
+        />
       )}
     </div>
   );

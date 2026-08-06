@@ -59,29 +59,91 @@ interface ActionNetworkResponse {
   name?: string;
 }
 
+/**
+ * AN allows ~4 requests/second per API key. All requests from this process
+ * share one throttle slot queue so bulk reads (pagination walks, person
+ * batch fetches) stay under the limit regardless of concurrency.
+ */
+const MIN_REQUEST_INTERVAL_MS = 275;
+const MAX_RETRIES = 3;
+
 export class ActionNetworkClient {
   private apiKey: string;
+  private static nextSlotAt = 0;
 
   constructor(config: ActionNetworkConfig) {
     this.apiKey = config.apiKey;
   }
 
+  private static async throttle(): Promise<void> {
+    const now = Date.now();
+    const wait = Math.max(0, ActionNetworkClient.nextSlotAt - now);
+    ActionNetworkClient.nextSlotAt = Math.max(now, ActionNetworkClient.nextSlotAt) + MIN_REQUEST_INTERVAL_MS;
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  }
+
   private async request(endpoint: string, options: RequestInit = {}): Promise<ActionNetworkResponse> {
-    const response = await fetch(`${BASE_URL}${endpoint}`, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        "OSDI-API-Token": this.apiKey,
-        ...options.headers,
-      },
-    });
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      await ActionNetworkClient.throttle();
+      const response = await fetch(`${BASE_URL}${endpoint}`, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          "OSDI-API-Token": this.apiKey,
+          ...options.headers,
+        },
+      });
 
-    if (!response.ok) {
+      if (response.ok) {
+        return response.json();
+      }
+
       const errorBody = await response.text().catch(() => '');
-      throw new Error(`Action Network API error: ${response.status} ${response.statusText} - ${errorBody}`);
-    }
+      lastError = new Error(
+        `Action Network API error: ${response.status} ${response.statusText} - ${errorBody}`
+      );
 
-    return response.json();
+      // Retry rate-limit and transient server errors with backoff.
+      if ((response.status === 429 || response.status >= 500) && attempt < MAX_RETRIES) {
+        const retryAfter = Number(response.headers.get("Retry-After"));
+        const backoffMs = Number.isFinite(retryAfter) && retryAfter > 0
+          ? retryAfter * 1000
+          : 500 * 2 ** attempt;
+        await new Promise((r) => setTimeout(r, backoffMs));
+        continue;
+      }
+      throw lastError;
+    }
+    throw lastError ?? new Error("Action Network API error: retries exhausted");
+  }
+
+  /**
+   * Walk a paginated collection and return every embedded record under
+   * `embeddedKey` (e.g. "osdi:submissions"), up to maxPages pages.
+   * AN pages are fixed at 25 records.
+   */
+  async fetchAllRecords(
+    path: string,
+    embeddedKey: string,
+    opts: { maxPages?: number; filter?: string } = {}
+  ): Promise<{ records: Record<string, unknown>[]; totalRecords: number; truncated: boolean }> {
+    const maxPages = opts.maxPages ?? 200;
+    const sep = path.includes("?") ? "&" : "?";
+    const filterParam = opts.filter ? `${sep}filter=${encodeURIComponent(opts.filter)}` : "";
+    const records: Record<string, unknown>[] = [];
+    let totalRecords = 0;
+    let totalPages = 1;
+    for (let page = 1; page <= Math.min(totalPages, maxPages); page++) {
+      const pageSep = path.includes("?") || filterParam ? "&" : "?";
+      const res = await this.request(`${path}${filterParam}${pageSep}page=${page}`);
+      totalPages = res.total_pages ?? 1;
+      totalRecords = res.total_records ?? 0;
+      const embedded = (res._embedded?.[embeddedKey] as Record<string, unknown>[] | undefined) ?? [];
+      records.push(...embedded);
+      if (embedded.length === 0) break;
+    }
+    return { records, totalRecords, truncated: totalPages > maxPages };
   }
 
   async getPeople(page = 1): Promise<ActionNetworkResponse> {
@@ -219,6 +281,22 @@ export class ActionNetworkClient {
       method: "POST",
       body: JSON.stringify({ person }),
     });
+  }
+
+  async getSurveys(page = 1): Promise<ActionNetworkResponse> {
+    return this.request(`/surveys?page=${page}`);
+  }
+
+  async getSurveyResponses(surveyId: string, page = 1): Promise<ActionNetworkResponse> {
+    return this.request(`/surveys/${surveyId}/responses?page=${page}`);
+  }
+
+  async getPetitions(page = 1): Promise<ActionNetworkResponse> {
+    return this.request(`/petitions?page=${page}`);
+  }
+
+  async getPetitionSignatures(petitionId: string, page = 1): Promise<ActionNetworkResponse> {
+    return this.request(`/petitions/${petitionId}/signatures?page=${page}`);
   }
 
   async getTags(page = 1): Promise<ActionNetworkResponse> {

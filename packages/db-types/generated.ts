@@ -4089,6 +4089,10 @@ export type Database = {
         Row: {
           activity_id: number
           activity_kind: string
+          an_browser_url: string | null
+          an_last_synced_at: string | null
+          an_resource_id: string | null
+          an_resource_type: string | null
           assessment_type: string
           campaign_id: number
           created_at: string
@@ -4104,6 +4108,10 @@ export type Database = {
         Insert: {
           activity_id?: number
           activity_kind?: string
+          an_browser_url?: string | null
+          an_last_synced_at?: string | null
+          an_resource_id?: string | null
+          an_resource_type?: string | null
           assessment_type?: string
           campaign_id: number
           created_at?: string
@@ -4119,6 +4127,10 @@ export type Database = {
         Update: {
           activity_id?: number
           activity_kind?: string
+          an_browser_url?: string | null
+          an_last_synced_at?: string | null
+          an_resource_id?: string | null
+          an_resource_type?: string | null
           assessment_type?: string
           campaign_id?: number
           created_at?: string
@@ -4238,6 +4250,7 @@ export type Database = {
           assessment_type_override: string | null
           binary_value: string | null
           event_id: number | null
+          import_batch_id: number | null
           notes: string | null
           rated_at: string
           rated_by_user_id: string | null
@@ -4252,6 +4265,7 @@ export type Database = {
           assessment_type_override?: string | null
           binary_value?: string | null
           event_id?: number | null
+          import_batch_id?: number | null
           notes?: string | null
           rated_at?: string
           rated_by_user_id?: string | null
@@ -4266,6 +4280,7 @@ export type Database = {
           assessment_type_override?: string | null
           binary_value?: string | null
           event_id?: number | null
+          import_batch_id?: number | null
           notes?: string | null
           rated_at?: string
           rated_by_user_id?: string | null
@@ -4282,6 +4297,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "campaign_activities"
             referencedColumns: ["activity_id"]
+          },
+          {
+            foreignKeyName: "campaign_activity_ratings_import_batch_id_fkey"
+            columns: ["import_batch_id"]
+            isOneToOne: false
+            referencedRelation: "participation_import_batches"
+            referencedColumns: ["batch_id"]
           },
           {
             foreignKeyName: "campaign_activity_ratings_worker_id_fkey"
@@ -18768,6 +18790,141 @@ export type Database = {
           },
         ]
       }
+      participation_import_batches: {
+        Row: {
+          activity_id: number
+          an_resource_id: string | null
+          an_resource_type: string | null
+          batch_id: number
+          campaign_id: number
+          created_at: string
+          created_by: string | null
+          file_name: string | null
+          mapping: Json | null
+          rows_created: number
+          rows_matched: number
+          rows_skipped: number
+          rows_total: number
+          rows_updated: number
+          source_kind: string
+          workers_created: number
+        }
+        Insert: {
+          activity_id: number
+          an_resource_id?: string | null
+          an_resource_type?: string | null
+          batch_id?: number
+          campaign_id: number
+          created_at?: string
+          created_by?: string | null
+          file_name?: string | null
+          mapping?: Json | null
+          rows_created?: number
+          rows_matched?: number
+          rows_skipped?: number
+          rows_total?: number
+          rows_updated?: number
+          source_kind: string
+          workers_created?: number
+        }
+        Update: {
+          activity_id?: number
+          an_resource_id?: string | null
+          an_resource_type?: string | null
+          batch_id?: number
+          campaign_id?: number
+          created_at?: string
+          created_by?: string | null
+          file_name?: string | null
+          mapping?: Json | null
+          rows_created?: number
+          rows_matched?: number
+          rows_skipped?: number
+          rows_total?: number
+          rows_updated?: number
+          source_kind?: string
+          workers_created?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "participation_import_batches_activity_id_fkey"
+            columns: ["activity_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_activities"
+            referencedColumns: ["activity_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_bargaining_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
+          },
+        ]
+      }
       pending_permission_requests: {
         Row: {
           campaign_id: number | null
@@ -21337,6 +21494,17 @@ export type Database = {
         Returns: undefined
       }
       apply_employer_wizard_changes: { Args: { payload: Json }; Returns: Json }
+      apply_participation_import: {
+        Args: {
+          p_activity_id: number
+          p_actor_id?: string
+          p_import_batch_id?: number
+          p_rating_phase?: string
+          p_rows: Json
+          p_source?: string
+        }
+        Returns: number
+      }
       archive_old_import_logs: { Args: never; Returns: Json }
       begin_bargaining_phase: {
         Args: {
@@ -21585,14 +21753,31 @@ export type Database = {
         Args: { p_days_ago?: number }
         Returns: Json
       }
+      match_workers_for_import: {
+        Args: {
+          p_emails?: string[]
+          p_name_keys?: string[]
+          p_phones?: string[]
+        }
+        Returns: {
+          worker_id: number
+          first_name: string
+          last_name: string
+          preferred_name: string
+          email: string
+          phone: string
+        }[]
+      }
       materialise_sequence_run: { Args: { p_run_id: number }; Returns: number }
       merge_employers: { Args: { payload: Json }; Returns: Json }
+      normalise_phone_au: { Args: { p: string }; Returns: string }
       record_assessment_event: {
         Args: {
           p_activity_id: number
           p_actor_id?: string
           p_binary_value?: string
           p_event_id?: number
+          p_import_batch_id?: number
           p_notes?: string
           p_rating?: number
           p_rating_phase?: string

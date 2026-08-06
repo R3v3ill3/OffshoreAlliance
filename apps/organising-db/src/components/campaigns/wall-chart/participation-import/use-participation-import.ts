@@ -6,31 +6,39 @@ import { toast } from "sonner";
 import { fetchApi, API_FETCH_TIMEOUT_UPLOAD_MS } from "@/lib/api/fetch-api";
 import {
   autoMapParticipationHeader,
+  defaultKeepNote,
+  isTimestampHeader,
   type AnActionListItem,
   type AnFetchResponse,
   type AnResolvedPerson,
   type AnResolvePeopleResponse,
+  type ImportAssessmentSpec,
   type ParticipationApplyPreview,
   type ParticipationApplyRequest,
   type ParticipationApplyResult,
   type ParticipationApplyRow,
   type ParticipationMatchCandidate,
   type ParticipationMatchResponse,
-  type ResponseValueMapping,
+  type ParticipationRowValue,
   type ResponseValueTarget,
 } from "@/lib/import/participation-import-shared";
+import { normaliseEmail, normalisePhone } from "@/lib/import/worker-matching";
 import type {
   AnParticipantRow,
   AssessmentChoice,
   ColumnMap,
   ImportRow,
   MatchState,
+  QuestionMapping,
+  RowCleanupStats,
   RowDecision,
+  RowQuestionValue,
   WizardSource,
   WizardStep,
 } from "./types";
 
 const RESOLVE_CHUNK = 25;
+const ANONYMOUS_EMAIL = "anonymous@anonymous.com";
 
 function splitFullName(raw: string): { firstName: string; lastName: string } {
   const cleaned = raw.replace(/\s*\([^)]*\)\s*/g, " ").trim();
@@ -43,9 +51,21 @@ function splitFullName(raw: string): { firstName: string; lastName: string } {
   return { firstName: parts.slice(0, -1).join(" "), lastName: parts[parts.length - 1] };
 }
 
-export interface NonResponderOption {
-  enabled: boolean;
-  target: ResponseValueTarget;
+let questionCounter = 0;
+function nextQuestionId(): string {
+  questionCounter += 1;
+  return `q${questionCounter}`;
+}
+
+export function newQuestion(column: string | null): QuestionMapping {
+  return {
+    id: nextQuestionId(),
+    column,
+    assessment: null,
+    valueMappings: [],
+    fixedTarget: { kind: "binary", value: "yes" },
+    nonResponders: { enabled: false, target: { kind: "binary", value: "no" } },
+  };
 }
 
 export function useParticipationImport(campaignId: string, onDataChanged?: () => void) {
@@ -56,19 +76,9 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
   const [error, setError] = useState<string | null>(null);
 
   const [source, setSource] = useState<WizardSource | null>(null);
-  const [assessment, setAssessment] = useState<AssessmentChoice | null>(null);
   const [columnMap, setColumnMap] = useState<ColumnMap>({});
-  const [responseColumn, setResponseColumn] = useState<string | null>(null);
-  const [valueMappings, setValueMappings] = useState<ResponseValueMapping[]>([]);
-  const [fixedTarget, setFixedTarget] = useState<ResponseValueTarget>({
-    kind: "binary",
-    value: "yes",
-  });
+  const [questions, setQuestions] = useState<QuestionMapping[]>([]);
   const [conflictPolicy, setConflictPolicy] = useState<"overwrite" | "fill_blanks">("overwrite");
-  const [nonResponders, setNonResponders] = useState<NonResponderOption>({
-    enabled: false,
-    target: { kind: "binary", value: "no" },
-  });
   const [matchState, setMatchState] = useState<MatchState | null>(null);
   const [preview, setPreview] = useState<ParticipationApplyPreview | null>(null);
   const [result, setResult] = useState<ParticipationApplyResult | null>(null);
@@ -78,13 +88,9 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
     setBusy(false);
     setError(null);
     setSource(null);
-    setAssessment(null);
     setColumnMap({});
-    setResponseColumn(null);
-    setValueMappings([]);
-    setFixedTarget({ kind: "binary", value: "yes" });
+    setQuestions([]);
     setConflictPolicy("overwrite");
-    setNonResponders({ enabled: false, target: { kind: "binary", value: "no" } });
     setMatchState(null);
     setPreview(null);
     setResult(null);
@@ -117,7 +123,8 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
           if (field !== "ignore" && !(field in map)) map[field] = h;
         }
         setColumnMap(map);
-        setStep("assessment");
+        setQuestions([newQuestion(null)]);
+        setStep("mapping");
       } catch (e) {
         setError(e instanceof Error ? e.message : "Upload failed");
       } finally {
@@ -212,9 +219,8 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
         }
 
         setSource({ kind: "an", action, participants });
-        setResponseColumn(null);
-        setFixedTarget({ kind: "binary", value: "yes" });
-        setStep("assessment");
+        setQuestions([newQuestion(null)]);
+        setStep("mapping");
       } catch (e) {
         setError(e instanceof Error ? e.message : "Action Network fetch failed");
       } finally {
@@ -225,50 +231,161 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
     [campaignId]
   );
 
-  // ── Distinct response values (CSV mode) ────────────────────────────────────
+  // ── CSV cleanup: identity extraction, anonymous skip, latest-wins dedupe ──
 
-  const distinctResponseValues = useMemo(() => {
-    if (!source || source.kind !== "csv" || !responseColumn) return [];
-    const counts = new Map<string, number>();
-    for (const row of source.csv.rows) {
-      const v = (row[responseColumn] ?? "").trim();
-      counts.set(v, (counts.get(v) ?? 0) + 1);
+  const identityFor = useCallback(
+    (row: Record<string, string>) => {
+      const emailCol = columnMap.email;
+      const phoneCol = columnMap.phone;
+      const firstCol = columnMap.first_name;
+      const lastCol = columnMap.last_name;
+      const fullCol = columnMap.full_name;
+      let firstName = firstCol ? (row[firstCol] ?? "").trim() : "";
+      let lastName = lastCol ? (row[lastCol] ?? "").trim() : "";
+      if (fullCol && !firstCol && !lastCol) {
+        const split = splitFullName((row[fullCol] ?? "").trim());
+        firstName = split.firstName;
+        lastName = split.lastName;
+      }
+      const email = emailCol ? (row[emailCol] ?? "").trim() : "";
+      const phone = phoneCol ? (row[phoneCol] ?? "").trim() : "";
+      return { email, phone, firstName, lastName };
+    },
+    [columnMap]
+  );
+
+  const { cleanRows, cleanupStats } = useMemo((): {
+    cleanRows: { key: string; row: Record<string, string> }[];
+    cleanupStats: RowCleanupStats;
+  } => {
+    if (!source || source.kind !== "csv") {
+      return { cleanRows: [], cleanupStats: { duplicatesCollapsed: 0, skippedNoIdentity: 0 } };
     }
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([value, count]) => ({ value, count }));
-  }, [source, responseColumn]);
-
-  const selectResponseColumn = useCallback(
-    (column: string | null) => {
-      setResponseColumn(column);
-      if (!column || !source || source.kind !== "csv") {
-        setValueMappings([]);
+    const tsCol = source.csv.headers.find(isTimestampHeader) ?? null;
+    let skippedNoIdentity = 0;
+    // Latest submission wins per identity (AN transaction reports contain
+    // one row per submission, so resubmitters appear multiple times).
+    const byIdentity = new Map<string, { key: string; row: Record<string, string>; ts: string }>();
+    let duplicatesCollapsed = 0;
+    source.csv.rows.forEach((row, i) => {
+      const { email, phone, firstName, lastName } = identityFor(row);
+      const emailNorm = normaliseEmail(email);
+      if (emailNorm === ANONYMOUS_EMAIL) {
+        skippedNoIdentity += 1;
         return;
       }
+      const identityKey =
+        emailNorm ??
+        normalisePhone(phone) ??
+        (firstName && lastName ? `${firstName.toLowerCase()}|${lastName.toLowerCase()}` : null);
+      if (!identityKey) {
+        skippedNoIdentity += 1;
+        return;
+      }
+      const ts = tsCol ? (row[tsCol] ?? "") : String(i).padStart(8, "0");
+      const existing = byIdentity.get(identityKey);
+      if (!existing) {
+        byIdentity.set(identityKey, { key: String(i), row, ts });
+      } else {
+        duplicatesCollapsed += 1;
+        // Keep the later submission (timestamp strings sort lexically in
+        // AN's format; fall back to row order).
+        if (ts >= existing.ts) byIdentity.set(identityKey, { key: String(i), row, ts });
+      }
+    });
+    return {
+      cleanRows: Array.from(byIdentity.values()).map(({ key, row }) => ({ key, row })),
+      cleanupStats: { duplicatesCollapsed, skippedNoIdentity },
+    };
+  }, [source, identityFor]);
+
+  // ── Question mapping helpers ────────────────────────────────────────────────
+
+  const distinctValuesFor = useCallback(
+    (column: string): { value: string; count: number }[] => {
       const counts = new Map<string, number>();
-      for (const row of source.csv.rows) {
+      for (const { row } of cleanRows) {
         const v = (row[column] ?? "").trim();
         counts.set(v, (counts.get(v) ?? 0) + 1);
       }
-      setValueMappings(
-        Array.from(counts.entries())
-          .sort((a, b) => b[1] - a[1])
-          .map(([rawValue, count]) => ({
-            rawValue,
-            count,
-            target: rawValue === "" ? { kind: "ignore" } : defaultTargetFor(),
-          }))
-      );
-
-      function defaultTargetFor(): ResponseValueTarget {
-        return { kind: "ignore" };
-      }
+      return Array.from(counts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([value, count]) => ({ value, count }));
     },
-    [source]
+    [cleanRows]
   );
 
-  // ── Import rows: identity + resolved response target ───────────────────────
+  const addQuestion = useCallback(() => {
+    setQuestions((prev) => [...prev, newQuestion(null)]);
+  }, []);
+
+  const removeQuestion = useCallback((id: string) => {
+    setQuestions((prev) => prev.filter((q) => q.id !== id));
+  }, []);
+
+  const updateQuestion = useCallback((id: string, patch: Partial<QuestionMapping>) => {
+    setQuestions((prev) => prev.map((q) => (q.id === id ? { ...q, ...patch } : q)));
+  }, []);
+
+  const setQuestionColumn = useCallback(
+    (id: string, column: string | null) => {
+      setQuestions((prev) =>
+        prev.map((q) => {
+          if (q.id !== id) return q;
+          if (!column) return { ...q, column: null, valueMappings: [] };
+          const distincts = distinctValuesFor(column);
+          return {
+            ...q,
+            column,
+            valueMappings: distincts.map(({ value, count }) => ({
+              rawValue: value,
+              count,
+              target: { kind: "ignore" as const },
+              keepNote: false,
+            })),
+          };
+        })
+      );
+    },
+    [distinctValuesFor]
+  );
+
+  const setQuestionValueTarget = useCallback(
+    (id: string, rawValue: string, target: ResponseValueTarget) => {
+      setQuestions((prev) =>
+        prev.map((q) =>
+          q.id === id
+            ? {
+                ...q,
+                valueMappings: q.valueMappings.map((m) =>
+                  m.rawValue === rawValue
+                    ? { ...m, target, keepNote: defaultKeepNote(rawValue, target) }
+                    : m
+                ),
+              }
+            : q
+        )
+      );
+    },
+    []
+  );
+
+  const setQuestionValueKeepNote = useCallback((id: string, rawValue: string, keepNote: boolean) => {
+    setQuestions((prev) =>
+      prev.map((q) =>
+        q.id === id
+          ? {
+              ...q,
+              valueMappings: q.valueMappings.map((m) =>
+                m.rawValue === rawValue ? { ...m, keepNote } : m
+              ),
+            }
+          : q
+      )
+    );
+  }, []);
+
+  // ── Import rows: identity + per-question resolved targets ──────────────────
 
   const importRows = useMemo((): ImportRow[] => {
     if (!source) return [];
@@ -279,49 +396,51 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
         phones: p.phones,
         firstName: p.given_name,
         lastName: p.family_name,
-        rawResponse: null,
-        target: fixedTarget,
+        values: questions
+          .filter((q) => q.assessment != null && q.fixedTarget.kind !== "ignore")
+          .map((q) => ({
+            questionId: q.id,
+            raw: null,
+            target: q.fixedTarget,
+            keepNote: false,
+          })),
         resolvedWorkerId: p.resolved_worker_id,
         anPersonId: p.an_person_id,
       }));
     }
-    const { rows } = source.csv;
-    const emailCol = columnMap.email;
-    const phoneCol = columnMap.phone;
-    const firstCol = columnMap.first_name;
-    const lastCol = columnMap.last_name;
-    const fullCol = columnMap.full_name;
-    const targetByValue = new Map(valueMappings.map((m) => [m.rawValue, m.target]));
 
-    return rows.map((row, i) => {
-      let firstName = firstCol ? (row[firstCol] ?? "").trim() : "";
-      let lastName = lastCol ? (row[lastCol] ?? "").trim() : "";
-      if (fullCol && !firstCol && !lastCol) {
-        const split = splitFullName((row[fullCol] ?? "").trim());
-        firstName = split.firstName;
-        lastName = split.lastName;
+    return cleanRows.map(({ key, row }) => {
+      const { email, phone, firstName, lastName } = identityFor(row);
+      const values: RowQuestionValue[] = [];
+      for (const q of questions) {
+        if (!q.assessment) continue;
+        if (q.column) {
+          const raw = (row[q.column] ?? "").trim();
+          const mapping = q.valueMappings.find((m) => m.rawValue === raw);
+          if (!mapping || mapping.target.kind === "ignore") continue;
+          values.push({
+            questionId: q.id,
+            raw,
+            target: mapping.target,
+            keepNote: mapping.keepNote,
+          });
+        } else if (q.fixedTarget.kind !== "ignore") {
+          values.push({ questionId: q.id, raw: null, target: q.fixedTarget, keepNote: false });
+        }
       }
-      const rawResponse = responseColumn ? (row[responseColumn] ?? "").trim() : null;
-      const target: ResponseValueTarget = responseColumn
-        ? (targetByValue.get(rawResponse ?? "") ?? { kind: "ignore" })
-        : fixedTarget;
       return {
-        key: String(i),
-        emails: emailCol ? [(row[emailCol] ?? "").trim()].filter(Boolean) : [],
-        phones: phoneCol ? [(row[phoneCol] ?? "").trim()].filter(Boolean) : [],
+        key,
+        emails: email ? [email] : [],
+        phones: phone ? [phone] : [],
         firstName,
         lastName,
-        rawResponse,
-        target,
+        values,
       };
     });
-  }, [source, columnMap, responseColumn, valueMappings, fixedTarget]);
+  }, [source, cleanRows, identityFor, questions]);
 
-  /** Rows that will actually be recorded (target not "ignore"). */
-  const effectiveRows = useMemo(
-    () => importRows.filter((r) => r.target.kind !== "ignore"),
-    [importRows]
-  );
+  /** Rows that will actually be recorded (≥1 mapped value). */
+  const effectiveRows = useMemo(() => importRows.filter((r) => r.values.length > 0), [importRows]);
 
   const canMatch = useMemo(() => {
     if (effectiveRows.length === 0) return false;
@@ -333,10 +452,12 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
   // ── Match step ──────────────────────────────────────────────────────────────
 
   const runMatch = useCallback(async () => {
-    if (!assessment) return;
     setBusy(true);
     setError(null);
     try {
+      const activityIds = questions
+        .map((q) => (q.assessment?.mode === "existing" ? q.assessment.option.activity_id : null))
+        .filter((v): v is number => v != null);
       const res = await fetchApi(`/api/campaigns/${campaignId}/participation-import/match`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -349,7 +470,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
             lastName: r.lastName,
             resolved_worker_id: r.resolvedWorkerId ?? null,
           })),
-          activity_id: assessment.mode === "existing" ? assessment.option.activity_id : null,
+          activity_ids: activityIds,
         }),
         timeoutMs: API_FETCH_TIMEOUT_UPLOAD_MS,
       });
@@ -387,7 +508,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
     } finally {
       setBusy(false);
     }
-  }, [assessment, campaignId, effectiveRows]);
+  }, [campaignId, effectiveRows, questions]);
 
   const setDecision = useCallback((key: string, decision: RowDecision) => {
     setMatchState((prev) =>
@@ -428,27 +549,72 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
 
   const buildApplyRequest = useCallback(
     (dryRun: boolean): ParticipationApplyRequest | null => {
-      if (!assessment || !matchState || !source) return null;
+      if (!matchState || !source) return null;
       const rowByKey = new Map(effectiveRows.map((r) => [r.key, r]));
+      const activeQuestions = questions.filter((q) => q.assessment != null);
+      if (activeQuestions.length === 0) return null;
+
+      const assessments: ImportAssessmentSpec[] = activeQuestions.map((q) => {
+        const a = q.assessment as AssessmentChoice;
+        let target: ImportAssessmentSpec["target"];
+        if (a.mode === "existing") {
+          target = { mode: "existing", activity_id: a.option.activity_id };
+        } else {
+          // Ordinal scales: label the 1–5 points with the answers mapped to them.
+          let ratingLabels: Record<string, string> | null = null;
+          if (!a.isBinary && a.useAnswerLabels && q.column) {
+            ratingLabels = {};
+            for (const m of q.valueMappings) {
+              if (m.target.kind === "rating" && !ratingLabels[String(m.target.rating)]) {
+                ratingLabels[String(m.target.rating)] = m.rawValue.slice(0, 80);
+              }
+            }
+            if (Object.keys(ratingLabels).length === 0) ratingLabels = null;
+          }
+          target = {
+            mode: "new",
+            title: a.title,
+            is_binary: a.isBinary,
+            supporter_outcome_value: a.isBinary ? a.supporterOutcomeValue : null,
+            rating_labels: ratingLabels,
+            is_perception: a.isPerception,
+          };
+        }
+        return {
+          ref: q.id,
+          target,
+          non_responders: q.nonResponders.enabled
+            ? {
+                rating:
+                  q.nonResponders.target.kind === "rating" ? q.nonResponders.target.rating : null,
+                binary_value:
+                  q.nonResponders.target.kind === "binary" ? q.nonResponders.target.value : null,
+              }
+            : null,
+        };
+      });
+
+      const toValues = (row: ImportRow): ParticipationRowValue[] =>
+        row.values.map((v) => ({
+          ref: v.questionId,
+          rating: v.target.kind === "rating" ? v.target.rating : null,
+          binary_value: v.target.kind === "binary" ? v.target.value : null,
+          notes: v.keepNote && v.raw ? `AN response: ${v.raw}` : null,
+        }));
 
       const rows: ParticipationApplyRow[] = matchState.results.map((res) => {
         const decision = matchState.decisions[res.key];
         const row = rowByKey.get(res.key);
-        if (!decision || !row || decision.action === "skip") {
+        if (!decision || !row || decision.action === "skip" || row.values.length === 0) {
           return { key: res.key, action: "skip" };
         }
-        const rating = row.target.kind === "rating" ? row.target.rating : null;
-        const binary = row.target.kind === "binary" ? row.target.value : null;
-        const notes = row.rawResponse ? `AN response: ${row.rawResponse}` : null;
         if (decision.action === "match" && decision.workerId != null) {
           return {
             key: res.key,
             action: "existing",
             worker_id: decision.workerId,
             add_to_campaign: decision.addToCampaign,
-            rating,
-            binary_value: binary,
-            notes,
+            values: toValues(row),
             an_person_id: row.anPersonId ?? null,
           };
         }
@@ -463,37 +629,15 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
               phone: row.phones[0] ?? null,
             },
             add_to_campaign: decision.addToCampaign,
-            rating,
-            binary_value: binary,
-            notes,
+            values: toValues(row),
             an_person_id: row.anPersonId ?? null,
           };
         }
         return { key: res.key, action: "skip" };
       });
 
-      const nonRespondersPayload = nonResponders.enabled
-        ? {
-            enabled: true,
-            rating:
-              nonResponders.target.kind === "rating" ? nonResponders.target.rating : null,
-            binary_value:
-              nonResponders.target.kind === "binary" ? nonResponders.target.value : null,
-          }
-        : null;
-
       return {
-        activity:
-          assessment.mode === "existing"
-            ? { mode: "existing", activity_id: assessment.option.activity_id }
-            : {
-                mode: "new",
-                title: assessment.title,
-                is_binary: assessment.isBinary,
-                supporter_outcome_value: assessment.isBinary
-                  ? assessment.supporterOutcomeValue
-                  : null,
-              },
+        assessments,
         source_kind: source.kind === "an" ? "an_api" : "an_report_csv",
         file_name: source.kind === "csv" ? source.csv.fileName : null,
         an_resource:
@@ -505,31 +649,26 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
               }
             : null,
         conflict_policy: conflictPolicy,
-        non_responders: nonRespondersPayload,
         mapping: {
           columnMap,
-          responseColumn,
-          valueMappings,
-          fixedTarget,
+          questions: questions.map((q) => ({
+            column: q.column,
+            assessment:
+              q.assessment?.mode === "existing"
+                ? { mode: "existing", activity_id: q.assessment.option.activity_id }
+                : q.assessment,
+            valueMappings: q.valueMappings,
+            fixedTarget: q.fixedTarget,
+            nonResponders: q.nonResponders,
+          })),
           conflictPolicy,
-          nonResponders: nonRespondersPayload,
+          cleanupStats,
         },
         rows,
         dry_run: dryRun,
       };
     },
-    [
-      assessment,
-      matchState,
-      source,
-      effectiveRows,
-      conflictPolicy,
-      nonResponders,
-      columnMap,
-      responseColumn,
-      valueMappings,
-      fixedTarget,
-    ]
+    [matchState, source, effectiveRows, questions, conflictPolicy, columnMap, cleanupStats]
   );
 
   const postApply = useCallback(
@@ -580,7 +719,10 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
       invalidate(["campaign-members-full", campaignId]);
       invalidate(["campaign-activities", campaignId]);
       onDataChanged?.();
-      toast.success(`Recorded ${json.ratings_applied} participation entries`);
+      const total = json.per_assessment.reduce((sum, a) => sum + a.ratings_applied, 0);
+      toast.success(
+        `Recorded ${total} entries across ${json.per_assessment.length} assessment${json.per_assessment.length === 1 ? "" : "s"}`
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Import failed");
     } finally {
@@ -598,21 +740,18 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
     uploadFile,
     loadAnAction,
     anProgress,
-    assessment,
-    setAssessment,
     columnMap,
     setColumnMap,
-    responseColumn,
-    selectResponseColumn,
-    distinctResponseValues,
-    valueMappings,
-    setValueMappings,
-    fixedTarget,
-    setFixedTarget,
+    questions,
+    addQuestion,
+    removeQuestion,
+    updateQuestion,
+    setQuestionColumn,
+    setQuestionValueTarget,
+    setQuestionValueKeepNote,
     conflictPolicy,
     setConflictPolicy,
-    nonResponders,
-    setNonResponders,
+    cleanupStats,
     importRows,
     effectiveRows,
     canMatch,

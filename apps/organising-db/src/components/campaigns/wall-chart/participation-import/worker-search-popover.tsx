@@ -84,8 +84,7 @@ export function WorkerSearchPopover({
       phone: r.phone,
       in_campaign: r.in_campaign,
       method: "name",
-      existing_rating: null,
-      existing_binary_value: null,
+      already_rated: false,
     });
     setOpen(false);
   }

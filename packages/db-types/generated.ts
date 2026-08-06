@@ -4099,6 +4099,7 @@ export type Database = {
           description: string | null
           is_binary: boolean
           is_custom: boolean
+          is_perception: boolean
           rating_labels: Json | null
           section_plan_id: number | null
           supporter_outcome_value: string | null
@@ -4118,6 +4119,7 @@ export type Database = {
           description?: string | null
           is_binary?: boolean
           is_custom?: boolean
+          is_perception?: boolean
           rating_labels?: Json | null
           section_plan_id?: number | null
           supporter_outcome_value?: string | null
@@ -4137,6 +4139,7 @@ export type Database = {
           description?: string | null
           is_binary?: boolean
           is_custom?: boolean
+          is_perception?: boolean
           rating_labels?: Json | null
           section_plan_id?: number | null
           supporter_outcome_value?: string | null

@@ -240,10 +240,13 @@ function MatchRow({
     (decision?.action === "match" && chosenCandidate != null && !chosenCandidate.in_campaign) ||
     decision?.action === "create";
 
+  const answers = row.values
+    .map((v) => v.raw)
+    .filter((v): v is string => Boolean(v));
   const identityBits = [
     row.emails[0],
     row.phones[0],
-    row.rawResponse ? `→ ${row.rawResponse}` : null,
+    answers.length > 0 ? `→ ${answers.join(" · ")}` : null,
   ].filter(Boolean);
 
   return (
@@ -317,8 +320,7 @@ function MatchRow({
                 Not in campaign
               </Badge>
             )}
-            {chosenCandidate.existing_rating != null ||
-            chosenCandidate.existing_binary_value != null ? (
+            {chosenCandidate.already_rated ? (
               <Badge variant="outline" className="text-[10px] text-amber-600">
                 Already rated
               </Badge>

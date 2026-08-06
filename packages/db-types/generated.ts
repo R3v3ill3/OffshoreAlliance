@@ -21756,6 +21756,7 @@ export type Database = {
       match_workers_for_import: {
         Args: {
           p_emails?: string[]
+          p_last_names?: string[]
           p_name_keys?: string[]
           p_phones?: string[]
         }

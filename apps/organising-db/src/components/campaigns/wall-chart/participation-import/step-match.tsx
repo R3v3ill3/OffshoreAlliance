@@ -18,6 +18,7 @@ import type {
 } from "@/lib/import/participation-import-shared";
 import type { ImportRow, RowDecision } from "./types";
 import type { ParticipationImportController } from "./use-participation-import";
+import { WorkerSearchPopover } from "./worker-search-popover";
 
 const CREATE = "__create__";
 const SKIP = "__skip__";
@@ -43,8 +44,14 @@ function candidateSummary(c: ParticipationMatchCandidate): string {
  * name-only matches need confirmation; ambiguous/unmatched rows default
  * to "create + add to campaign" (deselectable per row or in bulk).
  */
-export function StepMatch({ controller }: { controller: ParticipationImportController }) {
-  const { matchState, effectiveRows, setDecision, bulkSetDecisions } = controller;
+export function StepMatch({
+  campaignId,
+  controller,
+}: {
+  campaignId: string;
+  controller: ParticipationImportController;
+}) {
+  const { matchState, effectiveRows, setDecision, bulkSetDecisions, setManualMatch } = controller;
 
   const rowByKey = useMemo(
     () => new Map(effectiveRows.map((r) => [r.key, r])),
@@ -88,6 +95,9 @@ export function StepMatch({ controller }: { controller: ParticipationImportContr
         rowByKey={rowByKey}
         decisions={matchState.decisions}
         setDecision={setDecision}
+        campaignId={campaignId}
+        manualCandidates={matchState.manualCandidates}
+        setManualMatch={setManualMatch}
         defaultCollapsedNote
       />
       <MatchGroup
@@ -97,6 +107,9 @@ export function StepMatch({ controller }: { controller: ParticipationImportContr
         rowByKey={rowByKey}
         decisions={matchState.decisions}
         setDecision={setDecision}
+        campaignId={campaignId}
+        manualCandidates={matchState.manualCandidates}
+        setManualMatch={setManualMatch}
       />
       <MatchGroup
         title={`No confident match (${groups.manual.length})`}
@@ -105,6 +118,9 @@ export function StepMatch({ controller }: { controller: ParticipationImportContr
         rowByKey={rowByKey}
         decisions={matchState.decisions}
         setDecision={setDecision}
+        campaignId={campaignId}
+        manualCandidates={matchState.manualCandidates}
+        setManualMatch={setManualMatch}
         headerActions={
           groups.manual.length > 0 ? (
             <div className="flex gap-2">
@@ -129,6 +145,9 @@ function MatchGroup({
   rowByKey,
   decisions,
   setDecision,
+  campaignId,
+  manualCandidates,
+  setManualMatch,
   headerActions,
   defaultCollapsedNote,
 }: {
@@ -138,6 +157,9 @@ function MatchGroup({
   rowByKey: Map<string, ImportRow>;
   decisions: Record<string, RowDecision>;
   setDecision: (key: string, decision: RowDecision) => void;
+  campaignId: string;
+  manualCandidates: Record<string, ParticipationMatchCandidate>;
+  setManualMatch: (key: string, candidate: ParticipationMatchCandidate) => void;
   headerActions?: React.ReactNode;
   defaultCollapsedNote?: boolean;
 }) {
@@ -169,6 +191,9 @@ function MatchGroup({
                 row={row}
                 decision={decisions[r.key]}
                 setDecision={(d) => setDecision(r.key, d)}
+                campaignId={campaignId}
+                manualCandidate={manualCandidates[r.key] ?? null}
+                onManualPick={(c) => setManualMatch(r.key, c)}
               />
             );
           })}
@@ -183,13 +208,23 @@ function MatchRow({
   row,
   decision,
   setDecision,
+  campaignId,
+  manualCandidate,
+  onManualPick,
 }: {
   result: ParticipationMatchResultRow;
   row: ImportRow;
   decision: RowDecision | undefined;
   setDecision: (decision: RowDecision) => void;
+  campaignId: string;
+  manualCandidate: ParticipationMatchCandidate | null;
+  onManualPick: (candidate: ParticipationMatchCandidate) => void;
 }) {
   const canCreate = Boolean(row.firstName && row.lastName);
+  const allCandidates =
+    manualCandidate && !result.candidates.some((c) => c.worker_id === manualCandidate.worker_id)
+      ? [...result.candidates, manualCandidate]
+      : result.candidates;
   const current =
     !decision || decision.action === "skip"
       ? SKIP
@@ -199,7 +234,7 @@ function MatchRow({
 
   const chosenCandidate =
     decision?.action === "match"
-      ? (result.candidates.find((c) => c.worker_id === decision.workerId) ?? null)
+      ? (allCandidates.find((c) => c.worker_id === decision.workerId) ?? null)
       : null;
   const showAddToCampaign =
     (decision?.action === "match" && chosenCandidate != null && !chosenCandidate.in_campaign) ||
@@ -232,7 +267,7 @@ function MatchRow({
             setDecision({ action: "create", workerId: null, addToCampaign: true });
           else {
             const workerId = Number(v);
-            const candidate = result.candidates.find((c) => c.worker_id === workerId);
+            const candidate = allCandidates.find((c) => c.worker_id === workerId);
             setDecision({
               action: "match",
               workerId,
@@ -245,7 +280,7 @@ function MatchRow({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {result.candidates.map((c) => (
+          {allCandidates.map((c) => (
             <SelectItem key={c.worker_id} value={String(c.worker_id)} className="text-xs">
               <span className="inline-flex items-center gap-1.5">
                 {c.first_name} {c.last_name}
@@ -263,6 +298,12 @@ function MatchRow({
           </SelectItem>
         </SelectContent>
       </Select>
+
+      <WorkerSearchPopover
+        campaignId={campaignId}
+        initialQuery={`${row.firstName} ${row.lastName}`.trim()}
+        onPick={onManualPick}
+      />
 
       <div className="flex min-w-32 items-center gap-2">
         {chosenCandidate && (

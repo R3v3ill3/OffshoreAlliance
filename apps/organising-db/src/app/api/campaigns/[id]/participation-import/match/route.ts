@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import {
+  lastNameKey,
   matchRows,
   nameKey,
   normaliseEmail,
@@ -76,6 +77,7 @@ export async function POST(
   const emailSet = new Set<string>();
   const phoneSet = new Set<string>();
   const nameKeySet = new Set<string>();
+  const lastNameSet = new Set<string>();
   for (const row of unresolvedRows) {
     for (const e of row.emails) {
       const n = normaliseEmail(e);
@@ -87,13 +89,17 @@ export async function POST(
     }
     const nk = nameKey(row.firstName, row.lastName);
     if (nk) nameKeySet.add(nk);
+    const lk = lastNameKey(row.lastName);
+    if (lk) lastNameSet.add(lk);
   }
 
-  // One round trip: candidate workers across the whole DB.
+  // One round trip: candidate workers across the whole DB (surname hits
+  // feed the tier-4 suggestion list, never auto-matches).
   const { data: candidates, error: rpcErr } = await supabase.rpc("match_workers_for_import", {
     p_emails: Array.from(emailSet),
     p_phones: Array.from(phoneSet),
     p_name_keys: Array.from(nameKeySet),
+    p_last_names: Array.from(lastNameSet),
   });
   if (rpcErr) {
     return NextResponse.json(

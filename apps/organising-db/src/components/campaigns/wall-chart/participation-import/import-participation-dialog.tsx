@@ -71,7 +71,7 @@ export function ImportParticipationDialog({
             <StepAssessment campaignId={campaignId} controller={controller} />
           )}
           {step === "mapping" && <StepMapping controller={controller} />}
-          {step === "match" && <StepMatch controller={controller} />}
+          {step === "match" && <StepMatch campaignId={campaignId} controller={controller} />}
           {(step === "review" || step === "done") && <StepReview controller={controller} />}
         </div>
 

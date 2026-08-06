@@ -14,6 +14,7 @@ import {
   type ParticipationApplyRequest,
   type ParticipationApplyResult,
   type ParticipationApplyRow,
+  type ParticipationMatchCandidate,
   type ParticipationMatchResponse,
   type ResponseValueMapping,
   type ResponseValueTarget,
@@ -379,7 +380,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
           };
         }
       }
-      setMatchState({ results: json.results, decisions });
+      setMatchState({ results: json.results, decisions, manualCandidates: {} });
       setStep("match");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Match failed");
@@ -399,6 +400,29 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
       prev ? { ...prev, decisions: { ...prev.decisions, ...updates } } : prev
     );
   }, []);
+
+  /** Link a row to a worker picked via the manual search. */
+  const setManualMatch = useCallback(
+    (key: string, candidate: ParticipationMatchCandidate) => {
+      setMatchState((prev) =>
+        prev
+          ? {
+              ...prev,
+              manualCandidates: { ...prev.manualCandidates, [key]: candidate },
+              decisions: {
+                ...prev.decisions,
+                [key]: {
+                  action: "match",
+                  workerId: candidate.worker_id,
+                  addToCampaign: !candidate.in_campaign,
+                },
+              },
+            }
+          : prev
+      );
+    },
+    []
+  );
 
   // ── Apply (dry run + real) ──────────────────────────────────────────────────
 
@@ -596,6 +620,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
     matchState,
     setDecision,
     bulkSetDecisions,
+    setManualMatch,
     runPreview,
     preview,
     runApply,

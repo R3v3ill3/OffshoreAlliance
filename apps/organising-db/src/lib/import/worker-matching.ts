@@ -89,10 +89,17 @@ export function nameKey(first: string | null | undefined, last: string | null | 
   return `${f}||${l}`;
 }
 
+/** Case/whitespace-insensitive surname key. */
+export function lastNameKey(last: string | null | undefined): string | null {
+  const l = (last ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  return l || null;
+}
+
 interface WorkerIndex {
   byEmail: Map<string, MatchableWorker[]>;
   byPhone: Map<string, MatchableWorker[]>;
   byName: Map<string, MatchableWorker[]>;
+  byLastName: Map<string, MatchableWorker[]>;
 }
 
 function push<K>(map: Map<K, MatchableWorker[]>, key: K, w: MatchableWorker) {
@@ -105,6 +112,7 @@ export function buildWorkerIndex(workers: MatchableWorker[]): WorkerIndex {
   const byEmail = new Map<string, MatchableWorker[]>();
   const byPhone = new Map<string, MatchableWorker[]>();
   const byName = new Map<string, MatchableWorker[]>();
+  const byLastName = new Map<string, MatchableWorker[]>();
   for (const w of workers) {
     const email = normaliseEmail(w.email);
     if (email) push(byEmail, email, w);
@@ -115,8 +123,10 @@ export function buildWorkerIndex(workers: MatchableWorker[]): WorkerIndex {
     // Preferred name counts as an alternate first name for tier 3.
     const pk = nameKey(w.preferred_name ?? "", w.last_name);
     if (pk && pk !== nk) push(byName, pk, w);
+    const lk = lastNameKey(w.last_name);
+    if (lk) push(byLastName, lk, w);
   }
-  return { byEmail, byPhone, byName };
+  return { byEmail, byPhone, byName, byLastName };
 }
 
 /** In-campaign workers first, then stable by worker_id. */
@@ -178,6 +188,19 @@ export function matchRow(row: MatchIdentityRow, index: WorkerIndex): MatchResult
   if (uniqueNameWorkers.length > 1) {
     return { key: row.key, disposition: "review", match: null, candidates };
   }
+
+  // Tier 4: surname-only suggestions ("Steve Smith" vs "Stephen Smith").
+  // Never auto-matched — surfaced for the user to pick from. Capped so a
+  // common surname doesn't swamp the row's picker.
+  const lk = lastNameKey(row.lastName);
+  const surnameHits = lk ? (index.byLastName.get(lk) ?? []) : [];
+  if (surnameHits.length > 0) {
+    const surnameCandidates = dedupeCandidates(
+      rankWorkers(surnameHits).map((worker) => ({ worker, method: "name" as const }))
+    ).slice(0, 8);
+    return { key: row.key, disposition: "review", match: null, candidates: surnameCandidates };
+  }
+
   return { key: row.key, disposition: "unmatched", match: null, candidates: [] };
 }
 

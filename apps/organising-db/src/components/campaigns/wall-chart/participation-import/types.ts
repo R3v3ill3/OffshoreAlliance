@@ -1,6 +1,7 @@
 import type { WallChartAssessmentOption } from "../types";
 import type {
   ParticipationMappableField,
+  ParticipationMatchCandidate,
   ParticipationMatchResultRow,
   ResponseValueTarget,
 } from "@/lib/import/participation-import-shared";
@@ -76,4 +77,6 @@ export interface RowDecision {
 export interface MatchState {
   results: ParticipationMatchResultRow[];
   decisions: Record<string, RowDecision>;
+  /** Workers linked by hand via the search picker, keyed by row key. */
+  manualCandidates: Record<string, ParticipationMatchCandidate>;
 }

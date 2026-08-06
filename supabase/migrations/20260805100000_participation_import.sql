@@ -134,7 +134,7 @@ DROP FUNCTION IF EXISTS record_assessment_event(
   INT, INT, INT, VARCHAR, VARCHAR, INT, VARCHAR, TEXT, UUID
 );
 
-CREATE FUNCTION record_assessment_event(
+CREATE OR REPLACE FUNCTION record_assessment_event(
   p_activity_id INT,
   p_worker_id INT,
   p_rating INT DEFAULT NULL,

@@ -16,6 +16,12 @@ const MAX_BATCH_SIZE = 10_000;
 const MAX_CONCURRENT_REQUESTS = 5;
 /** Reject webhooks whose timestamp drifts beyond this (replay guard). */
 const WEBHOOK_MAX_SKEW_SECONDS = 300;
+/**
+ * Hard timeout per API request. Without it a stalled provider fetch can
+ * pin a dispatcher run past the next cron tick (double-send risk — the
+ * queued→sending claim is the primary guard; this bounds the overlap).
+ */
+const REQUEST_TIMEOUT_MS = 30_000;
 
 export interface MobileMessageConfig {
   username: string;
@@ -100,6 +106,7 @@ export class MobileMessageProvider implements SmsProvider {
           ...options.headers,
         },
         body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       if (!response.ok) {
         const detail = await response.text().catch(() => "");

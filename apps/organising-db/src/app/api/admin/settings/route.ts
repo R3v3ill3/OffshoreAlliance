@@ -7,6 +7,9 @@ const ALLOWED_KEYS = [
   "mobile_message_api_password",
   "mobile_message_webhook_secret",
   "sms_provider",
+  // Shared-secret fallback for /api/sms/webhook (?token=) — seeded by
+  // the Phase 1 migration; listed here so admins can rotate it.
+  "sms_webhook_token",
 ] as const;
 
 type SettingKey = (typeof ALLOWED_KEYS)[number];

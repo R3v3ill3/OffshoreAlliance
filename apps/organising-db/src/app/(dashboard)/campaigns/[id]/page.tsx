@@ -56,6 +56,7 @@ import { CampaignEmployersWorksitesCard } from "@/components/campaigns/campaign-
 import { CampaignCommsSection } from "@/components/campaigns/campaign-comms-section";
 import { CampaignOverviewMetrics } from "@/components/campaigns/CampaignOverviewMetrics";
 import { InlinePhoneOpsPanel } from "@/components/phone/InlinePhoneOpsPanel";
+import { InlineSmsOpsPanel } from "@/components/sms/InlineSmsOpsPanel";
 import { OutreachCleanupPanel } from "@/components/campaigns/OutreachCleanupPanel";
 import { SituationAnalysisCard } from "@/components/campaigns/planning/SituationAnalysisCard";
 import { SituationAnalysisEditSheet } from "@/components/campaigns/situation-analysis/SituationAnalysisEditSheet";
@@ -732,6 +733,7 @@ export default function CampaignDetailPage() {
             <TabsList className="mb-4">
               <TabsTrigger value="comms">Comms</TabsTrigger>
               <TabsTrigger value="phone">Phone Ops</TabsTrigger>
+              <TabsTrigger value="sms">SMS</TabsTrigger>
               <TabsTrigger value="soc">SOC</TabsTrigger>
             </TabsList>
 
@@ -743,6 +745,10 @@ export default function CampaignDetailPage() {
 
             <TabsContent value="phone">
               <InlinePhoneOpsPanel campaignId={id} />
+            </TabsContent>
+
+            <TabsContent value="sms">
+              {activeSub === "sms" && <InlineSmsOpsPanel campaignId={id} />}
             </TabsContent>
 
             <TabsContent value="soc">

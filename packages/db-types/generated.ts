@@ -4685,6 +4685,7 @@ export type Database = {
           preheader: string | null
           send_stats: Json | null
           sent_via: string | null
+          sms_list_id: number | null
           source_template_ids: number[] | null
           stage_number: number
           status: string
@@ -4718,6 +4719,7 @@ export type Database = {
           preheader?: string | null
           send_stats?: Json | null
           sent_via?: string | null
+          sms_list_id?: number | null
           source_template_ids?: number[] | null
           stage_number: number
           status?: string
@@ -4751,6 +4753,7 @@ export type Database = {
           preheader?: string | null
           send_stats?: Json | null
           sent_via?: string | null
+          sms_list_id?: number | null
           source_template_ids?: number[] | null
           stage_number?: number
           status?: string
@@ -4846,6 +4849,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "campaign_stage_plans"
             referencedColumns: ["plan_id"]
+          },
+          {
+            foreignKeyName: "campaign_comms_drafts_sms_list_id_fkey"
+            columns: ["sms_list_id"]
+            isOneToOne: false
+            referencedRelation: "sms_lists"
+            referencedColumns: ["list_id"]
+          },
+          {
+            foreignKeyName: "campaign_comms_drafts_sms_list_id_fkey"
+            columns: ["sms_list_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_summary"
+            referencedColumns: ["list_id"]
           },
           {
             foreignKeyName: "campaign_comms_drafts_structured_script_id_fkey"
@@ -7740,6 +7757,7 @@ export type Database = {
           fired_call_list_id: number | null
           fired_draft_id: number | null
           fired_email_list_id: number | null
+          fired_sms_list_id: number | null
           fired_task_list_id: number | null
           leader_organiser_id: number | null
           leader_worker_id: number | null
@@ -7759,6 +7777,7 @@ export type Database = {
           fired_call_list_id?: number | null
           fired_draft_id?: number | null
           fired_email_list_id?: number | null
+          fired_sms_list_id?: number | null
           fired_task_list_id?: number | null
           leader_organiser_id?: number | null
           leader_worker_id?: number | null
@@ -7778,6 +7797,7 @@ export type Database = {
           fired_call_list_id?: number | null
           fired_draft_id?: number | null
           fired_email_list_id?: number | null
+          fired_sms_list_id?: number | null
           fired_task_list_id?: number | null
           leader_organiser_id?: number | null
           leader_worker_id?: number | null
@@ -7863,6 +7883,20 @@ export type Database = {
             columns: ["fired_email_list_id"]
             isOneToOne: false
             referencedRelation: "email_lists"
+            referencedColumns: ["list_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_lists_fired_sms_list_id_fkey"
+            columns: ["fired_sms_list_id"]
+            isOneToOne: false
+            referencedRelation: "sms_lists"
+            referencedColumns: ["list_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_lists_fired_sms_list_id_fkey"
+            columns: ["fired_sms_list_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_summary"
             referencedColumns: ["list_id"]
           },
           {
@@ -13674,6 +13708,33 @@ export type Database = {
         }
         Relationships: []
       }
+      sms_delivery_events: {
+        Row: {
+          event_id: number
+          event_type: string
+          occurred_at: string
+          part_number: number
+          payload: Json | null
+          provider_message_id: string
+        }
+        Insert: {
+          event_id?: number
+          event_type: string
+          occurred_at?: string
+          part_number?: number
+          payload?: Json | null
+          provider_message_id: string
+        }
+        Update: {
+          event_id?: number
+          event_type?: string
+          occurred_at?: string
+          part_number?: number
+          payload?: Json | null
+          provider_message_id?: string
+        }
+        Relationships: []
+      }
       sms_interactions: {
         Row: {
           activity_id: number | null
@@ -13830,6 +13891,244 @@ export type Database = {
           },
         ]
       }
+      sms_list_items: {
+        Row: {
+          claimed_at: string | null
+          created_at: string
+          delivered_at: string | null
+          failure_reason: string | null
+          item_id: number
+          list_id: number
+          phone_e164: string | null
+          provider_message_id: string | null
+          send_before: string | null
+          sent_at: string | null
+          sort_order: number
+          status: string
+          updated_at: string
+          worker_id: number
+        }
+        Insert: {
+          claimed_at?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          failure_reason?: string | null
+          item_id?: number
+          list_id: number
+          phone_e164?: string | null
+          provider_message_id?: string | null
+          send_before?: string | null
+          sent_at?: string | null
+          sort_order?: number
+          status?: string
+          updated_at?: string
+          worker_id: number
+        }
+        Update: {
+          claimed_at?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          failure_reason?: string | null
+          item_id?: number
+          list_id?: number
+          phone_e164?: string | null
+          provider_message_id?: string | null
+          send_before?: string | null
+          sent_at?: string | null
+          sort_order?: number
+          status?: string
+          updated_at?: string
+          worker_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_list_items_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "sms_lists"
+            referencedColumns: ["list_id"]
+          },
+          {
+            foreignKeyName: "sms_list_items_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_summary"
+            referencedColumns: ["list_id"]
+          },
+          {
+            foreignKeyName: "sms_list_items_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_soc_recording_grid"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "sms_list_items_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "sms_list_items_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers_view"
+            referencedColumns: ["worker_id"]
+          },
+        ]
+      }
+      sms_lists: {
+        Row: {
+          blackout_override: boolean
+          blackout_override_reason: string | null
+          campaign_id: number
+          created_at: string
+          created_by: string | null
+          delivered_items: number
+          description: string | null
+          draft_id: number | null
+          failed_items: number
+          list_id: number
+          name: string
+          scheduled_for: string | null
+          sender_number_id: number | null
+          sent_items: number
+          source_filters: Json | null
+          status: string
+          timezone: string
+          total_items: number
+          updated_at: string
+        }
+        Insert: {
+          blackout_override?: boolean
+          blackout_override_reason?: string | null
+          campaign_id: number
+          created_at?: string
+          created_by?: string | null
+          delivered_items?: number
+          description?: string | null
+          draft_id?: number | null
+          failed_items?: number
+          list_id?: number
+          name: string
+          scheduled_for?: string | null
+          sender_number_id?: number | null
+          sent_items?: number
+          source_filters?: Json | null
+          status?: string
+          timezone?: string
+          total_items?: number
+          updated_at?: string
+        }
+        Update: {
+          blackout_override?: boolean
+          blackout_override_reason?: string | null
+          campaign_id?: number
+          created_at?: string
+          created_by?: string | null
+          delivered_items?: number
+          description?: string | null
+          draft_id?: number | null
+          failed_items?: number
+          list_id?: number
+          name?: string
+          scheduled_for?: string | null
+          sender_number_id?: number | null
+          sent_items?: number
+          source_filters?: Json | null
+          status?: string
+          timezone?: string
+          total_items?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_bargaining_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_comms_drafts"
+            referencedColumns: ["draft_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_sender_number_id_fkey"
+            columns: ["sender_number_id"]
+            isOneToOne: false
+            referencedRelation: "sms_numbers"
+            referencedColumns: ["number_id"]
+          },
+        ]
+      }
       sms_number_assignments: {
         Row: {
           assigned_at: string
@@ -13916,6 +14215,109 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organisers"
             referencedColumns: ["organiser_id"]
+          },
+        ]
+      }
+      sms_send_log: {
+        Row: {
+          campaign_id: number
+          cost: number | null
+          created_at: string
+          delivered_at: string | null
+          draft_id: number
+          failed_at: string | null
+          failure_reason: string | null
+          first_reply_at: string | null
+          list_id: number | null
+          phone_e164: string | null
+          provider_message_id: string | null
+          reply_count: number
+          segments: number | null
+          send_id: number
+          sent_at: string | null
+          status: string
+          worker_id: number
+        }
+        Insert: {
+          campaign_id: number
+          cost?: number | null
+          created_at?: string
+          delivered_at?: string | null
+          draft_id: number
+          failed_at?: string | null
+          failure_reason?: string | null
+          first_reply_at?: string | null
+          list_id?: number | null
+          phone_e164?: string | null
+          provider_message_id?: string | null
+          reply_count?: number
+          segments?: number | null
+          send_id?: number
+          sent_at?: string | null
+          status?: string
+          worker_id: number
+        }
+        Update: {
+          campaign_id?: number
+          cost?: number | null
+          created_at?: string
+          delivered_at?: string | null
+          draft_id?: number
+          failed_at?: string | null
+          failure_reason?: string | null
+          first_reply_at?: string | null
+          list_id?: number | null
+          phone_e164?: string | null
+          provider_message_id?: string | null
+          reply_count?: number
+          segments?: number | null
+          send_id?: number
+          sent_at?: string | null
+          status?: string
+          worker_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_send_log_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_comms_drafts"
+            referencedColumns: ["draft_id"]
+          },
+          {
+            foreignKeyName: "sms_send_log_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "sms_lists"
+            referencedColumns: ["list_id"]
+          },
+          {
+            foreignKeyName: "sms_send_log_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_summary"
+            referencedColumns: ["list_id"]
+          },
+          {
+            foreignKeyName: "sms_send_log_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_soc_recording_grid"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "sms_send_log_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "sms_send_log_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers_view"
+            referencedColumns: ["worker_id"]
           },
         ]
       }
@@ -20888,6 +21290,121 @@ export type Database = {
           worker_id: number | null
         }
         Relationships: []
+      }
+      vw_sms_campaign_summary: {
+        Row: {
+          blackout_override: boolean | null
+          blocked_count: number | null
+          campaign_id: number | null
+          created_at: string | null
+          delivered_count: number | null
+          delivered_items: number | null
+          delivery_rate_pct: number | null
+          draft_id: number | null
+          failed_count: number | null
+          failed_items: number | null
+          item_count: number | null
+          list_id: number | null
+          list_name: string | null
+          list_status: string | null
+          opted_out_count: number | null
+          pending_count: number | null
+          queued_count: number | null
+          scheduled_for: string | null
+          sender_number_id: number | null
+          sending_count: number | null
+          sent_count: number | null
+          sent_items: number | null
+          skipped_count: number | null
+          timezone: string | null
+          total_items: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_bargaining_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_comms_drafts"
+            referencedColumns: ["draft_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_sender_number_id_fkey"
+            columns: ["sender_number_id"]
+            isOneToOne: false
+            referencedRelation: "sms_numbers"
+            referencedColumns: ["number_id"]
+          },
+        ]
       }
       worker_ambition_rating: {
         Row: {

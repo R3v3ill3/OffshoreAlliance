@@ -4099,6 +4099,7 @@ export type Database = {
           description: string | null
           is_binary: boolean
           is_custom: boolean
+          is_perception: boolean
           rating_labels: Json | null
           section_plan_id: number | null
           supporter_outcome_value: string | null
@@ -4118,6 +4119,7 @@ export type Database = {
           description?: string | null
           is_binary?: boolean
           is_custom?: boolean
+          is_perception?: boolean
           rating_labels?: Json | null
           section_plan_id?: number | null
           supporter_outcome_value?: string | null
@@ -4137,6 +4139,7 @@ export type Database = {
           description?: string | null
           is_binary?: boolean
           is_custom?: boolean
+          is_perception?: boolean
           rating_labels?: Json | null
           section_plan_id?: number | null
           supporter_outcome_value?: string | null
@@ -10877,6 +10880,141 @@ export type Database = {
           },
         ]
       }
+      participation_import_batches: {
+        Row: {
+          activity_id: number
+          an_resource_id: string | null
+          an_resource_type: string | null
+          batch_id: number
+          campaign_id: number
+          created_at: string
+          created_by: string | null
+          file_name: string | null
+          mapping: Json | null
+          rows_created: number
+          rows_matched: number
+          rows_skipped: number
+          rows_total: number
+          rows_updated: number
+          source_kind: string
+          workers_created: number
+        }
+        Insert: {
+          activity_id: number
+          an_resource_id?: string | null
+          an_resource_type?: string | null
+          batch_id?: number
+          campaign_id: number
+          created_at?: string
+          created_by?: string | null
+          file_name?: string | null
+          mapping?: Json | null
+          rows_created?: number
+          rows_matched?: number
+          rows_skipped?: number
+          rows_total?: number
+          rows_updated?: number
+          source_kind: string
+          workers_created?: number
+        }
+        Update: {
+          activity_id?: number
+          an_resource_id?: string | null
+          an_resource_type?: string | null
+          batch_id?: number
+          campaign_id?: number
+          created_at?: string
+          created_by?: string | null
+          file_name?: string | null
+          mapping?: Json | null
+          rows_created?: number
+          rows_matched?: number
+          rows_skipped?: number
+          rows_total?: number
+          rows_updated?: number
+          source_kind?: string
+          workers_created?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "participation_import_batches_activity_id_fkey"
+            columns: ["activity_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_activities"
+            referencedColumns: ["activity_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_bargaining_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
+          },
+        ]
+      }
       petition_signatures: {
         Row: {
           activity_id: number
@@ -13550,6 +13688,7 @@ export type Database = {
           maps_to_binary: string | null
           maps_to_rating: number | null
           notes: string | null
+          phone_e164: string | null
           phone_number: string | null
           received_at: string
           worker_id: number
@@ -13567,6 +13706,7 @@ export type Database = {
           maps_to_binary?: string | null
           maps_to_rating?: number | null
           notes?: string | null
+          phone_e164?: string | null
           phone_number?: string | null
           received_at?: string
           worker_id: number
@@ -13584,6 +13724,7 @@ export type Database = {
           maps_to_binary?: string | null
           maps_to_rating?: number | null
           notes?: string | null
+          phone_e164?: string | null
           phone_number?: string | null
           received_at?: string
           worker_id?: number
@@ -13686,6 +13827,95 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "workers_view"
             referencedColumns: ["worker_id"]
+          },
+        ]
+      }
+      sms_number_assignments: {
+        Row: {
+          assigned_at: string
+          assignment_id: number
+          number_id: number
+          organiser_id: number | null
+          purpose: string
+          unassigned_at: string | null
+        }
+        Insert: {
+          assigned_at?: string
+          assignment_id?: number
+          number_id: number
+          organiser_id?: number | null
+          purpose: string
+          unassigned_at?: string | null
+        }
+        Update: {
+          assigned_at?: string
+          assignment_id?: number
+          number_id?: number
+          organiser_id?: number | null
+          purpose?: string
+          unassigned_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_number_assignments_number_id_fkey"
+            columns: ["number_id"]
+            isOneToOne: false
+            referencedRelation: "sms_numbers"
+            referencedColumns: ["number_id"]
+          },
+          {
+            foreignKeyName: "sms_number_assignments_organiser_id_fkey"
+            columns: ["organiser_id"]
+            isOneToOne: false
+            referencedRelation: "organisers"
+            referencedColumns: ["organiser_id"]
+          },
+        ]
+      }
+      sms_numbers: {
+        Row: {
+          created_at: string
+          label: string | null
+          notes: string | null
+          number_id: number
+          organiser_id: number | null
+          phone_e164: string
+          provider: string
+          purpose: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          label?: string | null
+          notes?: string | null
+          number_id?: number
+          organiser_id?: number | null
+          phone_e164: string
+          provider?: string
+          purpose?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          label?: string | null
+          notes?: string | null
+          number_id?: number
+          organiser_id?: number | null
+          phone_e164?: string
+          provider?: string
+          purpose?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_numbers_organiser_id_fkey"
+            columns: ["organiser_id"]
+            isOneToOne: false
+            referencedRelation: "organisers"
+            referencedColumns: ["organiser_id"]
           },
         ]
       }
@@ -16131,6 +16361,7 @@ export type Database = {
           notes: string | null
           occupation: string | null
           phone: string | null
+          phone_e164: string | null
           postcode: string | null
           preferred_name: string | null
           project_id: number | null
@@ -16140,6 +16371,10 @@ export type Database = {
           resignation_reason: string | null
           roster_panel_id: number | null
           shift_id: number | null
+          sms_consent_source: string | null
+          sms_opt_out: boolean
+          sms_opt_out_at: string | null
+          sms_opt_out_source: string | null
           state: string | null
           suburb: string | null
           union_id: number | null
@@ -16173,6 +16408,7 @@ export type Database = {
           notes?: string | null
           occupation?: string | null
           phone?: string | null
+          phone_e164?: string | null
           postcode?: string | null
           preferred_name?: string | null
           project_id?: number | null
@@ -16182,6 +16418,10 @@ export type Database = {
           resignation_reason?: string | null
           roster_panel_id?: number | null
           shift_id?: number | null
+          sms_consent_source?: string | null
+          sms_opt_out?: boolean
+          sms_opt_out_at?: string | null
+          sms_opt_out_source?: string | null
           state?: string | null
           suburb?: string | null
           union_id?: number | null
@@ -16215,6 +16455,7 @@ export type Database = {
           notes?: string | null
           occupation?: string | null
           phone?: string | null
+          phone_e164?: string | null
           postcode?: string | null
           preferred_name?: string | null
           project_id?: number | null
@@ -16224,6 +16465,10 @@ export type Database = {
           resignation_reason?: string | null
           roster_panel_id?: number | null
           shift_id?: number | null
+          sms_consent_source?: string | null
+          sms_opt_out?: boolean
+          sms_opt_out_at?: string | null
+          sms_opt_out_source?: string | null
           state?: string | null
           suburb?: string | null
           union_id?: number | null
@@ -18787,141 +19032,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "principal_employer_eba_summary"
             referencedColumns: ["principal_employer_id"]
-          },
-        ]
-      }
-      participation_import_batches: {
-        Row: {
-          activity_id: number
-          an_resource_id: string | null
-          an_resource_type: string | null
-          batch_id: number
-          campaign_id: number
-          created_at: string
-          created_by: string | null
-          file_name: string | null
-          mapping: Json | null
-          rows_created: number
-          rows_matched: number
-          rows_skipped: number
-          rows_total: number
-          rows_updated: number
-          source_kind: string
-          workers_created: number
-        }
-        Insert: {
-          activity_id: number
-          an_resource_id?: string | null
-          an_resource_type?: string | null
-          batch_id?: number
-          campaign_id: number
-          created_at?: string
-          created_by?: string | null
-          file_name?: string | null
-          mapping?: Json | null
-          rows_created?: number
-          rows_matched?: number
-          rows_skipped?: number
-          rows_total?: number
-          rows_updated?: number
-          source_kind: string
-          workers_created?: number
-        }
-        Update: {
-          activity_id?: number
-          an_resource_id?: string | null
-          an_resource_type?: string | null
-          batch_id?: number
-          campaign_id?: number
-          created_at?: string
-          created_by?: string | null
-          file_name?: string | null
-          mapping?: Json | null
-          rows_created?: number
-          rows_matched?: number
-          rows_skipped?: number
-          rows_total?: number
-          rows_updated?: number
-          source_kind?: string
-          workers_created?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "participation_import_batches_activity_id_fkey"
-            columns: ["activity_id"]
-            isOneToOne: false
-            referencedRelation: "campaign_activities"
-            referencedColumns: ["activity_id"]
-          },
-          {
-            foreignKeyName: "participation_import_batches_campaign_id_fkey"
-            columns: ["campaign_id"]
-            isOneToOne: false
-            referencedRelation: "campaign_ou_coverage_summary"
-            referencedColumns: ["campaign_id"]
-          },
-          {
-            foreignKeyName: "participation_import_batches_campaign_id_fkey"
-            columns: ["campaign_id"]
-            isOneToOne: false
-            referencedRelation: "campaigns"
-            referencedColumns: ["campaign_id"]
-          },
-          {
-            foreignKeyName: "participation_import_batches_campaign_id_fkey"
-            columns: ["campaign_id"]
-            isOneToOne: false
-            referencedRelation: "campaigns_view"
-            referencedColumns: ["campaign_id"]
-          },
-          {
-            foreignKeyName: "participation_import_batches_campaign_id_fkey"
-            columns: ["campaign_id"]
-            isOneToOne: false
-            referencedRelation: "v_bargaining_progress"
-            referencedColumns: ["campaign_id"]
-          },
-          {
-            foreignKeyName: "participation_import_batches_campaign_id_fkey"
-            columns: ["campaign_id"]
-            isOneToOne: false
-            referencedRelation: "v_campaign_foundational_readiness"
-            referencedColumns: ["campaign_id"]
-          },
-          {
-            foreignKeyName: "participation_import_batches_campaign_id_fkey"
-            columns: ["campaign_id"]
-            isOneToOne: false
-            referencedRelation: "workload_campaign_activities"
-            referencedColumns: ["campaign_id"]
-          },
-          {
-            foreignKeyName: "participation_import_batches_campaign_id_fkey"
-            columns: ["campaign_id"]
-            isOneToOne: false
-            referencedRelation: "workload_campaign_entities"
-            referencedColumns: ["campaign_id"]
-          },
-          {
-            foreignKeyName: "participation_import_batches_campaign_id_fkey"
-            columns: ["campaign_id"]
-            isOneToOne: false
-            referencedRelation: "workload_campaign_progress"
-            referencedColumns: ["campaign_id"]
-          },
-          {
-            foreignKeyName: "participation_import_batches_campaign_id_fkey"
-            columns: ["campaign_id"]
-            isOneToOne: false
-            referencedRelation: "workload_campaigns_by_stage"
-            referencedColumns: ["campaign_id"]
-          },
-          {
-            foreignKeyName: "participation_import_batches_campaign_id_fkey"
-            columns: ["campaign_id"]
-            isOneToOne: false
-            referencedRelation: "workload_dashboard_summary"
-            referencedColumns: ["campaign_id"]
           },
         ]
       }
@@ -21506,6 +21616,14 @@ export type Database = {
         Returns: number
       }
       archive_old_import_logs: { Args: never; Returns: Json }
+      assign_sms_number: {
+        Args: {
+          p_number_id: number
+          p_organiser_id?: number
+          p_purpose: string
+        }
+        Returns: undefined
+      }
       begin_bargaining_phase: {
         Args: {
           p_bargaining_commenced_at: string
@@ -21609,6 +21727,7 @@ export type Database = {
         Args: { p_request_id: number; p_response_reason?: string }
         Returns: Json
       }
+      derive_au_mobile_e164: { Args: { p_raw: string }; Returns: string }
       fn_ensure_activist_profile: {
         Args: { p_campaign_id: number; p_source: string; p_worker_id: number }
         Returns: undefined
@@ -21756,16 +21875,17 @@ export type Database = {
       match_workers_for_import: {
         Args: {
           p_emails?: string[]
+          p_last_names?: string[]
           p_name_keys?: string[]
           p_phones?: string[]
         }
         Returns: {
-          worker_id: number
+          email: string
           first_name: string
           last_name: string
-          preferred_name: string
-          email: string
           phone: string
+          preferred_name: string
+          worker_id: number
         }[]
       }
       materialise_sequence_run: { Args: { p_run_id: number }; Returns: number }

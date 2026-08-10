@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { toE164 } from "@/lib/phone/normalise-phone";
 
 const createWorkerSchema = z.object({
   first_name: z.string().trim().min(1).max(100),
@@ -142,6 +143,8 @@ export async function POST(
       last_name: body.last_name,
       email,
       phone,
+      phone_e164: toE164(phone),
+      sms_consent_source: phone ? "manual" : null,
       employer_id: body.employer_id ?? null,
       worksite_id: body.worksite_id ?? null,
       is_active: true,

@@ -1577,8 +1577,9 @@ function SectorsTab() {
 
 function SettingsTab() {
   const [actionNetworkKey, setActionNetworkKey] = useState("");
-  const [yabbrKey, setYabbrKey] = useState("");
-  const [yabbrUrl, setYabbrUrl] = useState("");
+  const [mmUsername, setMmUsername] = useState("");
+  const [mmPassword, setMmPassword] = useState("");
+  const [smsProvider, setSmsProvider] = useState("mock");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -1589,8 +1590,9 @@ function SettingsTab() {
       .then((r) => r.json())
       .then((data: Record<string, string>) => {
         setActionNetworkKey(data.action_network_api_key ?? "");
-        setYabbrKey(data.yabbr_api_key ?? "");
-        setYabbrUrl(data.yabbr_api_url ?? "");
+        setMmUsername(data.mobile_message_api_username ?? "");
+        setMmPassword(data.mobile_message_api_password ?? "");
+        setSmsProvider(data.sms_provider || "mock");
       })
       .catch(() => setLoadError("Failed to load settings"))
       .finally(() => setLoading(false));
@@ -1604,8 +1606,9 @@ function SettingsTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action_network_api_key: actionNetworkKey,
-          yabbr_api_key: yabbrKey,
-          yabbr_api_url: yabbrUrl,
+          mobile_message_api_username: mmUsername,
+          mobile_message_api_password: mmPassword,
+          sms_provider: smsProvider,
         }),
       });
       if (!res.ok) {
@@ -1661,30 +1664,42 @@ function SettingsTab() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Link className="h-4 w-4" />
-              Yabbr API
+              Mobile Message SMS
             </CardTitle>
             <CardDescription>
-              Configure Yabbr for SMS and communications.
+              Configure Mobile Message for SMS. Use the mock provider until
+              live credentials are available.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="space-y-1.5">
-              <Label>API Key</Label>
+              <Label>Provider</Label>
+              <Select value={smsProvider} onValueChange={setSmsProvider} disabled={loading}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mock">Mock (testing)</SelectItem>
+                  <SelectItem value="mobile_message">Mobile Message</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>API Username</Label>
               <Input
-                type="password"
-                value={yabbrKey}
-                onChange={(e) => setYabbrKey(e.target.value)}
-                placeholder={loading ? "Loading…" : "Enter API key…"}
+                value={mmUsername}
+                onChange={(e) => setMmUsername(e.target.value)}
+                placeholder={loading ? "Loading…" : "Enter API username…"}
                 disabled={loading}
               />
             </div>
             <div className="space-y-1.5">
-              <Label>API URL</Label>
+              <Label>API Password</Label>
               <Input
-                type="url"
-                value={yabbrUrl}
-                onChange={(e) => setYabbrUrl(e.target.value)}
-                placeholder="https://api.yabbr.com.au"
+                type="password"
+                value={mmPassword}
+                onChange={(e) => setMmPassword(e.target.value)}
+                placeholder={loading ? "Loading…" : "Enter API password…"}
                 disabled={loading}
               />
             </div>
@@ -1696,7 +1711,277 @@ function SettingsTab() {
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
         {saved ? "Saved!" : saving ? "Saving…" : "Save Settings"}
       </Button>
+
+      <SmsStatusPanel />
     </div>
+  );
+}
+
+// ---------- SMS status panel (Mobile Message readouts) ----------
+
+interface SmsStatusData {
+  provider: string;
+  balance: number | null;
+  senders: { sender: string; type?: string; status?: string }[];
+  providerError: string | null;
+  numbers: {
+    number_id: number;
+    phone_e164: string;
+    label: string | null;
+    purpose: string;
+    organiser_id: number | null;
+    organiser_name: string | null;
+    status: string;
+  }[];
+  organisers: { organiser_id: number; organiser_name: string }[];
+  workersMissingE164: number;
+}
+
+const SMS_NUMBER_PURPOSES = ["organiser", "relay", "survey", "spare"] as const;
+
+function SmsStatusPanel() {
+  const queryClient = useQueryClient();
+  const [assignPurpose, setAssignPurpose] = useState<Record<number, string>>({});
+  const [assignOrganiser, setAssignOrganiser] = useState<Record<number, string>>({});
+  const [newNumber, setNewNumber] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery<SmsStatusData>({
+    queryKey: ["admin-sms-status"],
+    queryFn: async () => {
+      const res = await fetchApi("/api/admin/sms/status");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed to load SMS status" }));
+        throw new Error(err.error ?? "Failed to load SMS status");
+      }
+      return res.json();
+    },
+  });
+
+  const postAction = useAuthAwareMutation({
+    mutationFn: async (body: Record<string, unknown>) => {
+      const res = await fetchApi("/api/admin/sms/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Action failed" }));
+        throw new Error(err.error ?? "Action failed");
+      }
+    },
+    onSuccess: () => {
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["admin-sms-status"] });
+    },
+    onError: (err) => {
+      setActionError(err instanceof Error ? err.message : "Action failed");
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading SMS status…
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!data) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">SMS Status</CardTitle>
+        <CardDescription>
+          Provider readouts and the dedicated number registry.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {data.providerError && (
+          <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            {data.providerError}
+          </div>
+        )}
+        {actionError && (
+          <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            {actionError}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-4 text-sm">
+          <div>
+            <span className="text-muted-foreground">Provider:</span>{" "}
+            <Badge variant="outline">{data.provider}</Badge>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Credit balance:</span>{" "}
+            {data.balance != null ? data.balance.toLocaleString("en-AU") : "—"}
+          </div>
+          <div>
+            <span className="text-muted-foreground">Workers with phone but no E.164:</span>{" "}
+            {data.workersMissingE164.toLocaleString("en-AU")}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-sm font-medium mb-1.5">Registered senders</p>
+          {data.senders.length === 0 ? (
+            <p className="text-sm text-muted-foreground">None registered.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {data.senders.map((s) => (
+                <Badge key={s.sender} variant="secondary">
+                  {s.sender}
+                  {s.type ? ` · ${s.type}` : ""}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Dedicated numbers</p>
+          {data.numbers.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No numbers recorded. Provision numbers in the Mobile Message
+              dashboard, then record them here.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {data.numbers.map((n) => {
+                const purpose = assignPurpose[n.number_id] ?? n.purpose;
+                const organiser =
+                  assignOrganiser[n.number_id] ??
+                  (n.organiser_id != null ? String(n.organiser_id) : "");
+                return (
+                  <div
+                    key={n.number_id}
+                    className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm"
+                  >
+                    <span className="font-mono">{n.phone_e164}</span>
+                    {n.label && (
+                      <span className="text-muted-foreground">{n.label}</span>
+                    )}
+                    {n.status !== "active" && (
+                      <Badge variant="outline">{n.status}</Badge>
+                    )}
+                    <div className="ml-auto flex items-center gap-2">
+                      <Select
+                        value={purpose}
+                        onValueChange={(v) =>
+                          setAssignPurpose((p) => ({ ...p, [n.number_id]: v }))
+                        }
+                      >
+                        <SelectTrigger className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SMS_NUMBER_PURPOSES.map((p) => (
+                            <SelectItem key={p} value={p}>
+                              {p}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {purpose === "organiser" && (
+                        <Select
+                          value={organiser}
+                          onValueChange={(v) =>
+                            setAssignOrganiser((p) => ({ ...p, [n.number_id]: v }))
+                          }
+                        >
+                          <SelectTrigger className="w-44">
+                            <SelectValue placeholder="Select organiser" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {data.organisers.map((o) => (
+                              <SelectItem
+                                key={o.organiser_id}
+                                value={String(o.organiser_id)}
+                              >
+                                {o.organiser_name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={
+                          postAction.isPending ||
+                          (purpose === "organiser" && !organiser)
+                        }
+                        onClick={() =>
+                          postAction.mutate({
+                            action: "assign",
+                            number_id: n.number_id,
+                            purpose,
+                            organiser_id:
+                              purpose === "organiser" && organiser
+                                ? Number(organiser)
+                                : null,
+                          })
+                        }
+                      >
+                        Assign
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-end gap-2 pt-1">
+            <div className="space-y-1.5">
+              <Label>New number (E.164)</Label>
+              <Input
+                value={newNumber}
+                onChange={(e) => setNewNumber(e.target.value)}
+                placeholder="+614xxxxxxxx"
+                className="w-44"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Label</Label>
+              <Input
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                placeholder="Optional label"
+                className="w-44"
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={postAction.isPending || !newNumber.trim()}
+              onClick={() =>
+                postAction.mutate(
+                  { action: "add_number", phone_e164: newNumber, label: newLabel },
+                  {
+                    onSuccess: () => {
+                      setNewNumber("");
+                      setNewLabel("");
+                    },
+                  }
+                )
+              }
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add number
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

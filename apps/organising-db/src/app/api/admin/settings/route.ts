@@ -3,8 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 
 const ALLOWED_KEYS = [
   "action_network_api_key",
-  "yabbr_api_key",
-  "yabbr_api_url",
+  "mobile_message_api_username",
+  "mobile_message_api_password",
+  "mobile_message_webhook_secret",
+  "sms_provider",
 ] as const;
 
 type SettingKey = (typeof ALLOWED_KEYS)[number];

@@ -2,6 +2,8 @@
 //   - 20260810100000_sms_foundations (sms_numbers, sms_number_assignments)
 //   - 20260810120000_sms_broadcast (sms_lists, sms_list_items,
 //     sms_send_log, sms_delivery_events, vw_sms_campaign_summary)
+//   - 20260810140000_sms_conversations (sms_conversations, sms_messages,
+//     sms_conversation_notes, sms_canned_replies)
 // TODO: replace with generated types after migration apply (pnpm gen:types).
 
 export type SmsNumberPurpose = "organiser" | "relay" | "survey" | "spare";
@@ -130,6 +132,84 @@ export interface SmsDeliveryEventRow {
   part_number: number;
   payload: Record<string, unknown> | null;
   occurred_at: string;
+}
+
+// ─── Phase 2 (inbox & 2-way conversations) ──────────────────────────
+
+/**
+ * Spoke contact state machine (brief §3.1 item 2) plus 'triage' for
+ * unmatched inbound. Inbound always flips a worker-matched thread to
+ * 'needs_response' (including closed → reopen).
+ */
+export type SmsConversationState =
+  | "needs_message"
+  | "messaged"
+  | "needs_response"
+  | "convo"
+  | "closed"
+  | "triage";
+
+export type SmsMessageDirection = "inbound" | "outbound";
+
+export type SmsMessageStatus =
+  | "received"
+  | "queued"
+  | "sent"
+  | "delivered"
+  | "failed";
+
+export interface SmsConversationRow {
+  conversation_id: number;
+  our_number_id: number;
+  worker_id: number | null;
+  phone_e164: string;
+  campaign_id: number | null;
+  activity_id: number | null;
+  state: SmsConversationState;
+  assignee_user_id: string | null;
+  escalated_to_user_id: string | null;
+  claim_user_id: string | null;
+  claimed_until: string | null;
+  unread_count: number;
+  last_message_at: string | null;
+  last_inbound_at: string | null;
+  last_outbound_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SmsMessageRow {
+  message_id: number;
+  conversation_id: number;
+  direction: SmsMessageDirection;
+  body: string | null;
+  phone_e164: string | null;
+  sender_user_id: string | null;
+  provider_message_id: string | null;
+  interaction_id: number | null;
+  status: SmsMessageStatus;
+  error: string | null;
+  segments: number | null;
+  created_at: string;
+}
+
+export interface SmsConversationNoteRow {
+  note_id: number;
+  conversation_id: number;
+  author_user_id: string;
+  body: string;
+  created_at: string;
+}
+
+export interface SmsCannedReplyRow {
+  reply_id: number;
+  campaign_id: number | null;
+  title: string;
+  body: string;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface VwSmsCampaignSummaryRow {

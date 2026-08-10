@@ -67,6 +67,7 @@ interface ListRow {
   timezone: string | null
   blackout_override: boolean
   scheduled_for: string | null
+  created_by: string | null
 }
 
 interface ItemRow {
@@ -100,6 +101,145 @@ function resolveBody(
 async function inChunks<T>(items: T[], fn: (item: T) => Promise<void>) {
   for (let i = 0; i < items.length; i += WRITE_CHUNK) {
     await Promise.all(items.slice(i, i + WRITE_CHUNK).map(fn))
+  }
+}
+
+interface MirrorSend {
+  worker_id: number
+  phone_e164: string
+  provider_message_id: string | null
+  body: string
+  segments: number | null
+}
+
+/**
+ * Phase 2 blast mirror: after successful sends, make sure every
+ * (sender number, member) pair has a conversation and append the
+ * outbound message rows — so the inbox shows the blast leg of every
+ * thread. Batched (≤500-row chunks); never uses read-modify-write:
+ * new threads are created 'messaged' via upsert on the NULLS NOT
+ * DISTINCT thread key (which also reopens a closed same-key thread),
+ * and pre-existing open threads get set-based timestamp/state updates.
+ */
+async function mirrorBlastConversations(
+  supabase: SupabaseClient,
+  args: {
+    ourNumberId: number
+    campaignId: number
+    senderUserId: string | null
+    sends: MirrorSend[]
+  },
+): Promise<void> {
+  const { ourNumberId, campaignId, senderUserId, sends } = args
+  if (sends.length === 0) return
+  const sentAt = new Date().toISOString()
+
+  const firstSendByPhone = new Map<string, MirrorSend>()
+  for (const s of sends) {
+    if (!firstSendByPhone.has(s.phone_e164)) firstSendByPhone.set(s.phone_e164, s)
+  }
+  const phones = [...firstSendByPhone.keys()]
+
+  // 1. Existing open threads on the pair — prefer this campaign's
+  //    scope, else most recent (mirrors the inbound attach preference).
+  interface ConvRow {
+    conversation_id: number
+    phone_e164: string
+    campaign_id: number | null
+    last_message_at: string | null
+  }
+  const openByPhone = new Map<string, ConvRow[]>()
+  for (let i = 0; i < phones.length; i += 500) {
+    const { data, error } = await supabase
+      .from('sms_conversations')
+      .select('conversation_id, phone_e164, campaign_id, last_message_at')
+      .eq('our_number_id', ourNumberId)
+      .in('phone_e164', phones.slice(i, i + 500))
+      .neq('state', 'closed')
+    if (error) throw error
+    for (const c of (data ?? []) as ConvRow[]) {
+      const list = openByPhone.get(c.phone_e164) ?? []
+      list.push(c)
+      openByPhone.set(c.phone_e164, list)
+    }
+  }
+  const convByPhone = new Map<string, number>()
+  const preExistingIds: number[] = []
+  for (const [phone, candidates] of openByPhone) {
+    candidates.sort((a, b) => {
+      const aScope = a.campaign_id === campaignId ? 0 : 1
+      const bScope = b.campaign_id === campaignId ? 0 : 1
+      if (aScope !== bScope) return aScope - bScope
+      const aT = a.last_message_at ? Date.parse(a.last_message_at) : 0
+      const bT = b.last_message_at ? Date.parse(b.last_message_at) : 0
+      return bT - aT
+    })
+    convByPhone.set(phone, candidates[0].conversation_id)
+    preExistingIds.push(candidates[0].conversation_id)
+  }
+
+  // 2. Missing pairs → upsert 'messaged' threads on the thread key.
+  const missing = phones.filter((p) => !convByPhone.has(p))
+  for (let i = 0; i < missing.length; i += 500) {
+    const rows = missing.slice(i, i + 500).map((phone) => ({
+      our_number_id: ourNumberId,
+      phone_e164: phone,
+      worker_id: firstSendByPhone.get(phone)?.worker_id ?? null,
+      campaign_id: campaignId,
+      state: 'messaged',
+      last_message_at: sentAt,
+      last_outbound_at: sentAt,
+    }))
+    const { data, error } = await supabase
+      .from('sms_conversations')
+      .upsert(rows, { onConflict: 'our_number_id,phone_e164,campaign_id' })
+      .select('conversation_id, phone_e164')
+    if (error) throw error
+    for (const c of data ?? []) {
+      convByPhone.set(c.phone_e164 as string, c.conversation_id as number)
+    }
+  }
+
+  // 3. Outbound message rows (idempotent on provider_message_id).
+  const msgRows = sends
+    .filter((s) => convByPhone.has(s.phone_e164))
+    .map((s) => ({
+      conversation_id: convByPhone.get(s.phone_e164) as number,
+      direction: 'outbound',
+      body: s.body,
+      phone_e164: s.phone_e164,
+      sender_user_id: senderUserId,
+      provider_message_id: s.provider_message_id,
+      status: 'sent',
+      segments: s.segments,
+      created_at: sentAt,
+    }))
+  for (let i = 0; i < msgRows.length; i += 500) {
+    const { error } = await supabase
+      .from('sms_messages')
+      .upsert(msgRows.slice(i, i + 500), {
+        onConflict: 'provider_message_id',
+        ignoreDuplicates: true,
+      })
+    if (error) throw error
+  }
+
+  // 4. Pre-existing threads: timestamps (guarded so a racing inbound's
+  //    newer stamp is never regressed) + needs_message → messaged.
+  for (let i = 0; i < preExistingIds.length; i += 500) {
+    const chunk = preExistingIds.slice(i, i + 500)
+    const { error: tsErr } = await supabase
+      .from('sms_conversations')
+      .update({ last_message_at: sentAt, last_outbound_at: sentAt })
+      .in('conversation_id', chunk)
+      .or(`last_message_at.is.null,last_message_at.lt.${sentAt}`)
+    if (tsErr) throw tsErr
+    const { error: stErr } = await supabase
+      .from('sms_conversations')
+      .update({ state: 'messaged' })
+      .in('conversation_id', chunk)
+      .eq('state', 'needs_message')
+    if (stErr) throw stErr
   }
 }
 
@@ -171,7 +311,7 @@ export async function GET(request: Request) {
   const { data: listsRaw, error: listErr } = await supabase
     .from('sms_lists')
     .select(
-      'list_id, campaign_id, draft_id, status, sender_number_id, timezone, blackout_override, scheduled_for',
+      'list_id, campaign_id, draft_id, status, sender_number_id, timezone, blackout_override, scheduled_for, created_by',
     )
     .in('status', ['queued', 'sending'])
     .or(`scheduled_for.is.null,scheduled_for.lte.${now.toISOString()}`)
@@ -500,6 +640,36 @@ export async function GET(request: Request) {
             }
           },
         )
+
+        // Phase 2: mirror successful sends into conversations (inbox
+        // blast leg). Best-effort — a mirroring failure must never fail
+        // the dispatch run or re-send messages.
+        try {
+          const successes: MirrorSend[] = []
+          sendable.forEach(({ worker, to }, i) => {
+            if (results[i]?.status !== 'success') return
+            successes.push({
+              worker_id: worker.worker_id,
+              phone_e164: to,
+              provider_message_id: results[i]?.providerMessageId ?? null,
+              body: logRows[i]._resolved,
+              segments: logRows[i].segments ?? null,
+            })
+          })
+          if (list.sender_number_id) {
+            await mirrorBlastConversations(supabase, {
+              ourNumberId: list.sender_number_id,
+              campaignId: list.campaign_id,
+              senderUserId: list.created_by,
+              sends: successes,
+            })
+          }
+        } catch (mirrorErr) {
+          console.error(
+            `dispatch-sms-queue: conversation mirror failed for list ${list.list_id}:`,
+            mirrorErr,
+          )
+        }
       }
 
       // Recount counters (count queries only) + complete when drained.

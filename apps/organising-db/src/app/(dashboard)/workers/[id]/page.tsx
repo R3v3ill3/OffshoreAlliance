@@ -38,6 +38,7 @@ import {
   type UnionMembershipTypeOption,
 } from "@/components/workers/membership-non-oa-fields";
 import { WorkerCallHistoryPanel } from "@/components/workers/WorkerCallHistoryPanel";
+import { WorkerSmsHistoryPanel } from "@/components/workers/WorkerSmsHistoryPanel";
 import { WorkerObjectionsPanel } from "@/components/workers/WorkerObjectionsPanel";
 import { WorkerIssueObservationsPanel } from "@/components/workers/WorkerIssueObservationsPanel";
 import { EmailHistorySection } from "@/components/workers/profile/EmailHistorySection";
@@ -1977,6 +1978,7 @@ export default function WorkerDetailPage() {
         {/* ── Activity tab ─────────────────────────────────────────────── */}
         <TabsContent value="activity" className="mt-4 space-y-4">
           <WorkerCallHistoryPanel workerId={workerId} />
+          <WorkerSmsHistoryPanel workerId={workerId} />
           <WorkerIssueObservationsPanel workerId={workerId} />
         </TabsContent>
 
@@ -1996,6 +1998,7 @@ export default function WorkerDetailPage() {
           )}
           <EmailHistorySection workerId={workerId} />
           <WorkerCallHistoryPanel workerId={workerId} />
+          <WorkerSmsHistoryPanel workerId={workerId} />
           <WorkerObjectionsPanel workerId={workerId} />
         </TabsContent>
 

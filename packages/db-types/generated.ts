@@ -13708,6 +13708,308 @@ export type Database = {
         }
         Relationships: []
       }
+      sms_canned_replies: {
+        Row: {
+          body: string
+          campaign_id: number | null
+          created_at: string
+          created_by: string | null
+          is_active: boolean
+          reply_id: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          campaign_id?: number | null
+          created_at?: string
+          created_by?: string | null
+          is_active?: boolean
+          reply_id?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          campaign_id?: number | null
+          created_at?: string
+          created_by?: string | null
+          is_active?: boolean
+          reply_id?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_bargaining_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
+          },
+        ]
+      }
+      sms_conversation_notes: {
+        Row: {
+          author_user_id: string
+          body: string
+          conversation_id: number
+          created_at: string
+          note_id: number
+        }
+        Insert: {
+          author_user_id: string
+          body: string
+          conversation_id: number
+          created_at?: string
+          note_id?: number
+        }
+        Update: {
+          author_user_id?: string
+          body?: string
+          conversation_id?: number
+          created_at?: string
+          note_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_conversation_notes_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "sms_conversations"
+            referencedColumns: ["conversation_id"]
+          },
+        ]
+      }
+      sms_conversations: {
+        Row: {
+          activity_id: number | null
+          assignee_user_id: string | null
+          campaign_id: number | null
+          claim_user_id: string | null
+          claimed_until: string | null
+          conversation_id: number
+          created_at: string
+          escalated_to_user_id: string | null
+          last_inbound_at: string | null
+          last_message_at: string | null
+          last_outbound_at: string | null
+          our_number_id: number
+          phone_e164: string
+          state: string
+          unread_count: number
+          updated_at: string
+          worker_id: number | null
+        }
+        Insert: {
+          activity_id?: number | null
+          assignee_user_id?: string | null
+          campaign_id?: number | null
+          claim_user_id?: string | null
+          claimed_until?: string | null
+          conversation_id?: number
+          created_at?: string
+          escalated_to_user_id?: string | null
+          last_inbound_at?: string | null
+          last_message_at?: string | null
+          last_outbound_at?: string | null
+          our_number_id: number
+          phone_e164: string
+          state?: string
+          unread_count?: number
+          updated_at?: string
+          worker_id?: number | null
+        }
+        Update: {
+          activity_id?: number | null
+          assignee_user_id?: string | null
+          campaign_id?: number | null
+          claim_user_id?: string | null
+          claimed_until?: string | null
+          conversation_id?: number
+          created_at?: string
+          escalated_to_user_id?: string | null
+          last_inbound_at?: string | null
+          last_message_at?: string | null
+          last_outbound_at?: string | null
+          our_number_id?: number
+          phone_e164?: string
+          state?: string
+          unread_count?: number
+          updated_at?: string
+          worker_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_conversations_activity_id_fkey"
+            columns: ["activity_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_activities"
+            referencedColumns: ["activity_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_bargaining_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_our_number_id_fkey"
+            columns: ["our_number_id"]
+            isOneToOne: false
+            referencedRelation: "sms_numbers"
+            referencedColumns: ["number_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_soc_recording_grid"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers_view"
+            referencedColumns: ["worker_id"]
+          },
+        ]
+      }
       sms_delivery_events: {
         Row: {
           event_id: number
@@ -14126,6 +14428,66 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "sms_numbers"
             referencedColumns: ["number_id"]
+          },
+        ]
+      }
+      sms_messages: {
+        Row: {
+          body: string | null
+          conversation_id: number
+          created_at: string
+          direction: string
+          error: string | null
+          interaction_id: number | null
+          message_id: number
+          phone_e164: string | null
+          provider_message_id: string | null
+          segments: number | null
+          sender_user_id: string | null
+          status: string
+        }
+        Insert: {
+          body?: string | null
+          conversation_id: number
+          created_at?: string
+          direction: string
+          error?: string | null
+          interaction_id?: number | null
+          message_id?: number
+          phone_e164?: string | null
+          provider_message_id?: string | null
+          segments?: number | null
+          sender_user_id?: string | null
+          status?: string
+        }
+        Update: {
+          body?: string | null
+          conversation_id?: number
+          created_at?: string
+          direction?: string
+          error?: string | null
+          interaction_id?: number | null
+          message_id?: number
+          phone_e164?: string | null
+          provider_message_id?: string | null
+          segments?: number | null
+          sender_user_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "sms_conversations"
+            referencedColumns: ["conversation_id"]
+          },
+          {
+            foreignKeyName: "sms_messages_interaction_id_fkey"
+            columns: ["interaction_id"]
+            isOneToOne: false
+            referencedRelation: "sms_interactions"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -22206,6 +22568,10 @@ export type Database = {
         }
         Returns: number
       }
+      claim_sms_conversation: {
+        Args: { p_conversation_id: number; p_ttl_minutes?: number }
+        Returns: boolean
+      }
       cleanup_old_rate_limit_usage: { Args: never; Returns: number }
       clear_all_ai_cache: { Args: never; Returns: number }
       clear_expired_ai_cache: { Args: never; Returns: number }
@@ -22361,6 +22727,10 @@ export type Database = {
         Args: { p_campaign_id: number }
         Returns: boolean
       }
+      increment_sms_reply_count: {
+        Args: { p_received_at?: string; p_send_id: number }
+        Returns: undefined
+      }
       invalidate_ai_cache: { Args: { p_cache_key: string }; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
       is_assigned_to_campaign: {
@@ -22465,6 +22835,10 @@ export type Database = {
       }
       release_call_list_item_claim: {
         Args: { p_item_id: number; p_session_label: string }
+        Returns: boolean
+      }
+      release_sms_conversation: {
+        Args: { p_conversation_id: number }
         Returns: boolean
       }
       renew_call_list_item_claim: {
@@ -22573,6 +22947,14 @@ export type Database = {
         }[]
       }
       sync_agreement_expired_status_by_date: { Args: never; Returns: number }
+      touch_sms_conversation_inbound: {
+        Args: { p_conversation_id: number; p_occurred_at?: string }
+        Returns: undefined
+      }
+      touch_sms_conversation_outbound: {
+        Args: { p_conversation_id: number; p_occurred_at?: string }
+        Returns: undefined
+      }
       transition_to_post_settlement: {
         Args: { p_campaign_id: number }
         Returns: Json

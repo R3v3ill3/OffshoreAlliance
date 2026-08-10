@@ -21,10 +21,20 @@
  *   - unsubscribe → workers.sms_opt_out for every worker on the number +
  *                   an sms_interactions STOP row so the Phase 0
  *                   trg_sms_optout_keyword trigger / audit trail fires.
- *   - inbound     → Phase 1 minimal: sms_interactions insert (worker
- *                   matched by phone_e164; unmatched = ignored until the
- *                   Phase 2 triage inbox) + reply_count bump on the
- *                   originating sms_send_log row.
+ *   - inbound     → Phase 2 conversation routing (brief §7.0): to-number
+ *                   → sms_numbers row → open (number, member) pair thread
+ *                   → matched worker's open thread on the number → else
+ *                   CREATE (triage when unmatched, needs_response when
+ *                   matched; campaign scope from the correlated / most
+ *                   recent send ≤ 7 days). The decision itself is the
+ *                   pure resolveInboundConversation(). Alongside the
+ *                   thread append: the Phase 1 sms_interactions insert
+ *                   (worker-matched only, now linked via interaction_id)
+ *                   and an ATOMIC reply_count bump
+ *                   (increment_sms_reply_count RPC — no read-modify-
+ *                   write). Unread bump + state flip are atomic too
+ *                   (touch_sms_conversation_inbound), gated on the
+ *                   sms_messages provider_message_id upsert being new.
  *   - anything else → 200 {ok:true} (never make the provider retry).
  */
 import { timingSafeEqual } from 'crypto'
@@ -33,6 +43,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getSmsProvider } from '@/lib/sms/provider'
 import type { MessageDeliveryStatus } from '@/lib/sms/provider'
 import { toE164 } from '@/lib/phone/normalise-phone'
+import { countSegments } from '@/lib/sms/segments'
+import {
+  findNumberForInbound,
+  resolveInboundConversation,
+  type RoutingOpenConversation,
+} from '@/lib/sms/conversation-routing'
 
 export const dynamic = 'force-dynamic'
 
@@ -223,6 +239,18 @@ export async function POST(req: NextRequest) {
           .eq('provider_message_id', event.providerMessageId)
           .eq('status', 'sent')
 
+        // Mirror onto the conversation message row (Phase 2) so threads
+        // show delivery state. Same monotonic guard: only from 'sent'.
+        await admin
+          .from('sms_messages')
+          .update(
+            eventType === 'delivered'
+              ? { status: 'delivered' }
+              : { status: 'failed', error: failureReason },
+          )
+          .eq('provider_message_id', event.providerMessageId)
+          .eq('status', 'sent')
+
         const listIds = [
           ...new Set((transitioned ?? []).map((r) => r.list_id as number)),
         ]
@@ -301,46 +329,33 @@ export async function POST(req: NextRequest) {
     }
 
     if (event.type === 'inbound') {
+      const receivedAt = event.receivedAt ?? new Date().toISOString()
       const phone = toE164(event.from)
+
+      // Worker match on the normalised member number.
       const { data: workers } = phone
         ? await admin
             .from('workers')
             .select('worker_id')
             .eq('phone_e164', phone)
         : { data: null }
-      const workerId = workers?.[0]?.worker_id
-      if (!workerId) {
-        // No worker match: full triage routing is Phase 2.
-        return NextResponse.json({ ok: true, unmatched: true })
-      }
-
-      // Dedupe on external_message_id — the guard for every side effect
-      // below (reply_count must not double-bump on webhook retries).
-      if (event.providerMessageId) {
-        const { data: existing } = await admin
-          .from('sms_interactions')
-          .select('id')
-          .eq('external_message_id', event.providerMessageId)
-          .maybeSingle()
-        if (existing) {
-          return NextResponse.json({ ok: true, deduplicated: true })
-        }
-      }
+      const matchedWorkerIds = (workers ?? []).map(
+        (w) => w.worker_id as number,
+      )
+      const workerId = matchedWorkerIds[0] ?? null
 
       // Reply correlation: our custom_ref is the sms_send_log send_id;
       // fall back to the provider's original_message_id.
       let sendRow: {
         send_id: number
         campaign_id: number
-        reply_count: number
-        first_reply_at: string | null
-        provider_message_id: string | null
+        created_at: string
       } | null = null
       const refId = Number(event.originalCustomRef)
       if (event.originalCustomRef && Number.isFinite(refId)) {
         const { data } = await admin
           .from('sms_send_log')
-          .select('send_id, campaign_id, reply_count, first_reply_at, provider_message_id')
+          .select('send_id, campaign_id, created_at')
           .eq('send_id', refId)
           .maybeSingle()
         sendRow = data
@@ -348,39 +363,229 @@ export async function POST(req: NextRequest) {
       if (!sendRow && event.originalMessageId) {
         const { data } = await admin
           .from('sms_send_log')
-          .select('send_id, campaign_id, reply_count, first_reply_at, provider_message_id')
+          .select('send_id, campaign_id, created_at')
           .eq('provider_message_id', event.originalMessageId)
           .maybeSingle()
         sendRow = data
       }
 
-      const receivedAt = event.receivedAt ?? new Date().toISOString()
-      const { error: insErr } = await admin.from('sms_interactions').insert({
-        worker_id: workerId,
-        campaign_id: sendRow?.campaign_id ?? null,
-        direction: 'inbound',
-        phone_number: event.from.slice(0, PHONE_NUMBER_MAX),
-        phone_e164: phone,
-        body: event.body,
-        external_message_id: event.providerMessageId,
-        received_at: receivedAt,
-      })
-      if (insErr) {
-        if (insErr.code === UNIQUE_VIOLATION) {
-          return NextResponse.json({ ok: true, deduplicated: true })
-        }
-        throw insErr
+      // Campaign-scope hint for a NEW thread: the correlated send, else
+      // the worker's most recent send (the pure resolver applies the
+      // 7-day window — brief §7.0 / RECENT_SEND_WINDOW_DAYS).
+      let recentSend: { campaign_id: number | null; created_at: string } | null =
+        sendRow
+      if (!recentSend && workerId != null) {
+        const { data: latest } = await admin
+          .from('sms_send_log')
+          .select('campaign_id, created_at')
+          .eq('worker_id', workerId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+        recentSend = latest?.[0] ?? null
       }
 
-      if (sendRow) {
-        await admin
-          .from('sms_send_log')
-          .update({
-            reply_count: sendRow.reply_count + 1,
-            first_reply_at: sendRow.first_reply_at ?? receivedAt,
-          })
-          .eq('send_id', sendRow.send_id)
+      // Number registry match (tolerant of +614… / 614… / 04… forms).
+      const { data: numbers } = await admin
+        .from('sms_numbers')
+        .select('number_id, phone_e164, organiser_id')
+        .eq('status', 'active')
+      const numberRow = findNumberForInbound(numbers ?? [], event.to)
+
+      // Candidate open threads: the (number, member phone) pair first;
+      // the matched worker's threads on this number only as a fallback.
+      let openConversations: RoutingOpenConversation[] = []
+      if (numberRow && phone) {
+        const { data: pairConvs } = await admin
+          .from('sms_conversations')
+          .select('conversation_id, campaign_id, worker_id, last_message_at')
+          .eq('our_number_id', numberRow.number_id)
+          .eq('phone_e164', phone)
+          .neq('state', 'closed')
+        openConversations = (pairConvs ?? []).map((c) => ({
+          conversation_id: c.conversation_id as number,
+          campaign_id: c.campaign_id as number | null,
+          worker_id: c.worker_id as number | null,
+          last_message_at: c.last_message_at as string | null,
+          matched_on: 'phone' as const,
+        }))
+        if (openConversations.length === 0 && matchedWorkerIds.length > 0) {
+          const { data: workerConvs } = await admin
+            .from('sms_conversations')
+            .select('conversation_id, campaign_id, worker_id, last_message_at')
+            .eq('our_number_id', numberRow.number_id)
+            .in('worker_id', matchedWorkerIds)
+            .neq('state', 'closed')
+          openConversations = (workerConvs ?? []).map((c) => ({
+            conversation_id: c.conversation_id as number,
+            campaign_id: c.campaign_id as number | null,
+            worker_id: c.worker_id as number | null,
+            last_message_at: c.last_message_at as string | null,
+            matched_on: 'worker' as const,
+          }))
+        }
       }
+
+      const decision = resolveInboundConversation({
+        phoneE164: phone,
+        matchedWorkerIds,
+        number: numberRow,
+        openConversations,
+        recentSend,
+      })
+
+      // Interaction row (worker-matched only — the Phase 1 behaviour,
+      // now with the id captured so the message row can link it).
+      let interactionId: number | null = null
+      let interactionIsNew = false
+      if (workerId != null) {
+        if (event.providerMessageId) {
+          const { data: existing } = await admin
+            .from('sms_interactions')
+            .select('id')
+            .eq('external_message_id', event.providerMessageId)
+            .maybeSingle()
+          if (existing) interactionId = existing.id as number
+        }
+        if (interactionId == null) {
+          const { data: inserted, error: insErr } = await admin
+            .from('sms_interactions')
+            .insert({
+              worker_id: workerId,
+              campaign_id: sendRow?.campaign_id ?? null,
+              direction: 'inbound',
+              phone_number: event.from.slice(0, PHONE_NUMBER_MAX),
+              phone_e164: phone,
+              body: event.body,
+              external_message_id: event.providerMessageId,
+              received_at: receivedAt,
+            })
+            .select('id')
+            .single()
+          if (insErr) {
+            if (insErr.code === UNIQUE_VIOLATION && event.providerMessageId) {
+              // Raced retry: reuse the winner's row.
+              const { data: raced } = await admin
+                .from('sms_interactions')
+                .select('id')
+                .eq('external_message_id', event.providerMessageId)
+                .maybeSingle()
+              interactionId = (raced?.id as number | undefined) ?? null
+            } else {
+              throw insErr
+            }
+          } else {
+            interactionId = inserted.id as number
+            interactionIsNew = true
+          }
+        }
+      }
+
+      // Conversation attach / create (brief §7.0 precedence via the
+      // pure resolver above).
+      let conversationId: number | null = null
+      if (decision.action === 'attach') {
+        conversationId = decision.conversationId
+      } else if (decision.action === 'create') {
+        const { data: created, error: convErr } = await admin
+          .from('sms_conversations')
+          .insert(decision.conversation)
+          .select('conversation_id')
+          .single()
+        if (convErr) {
+          if (convErr.code === UNIQUE_VIOLATION) {
+            // Creation race, or a closed thread occupying the key: attach
+            // to it — the touch RPC below reopens closed → needs_response.
+            let q = admin
+              .from('sms_conversations')
+              .select('conversation_id')
+              .eq('our_number_id', decision.conversation.our_number_id)
+              .eq('phone_e164', decision.conversation.phone_e164)
+            q =
+              decision.conversation.campaign_id == null
+                ? q.is('campaign_id', null)
+                : q.eq('campaign_id', decision.conversation.campaign_id)
+            const { data: existingConv } = await q.maybeSingle()
+            conversationId =
+              (existingConv?.conversation_id as number | undefined) ?? null
+          } else {
+            // Thread creation failed: 500 so the provider retries (the
+            // interaction insert above is idempotent on retry).
+            throw convErr
+          }
+        } else {
+          conversationId = created.conversation_id as number
+        }
+      }
+
+      // Message append — idempotent on provider_message_id; the unread
+      // bump / state flip / reply count only fire when the row is new.
+      let messageIsNew = false
+      if (conversationId != null) {
+        const messageRow = {
+          conversation_id: conversationId,
+          direction: 'inbound',
+          body: event.body,
+          phone_e164: phone,
+          provider_message_id: event.providerMessageId,
+          interaction_id: interactionId,
+          status: 'received',
+          segments: event.body ? countSegments(event.body).segments : null,
+          created_at: receivedAt,
+        }
+        if (event.providerMessageId) {
+          const { data: msgIns, error: msgErr } = await admin
+            .from('sms_messages')
+            .upsert(messageRow, {
+              onConflict: 'provider_message_id',
+              ignoreDuplicates: true,
+            })
+            .select('message_id')
+          if (msgErr) {
+            if (msgErr.code !== UNIQUE_VIOLATION) throw msgErr
+          } else {
+            messageIsNew = (msgIns?.length ?? 0) > 0
+          }
+        } else {
+          const { error: msgErr } = await admin
+            .from('sms_messages')
+            .insert(messageRow)
+          if (msgErr) throw msgErr
+          messageIsNew = true
+        }
+
+        if (messageIsNew) {
+          const { error: touchErr } = await admin.rpc(
+            'touch_sms_conversation_inbound',
+            {
+              p_conversation_id: conversationId,
+              p_occurred_at: receivedAt,
+            },
+          )
+          if (touchErr) {
+            console.error('touch_sms_conversation_inbound failed:', touchErr)
+          }
+        }
+      }
+
+      // Atomic reply-count bump (replaces the Phase 1 read-modify-write).
+      // Gate: the message row when a thread exists (single idempotency
+      // handle), else the interaction row (the Phase 1 gate, unchanged
+      // for the no-thread fallback path).
+      const sideEffectsAreNew =
+        conversationId != null ? messageIsNew : interactionIsNew
+      if (sendRow && sideEffectsAreNew) {
+        const { error: bumpErr } = await admin.rpc(
+          'increment_sms_reply_count',
+          {
+            p_send_id: sendRow.send_id,
+            p_received_at: receivedAt,
+          },
+        )
+        if (bumpErr) {
+          console.error('increment_sms_reply_count failed:', bumpErr)
+        }
+      }
+
       if (event.providerMessageId) {
         await insertDeliveryEvent(admin, {
           provider_message_id: event.providerMessageId,
@@ -391,7 +596,16 @@ export async function POST(req: NextRequest) {
         })
       }
 
-      return NextResponse.json({ ok: true })
+      if (conversationId == null && workerId == null) {
+        // No thread possible (unknown to-number / unparseable from) and
+        // no worker — nothing recorded, matching Phase 1.
+        return NextResponse.json({ ok: true, unmatched: true })
+      }
+      return NextResponse.json({
+        ok: true,
+        conversation_id: conversationId,
+        deduplicated: !sideEffectsAreNew || undefined,
+      })
     }
 
     // Unknown/unhandled event types: acknowledge so the provider stops

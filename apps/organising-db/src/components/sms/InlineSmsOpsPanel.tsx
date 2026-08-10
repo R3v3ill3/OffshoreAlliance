@@ -2,16 +2,19 @@
 
 /**
  * Outreach → SMS sub-tab panel (4th sibling of Comms / Phone Ops / SOC,
- * modelled on InlinePhoneOpsPanel).
+ * modelled on InlinePhoneOpsPanel). Two views (Phase 2):
  *
- * Overview cards + blast table from vw_sms_campaign_summary, a "New
- * SMS blast" sheet (audience + composer), and a per-list detail sheet:
- * draft lists open the composer with Save / Queue; queued+ lists show
- * the funnel and per-recipient statuses with failure reasons, plus
- * pause / resume / cancel.
+ *   Blasts — overview cards + blast table from vw_sms_campaign_summary,
+ *   a "New SMS blast" sheet (audience + composer), and a per-list
+ *   detail sheet: draft lists open the composer with Save / Queue;
+ *   queued+ lists show the funnel and per-recipient statuses with
+ *   failure reasons, plus pause / resume / cancel.
+ *
+ *   Inbox — the 2-way conversation inbox (SmsInboxPanel, three-pane on
+ *   desktop, scoped to this campaign by default).
  *
  * Arriving with ?sms_list=<id> (the fire/sms redirect) auto-opens that
- * list's sheet.
+ * list's sheet in the Blasts view.
  */
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
@@ -37,7 +40,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
+  Inbox,
   Loader2,
   MessageSquare,
   Pause,
@@ -46,6 +51,7 @@ import {
   Send,
   XCircle,
 } from 'lucide-react'
+import { SmsInboxPanel } from '@/components/sms/inbox/SmsInboxPanel'
 import { toast } from 'sonner'
 import {
   useCreateSmsBlast,
@@ -152,7 +158,23 @@ export function InlineSmsOpsPanel({ campaignId }: InlineSmsOpsPanelProps) {
   }, [lists])
 
   return (
-    <div className="space-y-6">
+    <Tabs defaultValue="blasts" className="space-y-4">
+      <TabsList>
+        <TabsTrigger value="blasts">
+          <Send className="h-3.5 w-3.5 mr-1.5" />
+          Blasts
+        </TabsTrigger>
+        <TabsTrigger value="inbox">
+          <Inbox className="h-3.5 w-3.5 mr-1.5" />
+          Inbox
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="inbox">
+        <SmsInboxPanel campaignId={id} />
+      </TabsContent>
+
+      <TabsContent value="blasts" className="space-y-6">
       {/* Primary CTA */}
       <div className="flex items-center justify-between gap-3">
         <Button size="lg" onClick={() => setNewOpen(true)}>
@@ -164,8 +186,8 @@ export function InlineSmsOpsPanel({ campaignId }: InlineSmsOpsPanelProps) {
       <div>
         <h3 className="font-semibold">SMS Broadcasts</h3>
         <p className="text-sm text-muted-foreground">
-          Bulk SMS to campaign cohorts with delivery tracking. Replies and
-          conversations arrive in a later phase.
+          Bulk SMS to campaign cohorts with delivery tracking. Replies land in
+          the Inbox tab.
         </p>
       </div>
 
@@ -228,7 +250,8 @@ export function InlineSmsOpsPanel({ campaignId }: InlineSmsOpsPanelProps) {
           if (!open) setDetailListId(null)
         }}
       />
-    </div>
+      </TabsContent>
+    </Tabs>
   )
 }
 

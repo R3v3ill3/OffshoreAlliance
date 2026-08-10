@@ -7,6 +7,14 @@
     {
       "path": "/api/cron/poll-mailbox-events",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/materialise-sequence-runs",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/dispatch-sms-queue",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

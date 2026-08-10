@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { toE164 } from "@/lib/phone/normalise-phone";
 import type { MembershipImportType, ParsedMembershipRow } from "../parse/route";
 
 interface ApplyRow extends ParsedMembershipRow {
@@ -184,7 +185,11 @@ export async function POST(request: NextRequest) {
         if (row.resolvedWorksiteId) patch.worksite_id = row.resolvedWorksiteId;
         if (row.resolvedOccupationId) patch.canonical_occupation_id = row.resolvedOccupationId;
         if (row.email) patch.email = row.email;
-        if (row.phone) patch.phone = row.phone;
+        if (row.phone) {
+          // Consent provenance preserved on updates; the DB trigger
+          // re-derives phone_e164 when phone changes.
+          patch.phone = row.phone;
+        }
 
         const resolvedShift = resolveOption(shiftMap, row.shiftRaw, row.resolvedShiftId);
         const resolvedWorkArea = resolveOption(workAreaMap, row.workAreaRaw, row.resolvedWorkAreaId);
@@ -280,6 +285,8 @@ export async function POST(request: NextRequest) {
           last_name: row.lastName.trim(),
           email: row.email || null,
           phone: row.phone || null,
+          phone_e164: toE164(row.phone),
+          sms_consent_source: row.phone ? "import" : null,
           reference_id: row.referenceId || null,
           employer_id: row.resolvedEmployerId || null,
           worksite_id: row.resolvedWorksiteId || null,

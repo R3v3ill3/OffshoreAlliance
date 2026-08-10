@@ -38,6 +38,7 @@ import {
   type UnionMembershipTypeOption,
 } from "@/components/workers/membership-non-oa-fields";
 import { WorkerCallHistoryPanel } from "@/components/workers/WorkerCallHistoryPanel";
+import { WorkerSmsHistoryPanel } from "@/components/workers/WorkerSmsHistoryPanel";
 import { WorkerObjectionsPanel } from "@/components/workers/WorkerObjectionsPanel";
 import { WorkerIssueObservationsPanel } from "@/components/workers/WorkerIssueObservationsPanel";
 import { EmailHistorySection } from "@/components/workers/profile/EmailHistorySection";
@@ -864,13 +865,17 @@ export default function WorkerDetailPage() {
     setSaving(true);
     setSaveError(null);
 
-    // 1. Update core worker fields
+    // 1. Update core worker fields. phone_e164 is re-derived by the
+    // workers_phone_e164_sync DB trigger; consent provenance is stamped
+    // when a phone is first added by hand.
+    const newPhone = emptyToNull(editForm.phone);
     const payload = {
       first_name: fn,
       last_name: ln,
       preferred_name: emptyToNull(editForm.preferred_name),
       email: emptyToNull(editForm.email),
-      phone: emptyToNull(editForm.phone),
+      phone: newPhone,
+      ...(newPhone && !worker.phone ? { sms_consent_source: "manual" } : {}),
       address: emptyToNull(editForm.address),
       suburb: emptyToNull(editForm.suburb),
       state: emptyToNull(editForm.state),
@@ -1973,6 +1978,7 @@ export default function WorkerDetailPage() {
         {/* ── Activity tab ─────────────────────────────────────────────── */}
         <TabsContent value="activity" className="mt-4 space-y-4">
           <WorkerCallHistoryPanel workerId={workerId} />
+          <WorkerSmsHistoryPanel workerId={workerId} />
           <WorkerIssueObservationsPanel workerId={workerId} />
         </TabsContent>
 
@@ -1992,6 +1998,7 @@ export default function WorkerDetailPage() {
           )}
           <EmailHistorySection workerId={workerId} />
           <WorkerCallHistoryPanel workerId={workerId} />
+          <WorkerSmsHistoryPanel workerId={workerId} />
           <WorkerObjectionsPanel workerId={workerId} />
         </TabsContent>
 

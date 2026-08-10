@@ -4,6 +4,7 @@ import {
   parseMembershipStatus,
   type UnionMembershipTypeKey,
 } from "@/lib/workers/worker-import-membership";
+import { toLocal } from "@/lib/phone/normalise-phone";
 
 export type { UnionMembershipTypeKey };
 
@@ -156,26 +157,10 @@ function normalisePhone(raw: string | number | null | undefined): {
   if (raw === null || raw === undefined || raw === "") {
     return { phone: null, warnings };
   }
+  if (!String(raw).replace(/\D/g, "")) return { phone: null, warnings };
 
-  // Remove all non-digit characters for analysis
-  const digits = String(raw).replace(/\D/g, "");
-
-  if (!digits) return { phone: null, warnings };
-
-  // Australian mobile: 9 digits (missing leading 0) or 10 digits starting with 04
-  if (digits.length === 9) {
-    return { phone: `0${digits}`, warnings };
-  }
-  if (digits.length === 10 && digits.startsWith("0")) {
-    return { phone: digits, warnings };
-  }
-  // International format (+61 prefix → local)
-  if (digits.length === 11 && digits.startsWith("61")) {
-    return { phone: `0${digits.slice(2)}`, warnings };
-  }
-  if (digits.length === 12 && digits.startsWith("610")) {
-    return { phone: `0${digits.slice(3)}`, warnings };
-  }
+  const local = toLocal(raw);
+  if (local) return { phone: local, warnings };
 
   // Fallback: return as-is with warning
   warnings.push(`Unusual phone format: ${raw}`);

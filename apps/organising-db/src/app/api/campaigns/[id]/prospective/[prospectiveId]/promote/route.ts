@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireStaffUser } from "@/lib/campaign/auth-api";
+import { toE164 } from "@/lib/phone/normalise-phone";
 
 /**
  * Promote a pending leader-form submission into a real `workers` row +
@@ -91,6 +92,9 @@ export async function POST(
       last_name: prosp.last_name,
       email: prosp.email && prosp.email.trim() !== "" ? prosp.email : null,
       phone: prosp.phone && prosp.phone.trim() !== "" ? prosp.phone : null,
+      phone_e164: toE164(prosp.phone),
+      sms_consent_source:
+        prosp.phone && prosp.phone.trim() !== "" ? "manual" : null,
       notes: prosp.notes ?? null,
       is_active: true,
       updated_at: new Date().toISOString(),

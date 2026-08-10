@@ -113,8 +113,14 @@ export async function POST(
     );
   }
 
-  // Best-effort merge of contact info + notes.
-  const patch: { email?: string; phone?: string; notes?: string } = {};
+  // Best-effort merge of contact info + notes. phone_e164 is re-derived
+  // by the workers_phone_e164_sync DB trigger.
+  const patch: {
+    email?: string;
+    phone?: string;
+    notes?: string;
+    sms_consent_source?: string;
+  } = {};
 
   const prospEmail =
     prosp.email && prosp.email.trim() !== "" ? prosp.email.trim() : null;
@@ -126,6 +132,7 @@ export async function POST(
   }
   if (prospPhone && (!existing.phone || existing.phone.trim() === "")) {
     patch.phone = prospPhone;
+    patch.sms_consent_source = "manual";
   }
   if (prosp.notes && prosp.notes.trim() !== "") {
     const stamp = format(new Date(), "d MMM yyyy");

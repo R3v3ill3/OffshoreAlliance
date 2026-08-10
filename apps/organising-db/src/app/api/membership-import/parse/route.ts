@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
+import { toLocal } from "@/lib/phone/normalise-phone";
 
 // ─── Import type definitions ──────────────────────────────────────────────────
 
@@ -118,13 +119,8 @@ function parseDate(raw: string | number | null | undefined): string | null {
 
 function normalisePhone(raw: string | null | undefined): string | null {
   if (!raw) return null;
-  const digits = String(raw).replace(/\D/g, "");
-  if (!digits) return null;
-  if (digits.length === 9) return `0${digits}`;
-  if (digits.length === 10 && digits.startsWith("0")) return digits;
-  if (digits.length === 11 && digits.startsWith("61")) return `0${digits.slice(2)}`;
-  if (digits.length === 12 && digits.startsWith("610")) return `0${digits.slice(3)}`;
-  return String(raw).trim() || null;
+  if (!String(raw).replace(/\D/g, "")) return null;
+  return toLocal(raw) ?? (String(raw).trim() || null);
 }
 
 function headerKey(h: string | number | null): string {

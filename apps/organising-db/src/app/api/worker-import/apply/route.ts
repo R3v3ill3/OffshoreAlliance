@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { lookupNonOaUnionOptionId } from "@/lib/workers/other-union-display";
+import { toE164 } from "@/lib/phone/normalise-phone";
 
 export interface WorkerImportAssessmentColumn {
   columnHeader: string;
@@ -511,10 +512,14 @@ export async function POST(request: NextRequest) {
       // For creates, set rejoin_date directly with no guard needed
       if (row.rejoinDate) workerData.rejoin_date = row.rejoinDate;
 
+      // Consent provenance is stamped on create only — updates preserve the
+      // existing value, and the DB trigger re-derives phone_e164 from phone.
       const { data: inserted, error } = await supabase
         .from("workers")
         .insert({
           ...workerData,
+          phone_e164: toE164(row.phone),
+          sms_consent_source: row.phone ? "import" : null,
         })
         .select("worker_id")
         .single();

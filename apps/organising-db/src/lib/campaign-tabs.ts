@@ -40,7 +40,14 @@ export const VALID_TABS = [
 
 export type ValidTab = (typeof VALID_TABS)[number];
 
-/** Default sub-tab for each top-level cluster tab. */
+/**
+ * Default sub-tab for each top-level cluster tab.
+ *
+ * Outreach sub-tabs: comms | phone | sms | soc. The "sms" sub-tab
+ * (SMS module Phase 1) renders InlineSmsOpsPanel and is the landing
+ * target of the worker-list fire/sms redirect
+ * (?tab=outreach&sub=sms&sms_list=<id>).
+ */
 export const DEFAULT_SUB: Partial<Record<ValidTab, string>> = {
   plan: "strategy",
   workforce: "wall-chart",

@@ -67,7 +67,7 @@ Respond in JSON format:
 export function buildSmsPrompt(request: CommsDraftRequest): { system: string; user: string } {
   const system = `${OA_CONTEXT}
 
-You are generating an SMS message for a campaign communication via the Yabbr SMS platform. The SMS should:
+You are generating an SMS message for a campaign communication via the Mobile Message SMS platform. The SMS should:
 - Be concise: ideally under 160 characters (1 SMS segment), maximum 320 characters (2 segments)
 - Use a direct, clear tone appropriate to the campaign stage
 - Include a clear call to action (reply, click link, attend meeting, etc.)

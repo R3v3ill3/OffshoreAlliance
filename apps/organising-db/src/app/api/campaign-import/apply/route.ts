@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { toE164 } from "@/lib/phone/normalise-phone";
 import type {
   CampaignImportApplyRequest,
   CampaignImportApplyResponse,
@@ -383,6 +384,8 @@ export async function POST(req: NextRequest) {
       reference_id: row.referenceId || null,
       email: row.email || null,
       phone: row.phone || null,
+      phone_e164: toE164(row.phone),
+      sms_consent_source: row.phone ? "import" : null,
       union_membership_type_id: membershipTypeId,
       employer_id: employerIdForKey(row.employerKey),
       worksite_id: worksiteIdForKey(row.vesselKey),
@@ -405,7 +408,9 @@ export async function POST(req: NextRequest) {
     }
     const data = workerDataFor(row);
     if (row.action === "update" && row.existingWorkerId) {
-      const { error } = await supabase.from("workers").update(data).eq("worker_id", row.existingWorkerId);
+      // Preserve consent provenance on updates; the DB trigger re-derives phone_e164.
+      const { phone_e164: _e164, sms_consent_source: _consent, ...updateData } = data;
+      const { error } = await supabase.from("workers").update(updateData).eq("worker_id", row.existingWorkerId);
       if (error) errors.push(`Worker ${row.firstName} ${row.lastName}: ${error.message}`);
       else {
         rowWorkerId.set(row.rowIndex, row.existingWorkerId);

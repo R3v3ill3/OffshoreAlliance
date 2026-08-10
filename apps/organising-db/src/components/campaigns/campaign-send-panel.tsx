@@ -298,42 +298,6 @@ export function CampaignSendPanel({
     },
   });
 
-  const sendSmsMutation = useAuthAwareMutation({
-    mutationFn: async (recipients: { to: string; message: string }[]) => {
-      if (!selectedDraft) throw new Error("No draft selected");
-      const res = await fetchApi("/api/yabbr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "send_bulk_sms",
-          recipients,
-          from: "OffshoreAlliance",
-        }),
-        timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
-      });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-
-      const { error } = await supabase
-        .from("campaign_comms_drafts")
-        .update({
-          status: "sent",
-          sent_via: "yabbr",
-          send_stats: {
-            recipients_count: recipients.length,
-            sent_at: new Date().toISOString(),
-          },
-        })
-        .eq("draft_id", selectedDraft.draft_id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["campaign-comms-drafts", numericId],
-      });
-    },
-  });
-
   const pollStatsMutation = useAuthAwareMutation({
     mutationFn: async (draftId: number) => {
       const res = await fetchApi(`/api/campaigns/${numericId}/sync-an`, {
@@ -668,10 +632,10 @@ export function CampaignSendPanel({
                           <Button
                             size="sm"
                             disabled
-                            title="Select recipients in List Builder first"
+                            title="SMS sending arrives with the SMS module"
                           >
                             <Send className="h-3.5 w-3.5" />
-                            Send via Yabbr
+                            Send SMS
                           </Button>
                         )}
                         {selectedDraft.platform === "phone_script" && (
@@ -726,12 +690,10 @@ export function CampaignSendPanel({
                 )}
 
                 {/* Error display */}
-                {(sendAnMutation.isError || sendSmsMutation.isError) && (
+                {sendAnMutation.isError && (
                   <div className="rounded-md border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30 p-3">
                     <p className="text-sm text-red-700 dark:text-red-400">
-                      {sendAnMutation.error?.message ??
-                        sendSmsMutation.error?.message ??
-                        "Send failed"}
+                      {sendAnMutation.error?.message ?? "Send failed"}
                     </p>
                   </div>
                 )}

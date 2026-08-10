@@ -13,6 +13,9 @@
  *   Inbox — the 2-way conversation inbox (SmsInboxPanel, three-pane on
  *   desktop, scoped to this campaign by default).
  *
+ *   Surveys — reply-native SMS surveys (Phase 4, SmsSurveysPanel):
+ *   builder, open/close with audience selection, funnel report.
+ *
  * Arriving with ?sms_list=<id> (the fire/sms redirect) auto-opens that
  * list's sheet in the Blasts view.
  */
@@ -42,6 +45,7 @@ import {
 } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
+  ClipboardList,
   Inbox,
   Loader2,
   MessageSquare,
@@ -52,6 +56,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { SmsInboxPanel } from '@/components/sms/inbox/SmsInboxPanel'
+import { SmsSurveysPanel } from '@/components/sms/surveys/SmsSurveysPanel'
 import { toast } from 'sonner'
 import {
   useCreateSmsBlast,
@@ -168,10 +173,18 @@ export function InlineSmsOpsPanel({ campaignId }: InlineSmsOpsPanelProps) {
           <Inbox className="h-3.5 w-3.5 mr-1.5" />
           Inbox
         </TabsTrigger>
+        <TabsTrigger value="surveys">
+          <ClipboardList className="h-3.5 w-3.5 mr-1.5" />
+          Surveys
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="inbox">
         <SmsInboxPanel campaignId={id} />
+      </TabsContent>
+
+      <TabsContent value="surveys">
+        <SmsSurveysPanel campaignId={id} />
       </TabsContent>
 
       <TabsContent value="blasts" className="space-y-6">

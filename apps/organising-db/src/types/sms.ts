@@ -207,10 +207,26 @@ export interface SmsCannedReplyRow {
   title: string;
   body: string;
   is_active: boolean;
+  /**
+   * Phase 3 scripted-answer link (20260811100000): the assessment
+   * outcome this reply follows up — binary values (yes/no/unsure/
+   * abstain) or '1'..'5' for scale ratings. NULL = plain canned reply.
+   */
+  outcome_value: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
 }
+
+// ─── Phase 3 (in-chat assessment capture) ───────────────────────────
+
+/**
+ * Thread context scopes (brief §7.3): 'conversation' is the native
+ * thread; 'activity' filters to activity-linked traffic; 'campaign' /
+ * 'all' merge every conversation for the worker (read-only in the UI —
+ * the composer always sends to the current conversation).
+ */
+export type SmsThreadScope = "conversation" | "activity" | "campaign" | "all";
 
 export interface VwSmsCampaignSummaryRow {
   campaign_id: number;

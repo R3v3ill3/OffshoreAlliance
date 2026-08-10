@@ -13715,6 +13715,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           is_active: boolean
+          outcome_value: string | null
           reply_id: number
           title: string
           updated_at: string
@@ -13725,6 +13726,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           is_active?: boolean
+          outcome_value?: string | null
           reply_id?: number
           title: string
           updated_at?: string
@@ -13735,6 +13737,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           is_active?: boolean
+          outcome_value?: string | null
           reply_id?: number
           title?: string
           updated_at?: string

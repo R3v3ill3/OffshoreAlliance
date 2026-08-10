@@ -393,35 +393,51 @@ export async function POST(req: NextRequest) {
 
       // Candidate open threads: the (number, member phone) pair first;
       // the matched worker's threads on this number only as a fallback.
+      // activity_id rides along (outside the pure resolver's input) so
+      // an attach to an activity-scoped thread can stamp the interaction
+      // row for Phase 3 activity scoping.
       let openConversations: RoutingOpenConversation[] = []
+      const activityByConversation = new Map<number, number | null>()
       if (numberRow && phone) {
         const { data: pairConvs } = await admin
           .from('sms_conversations')
-          .select('conversation_id, campaign_id, worker_id, last_message_at')
+          .select('conversation_id, campaign_id, activity_id, worker_id, last_message_at')
           .eq('our_number_id', numberRow.number_id)
           .eq('phone_e164', phone)
           .neq('state', 'closed')
-        openConversations = (pairConvs ?? []).map((c) => ({
-          conversation_id: c.conversation_id as number,
-          campaign_id: c.campaign_id as number | null,
-          worker_id: c.worker_id as number | null,
-          last_message_at: c.last_message_at as string | null,
-          matched_on: 'phone' as const,
-        }))
-        if (openConversations.length === 0 && matchedWorkerIds.length > 0) {
-          const { data: workerConvs } = await admin
-            .from('sms_conversations')
-            .select('conversation_id, campaign_id, worker_id, last_message_at')
-            .eq('our_number_id', numberRow.number_id)
-            .in('worker_id', matchedWorkerIds)
-            .neq('state', 'closed')
-          openConversations = (workerConvs ?? []).map((c) => ({
+        openConversations = (pairConvs ?? []).map((c) => {
+          activityByConversation.set(
+            c.conversation_id as number,
+            (c.activity_id as number | null) ?? null,
+          )
+          return {
             conversation_id: c.conversation_id as number,
             campaign_id: c.campaign_id as number | null,
             worker_id: c.worker_id as number | null,
             last_message_at: c.last_message_at as string | null,
-            matched_on: 'worker' as const,
-          }))
+            matched_on: 'phone' as const,
+          }
+        })
+        if (openConversations.length === 0 && matchedWorkerIds.length > 0) {
+          const { data: workerConvs } = await admin
+            .from('sms_conversations')
+            .select('conversation_id, campaign_id, activity_id, worker_id, last_message_at')
+            .eq('our_number_id', numberRow.number_id)
+            .in('worker_id', matchedWorkerIds)
+            .neq('state', 'closed')
+          openConversations = (workerConvs ?? []).map((c) => {
+            activityByConversation.set(
+              c.conversation_id as number,
+              (c.activity_id as number | null) ?? null,
+            )
+            return {
+              conversation_id: c.conversation_id as number,
+              campaign_id: c.campaign_id as number | null,
+              worker_id: c.worker_id as number | null,
+              last_message_at: c.last_message_at as string | null,
+              matched_on: 'worker' as const,
+            }
+          })
         }
       }
 
@@ -435,6 +451,16 @@ export async function POST(req: NextRequest) {
 
       // Interaction row (worker-matched only — the Phase 1 behaviour,
       // now with the id captured so the message row can link it).
+      // Phase 3: when the routing decision attaches to an activity-
+      // scoped thread, stamp that activity_id on the interaction so the
+      // "This activity" scope (and the brief §5.1 pipeline for any
+      // future keyword mapping) sees the link. trg_sms_to_rating stays
+      // a no-op here — no maps_to_rating / maps_to_binary /
+      // cta_response is set.
+      const attachedActivityId =
+        decision.action === 'attach'
+          ? (activityByConversation.get(decision.conversationId) ?? null)
+          : null
       let interactionId: number | null = null
       let interactionIsNew = false
       if (workerId != null) {
@@ -452,6 +478,7 @@ export async function POST(req: NextRequest) {
             .insert({
               worker_id: workerId,
               campaign_id: sendRow?.campaign_id ?? null,
+              activity_id: attachedActivityId,
               direction: 'inbound',
               phone_number: event.from.slice(0, PHONE_NUMBER_MAX),
               phone_e164: phone,

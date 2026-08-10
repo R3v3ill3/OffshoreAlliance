@@ -22,6 +22,7 @@ import type {
   SmsConversationNoteRow,
   SmsConversationRow,
   SmsMessageRow,
+  SmsThreadScope,
 } from '@/types/sms'
 
 // ─── DTO shapes (route payloads) ────────────────────────────────────
@@ -53,8 +54,11 @@ export interface SmsConversationListItem extends SmsConversationRow {
 
 export interface SmsConversationDetail {
   conversation: SmsConversationListItem
+  scope?: SmsThreadScope
   messages: SmsMessageRow[]
   has_more_messages: boolean
+  /** Merged scopes only: conversation_id → provenance label. */
+  conversation_labels?: Record<number, string>
   notes: SmsConversationNoteRow[]
   user_names: Record<string, string>
 }
@@ -116,6 +120,29 @@ export function useSmsConversationDetail(conversationId: number | null) {
       return res.json() as Promise<SmsConversationDetail>
     },
     enabled: conversationId != null,
+  })
+}
+
+/**
+ * Non-native thread scopes (brief §7.3): 'activity' filters the native
+ * thread to activity-linked traffic; 'campaign' / 'all' merge every
+ * conversation for the worker. Read-only — the composer still posts to
+ * the current conversation.
+ */
+export function useSmsScopedMessages(
+  conversationId: number | null,
+  scope: SmsThreadScope,
+) {
+  return useQuery({
+    queryKey: ['sms-conversation-scope', conversationId, scope],
+    queryFn: async () => {
+      const res = await fetchApi(
+        `/api/sms/conversations/${conversationId}?scope=${scope}`,
+      )
+      if (!res.ok) throw await toError(res, 'Failed to fetch scoped messages')
+      return res.json() as Promise<SmsConversationDetail>
+    },
+    enabled: conversationId != null && scope !== 'conversation',
   })
 }
 
@@ -204,6 +231,61 @@ export function useAddSmsNote(conversationId: number | null) {
   })
 }
 
+export interface SaveSmsAssessmentInput {
+  activity_id: number
+  /** 1..5, or null. Both null = explicit "Unassessed" (clears the row). */
+  rating: number | null
+  binary_value: string | null
+  notes?: string | null
+}
+
+/**
+ * Phase 3 sidebar assessment save. Server side this funnels through
+ * record_assessment_event (source 'sms') into campaign_activity_ratings
+ * — see POST /api/sms/conversations/[id]/assessments. Invalidations
+ * mirror useSaveActivityRating so the wall chart / worker drawer pick
+ * the write up immediately.
+ */
+export function useSaveSmsAssessment(
+  conversationId: number | null,
+  campaignId: number | null,
+  workerId: number | null,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: SaveSmsAssessmentInput) => {
+      const res = await fetchApi(
+        `/api/sms/conversations/${conversationId}/assessments`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        },
+      )
+      if (!res.ok) throw await toError(res, 'Failed to record assessment')
+      return res.json() as Promise<{
+        ok: true
+        rating_id?: number
+        cleared?: boolean
+      }>
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['sms-worker-assessment-ratings', campaignId, workerId],
+      })
+      // Prefix-only invalidation: wall-chart keys carry the campaign id
+      // as a string (page param) while the conversation holds a number —
+      // matching the prefix sidesteps the type mismatch.
+      queryClient.invalidateQueries({ queryKey: ['campaign-rating-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['campaign-activity-ratings'] })
+      queryClient.invalidateQueries({
+        queryKey: ['campaign-activity-ratings-dist'],
+      })
+      queryClient.invalidateQueries({ queryKey: ['worker-activity-ratings'] })
+    },
+  })
+}
+
 export function useCreateCannedReply() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -211,6 +293,7 @@ export function useCreateCannedReply() {
       title: string
       body: string
       campaign_id?: number | null
+      outcome_value?: string | null
     }) => {
       const res = await fetchApi('/api/sms/canned-replies', {
         method: 'POST',

@@ -587,6 +587,72 @@ export function SmsSurveyEditor({
         )}
       </div>
 
+      <div className="space-y-3 rounded-md border p-3">
+        <div>
+          <p className="text-sm font-medium">Send window</p>
+          <p className="text-xs text-muted-foreground">
+            Invitations, nudges and reminders wait for 09:00–20:00 in the
+            recipient timezone unless you override.
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Recipient timezone</Label>
+          <Select
+            value={value.timezone || 'Australia/Perth'}
+            disabled={disabled}
+            onValueChange={(tz) => patch({ timezone: tz })}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SURVEY_TIMEZONES.map((tz) => (
+                <SelectItem key={tz.value} value={tz.value}>
+                  {tz.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <Label htmlFor="survey-blackout">Override the 9am–8pm send window</Label>
+            <p className="text-xs text-muted-foreground">
+              Override only with cause — the reason is recorded on the survey.
+            </p>
+          </div>
+          <Switch
+            id="survey-blackout"
+            disabled={disabled}
+            checked={!!value.blackout_override}
+            onCheckedChange={(checked) =>
+              patch({
+                blackout_override: checked,
+                blackout_override_reason: checked
+                  ? value.blackout_override_reason || ''
+                  : '',
+              })
+            }
+          />
+        </div>
+        {!!value.blackout_override && (
+          <div className="space-y-1.5">
+            <Input
+              placeholder="Reason for overriding the send window (required)"
+              disabled={disabled}
+              value={value.blackout_override_reason || ''}
+              onChange={(e) =>
+                patch({ blackout_override_reason: e.target.value })
+              }
+            />
+            <p className="flex items-start gap-1 text-xs text-amber-700">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              Messages will send around the clock once queued.
+            </p>
+          </div>
+        )}
+      </div>
+
       {/* Questions */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -916,72 +982,6 @@ export function SmsSurveyEditor({
           disabled={disabled}
           onChange={(e) => patch({ completion_body: e.target.value })}
         />
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label>Recipient timezone</Label>
-          <Select
-            value={value.timezone}
-            disabled={disabled}
-            onValueChange={(tz) => patch({ timezone: tz })}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SURVEY_TIMEZONES.map((tz) => (
-                <SelectItem key={tz.value} value={tz.value}>
-                  {tz.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            Controls the default 09:00–20:00 invitation send window.
-          </p>
-        </div>
-      </div>
-
-      <div className="rounded-md border p-3 space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <Label htmlFor="survey-blackout">Override the 9am–8pm send window</Label>
-            <p className="text-xs text-muted-foreground">
-              Invitations, nudges and reminders normally hold outside 09:00–20:00
-              recipient time. Override only with cause — the reason is recorded.
-            </p>
-          </div>
-          <Switch
-            id="survey-blackout"
-            disabled={disabled}
-            checked={value.blackout_override}
-            onCheckedChange={(checked) =>
-              patch({
-                blackout_override: checked,
-                blackout_override_reason: checked
-                  ? value.blackout_override_reason
-                  : '',
-              })
-            }
-          />
-        </div>
-        {value.blackout_override && (
-          <div className="space-y-1.5">
-            <Input
-              placeholder="Reason for overriding the send window (required)"
-              disabled={disabled}
-              value={value.blackout_override_reason}
-              onChange={(e) =>
-                patch({ blackout_override_reason: e.target.value })
-              }
-            />
-            <p className="flex items-start gap-1 text-xs text-amber-700">
-              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-              Messages will send around the clock once queued.
-            </p>
-          </div>
-        )}
       </div>
 
       {/* Settings */}

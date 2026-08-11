@@ -84,12 +84,6 @@ const STATUS_COLORS: Record<string, string> = {
   closed: 'bg-slate-100 text-slate-500',
 }
 
-interface WorkerListOption {
-  list_id: number
-  name: string
-  items_count: { count: number }[] | null
-}
-
 interface SmsSurveysPanelProps {
   campaignId: string | number
 }
@@ -685,58 +679,50 @@ function DraftDetail({
 }) {
   const action = useSmsSurveyAction(campaignId)
   const del = useDeleteSmsSurvey(campaignId)
-  const [audience, setAudience] = useState<string>('campaign')
-  const [userChangedAudience, setUserChangedAudience] = useState(false)
+  const queryClient = useQueryClient()
+  const [submitting, setSubmitting] = useState(false)
 
-  const { data: workerLists } = useQuery({
-    queryKey: ['worker-lists-for-sms', campaignId],
-    queryFn: async () => {
-      // Unfiltered by status (Phase 8) — a fired list is still a valid
-      // default audience source here.
-      const res = await fetchApi(`/api/campaigns/${campaignId}/worker-lists`)
-      if (!res.ok) throw new Error('Failed to fetch worker lists')
-      return res.json() as Promise<WorkerListOption[]>
-    },
-  })
-
-  // Default the audience to the survey's source list, when it was
-  // fired from one and still appears in the options (Phase 8) —
-  // derived at render time so a workerLists refetch never needs an
-  // effect + setState round trip; a manual pick always wins.
+  // Default to source_worker_list_id from Phase 8 when present
   const sourceListId = detail.survey.source_worker_list_id
-  const sourceListStillOffered =
-    sourceListId != null && (workerLists ?? []).some((wl) => wl.list_id === sourceListId)
-  const effectiveAudience =
-    !userChangedAudience && sourceListStillOffered ? String(sourceListId) : audience
-  const handleAudienceChange = (v: string) => {
-    setAudience(v)
-    setUserChangedAudience(true)
-  }
+  const defaultValue: AudienceValue = sourceListId
+    ? { mode: 'worker_list', worker_list_id: sourceListId }
+    : { mode: 'campaign' }
+  const [audienceValue, setAudienceValue] = useState<AudienceValue>(defaultValue)
 
-  const openSurvey = () => {
-    action.mutate(
-      {
-        surveyId: detail.survey.survey_id,
-        action: 'open',
-        audience:
-          effectiveAudience === 'campaign'
-            ? { type: 'campaign' }
-            : { type: 'worker_list', worker_list_id: Number(effectiveAudience) },
-      },
-      {
-        onSuccess: (res) => {
-          const notes: string[] = []
-          if (res.opted_out) notes.push(`${res.opted_out} opted out`)
-          if (res.skipped_no_phone) notes.push(`${res.skipped_no_phone} without a mobile`)
-          toast.success(
-            `Survey opened — ${res.sessions_created} invitations queued${
-              notes.length ? ` (${notes.join(', ')} excluded)` : ''
-            }. Sending starts within 10 minutes, inside the send window.`,
-          )
+  const openSurvey = async () => {
+    try {
+      setSubmitting(true)
+      const audience = await toApiAudience(campaignId, audienceValue)
+      if (audienceValue.mode === 'composed') {
+        queryClient.invalidateQueries({
+          queryKey: ['worker-lists-for-sms', String(campaignId)],
+        })
+      }
+      action.mutate(
+        {
+          surveyId: detail.survey.survey_id,
+          action: 'open',
+          audience,
         },
-        onError: (err: Error) => toast.error(err.message),
-      },
-    )
+        {
+          onSuccess: (res) => {
+            const notes: string[] = []
+            if (res.opted_out) notes.push(`${res.opted_out} opted out`)
+            if (res.skipped_no_phone) notes.push(`${res.skipped_no_phone} without a mobile`)
+            toast.success(
+              `Survey opened — ${res.sessions_created} invitations queued${
+                notes.length ? ` (${notes.join(', ')} excluded)` : ''
+              }. Sending starts within 10 minutes, inside the send window.`,
+            )
+          },
+          onError: (err: Error) => toast.error(err.message),
+          onSettled: () => setSubmitting(false),
+        },
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to prepare audience')
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -761,38 +747,29 @@ function DraftDetail({
         )}
         <QuestionListPreview detail={detail} />
 
-        <div className="space-y-1.5">
-          <Label>Audience</Label>
-          <Select value={effectiveAudience} onValueChange={handleAudienceChange}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="campaign">Whole campaign (all members)</SelectItem>
-              {(workerLists ?? []).map((wl) => (
-                <SelectItem key={wl.list_id} value={String(wl.list_id)}>
-                  List: {wl.name} ({wl.items_count?.[0]?.count ?? 0})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <AudiencePicker
+          channel="sms"
+          campaignId={campaignId}
+          value={audienceValue}
+          onChange={setAudienceValue}
+          disabled={action.isPending || del.isPending || submitting}
+        />
 
         <div className="flex gap-2">
           <Button
             variant="outline"
             className="flex-1"
-            disabled={action.isPending || del.isPending}
+            disabled={action.isPending || del.isPending || submitting}
             onClick={onEdit}
           >
             Edit
           </Button>
           <Button
             className="flex-1"
-            disabled={action.isPending || del.isPending}
+            disabled={action.isPending || del.isPending || submitting}
             onClick={openSurvey}
           >
-            {action.isPending ? (
+            {(action.isPending || submitting) ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
               <Play className="h-4 w-4 mr-2" />
@@ -802,7 +779,7 @@ function DraftDetail({
           <Button
             variant="ghost"
             className="text-muted-foreground hover:text-destructive"
-            disabled={action.isPending || del.isPending}
+            disabled={action.isPending || del.isPending || submitting}
             onClick={() =>
               del.mutate(detail.survey.survey_id, {
                 onSuccess: () => {

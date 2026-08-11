@@ -263,6 +263,13 @@ export type Database = {
             foreignKeyName: "activist_tasks_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "activist_tasks_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -1394,6 +1401,13 @@ export type Database = {
             foreignKeyName: "ambition_progress_events_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "ambition_progress_events_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -1527,6 +1541,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "an_tag_sync_log_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -1673,6 +1694,13 @@ export type Database = {
             foreignKeyName: "bargaining_decision_points_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "bargaining_decision_points_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -1781,6 +1809,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "bargaining_gate_definitions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -1909,6 +1944,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "bargaining_strength_assessments_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -2469,6 +2511,13 @@ export type Database = {
             foreignKeyName: "call_issue_observations_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "call_issue_observations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -2832,6 +2881,13 @@ export type Database = {
             foreignKeyName: "call_lists_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "call_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -2981,6 +3037,13 @@ export type Database = {
             foreignKeyName: "call_objections_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "call_objections_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -3113,6 +3176,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "call_outcome_definitions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -3435,6 +3505,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "call_scripts_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -3884,6 +3961,13 @@ export type Database = {
             foreignKeyName: "campaign_actions_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_actions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -4025,6 +4109,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_activist_profiles_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -4180,6 +4271,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_activities_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -4430,6 +4528,13 @@ export type Database = {
             foreignKeyName: "campaign_agreements_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_agreements_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -4629,6 +4734,13 @@ export type Database = {
             foreignKeyName: "campaign_ambitions_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_ambitions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -4805,6 +4917,13 @@ export type Database = {
             foreignKeyName: "campaign_comms_drafts_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_comms_drafts_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -4957,6 +5076,13 @@ export type Database = {
             foreignKeyName: "campaign_edit_permissions_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_edit_permissions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -5043,6 +5169,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_employers_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -5286,6 +5419,13 @@ export type Database = {
             foreignKeyName: "campaign_leader_worker_links_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_leader_worker_links_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -5420,6 +5560,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organisers_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -5589,6 +5736,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -5810,6 +5964,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_ou_candidates_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -6058,6 +6219,13 @@ export type Database = {
             foreignKeyName: "campaign_permission_requests_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_permission_requests_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -6183,6 +6351,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_prospective_workers_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -6415,6 +6590,13 @@ export type Database = {
             foreignKeyName: "campaign_situation_analyses_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_situation_analyses_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -6513,6 +6695,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_situation_revisions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -6645,6 +6834,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_stage_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -6839,6 +7035,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_stage_workplan_tasks_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -7046,6 +7249,13 @@ export type Database = {
             foreignKeyName: "campaign_task_lists_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_task_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -7205,6 +7415,13 @@ export type Database = {
             foreignKeyName: "campaign_timelines_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: true
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_timelines_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: true
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -7309,6 +7526,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_unit_rules_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -7474,6 +7698,13 @@ export type Database = {
             foreignKeyName: "campaign_universes_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_universes_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -7581,6 +7812,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_wocs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -7847,6 +8085,13 @@ export type Database = {
             foreignKeyName: "campaign_worker_lists_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -7985,6 +8230,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_membership_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -8195,6 +8447,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_worksites_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -8649,6 +8908,13 @@ export type Database = {
             foreignKeyName: "documents_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "documents_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -8880,6 +9146,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "email_cta_responses_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -9191,6 +9464,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "email_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -9963,6 +10243,13 @@ export type Database = {
             foreignKeyName: "gate_definitions_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "gate_definitions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -10154,6 +10441,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: true
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "intractable_bargaining_tracker_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: true
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -10404,6 +10698,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "member_endorsement_votes_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -10837,6 +11138,13 @@ export type Database = {
             foreignKeyName: "pabo_applications_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "pabo_applications_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -11016,6 +11324,13 @@ export type Database = {
             foreignKeyName: "participation_import_batches_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "participation_import_batches_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -11127,6 +11442,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "petition_signatures_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -11362,6 +11684,13 @@ export type Database = {
             foreignKeyName: "phone_call_actions_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "phone_call_actions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -11504,6 +11833,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "pia_actions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -11965,6 +12301,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "plan_revision_notes_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -12923,6 +13266,13 @@ export type Database = {
             foreignKeyName: "reporting_snapshots_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "reporting_snapshots_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -13657,6 +14007,13 @@ export type Database = {
             foreignKeyName: "section_plans_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -13932,6 +14289,13 @@ export type Database = {
             foreignKeyName: "sms_canned_replies_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -14096,6 +14460,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -14286,6 +14657,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_interactions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -14537,6 +14915,13 @@ export type Database = {
             foreignKeyName: "sms_lists_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -14586,6 +14971,7 @@ export type Database = {
       }
       sms_messages: {
         Row: {
+          ai_assisted: boolean
           body: string | null
           conversation_id: number
           created_at: string
@@ -14600,6 +14986,7 @@ export type Database = {
           status: string
         }
         Insert: {
+          ai_assisted?: boolean
           body?: string | null
           conversation_id: number
           created_at?: string
@@ -14614,6 +15001,7 @@ export type Database = {
           status?: string
         }
         Update: {
+          ai_assisted?: boolean
           body?: string | null
           conversation_id?: number
           created_at?: string
@@ -14944,6 +15332,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_relays_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -15504,6 +15899,13 @@ export type Database = {
             foreignKeyName: "sms_surveys_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_surveys_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -15729,6 +16131,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "soc_sessions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -16099,6 +16508,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "structure_tests_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -17310,6 +17726,13 @@ export type Database = {
             foreignKeyName: "worker_campaign_connections_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "worker_campaign_connections_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -17547,6 +17970,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "worker_notes_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -18999,6 +19429,13 @@ export type Database = {
             foreignKeyName: "campaign_stage_plans_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_stage_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -19083,6 +19520,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_stage_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -19197,6 +19641,13 @@ export type Database = {
             foreignKeyName: "ambition_progress_events_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "ambition_progress_events_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -19298,6 +19749,13 @@ export type Database = {
             foreignKeyName: "call_lists_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "call_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -19378,6 +19836,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "call_outcome_definitions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -19513,6 +19978,13 @@ export type Database = {
             foreignKeyName: "call_lists_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "call_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -19631,6 +20103,13 @@ export type Database = {
             foreignKeyName: "campaign_ambitions_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_ambitions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -19736,6 +20215,13 @@ export type Database = {
             foreignKeyName: "campaign_edit_permissions_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_edit_permissions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -19830,6 +20316,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_stage_workplan_tasks_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -20019,6 +20512,13 @@ export type Database = {
             foreignKeyName: "campaign_worker_membership_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_membership_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -20102,6 +20602,13 @@ export type Database = {
             foreignKeyName: "campaign_organising_units_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -20178,6 +20685,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_membership_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -20279,6 +20793,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_membership_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -20505,6 +21026,13 @@ export type Database = {
             foreignKeyName: "gate_definitions_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "gate_definitions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -20720,6 +21248,13 @@ export type Database = {
             foreignKeyName: "campaign_permission_requests_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_permission_requests_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -20876,6 +21411,13 @@ export type Database = {
             foreignKeyName: "campaign_activist_profiles_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_activist_profiles_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -20992,6 +21534,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -21159,6 +21708,13 @@ export type Database = {
             foreignKeyName: "campaign_organising_units_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -21265,6 +21821,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -21390,6 +21953,13 @@ export type Database = {
             foreignKeyName: "intractable_bargaining_tracker_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: true
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "intractable_bargaining_tracker_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: true
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -21470,6 +22040,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "pia_actions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -21574,6 +22151,13 @@ export type Database = {
             foreignKeyName: "section_plans_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -21671,6 +22255,13 @@ export type Database = {
             foreignKeyName: "section_plans_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "section_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -21750,6 +22341,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -21897,6 +22495,13 @@ export type Database = {
             foreignKeyName: "campaign_worker_membership_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_membership_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -22015,6 +22620,13 @@ export type Database = {
             foreignKeyName: "campaign_wocs_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_wocs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -22091,6 +22703,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_activities_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -22235,6 +22854,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "call_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -22475,6 +23101,13 @@ export type Database = {
             foreignKeyName: "call_lists_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "call_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -22529,6 +23162,25 @@ export type Database = {
           sort_order: number | null
           survey_id: number | null
           vote_count: number | null
+        }
+        Relationships: []
+      }
+      vw_sms_campaign_rollup: {
+        Row: {
+          active_conversation_count: number | null
+          blast_count: number | null
+          campaign_id: number | null
+          conversation_count: number | null
+          conversations_with_reply: number | null
+          delivered_count: number | null
+          delivery_rate_pct: number | null
+          failed_count: number | null
+          inbound_reply_count: number | null
+          opt_outs_count: number | null
+          reply_rate_pct: number | null
+          sends_count: number | null
+          survey_count: number | null
+          surveys_completed_count: number | null
         }
         Relationships: []
       }
@@ -22600,6 +23252,13 @@ export type Database = {
             foreignKeyName: "sms_lists_campaign_id_fkey"
             columns: ["campaign_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
             referencedRelation: "workload_campaign_activities"
             referencedColumns: ["campaign_id"]
           },
@@ -22644,6 +23303,95 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "sms_numbers"
             referencedColumns: ["number_id"]
+          },
+        ]
+      }
+      vw_sms_sender_stats: {
+        Row: {
+          ai_assisted_count: number | null
+          campaign_id: number | null
+          conversations: number | null
+          median_reply_latency_seconds: number | null
+          replies_sent: number | null
+          sender_user_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_bargaining_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
           },
         ]
       }
@@ -22697,6 +23445,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_surveys_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {
@@ -22845,6 +23600,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_stage_plans_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
             referencedColumns: ["campaign_id"]
           },
           {

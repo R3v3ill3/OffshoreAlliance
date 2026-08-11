@@ -14733,6 +14733,263 @@ export type Database = {
           },
         ]
       }
+      sms_relay_messages: {
+        Row: {
+          body: string | null
+          claimed_at: string | null
+          created_at: string
+          direction: string
+          forward_provider_message_id: string | null
+          forward_status: string
+          forwarded_at: string | null
+          forwarded_body: string | null
+          member_phone_e164: string | null
+          member_worker_id: number | null
+          moderated_at: string | null
+          moderated_by: string | null
+          moderation_status: string
+          provider_message_id: string | null
+          relay_id: number
+          relay_message_id: number
+          target_id: number | null
+        }
+        Insert: {
+          body?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          direction: string
+          forward_provider_message_id?: string | null
+          forward_status?: string
+          forwarded_at?: string | null
+          forwarded_body?: string | null
+          member_phone_e164?: string | null
+          member_worker_id?: number | null
+          moderated_at?: string | null
+          moderated_by?: string | null
+          moderation_status?: string
+          provider_message_id?: string | null
+          relay_id: number
+          relay_message_id?: number
+          target_id?: number | null
+        }
+        Update: {
+          body?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          direction?: string
+          forward_provider_message_id?: string | null
+          forward_status?: string
+          forwarded_at?: string | null
+          forwarded_body?: string | null
+          member_phone_e164?: string | null
+          member_worker_id?: number | null
+          moderated_at?: string | null
+          moderated_by?: string | null
+          moderation_status?: string
+          provider_message_id?: string | null
+          relay_id?: number
+          relay_message_id?: number
+          target_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_relay_messages_member_worker_id_fkey"
+            columns: ["member_worker_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_soc_recording_grid"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "sms_relay_messages_member_worker_id_fkey"
+            columns: ["member_worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "sms_relay_messages_member_worker_id_fkey"
+            columns: ["member_worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers_view"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "sms_relay_messages_relay_id_fkey"
+            columns: ["relay_id"]
+            isOneToOne: false
+            referencedRelation: "sms_relays"
+            referencedColumns: ["relay_id"]
+          },
+          {
+            foreignKeyName: "sms_relay_messages_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "sms_relay_targets"
+            referencedColumns: ["target_id"]
+          },
+        ]
+      }
+      sms_relay_targets: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          is_active: boolean
+          phone_e164: string
+          relay_id: number
+          target_id: number
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          is_active?: boolean
+          phone_e164: string
+          relay_id: number
+          target_id?: number
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          is_active?: boolean
+          phone_e164?: string
+          relay_id?: number
+          target_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_relay_targets_relay_id_fkey"
+            columns: ["relay_id"]
+            isOneToOne: false
+            referencedRelation: "sms_relays"
+            referencedColumns: ["relay_id"]
+          },
+        ]
+      }
+      sms_relays: {
+        Row: {
+          campaign_id: number | null
+          created_at: string
+          created_by: string | null
+          moderation_required: boolean
+          name: string
+          number_id: number
+          prefix_template: string | null
+          quiet_hours_respected: boolean
+          relay_id: number
+          status: string
+          suffix_template: string | null
+          timezone: string
+          updated_at: string
+        }
+        Insert: {
+          campaign_id?: number | null
+          created_at?: string
+          created_by?: string | null
+          moderation_required?: boolean
+          name: string
+          number_id: number
+          prefix_template?: string | null
+          quiet_hours_respected?: boolean
+          relay_id?: number
+          status?: string
+          suffix_template?: string | null
+          timezone?: string
+          updated_at?: string
+        }
+        Update: {
+          campaign_id?: number | null
+          created_at?: string
+          created_by?: string | null
+          moderation_required?: boolean
+          name?: string
+          number_id?: number
+          prefix_template?: string | null
+          quiet_hours_respected?: boolean
+          relay_id?: number
+          status?: string
+          suffix_template?: string | null
+          timezone?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_relays_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_relays_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_relays_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_relays_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_bargaining_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_relays_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_relays_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_relays_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_relays_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_relays_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_relays_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_relays_number_id_fkey"
+            columns: ["number_id"]
+            isOneToOne: false
+            referencedRelation: "sms_numbers"
+            referencedColumns: ["number_id"]
+          },
+        ]
+      }
       sms_send_log: {
         Row: {
           campaign_id: number

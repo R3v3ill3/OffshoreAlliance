@@ -25,6 +25,13 @@
  *
  * Plus a belt: live sessions on closed surveys are expired.
  *
+ * Phase 6 final step: relay forwards — quiet-hours-deferred
+ * ('queued', approved) member→target relay messages on ACTIVE
+ * relays are forwarded once the relay's window opens (and nothing
+ * else — held/pending/rejected rows are never touched). Lives here
+ * rather than dispatch-sms-queue because this route is the module's
+ * deferred-sends home; the dispatcher is tightly list-shaped.
+ *
  * Authentication: Vercel cron `Authorization: Bearer <CRON_SECRET>`
  * (clone of dispatch-sms-queue).
  */
@@ -50,6 +57,10 @@ import {
   sendSurveyPrompt,
   type BallotEventInsert,
 } from '@/lib/sms/survey-runtime'
+import {
+  processQueuedRelayForwards,
+  type RelayForwardsSummary,
+} from '@/lib/sms/relay-runtime'
 import type {
   SmsSurveyQuestionRow,
   SmsSurveyRow,
@@ -117,6 +128,7 @@ export async function GET(request: Request) {
     undeliverable: 0,
     closed_survey_sessions_expired: 0,
     errors: [] as Array<{ survey_id: number; error: string }>,
+    relay_forwards: null as RelayForwardsSummary | null,
   }
   let sendBudget = RUN_SEND_CAP
 
@@ -510,6 +522,17 @@ export async function GET(request: Request) {
         error: err instanceof Error ? err.message : String(err),
       })
     }
+  }
+
+  // ── Phase 6 final step: quiet-hours-deferred relay forwards ──
+  try {
+    summary.relay_forwards = await processQueuedRelayForwards(
+      supabase,
+      await getProvider(),
+      now,
+    )
+  } catch (err) {
+    console.error('sms-survey-timers: relay forwards failed:', err)
   }
 
   return NextResponse.json(summary)

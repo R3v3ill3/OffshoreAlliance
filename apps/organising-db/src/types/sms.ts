@@ -8,6 +8,8 @@
 //     sms_survey_sessions, sms_survey_answers + funnel views)
 //   - 20260811140000_sms_ballots (sms_surveys ballot columns,
 //     sms_ballot_roll, sms_ballot_events, vw_sms_ballot_tally)
+//   - 20260811160000_sms_relays (sms_relays, sms_relay_targets,
+//     sms_relay_messages)
 // TODO: replace with generated types after migration apply (pnpm gen:types).
 
 export type SmsNumberPurpose = "organiser" | "relay" | "survey" | "spare";
@@ -440,6 +442,92 @@ export interface SmsBallotDetail {
   /** Recomputed receipt codes, lexicographically sorted (never stored, never worker-linked). */
   receipts: string[];
   events: SmsBallotEventRow[];
+}
+
+// ─── Phase 6 (relay & forwarding — "patch-through") ─────────────────
+
+/** Created 'paused' — forwarding starts only on explicit activation. */
+export type SmsRelayStatus = "active" | "paused" | "ended";
+
+export type SmsRelayDirection = "member_to_target" | "target_to_member";
+
+export type SmsRelayModerationStatus =
+  | "auto_approved"
+  | "pending"
+  | "approved"
+  | "rejected";
+
+/**
+ * held = not scheduled to forward (pending moderation, relay paused,
+ * opted-out member, unbridgeable target reply); queued = approved,
+ * awaiting a send slot / retry (the timers cron drains these — and
+ * nothing else); sending = claimed by an in-flight send (claimed_at-
+ * stamped, stale-swept back to queued after 15 min); sent/delivered/
+ * failed = provider outcome (forwarded_at only set on success);
+ * rejected = moderation rejected.
+ */
+export type SmsRelayForwardStatus =
+  | "queued"
+  | "sending"
+  | "sent"
+  | "delivered"
+  | "failed"
+  | "held"
+  | "rejected";
+
+export interface SmsRelayRow {
+  relay_id: number;
+  /** NULL = org-wide relay. */
+  campaign_id: number | null;
+  name: string;
+  number_id: number;
+  prefix_template: string | null;
+  suffix_template: string | null;
+  status: SmsRelayStatus;
+  moderation_required: boolean;
+  quiet_hours_respected: boolean;
+  timezone: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SmsRelayTargetRow {
+  target_id: number;
+  relay_id: number;
+  /** The external party's mobile — never exposed to members. */
+  phone_e164: string;
+  display_name: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface SmsRelayMessageRow {
+  relay_message_id: number;
+  relay_id: number;
+  direction: SmsRelayDirection;
+  member_worker_id: number | null;
+  member_phone_e164: string | null;
+  target_id: number | null;
+  /** Original inbound body, verbatim. */
+  body: string | null;
+  /**
+   * The exact outbound forward body, both directions (member→target:
+   * prefix + member message + suffix; target→member: display-name-
+   * prefixed reply), rendered at receipt time.
+   */
+  forwarded_body: string | null;
+  moderation_status: SmsRelayModerationStatus;
+  moderated_by: string | null;
+  moderated_at: string | null;
+  provider_message_id: string | null;
+  forward_provider_message_id: string | null;
+  forward_status: SmsRelayForwardStatus;
+  /** 'sending' claim stamp (stale-swept by the cron). */
+  claimed_at: string | null;
+  /** Only set after a successful provider send. */
+  forwarded_at: string | null;
+  created_at: string;
 }
 
 export interface VwSmsCampaignSummaryRow {

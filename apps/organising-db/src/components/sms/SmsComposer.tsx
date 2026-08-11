@@ -14,7 +14,11 @@
  *   - sender number select defaulting to the signed-in organiser's
  *     assigned number,
  *   - blackout override toggle with a required, recorded reason,
- *   - optional schedule datetime.
+ *   - optional schedule datetime,
+ *   - "tap-to-text" link helper (brief §6 complementary pattern):
+ *     inserts an sms:+61…?body=… link so contact genuinely
+ *     originates from the member's own phone and number — e.g.
+ *     inviting members to text a relay number, or an MP directly.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -43,7 +47,7 @@ import {
   useSmsTestSend,
   type SmsSenderOption,
 } from '@/lib/hooks/useSmsBroadcast'
-import { toDisplay } from '@/lib/phone/normalise-phone'
+import { toDisplay, toE164 } from '@/lib/phone/normalise-phone'
 
 export interface SmsComposerValue {
   body: string
@@ -87,6 +91,9 @@ export function SmsComposer({
   const { data: templates } = useTemplateLibrary({ platform: 'sms' })
   const testSend = useSmsTestSend(campaignId)
   const [testNumber, setTestNumber] = useState('')
+  const [tapOpen, setTapOpen] = useState(false)
+  const [tapNumber, setTapNumber] = useState('')
+  const [tapMessage, setTapMessage] = useState('')
 
   // Default the sender to the signed-in organiser's number once loaded.
   const defaultedRef = useRef(false)
@@ -106,9 +113,8 @@ export function SmsComposer({
   )
   const compliance = useMemo(() => validateSmsBody(value.body), [value.body])
 
-  const insertToken = (token: string) => {
+  const insertAtCursor = (insert: string) => {
     const el = textareaRef.current
-    const insert = `{{${token}}}`
     if (!el) {
       onChange({ ...value, body: value.body + insert })
       return
@@ -121,6 +127,21 @@ export function SmsComposer({
       el.focus()
       el.setSelectionRange(start + insert.length, start + insert.length)
     })
+  }
+
+  const insertToken = (token: string) => insertAtCursor(`{{${token}}}`)
+
+  const insertTapToText = () => {
+    const e164 = toE164(tapNumber)
+    if (!e164) {
+      toast.error('Enter a valid mobile for the tap-to-text link')
+      return
+    }
+    const link = tapMessage.trim()
+      ? `sms:${e164}?body=${encodeURIComponent(tapMessage.trim())}`
+      : `sms:${e164}`
+    insertAtCursor(link)
+    setTapOpen(false)
   }
 
   return (
@@ -177,7 +198,47 @@ export function SmsComposer({
               {v.label}
             </button>
           ))}
+          <button
+            type="button"
+            disabled={disabled}
+            title="Insert a tappable sms: link so members text a number (e.g. a relay or an MP) from their OWN phone — the only way the recipient sees authentic member identity"
+            className="rounded-full border border-dashed bg-muted px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted/70 disabled:opacity-50"
+            onClick={() => setTapOpen((o) => !o)}
+          >
+            + Tap-to-text link
+          </button>
         </div>
+        {tapOpen && (
+          <div className="rounded-md border p-3 space-y-2">
+            <Label className="text-xs text-muted-foreground">
+              Tap-to-text link — opens the member&apos;s SMS app addressed to
+              this number, with an optional prefilled message.
+            </Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="04xx xxx xxx (e.g. the relay number)"
+                disabled={disabled}
+                value={tapNumber}
+                onChange={(e) => setTapNumber(e.target.value)}
+              />
+              <Input
+                placeholder="Prefilled message (optional)"
+                disabled={disabled}
+                value={tapMessage}
+                onChange={(e) => setTapMessage(e.target.value)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={disabled || !tapNumber.trim()}
+                onClick={insertTapToText}
+              >
+                Insert
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Segment counter */}

@@ -24,13 +24,20 @@
  *                   Phase 4: also terminates the phone's survey
  *                   sessions (queued/invited/active → opted_out) —
  *                   brief §2.3 constraint 3.
- *   - inbound     → Phase 4 precedence (brief §4.1): reserved
+ *   - inbound     → Phase 6 precedence (brief §4.1 + §6): reserved
  *                   keywords (inline STOP guard — a belt behind the
  *                   provider's platform-side interception) → open
  *                   survey session on the phone (processSurveyInbound
  *                   handles parse / retry ladder / branch / complete /
  *                   handoff and replies from the survey's sender
- *                   number) → else Phase 2 conversation routing
+ *                   number) → ballot post-completion leg → RELAY leg
+ *                   (Phase 6: when the to-number carries a live
+ *                   active|paused relay, processRelayInbound handles
+ *                   the message entirely — member→target forwarding
+ *                   with consent/moderation/quiet-hours, or a target
+ *                   reply bridged back to the last-forwarded member;
+ *                   relay traffic never creates inbox conversations)
+ *                   → else Phase 2 conversation routing
  *                   (brief §7.0), bit-for-bit unchanged: to-number
  *                   → sms_numbers row → open (number, member) pair thread
  *                   → matched worker's open thread on the number → else
@@ -69,6 +76,10 @@ import {
   terminateSessionsForPhone,
   touchConversationTimestamps,
 } from '@/lib/sms/survey-runtime'
+import {
+  findLiveRelayByNumberId,
+  processRelayInbound,
+} from '@/lib/sms/relay-runtime'
 
 export const dynamic = 'force-dynamic'
 
@@ -270,6 +281,18 @@ export async function POST(req: NextRequest) {
           )
           .eq('provider_message_id', event.providerMessageId)
           .eq('status', 'sent')
+
+        // Mirror onto relay forwards (Phase 6) via the forward's
+        // provider id. Same monotonic guard: only from 'sent'.
+        await admin
+          .from('sms_relay_messages')
+          .update(
+            eventType === 'delivered'
+              ? { forward_status: 'delivered' }
+              : { forward_status: 'failed' },
+          )
+          .eq('forward_provider_message_id', event.providerMessageId)
+          .eq('forward_status', 'sent')
 
         const listIds = [
           ...new Set((transitioned ?? []).map((r) => r.list_id as number)),
@@ -547,6 +570,53 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Number registry match (tolerant of +614… / 614… / 04… forms) —
+      // hoisted ahead of the relay leg (Phase 6): a relay CLAIMS its
+      // number, so relays are checked before conversation attach for
+      // that number. The conversational leg below reuses this row.
+      const { data: numbers } = await admin
+        .from('sms_numbers')
+        .select('number_id, phone_e164, organiser_id')
+        .eq('status', 'active')
+      const numberRow = findNumberForInbound(numbers ?? [], event.to)
+
+      // ── Phase 6 precedence step 2c: relay leg ────────────────
+      // Only when the to-number carries a live (active|paused)
+      // relay — 'ended' relays release the number back to normal
+      // routing. The runtime handles both directions (member →
+      // target forwarding and target replies bridged back to the
+      // last-forwarded member) and NEVER creates inbox threads.
+      if (numberRow) {
+        const relay = await findLiveRelayByNumberId(admin, numberRow.number_id)
+        if (relay) {
+          const relayResult = await processRelayInbound(admin, provider, {
+            relay,
+            number: {
+              number_id: numberRow.number_id,
+              phone_e164: numberRow.phone_e164,
+            },
+            event: {
+              from: event.from,
+              body: event.body,
+              providerMessageId: event.providerMessageId,
+            },
+            phoneE164: phone,
+            matchedWorkerIds,
+            receivedAt,
+          })
+          if (event.providerMessageId) {
+            await insertDeliveryEvent(admin, {
+              provider_message_id: event.providerMessageId,
+              event_type: 'replied',
+              part_number: 0,
+              payload: rawPayload,
+              occurred_at: receivedAt,
+            })
+          }
+          return NextResponse.json(relayResult.response)
+        }
+      }
+
       // Reply correlation: our custom_ref is the sms_send_log send_id;
       // fall back to the provider's original_message_id.
       let sendRow: {
@@ -586,13 +656,6 @@ export async function POST(req: NextRequest) {
           .limit(1)
         recentSend = latest?.[0] ?? null
       }
-
-      // Number registry match (tolerant of +614… / 614… / 04… forms).
-      const { data: numbers } = await admin
-        .from('sms_numbers')
-        .select('number_id, phone_e164, organiser_id')
-        .eq('status', 'active')
-      const numberRow = findNumberForInbound(numbers ?? [], event.to)
 
       // Candidate open threads: the (number, member phone) pair first;
       // the matched worker's threads on this number only as a fallback.

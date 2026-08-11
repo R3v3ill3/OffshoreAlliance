@@ -59,6 +59,32 @@ export function useSmsSurveys(campaignId: number | string) {
   })
 }
 
+/** Compact catalogue row for cross-campaign duplication. */
+export interface SmsSurveyCatalogueRow {
+  survey_id: number
+  campaign_id: number
+  campaign_name: string
+  title: string
+  status: string
+  purpose: string
+  question_count: number
+  created_at: string
+  updated_at: string
+}
+
+/** Org-wide survey list (any campaign the staff client can read). */
+export function useSmsSurveyCatalogue(enabled = true) {
+  return useQuery({
+    queryKey: ['sms-surveys-catalogue'],
+    queryFn: async () => {
+      const res = await fetchApi('/api/sms/surveys')
+      if (!res.ok) throw await toError(res, 'Failed to fetch SMS surveys')
+      return res.json() as Promise<SmsSurveyCatalogueRow[]>
+    },
+    enabled,
+  })
+}
+
 export function useSmsSurveyDetail(
   campaignId: number | string,
   surveyId: number | null,

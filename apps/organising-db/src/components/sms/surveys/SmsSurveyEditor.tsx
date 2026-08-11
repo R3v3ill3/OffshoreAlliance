@@ -14,7 +14,7 @@
  * - >5 questions warning (§4.1: completion cliffs after Q3–Q6).
  * - Live phone-style preview driven by the pure engine renderers.
  */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ArrowDown, ArrowUp, Plus, Scale, Trash2 } from 'lucide-react'
+import { cn } from '@/lib/utils/cn'
 import { CreateAssessmentDialog } from '@/components/campaigns/assessments/create-assessment-dialog'
 import { countSegments } from '@/lib/sms/segments'
 import { validateSmsBody } from '@/lib/sms/compliance'
@@ -241,6 +242,9 @@ interface SmsSurveyEditorProps {
    * refreshes too.
    */
   onActivityCreated?: (activityId: number) => void
+  /** Highlight + scroll target when the flow chart selects a question. */
+  selectedQuestionIndex?: number | null
+  onSelectQuestion?: (index: number) => void
 }
 
 export function SmsSurveyEditor({
@@ -250,6 +254,8 @@ export function SmsSurveyEditor({
   disabled,
   campaignId,
   onActivityCreated,
+  selectedQuestionIndex = null,
+  onSelectQuestion,
 }: SmsSurveyEditorProps) {
   const { data: senders } = useSmsSenders()
   // 'survey' targets the survey-level activity_id; a number targets that
@@ -257,6 +263,13 @@ export function SmsSurveyEditor({
   const [createAssessmentTarget, setCreateAssessmentTarget] = useState<
     'survey' | number | null
   >(null)
+  const questionRefs = useRef<Array<HTMLDivElement | null>>([])
+
+  useEffect(() => {
+    if (selectedQuestionIndex == null) return
+    const el = questionRefs.current[selectedQuestionIndex]
+    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [selectedQuestionIndex])
 
   const patch = (p: Partial<SurveyEditorValue>) => onChange({ ...value, ...p })
   const patchQuestion = (i: number, p: Partial<SurveyEditorQuestion>) => {
@@ -264,6 +277,13 @@ export function SmsSurveyEditor({
       idx === i ? { ...q, ...p } : q,
     )
     onChange({ ...value, questions })
+  }
+
+  const addQuestion = () => {
+    patch({
+      questions: [...value.questions, { ...EMPTY_SURVEY_QUESTION }],
+    })
+    onSelectQuestion?.(value.questions.length)
   }
 
   const moveQuestion = (i: number, dir: -1 | 1) => {
@@ -540,11 +560,7 @@ export function SmsSurveyEditor({
             size="sm"
             variant="outline"
             disabled={disabled}
-            onClick={() =>
-              patch({
-                questions: [...value.questions, { ...EMPTY_SURVEY_QUESTION }],
-              })
-            }
+            onClick={addQuestion}
           >
             <Plus className="h-3.5 w-3.5 mr-1" />
             Add question
@@ -560,7 +576,18 @@ export function SmsSurveyEditor({
         )}
 
         {value.questions.map((q, i) => (
-          <div key={i} className="rounded-md border p-3 space-y-2.5 bg-muted/20">
+          <div
+            key={i}
+            ref={(el) => {
+              questionRefs.current[i] = el
+            }}
+            onClick={() => onSelectQuestion?.(i)}
+            className={cn(
+              'rounded-md border p-3 space-y-2.5 bg-muted/20 transition-colors',
+              selectedQuestionIndex === i &&
+                'border-indigo-500 ring-2 ring-indigo-200 bg-indigo-50/40',
+            )}
+          >
             <div className="flex items-center gap-2">
               <Badge variant="secondary">Q{i + 1}</Badge>
               <Select
@@ -832,6 +859,17 @@ export function SmsSurveyEditor({
             )}
           </div>
         ))}
+
+        <Button
+          size="sm"
+          variant="outline"
+          className="w-full"
+          disabled={disabled}
+          onClick={addQuestion}
+        >
+          <Plus className="h-3.5 w-3.5 mr-1" />
+          Add question
+        </Button>
       </div>
 
       <div className="space-y-1.5">

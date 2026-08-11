@@ -244,7 +244,9 @@ export type SmsThreadScope = "conversation" | "activity" | "campaign" | "all";
 // ─── Phase 4 (survey engine) ────────────────────────────────────────
 
 export type SmsSurveyPurpose = "survey" | "indicative_ballot";
-export type SmsSurveyStatus = "draft" | "open" | "closed";
+export type SmsSurveyStatus = "draft" | "open" | "paused" | "closed";
+
+export type SmsSurveyPauseMode = "soft" | "hard";
 
 /**
  * Phase 5 ballot revote policy (brief §4.2 / §8.1): 'locked' =
@@ -294,6 +296,11 @@ export interface SmsSurveyRow {
   purpose: SmsSurveyPurpose;
   status: SmsSurveyStatus;
   version: number;
+  /** Trusted-group test survey (default true). Promote clones to a non-test launch. */
+  is_test: boolean;
+  pause_mode: SmsSurveyPauseMode | null;
+  paused_at: string | null;
+  archived_at: string | null;
   retry_limit: number;
   question_timeout_minutes: number;
   session_ttl_hours: number;
@@ -331,6 +338,8 @@ export interface SmsSurveyQuestionRow {
   activity_id: number | null;
   invalid_prompt: string | null;
   nudge_text: string | null;
+  /** Set when a post-open edit removes a question that already has answers. */
+  retired_at: string | null;
   created_at: string;
   updated_at: string;
 }

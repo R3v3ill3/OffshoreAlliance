@@ -1,15 +1,13 @@
 'use client'
 
 /**
- * TanStack Query hooks for the SMS survey module (Phase 4). All data
- * access goes through the campaign-scoped API routes — the Phase 4
- * tables are not in the generated Database types yet (migration
- * pending apply).
+ * TanStack Query hooks for the SMS survey module (Phase 4 + lifecycle).
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchApi } from '@/lib/api/fetch-api'
 import type {
   SmsBallotDetail,
+  SmsSurveyPauseMode,
   SmsSurveyQuestionRow,
   SmsSurveyRow,
   VwSmsSurveyFunnelRow,
@@ -19,6 +17,7 @@ import type {
   SurveyQuestionInput,
   SurveySettingsInput,
 } from '@/lib/sms/survey-validation'
+import type { IntegrityFinding } from '@/lib/sms/survey-integrity'
 
 export interface SmsSurveyListRow extends SmsSurveyRow {
   question_count: number
@@ -42,9 +41,29 @@ export type SurveyAudience =
   | { type: 'worker_list'; worker_list_id: number }
   | { type: 'campaign' }
 
+export interface SurveyLaunchPreview {
+  ok: true
+  invitable: number
+  opted_out: number
+  skipped_no_phone: number
+  question_count: number
+  timezone: string
+  blackout_override: boolean
+  within_window: boolean
+  next_window_at: string
+  is_test: boolean
+}
+
 async function toError(res: Response, fallback: string): Promise<Error> {
   const err = await res.json().catch(() => ({ error: fallback }))
-  return new Error(err.error || fallback)
+  const message = err.error || fallback
+  const error = new Error(message) as Error & {
+    findings?: IntegrityFinding[]
+    status?: number
+  }
+  if (Array.isArray(err.findings)) error.findings = err.findings
+  error.status = res.status
+  return error
 }
 
 export function useSmsSurveys(campaignId: number | string) {
@@ -138,7 +157,11 @@ export function useUpdateSmsSurvey(campaignId: number | string) {
         },
       )
       if (!res.ok) throw await toError(res, 'Failed to update SMS survey')
-      return res.json() as Promise<{ ok: true }>
+      return res.json() as Promise<{
+        ok: true
+        version?: number
+        findings?: IntegrityFinding[]
+      }>
     },
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({
@@ -154,9 +177,16 @@ export function useUpdateSmsSurvey(campaignId: number | string) {
 export function useDeleteSmsSurvey(campaignId: number | string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (surveyId: number) => {
+    mutationFn: async ({
+      surveyId,
+      confirm,
+    }: {
+      surveyId: number
+      confirm?: string
+    }) => {
+      const qs = confirm ? `?confirm=${encodeURIComponent(confirm)}` : ''
       const res = await fetchApi(
-        `/api/campaigns/${campaignId}/sms-surveys/${surveyId}`,
+        `/api/campaigns/${campaignId}/sms-surveys/${surveyId}${qs}`,
         { method: 'DELETE' },
       )
       if (!res.ok) throw await toError(res, 'Failed to delete SMS survey')
@@ -170,6 +200,14 @@ export function useDeleteSmsSurvey(campaignId: number | string) {
   })
 }
 
+export type SurveyLifecycleAction =
+  | 'open'
+  | 'close'
+  | 'pause'
+  | 'resume'
+  | 'promote'
+  | 'preview'
+
 export function useSmsSurveyAction(campaignId: number | string) {
   const queryClient = useQueryClient()
   return useMutation({
@@ -177,17 +215,19 @@ export function useSmsSurveyAction(campaignId: number | string) {
       surveyId,
       action,
       audience,
+      pause_mode,
     }: {
       surveyId: number
-      action: 'open' | 'close'
+      action: SurveyLifecycleAction
       audience?: SurveyAudience
+      pause_mode?: SmsSurveyPauseMode
     }) => {
       const res = await fetchApi(
         `/api/campaigns/${campaignId}/sms-surveys/${surveyId}/actions`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action, audience }),
+          body: JSON.stringify({ action, audience, pause_mode }),
         },
       )
       if (!res.ok) throw await toError(res, 'Failed to update SMS survey')
@@ -197,6 +237,16 @@ export function useSmsSurveyAction(campaignId: number | string) {
         opted_out?: number
         skipped_no_phone?: number
         expired_sessions?: number
+        survey_id?: number
+        invitable?: number
+        question_count?: number
+        timezone?: string
+        blackout_override?: boolean
+        within_window?: boolean
+        next_window_at?: string
+        is_test?: boolean
+        status?: string
+        pause_mode?: SmsSurveyPauseMode
       }>
     },
     onSuccess: (_data, vars) => {
@@ -206,6 +256,11 @@ export function useSmsSurveyAction(campaignId: number | string) {
       queryClient.invalidateQueries({
         queryKey: ['sms-survey', String(campaignId), vars.surveyId],
       })
+      if (_data.survey_id != null) {
+        queryClient.invalidateQueries({
+          queryKey: ['sms-survey', String(campaignId), _data.survey_id],
+        })
+      }
     },
   })
 }

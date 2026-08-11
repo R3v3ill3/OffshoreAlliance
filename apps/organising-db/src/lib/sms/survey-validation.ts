@@ -18,6 +18,8 @@ export interface SurveyQuestionInput {
   /** Branch targets by question INDEX (0-based) or 'end'. */
   branching?: Record<string, number | "end"> | null;
   write_rating?: boolean;
+  /** Phase 8: per-question override of the survey's ratings target. */
+  activity_id?: number | null;
   invalid_prompt?: string | null;
   nudge_text?: string | null;
 }
@@ -51,6 +53,8 @@ export interface SurveySettingsInput {
   revote_policy?: string;
   results_restricted?: boolean;
   activity_id?: number | null;
+  /** Phase 8: the worker list this survey was fired from (Build List -> SMS -> Survey). */
+  source_worker_list_id?: number | null;
   sender_number_id?: number | null;
   timezone?: string;
   blackout_override?: boolean;
@@ -210,6 +214,18 @@ export function validateSurveyQuestions(
       ) {
         errors.push(`${label}: scale needs integer min < max.`);
       }
+    }
+    if (
+      q.activity_id !== undefined &&
+      q.activity_id !== null &&
+      (!Number.isInteger(q.activity_id) || q.activity_id <= 0)
+    ) {
+      errors.push(`${label}: activity_id must be null or a positive integer.`);
+    }
+    if (q.activity_id != null && !q.write_rating) {
+      errors.push(
+        `${label}: a ratings target requires "write answer to the ratings target" to be on.`,
+      );
     }
     if (q.branching) {
       for (const [value, target] of Object.entries(q.branching)) {

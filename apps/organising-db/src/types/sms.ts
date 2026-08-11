@@ -10,6 +10,8 @@
 //     sms_ballot_roll, sms_ballot_events, vw_sms_ballot_tally)
 //   - 20260811160000_sms_relays (sms_relays, sms_relay_targets,
 //     sms_relay_messages)
+//   - 20260811190000_sms_ai_reporting (sms_messages.ai_assisted,
+//     vw_sms_sender_stats, vw_sms_campaign_rollup)
 // TODO: replace with generated types after migration apply (pnpm gen:types).
 
 export type SmsNumberPurpose = "organiser" | "relay" | "survey" | "spare";
@@ -196,6 +198,11 @@ export interface SmsMessageRow {
   status: SmsMessageStatus;
   error: string | null;
   segments: number | null;
+  /**
+   * Phase 7 (20260811190000, brief §8.2): true when the outbound body
+   * originated from an AI "Draft reply" candidate (possibly edited).
+   */
+  ai_assisted: boolean;
   created_at: string;
 }
 
@@ -281,6 +288,8 @@ export interface SmsSurveyRow {
   survey_id: number;
   campaign_id: number;
   activity_id: number | null;
+  /** Phase 8 (20260811180000): cohort this draft survey was fired from, if any. Provenance/default-selection hint only. */
+  source_worker_list_id: number | null;
   title: string;
   purpose: SmsSurveyPurpose;
   status: SmsSurveyStatus;
@@ -318,6 +327,8 @@ export interface SmsSurveyQuestionRow {
   options: SmsSurveyChoiceOption[] | SmsSurveyScaleRange | null;
   branching: SmsSurveyBranching | null;
   write_rating: boolean;
+  /** Phase 8 (20260811180000): per-question override of the survey ratings target. NULL = fall back to survey.activity_id. */
+  activity_id: number | null;
   invalid_prompt: string | null;
   nudge_text: string | null;
   created_at: string;
@@ -528,6 +539,45 @@ export interface SmsRelayMessageRow {
   /** Only set after a successful provider send. */
   forwarded_at: string | null;
   created_at: string;
+}
+
+// ─── Phase 7 (AI assist & reporting) ────────────────────────────────
+
+/**
+ * vw_sms_sender_stats (20260811190000): per (campaign, sender)
+ * outbound stats. campaign_id NULL = org-wide triage threads;
+ * median_reply_latency_seconds NULL when the sender has no
+ * inbound→outbound pairs.
+ */
+export interface VwSmsSenderStatsRow {
+  campaign_id: number | null;
+  sender_user_id: string;
+  replies_sent: number;
+  conversations: number;
+  ai_assisted_count: number;
+  median_reply_latency_seconds: number | null;
+}
+
+/**
+ * vw_sms_campaign_rollup (20260811190000): campaign-level totals
+ * across blasts / conversations / surveys. Rates use delivered as the
+ * denominator (brief §3.1 item 11).
+ */
+export interface VwSmsCampaignRollupRow {
+  campaign_id: number;
+  blast_count: number;
+  sends_count: number;
+  delivered_count: number;
+  failed_count: number;
+  delivery_rate_pct: number;
+  conversation_count: number;
+  active_conversation_count: number;
+  inbound_reply_count: number;
+  conversations_with_reply: number;
+  reply_rate_pct: number;
+  opt_outs_count: number;
+  survey_count: number;
+  surveys_completed_count: number;
 }
 
 export interface VwSmsCampaignSummaryRow {

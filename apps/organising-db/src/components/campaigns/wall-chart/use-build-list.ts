@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { fetchApi } from "@/lib/api/fetch-api";
 
-export type BuildListPurpose = "email" | "phone" | "task";
+export type BuildListPurpose = "email" | "phone" | "task" | "sms";
 export type BuildListStatus = "draft" | "fired" | "archived";
 
 export type BuildListSummary = {
@@ -21,6 +21,8 @@ export type BuildListSummary = {
   fired_call_list_id: number | null;
   fired_draft_id: number | null;
   fired_task_list_id: number | null;
+  fired_sms_list_id: number | null;
+  fired_email_list_id: number | null;
   fired_at: string | null;
   created_by: string | null;
   created_at: string;
@@ -43,6 +45,8 @@ export type BuildListItem = {
     last_name: string;
     email: string | null;
     phone: string | null;
+    phone_e164: string | null;
+    sms_opt_out: boolean | null;
     is_hsr: boolean | null;
     is_bargaining_rep: boolean | null;
     member_role_type: {
@@ -81,6 +85,14 @@ export type FireResponse = {
   draft_id?: number;
   task_list_id?: number;
   draft?: FiredTaskDraft;
+  sms_list_id?: number;
+  /** Prepare-mode (fire/sms with no pathway) fields. */
+  worker_list_id?: number;
+  total?: number;
+  sendable?: number;
+  opted_out?: number;
+  missing_mobile?: number;
+  already_fired?: { channel: string; [key: string]: unknown };
 };
 
 /**
@@ -122,9 +134,16 @@ export function useBuildList({
   const lists = useQuery<BuildListSummary[]>({
     queryKey: listsKey,
     queryFn: async () => {
-      const res = await fetchApi(`/api/campaigns/${cid}/worker-lists?status=draft`);
+      // No ?status filter (Phase 8, decision 4): a fired list must stay
+      // pickable so a cohort can be re-fired to a second channel.
+      // Archived lists are dropped client-side; drafts sort first (the
+      // route already orders by updated_at desc within each group).
+      const res = await fetchApi(`/api/campaigns/${cid}/worker-lists`);
       if (!res.ok) throw new Error(`Failed to load lists: ${res.status}`);
-      return (await res.json()) as BuildListSummary[];
+      const all = (await res.json()) as BuildListSummary[];
+      return all
+        .filter((l) => l.status !== "archived")
+        .sort((a, b) => (a.status === b.status ? 0 : a.status === "draft" ? -1 : 1));
     },
   });
 
@@ -337,15 +356,23 @@ export function useBuildList({
       pathway: BuildListPurpose;
       /** Picker value from CampaignOrganiserSelect when firing a task with an organiser leader. */
       leaderOrganiserPickerValue?: string | null;
+      /**
+       * Explicit request body override — used by the SMS setup page to
+       * reuse this same mutation for prepare mode (no body), the blast
+       * pathway, and a forced re-fire ({ force: true }).
+       */
+      body?: { pathway?: "blast" | "chat" | "survey"; force?: boolean };
     }
   >({
-    mutationFn: async ({ listId, pathway, leaderOrganiserPickerValue }) => {
+    mutationFn: async ({ listId, pathway, leaderOrganiserPickerValue, body: bodyOverride }) => {
       const body =
-        pathway === "task" && leaderOrganiserPickerValue
-          ? JSON.stringify({
-              leader_organiser_picker_value: leaderOrganiserPickerValue,
-            })
-          : undefined;
+        bodyOverride !== undefined
+          ? JSON.stringify(bodyOverride)
+          : pathway === "task" && leaderOrganiserPickerValue
+            ? JSON.stringify({
+                leader_organiser_picker_value: leaderOrganiserPickerValue,
+              })
+            : undefined;
       const res = await fetchApi(
         `/api/campaigns/${cid}/worker-lists/${listId}/fire/${pathway}`,
         {

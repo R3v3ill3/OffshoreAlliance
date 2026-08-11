@@ -1,34 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { errorResponse } from '@/lib/api/error-response'
+import { normalisePhoneE164OrNull, smsReadiness } from '@/lib/sms/build-list-readiness'
 
 /** PostgREST caps responses at 1000 rows — page source reads. */
 const PAGE_SIZE = 1000
 
 /**
  * Fire a saved worker list into the SMS pathway (fourth sibling of
- * fire/email, fire/phone, fire/task).
+ * fire/email, fire/phone, fire/task). Two-mode (Phase 8, brief §B
+ * decision, chain B):
  *
- * Server-side flow:
- *   1. Load the worker list + items (preserving sort_order) joined to
- *      workers(phone_e164, sms_opt_out).
- *   2. INSERT a campaign_comms_drafts shell (platform='sms',
- *      entry_branch='build_list').
- *   3. INSERT an sms_lists row tagged source='worker_list', then bulk
- *      INSERT sms_list_items:
- *        - workers.sms_opt_out = true  → status 'opted_out' (union-wide
- *          suppression applied at audience time; re-checked at send time)
- *        - phone_e164 IS NULL          → status 'skipped'
- *        - otherwise                    → status 'pending'
- *      total_items = pending count (sendable recipients).
- *   4. UPDATE the draft so sms_list_id points at the new list.
- *   5. Mark the worker list fired (status, fired_draft_id,
- *      fired_sms_list_id, fired_at).
- *   6. Return redirect_to the Outreach → SMS sub-tab with ?sms_list=
- *      so InlineSmsOpsPanel opens the composer on the new list.
+ *   - No `pathway` in the body ("prepare" mode): validate the list,
+ *     compute readiness counts and return the picker URL. No writes
+ *     at all — abandoning the picker leaves no artifacts.
+ *   - `pathway: 'blast'`: today's route body verbatim — INSERT a
+ *     campaign_comms_drafts shell, an sms_lists row, screened
+ *     sms_list_items, link the draft to the list, and mark the
+ *     worker list fired (status, fired_sms_list_id, fired_at — no
+ *     longer fired_draft_id, which is now email-exclusive). Guarded
+ *     by a per-channel already-fired check (decision 4).
+ *   - `pathway: 'chat' | 'survey'`: 400 — Chat has no server write
+ *     yet (defence in depth behind the disabled picker card) and
+ *     Survey is client-side navigation only, so a POST here is a
+ *     client bug.
  */
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string; listId: string }> },
 ) {
   try {
@@ -45,9 +43,18 @@ export async function POST(
     } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    // Body is optional — the build-list fire mutation sends no body
+    // for non-task pathways, and prepare mode has nothing to send.
+    const body = (await req.json().catch(() => ({}))) as {
+      pathway?: 'blast' | 'chat' | 'survey'
+      force?: boolean
+    }
+    const pathway = body?.pathway
+    const force = body?.force === true
+
     const { data: list, error: listErr } = await supabase
       .from('campaign_worker_lists')
-      .select('list_id, campaign_id, name, description')
+      .select('list_id, campaign_id, name, description, status, fired_sms_list_id')
       .eq('list_id', lid)
       .maybeSingle()
     if (listErr) throw listErr
@@ -82,6 +89,53 @@ export async function POST(
       return NextResponse.json(
         { error: 'List is empty — add workers before firing' },
         { status: 400 },
+      )
+    }
+
+    const readinessItems = items.map((it) => {
+      const w = Array.isArray(it.workers) ? it.workers[0] : it.workers
+      return { phone_e164: w?.phone_e164 ?? null, sms_opt_out: w?.sms_opt_out ?? false }
+    })
+
+    // ── Prepare mode: no writes, just the readiness picture. ──────
+    if (!pathway) {
+      const readiness = smsReadiness(readinessItems)
+      return NextResponse.json({
+        redirect_to: `/campaigns/${cid}/sms/setup?worker_list_id=${lid}`,
+        worker_list_id: lid,
+        total: readiness.total,
+        sendable: readiness.sendable,
+        opted_out: readiness.optedOut,
+        missing_mobile: readiness.missingMobile,
+      })
+    }
+
+    if (pathway === 'chat') {
+      return NextResponse.json(
+        { error: 'The SMS chat workspace is coming in a later release' },
+        { status: 400 },
+      )
+    }
+
+    if (pathway === 'survey') {
+      return NextResponse.json(
+        { error: 'The Survey pathway is a client-side navigation — nothing to POST here' },
+        { status: 400 },
+      )
+    }
+
+    // pathway === 'blast'
+
+    // Per-channel already-fired guard (decision 4): a cohort may be
+    // fired to SMS once without confirmation; a second fire requires
+    // an explicit { force: true } override.
+    if (list.fired_sms_list_id != null && !force) {
+      return NextResponse.json(
+        {
+          error: 'This cohort has already been fired to SMS',
+          already_fired: { channel: 'sms', sms_list_id: list.fired_sms_list_id },
+        },
+        { status: 409 },
       )
     }
 
@@ -132,7 +186,9 @@ export async function POST(
     const itemRows = items.map((it, i) => {
       const w = Array.isArray(it.workers) ? it.workers[0] : it.workers
       const optedOut = !!w?.sms_opt_out
-      const phone = w?.phone_e164 ?? null
+      // Whitespace-only phone_e164 must screen as missing, matching
+      // smsReadiness — a `" "` value must never reach 'pending'.
+      const phone = normalisePhoneE164OrNull(w?.phone_e164)
       return {
         list_id: smsList.list_id,
         worker_id: it.worker_id,
@@ -171,12 +227,12 @@ export async function POST(
       .eq('draft_id', draft.draft_id)
     if (linkErr) throw linkErr
 
-    // Step 5: mark the worker list fired.
+    // Step 5: mark the worker list fired. fired_draft_id is no longer
+    // written here (decision 4) — it is now email-exclusive.
     const { error: markErr } = await supabase
       .from('campaign_worker_lists')
       .update({
         status: 'fired',
-        fired_draft_id: draft.draft_id,
         fired_sms_list_id: smsList.list_id,
         fired_at: new Date().toISOString(),
       })

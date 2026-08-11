@@ -9,8 +9,9 @@
  * completed, per-question drop-off + invalid-reply rate with the
  * §4.1 ">10–15% invalid = rewrite the question" hint).
  */
-import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchApi } from '@/lib/api/fetch-api'
 import { createClient } from '@/lib/supabase/client'
 import { Badge } from '@/components/ui/badge'
@@ -34,6 +35,8 @@ import {
 } from '@/components/ui/sheet'
 import {
   ClipboardList,
+  Download,
+  ListPlus,
   Loader2,
   Lock,
   Play,
@@ -84,9 +87,29 @@ interface SmsSurveysPanelProps {
 
 export function SmsSurveysPanel({ campaignId }: SmsSurveysPanelProps) {
   const id = String(campaignId)
+  const searchParams = useSearchParams()
   const { data: surveys, isLoading } = useSmsSurveys(id)
   const [editorOpen, setEditorOpen] = useState(false)
   const [detailId, setDetailId] = useState<number | null>(null)
+  const [sourceWorkerListId, setSourceWorkerListId] = useState<number | null>(null)
+
+  // Chain B (Phase 8): the SMS Build List Survey pathway lands here
+  // with ?survey_source_list=<lid> (cohort attached) or ?new_survey=1
+  // (header entry, no cohort) — open the create sheet on mount.
+  useEffect(() => {
+    const sourceList = searchParams.get('survey_source_list')
+    const newSurvey = searchParams.get('new_survey')
+    if (sourceList) {
+      const n = Number(sourceList)
+      if (Number.isFinite(n)) setSourceWorkerListId(n)
+      setEditorOpen(true)
+    } else if (newSurvey === '1') {
+      setEditorOpen(true)
+    }
+    // Mount-only: re-running on every searchParams change would reopen
+    // the sheet after the user closes it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const totals = useMemo(() => {
     const rows = surveys ?? []
@@ -160,6 +183,7 @@ export function SmsSurveysPanel({ campaignId }: SmsSurveysPanelProps) {
         surveyId={null}
         open={editorOpen}
         onOpenChange={setEditorOpen}
+        sourceWorkerListId={sourceWorkerListId}
         onSaved={(surveyId) => {
           setEditorOpen(false)
           setDetailId(surveyId)
@@ -260,7 +284,13 @@ function detailToEditorValue(detail: SmsSurveyDetail): SurveyEditorValue {
     question_timeout_minutes: s.question_timeout_minutes,
     session_ttl_hours: s.session_ttl_hours,
     reminder_offsets: Array.isArray(s.reminder_offsets) ? s.reminder_offsets : [],
-    questions: fromQuestionRows(detail.questions),
+    // A survey fired from the wall-chart fire path (or any other
+    // question-less draft) must still open to a usable editor, not a
+    // zero-card list.
+    questions:
+      detail.questions.length > 0
+        ? fromQuestionRows(detail.questions)
+        : [{ ...EMPTY_SURVEY.questions[0] }],
   }
 }
 
@@ -271,6 +301,7 @@ function SurveyEditorSheet({
   open,
   onOpenChange,
   onSaved,
+  sourceWorkerListId,
 }: {
   campaignId: string
   surveyId: number | null
@@ -278,16 +309,20 @@ function SurveyEditorSheet({
   open: boolean
   onOpenChange: (open: boolean) => void
   onSaved: (surveyId: number) => void
+  /** Chain B: the cohort this draft is being created from (create mode only). */
+  sourceWorkerListId?: number | null
 }) {
   const [value, setValue] = useState<SurveyEditorValue>(
     initial ?? { ...EMPTY_SURVEY, questions: [{ ...EMPTY_SURVEY.questions[0] }] },
   )
+  const queryClient = useQueryClient()
   const create = useCreateSmsSurvey(campaignId)
   const update = useUpdateSmsSurvey(campaignId)
   const pending = create.isPending || update.isPending
 
+  const activitiesQueryKey = ['sms-survey-activities', campaignId] as const
   const { data: activities } = useQuery({
-    queryKey: ['sms-survey-activities', campaignId],
+    queryKey: activitiesQueryKey,
     queryFn: async () => {
       const supabase = createClient()
       const { data, error } = await supabase
@@ -321,6 +356,9 @@ function SurveyEditorSheet({
       session_ttl_hours: value.session_ttl_hours,
       reminder_offsets: value.reminder_offsets,
       questions: toQuestionInputs(value.questions),
+      ...(surveyId == null && sourceWorkerListId != null
+        ? { source_worker_list_id: sourceWorkerListId }
+        : {}),
     }
     const onError = (err: Error) => {
       toast.error(err.message)
@@ -355,6 +393,11 @@ function SurveyEditorSheet({
           <SheetDescription>
             Reply-native SMS survey — members answer by text, the engine
             parses, retries and hands off to the inbox when needed.
+            {surveyId == null && sourceWorkerListId != null && (
+              <span className="block mt-1 font-medium text-foreground">
+                Fired from list #{sourceWorkerListId}
+              </span>
+            )}
           </SheetDescription>
         </SheetHeader>
         <div className="mt-4 space-y-4 pb-8">
@@ -363,6 +406,10 @@ function SurveyEditorSheet({
             onChange={setValue}
             activities={activities ?? []}
             disabled={pending}
+            campaignId={campaignId}
+            onActivityCreated={() => {
+              queryClient.invalidateQueries({ queryKey: activitiesQueryKey })
+            }}
           />
           <Button className="w-full" disabled={pending} onClick={submit}>
             {pending ? (
@@ -446,15 +493,32 @@ function DraftDetail({
   const action = useSmsSurveyAction(campaignId)
   const del = useDeleteSmsSurvey(campaignId)
   const [audience, setAudience] = useState<string>('campaign')
+  const [userChangedAudience, setUserChangedAudience] = useState(false)
 
   const { data: workerLists } = useQuery({
     queryKey: ['worker-lists-for-sms', campaignId],
     queryFn: async () => {
+      // Unfiltered by status (Phase 8) — a fired list is still a valid
+      // default audience source here.
       const res = await fetchApi(`/api/campaigns/${campaignId}/worker-lists`)
       if (!res.ok) throw new Error('Failed to fetch worker lists')
       return res.json() as Promise<WorkerListOption[]>
     },
   })
+
+  // Default the audience to the survey's source list, when it was
+  // fired from one and still appears in the options (Phase 8) —
+  // derived at render time so a workerLists refetch never needs an
+  // effect + setState round trip; a manual pick always wins.
+  const sourceListId = detail.survey.source_worker_list_id
+  const sourceListStillOffered =
+    sourceListId != null && (workerLists ?? []).some((wl) => wl.list_id === sourceListId)
+  const effectiveAudience =
+    !userChangedAudience && sourceListStillOffered ? String(sourceListId) : audience
+  const handleAudienceChange = (v: string) => {
+    setAudience(v)
+    setUserChangedAudience(true)
+  }
 
   const openSurvey = () => {
     action.mutate(
@@ -462,9 +526,9 @@ function DraftDetail({
         surveyId: detail.survey.survey_id,
         action: 'open',
         audience:
-          audience === 'campaign'
+          effectiveAudience === 'campaign'
             ? { type: 'campaign' }
-            : { type: 'worker_list', worker_list_id: Number(audience) },
+            : { type: 'worker_list', worker_list_id: Number(effectiveAudience) },
       },
       {
         onSuccess: (res) => {
@@ -506,7 +570,7 @@ function DraftDetail({
 
         <div className="space-y-1.5">
           <Label>Audience</Label>
-          <Select value={audience} onValueChange={setAudience}>
+          <Select value={effectiveAudience} onValueChange={handleAudienceChange}>
             <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
@@ -656,6 +720,31 @@ function FunnelDetail({
           <BallotResults detail={detail} ballot={detail.ballot} />
         )}
 
+        {/* Phase 7: answers export (blocked server-side for restricted
+            ballots — hidden here too) + "create list from responders"
+            cohorts (§3.1 item 11). Cohort lists carry membership only,
+            never answers, so they stay available for restricted
+            ballots. */}
+        <div className="space-y-2">
+          {!restricted && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button asChild variant="outline" size="sm">
+                <a
+                  href={`/api/campaigns/${campaignId}/sms-surveys/${detail.survey.survey_id}/export`}
+                  download
+                >
+                  <Download className="h-3 w-3 mr-1" />
+                  Export answers CSV
+                </a>
+              </Button>
+            </div>
+          )}
+          <SurveyCohortButtons
+            campaignId={campaignId}
+            surveyId={detail.survey.survey_id}
+          />
+        </div>
+
         {/* Per-question drop-off + invalid-reply rate (§4.1) — hidden
             for restricted ballots (the tally is the whole surface). */}
         {!restricted && (
@@ -725,6 +814,67 @@ function FunnelDetail({
         )}
       </div>
     </>
+  )
+}
+
+const SURVEY_COHORT_OPTIONS = [
+  { value: 'completed', label: 'Completed' },
+  { value: 'started_not_completed', label: 'Started, not completed' },
+  { value: 'non_responders', label: 'Non-responders' },
+] as const
+
+/**
+ * "Create list from responders" (Phase 7, §3.1 item 11) — one click
+ * turns a funnel segment into a draft campaign_worker_list usable by
+ * every channel. non_responders excludes opted-out sessions.
+ */
+function SurveyCohortButtons({
+  campaignId,
+  surveyId,
+}: {
+  campaignId: string
+  surveyId: number
+}) {
+  const queryClient = useQueryClient()
+  const create = useMutation({
+    mutationFn: async (cohort: string) => {
+      const res = await fetchApi(
+        `/api/campaigns/${campaignId}/sms-surveys/${surveyId}/worker-list`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cohort }),
+        },
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to create worker list')
+      return data as { list_id: number; name: string; items: number }
+    },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['worker-lists-for-sms', campaignId] })
+      toast.success(
+        `Worker list "${res.name}" created with ${res.items} worker${res.items === 1 ? '' : 's'} — fire it into any channel from the wall chart or a new blast.`,
+      )
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-xs text-muted-foreground">Create list from:</span>
+      {SURVEY_COHORT_OPTIONS.map((o) => (
+        <Button
+          key={o.value}
+          variant="outline"
+          size="sm"
+          disabled={create.isPending}
+          onClick={() => create.mutate(o.value)}
+        >
+          <ListPlus className="h-3 w-3 mr-1" />
+          {o.label}
+        </Button>
+      ))}
+    </div>
   )
 }
 

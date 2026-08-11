@@ -44,7 +44,8 @@ export async function GET(
         .select(
           `list_id, campaign_id, name, description, default_purpose, status,
            leader_worker_id, leader_organiser_id, source,
-           fired_call_list_id, fired_draft_id, fired_task_list_id, fired_at,
+           fired_call_list_id, fired_draft_id, fired_task_list_id,
+           fired_sms_list_id, fired_email_list_id, fired_at,
            created_by, created_at, updated_at,
            leader_worker:workers!campaign_worker_lists_leader_worker_id_fkey(
              worker_id, first_name, last_name
@@ -58,6 +59,7 @@ export async function GET(
           `id, list_id, worker_id, sort_order, source_ou_id, added_at,
            worker:workers!worker_id(
              worker_id, first_name, last_name, email, phone,
+             phone_e164, sms_opt_out,
              is_hsr, is_bargaining_rep,
              member_role_type:member_role_types(role_type_id, role_name, display_name)
            ),
@@ -138,7 +140,7 @@ export async function PATCH(
     if (
       'default_purpose' in updates &&
       updates.default_purpose != null &&
-      !['email', 'phone', 'task'].includes(updates.default_purpose as string)
+      !['email', 'phone', 'task', 'sms'].includes(updates.default_purpose as string)
     ) {
       return NextResponse.json({ error: 'Invalid default_purpose' }, { status: 400 })
     }

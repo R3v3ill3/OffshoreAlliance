@@ -6,9 +6,11 @@ import { toast } from "sonner";
 import {
   ListPlus,
   Mail,
+  MessageSquare,
   Phone as PhoneIcon,
   ListChecks,
   ChevronDown,
+  Check,
   Loader2,
   X,
   ArrowRight,
@@ -43,14 +45,29 @@ import {
   useBuildList,
   type BuildListPurpose,
   type BuildListItem,
+  type BuildListSummary,
   type FiredTaskDraft,
 } from "./use-build-list";
+import {
+  normalisePhoneE164OrNull,
+  smsReadiness,
+  formatSmsReadinessWarning,
+} from "@/lib/sms/build-list-readiness";
 
 const PURPOSE_OPTIONS: { value: BuildListPurpose; label: string; Icon: typeof Mail }[] = [
   { value: "email", label: "Email", Icon: Mail },
   { value: "phone", label: "Phone", Icon: PhoneIcon },
   { value: "task", label: "Activist task", Icon: ListChecks },
+  { value: "sms", label: "SMS", Icon: MessageSquare },
 ];
+
+/** The fired_*_list_id column each channel writes — used to render fired state per channel. */
+const FIRED_COLUMN_BY_CHANNEL: Record<BuildListPurpose, keyof BuildListSummary> = {
+  phone: "fired_call_list_id",
+  email: "fired_email_list_id",
+  sms: "fired_sms_list_id",
+  task: "fired_task_list_id",
+};
 
 export type BuildListPanelProps = {
   campaignId: string;
@@ -210,7 +227,7 @@ export function BuildListPanel({
   };
 
   const handlePurposeChange = (next: string) => {
-    const valid: BuildListPurpose[] = ["email", "phone", "task"];
+    const valid: BuildListPurpose[] = ["email", "phone", "task", "sms"];
     const v = valid.includes(next as BuildListPurpose) ? (next as BuildListPurpose) : null;
     setPurpose(v ?? "");
     if (list) {
@@ -266,7 +283,7 @@ export function BuildListPanel({
     buildList.reorderItems.mutate({ listId: list.list_id, orderedWorkerIds: next });
   };
 
-  const onFire = async (pathway: BuildListPurpose) => {
+  const onFire = async (pathway: BuildListPurpose, force = false) => {
     if (!list) return;
     if (items.length === 0) return;
     try {
@@ -275,12 +292,22 @@ export function BuildListPanel({
         pathway,
         leaderOrganiserPickerValue:
           pathway === "task" ? organiserPick || null : null,
+        // sms with no force sends no body — the route treats that as
+        // prepare mode (read-only) and returns the picker URL; force
+        // is only meaningful once the picker chooses Blast, but a
+        // forced re-fire from here (already-fired confirm) goes
+        // straight to blast mode.
+        body:
+          pathway === "sms" && force
+            ? { pathway: "blast", force: true }
+            : force
+              ? { force: true }
+              : undefined,
       });
       if (pathway === "task" && result.draft && onTaskDraftCreated) {
         onTaskDraftCreated(result.draft);
-        // Clear the active list — it's fired now and shouldn't keep
-        // appearing as the build target. Picker filters to draft anyway.
-        buildList.open(null);
+        // Fired lists stay visible in ListPicker (decision 4) — leave
+        // the list open so its fired state renders instead of hiding it.
         return;
       }
       if (result.redirect_to) router.push(result.redirect_to);
@@ -293,8 +320,28 @@ export function BuildListPanel({
 
   if (!open) return null;
 
-  const missingContactKind: "email" | "phone" | null =
-    purpose === "email" ? "email" : purpose === "phone" ? "phone" : null;
+  const missingContactKind: "email" | "phone" | "sms" | null =
+    purpose === "email" ? "email" : purpose === "phone" ? "phone" : purpose === "sms" ? "sms" : null;
+
+  const smsCounts =
+    purpose === "sms"
+      ? smsReadiness(
+          items.map((i) => ({
+            phone_e164: i.worker?.phone_e164 ?? null,
+            sms_opt_out: i.worker?.sms_opt_out ?? null,
+          })),
+        )
+      : null;
+  const smsWarning = smsCounts ? formatSmsReadinessWarning(smsCounts) : null;
+
+  const firedBadges = (
+    [
+      { channel: "phone" as const, id: list?.fired_call_list_id ?? null, label: "Phone" },
+      { channel: "email" as const, id: list?.fired_email_list_id ?? null, label: "Email" },
+      { channel: "sms" as const, id: list?.fired_sms_list_id ?? null, label: "SMS" },
+      { channel: "task" as const, id: list?.fired_task_list_id ?? null, label: "Task" },
+    ] satisfies { channel: BuildListPurpose; id: number | null; label: string }[]
+  ).filter((c) => c.id != null);
 
   return (
     <aside
@@ -400,6 +447,13 @@ export function BuildListPanel({
           />
         )}
 
+        {list?.status === "fired" && firedBadges.length > 0 && (
+          <div className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[11px] text-emerald-800">
+            Already fired to {firedBadges.map((c) => c.label).join(", ")} — you can
+            still fire this cohort to another channel.
+          </div>
+        )}
+
         <DropZone
           canWrite={canWrite}
           hasItems={items.length > 0}
@@ -412,17 +466,26 @@ export function BuildListPanel({
             <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
               <span>{itemCount} worker{itemCount === 1 ? "" : "s"}</span>
               <span>
-                {withEmail} email · {withPhone} phone
+                {purpose === "sms" && smsCounts
+                  ? `${smsCounts.sendable} sendable · ${smsCounts.missingMobile} without a mobile · ${smsCounts.optedOut} opted out`
+                  : `${withEmail} email · ${withPhone} phone`}
               </span>
             </div>
+            {purpose === "sms" && smsWarning && (
+              <p className="text-[10px] text-amber-700">{smsWarning}</p>
+            )}
             <ul className="space-y-1">
               {items.map((item: BuildListItem) => {
-                const flagged: "email" | "phone" | null =
+                const flagged: "email" | "phone" | "sms" | null =
                   missingContactKind === "email" && !item.worker?.email
                     ? "email"
                     : missingContactKind === "phone" && !item.worker?.phone
                       ? "phone"
-                      : null;
+                      : missingContactKind === "sms" &&
+                          (normalisePhoneE164OrNull(item.worker?.phone_e164) == null ||
+                            item.worker?.sms_opt_out)
+                        ? "sms"
+                        : null;
                 return (
                   <li key={item.id}>
                     <BuildListItemRow
@@ -481,6 +544,7 @@ export function BuildListPanel({
           }
           onFire={onFire}
           canWrite={canWrite}
+          alreadyFiredChannel={purpose ? list?.[FIRED_COLUMN_BY_CHANNEL[purpose]] != null : false}
         />
       </footer>
 
@@ -570,34 +634,62 @@ function FireBar({
   itemsSaving,
   onFire,
   canWrite,
+  alreadyFiredChannel,
 }: {
   purpose: BuildListPurpose | "";
   listEmpty: boolean;
   firing: boolean;
   /** Block fire while optimistic item rows may not be persisted yet. */
   itemsSaving: boolean;
-  onFire: (p: BuildListPurpose) => void;
+  onFire: (p: BuildListPurpose, force?: boolean) => void;
   canWrite: boolean;
+  /** Whether the currently-selected purpose's channel has already been fired (decision 4). */
+  alreadyFiredChannel: boolean;
 }) {
   const disabled = !canWrite || listEmpty || firing || itemsSaving;
+
+  const handleClick = (value: BuildListPurpose) => {
+    // sms's "Continue" only navigates to the picker (prepare mode, no
+    // writes) — the already-fired guard lives on the Blast choice
+    // inside that picker, so no confirm is needed here.
+    if (alreadyFiredChannel && value !== "sms") {
+      const ok = window.confirm(
+        `This cohort has already been fired to ${value === "task" ? "Task" : value.charAt(0).toUpperCase() + value.slice(1)}. Fire it again?`,
+      );
+      if (!ok) return;
+      onFire(value, true);
+      return;
+    }
+    onFire(value);
+  };
+
   if (purpose) {
     const Icon =
-      purpose === "email" ? Mail : purpose === "phone" ? PhoneIcon : ListChecks;
+      purpose === "email"
+        ? Mail
+        : purpose === "phone"
+          ? PhoneIcon
+          : purpose === "sms"
+            ? MessageSquare
+            : ListChecks;
     return (
       <div className="flex items-center justify-end">
         <Button
           type="button"
           size="sm"
           className="h-8 text-xs"
-          onClick={() => onFire(purpose)}
+          onClick={() => handleClick(purpose)}
           disabled={disabled}
         >
           {firing ? (
             <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+          ) : alreadyFiredChannel ? (
+            <Check className="h-3.5 w-3.5 mr-1.5" />
           ) : (
             <Icon className="h-3.5 w-3.5 mr-1.5" />
           )}
-          Continue to {purpose === "task" ? "task wizard" : `${purpose} pathway`}
+          Continue to{" "}
+          {purpose === "task" ? "task wizard" : purpose === "sms" ? "SMS pathway" : `${purpose} pathway`}
           <ArrowRight className="h-3.5 w-3.5 ml-1" />
         </Button>
       </div>
@@ -613,7 +705,7 @@ function FireBar({
           size="sm"
           variant="outline"
           className="h-7 px-2 text-xs"
-          onClick={() => onFire(value)}
+          onClick={() => handleClick(value)}
           disabled={disabled}
         >
           <Icon className="h-3.5 w-3.5 mr-1" />
@@ -652,20 +744,49 @@ function ListPicker({
           <span className="text-xs">+ New list</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        {lists.slice(0, 12).map((l) => (
-          <DropdownMenuItem
-            key={l.list_id}
-            onClick={() => buildList.open(l.list_id)}
-            className="flex flex-col items-start gap-0.5"
-          >
-            <span className="text-xs font-medium truncate w-full">{l.name}</span>
-            <span className="text-[10px] text-muted-foreground">
-              {l.default_purpose ?? "no purpose"} ·{" "}
-              {l.items_count?.[0]?.count ?? 0} workers ·{" "}
-              {new Date(l.updated_at).toLocaleDateString()}
-            </span>
-          </DropdownMenuItem>
-        ))}
+        {lists.slice(0, 12).map((l) => {
+          const chips = (
+            [
+              { channel: "Phone", id: l.fired_call_list_id },
+              { channel: "Email", id: l.fired_email_list_id },
+              { channel: "SMS", id: l.fired_sms_list_id },
+              { channel: "Task", id: l.fired_task_list_id },
+            ] satisfies { channel: string; id: number | null }[]
+          ).filter((c) => c.id != null);
+          return (
+            <DropdownMenuItem
+              key={l.list_id}
+              onClick={() => buildList.open(l.list_id)}
+              className="flex flex-col items-start gap-0.5"
+            >
+              <span className="flex items-center gap-1.5 text-xs font-medium truncate w-full">
+                {l.name}
+                {l.status === "fired" && (
+                  <span className="rounded bg-emerald-100 px-1 text-[9px] font-semibold uppercase text-emerald-700">
+                    Fired
+                  </span>
+                )}
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                {l.default_purpose ?? "no purpose"} ·{" "}
+                {l.items_count?.[0]?.count ?? 0} workers ·{" "}
+                {new Date(l.updated_at).toLocaleDateString()}
+              </span>
+              {chips.length > 0 && (
+                <span className="flex flex-wrap gap-1">
+                  {chips.map((c) => (
+                    <span
+                      key={c.channel}
+                      className="rounded bg-muted px-1 text-[9px] text-muted-foreground"
+                    >
+                      {c.channel}
+                    </span>
+                  ))}
+                </span>
+              )}
+            </DropdownMenuItem>
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );

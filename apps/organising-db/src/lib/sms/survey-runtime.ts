@@ -578,11 +578,16 @@ export async function processSurveyInbound(
   // Interaction row (the §5.1 audit + rating pipeline). Rating values
   // ride ONLY on parsed write_rating answers — fn_sms_to_rating treats
   // cta_response as a binary whenever activity_id is set, so all three
-  // stay NULL otherwise.
+  // stay NULL otherwise. Phase 8: the target activity is the
+  // per-question override when set, else the survey-level target —
+  // the gate is COALESCE-aware (not just the stamped column) so a
+  // question-level target with no survey-level target still writes,
+  // even though the current UI cannot produce that state.
+  const targetActivityId = currentQuestion.activity_id ?? survey.activity_id;
   const isRatingAnswer =
     parsed.kind === "parsed" &&
     currentQuestion.write_rating &&
-    survey.activity_id != null;
+    targetActivityId != null;
   const mapping = isRatingAnswer
     ? outcomeMapping(currentQuestion, parsed.kind === "parsed" ? parsed.value : "")
     : { rating: null, binary: null };
@@ -603,7 +608,7 @@ export async function processSurveyInbound(
       .insert({
         worker_id: session.worker_id,
         campaign_id: survey.campaign_id,
-        activity_id: survey.activity_id,
+        activity_id: targetActivityId,
         direction: "inbound",
         phone_number: phoneE164.slice(0, PHONE_NUMBER_MAX),
         phone_e164: phoneE164,
@@ -1006,14 +1011,16 @@ export async function processBallotPostCompletion(
 
   if (decision === "reject_locked") {
     // Audit interaction row (the Phase 4 idiom: activity link allowed,
-    // all three rating fields NULL — the cta_response trap).
+    // all three rating fields NULL — the cta_response trap). Phase 8:
+    // COALESCE for link coherence with the live-session stamp above —
+    // zero rating risk here since cta_response is NULL regardless.
     let interactionId: number | null = null;
     const { data: inserted, error: insErr } = await db
       .from("sms_interactions")
       .insert({
         worker_id: session.worker_id,
         campaign_id: survey.campaign_id,
-        activity_id: survey.activity_id,
+        activity_id: firstQuestion.activity_id ?? survey.activity_id,
         direction: "inbound",
         phone_number: phoneE164.slice(0, PHONE_NUMBER_MAX),
         phone_e164: phoneE164,

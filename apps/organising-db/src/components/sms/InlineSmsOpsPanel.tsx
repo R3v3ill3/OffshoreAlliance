@@ -25,7 +25,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchApi } from '@/lib/api/fetch-api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -51,7 +51,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   ArrowRightLeft,
   ClipboardList,
+  Download,
   Inbox,
+  ListPlus,
   Loader2,
   MessageSquare,
   Pause,
@@ -77,7 +79,11 @@ import {
   smsComposerBlockers,
   type SmsComposerValue,
 } from '@/components/sms/SmsComposer'
-import type { VwSmsCampaignSummaryRow } from '@/types/sms'
+import type {
+  VwSmsCampaignRollupRow,
+  VwSmsCampaignSummaryRow,
+  VwSmsSenderStatsRow,
+} from '@/types/sms'
 import { toDisplay } from '@/lib/phone/normalise-phone'
 
 const STATUS_COLORS: Record<string, string> = {
@@ -146,13 +152,21 @@ export function InlineSmsOpsPanel({ campaignId }: InlineSmsOpsPanelProps) {
   const [newOpen, setNewOpen] = useState(false)
   const [detailListId, setDetailListId] = useState<number | null>(null)
 
-  // fire/sms redirect lands with ?sms_list=<id>.
+  // fire/sms redirect lands with ?sms_list=<id>; the header/no-cohort
+  // Blast pathway lands with ?new_blast=1 (chain B).
   useEffect(() => {
     const raw = searchParams?.get('sms_list')
     const lid = raw ? parseInt(raw, 10) : NaN
     if (Number.isFinite(lid)) setDetailListId(lid)
+    if (searchParams?.get('new_blast') === '1') setNewOpen(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const SMS_VIEWS = ['blasts', 'inbox', 'surveys', 'relays'] as const
+  const smsView = searchParams?.get('sms_view')
+  const defaultTab = SMS_VIEWS.includes(smsView as (typeof SMS_VIEWS)[number])
+    ? (smsView as (typeof SMS_VIEWS)[number])
+    : 'blasts'
 
   const totals = useMemo(() => {
     const rows = lists ?? []
@@ -169,7 +183,7 @@ export function InlineSmsOpsPanel({ campaignId }: InlineSmsOpsPanelProps) {
   }, [lists])
 
   return (
-    <Tabs defaultValue="blasts" className="space-y-4">
+    <Tabs defaultValue={defaultTab} className="space-y-4">
       <TabsList>
         <TabsTrigger value="blasts">
           <Send className="h-3.5 w-3.5 mr-1.5" />
@@ -227,6 +241,9 @@ export function InlineSmsOpsPanel({ campaignId }: InlineSmsOpsPanelProps) {
         <StatCard label="Failed" value={totals.failed} />
         <StatCard label="Opt-outs" value={totals.optedOut} />
       </div>
+
+      {/* Phase 7 reporting: campaign rollup + per-sender stats. */}
+      <SmsReportingSection campaignId={id} />
 
       {/* Blast table */}
       {isLoading ? (
@@ -288,6 +305,137 @@ function StatCard({ label, value }: { label: string; value: number }) {
       <CardContent className="p-3">
         <p className="text-xs text-muted-foreground">{label}</p>
         <p className="text-lg font-semibold">{value}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+/** "3m 20s" from seconds; em-dash when there are no reply pairs yet. */
+function formatLatency(seconds: number | null): string {
+  if (seconds == null || !Number.isFinite(seconds)) return '—'
+  const s = Math.round(seconds)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ${s % 60}s`
+  return `${Math.floor(m / 60)}h ${m % 60}m`
+}
+
+interface SmsReportingPayload {
+  rollup: VwSmsCampaignRollupRow | null
+  senders: Array<VwSmsSenderStatsRow & { sender_name: string }>
+}
+
+/**
+ * Phase 7 (brief §3.1 item 11): campaign rollup cards (delivered as
+ * the response-rate denominator) + per-sender reply stats incl.
+ * median reply latency — replying inside ~20 min measurably lifts
+ * engagement, so slow medians are highlighted.
+ */
+function SmsReportingSection({ campaignId }: { campaignId: string }) {
+  const { data } = useQuery({
+    queryKey: ['sms-reporting', campaignId],
+    queryFn: async () => {
+      const res = await fetchApi(`/api/campaigns/${campaignId}/sms-reporting`)
+      if (!res.ok) throw new Error('Failed to fetch SMS reporting')
+      return res.json() as Promise<SmsReportingPayload>
+    },
+  })
+
+  const rollup = data?.rollup
+  const senders = data?.senders ?? []
+  const hasActivity =
+    !!rollup &&
+    (rollup.sends_count > 0 ||
+      rollup.conversation_count > 0 ||
+      rollup.survey_count > 0)
+  if (!hasActivity && senders.length === 0) return null
+
+  return (
+    <div className="space-y-3">
+      {hasActivity && rollup && (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <StatCardText
+            label="Delivery rate"
+            value={`${rollup.delivery_rate_pct}%`}
+            hint={`${rollup.delivered_count}/${rollup.sends_count} dispatched`}
+          />
+          <StatCardText
+            label="Reply rate"
+            value={`${rollup.reply_rate_pct}%`}
+            hint={`${rollup.conversations_with_reply} threads replied · of delivered`}
+          />
+          <StatCard label="Inbound replies" value={rollup.inbound_reply_count} />
+          <StatCard
+            label="Active conversations"
+            value={rollup.active_conversation_count}
+          />
+          <StatCardText
+            label="Surveys completed"
+            value={String(rollup.surveys_completed_count)}
+            hint={`${rollup.survey_count} survey${rollup.survey_count === 1 ? '' : 's'}`}
+          />
+          <StatCard label="Opt-outs" value={rollup.opt_outs_count} />
+        </div>
+      )}
+
+      {senders.length > 0 && (
+        <div className="rounded-md border">
+          <p className="border-b px-3 py-2 text-xs font-medium text-muted-foreground">
+            Per-sender conversation stats
+          </p>
+          <div className="divide-y">
+            {senders.map((s) => (
+              <div
+                key={s.sender_user_id}
+                className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-sm"
+              >
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  {s.sender_name}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {s.replies_sent} sent · {s.conversations} thread
+                  {s.conversations === 1 ? '' : 's'}
+                </span>
+                <span
+                  className={`text-xs ${
+                    s.median_reply_latency_seconds != null &&
+                    s.median_reply_latency_seconds > 20 * 60
+                      ? 'text-amber-700'
+                      : 'text-muted-foreground'
+                  }`}
+                  title="Median inbound → reply latency (replying within ~20 minutes lifts engagement)"
+                >
+                  median reply {formatLatency(s.median_reply_latency_seconds)}
+                </span>
+                {s.ai_assisted_count > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {s.ai_assisted_count} AI-assisted
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function StatCardText({
+  label,
+  value,
+  hint,
+}: {
+  label: string
+  value: string
+  hint?: string
+}) {
+  return (
+    <Card>
+      <CardContent className="p-3">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="text-lg font-semibold">{value}</p>
+        {hint && <p className="text-[10px] text-muted-foreground">{hint}</p>}
       </CardContent>
     </Card>
   )
@@ -565,7 +713,7 @@ function ListDetailSheet({
         ) : detail.list.status === 'draft' ? (
           <DraftDetail campaignId={campaignId} detail={detail} />
         ) : (
-          <SentDetail detail={detail} />
+          <SentDetail campaignId={campaignId} detail={detail} />
         )}
       </SheetContent>
     </Sheet>
@@ -680,7 +828,13 @@ function DraftDetail({
   )
 }
 
-function SentDetail({ detail }: { detail: SmsListDetail }) {
+function SentDetail({
+  campaignId,
+  detail,
+}: {
+  campaignId: string
+  detail: SmsListDetail
+}) {
   const counts = useMemo(() => {
     const c: Record<string, number> = {}
     for (const it of detail.items) c[it.status] = (c[it.status] ?? 0) + 1
@@ -724,9 +878,83 @@ function SentDetail({ detail }: { detail: SmsListDetail }) {
             </Badge>
           ))}
         </div>
+
+        {/* Phase 7: exports + "create list from responders" (§3.1
+            item 11) — cohort lists are channel-agnostic drafts. */}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button asChild variant="outline" size="sm">
+              <a
+                href={`/api/campaigns/${campaignId}/sms-lists/${detail.list.list_id}/export`}
+                download
+              >
+                <Download className="h-3 w-3 mr-1" />
+                Export CSV
+              </a>
+            </Button>
+          </div>
+          <BlastCohortButtons campaignId={campaignId} listId={detail.list.list_id} />
+        </div>
+
         <ItemsTable detail={detail} />
       </div>
     </>
+  )
+}
+
+const BLAST_COHORT_OPTIONS = [
+  { value: 'replied', label: 'Replied' },
+  { value: 'delivered_not_replied', label: 'Delivered, no reply' },
+  { value: 'failed', label: 'Failed' },
+] as const
+
+function BlastCohortButtons({
+  campaignId,
+  listId,
+}: {
+  campaignId: string
+  listId: number
+}) {
+  const queryClient = useQueryClient()
+  const create = useMutation({
+    mutationFn: async (cohort: string) => {
+      const res = await fetchApi(
+        `/api/campaigns/${campaignId}/sms-lists/${listId}/worker-list`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cohort }),
+        },
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to create worker list')
+      return data as { list_id: number; name: string; items: number }
+    },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['worker-lists-for-sms', campaignId] })
+      toast.success(
+        `Worker list "${res.name}" created with ${res.items} worker${res.items === 1 ? '' : 's'} — fire it into any channel from the wall chart or a new blast.`,
+      )
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-xs text-muted-foreground">Create list from:</span>
+      {BLAST_COHORT_OPTIONS.map((o) => (
+        <Button
+          key={o.value}
+          variant="outline"
+          size="sm"
+          disabled={create.isPending}
+          onClick={() => create.mutate(o.value)}
+        >
+          <ListPlus className="h-3 w-3 mr-1" />
+          {o.label}
+        </Button>
+      ))}
+    </div>
   )
 }
 

@@ -22,7 +22,8 @@ export async function GET(
       .select(
         `list_id, campaign_id, name, description, default_purpose, status,
          leader_worker_id, leader_organiser_id, source,
-         fired_call_list_id, fired_draft_id, fired_task_list_id, fired_at,
+         fired_call_list_id, fired_draft_id, fired_task_list_id,
+         fired_sms_list_id, fired_email_list_id, fired_at,
          created_by, created_at, updated_at,
          items_count:campaign_worker_list_items(count)`
       )
@@ -60,7 +61,7 @@ export async function POST(
     if (!name || typeof name !== 'string' || !name.trim()) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 })
     }
-    if (default_purpose != null && !['email', 'phone', 'task'].includes(default_purpose)) {
+    if (default_purpose != null && !['email', 'phone', 'task', 'sms'].includes(default_purpose)) {
       return NextResponse.json({ error: 'Invalid default_purpose' }, { status: 400 })
     }
 

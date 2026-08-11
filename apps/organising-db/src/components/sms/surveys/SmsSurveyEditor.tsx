@@ -14,6 +14,7 @@
  * - >5 questions warning (§4.1: completion cliffs after Q3–Q6).
  * - Live phone-style preview driven by the pure engine renderers.
  */
+import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,6 +29,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ArrowDown, ArrowUp, Plus, Scale, Trash2 } from 'lucide-react'
+import { CreateAssessmentDialog } from '@/components/campaigns/assessments/create-assessment-dialog'
 import { countSegments } from '@/lib/sms/segments'
 import { validateSmsBody } from '@/lib/sms/compliance'
 import {
@@ -60,6 +62,8 @@ export interface SurveyEditorQuestion {
   /** parsed value → question index | 'end' | undefined (= next in order). */
   branching: Record<string, number | 'end'>
   write_rating: boolean
+  /** Phase 8: per-question override of the survey's ratings target. NULL = fall back to the survey target. */
+  activity_id: number | null
   invalid_prompt: string
   nudge_text: string
 }
@@ -92,6 +96,7 @@ export const EMPTY_SURVEY_QUESTION: SurveyEditorQuestion = {
   scaleMax: 5,
   branching: {},
   write_rating: false,
+  activity_id: null,
   invalid_prompt: '',
   nudge_text: '',
 }
@@ -136,6 +141,7 @@ export function toQuestionInputs(
           : null,
     branching: Object.keys(q.branching).length > 0 ? q.branching : null,
     write_rating: q.write_rating,
+    activity_id: q.activity_id,
     invalid_prompt: q.invalid_prompt.trim() || null,
     nudge_text: q.nudge_text.trim() || null,
   }))
@@ -177,6 +183,7 @@ export function fromQuestionRows(
       scaleMax: scale.max ?? 5,
       branching,
       write_rating: q.write_rating,
+      activity_id: q.activity_id,
       invalid_prompt: q.invalid_prompt ?? '',
       nudge_text: q.nudge_text ?? '',
     }
@@ -207,6 +214,7 @@ function toPreviewRow(
           : null,
     branching: null,
     write_rating: q.write_rating,
+    activity_id: q.activity_id,
     invalid_prompt: null,
     nudge_text: null,
     created_at: '',
@@ -224,6 +232,15 @@ interface SmsSurveyEditorProps {
   onChange: (value: SurveyEditorValue) => void
   activities: ActivityOption[]
   disabled?: boolean
+  /** Needed to mount CreateAssessmentDialog's inline "+ New assessment" affordance. */
+  campaignId: string
+  /**
+   * Invalidated in addition to the dialog's own ['campaign-activities', …]
+   * key when a new assessment is created inline, so the activities list
+   * this editor renders (queryKey ['sms-survey-activities', campaignId])
+   * refreshes too.
+   */
+  onActivityCreated?: (activityId: number) => void
 }
 
 export function SmsSurveyEditor({
@@ -231,8 +248,15 @@ export function SmsSurveyEditor({
   onChange,
   activities,
   disabled,
+  campaignId,
+  onActivityCreated,
 }: SmsSurveyEditorProps) {
   const { data: senders } = useSmsSenders()
+  // 'survey' targets the survey-level activity_id; a number targets that
+  // question's per-question override. null = dialog closed.
+  const [createAssessmentTarget, setCreateAssessmentTarget] = useState<
+    'survey' | number | null
+  >(null)
 
   const patch = (p: Partial<SurveyEditorValue>) => onChange({ ...value, ...p })
   const patchQuestion = (i: number, p: Partial<SurveyEditorQuestion>) => {
@@ -318,6 +342,7 @@ export function SmsSurveyEditor({
   }
 
   return (
+    <>
     <div className="space-y-4">
       <div className="space-y-1.5">
         <Label htmlFor="survey-title">Title</Label>
@@ -436,7 +461,19 @@ export function SmsSurveyEditor({
           </Select>
         </div>
         <div className="space-y-1.5">
-          <Label>Ratings target (assessment activity)</Label>
+          <div className="flex items-center justify-between">
+            <Label>Ratings target (assessment activity)</Label>
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-xs"
+              disabled={disabled}
+              onClick={() => setCreateAssessmentTarget('survey')}
+            >
+              + New assessment
+            </Button>
+          </div>
           <Select
             value={value.activity_id != null ? String(value.activity_id) : 'none'}
             disabled={disabled}
@@ -753,6 +790,46 @@ export function SmsSurveyEditor({
                 </Label>
               </div>
             )}
+
+            {value.activity_id != null && q.qtype !== 'open_text' && q.write_rating && (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Write to</Label>
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    disabled={disabled}
+                    onClick={() => setCreateAssessmentTarget(i)}
+                  >
+                    + New assessment
+                  </Button>
+                </div>
+                <Select
+                  value={q.activity_id != null ? String(q.activity_id) : 'survey'}
+                  disabled={disabled}
+                  onValueChange={(v) =>
+                    patchQuestion(i, { activity_id: v === 'survey' ? null : Number(v) })
+                  }
+                >
+                  <SelectTrigger className="h-8 w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="survey">Survey target</SelectItem>
+                    {activities.map((a) => (
+                      <SelectItem key={a.activity_id} value={String(a.activity_id)}>
+                        {a.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Overrides the survey&apos;s ratings target for this question only.
+                </p>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -824,6 +901,24 @@ export function SmsSurveyEditor({
         </div>
       </div>
     </div>
+    <CreateAssessmentDialog
+      campaignId={campaignId}
+      open={createAssessmentTarget !== null}
+      onOpenChange={(open) => {
+        if (!open) setCreateAssessmentTarget(null)
+      }}
+      lockKind="assessment"
+      onCreated={(activityId) => {
+        if (createAssessmentTarget === 'survey') {
+          patch({ activity_id: activityId })
+        } else if (typeof createAssessmentTarget === 'number') {
+          patchQuestion(createAssessmentTarget, { activity_id: activityId })
+        }
+        onActivityCreated?.(activityId)
+        setCreateAssessmentTarget(null)
+      }}
+    />
+    </>
   )
 }
 

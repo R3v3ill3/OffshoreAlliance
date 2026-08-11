@@ -151,11 +151,59 @@ export async function POST(
       }
     }
 
+    // Phase 8: the source worker list, when attached, must also live
+    // in this campaign.
+    if (body.source_worker_list_id != null) {
+      const { data: sourceList } = await supabase
+        .from('campaign_worker_lists')
+        .select('list_id, campaign_id')
+        .eq('list_id', body.source_worker_list_id)
+        .maybeSingle()
+      if (!sourceList || sourceList.campaign_id !== cid) {
+        return NextResponse.json(
+          { error: 'Worker list not found in this campaign' },
+          { status: 400 },
+        )
+      }
+    }
+
+    // Phase 8: per-question activity targets must also live in this
+    // campaign — one batched lookup over the distinct question-level
+    // ids, mirroring the survey-level check above.
+    const questionActivityIds = [
+      ...new Set(
+        (body.questions ?? [])
+          .map((q) => q.activity_id)
+          .filter((id): id is number => id != null),
+      ),
+    ]
+    if (questionActivityIds.length > 0) {
+      const { data: activities } = await supabase
+        .from('campaign_activities')
+        .select('activity_id, campaign_id')
+        .in('activity_id', questionActivityIds)
+      const validIds = new Set(
+        (activities ?? [])
+          .filter((a) => a.campaign_id === cid)
+          .map((a) => a.activity_id),
+      )
+      const invalidIndex = (body.questions ?? []).findIndex(
+        (q) => q.activity_id != null && !validIds.has(q.activity_id),
+      )
+      if (invalidIndex !== -1) {
+        return NextResponse.json(
+          { error: `Question ${invalidIndex + 1}: activity not found in this campaign` },
+          { status: 400 },
+        )
+      }
+    }
+
     const { data: survey, error: surveyErr } = await supabase
       .from('sms_surveys')
       .insert({
         campaign_id: cid,
         activity_id: body.activity_id ?? null,
+        source_worker_list_id: body.source_worker_list_id ?? null,
         title: body.title.trim(),
         // Phase 5: ballots ride the same table — purpose plus the
         // integrity settings (revote policy defaults to 'locked' per

@@ -54,8 +54,12 @@ export async function POST(
       )
     }
 
-    const payload = (await req.json()) as { body?: string }
+    const payload = (await req.json()) as { body?: string; ai_assisted?: boolean }
     const messageBody = payload.body?.trim()
+    // Phase 7 (§8.2): stamp replies whose text originated from a
+    // "Draft reply" candidate. Client-asserted but audit-only — it
+    // gates nothing.
+    const aiAssisted = payload.ai_assisted === true
     if (!messageBody) {
       return NextResponse.json({ error: 'Message body is required' }, { status: 400 })
     }
@@ -156,6 +160,7 @@ export async function POST(
       sender_user_id: user.id,
       provider_message_id: result?.providerMessageId ?? null,
       segments,
+      ai_assisted: aiAssisted,
       created_at: sentAt,
     }
 

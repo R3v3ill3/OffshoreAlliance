@@ -8,8 +8,9 @@
  *   2. Invitation dispatch — queued → invited. Bulk-adjacent, so it
  *      respects the survey's blackout window (unless a recorded
  *      override) and re-validates the invitation compliance
- *      (org name + opt-out) at dispatch time. The one-live-session-
- *      per-phone rule is enforced twice: a pre-check defers queued
+ *      (org name required; opt-out optional) at dispatch time. The
+ *      one-live-session-per-phone rule is enforced twice: a pre-check
+ *      defers queued
  *      invitations for busy phones, and the partial unique index
  *      turns any race into a 23505 → defer. Send-time re-checks:
  *      worker opt-out → 'opted_out'; provider blocked → opt-out
@@ -215,8 +216,8 @@ export async function GET(request: Request) {
 
       // ── 2. Invitation dispatch ──────────────────────────────
       // Compliance re-checks at dispatch time (belts behind the open
-      // route): org name + opt-out for every survey; the §4.2/§8.1
-      // "indicative" framing for ballots.
+      // route): org name for every survey (opt-out optional); the
+      // §4.2/§8.1 "indicative" framing for ballots.
       const compliance = validateSmsBody(survey.invitation_body ?? '')
       const indicativeOk =
         survey.purpose !== 'indicative_ballot' ||

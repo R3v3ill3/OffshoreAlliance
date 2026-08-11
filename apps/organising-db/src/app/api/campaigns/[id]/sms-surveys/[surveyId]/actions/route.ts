@@ -2,12 +2,12 @@
  * SMS survey lifecycle actions: open / close.
  *
  * open  — draft only. Requires ≥ 1 question, an active sender number
- *         and a COMPLIANT invitation body (org name + opt-out — the
- *         invitation is a bulk send). Freezes the audience into
- *         'queued' sms_survey_sessions (opt-out / no-phone workers
- *         screened out and reported, never sessioned); the timers
- *         cron dispatches invitations on its next tick, respecting
- *         the blackout window and the one-live-session-per-phone rule.
+ *         and a COMPLIANT invitation body (org name required; opt-out
+ *         optional). Freezes the audience into 'queued'
+ *         sms_survey_sessions (opt-out / no-phone workers screened out
+ *         and reported, never sessioned); the timers cron dispatches
+ *         invitations on its next tick, respecting the blackout window
+ *         and the one-live-session-per-phone rule.
  * close — open → closed; queued + live sessions → 'expired' (the
  *         webhook also expires stragglers as a belt).
  *
@@ -188,7 +188,7 @@ export async function POST(
       )
     }
 
-    // The invitation is a bulk send — org name + opt-out required
+    // The invitation is a bulk send — org name required; opt-out optional
     // (the dispatch cron re-checks as a second belt).
     const compliance = validateSmsBody(survey.invitation_body ?? '')
     if (!compliance.ok) {

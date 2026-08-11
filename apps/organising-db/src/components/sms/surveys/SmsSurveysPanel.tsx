@@ -38,9 +38,16 @@ import {
   Lock,
   Play,
   Plus,
+  Scale,
   Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { BALLOT_COMPLIANCE_BANNER } from '@/lib/sms/survey-validation'
+import type {
+  SmsBallotDetail,
+  SmsBallotEventRow,
+  VwSmsBallotTallyRow,
+} from '@/types/sms'
 import {
   useCreateSmsSurvey,
   useDeleteSmsSurvey,
@@ -202,6 +209,12 @@ function SurveyCard({
             <Badge className={STATUS_COLORS[survey.status] || ''} variant="secondary">
               {survey.status}
             </Badge>
+            {survey.purpose === 'indicative_ballot' && (
+              <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                <Scale className="h-3 w-3 mr-1" />
+                indicative ballot
+              </Badge>
+            )}
             <span className="text-xs text-muted-foreground ml-auto">
               {survey.question_count} question
               {survey.question_count === 1 ? '' : 's'}
@@ -236,6 +249,9 @@ function detailToEditorValue(detail: SmsSurveyDetail): SurveyEditorValue {
   const s = detail.survey
   return {
     title: s.title,
+    purpose: s.purpose ?? 'survey',
+    revote_policy: s.revote_policy ?? 'locked',
+    results_restricted: !!s.results_restricted,
     activity_id: s.activity_id,
     sender_number_id: s.sender_number_id,
     invitation_body: s.invitation_body ?? '',
@@ -293,6 +309,9 @@ function SurveyEditorSheet({
     }
     const payload = {
       title: value.title,
+      purpose: value.purpose,
+      revote_policy: value.revote_policy,
+      results_restricted: value.results_restricted,
       activity_id: value.activity_id,
       sender_number_id: value.sender_number_id,
       invitation_body: value.invitation_body,
@@ -480,6 +499,9 @@ function DraftDetail({
         </SheetDescription>
       </SheetHeader>
       <div className="mt-4 space-y-4 pb-8">
+        {detail.survey.purpose === 'indicative_ballot' && (
+          <BallotBanner note="Opening freezes the eligibility roll to the chosen audience — turnout reports against it, one vote per member." />
+        )}
         <QuestionListPreview detail={detail} />
 
         <div className="space-y-1.5">
@@ -573,6 +595,11 @@ function FunnelDetail({
   const action = useSmsSurveyAction(campaignId)
   const funnel = detail.funnel
   const invited = funnel?.ever_invited_count ?? 0
+  const isBallot = detail.survey.purpose === 'indicative_ballot'
+  // Restricted ballots: the aggregate tally is the ONLY reporting
+  // surface — the per-question stats (with unparsed-capture drill-in
+  // counts) are hidden along with any per-member answer surface.
+  const restricted = isBallot && detail.survey.results_restricted
 
   const statsByQuestion = new Map(
     detail.question_stats.map((s) => [s.question_id, s]),
@@ -589,6 +616,12 @@ function FunnelDetail({
           >
             {detail.survey.status}
           </Badge>
+          {isBallot && (
+            <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+              <Scale className="h-3 w-3 mr-1" />
+              indicative ballot
+            </Badge>
+          )}
         </SheetTitle>
         <SheetDescription>
           {funnel?.total_sessions ?? 0} recipients — invitations go out inside
@@ -597,6 +630,15 @@ function FunnelDetail({
         </SheetDescription>
       </SheetHeader>
       <div className="mt-4 space-y-4 pb-8">
+        {isBallot && (
+          <BallotBanner
+            note={
+              detail.survey.revote_policy === 'revote_until_close'
+                ? 'Re-votes allowed until close — the last vote counts and supersessions are logged.'
+                : 'One vote per member — re-vote attempts are rejected and logged.'
+            }
+          />
+        )}
         {funnel && (
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
             <StatCard label="Invited" value={invited} />
@@ -610,7 +652,13 @@ function FunnelDetail({
           </div>
         )}
 
-        {/* Per-question drop-off + invalid-reply rate (§4.1). */}
+        {isBallot && detail.ballot && (
+          <BallotResults detail={detail} ballot={detail.ballot} />
+        )}
+
+        {/* Per-question drop-off + invalid-reply rate (§4.1) — hidden
+            for restricted ballots (the tally is the whole surface). */}
+        {!restricted && (
         <div className="rounded-md border divide-y">
           {detail.questions.map((q, i) => {
             const stats = statsByQuestion.get(q.question_id)
@@ -643,6 +691,7 @@ function FunnelDetail({
             )
           })}
         </div>
+        )}
 
         {detail.survey.status === 'open' && (
           <Button
@@ -655,7 +704,7 @@ function FunnelDetail({
                 {
                   onSuccess: (res) =>
                     toast.success(
-                      `Survey closed${
+                      `${isBallot ? 'Ballot' : 'Survey'} closed${
                         res.expired_sessions
                           ? ` — ${res.expired_sessions} unfinished sessions expired`
                           : ''
@@ -671,10 +720,187 @@ function FunnelDetail({
             ) : (
               <Lock className="h-4 w-4 mr-2" />
             )}
-            Close survey
+            {isBallot ? 'Close ballot' : 'Close survey'}
           </Button>
         )}
       </div>
     </>
+  )
+}
+
+/**
+ * The §4.2/§8.1 compliance boundary — always visible on ballot
+ * surfaces, never editable.
+ */
+function BallotBanner({ note }: { note?: string }) {
+  return (
+    <div className="flex gap-2 rounded-md border border-blue-200 bg-blue-50 p-2.5 text-xs text-blue-900">
+      <Scale className="h-4 w-4 shrink-0 mt-0.5" />
+      <p>
+        <span className="font-semibold">{BALLOT_COMPLIANCE_BANNER}</span>
+        {note ? ` ${note}` : ''}
+      </p>
+    </div>
+  )
+}
+
+const BALLOT_EVENT_LABELS: Record<SmsBallotEventRow['event_type'], string> = {
+  roll_frozen: 'Roll frozen',
+  invitation_sent: 'Invitation sent',
+  vote_received: 'Vote received',
+  vote_superseded: 'Vote superseded (re-vote)',
+  vote_rejected_locked: 'Re-vote rejected (locked)',
+  receipt_sent: 'Receipt sent',
+  ballot_opened: 'Ballot opened',
+  ballot_closed: 'Ballot closed',
+  tally_generated: 'Tally generated',
+}
+
+/**
+ * Ballot results & audit (§4.2): turnout vs the frozen roll, the
+ * aggregate tally (no per-member choices — the reporting surface for
+ * restricted ballots), the recomputed receipt list (codes only,
+ * lexicographic — members self-verify against it) and the append-only
+ * event log timeline.
+ */
+function BallotResults({
+  detail,
+  ballot,
+}: {
+  detail: SmsSurveyDetail
+  ballot: SmsBallotDetail
+}) {
+  const [showReceipts, setShowReceipts] = useState(false)
+  const [showEvents, setShowEvents] = useState(false)
+
+  const tallyByQuestion = new Map<number, VwSmsBallotTallyRow[]>()
+  for (const row of ballot.tally) {
+    const list = tallyByQuestion.get(row.question_id) ?? []
+    list.push(row)
+    tallyByQuestion.set(row.question_id, list)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-2">
+        <StatCard label="On roll" value={ballot.turnout.roll_count} />
+        <StatCard label="Votes cast" value={ballot.turnout.votes_cast} />
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Turnout</p>
+            <p className="text-lg font-semibold">{ballot.turnout.turnout_pct}%</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Aggregate tally — completed votes only, no member ids. */}
+      <div className="rounded-md border divide-y">
+        {detail.questions.map((q, i) => {
+          const rows = tallyByQuestion.get(q.question_id) ?? []
+          const total = rows.reduce((acc, r) => acc + r.vote_count, 0)
+          return (
+            <div key={q.question_id} className="px-3 py-2 text-sm">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">Q{i + 1}</Badge>
+                <p className="truncate flex-1">{q.prompt}</p>
+                <span className="text-xs text-muted-foreground">
+                  {total} vote{total === 1 ? '' : 's'}
+                </span>
+              </div>
+              {rows.length > 0 ? (
+                <div className="mt-1.5 space-y-1">
+                  {rows.map((r) => {
+                    const pct =
+                      total > 0 ? Math.round((r.vote_count / total) * 100) : 0
+                    return (
+                      <div
+                        key={r.parsed_value}
+                        className="flex items-center gap-2 text-xs"
+                      >
+                        <span className="w-24 truncate" title={r.parsed_value}>
+                          {r.parsed_value}
+                        </span>
+                        <Progress value={pct} className="h-1.5 flex-1" />
+                        <span className="w-16 text-right text-muted-foreground">
+                          {r.vote_count} ({pct}%)
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  No completed votes yet.
+                </p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Receipt audit list — recomputed codes only, never member-
+          linked; a voter checks their own code appears. */}
+      <div className="rounded-md border">
+        <button
+          type="button"
+          className="w-full px-3 py-2 text-left text-sm font-medium"
+          onClick={() => setShowReceipts((v) => !v)}
+        >
+          Receipts ({ballot.receipts.length}) {showReceipts ? '▾' : '▸'}
+        </button>
+        {showReceipts && (
+          <div className="border-t px-3 py-2">
+            {ballot.receipts.length > 0 ? (
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-xs sm:grid-cols-3">
+                {ballot.receipts.map((code, i) => (
+                  <span key={`${code}-${i}`}>{code}</span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">No receipts yet.</p>
+            )}
+            <p className="mt-2 text-xs text-muted-foreground">
+              Codes are recomputed from the votes, sorted alphabetically and
+              never linked to members — a voter verifies their own receipt
+              appears here.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Append-only event log timeline. */}
+      <div className="rounded-md border">
+        <button
+          type="button"
+          className="w-full px-3 py-2 text-left text-sm font-medium"
+          onClick={() => setShowEvents((v) => !v)}
+        >
+          Event log ({ballot.events.length}
+          {ballot.events.length === 200 ? '+' : ''}) {showEvents ? '▾' : '▸'}
+        </button>
+        {showEvents && (
+          <div className="max-h-64 divide-y overflow-y-auto border-t">
+            {ballot.events.map((e) => (
+              <div
+                key={e.event_id}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs"
+              >
+                <span className="font-medium">
+                  {BALLOT_EVENT_LABELS[e.event_type] ?? e.event_type}
+                </span>
+                <span className="ml-auto text-muted-foreground">
+                  {new Date(e.occurred_at).toLocaleString()}
+                </span>
+              </div>
+            ))}
+            {ballot.events.length === 0 && (
+              <p className="px-3 py-2 text-xs text-muted-foreground">
+                No events yet.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   )
 }

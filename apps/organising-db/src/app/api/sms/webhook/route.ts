@@ -62,7 +62,9 @@ import {
 import { isStopKeyword } from '@/lib/sms/survey-engine'
 import {
   appendSurveyMessage,
+  findCompletedBallotSessionByPhone,
   findLiveSessionByPhone,
+  processBallotPostCompletion,
   processSurveyInbound,
   terminateSessionsForPhone,
   touchConversationTimestamps,
@@ -501,6 +503,46 @@ export async function POST(req: NextRequest) {
               })
             }
             return NextResponse.json(surveyResult.response)
+          }
+        }
+
+        // ── Phase 5 precedence step 2b: completed ballot session ──
+        // A member whose OPEN indicative-ballot session is already
+        // completed texting again (§4.2 revote semantics): only a
+        // parsed answer to the ballot's first question counts as a
+        // vote attempt — locked ballots reject it (answers untouched,
+        // vote_rejected_locked logged), revote_until_close reopens
+        // the session and re-records (vote_superseded logged). All
+        // other messages — and every non-ballot survey's completed
+        // sessions — fall through to conversational routing below,
+        // bit-for-bit unchanged.
+        const ballotSession = await findCompletedBallotSessionByPhone(
+          admin,
+          phone,
+        )
+        if (ballotSession) {
+          const ballotResult = await processBallotPostCompletion(
+            admin,
+            provider,
+            {
+              session: ballotSession,
+              phoneE164: phone,
+              body: event.body ?? '',
+              providerMessageId: event.providerMessageId,
+              receivedAt,
+            },
+          )
+          if (ballotResult.handled) {
+            if (event.providerMessageId) {
+              await insertDeliveryEvent(admin, {
+                provider_message_id: event.providerMessageId,
+                event_type: 'replied',
+                part_number: 0,
+                payload: rawPayload,
+                occurred_at: receivedAt,
+              })
+            }
+            return NextResponse.json(ballotResult.response)
           }
         }
       }

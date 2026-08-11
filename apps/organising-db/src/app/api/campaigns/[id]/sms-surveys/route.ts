@@ -69,11 +69,17 @@ export async function GET(
     }
 
     return NextResponse.json(
-      rows.map((s) => ({
-        ...s,
-        question_count: questionCounts.get(s.survey_id) ?? 0,
-        funnel: funnelBySurvey.get(s.survey_id) ?? null,
-      })),
+      rows.map((s) => {
+        // Never serve the receipt salt to clients (Phase 5): with the
+        // salt, staff could brute-force receipt → member mappings.
+        const { receipt_salt: _salt, ...safe } = s
+        void _salt
+        return {
+          ...safe,
+          question_count: questionCounts.get(s.survey_id) ?? 0,
+          funnel: funnelBySurvey.get(s.survey_id) ?? null,
+        }
+      }),
     )
   } catch (error) {
     console.error('GET sms-surveys error:', error)
@@ -122,7 +128,7 @@ export async function POST(
     }
     const errors = [
       ...validateSurveySettings(body),
-      ...validateSurveyQuestions(body.questions ?? []),
+      ...validateSurveyQuestions(body.questions ?? [], body.purpose),
     ]
     if (errors.length > 0) {
       return NextResponse.json({ error: errors.join(' ') }, { status: 400 })
@@ -151,7 +157,15 @@ export async function POST(
         campaign_id: cid,
         activity_id: body.activity_id ?? null,
         title: body.title.trim(),
-        purpose: 'survey',
+        // Phase 5: ballots ride the same table — purpose plus the
+        // integrity settings (revote policy defaults to 'locked' per
+        // brief §8.1; receipt_salt comes from the column default).
+        purpose: body.purpose === 'indicative_ballot' ? 'indicative_ballot' : 'survey',
+        revote_policy:
+          body.revote_policy === 'revote_until_close'
+            ? 'revote_until_close'
+            : 'locked',
+        results_restricted: !!body.results_restricted,
         status: 'draft',
         retry_limit: body.retry_limit ?? 2,
         question_timeout_minutes: body.question_timeout_minutes ?? 240,

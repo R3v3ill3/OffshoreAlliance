@@ -9,6 +9,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchApi } from '@/lib/api/fetch-api'
 import type {
+  SmsBallotDetail,
   SmsSurveyQuestionRow,
   SmsSurveyRow,
   VwSmsSurveyFunnelRow,
@@ -29,6 +30,8 @@ export interface SmsSurveyDetail {
   questions: SmsSurveyQuestionRow[]
   funnel: VwSmsSurveyFunnelRow | null
   question_stats: VwSmsSurveyQuestionStatsRow[]
+  /** Phase 5: present for non-draft indicative ballots. */
+  ballot: SmsBallotDetail | null
 }
 
 export interface SaveSurveyInput extends SurveySettingsInput {

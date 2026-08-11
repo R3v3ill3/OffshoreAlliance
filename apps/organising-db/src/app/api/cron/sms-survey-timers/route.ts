@@ -36,6 +36,7 @@ import {
   isWithinSendWindow,
 } from '@/lib/sms/blackout'
 import { validateSmsBody } from '@/lib/sms/compliance'
+import { invitationMentionsIndicative } from '@/lib/sms/survey-validation'
 import {
   renderInvitation,
   renderNudge,
@@ -45,7 +46,9 @@ import {
   LIVE_SESSION_STATES,
   ensureSurveyConversation,
   mirrorWorkerOptOut,
+  recordBallotEvents,
   sendSurveyPrompt,
+  type BallotEventInsert,
 } from '@/lib/sms/survey-runtime'
 import type {
   SmsSurveyQuestionRow,
@@ -199,12 +202,20 @@ export async function GET(request: Request) {
       const senderDigits = (senderRow.phone_e164 as string).replace(/^\+/, '')
 
       // ── 2. Invitation dispatch ──────────────────────────────
+      // Compliance re-checks at dispatch time (belts behind the open
+      // route): org name + opt-out for every survey; the §4.2/§8.1
+      // "indicative" framing for ballots.
       const compliance = validateSmsBody(survey.invitation_body ?? '')
-      if (!compliance.ok) {
+      const indicativeOk =
+        survey.purpose !== 'indicative_ballot' ||
+        invitationMentionsIndicative(survey.invitation_body)
+      if (!compliance.ok || !indicativeOk) {
         summary.surveys_noncompliant_invitation.push(survey.survey_id)
         summary.errors.push({
           survey_id: survey.survey_id,
-          error: `Invitations held — non-compliant invitation body: ${compliance.errors.join(' ')}`,
+          error: !compliance.ok
+            ? `Invitations held — non-compliant invitation body: ${compliance.errors.join(' ')}`
+            : 'Invitations held — ballot invitation must describe the poll as "indicative" (brief §4.2/§8.1)',
         })
       } else {
         const { data: queuedRaw } = await supabase
@@ -241,6 +252,10 @@ export async function GET(request: Request) {
             if (w.sms_opt_out) optedOut.add(w.worker_id as number)
           }
         }
+
+        // Ballot audit: invitation_sent events, batched per survey
+        // (best-effort insert after the loop).
+        const ballotInvitationEvents: BallotEventInsert[] = []
 
         for (const session of queued) {
           if (sendBudget <= 0) break
@@ -306,6 +321,16 @@ export async function GET(request: Request) {
 
           if (result?.status === 'success') {
             summary.invited += 1
+            if (survey.purpose === 'indicative_ballot') {
+              ballotInvitationEvents.push({
+                survey_id: survey.survey_id,
+                event_type: 'invitation_sent',
+                worker_id: session.worker_id,
+                session_id: session.session_id,
+                payload: { provider_message_id: result.providerMessageId ?? null },
+                occurred_at: nowIso,
+              })
+            }
           } else if (result?.status === 'blocked') {
             await mirrorWorkerOptOut(supabase, session.worker_id, nowIso)
             await supabase
@@ -343,6 +368,8 @@ export async function GET(request: Request) {
             busyPhones.delete(session.phone_e164)
           }
         }
+
+        await recordBallotEvents(supabase, ballotInvitationEvents)
       }
 
       // ── 3. Question-timeout nudges (one per question) ───────

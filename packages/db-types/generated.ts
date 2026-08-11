@@ -13708,6 +13708,156 @@ export type Database = {
         }
         Relationships: []
       }
+      sms_ballot_events: {
+        Row: {
+          event_id: number
+          event_type: string
+          occurred_at: string
+          payload: Json | null
+          session_id: number | null
+          survey_id: number
+          worker_id: number | null
+        }
+        Insert: {
+          event_id?: number
+          event_type: string
+          occurred_at?: string
+          payload?: Json | null
+          session_id?: number | null
+          survey_id: number
+          worker_id?: number | null
+        }
+        Update: {
+          event_id?: number
+          event_type?: string
+          occurred_at?: string
+          payload?: Json | null
+          session_id?: number | null
+          survey_id?: number
+          worker_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_ballot_events_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sms_survey_sessions"
+            referencedColumns: ["session_id"]
+          },
+          {
+            foreignKeyName: "sms_ballot_events_survey_id_fkey"
+            columns: ["survey_id"]
+            isOneToOne: false
+            referencedRelation: "sms_surveys"
+            referencedColumns: ["survey_id"]
+          },
+          {
+            foreignKeyName: "sms_ballot_events_survey_id_fkey"
+            columns: ["survey_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_ballot_tally"
+            referencedColumns: ["survey_id"]
+          },
+          {
+            foreignKeyName: "sms_ballot_events_survey_id_fkey"
+            columns: ["survey_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_survey_funnel"
+            referencedColumns: ["survey_id"]
+          },
+          {
+            foreignKeyName: "sms_ballot_events_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_soc_recording_grid"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "sms_ballot_events_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "sms_ballot_events_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers_view"
+            referencedColumns: ["worker_id"]
+          },
+        ]
+      }
+      sms_ballot_roll: {
+        Row: {
+          included_at: string
+          phone_e164: string
+          roll_id: number
+          source: string
+          survey_id: number
+          worker_id: number
+        }
+        Insert: {
+          included_at?: string
+          phone_e164: string
+          roll_id?: number
+          source?: string
+          survey_id: number
+          worker_id: number
+        }
+        Update: {
+          included_at?: string
+          phone_e164?: string
+          roll_id?: number
+          source?: string
+          survey_id?: number
+          worker_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_ballot_roll_survey_id_fkey"
+            columns: ["survey_id"]
+            isOneToOne: false
+            referencedRelation: "sms_surveys"
+            referencedColumns: ["survey_id"]
+          },
+          {
+            foreignKeyName: "sms_ballot_roll_survey_id_fkey"
+            columns: ["survey_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_ballot_tally"
+            referencedColumns: ["survey_id"]
+          },
+          {
+            foreignKeyName: "sms_ballot_roll_survey_id_fkey"
+            columns: ["survey_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_survey_funnel"
+            referencedColumns: ["survey_id"]
+          },
+          {
+            foreignKeyName: "sms_ballot_roll_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_soc_recording_grid"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "sms_ballot_roll_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "sms_ballot_roll_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers_view"
+            referencedColumns: ["worker_id"]
+          },
+        ]
+      }
       sms_canned_replies: {
         Row: {
           body: string
@@ -14732,6 +14882,13 @@ export type Database = {
             foreignKeyName: "sms_survey_answers_question_id_fkey"
             columns: ["question_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_ballot_tally"
+            referencedColumns: ["question_id"]
+          },
+          {
+            foreignKeyName: "sms_survey_answers_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
             referencedRelation: "vw_sms_survey_question_stats"
             referencedColumns: ["question_id"]
           },
@@ -14793,6 +14950,13 @@ export type Database = {
             columns: ["survey_id"]
             isOneToOne: false
             referencedRelation: "sms_surveys"
+            referencedColumns: ["survey_id"]
+          },
+          {
+            foreignKeyName: "sms_survey_questions_survey_id_fkey"
+            columns: ["survey_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_ballot_tally"
             referencedColumns: ["survey_id"]
           },
           {
@@ -14884,6 +15048,13 @@ export type Database = {
             foreignKeyName: "sms_survey_sessions_current_question_id_fkey"
             columns: ["current_question_id"]
             isOneToOne: false
+            referencedRelation: "vw_sms_ballot_tally"
+            referencedColumns: ["question_id"]
+          },
+          {
+            foreignKeyName: "sms_survey_sessions_current_question_id_fkey"
+            columns: ["current_question_id"]
+            isOneToOne: false
             referencedRelation: "vw_sms_survey_question_stats"
             referencedColumns: ["question_id"]
           },
@@ -14892,6 +15063,13 @@ export type Database = {
             columns: ["survey_id"]
             isOneToOne: false
             referencedRelation: "sms_surveys"
+            referencedColumns: ["survey_id"]
+          },
+          {
+            foreignKeyName: "sms_survey_sessions_survey_id_fkey"
+            columns: ["survey_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_ballot_tally"
             referencedColumns: ["survey_id"]
           },
           {
@@ -14939,8 +15117,11 @@ export type Database = {
           opened_at: string | null
           purpose: string
           question_timeout_minutes: number
+          receipt_salt: string
           reminder_offsets: Json
+          results_restricted: boolean
           retry_limit: number
+          revote_policy: string
           sender_number_id: number | null
           session_ttl_hours: number
           status: string
@@ -14964,8 +15145,11 @@ export type Database = {
           opened_at?: string | null
           purpose?: string
           question_timeout_minutes?: number
+          receipt_salt?: string
           reminder_offsets?: Json
+          results_restricted?: boolean
           retry_limit?: number
+          revote_policy?: string
           sender_number_id?: number | null
           session_ttl_hours?: number
           status?: string
@@ -14989,8 +15173,11 @@ export type Database = {
           opened_at?: string | null
           purpose?: string
           question_timeout_minutes?: number
+          receipt_salt?: string
           reminder_offsets?: Json
+          results_restricted?: boolean
           retry_limit?: number
+          revote_policy?: string
           sender_number_id?: number | null
           session_ttl_hours?: number
           status?: string
@@ -19305,14 +19492,14 @@ export type Database = {
           },
           {
             foreignKeyName: "user_profiles_organiser_id_fkey"
-            columns: ["granted_to_organiser_id"]
+            columns: ["granted_by_organiser_id"]
             isOneToOne: false
             referencedRelation: "organisers"
             referencedColumns: ["organiser_id"]
           },
           {
             foreignKeyName: "user_profiles_organiser_id_fkey"
-            columns: ["granted_by_organiser_id"]
+            columns: ["granted_to_organiser_id"]
             isOneToOne: false
             referencedRelation: "organisers"
             referencedColumns: ["organiser_id"]
@@ -22057,6 +22244,17 @@ export type Database = {
         }
         Relationships: []
       }
+      vw_sms_ballot_tally: {
+        Row: {
+          parsed_value: string | null
+          qtype: string | null
+          question_id: number | null
+          sort_order: number | null
+          survey_id: number | null
+          vote_count: number | null
+        }
+        Relationships: []
+      }
       vw_sms_campaign_summary: {
         Row: {
           blackout_override: boolean | null
@@ -22277,6 +22475,13 @@ export type Database = {
             columns: ["survey_id"]
             isOneToOne: false
             referencedRelation: "sms_surveys"
+            referencedColumns: ["survey_id"]
+          },
+          {
+            foreignKeyName: "sms_survey_questions_survey_id_fkey"
+            columns: ["survey_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_ballot_tally"
             referencedColumns: ["survey_id"]
           },
           {

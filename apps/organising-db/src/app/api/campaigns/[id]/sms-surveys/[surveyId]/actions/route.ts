@@ -21,7 +21,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { errorResponse } from '@/lib/api/error-response'
 import { checkRateLimit } from '@/lib/rate-limit-middleware'
 import { validateSmsBody } from '@/lib/sms/compliance'
-import { LIVE_SESSION_STATES } from '@/lib/sms/survey-runtime'
+import { invitationMentionsIndicative } from '@/lib/sms/survey-validation'
+import { LIVE_SESSION_STATES, recordBallotEvents } from '@/lib/sms/survey-runtime'
 import type { SmsSurveyRow } from '@/types/sms'
 
 /** PostgREST caps responses at 1000 rows — page source reads. */
@@ -100,10 +101,15 @@ export async function POST(
           { status: 409 },
         )
       }
-      const { error: updErr } = await supabase
+      // Status flips run on the ADMIN client: the Phase 5 migration
+      // makes the staff UPDATE policy draft-only (audit-trail
+      // hardening), so post-draft transitions are service-role writes
+      // behind the explicit can_write_to_campaign check above.
+      const { error: updErr } = await admin
         .from('sms_surveys')
         .update({ status: 'closed', closed_at: new Date().toISOString() })
         .eq('survey_id', sid)
+        .eq('status', 'open')
       if (updErr) throw updErr
 
       const { data: expired } = await admin
@@ -112,6 +118,33 @@ export async function POST(
         .eq('survey_id', sid)
         .in('state', ['queued', ...LIVE_SESSION_STATES])
         .select('session_id')
+
+      // Ballot audit (§4.2): close + the tally snapshot at close
+      // time (the view's rows frozen into the event log).
+      if (survey.purpose === 'indicative_ballot') {
+        const closedAt = new Date().toISOString()
+        const { data: tally } = await admin
+          .from('vw_sms_ballot_tally')
+          .select('*')
+          .eq('survey_id', sid)
+          .order('sort_order', { ascending: true })
+          .order('parsed_value', { ascending: true })
+        await recordBallotEvents(admin, [
+          {
+            survey_id: sid,
+            event_type: 'ballot_closed',
+            payload: { expired_sessions: expired?.length ?? 0 },
+            occurred_at: closedAt,
+          },
+          {
+            survey_id: sid,
+            event_type: 'tally_generated',
+            payload: { tally: tally ?? [] },
+            occurred_at: closedAt,
+          },
+        ])
+      }
+
       return NextResponse.json({
         ok: true,
         expired_sessions: expired?.length ?? 0,
@@ -163,6 +196,49 @@ export async function POST(
         { error: `Invitation not compliant: ${compliance.errors.join(' ')}` },
         { status: 400 },
       )
+    }
+
+    // Ballot compliance boundary (brief §4.2/§8.1): the stored
+    // framing must describe the poll as indicative — in-app ballots
+    // SUPPLEMENT formal AEC/FWC-agent ballots, never replace them.
+    if (
+      survey.purpose === 'indicative_ballot' &&
+      !invitationMentionsIndicative(survey.invitation_body)
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'Ballot invitations must describe the poll as "indicative" — ' +
+            'formal protected action ballots must be conducted by the AEC ' +
+            'or an FWC-approved ballot agent (SMS brief §4.2/§8.1).',
+        },
+        { status: 400 },
+      )
+    }
+
+    // A ballot's Q1 must be parseable as a vote: the completed-session
+    // revote leg treats a PARSED Q1 answer as a vote attempt, and an
+    // open_text Q1 parses everything — it would swallow every
+    // conversational message from completed voters.
+    if (survey.purpose === 'indicative_ballot') {
+      const { data: firstQ } = await supabase
+        .from('sms_survey_questions')
+        .select('qtype')
+        .eq('survey_id', sid)
+        .order('sort_order', { ascending: true })
+        .order('question_id', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      if (firstQ?.qtype === 'open_text') {
+        return NextResponse.json(
+          {
+            error:
+              "An indicative ballot's first question must be a choice, " +
+              'yes/no or scale question.',
+          },
+          { status: 400 },
+        )
+      }
     }
 
     const audience = body.audience
@@ -279,10 +355,56 @@ export async function POST(
       created += inserted?.length ?? 0
     }
 
-    const { error: openErr } = await supabase
+    // Ballot roll freeze (§4.2 "roll first"): the eligibility roll is
+    // EXACTLY the invited audience (post consent/phone screening — the
+    // same rows that became queued sessions). Turnout reports against
+    // this snapshot.
+    if (survey.purpose === 'indicative_ballot') {
+      const openedAt = new Date().toISOString()
+      for (let i = 0; i < sessionRows.length; i += 500) {
+        const { error: rollErr } = await admin.from('sms_ballot_roll').upsert(
+          sessionRows.slice(i, i + 500).map((s) => ({
+            survey_id: sid,
+            worker_id: s.worker_id,
+            phone_e164: s.phone_e164,
+            included_at: openedAt,
+            source: 'audience_freeze',
+          })),
+          { onConflict: 'survey_id,worker_id', ignoreDuplicates: true },
+        )
+        if (rollErr) throw rollErr
+      }
+      await recordBallotEvents(admin, [
+        {
+          survey_id: sid,
+          event_type: 'ballot_opened',
+          payload: {
+            audience,
+            revote_policy: survey.revote_policy ?? 'locked',
+            results_restricted: !!survey.results_restricted,
+          },
+          occurred_at: openedAt,
+        },
+        {
+          survey_id: sid,
+          event_type: 'roll_frozen',
+          payload: {
+            roll_count: sessionRows.length,
+            screened_opted_out: optedOut,
+            screened_no_phone: noPhone,
+          },
+          occurred_at: openedAt,
+        },
+      ])
+    }
+
+    // Admin client + draft guard: see the close-branch note (the
+    // staff UPDATE policy is draft-only post-Phase 5).
+    const { error: openErr } = await admin
       .from('sms_surveys')
       .update({ status: 'open', opened_at: new Date().toISOString() })
       .eq('survey_id', sid)
+      .eq('status', 'draft')
     if (openErr) throw openErr
 
     return NextResponse.json({

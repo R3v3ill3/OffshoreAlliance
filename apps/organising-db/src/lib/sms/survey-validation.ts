@@ -22,9 +22,34 @@ export interface SurveyQuestionInput {
   nudge_text?: string | null;
 }
 
+/**
+ * Phase 5 (brief §4.2/§8.1) — the fixed indicative-only compliance
+ * banner. Client-safe: the editor renders it verbatim (non-editable)
+ * and the routes cite it when rejecting a non-indicative ballot open.
+ */
+export const BALLOT_COMPLIANCE_BANNER =
+  "Indicative poll only — formal protected action ballots must be conducted by the AEC or an FWC-approved ballot agent.";
+
+/** Auto-appended to a ballot invitation that lacks the required word. */
+export const BALLOT_INDICATIVE_SENTENCE =
+  "This is an indicative poll only — it does not replace a formal AEC ballot.";
+
+/**
+ * Stored framing requirement (§8.1): a ballot invitation must
+ * describe the poll as "indicative". Validated at open (route) and
+ * re-checked at dispatch (cron).
+ */
+export function invitationMentionsIndicative(
+  invitationBody: string | null | undefined,
+): boolean {
+  return /\bindicative\b/i.test(invitationBody ?? "");
+}
+
 export interface SurveySettingsInput {
   title?: string;
   purpose?: string;
+  revote_policy?: string;
+  results_restricted?: boolean;
   activity_id?: number | null;
   sender_number_id?: number | null;
   timezone?: string;
@@ -52,8 +77,11 @@ export function validateSurveySettings(input: SurveySettingsInput): string[] {
   ) {
     errors.push("Invalid purpose.");
   }
-  if (input.purpose === "indicative_ballot") {
-    errors.push("Ballot mode lands in Phase 5 — purpose must be 'survey' for now.");
+  if (
+    input.revote_policy !== undefined &&
+    !["locked", "revote_until_close"].includes(input.revote_policy)
+  ) {
+    errors.push("Invalid revote policy.");
   }
   if (
     input.retry_limit !== undefined &&
@@ -135,10 +163,20 @@ function hasBranchCycle(questions: SurveyQuestionInput[]): boolean {
 
 export function validateSurveyQuestions(
   questions: SurveyQuestionInput[],
+  purpose?: string,
 ): string[] {
   const errors: string[] = [];
   if (!Array.isArray(questions) || questions.length === 0) {
     return ["At least one question is required."];
+  }
+  // A ballot's Q1 must be parseable as a vote — the completed-session
+  // revote leg treats a parsed Q1 answer as a vote attempt, and an
+  // open_text Q1 parses everything (it would swallow every
+  // conversational message from completed voters).
+  if (purpose === "indicative_ballot" && questions[0]?.qtype === "open_text") {
+    errors.push(
+      "An indicative ballot's first question must be a choice, yes/no or scale question.",
+    );
   }
   questions.forEach((q, i) => {
     const label = `Question ${i + 1}`;

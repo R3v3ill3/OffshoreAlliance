@@ -26,6 +26,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SmsProvider, SendResult } from "@/lib/sms/provider";
 import { countSegments } from "@/lib/sms/segments";
 import {
+  BALLOT_LOCKED_REPLY,
+  appendReceiptToCompletion,
+  computeBallotReceipt,
+  decideBallotRevote,
+} from "@/lib/sms/ballot";
+import {
   nextStep,
   outcomeMapping,
   parseAnswer,
@@ -33,6 +39,7 @@ import {
   retryLadder,
 } from "@/lib/sms/survey-engine";
 import type {
+  SmsBallotEventType,
   SmsSurveyQuestionRow,
   SmsSurveyRow,
   SmsSurveySessionRow,
@@ -262,7 +269,8 @@ export type SurveyPromptKind =
   | "reprompt"
   | "completion"
   | "nudge"
-  | "reminder";
+  | "reminder"
+  | "ballot_locked";
 
 /**
  * Send one survey prompt from the survey's sender number and mirror
@@ -355,6 +363,95 @@ export async function mirrorWorkerOptOut(
     .eq("worker_id", workerId)
     .eq("sms_opt_out", false);
   if (error) console.error("mirrorWorkerOptOut failed:", error);
+}
+
+// ─── Phase 5: ballot integrity helpers (brief §4.2) ─────────────────
+
+export interface BallotEventInsert {
+  survey_id: number;
+  event_type: SmsBallotEventType;
+  worker_id?: number | null;
+  session_id?: number | null;
+  payload?: Record<string, unknown> | null;
+  occurred_at?: string;
+}
+
+/**
+ * Append rows to the sms_ballot_events audit log — best-effort
+ * (logged, never throws): a lost event row must not 500 the webhook
+ * or lose an already-recorded vote. At-least-once overall; the
+ * documented crash windows are in the Phase 5 plan.
+ */
+export async function recordBallotEvents(
+  db: Db,
+  rows: BallotEventInsert[],
+): Promise<void> {
+  if (rows.length === 0) return;
+  const { error } = await db.from("sms_ballot_events").insert(rows);
+  if (error) console.error("recordBallotEvents failed:", error);
+}
+
+/**
+ * Recompute a session's receipt code (§4.2): the non-NULL parsed
+ * answers in question order (bound to their question ids), hashed
+ * with the ballot's salt. Receipts are never stored — completion
+ * sends and the audit list both come through here.
+ */
+export async function computeSessionReceipt(
+  db: Db,
+  survey: Pick<SmsSurveyRow, "receipt_salt">,
+  questions: SmsSurveyQuestionRow[],
+  sessionId: number,
+  workerId: number,
+): Promise<string> {
+  const { data, error } = await db
+    .from("sms_survey_answers")
+    .select("question_id, parsed_value")
+    .eq("session_id", sessionId)
+    .not("parsed_value", "is", null);
+  if (error) throw error;
+  const byQuestion = new Map<number, string>(
+    ((data ?? []) as Array<{ question_id: number; parsed_value: string }>).map(
+      (a) => [a.question_id, a.parsed_value],
+    ),
+  );
+  const ordered = [...questions]
+    .sort((a, b) => a.sort_order - b.sort_order || a.question_id - b.question_id)
+    .map((q) => {
+      const value = byQuestion.get(q.question_id);
+      return value != null ? { questionId: q.question_id, value } : null;
+    })
+    .filter((a): a is { questionId: number; value: string } => a != null);
+  return computeBallotReceipt(survey.receipt_salt, workerId, ordered);
+}
+
+/**
+ * The most recent COMPLETED session on this phone whose survey is an
+ * OPEN indicative ballot — the revote/locked leg's lookup (webhook
+ * precedence step 2b). Ordinary surveys' completed sessions are never
+ * matched, so their inbound still falls through to conversational
+ * routing bit-for-bit.
+ */
+export async function findCompletedBallotSessionByPhone(
+  db: Db,
+  phoneE164: string,
+): Promise<SmsSurveySessionRow | null> {
+  const { data, error } = await db
+    .from("sms_survey_sessions")
+    .select("*, sms_surveys!inner(status, purpose)")
+    .eq("phone_e164", phoneE164)
+    .eq("state", "completed")
+    .eq("sms_surveys.status", "open")
+    .eq("sms_surveys.purpose", "indicative_ballot")
+    .order("completed_at", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  const row = data?.[0] as Record<string, unknown> | undefined;
+  if (!row) return null;
+  // Strip the join column before handing back a session row.
+  const { sms_surveys: _join, ...session } = row;
+  void _join;
+  return session as unknown as SmsSurveySessionRow;
 }
 
 async function loadSenderDigits(
@@ -629,12 +726,14 @@ export async function processSurveyInbound(
   };
 
   // Worker opt-out re-check ahead of any reply send (staff opt-outs
-  // must stop prompts even mid-session).
+  // must stop prompts even mid-session). Returns the provider result
+  // (null when the send was skipped/failed) so ballot completions can
+  // log receipt_sent only when the receipt actually went out.
   const sendReply = async (
     replyBody: string,
     kind: SurveyPromptKind,
-  ): Promise<void> => {
-    if (!senderDigits) return;
+  ): Promise<SendResult | null> => {
+    if (!senderDigits) return null;
     const { data: worker } = await db
       .from("workers")
       .select("sms_opt_out")
@@ -642,7 +741,7 @@ export async function processSurveyInbound(
       .maybeSingle();
     if (worker?.sms_opt_out) {
       await updateSession({ state: "opted_out" });
-      return;
+      return null;
     }
     const result = await sendSurveyPrompt(db, provider, {
       session: sessionWithConv,
@@ -653,12 +752,13 @@ export async function processSurveyInbound(
     if (result?.status === "blocked") {
       await mirrorWorkerOptOut(db, session.worker_id, receivedAt);
       await updateSession({ state: "opted_out" });
-      return;
+      return result;
     }
     await db
       .from("sms_survey_sessions")
       .update({ last_prompt_at: new Date().toISOString() })
       .eq("session_id", session.session_id);
+    return result;
   };
 
   if (parsed.kind === "parsed") {
@@ -700,7 +800,55 @@ export async function processSurveyInbound(
       completed_at: receivedAt,
     });
     const completion = survey.completion_body?.trim();
-    if (completedNow && completion) await sendReply(completion, "completion");
+    if (completedNow && survey.purpose === "indicative_ballot") {
+      // Ballot completion (§4.2): mint the receipt and send it even
+      // with no authored completion body. vote_received carries no
+      // choices and no receipt code (worker_id + code would let staff
+      // map code → member); receipt_sent only when the send succeeded.
+      let receipt: string | null = null;
+      try {
+        receipt = await computeSessionReceipt(
+          db,
+          survey,
+          questions,
+          session.session_id,
+          session.worker_id,
+        );
+      } catch (err) {
+        console.error(
+          `ballot receipt computation failed (session ${session.session_id}):`,
+          err,
+        );
+      }
+      await recordBallotEvents(db, [
+        {
+          survey_id: survey.survey_id,
+          event_type: "vote_received",
+          worker_id: session.worker_id,
+          session_id: session.session_id,
+          payload: { provider_message_id: providerMessageId },
+          occurred_at: receivedAt,
+        },
+      ]);
+      const completionBody = receipt
+        ? appendReceiptToCompletion(completion ?? null, receipt)
+        : completion;
+      if (completionBody) {
+        const sent = await sendReply(completionBody, "completion");
+        if (receipt && sent?.status === "success") {
+          await recordBallotEvents(db, [
+            {
+              survey_id: survey.survey_id,
+              event_type: "receipt_sent",
+              worker_id: session.worker_id,
+              session_id: session.session_id,
+            },
+          ]);
+        }
+      }
+    } else if (completedNow && completion) {
+      await sendReply(completion, "completion");
+    }
     return {
       handled: true,
       response: {
@@ -777,4 +925,268 @@ export async function processSurveyInbound(
       handed_off: true,
     },
   };
+}
+
+/**
+ * Webhook precedence step 2b (Phase 5, brief §4.2): an inbound from a
+ * member whose ballot session is already COMPLETED while the ballot
+ * is still open.
+ *
+ *   - Only a PARSED answer to the ballot's FIRST question counts as a
+ *     vote attempt; anything else returns handled:false so the message
+ *     routes conversationally, bit-for-bit Phase 2/3 (no robotic
+ *     "vote already recorded" reply to unrelated messages).
+ *   - revote_policy 'locked' → answers untouched; vote_rejected_locked
+ *     logged; the locked reply sent from the ballot's sender number.
+ *   - 'revote_until_close' → guarded reopen at Q1 (exactly-once via
+ *     the state='completed' predicate; a 23505 from the one-live-per-
+ *     phone index is a belt — the live-session leg runs first, so no
+ *     live session exists on the phone when we get here), then
+ *     vote_superseded with the prior answers snapshot, then the SAME
+ *     inbound is handed to processSurveyInbound on the refreshed
+ *     session: the Q1 answer upsert-overwrites, branches/advances,
+ *     and re-completion mints a NEW receipt (last response wins).
+ *     invited_at is re-stamped so the TTL timer restarts for the
+ *     revote window.
+ *
+ * Redelivery topology: once reopened the session is LIVE, so a
+ * webhook retry is caught upstream by findLiveSessionByPhone — this
+ * leg only ever sees a message while the session is still completed.
+ * The locked path carries its own provider_message_id dedupe gate.
+ */
+export async function processBallotPostCompletion(
+  db: Db,
+  provider: SmsProvider,
+  args: SurveyInboundArgs,
+): Promise<SurveyInboundResult> {
+  const { session, phoneE164, body, providerMessageId, receivedAt } = args;
+  const notHandled: SurveyInboundResult = { handled: false, response: {} };
+
+  const bundle = await loadSurveyBundle(db, session.survey_id);
+  if (
+    !bundle ||
+    bundle.survey.status !== "open" ||
+    bundle.survey.purpose !== "indicative_ballot" ||
+    bundle.questions.length === 0
+  ) {
+    return notHandled;
+  }
+  const { survey, questions } = bundle;
+  const firstQuestion = questions[0];
+
+  const parsed = parseAnswer(firstQuestion, body);
+  const decision = decideBallotRevote(survey.revote_policy ?? "locked", parsed);
+  if (decision === "not_vote_attempt") return notHandled;
+
+  // Dedupe gate for BOTH branches, BEFORE any state change: a message
+  // row already in the thread means this is a webhook redelivery. The
+  // locked path must not re-reply or double-log — and the supersede
+  // path must not reopen at all: a redelivery of the ORIGINAL
+  // completing message would otherwise reopen the session, and the
+  // inner processSurveyInbound's own dedupe would then never
+  // re-complete it — permanently un-completing the vote and logging a
+  // spurious supersession.
+  if (providerMessageId) {
+    const { data: existingMsg } = await db
+      .from("sms_messages")
+      .select("message_id")
+      .eq("provider_message_id", providerMessageId)
+      .maybeSingle();
+    if (existingMsg) {
+      return {
+        handled: true,
+        response: {
+          ok: true,
+          ballot_session_id: session.session_id,
+          deduplicated: true,
+        },
+      };
+    }
+  }
+
+  if (decision === "reject_locked") {
+    // Audit interaction row (the Phase 4 idiom: activity link allowed,
+    // all three rating fields NULL — the cta_response trap).
+    let interactionId: number | null = null;
+    const { data: inserted, error: insErr } = await db
+      .from("sms_interactions")
+      .insert({
+        worker_id: session.worker_id,
+        campaign_id: survey.campaign_id,
+        activity_id: survey.activity_id,
+        direction: "inbound",
+        phone_number: phoneE164.slice(0, PHONE_NUMBER_MAX),
+        phone_e164: phoneE164,
+        body,
+        cta_response: null,
+        maps_to_rating: null,
+        maps_to_binary: null,
+        external_message_id: providerMessageId,
+        received_at: receivedAt,
+        notes: `Ballot #${survey.survey_id} vote rejected (locked)`,
+      })
+      .select("id")
+      .single();
+    if (insErr) {
+      if (insErr.code !== UNIQUE_VIOLATION) throw insErr;
+      const { data: raced } = await db
+        .from("sms_interactions")
+        .select("id")
+        .eq("external_message_id", providerMessageId ?? "")
+        .maybeSingle();
+      interactionId = (raced?.id as number | undefined) ?? null;
+    } else {
+      interactionId = inserted.id as number;
+    }
+
+    let conversationId = session.conversation_id;
+    if (conversationId == null && survey.sender_number_id != null) {
+      conversationId = await ensureSurveyConversation(db, {
+        ourNumberId: survey.sender_number_id,
+        phoneE164,
+        workerId: session.worker_id,
+        campaignId: survey.campaign_id,
+        occurredAt: receivedAt,
+      });
+      if (conversationId != null) {
+        await db
+          .from("sms_survey_sessions")
+          .update({ conversation_id: conversationId })
+          .eq("session_id", session.session_id);
+      }
+    }
+    if (conversationId != null) {
+      await appendSurveyMessage(db, {
+        conversation_id: conversationId,
+        direction: "inbound",
+        body,
+        phone_e164: phoneE164,
+        provider_message_id: providerMessageId,
+        interaction_id: interactionId,
+        status: "received",
+        created_at: receivedAt,
+      });
+      await touchConversationTimestamps(db, conversationId, receivedAt, "inbound");
+    }
+
+    await recordBallotEvents(db, [
+      {
+        survey_id: survey.survey_id,
+        event_type: "vote_rejected_locked",
+        worker_id: session.worker_id,
+        session_id: session.session_id,
+        payload: {
+          raw_body: body.slice(0, 200),
+          provider_message_id: providerMessageId,
+        },
+        occurred_at: receivedAt,
+      },
+    ]);
+
+    const senderDigits = await loadSenderDigits(db, survey.sender_number_id);
+    if (senderDigits) {
+      const { data: worker } = await db
+        .from("workers")
+        .select("sms_opt_out")
+        .eq("worker_id", session.worker_id)
+        .maybeSingle();
+      if (!worker?.sms_opt_out) {
+        await sendSurveyPrompt(db, provider, {
+          session: { ...session, conversation_id: conversationId },
+          senderDigits,
+          body: BALLOT_LOCKED_REPLY,
+          kind: "ballot_locked",
+        });
+      }
+    }
+    return {
+      handled: true,
+      response: {
+        ok: true,
+        ballot_session_id: session.session_id,
+        vote_rejected_locked: true,
+      },
+    };
+  }
+
+  // ── supersede (revote_until_close) ──────────────────────────
+  const { data: priorAnswers } = await db
+    .from("sms_survey_answers")
+    .select("question_id, parsed_value")
+    .eq("session_id", session.session_id);
+
+  const { data: reopened, error: reopenErr } = await db
+    .from("sms_survey_sessions")
+    .update({
+      state: "active",
+      current_question_id: firstQuestion.question_id,
+      retry_count: 0,
+      nudged: false,
+      completed_at: null,
+      invited_at: receivedAt,
+      last_activity_at: receivedAt,
+    })
+    .eq("session_id", session.session_id)
+    .eq("state", "completed")
+    .select("session_id");
+  if (reopenErr) {
+    // 23505 = another live session appeared on the phone mid-flight
+    // (belt — the live leg runs first): leave the vote as-is and let
+    // the message route conversationally.
+    if (reopenErr.code === UNIQUE_VIOLATION) return notHandled;
+    throw reopenErr;
+  }
+  if (!reopened || reopened.length === 0) return notHandled;
+
+  // Clear the superseded answers: a revote taking a DIFFERENT branch
+  // must not leave stale rows ghosting into the tally view or the new
+  // receipt. The prior vote lives on in the vote_superseded payload
+  // snapshot (taken above, before the reopen).
+  const { error: clearErr } = await db
+    .from("sms_survey_answers")
+    .delete()
+    .eq("session_id", session.session_id);
+  if (clearErr) {
+    console.error(
+      `ballot supersede answer clear failed (session ${session.session_id}):`,
+      clearErr,
+    );
+  }
+
+  await recordBallotEvents(db, [
+    {
+      survey_id: survey.survey_id,
+      event_type: "vote_superseded",
+      worker_id: session.worker_id,
+      session_id: session.session_id,
+      payload: {
+        prior_answers: ((priorAnswers ?? []) as Array<{
+          question_id: number;
+          parsed_value: string | null;
+        }>).map((a) => ({
+          question_id: a.question_id,
+          parsed_value: a.parsed_value,
+        })),
+        provider_message_id: providerMessageId,
+      },
+      occurred_at: receivedAt,
+    },
+  ]);
+
+  const refreshed: SmsSurveySessionRow = {
+    ...session,
+    state: "active",
+    current_question_id: firstQuestion.question_id,
+    retry_count: 0,
+    nudged: false,
+    completed_at: null,
+    invited_at: receivedAt,
+  };
+  return processSurveyInbound(db, provider, {
+    session: refreshed,
+    phoneE164,
+    body,
+    providerMessageId,
+    receivedAt,
+  });
 }

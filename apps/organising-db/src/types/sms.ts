@@ -6,6 +6,8 @@
 //     sms_conversation_notes, sms_canned_replies)
 //   - 20260811120000_sms_surveys (sms_surveys, sms_survey_questions,
 //     sms_survey_sessions, sms_survey_answers + funnel views)
+//   - 20260811140000_sms_ballots (sms_surveys ballot columns,
+//     sms_ballot_roll, sms_ballot_events, vw_sms_ballot_tally)
 // TODO: replace with generated types after migration apply (pnpm gen:types).
 
 export type SmsNumberPurpose = "organiser" | "relay" | "survey" | "spare";
@@ -234,6 +236,13 @@ export type SmsThreadScope = "conversation" | "activity" | "campaign" | "all";
 
 export type SmsSurveyPurpose = "survey" | "indicative_ballot";
 export type SmsSurveyStatus = "draft" | "open" | "closed";
+
+/**
+ * Phase 5 ballot revote policy (brief §4.2 / §8.1): 'locked' =
+ * one vote per member (default); 'revote_until_close' = last
+ * response wins, supersessions logged in sms_ballot_events.
+ */
+export type SmsBallotRevotePolicy = "locked" | "revote_until_close";
 export type SmsSurveyQuestionType = "choice" | "yes_no" | "scale" | "open_text";
 
 /**
@@ -285,6 +294,12 @@ export interface SmsSurveyRow {
   blackout_override_reason: string | null;
   invitation_body: string | null;
   completion_body: string | null;
+  /** Phase 5 (20260811140000): ballot integrity extras. */
+  revote_policy: SmsBallotRevotePolicy;
+  /** Per-ballot salt for receipt hashes — receipts are recomputed, never stored. */
+  receipt_salt: string;
+  /** When true the UI shows no per-member answer surface; the tally view is the reporting surface. */
+  results_restricted: boolean;
   opened_at: string | null;
   closed_at: string | null;
   created_by: string | null;
@@ -364,6 +379,67 @@ export interface VwSmsSurveyQuestionStatsRow {
   answered_count: number;
   unparsed_count: number;
   invalid_attempts: number;
+}
+
+// ─── Phase 5 (indicative ballot mode) ───────────────────────────────
+
+/** Eligibility roll frozen at ballot open (§4.2 roll-first). */
+export interface SmsBallotRollRow {
+  roll_id: number;
+  survey_id: number;
+  worker_id: number;
+  phone_e164: string;
+  included_at: string;
+  source: "audience_freeze";
+}
+
+export type SmsBallotEventType =
+  | "roll_frozen"
+  | "invitation_sent"
+  | "vote_received"
+  | "vote_superseded"
+  | "vote_rejected_locked"
+  | "receipt_sent"
+  | "ballot_opened"
+  | "ballot_closed"
+  | "tally_generated";
+
+/**
+ * Append-only ballot audit log (§4.2). vote_received/receipt_sent
+ * payloads carry neither choices nor receipt codes; vote_superseded
+ * snapshots the prior answers (supersessions are logged).
+ */
+export interface SmsBallotEventRow {
+  event_id: number;
+  survey_id: number;
+  event_type: SmsBallotEventType;
+  worker_id: number | null;
+  session_id: number | null;
+  payload: Record<string, unknown> | null;
+  occurred_at: string;
+}
+
+/** Aggregate tally row — no worker ids (vw_sms_ballot_tally). */
+export interface VwSmsBallotTallyRow {
+  survey_id: number;
+  question_id: number;
+  sort_order: number;
+  qtype: SmsSurveyQuestionType;
+  parsed_value: string;
+  vote_count: number;
+}
+
+/** The `ballot` block on the survey detail GET (purpose = indicative_ballot). */
+export interface SmsBallotDetail {
+  turnout: {
+    roll_count: number;
+    votes_cast: number;
+    turnout_pct: number;
+  };
+  tally: VwSmsBallotTallyRow[];
+  /** Recomputed receipt codes, lexicographically sorted (never stored, never worker-linked). */
+  receipts: string[];
+  events: SmsBallotEventRow[];
 }
 
 export interface VwSmsCampaignSummaryRow {

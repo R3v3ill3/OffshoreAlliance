@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Plus, Scale, Trash2 } from 'lucide-react'
 import { countSegments } from '@/lib/sms/segments'
 import { validateSmsBody } from '@/lib/sms/compliance'
 import {
@@ -37,9 +37,16 @@ import {
   renderQuestion,
 } from '@/lib/sms/survey-engine'
 import { useSmsSenders } from '@/lib/hooks/useSmsBroadcast'
-import type { SurveyQuestionInput } from '@/lib/sms/survey-validation'
+import {
+  BALLOT_COMPLIANCE_BANNER,
+  BALLOT_INDICATIVE_SENTENCE,
+  invitationMentionsIndicative,
+  type SurveyQuestionInput,
+} from '@/lib/sms/survey-validation'
 import type {
+  SmsBallotRevotePolicy,
   SmsSurveyChoiceOption,
+  SmsSurveyPurpose,
   SmsSurveyQuestionRow,
   SmsSurveyQuestionType,
   SmsSurveyScaleRange,
@@ -60,6 +67,10 @@ export interface SurveyEditorQuestion {
 
 export interface SurveyEditorValue {
   title: string
+  /** Phase 5: 'indicative_ballot' switches on the integrity layer. */
+  purpose: SmsSurveyPurpose
+  revote_policy: SmsBallotRevotePolicy
+  results_restricted: boolean
   activity_id: number | null
   sender_number_id: number | null
   invitation_body: string
@@ -88,6 +99,9 @@ export const EMPTY_SURVEY_QUESTION: SurveyEditorQuestion = {
 
 export const EMPTY_SURVEY: SurveyEditorValue = {
   title: '',
+  purpose: 'survey',
+  revote_policy: 'locked',
+  results_restricted: false,
   activity_id: null,
   sender_number_id: null,
   invitation_body: '',
@@ -262,6 +276,31 @@ export function SmsSurveyEditor({
     onChange({ ...value, questions })
   }
 
+  const isBallot = value.purpose === 'indicative_ballot'
+  const indicativeOk =
+    !isBallot || invitationMentionsIndicative(value.invitation_body)
+
+  /**
+   * Switching to ballot mode auto-appends the indicative framing when
+   * missing (§8.1 stored framing — the open route rejects without it).
+   */
+  const setPurpose = (purpose: SmsSurveyPurpose) => {
+    if (
+      purpose === 'indicative_ballot' &&
+      !invitationMentionsIndicative(value.invitation_body)
+    ) {
+      const base = value.invitation_body.trim()
+      patch({
+        purpose,
+        invitation_body: base
+          ? `${base} ${BALLOT_INDICATIVE_SENTENCE}`
+          : BALLOT_INDICATIVE_SENTENCE,
+      })
+      return
+    }
+    patch({ purpose })
+  }
+
   const compliance = validateSmsBody(value.invitation_body)
   const previewRows = value.questions.map(toPreviewRow)
   const invitationPreview = previewRows.length
@@ -291,6 +330,87 @@ export function SmsSurveyEditor({
           onChange={(e) => patch({ title: e.target.value })}
         />
       </div>
+
+      <div className="space-y-1.5">
+        <Label>Type</Label>
+        <Select
+          value={value.purpose}
+          disabled={disabled}
+          onValueChange={(v) => setPurpose(v as SmsSurveyPurpose)}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="survey">Survey</SelectItem>
+            <SelectItem value="indicative_ballot">Indicative ballot</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {isBallot && (
+        <>
+          {/* Mandatory compliance banner (brief §4.2/§8.1) — fixed,
+              non-editable framing. */}
+          <div className="flex gap-2 rounded-md border border-blue-200 bg-blue-50 p-2.5 text-xs text-blue-900">
+            <Scale className="h-4 w-4 shrink-0 mt-0.5" />
+            <p>
+              <span className="font-semibold">{BALLOT_COMPLIANCE_BANNER}</span>{' '}
+              In-app ballots supplement formal ballots — they never replace
+              them. The roll freezes when you open; one vote per member; every
+              voter gets a hash receipt; all ballot activity is logged.
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Revote policy</Label>
+              <Select
+                value={value.revote_policy}
+                disabled={disabled}
+                onValueChange={(v) =>
+                  patch({ revote_policy: v as SmsBallotRevotePolicy })
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="locked">
+                    One vote per member (locked)
+                  </SelectItem>
+                  <SelectItem value="revote_until_close">
+                    Allow re-votes until close (last vote counts)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Re-votes are logged as supersessions in the ballot event log.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Results visibility</Label>
+              <div className="flex items-center gap-2 pt-1.5">
+                <Switch
+                  id="ballot-restricted"
+                  checked={value.results_restricted}
+                  disabled={disabled}
+                  onCheckedChange={(checked) =>
+                    patch({ results_restricted: checked })
+                  }
+                />
+                <Label htmlFor="ballot-restricted" className="text-xs">
+                  Restrict results — aggregate tally only
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Hides per-member answer breakdowns; votes stay confidential,
+                not anonymous.
+              </p>
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
@@ -366,6 +486,13 @@ export function SmsSurveyEditor({
               <li key={e}>{e}</li>
             ))}
           </ul>
+        )}
+        {!indicativeOk && (
+          <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+            Ballot invitations must describe the poll as
+            &ldquo;indicative&rdquo; — e.g. &ldquo;{BALLOT_INDICATIVE_SENTENCE}
+            &rdquo;. The ballot cannot be opened without it.
+          </p>
         )}
       </div>
 

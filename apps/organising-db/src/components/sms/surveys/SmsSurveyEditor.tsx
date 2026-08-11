@@ -8,10 +8,9 @@
  *   synonyms, scale min/max, yes/no, open text), per-answer branch
  *   selects (→ later question or End), write-rating toggle when the
  *   survey has an activity target, invalid/nudge copy overrides.
- * - Invitation body with compliance validation (org name + opt-out —
- *   the invitation is a bulk send) and a segment counter over the
- *   COMBINED invitation + question 1 message (they go out as one
- *   send).
+ * - Invitation body with compliance validation (org name required;
+ *   opt-out optional) and a segment counter over the COMBINED
+ *   invitation + question 1 message (they go out as one send).
  * - >5 questions warning (§4.1: completion cliffs after Q3–Q6).
  * - Live phone-style preview driven by the pure engine renderers.
  */

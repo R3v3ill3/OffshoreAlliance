@@ -1,11 +1,15 @@
 /**
  * Broadcast compliance validation (brief §3.1 item 9 / §2.1).
  *
- * Mobile Message does NOT auto-append opt-out text, so the composer
- * must enforce it: every bulk body needs organisation identification
- * ("Offshore Alliance") and a functional opt-out instruction (Spam Act
- * 2003). Checked client-side in the composer (blocks the queue button)
- * and re-checked server-side in the queue action.
+ * Mobile Message does NOT auto-append opt-out text. Bulk bodies must
+ * identify the organisation ("Offshore Alliance"). An opt-out
+ * instruction (e.g. "Reply STOP to opt out") is recommended and still
+ * detected for the composer checklist, but is optional — existing
+ * members already have a functional STOP path via the provider and
+ * inbound webhook, and repeating the line on every member touch is
+ * unnecessary. Checked client-side in the composer (blocks the queue
+ * button on hard failures only) and re-checked server-side in the
+ * queue action.
  *
  * Pure module — unit tested in __tests__/compliance.test.ts.
  */
@@ -30,11 +34,6 @@ export function validateSmsBody(body: string): SmsComplianceResult {
   if (!hasOrgName) {
     errors.push(
       'Message must identify the organisation — include "Offshore Alliance".'
-    );
-  }
-  if (!hasOptOut) {
-    errors.push(
-      'Message must include an opt-out instruction — e.g. "Reply STOP to opt out".'
     );
   }
   return { ok: errors.length === 0, hasOrgName, hasOptOut, errors };

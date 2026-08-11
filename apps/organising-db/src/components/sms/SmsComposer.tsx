@@ -8,8 +8,8 @@
  *   - live GSM-7/UCS-2 segment counter with worst-case merge-field
  *     expansion and a UCS-2 warning on emoji/smart quotes,
  *   - queueing blocked until the body identifies "Offshore Alliance"
- *     and carries an opt-out instruction (Mobile Message does not
- *     auto-append one),
+ *     (opt-out instruction is recommended for cold/non-member
+ *     audiences but optional — STOP still works provider-side),
  *   - test-send-to-self,
  *   - sender number select defaulting to the signed-in organiser's
  *     assigned number,
@@ -304,7 +304,7 @@ export function SmsComposer({
           className={
             compliance.hasOptOut
               ? 'flex items-center gap-1 text-emerald-700'
-              : 'flex items-center gap-1 text-destructive'
+              : 'flex items-center gap-1 text-muted-foreground'
           }
         >
           {compliance.hasOptOut ? (
@@ -312,7 +312,8 @@ export function SmsComposer({
           ) : (
             <AlertTriangle className="h-3 w-3" />
           )}
-          Includes an opt-out instruction (e.g. &quot;Reply STOP to opt out&quot;)
+          Opt-out instruction optional (e.g. &quot;Reply STOP to opt out&quot;) —
+          useful for non-members; not required for existing members
         </p>
       </div>
 

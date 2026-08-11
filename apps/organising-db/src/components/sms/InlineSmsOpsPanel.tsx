@@ -33,13 +33,7 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+// Select components removed — audience selection now uses AudiencePicker
 import {
   Sheet,
   SheetContent,
@@ -85,6 +79,8 @@ import type {
   VwSmsSenderStatsRow,
 } from '@/types/sms'
 import { toDisplay } from '@/lib/phone/normalise-phone'
+import { AudiencePicker, type AudienceValue } from '@/components/audience/AudiencePicker'
+import { toApiAudience } from '@/lib/sms/audience-helpers'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-700',
@@ -132,13 +128,6 @@ function isoToLocal(iso: string | null): string | null {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
     d.getHours(),
   )}:${pad(d.getMinutes())}`
-}
-
-interface WorkerListOption {
-  list_id: number
-  name: string
-  status: string
-  items_count: { count: number }[] | null
 }
 
 interface InlineSmsOpsPanelProps {
@@ -575,56 +564,59 @@ function NewBlastSheet({
   onCreated: (listId: number) => void
 }) {
   const [name, setName] = useState('')
-  const [audience, setAudience] = useState<string>('campaign')
+  const [audienceValue, setAudienceValue] = useState<AudienceValue>({ mode: 'campaign' })
   const [composer, setComposer] = useState<SmsComposerValue>(EMPTY_COMPOSER)
+  const [submitting, setSubmitting] = useState(false)
   const create = useCreateSmsBlast(campaignId)
+  const queryClient = useQueryClient()
 
-  const { data: workerLists } = useQuery({
-    queryKey: ['worker-lists-for-sms', campaignId],
-    queryFn: async () => {
-      const res = await fetchApi(`/api/campaigns/${campaignId}/worker-lists`)
-      if (!res.ok) throw new Error('Failed to fetch worker lists')
-      return res.json() as Promise<WorkerListOption[]>
-    },
-    enabled: open,
-  })
-
-  const submit = () => {
+  const submit = async () => {
     if (!name.trim()) {
       toast.error('Give the blast a name')
       return
     }
-    create.mutate(
-      {
-        name,
-        body: composer.body,
-        sender_number_id: composer.sender_number_id ?? undefined,
-        timezone: composer.timezone,
-        blackout_override: composer.blackout_override,
-        blackout_override_reason: composer.blackout_override_reason,
-        scheduled_for: localToIso(composer.scheduled_for),
-        audience:
-          audience === 'campaign'
-            ? { type: 'campaign' }
-            : { type: 'worker_list', worker_list_id: Number(audience) },
-      },
-      {
-        onSuccess: (res) => {
-          const notes: string[] = []
-          if (res.opted_out > 0) notes.push(`${res.opted_out} opted out`)
-          if (res.skipped_no_phone > 0) notes.push(`${res.skipped_no_phone} without a mobile`)
-          toast.success(
-            `Blast created — ${res.total_items} recipients${
-              notes.length ? ` (${notes.join(', ')} excluded)` : ''
-            }`,
-          )
-          setName('')
-          setComposer(EMPTY_COMPOSER)
-          onCreated(res.sms_list_id)
+    try {
+      setSubmitting(true)
+      const audience = await toApiAudience(campaignId, audienceValue)
+      if (audienceValue.mode === 'composed') {
+        queryClient.invalidateQueries({
+          queryKey: ['worker-lists-for-sms', String(campaignId)],
+        })
+      }
+      create.mutate(
+        {
+          name,
+          body: composer.body,
+          sender_number_id: composer.sender_number_id ?? undefined,
+          timezone: composer.timezone,
+          blackout_override: composer.blackout_override,
+          blackout_override_reason: composer.blackout_override_reason,
+          scheduled_for: localToIso(composer.scheduled_for),
+          audience,
         },
-        onError: (err: Error) => toast.error(err.message),
-      },
-    )
+        {
+          onSuccess: (res) => {
+            const notes: string[] = []
+            if (res.opted_out > 0) notes.push(`${res.opted_out} opted out`)
+            if (res.skipped_no_phone > 0) notes.push(`${res.skipped_no_phone} without a mobile`)
+            toast.success(
+              `Blast created — ${res.total_items} recipients${
+                notes.length ? ` (${notes.join(', ')} excluded)` : ''
+              }`,
+            )
+            setName('')
+            setAudienceValue({ mode: 'campaign' })
+            setComposer(EMPTY_COMPOSER)
+            onCreated(res.sms_list_id)
+          },
+          onError: (err: Error) => toast.error(err.message),
+          onSettled: () => setSubmitting(false),
+        },
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to prepare audience')
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -649,24 +641,13 @@ function NewBlastSheet({
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label>Audience</Label>
-            <Select value={audience} onValueChange={setAudience}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="campaign">
-                  Whole campaign (all members)
-                </SelectItem>
-                {(workerLists ?? []).map((wl) => (
-                  <SelectItem key={wl.list_id} value={String(wl.list_id)}>
-                    List: {wl.name} ({wl.items_count?.[0]?.count ?? 0})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <AudiencePicker
+            channel="sms"
+            campaignId={campaignId}
+            value={audienceValue}
+            onChange={setAudienceValue}
+            disabled={create.isPending || submitting}
+          />
 
           <SmsComposer
             campaignId={campaignId}
@@ -676,10 +657,10 @@ function NewBlastSheet({
 
           <Button
             className="w-full"
-            disabled={create.isPending || !name.trim()}
+            disabled={create.isPending || submitting || !name.trim()}
             onClick={submit}
           >
-            {create.isPending ? (
+            {(create.isPending || submitting) ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
               <Plus className="h-4 w-4 mr-2" />

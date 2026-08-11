@@ -14,10 +14,18 @@ One-to-one inbox replies are never window-blocked.
 
 ## Blasts
 
-1. **Blasts → New SMS blast** — name it, pick the audience (whole
-   campaign or a saved worker list), write the message. The composer
-   shows a live character/segment counter (1 segment = 1 credit) and
-   blocks non-compliant content.
+1. **Blasts → New SMS blast** — name it, pick the audience, write the
+   message. The composer shows a live character/segment counter (1
+   segment = 1 credit) and blocks non-compliant content.
+   - Audience modes: **whole campaign**, a **saved worker list**, or
+     **build audience** (add people manually or import from CSV/XLSX).
+   - Manual add requires a name, valid AU mobile, and consent
+     attestation. Matching an existing worker links them automatically.
+   - CSV/XLSX import: columns for first name, last name, and mobile.
+     Rows are matched against the campaign workforce; unmatched entries
+     create new workers after a consent-basis attestation step.
+   - Composed audiences (manual + import) are committed as a draft
+     worker list when the blast is created.
 2. Save as draft, then **Queue for sending** from the blast card. The
    dispatch cron drains it inside the send window; pause / resume /
    cancel from the card at any time.
@@ -66,7 +74,10 @@ reply auto-loads that reply into the composer (scripted answers).
 1. **Surveys → New survey** — questions are choice / yes-no / scale /
    open text, with per-answer branching and optional rating writes to a
    target activity. Keep it to ≤5 questions.
-2. Open the survey against an audience (whole campaign or worker list).
+2. Open the survey against an audience — same picker as blasts: whole
+   campaign, saved list, or build audience (manual add / CSV import
+   with consent attestation). When fired from a worker list (Build
+   List → SMS → Survey) that list is pre-selected by default.
    Invitations queue inside the send window; the engine parses replies,
    retries invalid answers, nudges stalled sessions and hands off to
    the inbox when someone needs a human.

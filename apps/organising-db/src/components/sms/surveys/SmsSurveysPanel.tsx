@@ -75,6 +75,8 @@ import {
   type SurveyEditorValue,
 } from '@/components/sms/surveys/SmsSurveyEditor'
 import { SmsSurveyFlowChart } from '@/components/sms/surveys/SmsSurveyFlowChart'
+import { AudiencePicker, type AudienceValue } from '@/components/audience/AudiencePicker'
+import { toApiAudience } from '@/lib/sms/audience-helpers'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-700',
@@ -489,14 +491,16 @@ function SurveyEditorSheet({
       <SheetContent
         className={cn(
           'flex w-full flex-col overflow-hidden p-0',
-          showFlow ? 'sm:max-w-5xl' : 'sm:max-w-2xl',
+          showFlow ? 'sm:max-w-[min(96vw,88rem)]' : 'sm:max-w-2xl',
         )}
       >
         <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
           <div
             className={cn(
-              'min-h-0 flex-1 overflow-y-auto p-6',
-              showFlow && 'sm:max-w-xl sm:border-r lg:max-w-2xl',
+              'min-h-0 overflow-y-auto p-6',
+              showFlow
+                ? 'sm:w-[min(100%,36rem)] sm:shrink-0 sm:border-r'
+                : 'flex-1',
             )}
           >
             <SheetHeader>
@@ -599,7 +603,7 @@ function SurveyEditorSheet({
           </div>
 
           {showFlow && (
-            <div className="min-h-[280px] shrink-0 overflow-hidden border-t p-4 sm:min-h-0 sm:w-[min(340px,40%)] sm:border-t-0">
+            <div className="min-h-[280px] min-w-0 flex-1 overflow-hidden border-t p-4 sm:min-h-0 sm:border-t-0">
               <SmsSurveyFlowChart
                 questions={value.questions}
                 selectedIndex={selectedQuestionIndex}

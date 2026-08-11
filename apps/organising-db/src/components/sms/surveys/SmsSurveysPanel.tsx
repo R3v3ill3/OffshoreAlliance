@@ -9,8 +9,9 @@
  * completed, per-question drop-off + invalid-reply rate with the
  * §4.1 ">10–15% invalid = rewrite the question" hint).
  */
-import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchApi } from '@/lib/api/fetch-api'
 import { createClient } from '@/lib/supabase/client'
 import { Badge } from '@/components/ui/badge'
@@ -34,6 +35,10 @@ import {
 } from '@/components/ui/sheet'
 import {
   ClipboardList,
+  Copy,
+  Download,
+  GitBranch,
+  ListPlus,
   Loader2,
   Lock,
   Play,
@@ -42,6 +47,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils/cn'
 import { BALLOT_COMPLIANCE_BANNER } from '@/lib/sms/survey-validation'
 import type {
   SmsBallotDetail,
@@ -52,19 +58,23 @@ import {
   useCreateSmsSurvey,
   useDeleteSmsSurvey,
   useSmsSurveyAction,
+  useSmsSurveyCatalogue,
   useSmsSurveyDetail,
   useSmsSurveys,
   useUpdateSmsSurvey,
+  type SmsSurveyCatalogueRow,
   type SmsSurveyDetail,
   type SmsSurveyListRow,
 } from '@/lib/hooks/useSmsSurveys'
 import {
   EMPTY_SURVEY,
+  EMPTY_SURVEY_QUESTION,
   SmsSurveyEditor,
   fromQuestionRows,
   toQuestionInputs,
   type SurveyEditorValue,
 } from '@/components/sms/surveys/SmsSurveyEditor'
+import { SmsSurveyFlowChart } from '@/components/sms/surveys/SmsSurveyFlowChart'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-700',
@@ -84,9 +94,29 @@ interface SmsSurveysPanelProps {
 
 export function SmsSurveysPanel({ campaignId }: SmsSurveysPanelProps) {
   const id = String(campaignId)
+  const searchParams = useSearchParams()
   const { data: surveys, isLoading } = useSmsSurveys(id)
   const [editorOpen, setEditorOpen] = useState(false)
   const [detailId, setDetailId] = useState<number | null>(null)
+  const [sourceWorkerListId, setSourceWorkerListId] = useState<number | null>(null)
+
+  // Chain B (Phase 8): the SMS Build List Survey pathway lands here
+  // with ?survey_source_list=<lid> (cohort attached) or ?new_survey=1
+  // (header entry, no cohort) — open the create sheet on mount.
+  useEffect(() => {
+    const sourceList = searchParams.get('survey_source_list')
+    const newSurvey = searchParams.get('new_survey')
+    if (sourceList) {
+      const n = Number(sourceList)
+      if (Number.isFinite(n)) setSourceWorkerListId(n)
+      setEditorOpen(true)
+    } else if (newSurvey === '1') {
+      setEditorOpen(true)
+    }
+    // Mount-only: re-running on every searchParams change would reopen
+    // the sheet after the user closes it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const totals = useMemo(() => {
     const rows = surveys ?? []
@@ -160,6 +190,7 @@ export function SmsSurveysPanel({ campaignId }: SmsSurveysPanelProps) {
         surveyId={null}
         open={editorOpen}
         onOpenChange={setEditorOpen}
+        sourceWorkerListId={sourceWorkerListId}
         onSaved={(surveyId) => {
           setEditorOpen(false)
           setDetailId(surveyId)
@@ -260,8 +291,42 @@ function detailToEditorValue(detail: SmsSurveyDetail): SurveyEditorValue {
     question_timeout_minutes: s.question_timeout_minutes,
     session_ttl_hours: s.session_ttl_hours,
     reminder_offsets: Array.isArray(s.reminder_offsets) ? s.reminder_offsets : [],
-    questions: fromQuestionRows(detail.questions),
+    // A survey fired from the wall-chart fire path (or any other
+    // question-less draft) must still open to a usable editor, not a
+    // zero-card list.
+    questions:
+      detail.questions.length > 0
+        ? fromQuestionRows(detail.questions)
+        : [{ ...EMPTY_SURVEY_QUESTION }],
   }
+}
+
+/**
+ * Clone a survey definition into a new draft for the current campaign.
+ * Campaign-local FKs (ratings targets, source list) are cleared — sender
+ * numbers are org-scoped and kept when present.
+ */
+function cloneSurveyForNewDraft(detail: SmsSurveyDetail): SurveyEditorValue {
+  const base = detailToEditorValue(detail)
+  const title = base.title.trim()
+  return {
+    ...base,
+    title: title ? `${title} (copy)` : '',
+    activity_id: null,
+    questions: base.questions.map((q) => ({
+      ...q,
+      activity_id: null,
+    })),
+  }
+}
+
+function freshEditorValue(initial?: SurveyEditorValue): SurveyEditorValue {
+  return (
+    initial ?? {
+      ...EMPTY_SURVEY,
+      questions: [{ ...EMPTY_SURVEY_QUESTION }],
+    }
+  )
 }
 
 function SurveyEditorSheet({
@@ -271,6 +336,7 @@ function SurveyEditorSheet({
   open,
   onOpenChange,
   onSaved,
+  sourceWorkerListId,
 }: {
   campaignId: string
   surveyId: number | null
@@ -278,16 +344,42 @@ function SurveyEditorSheet({
   open: boolean
   onOpenChange: (open: boolean) => void
   onSaved: (surveyId: number) => void
+  /** Chain B: the cohort this draft is being created from (create mode only). */
+  sourceWorkerListId?: number | null
 }) {
-  const [value, setValue] = useState<SurveyEditorValue>(
-    initial ?? { ...EMPTY_SURVEY, questions: [{ ...EMPTY_SURVEY.questions[0] }] },
+  const isCreate = surveyId == null
+  const [value, setValue] = useState<SurveyEditorValue>(() =>
+    freshEditorValue(initial),
   )
+  const [showFlow, setShowFlow] = useState(true)
+  const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number | null>(
+    0,
+  )
+  const [duplicateKey, setDuplicateKey] = useState<string>('none')
+  const [duplicating, setDuplicating] = useState(false)
+  const queryClient = useQueryClient()
   const create = useCreateSmsSurvey(campaignId)
   const update = useUpdateSmsSurvey(campaignId)
-  const pending = create.isPending || update.isPending
+  const pending = create.isPending || update.isPending || duplicating
+  const { data: catalogue, isLoading: catalogueLoading } = useSmsSurveyCatalogue(
+    open && isCreate,
+  )
 
+  // Re-seed when the sheet opens or the edited survey changes. `initial` is
+  // omitted from deps so parent re-renders (new object identity) do not wipe
+  // in-progress edits.
+  useEffect(() => {
+    if (!open) return
+    setValue(freshEditorValue(initial))
+    setSelectedQuestionIndex(0)
+    setDuplicateKey('none')
+    setShowFlow(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, surveyId])
+
+  const activitiesQueryKey = ['sms-survey-activities', campaignId] as const
   const { data: activities } = useQuery({
-    queryKey: ['sms-survey-activities', campaignId],
+    queryKey: activitiesQueryKey,
     queryFn: async () => {
       const supabase = createClient()
       const { data, error } = await supabase
@@ -301,6 +393,48 @@ function SurveyEditorSheet({
     },
     enabled: open,
   })
+
+  const catalogueOptions = useMemo(() => {
+    const rows = catalogue ?? []
+    // Prefer other campaigns first, then this campaign's surveys.
+    return [...rows].sort((a, b) => {
+      const aHere = a.campaign_id === Number(campaignId) ? 1 : 0
+      const bHere = b.campaign_id === Number(campaignId) ? 1 : 0
+      if (aHere !== bHere) return aHere - bHere
+      return a.campaign_name.localeCompare(b.campaign_name) ||
+        a.title.localeCompare(b.title)
+    })
+  }, [catalogue, campaignId])
+
+  const applyDuplicate = async (key: string) => {
+    setDuplicateKey(key)
+    if (key === 'none') return
+    const [srcCampaignId, srcSurveyId] = key.split(':').map(Number)
+    if (!Number.isFinite(srcCampaignId) || !Number.isFinite(srcSurveyId)) return
+    setDuplicating(true)
+    try {
+      const res = await fetchApi(
+        `/api/campaigns/${srcCampaignId}/sms-surveys/${srcSurveyId}`,
+      )
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to load survey to duplicate')
+      }
+      const detail = (await res.json()) as SmsSurveyDetail
+      const cloned = cloneSurveyForNewDraft(detail)
+      setValue(cloned)
+      setSelectedQuestionIndex(0)
+      setShowFlow(true)
+      toast.success(
+        `Duplicated “${detail.survey.title}” — edit and save as a new draft in this campaign.`,
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Duplicate failed')
+      setDuplicateKey('none')
+    } finally {
+      setDuplicating(false)
+    }
+  }
 
   const submit = () => {
     if (!value.title.trim()) {
@@ -321,6 +455,9 @@ function SurveyEditorSheet({
       session_ttl_hours: value.session_ttl_hours,
       reminder_offsets: value.reminder_offsets,
       questions: toQuestionInputs(value.questions),
+      ...(surveyId == null && sourceWorkerListId != null
+        ? { source_worker_list_id: sourceWorkerListId }
+        : {}),
     }
     const onError = (err: Error) => {
       toast.error(err.message)
@@ -349,29 +486,128 @@ function SurveyEditorSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
-        <SheetHeader>
-          <SheetTitle>{surveyId != null ? 'Edit survey' : 'New survey'}</SheetTitle>
-          <SheetDescription>
-            Reply-native SMS survey — members answer by text, the engine
-            parses, retries and hands off to the inbox when needed.
-          </SheetDescription>
-        </SheetHeader>
-        <div className="mt-4 space-y-4 pb-8">
-          <SmsSurveyEditor
-            value={value}
-            onChange={setValue}
-            activities={activities ?? []}
-            disabled={pending}
-          />
-          <Button className="w-full" disabled={pending} onClick={submit}>
-            {pending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Plus className="h-4 w-4 mr-2" />
+      <SheetContent
+        className={cn(
+          'flex w-full flex-col overflow-hidden p-0',
+          showFlow ? 'sm:max-w-5xl' : 'sm:max-w-2xl',
+        )}
+      >
+        <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+          <div
+            className={cn(
+              'min-h-0 flex-1 overflow-y-auto p-6',
+              showFlow && 'sm:max-w-xl sm:border-r lg:max-w-2xl',
             )}
-            {surveyId != null ? 'Save survey' : 'Create survey'}
-          </Button>
+          >
+            <SheetHeader>
+              <div className="flex items-start justify-between gap-2 pr-6">
+                <div className="space-y-1.5">
+                  <SheetTitle>
+                    {surveyId != null ? 'Edit survey' : 'New survey'}
+                  </SheetTitle>
+                  <SheetDescription>
+                    Reply-native SMS survey — members answer by text, the engine
+                    parses, retries and hands off to the inbox when needed.
+                    {surveyId == null && sourceWorkerListId != null && (
+                      <span className="mt-1 block font-medium text-foreground">
+                        Fired from list #{sourceWorkerListId}
+                      </span>
+                    )}
+                  </SheetDescription>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={showFlow ? 'secondary' : 'outline'}
+                  className="shrink-0"
+                  onClick={() => setShowFlow((v) => !v)}
+                >
+                  <GitBranch className="mr-1 h-3.5 w-3.5" />
+                  {showFlow ? 'Hide flow' : 'Show flow'}
+                </Button>
+              </div>
+            </SheetHeader>
+
+            <div className="mt-4 space-y-4 pb-8">
+              {isCreate && (
+                <div className="space-y-1.5 rounded-md border bg-muted/20 p-3">
+                  <Label className="flex items-center gap-1.5">
+                    <Copy className="h-3.5 w-3.5" />
+                    Duplicate existing survey
+                  </Label>
+                  <Select
+                    value={duplicateKey}
+                    disabled={pending || catalogueLoading}
+                    onValueChange={applyDuplicate}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue
+                        placeholder={
+                          catalogueLoading
+                            ? 'Loading surveys…'
+                            : 'Start blank, or pick a survey to copy'
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-72">
+                      <SelectItem value="none">Start blank</SelectItem>
+                      {catalogueOptions.map((s: SmsSurveyCatalogueRow) => (
+                        <SelectItem
+                          key={`${s.campaign_id}:${s.survey_id}`}
+                          value={`${s.campaign_id}:${s.survey_id}`}
+                        >
+                          {s.title}
+                          {' — '}
+                          {s.campaign_name}
+                          {s.campaign_id === Number(campaignId)
+                            ? ' (this campaign)'
+                            : ''}
+                          {' · '}
+                          {s.question_count}q · {s.status}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Copies questions, branching and copy from any campaign.
+                    Ratings targets are cleared so you can re-attach them here.
+                  </p>
+                </div>
+              )}
+
+              <SmsSurveyEditor
+                value={value}
+                onChange={setValue}
+                activities={activities ?? []}
+                disabled={pending}
+                campaignId={campaignId}
+                selectedQuestionIndex={selectedQuestionIndex}
+                onSelectQuestion={setSelectedQuestionIndex}
+                onActivityCreated={() => {
+                  queryClient.invalidateQueries({ queryKey: activitiesQueryKey })
+                }}
+              />
+              <Button className="w-full" disabled={pending} onClick={submit}>
+                {pending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="mr-2 h-4 w-4" />
+                )}
+                {surveyId != null ? 'Save survey' : 'Create survey'}
+              </Button>
+            </div>
+          </div>
+
+          {showFlow && (
+            <div className="min-h-[280px] shrink-0 overflow-hidden border-t p-4 sm:min-h-0 sm:w-[min(340px,40%)] sm:border-t-0">
+              <SmsSurveyFlowChart
+                questions={value.questions}
+                selectedIndex={selectedQuestionIndex}
+                onSelectQuestion={setSelectedQuestionIndex}
+                className="h-full min-h-[260px]"
+              />
+            </div>
+          )}
         </div>
       </SheetContent>
     </Sheet>
@@ -446,15 +682,32 @@ function DraftDetail({
   const action = useSmsSurveyAction(campaignId)
   const del = useDeleteSmsSurvey(campaignId)
   const [audience, setAudience] = useState<string>('campaign')
+  const [userChangedAudience, setUserChangedAudience] = useState(false)
 
   const { data: workerLists } = useQuery({
     queryKey: ['worker-lists-for-sms', campaignId],
     queryFn: async () => {
+      // Unfiltered by status (Phase 8) — a fired list is still a valid
+      // default audience source here.
       const res = await fetchApi(`/api/campaigns/${campaignId}/worker-lists`)
       if (!res.ok) throw new Error('Failed to fetch worker lists')
       return res.json() as Promise<WorkerListOption[]>
     },
   })
+
+  // Default the audience to the survey's source list, when it was
+  // fired from one and still appears in the options (Phase 8) —
+  // derived at render time so a workerLists refetch never needs an
+  // effect + setState round trip; a manual pick always wins.
+  const sourceListId = detail.survey.source_worker_list_id
+  const sourceListStillOffered =
+    sourceListId != null && (workerLists ?? []).some((wl) => wl.list_id === sourceListId)
+  const effectiveAudience =
+    !userChangedAudience && sourceListStillOffered ? String(sourceListId) : audience
+  const handleAudienceChange = (v: string) => {
+    setAudience(v)
+    setUserChangedAudience(true)
+  }
 
   const openSurvey = () => {
     action.mutate(
@@ -462,9 +715,9 @@ function DraftDetail({
         surveyId: detail.survey.survey_id,
         action: 'open',
         audience:
-          audience === 'campaign'
+          effectiveAudience === 'campaign'
             ? { type: 'campaign' }
-            : { type: 'worker_list', worker_list_id: Number(audience) },
+            : { type: 'worker_list', worker_list_id: Number(effectiveAudience) },
       },
       {
         onSuccess: (res) => {
@@ -506,7 +759,7 @@ function DraftDetail({
 
         <div className="space-y-1.5">
           <Label>Audience</Label>
-          <Select value={audience} onValueChange={setAudience}>
+          <Select value={effectiveAudience} onValueChange={handleAudienceChange}>
             <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
@@ -656,6 +909,31 @@ function FunnelDetail({
           <BallotResults detail={detail} ballot={detail.ballot} />
         )}
 
+        {/* Phase 7: answers export (blocked server-side for restricted
+            ballots — hidden here too) + "create list from responders"
+            cohorts (§3.1 item 11). Cohort lists carry membership only,
+            never answers, so they stay available for restricted
+            ballots. */}
+        <div className="space-y-2">
+          {!restricted && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button asChild variant="outline" size="sm">
+                <a
+                  href={`/api/campaigns/${campaignId}/sms-surveys/${detail.survey.survey_id}/export`}
+                  download
+                >
+                  <Download className="h-3 w-3 mr-1" />
+                  Export answers CSV
+                </a>
+              </Button>
+            </div>
+          )}
+          <SurveyCohortButtons
+            campaignId={campaignId}
+            surveyId={detail.survey.survey_id}
+          />
+        </div>
+
         {/* Per-question drop-off + invalid-reply rate (§4.1) — hidden
             for restricted ballots (the tally is the whole surface). */}
         {!restricted && (
@@ -725,6 +1003,67 @@ function FunnelDetail({
         )}
       </div>
     </>
+  )
+}
+
+const SURVEY_COHORT_OPTIONS = [
+  { value: 'completed', label: 'Completed' },
+  { value: 'started_not_completed', label: 'Started, not completed' },
+  { value: 'non_responders', label: 'Non-responders' },
+] as const
+
+/**
+ * "Create list from responders" (Phase 7, §3.1 item 11) — one click
+ * turns a funnel segment into a draft campaign_worker_list usable by
+ * every channel. non_responders excludes opted-out sessions.
+ */
+function SurveyCohortButtons({
+  campaignId,
+  surveyId,
+}: {
+  campaignId: string
+  surveyId: number
+}) {
+  const queryClient = useQueryClient()
+  const create = useMutation({
+    mutationFn: async (cohort: string) => {
+      const res = await fetchApi(
+        `/api/campaigns/${campaignId}/sms-surveys/${surveyId}/worker-list`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cohort }),
+        },
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to create worker list')
+      return data as { list_id: number; name: string; items: number }
+    },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['worker-lists-for-sms', campaignId] })
+      toast.success(
+        `Worker list "${res.name}" created with ${res.items} worker${res.items === 1 ? '' : 's'} — fire it into any channel from the wall chart or a new blast.`,
+      )
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-xs text-muted-foreground">Create list from:</span>
+      {SURVEY_COHORT_OPTIONS.map((o) => (
+        <Button
+          key={o.value}
+          variant="outline"
+          size="sm"
+          disabled={create.isPending}
+          onClick={() => create.mutate(o.value)}
+        >
+          <ListPlus className="h-3 w-3 mr-1" />
+          {o.label}
+        </Button>
+      ))}
+    </div>
   )
 }
 

@@ -15160,6 +15160,7 @@ export type Database = {
       }
       sms_survey_questions: {
         Row: {
+          activity_id: number | null
           branching: Json | null
           created_at: string
           invalid_prompt: string | null
@@ -15174,6 +15175,7 @@ export type Database = {
           write_rating: boolean
         }
         Insert: {
+          activity_id?: number | null
           branching?: Json | null
           created_at?: string
           invalid_prompt?: string | null
@@ -15188,6 +15190,7 @@ export type Database = {
           write_rating?: boolean
         }
         Update: {
+          activity_id?: number | null
           branching?: Json | null
           created_at?: string
           invalid_prompt?: string | null
@@ -15202,6 +15205,13 @@ export type Database = {
           write_rating?: boolean
         }
         Relationships: [
+          {
+            foreignKeyName: "sms_survey_questions_activity_id_fkey"
+            columns: ["activity_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_activities"
+            referencedColumns: ["activity_id"]
+          },
           {
             foreignKeyName: "sms_survey_questions_survey_id_fkey"
             columns: ["survey_id"]
@@ -15381,6 +15391,7 @@ export type Database = {
           revote_policy: string
           sender_number_id: number | null
           session_ttl_hours: number
+          source_worker_list_id: number | null
           status: string
           survey_id: number
           timezone: string
@@ -15409,6 +15420,7 @@ export type Database = {
           revote_policy?: string
           sender_number_id?: number | null
           session_ttl_hours?: number
+          source_worker_list_id?: number | null
           status?: string
           survey_id?: number
           timezone?: string
@@ -15437,6 +15449,7 @@ export type Database = {
           revote_policy?: string
           sender_number_id?: number | null
           session_ttl_hours?: number
+          source_worker_list_id?: number | null
           status?: string
           survey_id?: number
           timezone?: string
@@ -15528,6 +15541,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "sms_numbers"
             referencedColumns: ["number_id"]
+          },
+          {
+            foreignKeyName: "sms_surveys_source_worker_list_id_fkey"
+            columns: ["source_worker_list_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_worker_lists"
+            referencedColumns: ["list_id"]
           },
         ]
       }

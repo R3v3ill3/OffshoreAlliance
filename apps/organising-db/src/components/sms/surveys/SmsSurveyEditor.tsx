@@ -14,6 +14,7 @@
  * - >5 questions warning (§4.1: completion cliffs after Q3–Q6).
  * - Live phone-style preview driven by the pure engine renderers.
  */
+import { useEffect, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,6 +29,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ArrowDown, ArrowUp, Plus, Scale, Trash2 } from 'lucide-react'
+import { cn } from '@/lib/utils/cn'
+import { CreateAssessmentDialog } from '@/components/campaigns/assessments/create-assessment-dialog'
 import { countSegments } from '@/lib/sms/segments'
 import { validateSmsBody } from '@/lib/sms/compliance'
 import {
@@ -60,6 +63,8 @@ export interface SurveyEditorQuestion {
   /** parsed value → question index | 'end' | undefined (= next in order). */
   branching: Record<string, number | 'end'>
   write_rating: boolean
+  /** Phase 8: per-question override of the survey's ratings target. NULL = fall back to the survey target. */
+  activity_id: number | null
   invalid_prompt: string
   nudge_text: string
 }
@@ -92,6 +97,7 @@ export const EMPTY_SURVEY_QUESTION: SurveyEditorQuestion = {
   scaleMax: 5,
   branching: {},
   write_rating: false,
+  activity_id: null,
   invalid_prompt: '',
   nudge_text: '',
 }
@@ -136,6 +142,7 @@ export function toQuestionInputs(
           : null,
     branching: Object.keys(q.branching).length > 0 ? q.branching : null,
     write_rating: q.write_rating,
+    activity_id: q.activity_id,
     invalid_prompt: q.invalid_prompt.trim() || null,
     nudge_text: q.nudge_text.trim() || null,
   }))
@@ -177,6 +184,7 @@ export function fromQuestionRows(
       scaleMax: scale.max ?? 5,
       branching,
       write_rating: q.write_rating,
+      activity_id: q.activity_id,
       invalid_prompt: q.invalid_prompt ?? '',
       nudge_text: q.nudge_text ?? '',
     }
@@ -207,6 +215,7 @@ function toPreviewRow(
           : null,
     branching: null,
     write_rating: q.write_rating,
+    activity_id: q.activity_id,
     invalid_prompt: null,
     nudge_text: null,
     created_at: '',
@@ -224,6 +233,18 @@ interface SmsSurveyEditorProps {
   onChange: (value: SurveyEditorValue) => void
   activities: ActivityOption[]
   disabled?: boolean
+  /** Needed to mount CreateAssessmentDialog's inline "+ New assessment" affordance. */
+  campaignId: string
+  /**
+   * Invalidated in addition to the dialog's own ['campaign-activities', …]
+   * key when a new assessment is created inline, so the activities list
+   * this editor renders (queryKey ['sms-survey-activities', campaignId])
+   * refreshes too.
+   */
+  onActivityCreated?: (activityId: number) => void
+  /** Highlight + scroll target when the flow chart selects a question. */
+  selectedQuestionIndex?: number | null
+  onSelectQuestion?: (index: number) => void
 }
 
 export function SmsSurveyEditor({
@@ -231,8 +252,24 @@ export function SmsSurveyEditor({
   onChange,
   activities,
   disabled,
+  campaignId,
+  onActivityCreated,
+  selectedQuestionIndex = null,
+  onSelectQuestion,
 }: SmsSurveyEditorProps) {
   const { data: senders } = useSmsSenders()
+  // 'survey' targets the survey-level activity_id; a number targets that
+  // question's per-question override. null = dialog closed.
+  const [createAssessmentTarget, setCreateAssessmentTarget] = useState<
+    'survey' | number | null
+  >(null)
+  const questionRefs = useRef<Array<HTMLDivElement | null>>([])
+
+  useEffect(() => {
+    if (selectedQuestionIndex == null) return
+    const el = questionRefs.current[selectedQuestionIndex]
+    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [selectedQuestionIndex])
 
   const patch = (p: Partial<SurveyEditorValue>) => onChange({ ...value, ...p })
   const patchQuestion = (i: number, p: Partial<SurveyEditorQuestion>) => {
@@ -240,6 +277,13 @@ export function SmsSurveyEditor({
       idx === i ? { ...q, ...p } : q,
     )
     onChange({ ...value, questions })
+  }
+
+  const addQuestion = () => {
+    patch({
+      questions: [...value.questions, { ...EMPTY_SURVEY_QUESTION }],
+    })
+    onSelectQuestion?.(value.questions.length)
   }
 
   const moveQuestion = (i: number, dir: -1 | 1) => {
@@ -318,6 +362,7 @@ export function SmsSurveyEditor({
   }
 
   return (
+    <>
     <div className="space-y-4">
       <div className="space-y-1.5">
         <Label htmlFor="survey-title">Title</Label>
@@ -436,7 +481,19 @@ export function SmsSurveyEditor({
           </Select>
         </div>
         <div className="space-y-1.5">
-          <Label>Ratings target (assessment activity)</Label>
+          <div className="flex items-center justify-between">
+            <Label>Ratings target (assessment activity)</Label>
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-xs"
+              disabled={disabled}
+              onClick={() => setCreateAssessmentTarget('survey')}
+            >
+              + New assessment
+            </Button>
+          </div>
           <Select
             value={value.activity_id != null ? String(value.activity_id) : 'none'}
             disabled={disabled}
@@ -503,11 +560,7 @@ export function SmsSurveyEditor({
             size="sm"
             variant="outline"
             disabled={disabled}
-            onClick={() =>
-              patch({
-                questions: [...value.questions, { ...EMPTY_SURVEY_QUESTION }],
-              })
-            }
+            onClick={addQuestion}
           >
             <Plus className="h-3.5 w-3.5 mr-1" />
             Add question
@@ -523,7 +576,18 @@ export function SmsSurveyEditor({
         )}
 
         {value.questions.map((q, i) => (
-          <div key={i} className="rounded-md border p-3 space-y-2.5 bg-muted/20">
+          <div
+            key={i}
+            ref={(el) => {
+              questionRefs.current[i] = el
+            }}
+            onClick={() => onSelectQuestion?.(i)}
+            className={cn(
+              'rounded-md border p-3 space-y-2.5 bg-muted/20 transition-colors',
+              selectedQuestionIndex === i &&
+                'border-indigo-500 ring-2 ring-indigo-200 bg-indigo-50/40',
+            )}
+          >
             <div className="flex items-center gap-2">
               <Badge variant="secondary">Q{i + 1}</Badge>
               <Select
@@ -753,8 +817,59 @@ export function SmsSurveyEditor({
                 </Label>
               </div>
             )}
+
+            {value.activity_id != null && q.qtype !== 'open_text' && q.write_rating && (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Write to</Label>
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    disabled={disabled}
+                    onClick={() => setCreateAssessmentTarget(i)}
+                  >
+                    + New assessment
+                  </Button>
+                </div>
+                <Select
+                  value={q.activity_id != null ? String(q.activity_id) : 'survey'}
+                  disabled={disabled}
+                  onValueChange={(v) =>
+                    patchQuestion(i, { activity_id: v === 'survey' ? null : Number(v) })
+                  }
+                >
+                  <SelectTrigger className="h-8 w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="survey">Survey target</SelectItem>
+                    {activities.map((a) => (
+                      <SelectItem key={a.activity_id} value={String(a.activity_id)}>
+                        {a.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Overrides the survey&apos;s ratings target for this question only.
+                </p>
+              </div>
+            )}
           </div>
         ))}
+
+        <Button
+          size="sm"
+          variant="outline"
+          className="w-full"
+          disabled={disabled}
+          onClick={addQuestion}
+        >
+          <Plus className="h-3.5 w-3.5 mr-1" />
+          Add question
+        </Button>
       </div>
 
       <div className="space-y-1.5">
@@ -824,6 +939,24 @@ export function SmsSurveyEditor({
         </div>
       </div>
     </div>
+    <CreateAssessmentDialog
+      campaignId={campaignId}
+      open={createAssessmentTarget !== null}
+      onOpenChange={(open) => {
+        if (!open) setCreateAssessmentTarget(null)
+      }}
+      lockKind="assessment"
+      onCreated={(activityId) => {
+        if (createAssessmentTarget === 'survey') {
+          patch({ activity_id: activityId })
+        } else if (typeof createAssessmentTarget === 'number') {
+          patchQuestion(createAssessmentTarget, { activity_id: activityId })
+        }
+        onActivityCreated?.(activityId)
+        setCreateAssessmentTarget(null)
+      }}
+    />
+    </>
   )
 }
 

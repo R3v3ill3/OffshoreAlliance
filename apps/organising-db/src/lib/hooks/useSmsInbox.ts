@@ -16,7 +16,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
-import { fetchApi } from '@/lib/api/fetch-api'
+import { fetchApi, API_FETCH_TIMEOUT_LLM_MS } from '@/lib/api/fetch-api'
 import type {
   SmsCannedReplyRow,
   SmsConversationNoteRow,
@@ -169,22 +169,60 @@ function useInvalidateConversation(conversationId: number | null) {
   }
 }
 
+export interface SendSmsReplyInput {
+  body: string
+  /** Phase 7 (§8.2): true when the text originated from a "Draft reply" candidate. */
+  ai_assisted?: boolean
+}
+
 export function useSendSmsReply(conversationId: number | null) {
   const invalidate = useInvalidateConversation(conversationId)
   return useMutation({
-    mutationFn: async (body: string) => {
+    mutationFn: async (input: SendSmsReplyInput) => {
       const res = await fetchApi(
         `/api/sms/conversations/${conversationId}/messages`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ body }),
+          body: JSON.stringify({
+            body: input.body,
+            ai_assisted: input.ai_assisted ?? false,
+          }),
         },
       )
       if (!res.ok) throw await toError(res, 'Failed to send reply')
       return res.json() as Promise<{ ok: true; message: SmsMessageRow }>
     },
     onSuccess: invalidate,
+  })
+}
+
+export interface SmsDraftReplyCandidate {
+  kind: 'reply' | 'reply_and_advance' | 'escalate_tone'
+  label: string
+  body: string
+  segments: number
+}
+
+/**
+ * Phase 7 (§8.2) AI reply drafting. Server-side context assembly; the
+ * candidates are only ever loaded into the composer — never auto-sent.
+ */
+export function useDraftSmsReply(conversationId: number | null) {
+  return useMutation({
+    mutationFn: async () => {
+      const res = await fetchApi(
+        `/api/sms/conversations/${conversationId}/draft-reply`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+          timeoutMs: API_FETCH_TIMEOUT_LLM_MS,
+        },
+      )
+      if (!res.ok) throw await toError(res, 'Failed to draft a reply')
+      return res.json() as Promise<{ candidates: SmsDraftReplyCandidate[] }>
+    },
   })
 }
 

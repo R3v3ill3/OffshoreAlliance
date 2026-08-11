@@ -21,7 +21,7 @@ import { errorResponse } from '@/lib/api/error-response'
  *      editor with the recipient list visible on the final step.
  */
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string; listId: string }> },
 ) {
   try {
@@ -38,14 +38,29 @@ export async function POST(
     } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    const body = (await req.json().catch(() => ({}))) as { force?: boolean }
+    const force = body?.force === true
+
     const { data: list, error: listErr } = await supabase
       .from('campaign_worker_lists')
-      .select('list_id, campaign_id, name, description')
+      .select('list_id, campaign_id, name, description, status, fired_email_list_id')
       .eq('list_id', lid)
       .maybeSingle()
     if (listErr) throw listErr
     if (!list || list.campaign_id !== cid) {
       return NextResponse.json({ error: 'List not found' }, { status: 404 })
+    }
+
+    // Per-channel already-fired guard (decision 4, Phase 8): new,
+    // since no fire route had one before this phase.
+    if (list.fired_email_list_id != null && !force) {
+      return NextResponse.json(
+        {
+          error: 'This cohort has already been fired to Email',
+          already_fired: { channel: 'email', email_list_id: list.fired_email_list_id },
+        },
+        { status: 409 },
+      )
     }
 
     // Load worker_list items + workers.email so we can populate the

@@ -4,11 +4,21 @@ import { useCallback, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ArrowLeft, ChevronDown, Mail, Pencil, Phone, Settings as SettingsIcon } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronDown,
+  Mail,
+  MessageSquare,
+  Pencil,
+  Phone,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useCampaign } from "@/lib/hooks/usePlannerCampaigns";
@@ -22,6 +32,8 @@ import { CreatePhoneCallOrchestrator } from "@/components/phone/CreatePhoneCallO
 import { ResumeBanner } from "@/components/phone/orchestrator/ResumeBanner";
 import { CreateEmailOrchestrator } from "@/components/email/CreateEmailOrchestrator";
 import { EmailResumeBanner } from "@/components/email/orchestrator/EmailResumeBanner";
+import { CreateSmsOrchestrator } from "@/components/sms/CreateSmsOrchestrator";
+import { SmsResumeBanner } from "@/components/sms/orchestrator/SmsResumeBanner";
 import type { CampaignStatus, CampaignType } from "@/types/database";
 
 const STATUS_VARIANT: Record<CampaignStatus, "secondary" | "success" | "info" | "warning"> = {
@@ -91,33 +103,36 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
 
   const actionButtons = canWrite ? (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      <Button
-        type="button"
-        size="sm"
-        variant={isBuildListOpen ? "default" : "outline"}
-        onClick={handleToggleBuildList}
-        aria-pressed={isBuildListOpen}
-        title={
-          isBuildListOpen
-            ? "Close build list panel"
-            : "Open build list panel — drag tiles, units or selections to assemble a cohort"
-        }
-      >
-        Build list
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        onClick={() => setCreateAssessmentOpen(true)}
-      >
-        Add assessment
-      </Button>
-      <Button type="button" size="sm" variant="outline" asChild>
-        <a href={`/campaigns/${campaignId}?tab=plan&sub=task-lists&from=header`}>
-          Task management
-        </a>
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm">
+            Build
+            <ChevronDown className="h-4 w-4 ml-1" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <DropdownMenuCheckboxItem
+            checked={isBuildListOpen}
+            onCheckedChange={() => handleToggleBuildList()}
+            title={
+              isBuildListOpen
+                ? "Close build list panel"
+                : "Open build list panel — drag tiles, units or selections to assemble a cohort"
+            }
+          >
+            Build list
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => setCreateAssessmentOpen(true)}>
+            Add assessment
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <a href={`/campaigns/${campaignId}?tab=plan&sub=task-lists&from=header`}>
+              Task management
+            </a>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <CreatePhoneCallOrchestrator
         campaignId={campaignId}
         trigger={
@@ -133,6 +148,15 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
           <Button type="button" size="sm">
             <Mail className="h-4 w-4 mr-2" />
             Create Email
+          </Button>
+        }
+      />
+      <CreateSmsOrchestrator
+        campaignId={campaignId}
+        trigger={
+          <Button type="button" size="sm">
+            <MessageSquare className="h-4 w-4 mr-2" />
+            Create SMS
           </Button>
         }
       />
@@ -221,6 +245,7 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
           <div className="pb-2 space-y-2">
             <ResumeBanner campaignId={campaignId} />
             <EmailResumeBanner campaignId={campaignId} />
+            <SmsResumeBanner campaignId={campaignId} />
           </div>
         )}
       </header>

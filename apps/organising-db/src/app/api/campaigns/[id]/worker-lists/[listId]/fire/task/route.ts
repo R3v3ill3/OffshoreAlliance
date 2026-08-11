@@ -41,17 +41,30 @@ export async function POST(
       typeof body?.leader_organiser_picker_value === 'string'
         ? (body.leader_organiser_picker_value as string)
         : null
+    const force = body?.force === true
 
     const { data: list, error: listErr } = await supabase
       .from('campaign_worker_lists')
       .select(
-        'list_id, campaign_id, name, description, leader_worker_id, leader_organiser_id'
+        'list_id, campaign_id, name, description, leader_worker_id, leader_organiser_id, status, fired_task_list_id'
       )
       .eq('list_id', lid)
       .maybeSingle()
     if (listErr) throw listErr
     if (!list || list.campaign_id !== cid) {
       return NextResponse.json({ error: 'List not found' }, { status: 404 })
+    }
+
+    // Per-channel already-fired guard (decision 4, Phase 8): new,
+    // since no fire route had one before this phase.
+    if (list.fired_task_list_id != null && !force) {
+      return NextResponse.json(
+        {
+          error: 'This cohort has already been fired to Task',
+          already_fired: { channel: 'task', task_list_id: list.fired_task_list_id },
+        },
+        { status: 409 },
+      )
     }
 
     const { data: items, error: itemsErr } = await supabase
@@ -67,7 +80,7 @@ export async function POST(
       )
     }
 
-    let leaderWorkerId: number | null = list.leader_worker_id
+    const leaderWorkerId: number | null = list.leader_worker_id
     let leaderOrganiserId: number | null = list.leader_organiser_id
     if (!leaderWorkerId && !leaderOrganiserId && organiserPickerValue) {
       // Resolve picker -> organiser_id (creates an organisers row if needed).

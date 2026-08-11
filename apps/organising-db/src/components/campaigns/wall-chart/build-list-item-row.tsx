@@ -1,15 +1,16 @@
 "use client";
 
-import { Loader2, Mail, Phone, X, GripVertical } from "lucide-react";
+import { Loader2, Mail, MessageSquare, Phone, X, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { CampaignWorkerNameButton } from "../campaign-worker-detail-provider";
 import { ratingBorderTextClass } from "./rating-colour";
+import { normalisePhoneE164OrNull } from "@/lib/sms/build-list-readiness";
 import type { BuildListItem } from "./use-build-list";
 
 export type BuildListItemRowProps = {
   item: BuildListItem;
   /** When true, item is highlighted as missing the field needed by current purpose. */
-  missingContact?: "email" | "phone" | null;
+  missingContact?: "email" | "phone" | "sms" | null;
   /** Drag handle support — wired by parent to reorder. */
   onDragStart?: (workerId: number, e: React.DragEvent<HTMLDivElement>) => void;
   onDragOver?: (workerId: number, e: React.DragEvent<HTMLDivElement>) => void;
@@ -53,6 +54,8 @@ export function BuildListItemRow({
   const role = w.member_role_type?.display_name ?? w.member_role_type?.role_name ?? null;
   const hasEmail = Boolean(w.email?.trim());
   const hasPhone = Boolean(w.phone?.trim());
+  const mobileE164 = normalisePhoneE164OrNull(w.phone_e164);
+  const hasSendableMobile = mobileE164 != null && !w.sms_opt_out;
   const cumulative = item.cumulative_rating;
   const sourceUnitLabel = item.source_ou?.name?.trim() || null;
 
@@ -139,6 +142,18 @@ export function BuildListItemRow({
         <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground">
           <ContactIndicator kind="email" hasValue={hasEmail} flagged={missingContact === "email"} />
           <ContactIndicator kind="phone" hasValue={hasPhone} flagged={missingContact === "phone"} />
+          <ContactIndicator
+            kind="sms"
+            hasValue={hasSendableMobile}
+            flagged={missingContact === "sms"}
+            title={
+              mobileE164 == null
+                ? "No mobile number"
+                : w.sms_opt_out
+                  ? "Opted out of SMS"
+                  : "SMS-sendable mobile on file"
+            }
+          />
           {sourceUnitLabel && (
             <span className="truncate" title={`From: ${sourceUnitLabel}`}>
               · {sourceUnitLabel}
@@ -171,14 +186,17 @@ function ContactIndicator({
   kind,
   hasValue,
   flagged,
+  title: titleOverride,
 }: {
-  kind: "email" | "phone";
+  kind: "email" | "phone" | "sms";
   hasValue: boolean;
   flagged?: boolean;
+  /** Custom title — sms uses this to distinguish "no mobile" from "opted out". */
+  title?: string;
 }) {
-  const Icon = kind === "email" ? Mail : Phone;
-  const noun = kind === "email" ? "Email" : "Phone";
-  const title = hasValue ? `${noun} on file` : `No ${noun.toLowerCase()}`;
+  const Icon = kind === "email" ? Mail : kind === "phone" ? Phone : MessageSquare;
+  const noun = kind === "email" ? "Email" : kind === "phone" ? "Phone" : "SMS";
+  const title = titleOverride ?? (hasValue ? `${noun} on file` : `No ${noun.toLowerCase()}`);
   return (
     <span
       title={title}

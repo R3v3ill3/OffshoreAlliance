@@ -548,6 +548,10 @@ export function CampaignWallChart({
           last_name: w.last_name,
           email: w.email,
           phone: w.phone,
+          // Not loaded by the wall-chart members query — the optimistic
+          // row is replaced by the real server data on refetch anyway.
+          phone_e164: null,
+          sms_opt_out: null,
           is_hsr: w.is_hsr,
           is_bargaining_rep: w.is_bargaining_rep,
           member_role_type: role

@@ -310,6 +310,56 @@ export async function PATCH(
       }
     }
 
+    // Phase 8: the source worker list, when attached, must also live
+    // in this campaign.
+    if (body.source_worker_list_id != null) {
+      const { data: sourceList } = await supabase
+        .from('campaign_worker_lists')
+        .select('list_id, campaign_id')
+        .eq('list_id', body.source_worker_list_id)
+        .maybeSingle()
+      if (!sourceList || sourceList.campaign_id !== ids.cid) {
+        return NextResponse.json(
+          { error: 'Worker list not found in this campaign' },
+          { status: 400 },
+        )
+      }
+    }
+
+    // Phase 8: per-question activity targets must also live in this
+    // campaign, checked before the wholesale question replacement
+    // below — one batched lookup over the distinct question-level
+    // ids, mirroring the survey-level check above.
+    if (body.questions !== undefined) {
+      const questionActivityIds = [
+        ...new Set(
+          body.questions
+            .map((q) => q.activity_id)
+            .filter((id): id is number => id != null),
+        ),
+      ]
+      if (questionActivityIds.length > 0) {
+        const { data: activities } = await supabase
+          .from('campaign_activities')
+          .select('activity_id, campaign_id')
+          .in('activity_id', questionActivityIds)
+        const validIds = new Set(
+          (activities ?? [])
+            .filter((a) => a.campaign_id === ids.cid)
+            .map((a) => a.activity_id),
+        )
+        const invalidIndex = body.questions.findIndex(
+          (q) => q.activity_id != null && !validIds.has(q.activity_id),
+        )
+        if (invalidIndex !== -1) {
+          return NextResponse.json(
+            { error: `Question ${invalidIndex + 1}: activity not found in this campaign` },
+            { status: 400 },
+          )
+        }
+      }
+    }
+
     const update: Record<string, unknown> = {}
     if (body.title !== undefined) update.title = body.title.trim()
     if (body.purpose !== undefined) {
@@ -326,6 +376,9 @@ export async function PATCH(
       update.results_restricted = !!body.results_restricted
     }
     if (body.activity_id !== undefined) update.activity_id = body.activity_id
+    if (body.source_worker_list_id !== undefined) {
+      update.source_worker_list_id = body.source_worker_list_id
+    }
     if (body.sender_number_id !== undefined) {
       update.sender_number_id = body.sender_number_id
     }

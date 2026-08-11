@@ -25,7 +25,9 @@ import {
   Loader2,
   Lock,
   Send,
+  Sparkles,
   StickyNote,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -33,11 +35,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { countSegments } from '@/lib/sms/segments'
 import { toDisplay } from '@/lib/phone/normalise-phone'
 import {
+  useDraftSmsReply,
   useSendSmsReply,
   useSmsConversationClaim,
   useSmsConversationRealtime,
   useSmsScopedMessages,
   type SmsConversationDetail,
+  type SmsDraftReplyCandidate,
 } from '@/lib/hooks/useSmsInbox'
 import type {
   SmsConversationNoteRow,
@@ -68,11 +72,39 @@ export function SmsThreadView({
   const { conversation, messages, notes, user_names } = detail
   const conversationId = conversation.conversation_id
   const sendReply = useSendSmsReply(conversationId)
+  const draftReply = useDraftSmsReply(conversationId)
   const claim = useSmsConversationClaim(conversationId)
   const realtime = useSmsConversationRealtime(conversationId)
   const scrollRef = useRef<HTMLDivElement>(null)
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [sending, setSending] = useState(false)
+
+  // AI drafting (Phase 7, §8.2) — keyed by conversation so switching
+  // threads discards candidates and the assisted flag (same pattern as
+  // scopeState below). Candidates are only ever loaded into the
+  // composer; nothing is auto-sent.
+  const [aiState, setAiState] = useState<{
+    conversationId: number
+    candidates: SmsDraftReplyCandidate[]
+    assisted: boolean
+  }>({ conversationId, candidates: [], assisted: false })
+  const aiCandidates =
+    aiState.conversationId === conversationId ? aiState.candidates : []
+  const aiAssisted =
+    aiState.conversationId === conversationId ? aiState.assisted : false
+
+  const requestDrafts = () => {
+    draftReply.mutate(undefined, {
+      onSuccess: (res) =>
+        setAiState({ conversationId, candidates: res.candidates, assisted: aiAssisted }),
+      onError: (err: Error) => toast.error(err.message),
+    })
+  }
+
+  const applyCandidate = (candidate: SmsDraftReplyCandidate) => {
+    onDraftChange(candidate.body)
+    setAiState({ conversationId, candidates: [], assisted: true })
+  }
 
   // Context scope (brief §7.3) — keyed by conversation so switching
   // threads resets to the native view without an effect.
@@ -140,6 +172,11 @@ export function SmsThreadView({
 
   const handleDraftChange = (value: string) => {
     onDraftChange(value)
+    // Emptying the composer discards the AI-assisted provenance —
+    // whatever is typed next is a fresh, human draft.
+    if (!value.trim() && aiAssisted) {
+      setAiState({ conversationId, candidates: aiCandidates, assisted: false })
+    }
     realtime.setTyping(true)
     if (typingTimeout.current) clearTimeout(typingTimeout.current)
     typingTimeout.current = setTimeout(() => realtime.setTyping(false), 2000)
@@ -149,14 +186,18 @@ export function SmsThreadView({
     const body = draft.trim()
     if (!body || sending) return
     setSending(true)
-    sendReply.mutate(body, {
-      onSuccess: () => {
-        onDraftChange('')
-        realtime.setTyping(false)
+    sendReply.mutate(
+      { body, ai_assisted: aiAssisted },
+      {
+        onSuccess: () => {
+          onDraftChange('')
+          setAiState({ conversationId, candidates: [], assisted: false })
+          realtime.setTyping(false)
+        },
+        onError: (err: Error) => toast.error(err.message),
+        onSettled: () => setSending(false),
       },
-      onError: (err: Error) => toast.error(err.message),
-      onSettled: () => setSending(false),
-    })
+    )
   }
 
   const optedOut = !!conversation.worker?.sms_opt_out
@@ -308,6 +349,47 @@ export function SmsThreadView({
           </p>
         ) : (
           <>
+            {/* AI draft candidates (§8.2) — editable suggestions only,
+                never auto-sent. */}
+            {aiCandidates.length > 0 && (
+              <div className="mb-2 space-y-1.5 rounded-md border border-purple-200 bg-purple-50/50 p-2">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1 text-[11px] font-medium text-purple-800">
+                    <Sparkles className="h-3 w-3" />
+                    Draft suggestions — pick one to edit before sending
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 w-5 p-0"
+                    title="Dismiss suggestions"
+                    onClick={() =>
+                      setAiState({ conversationId, candidates: [], assisted: aiAssisted })
+                    }
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+                {aiCandidates.map((c) => (
+                  <button
+                    key={c.kind}
+                    type="button"
+                    className="w-full rounded-md border bg-background p-2 text-left text-xs hover:bg-muted/50"
+                    onClick={() => applyCandidate(c)}
+                  >
+                    <span className="mb-0.5 flex items-center gap-2">
+                      <Badge variant="secondary" className="bg-purple-100 text-purple-800">
+                        {c.label}
+                      </Badge>
+                      <span className="text-[10px] text-muted-foreground">
+                        {c.segments} segment{c.segments === 1 ? '' : 's'}
+                      </span>
+                    </span>
+                    <span className="block whitespace-pre-wrap">{c.body}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             <Textarea
               value={draft}
               onChange={(e) => handleDraftChange(e.target.value)}
@@ -321,17 +403,33 @@ export function SmsThreadView({
             <div className="mt-1.5 flex items-center justify-between gap-2">
               <span className="text-[11px] text-muted-foreground">
                 {draft.length > 0
-                  ? `${seg.length ?? draft.length} chars · ${seg.segments} segment${seg.segments === 1 ? '' : 's'}`
+                  ? `${seg.length ?? draft.length} chars · ${seg.segments} segment${seg.segments === 1 ? '' : 's'}${aiAssisted ? ' · AI-drafted (edit freely)' : ''}`
                   : 'One-to-one replies are never window-blocked.'}
               </span>
-              <Button size="sm" disabled={!draft.trim() || sending} onClick={submit}>
-                {sending ? (
-                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                ) : (
-                  <Send className="mr-1 h-3 w-3" />
-                )}
-                Send
-              </Button>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  title="AI draft suggestions from the thread, member profile and campaign context — nothing is sent automatically"
+                  disabled={draftReply.isPending || sending}
+                  onClick={requestDrafts}
+                >
+                  {draftReply.isPending ? (
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-1 h-3 w-3" />
+                  )}
+                  Draft reply
+                </Button>
+                <Button size="sm" disabled={!draft.trim() || sending} onClick={submit}>
+                  {sending ? (
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  ) : (
+                    <Send className="mr-1 h-3 w-3" />
+                  )}
+                  Send
+                </Button>
+              </div>
             </div>
           </>
         )}

@@ -26,6 +26,7 @@ export async function insertSurveyQuestions(
         options: q.options ?? null,
         branching: null, // rewritten below once ids exist
         write_rating: !!q.write_rating,
+        activity_id: q.activity_id ?? null,
         invalid_prompt: q.invalid_prompt?.trim() || null,
         nudge_text: q.nudge_text?.trim() || null,
       })),

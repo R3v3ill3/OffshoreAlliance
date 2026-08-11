@@ -9,13 +9,13 @@
  *          ids), the RECOMPUTED receipt list (codes only, sorted
  *          lexicographically so list order cannot be correlated with
  *          vote timing) and the append-only event log.
- * PATCH  — draft-only edits (settings + wholesale question replacement;
- *          sessions pin survey_version, and post-open immutability is
- *          the Phase 4 simplification).
- * DELETE — draft-only.
+ * PATCH  — draft edits (settings + wholesale question replacement), or
+ *          paused edits (version bump + snapshot + preserve-answer replace).
+ * DELETE — draft always; closed surveys for admins only (with confirm).
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { errorResponse } from '@/lib/api/error-response'
 import { checkRateLimit } from '@/lib/rate-limit-middleware'
 import { isValidTimeZone } from '@/lib/sms/blackout'
@@ -26,7 +26,18 @@ import {
   type SurveyQuestionInput,
   type SurveySettingsInput,
 } from '@/lib/sms/survey-validation'
-import { insertSurveyQuestions } from '@/lib/sms/survey-authoring'
+import {
+  insertSurveyQuestions,
+  replaceSurveyQuestionsPreservingAnswers,
+} from '@/lib/sms/survey-authoring'
+import {
+  assessSurveyEditIntegrity,
+  hasHighRiskFindings,
+} from '@/lib/sms/survey-integrity'
+import {
+  loadLiveQuestions,
+  snapshotSurveyVersion,
+} from '@/lib/sms/survey-versions'
 import type {
   SmsBallotDetail,
   SmsBallotEventRow,
@@ -197,6 +208,7 @@ export async function GET(
           .from('sms_survey_questions')
           .select('*')
           .eq('survey_id', ids.sid)
+          .is('retired_at', null)
           .order('sort_order', { ascending: true })
           .order('question_id', { ascending: true }),
         supabase
@@ -243,6 +255,59 @@ interface PatchSurveyBody extends SurveySettingsInput {
   questions?: SurveyQuestionInput[]
 }
 
+function buildSurveyUpdate(body: PatchSurveyBody): Record<string, unknown> {
+  const update: Record<string, unknown> = {}
+  if (body.title !== undefined) update.title = body.title.trim()
+  if (body.purpose !== undefined) {
+    update.purpose =
+      body.purpose === 'indicative_ballot' ? 'indicative_ballot' : 'survey'
+  }
+  if (body.revote_policy !== undefined) {
+    update.revote_policy =
+      body.revote_policy === 'revote_until_close'
+        ? 'revote_until_close'
+        : 'locked'
+  }
+  if (body.results_restricted !== undefined) {
+    update.results_restricted = !!body.results_restricted
+  }
+  if (body.activity_id !== undefined) update.activity_id = body.activity_id
+  if (body.source_worker_list_id !== undefined) {
+    update.source_worker_list_id = body.source_worker_list_id
+  }
+  if (body.sender_number_id !== undefined) {
+    update.sender_number_id = body.sender_number_id
+  }
+  if (body.timezone !== undefined) update.timezone = body.timezone
+  if (body.blackout_override !== undefined) {
+    update.blackout_override = body.blackout_override
+    update.blackout_override_reason = body.blackout_override
+      ? (body.blackout_override_reason?.trim() ?? null)
+      : null
+  }
+  if (body.retry_limit !== undefined) update.retry_limit = body.retry_limit
+  if (body.question_timeout_minutes !== undefined) {
+    update.question_timeout_minutes = body.question_timeout_minutes
+  }
+  if (body.session_ttl_hours !== undefined) {
+    update.session_ttl_hours = body.session_ttl_hours
+  }
+  if (body.reminder_offsets !== undefined) {
+    update.reminder_offsets = body.reminder_offsets
+  }
+  if (body.handoff_escalate_to !== undefined) {
+    update.handoff_escalate_to = body.handoff_escalate_to
+  }
+  if (body.invitation_body !== undefined) {
+    update.invitation_body = body.invitation_body
+  }
+  if (body.completion_body !== undefined) {
+    update.completion_body = body.completion_body
+  }
+  if (body.is_test !== undefined) update.is_test = !!body.is_test
+  return update
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; surveyId: string }> },
@@ -270,10 +335,10 @@ export async function PATCH(
     if (!survey) {
       return NextResponse.json({ error: 'Survey not found' }, { status: 404 })
     }
-    if (survey.status !== 'draft') {
+    if (survey.status !== 'draft' && survey.status !== 'paused') {
       return NextResponse.json(
         {
-          error: `Only draft surveys can be edited (status: ${survey.status}) — sessions pin the version they started on`,
+          error: `Only draft or paused surveys can be edited (status: ${survey.status})`,
         },
         { status: 409 },
       )
@@ -310,8 +375,6 @@ export async function PATCH(
       }
     }
 
-    // Phase 8: the source worker list, when attached, must also live
-    // in this campaign.
     if (body.source_worker_list_id != null) {
       const { data: sourceList } = await supabase
         .from('campaign_worker_lists')
@@ -326,10 +389,6 @@ export async function PATCH(
       }
     }
 
-    // Phase 8: per-question activity targets must also live in this
-    // campaign, checked before the wholesale question replacement
-    // below — one batched lookup over the distinct question-level
-    // ids, mirroring the survey-level check above.
     if (body.questions !== undefined) {
       const questionActivityIds = [
         ...new Set(
@@ -360,75 +419,93 @@ export async function PATCH(
       }
     }
 
-    const update: Record<string, unknown> = {}
-    if (body.title !== undefined) update.title = body.title.trim()
-    if (body.purpose !== undefined) {
-      update.purpose =
-        body.purpose === 'indicative_ballot' ? 'indicative_ballot' : 'survey'
-    }
-    if (body.revote_policy !== undefined) {
-      update.revote_policy =
-        body.revote_policy === 'revote_until_close'
-          ? 'revote_until_close'
-          : 'locked'
-    }
-    if (body.results_restricted !== undefined) {
-      update.results_restricted = !!body.results_restricted
-    }
-    if (body.activity_id !== undefined) update.activity_id = body.activity_id
-    if (body.source_worker_list_id !== undefined) {
-      update.source_worker_list_id = body.source_worker_list_id
-    }
-    if (body.sender_number_id !== undefined) {
-      update.sender_number_id = body.sender_number_id
-    }
-    if (body.timezone !== undefined) update.timezone = body.timezone
-    if (body.blackout_override !== undefined) {
-      update.blackout_override = body.blackout_override
-      update.blackout_override_reason = body.blackout_override
-        ? (body.blackout_override_reason?.trim() ?? null)
-        : null
-    }
-    if (body.retry_limit !== undefined) update.retry_limit = body.retry_limit
-    if (body.question_timeout_minutes !== undefined) {
-      update.question_timeout_minutes = body.question_timeout_minutes
-    }
-    if (body.session_ttl_hours !== undefined) {
-      update.session_ttl_hours = body.session_ttl_hours
-    }
-    if (body.reminder_offsets !== undefined) {
-      update.reminder_offsets = body.reminder_offsets
-    }
-    if (body.handoff_escalate_to !== undefined) {
-      update.handoff_escalate_to = body.handoff_escalate_to
-    }
-    if (body.invitation_body !== undefined) {
-      update.invitation_body = body.invitation_body
-    }
-    if (body.completion_body !== undefined) {
-      update.completion_body = body.completion_body
+    // ── Draft path (user RLS client) ─────────────────────────
+    if (survey.status === 'draft') {
+      const update = buildSurveyUpdate(body)
+      if (Object.keys(update).length > 0) {
+        const { error } = await supabase
+          .from('sms_surveys')
+          .update(update)
+          .eq('survey_id', ids.sid)
+        if (error) throw error
+      }
+      if (body.questions !== undefined) {
+        const { error: delErr } = await supabase
+          .from('sms_survey_questions')
+          .delete()
+          .eq('survey_id', ids.sid)
+        if (delErr) throw delErr
+        await insertSurveyQuestions(supabase, ids.sid, body.questions)
+      }
+      return NextResponse.json({ ok: true, version: survey.version })
     }
 
-    if (Object.keys(update).length > 0) {
-      const { error } = await supabase
-        .from('sms_surveys')
-        .update(update)
-        .eq('survey_id', ids.sid)
-      if (error) throw error
+    // ── Paused path (admin client; version bump + integrity) ─
+    const { data: canWrite, error: permErr } = await supabase.rpc(
+      'can_write_to_campaign',
+      { p_campaign_id: ids.cid },
+    )
+    if (permErr) throw permErr
+    if (!canWrite) {
+      return NextResponse.json(
+        { error: 'No write access to this campaign' },
+        { status: 403 },
+      )
     }
+
+    const admin = createAdminClient()
+    const existingQuestions = await loadLiveQuestions(admin, ids.sid, {
+      includeRetired: true,
+    })
+    let findings: ReturnType<typeof assessSurveyEditIntegrity> = []
+    if (body.questions !== undefined) {
+      findings = assessSurveyEditIntegrity(existingQuestions, body.questions)
+      if (
+        hasHighRiskFindings(findings) &&
+        body.acknowledge_high_risk !== 'EDIT'
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              'High-risk edits require acknowledge_high_risk: "EDIT"',
+            findings,
+          },
+          { status: 409 },
+        )
+      }
+    }
+
+    // Ensure current version is snapshotted before mutating live rows.
+    await snapshotSurveyVersion(admin, ids.sid, survey.version, existingQuestions)
+
+    const nextVersion = survey.version + 1
+    const update = buildSurveyUpdate(body)
+    update.version = nextVersion
+
+    const { error: updErr } = await admin
+      .from('sms_surveys')
+      .update(update)
+      .eq('survey_id', ids.sid)
+      .eq('status', 'paused')
+    if (updErr) throw updErr
 
     if (body.questions !== undefined) {
-      // Wholesale replacement — draft-only, so no sessions/answers
-      // reference the outgoing rows.
-      const { error: delErr } = await supabase
-        .from('sms_survey_questions')
-        .delete()
-        .eq('survey_id', ids.sid)
-      if (delErr) throw delErr
-      await insertSurveyQuestions(supabase, ids.sid, body.questions)
+      await replaceSurveyQuestionsPreservingAnswers(
+        admin,
+        ids.sid,
+        body.questions,
+        existingQuestions,
+      )
     }
 
-    return NextResponse.json({ ok: true })
+    const liveAfter = await loadLiveQuestions(admin, ids.sid)
+    await snapshotSurveyVersion(admin, ids.sid, nextVersion, liveAfter)
+
+    return NextResponse.json({
+      ok: true,
+      version: nextVersion,
+      findings,
+    })
   } catch (error) {
     console.error('PATCH sms-survey error:', error)
     return errorResponse('Failed to update SMS survey', error)
@@ -462,14 +539,63 @@ export async function DELETE(
     if (!survey) {
       return NextResponse.json({ error: 'Survey not found' }, { status: 404 })
     }
-    if (survey.status !== 'draft') {
+
+    if (survey.status === 'draft') {
+      const { error } = await supabase
+        .from('sms_surveys')
+        .delete()
+        .eq('survey_id', ids.sid)
+      if (error) throw error
+      return NextResponse.json({ ok: true })
+    }
+
+    if (survey.status !== 'closed') {
       return NextResponse.json(
-        { error: 'Only draft surveys can be deleted — close it instead' },
+        {
+          error:
+            'Only draft surveys, or closed surveys (admin), can be deleted — pause/close first',
+        },
         { status: 409 },
       )
     }
 
-    const { error } = await supabase
+    const confirm = req.nextUrl.searchParams.get('confirm')
+    if (confirm !== 'DELETE') {
+      return NextResponse.json(
+        {
+          error:
+            'Admin delete of a closed survey requires ?confirm=DELETE (destroys sessions, answers, and ballot audit rows)',
+        },
+        { status: 400 },
+      )
+    }
+
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (profile?.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Only admins can hard-delete closed surveys' },
+        { status: 403 },
+      )
+    }
+
+    const { data: canWrite, error: permErr } = await supabase.rpc(
+      'can_write_to_campaign',
+      { p_campaign_id: ids.cid },
+    )
+    if (permErr) throw permErr
+    if (!canWrite) {
+      return NextResponse.json(
+        { error: 'No write access to this campaign' },
+        { status: 403 },
+      )
+    }
+
+    const admin = createAdminClient()
+    const { error } = await admin
       .from('sms_surveys')
       .delete()
       .eq('survey_id', ids.sid)

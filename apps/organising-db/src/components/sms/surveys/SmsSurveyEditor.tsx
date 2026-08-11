@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ArrowDown, ArrowUp, Plus, Scale, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowDown, ArrowUp, Plus, Scale, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { CreateAssessmentDialog } from '@/components/campaigns/assessments/create-assessment-dialog'
 import { countSegments } from '@/lib/sms/segments'
@@ -84,7 +84,20 @@ export interface SurveyEditorValue {
   session_ttl_hours: number
   reminder_offsets: number[]
   questions: SurveyEditorQuestion[]
+  /** Trusted-group test mode — new surveys default true. */
+  is_test: boolean
+  timezone: string
+  blackout_override: boolean
+  blackout_override_reason: string
 }
+
+const SURVEY_TIMEZONES = [
+  { value: 'Australia/Perth', label: 'Perth (AWST)' },
+  { value: 'Australia/Darwin', label: 'Darwin (ACST)' },
+  { value: 'Australia/Adelaide', label: 'Adelaide' },
+  { value: 'Australia/Brisbane', label: 'Brisbane (AEST)' },
+  { value: 'Australia/Sydney', label: 'Sydney / Melbourne' },
+]
 
 export const EMPTY_SURVEY_QUESTION: SurveyEditorQuestion = {
   prompt: '',
@@ -116,6 +129,10 @@ export const EMPTY_SURVEY: SurveyEditorValue = {
   session_ttl_hours: 72,
   reminder_offsets: [1440, 2880],
   questions: [{ ...EMPTY_SURVEY_QUESTION }],
+  is_test: true,
+  timezone: 'Australia/Perth',
+  blackout_override: false,
+  blackout_override_reason: '',
 }
 
 /** Editor state → the routes' question payload (branch targets by index). */
@@ -218,6 +235,7 @@ function toPreviewRow(
     activity_id: q.activity_id,
     invalid_prompt: null,
     nudge_text: null,
+    retired_at: null,
     created_at: '',
     updated_at: '',
   }
@@ -372,6 +390,23 @@ export function SmsSurveyEditor({
           value={value.title}
           disabled={disabled}
           onChange={(e) => patch({ title: e.target.value })}
+        />
+      </div>
+
+      <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+        <div>
+          <Label htmlFor="survey-is-test">Test survey</Label>
+          <p className="text-xs text-muted-foreground">
+            New surveys start as tests. Promote to launch when the wording is
+            ready — that creates a fresh survey with a new audience and clean
+            reporting.
+          </p>
+        </div>
+        <Switch
+          id="survey-is-test"
+          checked={value.is_test}
+          disabled={disabled}
+          onCheckedChange={(checked) => patch({ is_test: checked })}
         />
       </div>
 
@@ -881,6 +916,72 @@ export function SmsSurveyEditor({
           disabled={disabled}
           onChange={(e) => patch({ completion_body: e.target.value })}
         />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label>Recipient timezone</Label>
+          <Select
+            value={value.timezone}
+            disabled={disabled}
+            onValueChange={(tz) => patch({ timezone: tz })}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SURVEY_TIMEZONES.map((tz) => (
+                <SelectItem key={tz.value} value={tz.value}>
+                  {tz.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Controls the default 09:00–20:00 invitation send window.
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-md border p-3 space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <Label htmlFor="survey-blackout">Override the 9am–8pm send window</Label>
+            <p className="text-xs text-muted-foreground">
+              Invitations, nudges and reminders normally hold outside 09:00–20:00
+              recipient time. Override only with cause — the reason is recorded.
+            </p>
+          </div>
+          <Switch
+            id="survey-blackout"
+            disabled={disabled}
+            checked={value.blackout_override}
+            onCheckedChange={(checked) =>
+              patch({
+                blackout_override: checked,
+                blackout_override_reason: checked
+                  ? value.blackout_override_reason
+                  : '',
+              })
+            }
+          />
+        </div>
+        {value.blackout_override && (
+          <div className="space-y-1.5">
+            <Input
+              placeholder="Reason for overriding the send window (required)"
+              disabled={disabled}
+              value={value.blackout_override_reason}
+              onChange={(e) =>
+                patch({ blackout_override_reason: e.target.value })
+              }
+            />
+            <p className="flex items-start gap-1 text-xs text-amber-700">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              Messages will send around the clock once queued.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Settings */}

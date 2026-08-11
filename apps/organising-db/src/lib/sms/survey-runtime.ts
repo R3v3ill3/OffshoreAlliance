@@ -44,6 +44,7 @@ import type {
   SmsSurveyRow,
   SmsSurveySessionRow,
 } from "@/types/sms";
+import { loadQuestionsForVersion } from "@/lib/sms/survey-versions";
 
 const UNIQUE_VIOLATION = "23505";
 /** sms_interactions.phone_number is VARCHAR(30). */
@@ -68,6 +69,7 @@ export interface SurveyBundle {
 export async function loadSurveyBundle(
   db: Db,
   surveyId: number,
+  surveyVersion?: number | null,
 ): Promise<SurveyBundle | null> {
   const { data: survey, error } = await db
     .from("sms_surveys")
@@ -76,16 +78,17 @@ export async function loadSurveyBundle(
     .maybeSingle();
   if (error) throw error;
   if (!survey) return null;
-  const { data: questions, error: qErr } = await db
-    .from("sms_survey_questions")
-    .select("*")
-    .eq("survey_id", surveyId)
-    .order("sort_order", { ascending: true })
-    .order("question_id", { ascending: true });
-  if (qErr) throw qErr;
+  const questions =
+    surveyVersion != null
+      ? await loadQuestionsForVersion(db, surveyId, surveyVersion)
+      : await loadQuestionsForVersion(
+          db,
+          surveyId,
+          (survey as SmsSurveyRow).version,
+        );
   return {
     survey: survey as SmsSurveyRow,
-    questions: (questions ?? []) as SmsSurveyQuestionRow[],
+    questions,
   };
 }
 
@@ -498,10 +501,12 @@ export async function processSurveyInbound(
 ): Promise<SurveyInboundResult> {
   const { session, phoneE164, body, providerMessageId, receivedAt } = args;
 
-  const bundle = await loadSurveyBundle(db, session.survey_id);
-  if (!bundle || bundle.survey.status !== "open" || bundle.questions.length === 0) {
-    // Belt: a live session on a closed/broken survey — expire it and
-    // let the message route conversationally.
+  const bundle = await loadSurveyBundle(
+    db,
+    session.survey_id,
+    session.survey_version,
+  );
+  if (!bundle || bundle.questions.length === 0) {
     await db
       .from("sms_survey_sessions")
       .update({ state: "expired", last_activity_at: receivedAt })
@@ -510,6 +515,63 @@ export async function processSurveyInbound(
     return { handled: false, response: {} };
   }
   const { survey, questions } = bundle;
+
+  // Hard pause: acknowledge but do not advance / record answers.
+  if (survey.status === "paused" && survey.pause_mode === "hard") {
+    if (survey.sender_number_id) {
+      try {
+        const { data: sender } = await db
+          .from("sms_numbers")
+          .select("phone_e164")
+          .eq("number_id", survey.sender_number_id)
+          .maybeSingle();
+        const digits = (sender?.phone_e164 as string | undefined)?.replace(
+          /^\+/,
+          "",
+        );
+        if (digits) {
+          await sendSurveyPrompt(db, provider, {
+            session,
+            senderDigits: digits,
+            body:
+              "This survey is paused — please wait for a follow-up message. Offshore Alliance.",
+            kind: "nudge",
+          });
+        }
+      } catch (err) {
+        console.error("hard-pause auto-reply failed:", err);
+      }
+    }
+    return {
+      handled: true,
+      response: {
+        ok: true,
+        survey_session_id: session.session_id,
+        paused: true,
+        pause_mode: "hard",
+      },
+    };
+  }
+
+  // Soft pause or closed/broken: only open (+ soft paused) accept answers.
+  if (survey.status !== "open" && survey.status !== "paused") {
+    await db
+      .from("sms_survey_sessions")
+      .update({ state: "expired", last_activity_at: receivedAt })
+      .eq("session_id", session.session_id)
+      .in("state", [...LIVE_SESSION_STATES]);
+    return { handled: false, response: {} };
+  }
+  if (survey.status === "paused" && survey.pause_mode !== "soft") {
+    return {
+      handled: true,
+      response: {
+        ok: true,
+        survey_session_id: session.session_id,
+        paused: true,
+      },
+    };
+  }
 
   const currentQuestion =
     questions.find((q) => q.question_id === session.current_question_id) ??
@@ -967,10 +1029,18 @@ export async function processBallotPostCompletion(
   const { session, phoneE164, body, providerMessageId, receivedAt } = args;
   const notHandled: SurveyInboundResult = { handled: false, response: {} };
 
-  const bundle = await loadSurveyBundle(db, session.survey_id);
+  const bundle = await loadSurveyBundle(
+    db,
+    session.survey_id,
+    session.survey_version,
+  );
   if (
     !bundle ||
-    bundle.survey.status !== "open" ||
+    (bundle.survey.status !== "open" &&
+      !(
+        bundle.survey.status === "paused" &&
+        bundle.survey.pause_mode === "soft"
+      )) ||
     bundle.survey.purpose !== "indicative_ballot" ||
     bundle.questions.length === 0
   ) {

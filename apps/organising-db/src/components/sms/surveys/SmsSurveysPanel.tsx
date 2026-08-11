@@ -14,9 +14,19 @@ import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchApi } from '@/lib/api/fetch-api'
 import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/lib/supabase/auth-context'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import {
@@ -41,17 +51,21 @@ import {
   ListPlus,
   Loader2,
   Lock,
+  Pause,
   Play,
   Plus,
+  Rocket,
   Scale,
   Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils/cn'
 import { BALLOT_COMPLIANCE_BANNER } from '@/lib/sms/survey-validation'
+import type { IntegrityFinding } from '@/lib/sms/survey-integrity'
 import type {
   SmsBallotDetail,
   SmsBallotEventRow,
+  SmsSurveyPauseMode,
   VwSmsBallotTallyRow,
 } from '@/types/sms'
 import {
@@ -65,6 +79,7 @@ import {
   type SmsSurveyCatalogueRow,
   type SmsSurveyDetail,
   type SmsSurveyListRow,
+  type SurveyLaunchPreview,
 } from '@/lib/hooks/useSmsSurveys'
 import {
   EMPTY_SURVEY,
@@ -81,7 +96,30 @@ import { toApiAudience } from '@/lib/sms/audience-helpers'
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-700',
   open: 'bg-green-100 text-green-700',
+  paused: 'bg-amber-100 text-amber-800',
   closed: 'bg-slate-100 text-slate-500',
+}
+
+type ListFilter = 'all' | 'active' | 'tests' | 'closed'
+
+const LIST_FILTERS: { id: ListFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'active', label: 'Active' },
+  { id: 'tests', label: 'Tests' },
+  { id: 'closed', label: 'Closed' },
+]
+
+function matchesListFilter(survey: SmsSurveyListRow, filter: ListFilter): boolean {
+  if (filter === 'all') return true
+  if (filter === 'active') {
+    return (
+      survey.status === 'draft' ||
+      survey.status === 'open' ||
+      survey.status === 'paused'
+    )
+  }
+  if (filter === 'tests') return !!survey.is_test
+  return survey.status === 'closed'
 }
 
 interface SmsSurveysPanelProps {
@@ -95,6 +133,7 @@ export function SmsSurveysPanel({ campaignId }: SmsSurveysPanelProps) {
   const [editorOpen, setEditorOpen] = useState(false)
   const [detailId, setDetailId] = useState<number | null>(null)
   const [sourceWorkerListId, setSourceWorkerListId] = useState<number | null>(null)
+  const [listFilter, setListFilter] = useState<ListFilter>('all')
 
   // Chain B (Phase 8): the SMS Build List Survey pathway lands here
   // with ?survey_source_list=<lid> (cohort attached) or ?new_survey=1
@@ -126,6 +165,11 @@ export function SmsSurveysPanel({ campaignId }: SmsSurveysPanelProps) {
     }
   }, [surveys])
 
+  const filteredSurveys = useMemo(
+    () => (surveys ?? []).filter((s) => matchesListFilter(s, listFilter)),
+    [surveys, listFilter],
+  )
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
@@ -151,20 +195,42 @@ export function SmsSurveysPanel({ campaignId }: SmsSurveysPanelProps) {
         <StatCard label="Completed" value={totals.completed} />
       </div>
 
+      {(surveys?.length ?? 0) > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {LIST_FILTERS.map((f) => (
+            <Button
+              key={f.id}
+              type="button"
+              size="sm"
+              variant={listFilter === f.id ? 'secondary' : 'outline'}
+              onClick={() => setListFilter(f.id)}
+            >
+              {f.label}
+            </Button>
+          ))}
+        </div>
+      )}
+
       {isLoading ? (
         <div className="flex items-center justify-center py-6">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
       ) : surveys && surveys.length > 0 ? (
-        <div className="space-y-2">
-          {surveys.map((s) => (
-            <SurveyCard
-              key={s.survey_id}
-              survey={s}
-              onOpen={() => setDetailId(s.survey_id)}
-            />
-          ))}
-        </div>
+        filteredSurveys.length > 0 ? (
+          <div className="space-y-2">
+            {filteredSurveys.map((s) => (
+              <SurveyCard
+                key={s.survey_id}
+                survey={s}
+                onOpen={() => setDetailId(s.survey_id)}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground py-4 text-center">
+            No surveys match this filter.
+          </p>
+        )
       ) : (
         <Card className="border-dashed">
           <CardContent className="p-4 text-center">
@@ -199,6 +265,7 @@ export function SmsSurveysPanel({ campaignId }: SmsSurveysPanelProps) {
         onOpenChange={(open) => {
           if (!open) setDetailId(null)
         }}
+        onPromoted={(newId) => setDetailId(newId)}
       />
     </div>
   )
@@ -236,6 +303,11 @@ function SurveyCard({
             <Badge className={STATUS_COLORS[survey.status] || ''} variant="secondary">
               {survey.status}
             </Badge>
+            {survey.is_test && (
+              <Badge variant="secondary" className="bg-violet-100 text-violet-800">
+                Test
+              </Badge>
+            )}
             {survey.purpose === 'indicative_ballot' && (
               <Badge variant="secondary" className="bg-blue-100 text-blue-700">
                 <Scale className="h-3 w-3 mr-1" />
@@ -287,6 +359,10 @@ function detailToEditorValue(detail: SmsSurveyDetail): SurveyEditorValue {
     question_timeout_minutes: s.question_timeout_minutes,
     session_ttl_hours: s.session_ttl_hours,
     reminder_offsets: Array.isArray(s.reminder_offsets) ? s.reminder_offsets : [],
+    is_test: s.is_test ?? true,
+    timezone: s.timezone || 'Australia/Perth',
+    blackout_override: !!s.blackout_override,
+    blackout_override_reason: s.blackout_override_reason ?? '',
     // A survey fired from the wall-chart fire path (or any other
     // question-less draft) must still open to a usable editor, not a
     // zero-card list.
@@ -353,6 +429,8 @@ function SurveyEditorSheet({
   )
   const [duplicateKey, setDuplicateKey] = useState<string>('none')
   const [duplicating, setDuplicating] = useState(false)
+  const [ackFindings, setAckFindings] = useState<IntegrityFinding[] | null>(null)
+  const [ackText, setAckText] = useState('')
   const queryClient = useQueryClient()
   const create = useCreateSmsSurvey(campaignId)
   const update = useUpdateSmsSurvey(campaignId)
@@ -370,6 +448,8 @@ function SurveyEditorSheet({
     setSelectedQuestionIndex(0)
     setDuplicateKey('none')
     setShowFlow(true)
+    setAckFindings(null)
+    setAckText('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, surveyId])
 
@@ -432,30 +512,48 @@ function SurveyEditorSheet({
     }
   }
 
-  const submit = () => {
+  const buildPayload = (acknowledgeHighRisk?: string) => ({
+    title: value.title,
+    purpose: value.purpose,
+    revote_policy: value.revote_policy,
+    results_restricted: value.results_restricted,
+    activity_id: value.activity_id,
+    sender_number_id: value.sender_number_id,
+    invitation_body: value.invitation_body,
+    completion_body: value.completion_body || null,
+    retry_limit: value.retry_limit,
+    question_timeout_minutes: value.question_timeout_minutes,
+    session_ttl_hours: value.session_ttl_hours,
+    reminder_offsets: value.reminder_offsets,
+    is_test: value.is_test,
+    timezone: value.timezone,
+    blackout_override: value.blackout_override,
+    blackout_override_reason: value.blackout_override
+      ? value.blackout_override_reason || null
+      : null,
+    questions: toQuestionInputs(value.questions),
+    ...(acknowledgeHighRisk
+      ? { acknowledge_high_risk: acknowledgeHighRisk }
+      : {}),
+    ...(surveyId == null && sourceWorkerListId != null
+      ? { source_worker_list_id: sourceWorkerListId }
+      : {}),
+  })
+
+  const submit = (acknowledgeHighRisk?: string) => {
     if (!value.title.trim()) {
       toast.error('Give the survey a title')
       return
     }
-    const payload = {
-      title: value.title,
-      purpose: value.purpose,
-      revote_policy: value.revote_policy,
-      results_restricted: value.results_restricted,
-      activity_id: value.activity_id,
-      sender_number_id: value.sender_number_id,
-      invitation_body: value.invitation_body,
-      completion_body: value.completion_body || null,
-      retry_limit: value.retry_limit,
-      question_timeout_minutes: value.question_timeout_minutes,
-      session_ttl_hours: value.session_ttl_hours,
-      reminder_offsets: value.reminder_offsets,
-      questions: toQuestionInputs(value.questions),
-      ...(surveyId == null && sourceWorkerListId != null
-        ? { source_worker_list_id: sourceWorkerListId }
-        : {}),
-    }
+    const payload = buildPayload(acknowledgeHighRisk)
     const onError = (err: Error) => {
+      const withFindings = err as Error & { findings?: IntegrityFinding[] }
+      const highRisk = (withFindings.findings ?? []).filter((f) => f.risk === 'high')
+      if (surveyId != null && highRisk.length > 0) {
+        setAckFindings(withFindings.findings ?? highRisk)
+        setAckText('')
+        return
+      }
       toast.error(err.message)
     }
     if (surveyId != null) {
@@ -463,6 +561,8 @@ function SurveyEditorSheet({
         { surveyId, ...payload },
         {
           onSuccess: () => {
+            setAckFindings(null)
+            setAckText('')
             toast.success('Survey saved')
             onSaved(surveyId)
           },
@@ -480,7 +580,10 @@ function SurveyEditorSheet({
     }
   }
 
+  const highRiskFindings = (ackFindings ?? []).filter((f) => f.risk === 'high')
+
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         className={cn(
@@ -585,7 +688,11 @@ function SurveyEditorSheet({
                   queryClient.invalidateQueries({ queryKey: activitiesQueryKey })
                 }}
               />
-              <Button className="w-full" disabled={pending} onClick={submit}>
+              <Button
+                className="w-full"
+                disabled={pending}
+                onClick={() => submit()}
+              >
                 {pending ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
@@ -609,6 +716,61 @@ function SurveyEditorSheet({
         </div>
       </SheetContent>
     </Sheet>
+
+    <Dialog
+      open={highRiskFindings.length > 0}
+      onOpenChange={(next) => {
+        if (!next) {
+          setAckFindings(null)
+          setAckText('')
+        }
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>High-risk edit acknowledgement</DialogTitle>
+          <DialogDescription>
+            These changes can break in-flight answers. Type EDIT to save anyway.
+          </DialogDescription>
+        </DialogHeader>
+        <ul className="list-disc space-y-1 pl-5 text-sm">
+          {highRiskFindings.map((f) => (
+            <li key={`${f.code}-${f.message}`}>{f.message}</li>
+          ))}
+        </ul>
+        <div className="space-y-1.5">
+          <Label htmlFor="ack-edit">Type EDIT to confirm</Label>
+          <Input
+            id="ack-edit"
+            value={ackText}
+            onChange={(e) => setAckText(e.target.value)}
+            placeholder="EDIT"
+            autoComplete="off"
+          />
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setAckFindings(null)
+              setAckText('')
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            disabled={ackText !== 'EDIT' || pending}
+            onClick={() => submit('EDIT')}
+          >
+            {pending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : null}
+            Save with acknowledgement
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
 
@@ -616,10 +778,12 @@ function SurveyDetailSheet({
   campaignId,
   surveyId,
   onOpenChange,
+  onPromoted,
 }: {
   campaignId: string
   surveyId: number | null
   onOpenChange: (open: boolean) => void
+  onPromoted?: (newSurveyId: number) => void
 }) {
   const { data: detail, isLoading } = useSmsSurveyDetail(campaignId, surveyId)
   const [editing, setEditing] = useState(false)
@@ -645,7 +809,13 @@ function SurveyDetailSheet({
               onGone={() => onOpenChange(false)}
             />
           ) : (
-            <FunnelDetail campaignId={campaignId} detail={detail} />
+            <FunnelDetail
+              campaignId={campaignId}
+              detail={detail}
+              onEdit={() => setEditing(true)}
+              onGone={() => onOpenChange(false)}
+              onPromoted={onPromoted}
+            />
           )}
         </SheetContent>
       </Sheet>
@@ -681,6 +851,7 @@ function DraftDetail({
   const del = useDeleteSmsSurvey(campaignId)
   const queryClient = useQueryClient()
   const [submitting, setSubmitting] = useState(false)
+  const [preview, setPreview] = useState<SurveyLaunchPreview | null>(null)
 
   // Default to source_worker_list_id from Phase 8 when present
   const sourceListId = detail.survey.source_worker_list_id
@@ -689,7 +860,12 @@ function DraftDetail({
     : { mode: 'campaign' }
   const [audienceValue, setAudienceValue] = useState<AudienceValue>(defaultValue)
 
-  const openSurvey = async () => {
+  const busy = action.isPending || del.isPending || submitting
+  const isTest = detail.survey.is_test ?? true
+
+  const runWithAudience = async (
+    lifecycleAction: 'preview' | 'open',
+  ) => {
     try {
       setSubmitting(true)
       const audience = await toApiAudience(campaignId, audienceValue)
@@ -701,19 +877,37 @@ function DraftDetail({
       action.mutate(
         {
           surveyId: detail.survey.survey_id,
-          action: 'open',
+          action: lifecycleAction,
           audience,
         },
         {
           onSuccess: (res) => {
+            if (lifecycleAction === 'preview') {
+              setPreview({
+                ok: true,
+                invitable: res.invitable ?? 0,
+                opted_out: res.opted_out ?? 0,
+                skipped_no_phone: res.skipped_no_phone ?? 0,
+                question_count: res.question_count ?? detail.questions.length,
+                timezone: res.timezone ?? detail.survey.timezone,
+                blackout_override:
+                  res.blackout_override ?? !!detail.survey.blackout_override,
+                within_window: res.within_window ?? false,
+                next_window_at: res.next_window_at ?? '',
+                is_test: res.is_test ?? isTest,
+              })
+              return
+            }
             const notes: string[] = []
             if (res.opted_out) notes.push(`${res.opted_out} opted out`)
-            if (res.skipped_no_phone) notes.push(`${res.skipped_no_phone} without a mobile`)
+            if (res.skipped_no_phone)
+              notes.push(`${res.skipped_no_phone} without a mobile`)
             toast.success(
               `Survey opened — ${res.sessions_created} invitations queued${
                 notes.length ? ` (${notes.join(', ')} excluded)` : ''
               }. Sending starts within 10 minutes, inside the send window.`,
             )
+            setPreview(null)
           },
           onError: (err: Error) => toast.error(err.message),
           onSettled: () => setSubmitting(false),
@@ -728,17 +922,22 @@ function DraftDetail({
   return (
     <>
       <SheetHeader>
-        <SheetTitle className="flex items-center gap-2">
+        <SheetTitle className="flex items-center gap-2 flex-wrap">
           {detail.survey.title}
           <Badge variant="secondary" className={STATUS_COLORS.draft}>
             draft
           </Badge>
+          {isTest && (
+            <Badge variant="secondary" className="bg-violet-100 text-violet-800">
+              Test
+            </Badge>
+          )}
         </SheetTitle>
         <SheetDescription>
           {detail.questions.length} question
-          {detail.questions.length === 1 ? '' : 's'} — pick the audience and
-          open when ready. Opted-out workers and workers without a mobile are
-          excluded automatically.
+          {detail.questions.length === 1 ? '' : 's'} — pick the audience,
+          review the launch summary, then launch. Opted-out workers and workers
+          without a mobile are excluded automatically.
         </SheetDescription>
       </SheetHeader>
       <div className="mt-4 space-y-4 pb-8">
@@ -751,43 +950,93 @@ function DraftDetail({
           channel="sms"
           campaignId={campaignId}
           value={audienceValue}
-          onChange={setAudienceValue}
-          disabled={action.isPending || del.isPending || submitting}
+          onChange={(next) => {
+            setAudienceValue(next)
+            setPreview(null)
+          }}
+          disabled={busy}
         />
 
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            className="flex-1"
-            disabled={action.isPending || del.isPending || submitting}
-            onClick={onEdit}
-          >
+        {preview && (
+          <Card>
+            <CardContent className="p-3 space-y-2 text-sm">
+              <p className="font-medium">Launch summary</p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <span className="text-muted-foreground">Questions</span>
+                <span>{preview.question_count}</span>
+                <span className="text-muted-foreground">Invitable</span>
+                <span>{preview.invitable}</span>
+                <span className="text-muted-foreground">Opted out</span>
+                <span>{preview.opted_out}</span>
+                <span className="text-muted-foreground">No phone</span>
+                <span>{preview.skipped_no_phone}</span>
+                <span className="text-muted-foreground">Timezone</span>
+                <span>{preview.timezone}</span>
+                <span className="text-muted-foreground">Send window</span>
+                <span>
+                  {preview.within_window
+                    ? 'Within window now'
+                    : `Next window ${
+                        preview.next_window_at
+                          ? new Date(preview.next_window_at).toLocaleString()
+                          : '—'
+                      }`}
+                </span>
+                <span className="text-muted-foreground">Blackout override</span>
+                <span>{preview.blackout_override ? 'Yes' : 'No'}</span>
+                <span className="text-muted-foreground">Mode</span>
+                <span>{preview.is_test ? 'Test' : 'Live'}</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" disabled={busy} onClick={onEdit}>
             Edit
           </Button>
-          <Button
-            className="flex-1"
-            disabled={action.isPending || del.isPending || submitting}
-            onClick={openSurvey}
-          >
-            {(action.isPending || submitting) ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Play className="h-4 w-4 mr-2" />
-            )}
-            Open survey
-          </Button>
+          {!preview ? (
+            <Button
+              className="flex-1"
+              disabled={busy}
+              onClick={() => runWithAudience('preview')}
+            >
+              {busy ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4 mr-2" />
+              )}
+              Review & launch
+            </Button>
+          ) : (
+            <Button
+              className="flex-1"
+              disabled={busy}
+              onClick={() => runWithAudience('open')}
+            >
+              {busy ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4 mr-2" />
+              )}
+              {isTest ? 'Launch test' : 'Launch survey'}
+            </Button>
+          )}
           <Button
             variant="ghost"
             className="text-muted-foreground hover:text-destructive"
-            disabled={action.isPending || del.isPending || submitting}
+            disabled={busy}
             onClick={() =>
-              del.mutate(detail.survey.survey_id, {
-                onSuccess: () => {
-                  toast.success('Survey deleted')
-                  onGone()
+              del.mutate(
+                { surveyId: detail.survey.survey_id },
+                {
+                  onSuccess: () => {
+                    toast.success('Survey deleted')
+                    onGone()
+                  },
+                  onError: (err: Error) => toast.error(err.message),
                 },
-                onError: (err: Error) => toast.error(err.message),
-              })
+              )
             }
           >
             <Trash2 className="h-4 w-4" />
@@ -822,34 +1071,91 @@ function QuestionListPreview({ detail }: { detail: SmsSurveyDetail }) {
 function FunnelDetail({
   campaignId,
   detail,
+  onEdit,
+  onGone,
+  onPromoted,
 }: {
   campaignId: string
   detail: SmsSurveyDetail
+  onEdit: () => void
+  onGone: () => void
+  onPromoted?: (newSurveyId: number) => void
 }) {
+  const { isAdmin } = useAuth()
   const action = useSmsSurveyAction(campaignId)
+  const del = useDeleteSmsSurvey(campaignId)
   const funnel = detail.funnel
   const invited = funnel?.ever_invited_count ?? 0
   const isBallot = detail.survey.purpose === 'indicative_ballot'
+  const status = detail.survey.status
+  const isTest = !!detail.survey.is_test
   // Restricted ballots: the aggregate tally is the ONLY reporting
   // surface — the per-question stats (with unparsed-capture drill-in
   // counts) are hidden along with any per-member answer surface.
   const restricted = isBallot && detail.survey.results_restricted
 
+  const [pauseOpen, setPauseOpen] = useState(false)
+  const [pauseMode, setPauseMode] = useState<SmsSurveyPauseMode>('soft')
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState('')
+
+  const busy = action.isPending || del.isPending
+
   const statsByQuestion = new Map(
     detail.question_stats.map((s) => [s.question_id, s]),
   )
 
+  const runClose = () => {
+    action.mutate(
+      { surveyId: detail.survey.survey_id, action: 'close' },
+      {
+        onSuccess: (res) =>
+          toast.success(
+            `${isBallot ? 'Ballot' : 'Survey'} closed${
+              res.expired_sessions
+                ? ` — ${res.expired_sessions} unfinished sessions expired`
+                : ''
+            }`,
+          ),
+        onError: (err: Error) => toast.error(err.message),
+      },
+    )
+  }
+
+  const runPromote = () => {
+    action.mutate(
+      { surveyId: detail.survey.survey_id, action: 'promote' },
+      {
+        onSuccess: (res) => {
+          toast.success('Promoted to a new live draft')
+          if (res.survey_id != null) onPromoted?.(res.survey_id)
+        },
+        onError: (err: Error) => toast.error(err.message),
+      },
+    )
+  }
+
   return (
     <>
       <SheetHeader>
-        <SheetTitle className="flex items-center gap-2">
+        <SheetTitle className="flex items-center gap-2 flex-wrap">
           {detail.survey.title}
           <Badge
             variant="secondary"
-            className={STATUS_COLORS[detail.survey.status] || ''}
+            className={STATUS_COLORS[status] || ''}
           >
-            {detail.survey.status}
+            {status}
           </Badge>
+          {status === 'paused' && detail.survey.pause_mode && (
+            <Badge variant="secondary" className="bg-amber-100 text-amber-800">
+              {detail.survey.pause_mode} pause
+            </Badge>
+          )}
+          {isTest && (
+            <Badge variant="secondary" className="bg-violet-100 text-violet-800">
+              Test
+            </Badge>
+          )}
           {isBallot && (
             <Badge variant="secondary" className="bg-blue-100 text-blue-700">
               <Scale className="h-3 w-3 mr-1" />
@@ -952,37 +1258,217 @@ function FunnelDetail({
         </div>
         )}
 
-        {detail.survey.status === 'open' && (
-          <Button
-            variant="outline"
-            className="w-full"
-            disabled={action.isPending}
-            onClick={() =>
-              action.mutate(
-                { surveyId: detail.survey.survey_id, action: 'close' },
-                {
-                  onSuccess: (res) =>
-                    toast.success(
-                      `${isBallot ? 'Ballot' : 'Survey'} closed${
-                        res.expired_sessions
-                          ? ` — ${res.expired_sessions} unfinished sessions expired`
-                          : ''
-                      }`,
-                    ),
-                  onError: (err: Error) => toast.error(err.message),
-                },
-              )
-            }
-          >
-            {action.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Lock className="h-4 w-4 mr-2" />
-            )}
-            {isBallot ? 'Close ballot' : 'Close survey'}
-          </Button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {status === 'open' && (
+            <>
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => {
+                  setPauseMode('soft')
+                  setPauseOpen(true)
+                }}
+              >
+                <Pause className="h-4 w-4 mr-2" />
+                Pause
+              </Button>
+              <Button variant="outline" disabled={busy} onClick={runClose}>
+                {action.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Lock className="h-4 w-4 mr-2" />
+                )}
+                {isBallot ? 'Close ballot' : 'Close survey'}
+              </Button>
+            </>
+          )}
+
+          {status === 'paused' && (
+            <>
+              <Button
+                disabled={busy}
+                onClick={() =>
+                  action.mutate(
+                    {
+                      surveyId: detail.survey.survey_id,
+                      action: 'resume',
+                    },
+                    {
+                      onSuccess: () => toast.success('Survey resumed'),
+                      onError: (err: Error) => toast.error(err.message),
+                    },
+                  )
+                }
+              >
+                {action.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4 mr-2" />
+                )}
+                Resume
+              </Button>
+              <Button variant="outline" disabled={busy} onClick={onEdit}>
+                Edit
+              </Button>
+              <Button variant="outline" disabled={busy} onClick={runClose}>
+                <Lock className="h-4 w-4 mr-2" />
+                {isBallot ? 'Close ballot' : 'Close survey'}
+              </Button>
+              {isTest && (
+                <Button variant="outline" disabled={busy} onClick={runPromote}>
+                  <Rocket className="h-4 w-4 mr-2" />
+                  Promote
+                </Button>
+              )}
+            </>
+          )}
+
+          {status === 'closed' && (
+            <>
+              {isTest && (
+                <Button variant="outline" disabled={busy} onClick={runPromote}>
+                  <Rocket className="h-4 w-4 mr-2" />
+                  Promote
+                </Button>
+              )}
+              {isAdmin && (
+                <Button
+                  variant="ghost"
+                  className="text-muted-foreground hover:text-destructive"
+                  disabled={busy}
+                  onClick={() => {
+                    setDeleteConfirm('')
+                    setDeleteOpen(true)
+                  }}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </Button>
+              )}
+            </>
+          )}
+        </div>
       </div>
+
+      <Dialog open={pauseOpen} onOpenChange={setPauseOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pause survey</DialogTitle>
+            <DialogDescription>
+              Soft pause still accepts answers; hard pause acknowledges replies
+              but does not advance sessions.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label>Pause mode</Label>
+            <Select
+              value={pauseMode}
+              onValueChange={(v) => setPauseMode(v as SmsSurveyPauseMode)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="soft">Soft — keep collecting answers</SelectItem>
+                <SelectItem value="hard">Hard — hold replies until resume</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPauseOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={busy}
+              onClick={() =>
+                action.mutate(
+                  {
+                    surveyId: detail.survey.survey_id,
+                    action: 'pause',
+                    pause_mode: pauseMode,
+                  },
+                  {
+                    onSuccess: () => {
+                      setPauseOpen(false)
+                      toast.success(
+                        `Survey paused (${pauseMode})`,
+                      )
+                    },
+                    onError: (err: Error) => toast.error(err.message),
+                  },
+                )
+              }
+            >
+              {busy ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Pause className="h-4 w-4 mr-2" />
+              )}
+              Pause
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(next) => {
+          setDeleteOpen(next)
+          if (!next) setDeleteConfirm('')
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete closed survey</DialogTitle>
+            <DialogDescription>
+              Permanently destroys sessions, answers, and ballot audit rows.
+              Type DELETE to confirm.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="delete-confirm">Type DELETE</Label>
+            <Input
+              id="delete-confirm"
+              value={deleteConfirm}
+              onChange={(e) => setDeleteConfirm(e.target.value)}
+              placeholder="DELETE"
+              autoComplete="off"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteConfirm !== 'DELETE' || busy}
+              onClick={() =>
+                del.mutate(
+                  {
+                    surveyId: detail.survey.survey_id,
+                    confirm: 'DELETE',
+                  },
+                  {
+                    onSuccess: () => {
+                      setDeleteOpen(false)
+                      toast.success('Survey deleted')
+                      onGone()
+                    },
+                    onError: (err: Error) => toast.error(err.message),
+                  },
+                )
+              }
+            >
+              {del.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete forever
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

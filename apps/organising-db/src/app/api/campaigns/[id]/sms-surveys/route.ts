@@ -228,6 +228,8 @@ export async function POST(
           : null,
         invitation_body: body.invitation_body ?? null,
         completion_body: body.completion_body ?? null,
+        // Lifecycle: new surveys default to trusted-group test mode.
+        is_test: body.is_test === false ? false : true,
         created_by: user.id,
       })
       .select('survey_id')

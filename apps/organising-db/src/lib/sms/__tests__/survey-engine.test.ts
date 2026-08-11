@@ -25,6 +25,7 @@ function q(overrides: Partial<SmsSurveyQuestionRow>): SmsSurveyQuestionRow {
     activity_id: null,
     invalid_prompt: null,
     nudge_text: null,
+    retired_at: null,
     created_at: "2026-08-11T00:00:00Z",
     updated_at: "2026-08-11T00:00:00Z",
     ...overrides,

@@ -66,6 +66,13 @@ export interface SurveySettingsInput {
   handoff_escalate_to?: string | null;
   invitation_body?: string | null;
   completion_body?: string | null;
+  /** Default true for new surveys — trusted-group test mode. */
+  is_test?: boolean;
+  /**
+   * Required when a paused edit includes high-risk integrity findings
+   * (must equal "EDIT").
+   */
+  acknowledge_high_risk?: string | null;
 }
 
 const QTYPES: SmsSurveyQuestionType[] = ["choice", "yes_no", "scale", "open_text"];

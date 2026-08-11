@@ -31,22 +31,26 @@ describe("validateSmsBody", () => {
     expect(r.errors).toHaveLength(1);
   });
 
-  it("fails without an opt-out instruction", () => {
+  it("passes without an opt-out instruction (optional for member traffic)", () => {
     const r = validateSmsBody("Offshore Alliance meeting Tuesday 5pm.");
-    expect(r.ok).toBe(false);
+    expect(r.ok).toBe(true);
     expect(r.hasOptOut).toBe(false);
-    expect(r.errors.some((e) => e.toLowerCase().includes("opt-out"))).toBe(true);
+    expect(r.hasOrgName).toBe(true);
+    expect(r.errors).toHaveLength(0);
   });
 
   it("does not treat unrelated 'stop' as an opt-out instruction", () => {
     // "stop work meeting" carries no reply/text instruction.
     const r = validateSmsBody("Offshore Alliance: stop work meeting Tuesday");
+    expect(r.ok).toBe(true);
     expect(r.hasOptOut).toBe(false);
   });
 
-  it("fails an empty body on both checks", () => {
+  it("fails an empty body on the org-name check only", () => {
     const r = validateSmsBody("");
     expect(r.ok).toBe(false);
-    expect(r.errors).toHaveLength(2);
+    expect(r.hasOrgName).toBe(false);
+    expect(r.hasOptOut).toBe(false);
+    expect(r.errors).toHaveLength(1);
   });
 });

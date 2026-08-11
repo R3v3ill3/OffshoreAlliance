@@ -21,7 +21,24 @@
  *   - unsubscribe → workers.sms_opt_out for every worker on the number +
  *                   an sms_interactions STOP row so the Phase 0
  *                   trg_sms_optout_keyword trigger / audit trail fires.
- *   - inbound     → Phase 2 conversation routing (brief §7.0): to-number
+ *                   Phase 4: also terminates the phone's survey
+ *                   sessions (queued/invited/active → opted_out) —
+ *                   brief §2.3 constraint 3.
+ *   - inbound     → Phase 6 precedence (brief §4.1 + §6): reserved
+ *                   keywords (inline STOP guard — a belt behind the
+ *                   provider's platform-side interception) → open
+ *                   survey session on the phone (processSurveyInbound
+ *                   handles parse / retry ladder / branch / complete /
+ *                   handoff and replies from the survey's sender
+ *                   number) → ballot post-completion leg → RELAY leg
+ *                   (Phase 6: when the to-number carries a live
+ *                   active|paused relay, processRelayInbound handles
+ *                   the message entirely — member→target forwarding
+ *                   with consent/moderation/quiet-hours, or a target
+ *                   reply bridged back to the last-forwarded member;
+ *                   relay traffic never creates inbox conversations)
+ *                   → else Phase 2 conversation routing
+ *                   (brief §7.0), bit-for-bit unchanged: to-number
  *                   → sms_numbers row → open (number, member) pair thread
  *                   → matched worker's open thread on the number → else
  *                   CREATE (triage when unmatched, needs_response when
@@ -49,6 +66,20 @@ import {
   resolveInboundConversation,
   type RoutingOpenConversation,
 } from '@/lib/sms/conversation-routing'
+import { isStopKeyword } from '@/lib/sms/survey-engine'
+import {
+  appendSurveyMessage,
+  findCompletedBallotSessionByPhone,
+  findLiveSessionByPhone,
+  processBallotPostCompletion,
+  processSurveyInbound,
+  terminateSessionsForPhone,
+  touchConversationTimestamps,
+} from '@/lib/sms/survey-runtime'
+import {
+  findLiveRelayByNumberId,
+  processRelayInbound,
+} from '@/lib/sms/relay-runtime'
 
 export const dynamic = 'force-dynamic'
 
@@ -251,6 +282,18 @@ export async function POST(req: NextRequest) {
           .eq('provider_message_id', event.providerMessageId)
           .eq('status', 'sent')
 
+        // Mirror onto relay forwards (Phase 6) via the forward's
+        // provider id. Same monotonic guard: only from 'sent'.
+        await admin
+          .from('sms_relay_messages')
+          .update(
+            eventType === 'delivered'
+              ? { forward_status: 'delivered' }
+              : { forward_status: 'failed' },
+          )
+          .eq('forward_provider_message_id', event.providerMessageId)
+          .eq('forward_status', 'sent')
+
         const listIds = [
           ...new Set((transitioned ?? []).map((r) => r.list_id as number)),
         ]
@@ -265,6 +308,11 @@ export async function POST(req: NextRequest) {
     if (event.type === 'unsubscribe') {
       const phone = toE164(event.from)
       if (!phone) return NextResponse.json({ ok: true, unmatched: true })
+
+      // Phase 4 (brief §2.3 constraint 3): an unsubscribe is also a
+      // survey-session terminator — before the worker-match early
+      // return, so sessions end even for unmatched phones.
+      await terminateSessionsForPhone(admin, phone, new Date().toISOString())
 
       const { data: workers } = await admin
         .from('workers')
@@ -344,6 +392,231 @@ export async function POST(req: NextRequest) {
       )
       const workerId = matchedWorkerIds[0] ?? null
 
+      // ── Phase 4 precedence step 1: reserved keywords ─────────
+      // Inline STOP guard. Mobile Message intercepts STOP platform-
+      // side (it arrives as an 'unsubscribe' event, handled above),
+      // so this is a belt: if a STOP-shaped body does reach the
+      // inbound leg it is an opt-out, never a survey answer.
+      if (phone && isStopKeyword(event.body)) {
+        const terminated = await terminateSessionsForPhone(
+          admin,
+          phone,
+          receivedAt,
+        )
+        if (matchedWorkerIds.length > 0) {
+          await admin
+            .from('workers')
+            .update({
+              sms_opt_out: true,
+              sms_opt_out_at: receivedAt,
+              sms_opt_out_source: 'inbound_stop',
+            })
+            .in('worker_id', matchedWorkerIds)
+            .eq('sms_opt_out', false)
+        }
+
+        // Audit-trail parity with the unsubscribe branch and the
+        // Phase 3 conversational path: the STOP is recorded as an
+        // inbound interaction (fires trg_sms_optout_keyword +
+        // worker_activity_log; no activity/cta/maps values) …
+        let stopInteractionId: number | null = null
+        if (matchedWorkerIds.length > 0) {
+          if (event.providerMessageId) {
+            const { data: existing } = await admin
+              .from('sms_interactions')
+              .select('id')
+              .eq('external_message_id', event.providerMessageId)
+              .maybeSingle()
+            stopInteractionId = (existing?.id as number | undefined) ?? null
+          }
+          if (stopInteractionId == null) {
+            const { data: inserted, error: insErr } = await admin
+              .from('sms_interactions')
+              .insert({
+                worker_id: matchedWorkerIds[0],
+                direction: 'inbound',
+                phone_number: event.from.slice(0, PHONE_NUMBER_MAX),
+                phone_e164: phone,
+                body: event.body ?? 'STOP',
+                external_message_id: event.providerMessageId,
+                received_at: receivedAt,
+                notes: 'Inline STOP keyword (inbound webhook)',
+              })
+              .select('id')
+              .single()
+            if (insErr) {
+              if (insErr.code !== UNIQUE_VIOLATION) {
+                console.error('inline STOP interaction insert failed:', insErr)
+              }
+            } else {
+              stopInteractionId = inserted.id as number
+            }
+          }
+        }
+
+        // … and appended to a thread when one is already at hand (a
+        // terminated session carrying a conversation). No new routing
+        // here — without a thread the interaction row is the record.
+        const stopConversationId =
+          terminated.find((t) => t.conversation_id != null)?.conversation_id ??
+          null
+        if (stopConversationId != null) {
+          try {
+            await appendSurveyMessage(admin, {
+              conversation_id: stopConversationId,
+              direction: 'inbound',
+              body: event.body ?? 'STOP',
+              phone_e164: phone,
+              provider_message_id: event.providerMessageId,
+              interaction_id: stopInteractionId,
+              status: 'received',
+              created_at: receivedAt,
+            })
+            await touchConversationTimestamps(
+              admin,
+              stopConversationId,
+              receivedAt,
+              'inbound',
+            )
+          } catch (stopMsgErr) {
+            console.error('inline STOP thread append failed:', stopMsgErr)
+          }
+        }
+
+        if (event.providerMessageId) {
+          await insertDeliveryEvent(admin, {
+            provider_message_id: event.providerMessageId,
+            event_type: 'opted_out',
+            part_number: 0,
+            payload: rawPayload,
+            occurred_at: receivedAt,
+          })
+        }
+        return NextResponse.json({
+          ok: true,
+          opted_out: matchedWorkerIds.length,
+          sessions_terminated: terminated.length,
+        })
+      }
+
+      // ── Phase 4 precedence step 2: open survey session ───────
+      // At most one 'invited'/'active' session exists per phone
+      // (partial unique index). When present the survey engine
+      // handles the message entirely; conversational routing below
+      // is skipped. A session on a no-longer-open survey is expired
+      // and falls through to normal routing.
+      if (phone) {
+        const liveSession = await findLiveSessionByPhone(admin, phone)
+        if (liveSession) {
+          const surveyResult = await processSurveyInbound(admin, provider, {
+            session: liveSession,
+            phoneE164: phone,
+            body: event.body ?? '',
+            providerMessageId: event.providerMessageId,
+            receivedAt,
+          })
+          if (surveyResult.handled) {
+            if (event.providerMessageId) {
+              await insertDeliveryEvent(admin, {
+                provider_message_id: event.providerMessageId,
+                event_type: 'replied',
+                part_number: 0,
+                payload: rawPayload,
+                occurred_at: receivedAt,
+              })
+            }
+            return NextResponse.json(surveyResult.response)
+          }
+        }
+
+        // ── Phase 5 precedence step 2b: completed ballot session ──
+        // A member whose OPEN indicative-ballot session is already
+        // completed texting again (§4.2 revote semantics): only a
+        // parsed answer to the ballot's first question counts as a
+        // vote attempt — locked ballots reject it (answers untouched,
+        // vote_rejected_locked logged), revote_until_close reopens
+        // the session and re-records (vote_superseded logged). All
+        // other messages — and every non-ballot survey's completed
+        // sessions — fall through to conversational routing below,
+        // bit-for-bit unchanged.
+        const ballotSession = await findCompletedBallotSessionByPhone(
+          admin,
+          phone,
+        )
+        if (ballotSession) {
+          const ballotResult = await processBallotPostCompletion(
+            admin,
+            provider,
+            {
+              session: ballotSession,
+              phoneE164: phone,
+              body: event.body ?? '',
+              providerMessageId: event.providerMessageId,
+              receivedAt,
+            },
+          )
+          if (ballotResult.handled) {
+            if (event.providerMessageId) {
+              await insertDeliveryEvent(admin, {
+                provider_message_id: event.providerMessageId,
+                event_type: 'replied',
+                part_number: 0,
+                payload: rawPayload,
+                occurred_at: receivedAt,
+              })
+            }
+            return NextResponse.json(ballotResult.response)
+          }
+        }
+      }
+
+      // Number registry match (tolerant of +614… / 614… / 04… forms) —
+      // hoisted ahead of the relay leg (Phase 6): a relay CLAIMS its
+      // number, so relays are checked before conversation attach for
+      // that number. The conversational leg below reuses this row.
+      const { data: numbers } = await admin
+        .from('sms_numbers')
+        .select('number_id, phone_e164, organiser_id')
+        .eq('status', 'active')
+      const numberRow = findNumberForInbound(numbers ?? [], event.to)
+
+      // ── Phase 6 precedence step 2c: relay leg ────────────────
+      // Only when the to-number carries a live (active|paused)
+      // relay — 'ended' relays release the number back to normal
+      // routing. The runtime handles both directions (member →
+      // target forwarding and target replies bridged back to the
+      // last-forwarded member) and NEVER creates inbox threads.
+      if (numberRow) {
+        const relay = await findLiveRelayByNumberId(admin, numberRow.number_id)
+        if (relay) {
+          const relayResult = await processRelayInbound(admin, provider, {
+            relay,
+            number: {
+              number_id: numberRow.number_id,
+              phone_e164: numberRow.phone_e164,
+            },
+            event: {
+              from: event.from,
+              body: event.body,
+              providerMessageId: event.providerMessageId,
+            },
+            phoneE164: phone,
+            matchedWorkerIds,
+            receivedAt,
+          })
+          if (event.providerMessageId) {
+            await insertDeliveryEvent(admin, {
+              provider_message_id: event.providerMessageId,
+              event_type: 'replied',
+              part_number: 0,
+              payload: rawPayload,
+              occurred_at: receivedAt,
+            })
+          }
+          return NextResponse.json(relayResult.response)
+        }
+      }
+
       // Reply correlation: our custom_ref is the sms_send_log send_id;
       // fall back to the provider's original_message_id.
       let sendRow: {
@@ -384,44 +657,53 @@ export async function POST(req: NextRequest) {
         recentSend = latest?.[0] ?? null
       }
 
-      // Number registry match (tolerant of +614… / 614… / 04… forms).
-      const { data: numbers } = await admin
-        .from('sms_numbers')
-        .select('number_id, phone_e164, organiser_id')
-        .eq('status', 'active')
-      const numberRow = findNumberForInbound(numbers ?? [], event.to)
-
       // Candidate open threads: the (number, member phone) pair first;
       // the matched worker's threads on this number only as a fallback.
+      // activity_id rides along (outside the pure resolver's input) so
+      // an attach to an activity-scoped thread can stamp the interaction
+      // row for Phase 3 activity scoping.
       let openConversations: RoutingOpenConversation[] = []
+      const activityByConversation = new Map<number, number | null>()
       if (numberRow && phone) {
         const { data: pairConvs } = await admin
           .from('sms_conversations')
-          .select('conversation_id, campaign_id, worker_id, last_message_at')
+          .select('conversation_id, campaign_id, activity_id, worker_id, last_message_at')
           .eq('our_number_id', numberRow.number_id)
           .eq('phone_e164', phone)
           .neq('state', 'closed')
-        openConversations = (pairConvs ?? []).map((c) => ({
-          conversation_id: c.conversation_id as number,
-          campaign_id: c.campaign_id as number | null,
-          worker_id: c.worker_id as number | null,
-          last_message_at: c.last_message_at as string | null,
-          matched_on: 'phone' as const,
-        }))
-        if (openConversations.length === 0 && matchedWorkerIds.length > 0) {
-          const { data: workerConvs } = await admin
-            .from('sms_conversations')
-            .select('conversation_id, campaign_id, worker_id, last_message_at')
-            .eq('our_number_id', numberRow.number_id)
-            .in('worker_id', matchedWorkerIds)
-            .neq('state', 'closed')
-          openConversations = (workerConvs ?? []).map((c) => ({
+        openConversations = (pairConvs ?? []).map((c) => {
+          activityByConversation.set(
+            c.conversation_id as number,
+            (c.activity_id as number | null) ?? null,
+          )
+          return {
             conversation_id: c.conversation_id as number,
             campaign_id: c.campaign_id as number | null,
             worker_id: c.worker_id as number | null,
             last_message_at: c.last_message_at as string | null,
-            matched_on: 'worker' as const,
-          }))
+            matched_on: 'phone' as const,
+          }
+        })
+        if (openConversations.length === 0 && matchedWorkerIds.length > 0) {
+          const { data: workerConvs } = await admin
+            .from('sms_conversations')
+            .select('conversation_id, campaign_id, activity_id, worker_id, last_message_at')
+            .eq('our_number_id', numberRow.number_id)
+            .in('worker_id', matchedWorkerIds)
+            .neq('state', 'closed')
+          openConversations = (workerConvs ?? []).map((c) => {
+            activityByConversation.set(
+              c.conversation_id as number,
+              (c.activity_id as number | null) ?? null,
+            )
+            return {
+              conversation_id: c.conversation_id as number,
+              campaign_id: c.campaign_id as number | null,
+              worker_id: c.worker_id as number | null,
+              last_message_at: c.last_message_at as string | null,
+              matched_on: 'worker' as const,
+            }
+          })
         }
       }
 
@@ -435,6 +717,16 @@ export async function POST(req: NextRequest) {
 
       // Interaction row (worker-matched only — the Phase 1 behaviour,
       // now with the id captured so the message row can link it).
+      // Phase 3: when the routing decision attaches to an activity-
+      // scoped thread, stamp that activity_id on the interaction so the
+      // "This activity" scope (and the brief §5.1 pipeline for any
+      // future keyword mapping) sees the link. trg_sms_to_rating stays
+      // a no-op here — no maps_to_rating / maps_to_binary /
+      // cta_response is set.
+      const attachedActivityId =
+        decision.action === 'attach'
+          ? (activityByConversation.get(decision.conversationId) ?? null)
+          : null
       let interactionId: number | null = null
       let interactionIsNew = false
       if (workerId != null) {
@@ -452,6 +744,7 @@ export async function POST(req: NextRequest) {
             .insert({
               worker_id: workerId,
               campaign_id: sendRow?.campaign_id ?? null,
+              activity_id: attachedActivityId,
               direction: 'inbound',
               phone_number: event.from.slice(0, PHONE_NUMBER_MAX),
               phone_e164: phone,

@@ -6,6 +6,11 @@
  * pill + typing-collision warning (warn, don't block), soft-claim
  * banner, and the reply composer with a live segment counter.
  *
+ * Phase 3 adds the context scope switcher (brief §7.3): This thread /
+ * This activity / This campaign / All history. Non-native scopes are
+ * read-only merges with provenance labels — the composer always sends
+ * to the current conversation.
+ *
  * Replies are never blackout-blocked and carry no compliance footer
  * (brief decision 6) — the typed body is sent as-is.
  */
@@ -31,9 +36,14 @@ import {
   useSendSmsReply,
   useSmsConversationClaim,
   useSmsConversationRealtime,
+  useSmsScopedMessages,
   type SmsConversationDetail,
 } from '@/lib/hooks/useSmsInbox'
-import type { SmsConversationNoteRow, SmsMessageRow } from '@/types/sms'
+import type {
+  SmsConversationNoteRow,
+  SmsMessageRow,
+  SmsThreadScope,
+} from '@/types/sms'
 import { CONVERSATION_STATE_COLORS, conversationTitle } from './sms-inbox-shared'
 
 type TimelineEntry =
@@ -64,21 +74,62 @@ export function SmsThreadView({
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [sending, setSending] = useState(false)
 
+  // Context scope (brief §7.3) — keyed by conversation so switching
+  // threads resets to the native view without an effect.
+  const [scopeState, setScopeState] = useState<{
+    conversationId: number
+    scope: SmsThreadScope
+  }>({ conversationId, scope: 'conversation' })
+  const scope: SmsThreadScope =
+    scopeState.conversationId === conversationId
+      ? scopeState.scope
+      : 'conversation'
+  const setScope = (next: SmsThreadScope) =>
+    setScopeState({ conversationId, scope: next })
+  const scoped = useSmsScopedMessages(conversationId, scope)
+
+  const scopeOptions = useMemo(() => {
+    const options: Array<{ value: SmsThreadScope; label: string }> = [
+      { value: 'conversation', label: 'This thread' },
+    ]
+    if (conversation.activity_id != null) {
+      options.push({ value: 'activity', label: 'This activity' })
+    }
+    if (conversation.worker && conversation.campaign_id != null) {
+      options.push({ value: 'campaign', label: 'This campaign' })
+    }
+    if (conversation.worker) {
+      options.push({ value: 'all', label: 'All history' })
+    }
+    return options
+  }, [conversation.activity_id, conversation.campaign_id, conversation.worker])
+
+  const scopeIsNative = scope === 'conversation'
+  const scopedMessages = scoped.data?.messages
+  const conversationLabels = scopeIsNative
+    ? undefined
+    : scoped.data?.conversation_labels
+
   const timeline = useMemo<TimelineEntry[]>(() => {
+    const displayMessages = scopeIsNative ? messages : (scopedMessages ?? [])
     const entries: TimelineEntry[] = [
-      ...messages.map((m) => ({
+      ...displayMessages.map((m) => ({
         kind: 'message' as const,
         at: m.created_at,
         message: m,
       })),
-      ...notes.map((n) => ({
-        kind: 'note' as const,
-        at: n.created_at,
-        note: n,
-      })),
+      // Internal notes belong to the native thread — merged scopes show
+      // message traffic only.
+      ...(scopeIsNative
+        ? notes.map((n) => ({
+            kind: 'note' as const,
+            at: n.created_at,
+            note: n,
+          }))
+        : []),
     ]
     return entries.sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
-  }, [messages, notes])
+  }, [messages, scopedMessages, notes, scopeIsNative])
 
   useEffect(() => {
     // Keep the newest message in view on load/update.
@@ -163,6 +214,28 @@ export function SmsThreadView({
         </Button>
       </div>
 
+      {/* Context scope switcher (brief §7.3). */}
+      {scopeOptions.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1 border-b px-3 py-1.5">
+          {scopeOptions.map((opt) => (
+            <Button
+              key={opt.value}
+              size="sm"
+              variant={scope === opt.value ? 'secondary' : 'ghost'}
+              className="h-6 px-2 text-[11px]"
+              onClick={() => setScope(opt.value)}
+            >
+              {opt.label}
+            </Button>
+          ))}
+          {!scopeIsNative && (
+            <span className="ml-auto text-[10px] text-muted-foreground">
+              Read-only view — replies still go to this thread.
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Advisory claim warning — never blocks. */}
       {!claim.claimed && claim.holderName && (
         <div className="flex items-center gap-2 border-b bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
@@ -174,11 +247,17 @@ export function SmsThreadView({
 
       {/* Timeline */}
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-        {timeline.length === 0 && (
+        {!scopeIsNative && scoped.isLoading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        ) : timeline.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            No messages yet.
+            {scope === 'activity'
+              ? 'No messages linked to this activity yet — new inbound replies on this thread are linked automatically.'
+              : 'No messages yet.'}
           </p>
-        )}
+        ) : null}
         {timeline.map((entry, i) => {
           const prev = timeline[i - 1]
           const showDay =
@@ -195,7 +274,17 @@ export function SmsThreadView({
                 </div>
               )}
               {entry.kind === 'message' ? (
-                <MessageBubble message={entry.message} userNames={user_names} />
+                <MessageBubble
+                  message={entry.message}
+                  userNames={user_names}
+                  provenance={
+                    conversationLabels &&
+                    entry.message.conversation_id !== conversationId
+                      ? (conversationLabels[entry.message.conversation_id] ??
+                        'Other conversation')
+                      : null
+                  }
+                />
               ) : (
                 <NoteBubble note={entry.note} userNames={user_names} />
               )}
@@ -254,9 +343,12 @@ export function SmsThreadView({
 function MessageBubble({
   message,
   userNames,
+  provenance = null,
 }: {
   message: SmsMessageRow
   userNames: Record<string, string>
+  /** Merged scopes: label of the originating conversation, if not this one. */
+  provenance?: string | null
 }) {
   const inbound = message.direction === 'inbound'
   const senderName = message.sender_user_id
@@ -271,6 +363,15 @@ function MessageBubble({
             : 'bg-primary text-primary-foreground'
         }`}
       >
+        {provenance && (
+          <span
+            className={`mb-0.5 block text-[10px] font-medium ${
+              inbound ? 'text-muted-foreground' : 'text-primary-foreground/70'
+            }`}
+          >
+            {provenance}
+          </span>
+        )}
         {message.body || <span className="italic opacity-70">(empty)</span>}
         <div
           className={`mt-1 flex items-center gap-1.5 text-[10px] ${

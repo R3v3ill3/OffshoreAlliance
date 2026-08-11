@@ -20,9 +20,12 @@ export async function GET(req: NextRequest) {
     const campaignRaw = req.nextUrl.searchParams.get('campaign_id')
     const campaignId = campaignRaw ? parseInt(campaignRaw, 10) : null
 
+    // select('*') rather than an explicit column list so the route keeps
+    // working before AND after the 20260811100000 migration adds
+    // outcome_value (rows simply lack the key pre-apply).
     let query = supabase
       .from('sms_canned_replies')
-      .select('reply_id, campaign_id, title, body, is_active, created_by, created_at, updated_at')
+      .select('*')
       .eq('is_active', true)
       .order('campaign_id', { ascending: true, nullsFirst: true })
       .order('title', { ascending: true })
@@ -52,12 +55,20 @@ export async function POST(req: NextRequest) {
       title?: string
       body?: string
       campaign_id?: number | null
+      outcome_value?: string | null
     }
     const title = payload.title?.trim()
     const body = payload.body?.trim()
     if (!title || !body) {
       return NextResponse.json(
         { error: 'Title and body are required' },
+        { status: 400 },
+      )
+    }
+    const outcomeValue = payload.outcome_value?.trim() || null
+    if (outcomeValue && outcomeValue.length > 30) {
+      return NextResponse.json(
+        { error: 'outcome_value is too long (max 30 characters)' },
         { status: 400 },
       )
     }
@@ -69,6 +80,9 @@ export async function POST(req: NextRequest) {
         body,
         campaign_id: payload.campaign_id ?? null,
         created_by: user.id,
+        // Only sent when set, so plain canned-reply creation still works
+        // before the 20260811100000 migration adds the column.
+        ...(outcomeValue ? { outcome_value: outcomeValue } : {}),
       })
       .select('*')
       .single()

@@ -1,11 +1,13 @@
 'use client'
 
 /**
- * Member sidebar (brief §7.3): profile summary, opt-out status with a
- * one-click staff opt-out, canned-reply picker (+ minimal create),
- * notes composer, assign / escalate / close / attach-campaign controls.
- * Rating/assessment capture is deliberately a placeholder — that lands
- * in Phase 3.
+ * Member sidebar (brief §7.3): profile summary, rating/assessment
+ * capture through the existing record_assessment_event pipeline
+ * (Phase 3 — SmsAssessmentPanel), opt-out status with a one-click
+ * staff opt-out, canned-reply picker (+ minimal create, optionally
+ * tagged with an outcome_value for the Spoke scripted-answer gesture),
+ * notes composer, assign / escalate / close / attach controls
+ * (campaign and, once campaign-scoped, activity).
  *
  * Rendered inline on xl+ desktops and inside a bottom Sheet on smaller
  * screens (the parent decides).
@@ -37,6 +39,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { toDisplay } from '@/lib/phone/normalise-phone'
+import { VOTE_SUPPORTER_OPTIONS } from '@/lib/campaign/constants'
 import {
   useAddSmsNote,
   useCreateCannedReply,
@@ -44,9 +47,12 @@ import {
   useSmsConversationAction,
   type SmsConversationDetail,
 } from '@/lib/hooks/useSmsInbox'
+import { SmsAssessmentPanel } from './SmsAssessmentPanel'
 import { conversationTitle } from './sms-inbox-shared'
 
 const UNASSIGNED = '__unassigned__'
+const NO_ACTIVITY = '__none__'
+const NO_OUTCOME = '__none__'
 
 interface SmsMemberSidebarProps {
   detail: SmsConversationDetail
@@ -69,6 +75,7 @@ export function SmsMemberSidebar({
   const { data: cannedReplies } = useSmsCannedReplies(conversation.campaign_id)
   const [noteBody, setNoteBody] = useState('')
   const [cannedTitle, setCannedTitle] = useState('')
+  const [cannedOutcome, setCannedOutcome] = useState<string>(NO_OUTCOME)
   const [optOutPending, setOptOutPending] = useState(false)
 
   const { data: staff } = useQuery({
@@ -97,6 +104,39 @@ export function SmsMemberSidebar({
     },
     enabled: conversation.campaign_id == null,
   })
+
+  // Campaign activities for the attach-to-activity select (Phase 3)
+  // and the canned-reply outcome options.
+  const { data: campaignActivities } = useQuery({
+    queryKey: ['sms-campaign-activity-options', conversation.campaign_id],
+    queryFn: async () => {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('campaign_activities')
+        .select('activity_id, title, activity_kind, is_binary')
+        .eq('campaign_id', conversation.campaign_id as number)
+        .order('title', { ascending: true })
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: conversation.campaign_id != null,
+  })
+
+  const attachedActivity =
+    (campaignActivities ?? []).find(
+      (a) => a.activity_id === conversation.activity_id,
+    ) ?? null
+  // Outcome tags a canned reply can carry (Spoke scripted answers):
+  // binary options for binary assessments, '1'..'5' otherwise.
+  const outcomeOptions =
+    conversation.activity_id == null
+      ? []
+      : attachedActivity?.is_binary
+        ? VOTE_SUPPORTER_OPTIONS.map((o) => ({ value: o.value, label: o.label }))
+        : ['1', '2', '3', '4', '5'].map((v) => ({
+            value: v,
+            label: `Rating ${v}`,
+          }))
 
   const runAction = (
     input: Parameters<typeof action.mutate>[0],
@@ -152,10 +192,21 @@ export function SmsMemberSidebar({
         </div>
       </div>
 
-      {/* Rating placeholder (Phase 3). */}
-      <div className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
-        Ratings &amp; assessments land in Phase 3.
-      </div>
+      {/* Rating / assessment capture (Phase 3) — writes through
+          record_assessment_event(source 'sms'). */}
+      {worker && conversation.campaign_id != null ? (
+        <SmsAssessmentPanel
+          conversation={conversation}
+          cannedReplies={cannedReplies ?? []}
+          onInsertCanned={onInsertCanned}
+        />
+      ) : (
+        <div className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+          {worker
+            ? 'Attach this conversation to a campaign to record ratings & assessments.'
+            : 'Match this conversation to a worker to record ratings & assessments.'}
+        </div>
+      )}
 
       {/* Opt-out */}
       {worker && (
@@ -303,6 +354,42 @@ export function SmsMemberSidebar({
           </div>
         )}
 
+        {conversation.campaign_id != null && (
+          <div className="space-y-1">
+            <Label className="text-xs">Attached activity</Label>
+            <Select
+              value={
+                conversation.activity_id != null
+                  ? String(conversation.activity_id)
+                  : NO_ACTIVITY
+              }
+              onValueChange={(v) =>
+                runAction(
+                  {
+                    action: 'attach',
+                    activity_id: v === NO_ACTIVITY ? null : Number(v),
+                  },
+                  v === NO_ACTIVITY
+                    ? 'Activity detached'
+                    : 'Conversation attached to activity',
+                )
+              }
+            >
+              <SelectTrigger className="h-8 w-full text-xs">
+                <SelectValue placeholder="Attach to an activity…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_ACTIVITY}>No activity</SelectItem>
+                {(campaignActivities ?? []).map((a) => (
+                  <SelectItem key={a.activity_id} value={String(a.activity_id)}>
+                    {a.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         {conversation.state === 'closed' ? (
           <Button
             variant="outline"
@@ -370,10 +457,13 @@ export function SmsMemberSidebar({
                   title: cannedTitle.trim(),
                   body: draft.trim(),
                   campaign_id: conversation.campaign_id,
+                  outcome_value:
+                    cannedOutcome === NO_OUTCOME ? null : cannedOutcome,
                 },
                 {
                   onSuccess: () => {
                     setCannedTitle('')
+                    setCannedOutcome(NO_OUTCOME)
                     toast.success('Canned reply saved')
                   },
                   onError: (err: Error) => toast.error(err.message),
@@ -384,6 +474,29 @@ export function SmsMemberSidebar({
             <MessageSquarePlus className="h-3 w-3" />
           </Button>
         </div>
+        {outcomeOptions.length > 0 && (
+          <div className="space-y-1">
+            <Select value={cannedOutcome} onValueChange={setCannedOutcome}>
+              <SelectTrigger className="h-7 w-full text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_OUTCOME}>
+                  No outcome link (plain reply)
+                </SelectItem>
+                {outcomeOptions.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    Follows outcome: {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[10px] text-muted-foreground">
+              Tagged replies auto-load into the composer when that outcome
+              is recorded from the quick-capture buttons.
+            </p>
+          </div>
+        )}
       </div>
 
       <Separator />

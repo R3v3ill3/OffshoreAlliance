@@ -3,13 +3,16 @@
 /**
  * TanStack Query hooks for the SMS survey module (Phase 4 + lifecycle).
  */
+import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchApi } from '@/lib/api/fetch-api'
+import { createClient } from '@/lib/supabase/client'
 import type {
   SmsBallotDetail,
   SmsSurveyPauseMode,
   SmsSurveyQuestionRow,
   SmsSurveyRow,
+  VwSmsSurveyAnswerDistributionRow,
   VwSmsSurveyFunnelRow,
   VwSmsSurveyQuestionStatsRow,
 } from '@/types/sms'
@@ -119,6 +122,134 @@ export function useSmsSurveyDetail(
     },
     enabled: !!campaignId && surveyId != null,
   })
+}
+
+export type SmsSurveyReportQuestion = Pick<
+  SmsSurveyQuestionRow,
+  'question_id' | 'survey_id' | 'sort_order' | 'prompt' | 'qtype' | 'options'
+>
+
+export interface SmsSurveyReport {
+  survey: Pick<
+    SmsSurveyRow,
+    | 'survey_id'
+    | 'campaign_id'
+    | 'title'
+    | 'purpose'
+    | 'status'
+    | 'is_test'
+    | 'results_restricted'
+    | 'opened_at'
+    | 'closed_at'
+  >
+  questions: SmsSurveyReportQuestion[]
+  funnel: VwSmsSurveyFunnelRow | null
+  question_stats: VwSmsSurveyQuestionStatsRow[]
+  distribution: VwSmsSurveyAnswerDistributionRow[]
+  generated_at: string
+}
+
+export function smsSurveyReportKey(
+  campaignId: number | string,
+  surveyId: number | null,
+) {
+  return ['sms-survey-report', String(campaignId), surveyId] as const
+}
+
+/**
+ * Aggregate feed behind the visual report. Polls while the survey can
+ * still take answers: that is the floor under the Realtime
+ * subscription below (a silent no-op if the survey tables never made
+ * it into the publication), and it also catches cron-driven changes —
+ * invitations, reminders, TTL expiry — that arrive with nobody
+ * replying. Closed surveys settle and stop polling.
+ */
+export function useSmsSurveyReport(
+  campaignId: number | string,
+  surveyId: number | null,
+  opts?: { pollMs?: number },
+) {
+  const pollMs = opts?.pollMs ?? 20_000
+  return useQuery({
+    queryKey: smsSurveyReportKey(campaignId, surveyId),
+    queryFn: async () => {
+      const res = await fetchApi(
+        `/api/campaigns/${campaignId}/sms-surveys/${surveyId}/report`,
+      )
+      if (!res.ok) throw await toError(res, 'Failed to fetch survey report')
+      return res.json() as Promise<SmsSurveyReport>
+    },
+    enabled: !!campaignId && surveyId != null,
+    refetchInterval: (query) => {
+      const status = query.state.data?.survey.status
+      return status === 'open' || status === 'paused' ? pollMs : false
+    },
+  })
+}
+
+/**
+ * Realtime refresh for the visual report: sessions carry survey_id so
+ * they filter server-side; answers do not, so they are filtered here
+ * against the survey's question ids. Both are debounced into one
+ * invalidation — a burst of inbound replies should repaint once.
+ */
+export function useSmsSurveyReportRealtime(
+  campaignId: number | string,
+  surveyId: number | null,
+  questionIds: number[],
+  enabled = true,
+) {
+  const queryClient = useQueryClient()
+  const questionKey = questionIds.join(',')
+
+  useEffect(() => {
+    if (!enabled || surveyId == null) return
+    const ownQuestions = new Set(
+      questionKey ? questionKey.split(',').map(Number) : [],
+    )
+    const supabase = createClient()
+    let debounce: ReturnType<typeof setTimeout> | null = null
+
+    const scheduleRefresh = () => {
+      if (debounce) return
+      debounce = setTimeout(() => {
+        debounce = null
+        queryClient.invalidateQueries({
+          queryKey: smsSurveyReportKey(campaignId, surveyId),
+        })
+      }, 600)
+    }
+
+    const channel = supabase
+      .channel(`sms-survey-report:${surveyId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'sms_survey_sessions',
+          filter: `survey_id=eq.${surveyId}`,
+        },
+        scheduleRefresh,
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sms_survey_answers' },
+        (payload) => {
+          const row = (payload.new ?? payload.old) as
+            | { question_id?: number }
+            | null
+          const qid = row?.question_id
+          if (qid != null && ownQuestions.has(qid)) scheduleRefresh()
+        },
+      )
+      .subscribe()
+
+    return () => {
+      if (debounce) clearTimeout(debounce)
+      void supabase.removeChannel(channel)
+    }
+  }, [campaignId, surveyId, questionKey, enabled, queryClient])
 }
 
 export function useCreateSmsSurvey(campaignId: number | string) {

@@ -52,6 +52,7 @@ import {
   Loader2,
   Lock,
   Pause,
+  PieChart,
   Play,
   Plus,
   Rocket,
@@ -90,6 +91,7 @@ import {
   type SurveyEditorValue,
 } from '@/components/sms/surveys/SmsSurveyEditor'
 import { SmsSurveyFlowChart } from '@/components/sms/surveys/SmsSurveyFlowChart'
+import { SmsSurveyReportDashboard } from '@/components/sms/surveys/SmsSurveyReportDashboard'
 import { AudiencePicker, type AudienceValue } from '@/components/audience/AudiencePicker'
 import { toApiAudience } from '@/lib/sms/audience-helpers'
 
@@ -1121,6 +1123,7 @@ function FunnelDetail({
   const [pauseMode, setPauseMode] = useState<SmsSurveyPauseMode>('soft')
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState('')
+  const [reportOpen, setReportOpen] = useState(false)
 
   const busy = action.isPending || del.isPending
 
@@ -1225,8 +1228,18 @@ function FunnelDetail({
             never answers, so they stay available for restricted
             ballots. */}
         <div className="space-y-2">
-          {!restricted && (
-            <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* Aggregate-only — safe for restricted ballots, which
+                get the same completed-sessions tally as the table. */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setReportOpen(true)}
+            >
+              <PieChart className="h-3 w-3 mr-1" />
+              Visual report
+            </Button>
+            {!restricted && (
               <Button asChild variant="outline" size="sm">
                 <a
                   href={`/api/campaigns/${campaignId}/sms-surveys/${detail.survey.survey_id}/export`}
@@ -1236,8 +1249,8 @@ function FunnelDetail({
                   Export answers CSV
                 </a>
               </Button>
-            </div>
-          )}
+            )}
+          </div>
           <SurveyCohortButtons
             campaignId={campaignId}
             surveyId={detail.survey.survey_id}
@@ -1372,6 +1385,39 @@ function FunnelDetail({
           )}
         </div>
       </div>
+
+      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+        <DialogContent className="max-h-[90vh] w-[95vw] max-w-6xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 flex-wrap">
+              {detail.survey.title}
+              <Badge variant="secondary" className={STATUS_COLORS[status] || ''}>
+                {status}
+              </Badge>
+              {isTest && (
+                <Badge
+                  variant="secondary"
+                  className="bg-violet-100 text-violet-800"
+                >
+                  Test
+                </Badge>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {isBallot
+                ? 'Completed votes only — an abandoned half-vote is not a vote.'
+                : 'Every answer counts, including sessions still in progress.'}{' '}
+              Updates live while the survey is open.
+            </DialogDescription>
+          </DialogHeader>
+          {reportOpen && (
+            <SmsSurveyReportDashboard
+              campaignId={campaignId}
+              surveyId={detail.survey.survey_id}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={pauseOpen} onOpenChange={setPauseOpen}>
         <DialogContent>

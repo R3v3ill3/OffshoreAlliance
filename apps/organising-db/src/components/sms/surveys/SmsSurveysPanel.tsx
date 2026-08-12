@@ -906,10 +906,29 @@ function DraftDetail({
             if (res.opted_out) notes.push(`${res.opted_out} opted out`)
             if (res.skipped_no_phone)
               notes.push(`${res.skipped_no_phone} without a mobile`)
+            const sent = res.invitations_sent ?? 0
+            const remaining = res.invitations_remaining_queued ?? 0
+            let sendNote: string
+            if (res.invitations_deferred_blackout) {
+              sendNote =
+                'Invitations are queued until the next send window (09:00–20:00).'
+            } else if (sent > 0 && remaining === 0) {
+              sendNote = `${sent} invitation${sent === 1 ? '' : 's'} sent now.`
+            } else if (sent > 0 && remaining > 0) {
+              sendNote = `${sent} invitation${sent === 1 ? '' : 's'} sent now; ${remaining} still queued for the next cron tick.`
+            } else if (remaining > 0) {
+              sendNote =
+                `${remaining} invitation${remaining === 1 ? '' : 's'} still queued` +
+                (res.invitation_errors?.length
+                  ? ` — ${res.invitation_errors[0]}`
+                  : '; cron will retry.')
+            } else {
+              sendNote = 'No invitations were sendable.'
+            }
             toast.success(
-              `Survey opened — ${res.sessions_created} invitations queued${
-                notes.length ? ` (${notes.join(', ')} excluded)` : ''
-              }. Sending starts within 10 minutes, inside the send window.`,
+              `Survey opened — ${res.sessions_created} recipient${
+                res.sessions_created === 1 ? '' : 's'
+              }${notes.length ? ` (${notes.join(', ')} excluded)` : ''}. ${sendNote}`,
             )
             setPreview(null)
           },
@@ -1168,9 +1187,9 @@ function FunnelDetail({
           )}
         </SheetTitle>
         <SheetDescription>
-          {funnel?.total_sessions ?? 0} recipients — invitations go out inside
-          the send window; stalled sessions get one nudge and up to two
-          reminders before expiring.
+          {funnel?.total_sessions ?? 0} recipients — invitations send on open
+          (inside the send window); stalled sessions get one nudge and up to
+          two reminders before expiring.
         </SheetDescription>
       </SheetHeader>
       <div className="mt-4 space-y-4 pb-8">

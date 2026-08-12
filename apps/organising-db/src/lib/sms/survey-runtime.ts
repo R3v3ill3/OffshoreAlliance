@@ -1,7 +1,8 @@
 /**
  * Server-side survey session runtime (brief §4.1) — the I/O layer
  * around the pure engine in `survey-engine.ts`. Shared by the webhook
- * inbound leg (answer processing) and the timers cron (invitations,
+ * inbound leg (answer processing), survey open (immediate invitations
+ * via `survey-invitation-dispatch`), and the timers cron (invitations,
  * nudges, reminders, TTL expiry).
  *
  * Everything here runs on the SERVICE-ROLE client: sms_survey_sessions

@@ -247,6 +247,12 @@ export function useSmsSurveyAction(campaignId: number | string) {
         is_test?: boolean
         status?: string
         pause_mode?: SmsSurveyPauseMode
+        invitations_sent?: number
+        invitations_remaining_queued?: number
+        invitations_deferred_blackout?: boolean
+        invitations_deferred_live_phone?: number
+        invitations_undeliverable?: number
+        invitation_errors?: string[]
       }>
     },
     onSuccess: (_data, vars) => {

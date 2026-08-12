@@ -110,7 +110,7 @@ export function scaleRange(
 export type ParseResult =
   | { kind: "parsed"; value: string }
   | { kind: "invalid" }
-  /** Long free-text on a non-open question: capture verbatim, surface to a human, no retry burnt. */
+  /** Long free-text on a non-open question: capture verbatim, surface to a human, no retry burnt (runtime still sends a re-prompt so the member is not left hanging). */
   | { kind: "freetext_on_choice" };
 
 /** ≥3 words or >60 chars of unmatched text reads as a real message, not a failed menu pick. */

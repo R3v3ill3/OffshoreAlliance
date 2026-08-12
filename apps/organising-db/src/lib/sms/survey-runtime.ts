@@ -955,25 +955,35 @@ export async function processSurveyInbound(
   }
 
   if (parsed.kind === "freetext_on_choice") {
-    // Capture verbatim, surface to a human, burn NO retry, send no
-    // auto-reply (brief §4.1) — the session stays live so a proper
-    // follow-up answer still advances it. The free-text IS the
-    // member's first engagement, so it stamps first_answer_at
-    // (started_count must not undercount these).
+    // Capture verbatim and surface to a human WITHOUT burning a retry
+    // (brief §4.1). Still send the first-level re-prompt so the member
+    // is not left hanging — long prose on a choice/yes_no/scale
+    // question used to stall the survey with no reply. Session stays
+    // live so a proper follow-up answer still advances it. The free-
+    // text IS the member's first engagement, so it stamps
+    // first_answer_at (started_count must not undercount these).
     await upsertAnswer(
       existingAnswer?.parsed_value ?? null,
       existingAnswer?.invalid_attempts ?? 0,
     );
-    await updateSession({
+    const stillLive = await updateSession({
       first_answer_at: session.first_answer_at ?? receivedAt,
     });
     await surfaceConversation();
+    // Always offer the first-level guide copy here, even when
+    // retry_limit is 0 (that limit only governs the short-invalid
+    // ladder → handoff path; free-text must not silent-stall).
+    const guide = retryLadder(currentQuestion, 0, Math.max(survey.retry_limit, 1));
+    if (stillLive && guide.kind === "reprompt") {
+      await sendReply(guide.body, "reprompt");
+    }
     return {
       handled: true,
       response: {
         ok: true,
         survey_session_id: session.session_id,
         freetext_captured: true,
+        reprompted: guide.kind === "reprompt",
       },
     };
   }

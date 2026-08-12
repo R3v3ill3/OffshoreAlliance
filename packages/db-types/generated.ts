@@ -14727,6 +14727,7 @@ export type Database = {
       sms_list_items: {
         Row: {
           claimed_at: string | null
+          conversation_id: number | null
           created_at: string
           delivered_at: string | null
           failure_reason: string | null
@@ -14743,6 +14744,7 @@ export type Database = {
         }
         Insert: {
           claimed_at?: string | null
+          conversation_id?: number | null
           created_at?: string
           delivered_at?: string | null
           failure_reason?: string | null
@@ -14759,6 +14761,7 @@ export type Database = {
         }
         Update: {
           claimed_at?: string | null
+          conversation_id?: number | null
           created_at?: string
           delivered_at?: string | null
           failure_reason?: string | null
@@ -14774,6 +14777,13 @@ export type Database = {
           worker_id?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "sms_list_items_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "sms_conversations"
+            referencedColumns: ["conversation_id"]
+          },
           {
             foreignKeyName: "sms_list_items_list_id_fkey"
             columns: ["list_id"]
@@ -14823,6 +14833,7 @@ export type Database = {
           draft_id: number | null
           failed_items: number
           list_id: number
+          mode: string
           name: string
           scheduled_for: string | null
           sender_number_id: number | null
@@ -14844,6 +14855,7 @@ export type Database = {
           draft_id?: number | null
           failed_items?: number
           list_id?: number
+          mode?: string
           name: string
           scheduled_for?: string | null
           sender_number_id?: number | null
@@ -14865,6 +14877,7 @@ export type Database = {
           draft_id?: number | null
           failed_items?: number
           list_id?: number
+          mode?: string
           name?: string
           scheduled_for?: string | null
           sender_number_id?: number | null
@@ -15553,6 +15566,49 @@ export type Database = {
           },
         ]
       }
+      sms_survey_definition_versions: {
+        Row: {
+          created_at: string
+          questions: Json
+          survey_id: number
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          questions: Json
+          survey_id: number
+          version: number
+        }
+        Update: {
+          created_at?: string
+          questions?: Json
+          survey_id?: number
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_survey_definition_versions_survey_id_fkey"
+            columns: ["survey_id"]
+            isOneToOne: false
+            referencedRelation: "sms_surveys"
+            referencedColumns: ["survey_id"]
+          },
+          {
+            foreignKeyName: "sms_survey_definition_versions_survey_id_fkey"
+            columns: ["survey_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_ballot_tally"
+            referencedColumns: ["survey_id"]
+          },
+          {
+            foreignKeyName: "sms_survey_definition_versions_survey_id_fkey"
+            columns: ["survey_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_survey_funnel"
+            referencedColumns: ["survey_id"]
+          },
+        ]
+      }
       sms_survey_questions: {
         Row: {
           activity_id: number | null
@@ -15564,6 +15620,7 @@ export type Database = {
           prompt: string
           qtype: string
           question_id: number
+          retired_at: string | null
           sort_order: number
           survey_id: number
           updated_at: string
@@ -15579,6 +15636,7 @@ export type Database = {
           prompt: string
           qtype: string
           question_id?: number
+          retired_at?: string | null
           sort_order?: number
           survey_id: number
           updated_at?: string
@@ -15594,6 +15652,7 @@ export type Database = {
           prompt?: string
           qtype?: string
           question_id?: number
+          retired_at?: string | null
           sort_order?: number
           survey_id?: number
           updated_at?: string
@@ -15767,6 +15826,7 @@ export type Database = {
       sms_surveys: {
         Row: {
           activity_id: number | null
+          archived_at: string | null
           blackout_override: boolean
           blackout_override_reason: string | null
           campaign_id: number
@@ -15776,7 +15836,10 @@ export type Database = {
           created_by: string | null
           handoff_escalate_to: string | null
           invitation_body: string | null
+          is_test: boolean
           opened_at: string | null
+          pause_mode: string | null
+          paused_at: string | null
           purpose: string
           question_timeout_minutes: number
           receipt_salt: string
@@ -15796,6 +15859,7 @@ export type Database = {
         }
         Insert: {
           activity_id?: number | null
+          archived_at?: string | null
           blackout_override?: boolean
           blackout_override_reason?: string | null
           campaign_id: number
@@ -15805,7 +15869,10 @@ export type Database = {
           created_by?: string | null
           handoff_escalate_to?: string | null
           invitation_body?: string | null
+          is_test?: boolean
           opened_at?: string | null
+          pause_mode?: string | null
+          paused_at?: string | null
           purpose?: string
           question_timeout_minutes?: number
           receipt_salt?: string
@@ -15825,6 +15892,7 @@ export type Database = {
         }
         Update: {
           activity_id?: number | null
+          archived_at?: string | null
           blackout_override?: boolean
           blackout_override_reason?: string | null
           campaign_id?: number
@@ -15834,7 +15902,10 @@ export type Database = {
           created_by?: string | null
           handoff_escalate_to?: string | null
           invitation_body?: string | null
+          is_test?: boolean
           opened_at?: string | null
+          pause_mode?: string | null
+          paused_at?: string | null
           purpose?: string
           question_timeout_minutes?: number
           receipt_salt?: string
@@ -23200,6 +23271,7 @@ export type Database = {
           list_id: number | null
           list_name: string | null
           list_status: string | null
+          mode: string | null
           opted_out_count: number | null
           pending_count: number | null
           queued_count: number | null

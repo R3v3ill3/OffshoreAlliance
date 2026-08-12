@@ -351,7 +351,7 @@ function detailToEditorValue(detail: SmsSurveyDetail): SurveyEditorValue {
     purpose: s.purpose ?? 'survey',
     revote_policy: s.revote_policy ?? 'locked',
     results_restricted: !!s.results_restricted,
-    activity_id: s.activity_id,
+    activity_id: null,
     sender_number_id: s.sender_number_id,
     invitation_body: s.invitation_body ?? '',
     completion_body: s.completion_body ?? '',
@@ -460,12 +460,16 @@ function SurveyEditorSheet({
       const supabase = createClient()
       const { data, error } = await supabase
         .from('campaign_activities')
-        .select('activity_id, title')
+        .select('activity_id, title, is_binary')
         .eq('campaign_id', Number(campaignId))
         .eq('activity_kind', 'assessment')
         .order('title')
       if (error) throw error
-      return data ?? []
+      return (data ?? []).map((a) => ({
+        activity_id: a.activity_id as number,
+        title: a.title as string,
+        is_binary: !!a.is_binary,
+      }))
     },
     enabled: open,
   })
@@ -517,7 +521,7 @@ function SurveyEditorSheet({
     purpose: value.purpose,
     revote_policy: value.revote_policy,
     results_restricted: value.results_restricted,
-    activity_id: value.activity_id,
+    activity_id: null,
     sender_number_id: value.sender_number_id,
     invitation_body: value.invitation_body,
     completion_body: value.completion_body || null,

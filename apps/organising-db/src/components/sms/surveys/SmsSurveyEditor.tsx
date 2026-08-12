@@ -5,9 +5,9 @@
  * with optional per-answer branch overrides — not a flow canvas).
  *
  * - Per-question type editors (choice options with value/label/
- *   synonyms, scale min/max, yes/no, open text), per-answer branch
- *   selects (→ later question or End), write-rating toggle when the
- *   survey has an activity target, invalid/nudge copy overrides.
+ *   synonyms / assessment maps, scale min/max, yes/no, open text),
+ *   per-answer branch selects (→ later question or End), per-question
+ *   assessment target + response→rating mapping, invalid/nudge copy.
  * - Invitation body with compliance validation (org name required;
  *   opt-out optional) and a segment counter over the COMBINED
  *   invitation + question 1 message (they go out as one send).
@@ -40,11 +40,16 @@ import {
 } from '@/lib/sms/survey-engine'
 import { useSmsSenders } from '@/lib/hooks/useSmsBroadcast'
 import {
+  assessmentLinkError,
+} from '@/lib/sms/assessment-mapping'
+import {
   BALLOT_COMPLIANCE_BANNER,
   BALLOT_INDICATIVE_SENTENCE,
   invitationMentionsIndicative,
   type SurveyQuestionInput,
 } from '@/lib/sms/survey-validation'
+import { VOTE_SUPPORTER_OPTIONS } from '@/lib/campaign/constants'
+import { RATING_LEVELS } from '@/types/planner-types'
 import type {
   SmsBallotRevotePolicy,
   SmsSurveyChoiceOption,
@@ -54,16 +59,24 @@ import type {
   SmsSurveyScaleRange,
 } from '@/types/sms'
 
+export type SurveyEditorChoiceOption = {
+  value: string
+  label: string
+  synonyms: string
+  maps_to_rating: number | null
+  maps_to_binary: string | null
+}
+
 export interface SurveyEditorQuestion {
   prompt: string
   qtype: SmsSurveyQuestionType
-  choiceOptions: Array<{ value: string; label: string; synonyms: string }>
+  choiceOptions: SurveyEditorChoiceOption[]
   scaleMin: number
   scaleMax: number
   /** parsed value → question index | 'end' | undefined (= next in order). */
   branching: Record<string, number | 'end'>
   write_rating: boolean
-  /** Phase 8: per-question override of the survey's ratings target. NULL = fall back to the survey target. */
+  /** Per-question assessment activity (survey-level target retired). */
   activity_id: number | null
   invalid_prompt: string
   nudge_text: string
@@ -103,8 +116,20 @@ export const EMPTY_SURVEY_QUESTION: SurveyEditorQuestion = {
   prompt: '',
   qtype: 'yes_no',
   choiceOptions: [
-    { value: 'yes', label: 'Yes', synonyms: '' },
-    { value: 'no', label: 'No', synonyms: '' },
+    {
+      value: 'yes',
+      label: 'Yes',
+      synonyms: '',
+      maps_to_rating: null,
+      maps_to_binary: null,
+    },
+    {
+      value: 'no',
+      label: 'No',
+      synonyms: '',
+      maps_to_rating: null,
+      maps_to_binary: null,
+    },
   ],
   scaleMin: 1,
   scaleMax: 5,
@@ -153,6 +178,8 @@ export function toQuestionInputs(
                 .split(',')
                 .map((s) => s.trim())
                 .filter(Boolean),
+              maps_to_rating: o.maps_to_rating,
+              maps_to_binary: o.maps_to_binary,
             }))
         : q.qtype === 'scale'
           ? { min: q.scaleMin, max: q.scaleMax }
@@ -195,6 +222,10 @@ export function fromQuestionRows(
               value: o.value,
               label: o.label ?? o.value,
               synonyms: (o.synonyms ?? []).join(', '),
+              maps_to_rating:
+                typeof o.maps_to_rating === 'number' ? o.maps_to_rating : null,
+              maps_to_binary:
+                typeof o.maps_to_binary === 'string' ? o.maps_to_binary : null,
             }))
           : EMPTY_SURVEY_QUESTION.choiceOptions.map((o) => ({ ...o })),
       scaleMin: scale.min ?? 1,
@@ -226,6 +257,8 @@ function toPreviewRow(
             .map((o) => ({
               value: o.value.trim(),
               label: o.label.trim() || o.value.trim(),
+              maps_to_rating: o.maps_to_rating,
+              maps_to_binary: o.maps_to_binary,
             }))
         : q.qtype === 'scale'
           ? { min: q.scaleMin, max: q.scaleMax }
@@ -244,6 +277,7 @@ function toPreviewRow(
 interface ActivityOption {
   activity_id: number
   title: string
+  is_binary: boolean
 }
 
 interface SmsSurveyEditorProps {
@@ -276,10 +310,9 @@ export function SmsSurveyEditor({
   onSelectQuestion,
 }: SmsSurveyEditorProps) {
   const { data: senders } = useSmsSenders()
-  // 'survey' targets the survey-level activity_id; a number targets that
-  // question's per-question override. null = dialog closed.
+  /** Question index to attach a newly created assessment to; null = closed. */
   const [createAssessmentTarget, setCreateAssessmentTarget] = useState<
-    'survey' | number | null
+    number | null
   >(null)
   const questionRefs = useRef<Array<HTMLDivElement | null>>([])
 
@@ -515,44 +548,6 @@ export function SmsSurveyEditor({
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <Label>Ratings target (assessment activity)</Label>
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              className="h-auto p-0 text-xs"
-              disabled={disabled}
-              onClick={() => setCreateAssessmentTarget('survey')}
-            >
-              + New assessment
-            </Button>
-          </div>
-          <Select
-            value={value.activity_id != null ? String(value.activity_id) : 'none'}
-            disabled={disabled}
-            onValueChange={(v) =>
-              patch({ activity_id: v === 'none' ? null : Number(v) })
-            }
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="None" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">None — answers only</SelectItem>
-              {activities.map((a) => (
-                <SelectItem key={a.activity_id} value={String(a.activity_id)}>
-                  {a.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            Marked questions write member ratings through the existing SMS
-            pipeline.
-          </p>
-        </div>
       </div>
 
       <div className="space-y-1.5">
@@ -694,12 +689,16 @@ export function SmsSurveyEditor({
               <Select
                 value={q.qtype}
                 disabled={disabled}
-                onValueChange={(v) =>
+                onValueChange={(v) => {
+                  const qtype = v as SmsSurveyQuestionType
                   patchQuestion(i, {
-                    qtype: v as SmsSurveyQuestionType,
+                    qtype,
                     branching: {},
+                    ...(qtype === 'open_text'
+                      ? { activity_id: null, write_rating: false }
+                      : {}),
                   })
-                }
+                }}
               >
                 <SelectTrigger className="w-40 h-8">
                   <SelectValue />
@@ -808,14 +807,20 @@ export function SmsSurveyEditor({
                   size="sm"
                   variant="outline"
                   disabled={disabled}
-                  onClick={() =>
-                    patchQuestion(i, {
-                      choiceOptions: [
-                        ...q.choiceOptions,
-                        { value: '', label: '', synonyms: '' },
-                      ],
-                    })
-                  }
+                      onClick={() =>
+                        patchQuestion(i, {
+                          choiceOptions: [
+                            ...q.choiceOptions,
+                            {
+                              value: '',
+                              label: '',
+                              synonyms: '',
+                              maps_to_rating: null,
+                              maps_to_binary: null,
+                            },
+                          ],
+                        })
+                      }
                 >
                   <Plus className="h-3 w-3 mr-1" />
                   Option
@@ -903,26 +908,10 @@ export function SmsSurveyEditor({
               </div>
             )}
 
-            {value.activity_id != null && q.qtype !== 'open_text' && (
-              <div className="flex items-center gap-2">
-                <Switch
-                  id={`wr-${i}`}
-                  checked={q.write_rating}
-                  disabled={disabled}
-                  onCheckedChange={(checked) =>
-                    patchQuestion(i, { write_rating: checked })
-                  }
-                />
-                <Label htmlFor={`wr-${i}`} className="text-xs">
-                  Write answer to the ratings target
-                </Label>
-              </div>
-            )}
-
-            {value.activity_id != null && q.qtype !== 'open_text' && q.write_rating && (
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs">Write to</Label>
+            {q.qtype !== 'open_text' && (
+              <div className="space-y-2 rounded-md border bg-muted/30 p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs">Assessment (optional)</Label>
                   <Button
                     type="button"
                     variant="link"
@@ -935,27 +924,175 @@ export function SmsSurveyEditor({
                   </Button>
                 </div>
                 <Select
-                  value={q.activity_id != null ? String(q.activity_id) : 'survey'}
-                  disabled={disabled}
-                  onValueChange={(v) =>
-                    patchQuestion(i, { activity_id: v === 'survey' ? null : Number(v) })
+                  value={
+                    q.activity_id != null ? String(q.activity_id) : 'none'
                   }
+                  disabled={disabled}
+                  onValueChange={(v) => {
+                    if (v === 'none') {
+                      patchQuestion(i, {
+                        activity_id: null,
+                        write_rating: false,
+                      })
+                      return
+                    }
+                    patchQuestion(i, {
+                      activity_id: Number(v),
+                      write_rating: true,
+                    })
+                  }}
                 >
                   <SelectTrigger className="h-8 w-full">
-                    <SelectValue />
+                    <SelectValue placeholder="None — answers only" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="survey">Survey target</SelectItem>
+                    <SelectItem value="none">None — answers only</SelectItem>
                     {activities.map((a) => (
-                      <SelectItem key={a.activity_id} value={String(a.activity_id)}>
+                      <SelectItem
+                        key={a.activity_id}
+                        value={String(a.activity_id)}
+                      >
                         {a.title}
+                        {a.is_binary ? ' (binary)' : ' (1–5 scale)'}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">
-                  Overrides the survey&apos;s ratings target for this question only.
-                </p>
+
+                {(() => {
+                  if (q.activity_id == null) return null
+                  const activity = activities.find(
+                    (a) => a.activity_id === q.activity_id,
+                  )
+                  if (!activity) {
+                    return (
+                      <p className="text-xs text-amber-700">
+                        Linked assessment is missing from this campaign.
+                      </p>
+                    )
+                  }
+                  const linkErr = assessmentLinkError(
+                    q.qtype,
+                    activity.is_binary,
+                    'This question',
+                  )
+                  if (linkErr) {
+                    return (
+                      <p className="text-xs text-destructive">{linkErr}</p>
+                    )
+                  }
+                  if (q.qtype === 'yes_no' && activity.is_binary) {
+                    return (
+                      <p className="text-xs text-muted-foreground">
+                        Maps to Yes / No on the binary assessment automatically.
+                      </p>
+                    )
+                  }
+                  if (q.qtype === 'scale' && !activity.is_binary) {
+                    const rangeOk = q.scaleMin === 1 && q.scaleMax === 5
+                    return (
+                      <p
+                        className={cn(
+                          'text-xs',
+                          rangeOk
+                            ? 'text-muted-foreground'
+                            : 'text-destructive',
+                        )}
+                      >
+                        {rangeOk
+                          ? 'Scale answers (1–5) write straight onto the rating ladder.'
+                          : 'Scale must be exactly 1–5 to write to this assessment.'}
+                      </p>
+                    )
+                  }
+                  if (q.qtype === 'choice') {
+                    return (
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-medium text-muted-foreground">
+                          Map each option to{' '}
+                          {activity.is_binary
+                            ? 'a binary outcome'
+                            : 'a 1–5 rating'}{' '}
+                          (or Don&apos;t write)
+                        </p>
+                        {q.choiceOptions.map((o, oi) => (
+                          <div
+                            key={oi}
+                            className="flex items-center gap-1.5"
+                          >
+                            <span
+                              className="text-xs w-28 truncate shrink-0"
+                              title={o.label || o.value}
+                            >
+                              {o.label || o.value || `Option ${oi + 1}`}
+                            </span>
+                            <Select
+                              value={
+                                activity.is_binary
+                                  ? o.maps_to_binary ?? 'skip'
+                                  : o.maps_to_rating != null
+                                    ? String(o.maps_to_rating)
+                                    : 'skip'
+                              }
+                              disabled={disabled}
+                              onValueChange={(sel) => {
+                                const choiceOptions = q.choiceOptions.map(
+                                  (x, xi) => {
+                                    if (xi !== oi) return x
+                                    if (activity.is_binary) {
+                                      return {
+                                        ...x,
+                                        maps_to_binary:
+                                          sel === 'skip' ? null : sel,
+                                        maps_to_rating: null,
+                                      }
+                                    }
+                                    return {
+                                      ...x,
+                                      maps_to_rating:
+                                        sel === 'skip' ? null : Number(sel),
+                                      maps_to_binary: null,
+                                    }
+                                  },
+                                )
+                                patchQuestion(i, { choiceOptions })
+                              }}
+                            >
+                              <SelectTrigger className="h-8 flex-1">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="skip">
+                                  Don&apos;t write
+                                </SelectItem>
+                                {activity.is_binary
+                                  ? VOTE_SUPPORTER_OPTIONS.map((opt) => (
+                                      <SelectItem
+                                        key={opt.value}
+                                        value={opt.value}
+                                      >
+                                        {opt.label}
+                                      </SelectItem>
+                                    ))
+                                  : RATING_LEVELS.filter(
+                                      (lvl) => lvl.value >= 1 && lvl.value <= 5,
+                                    ).map((lvl) => (
+                                      <SelectItem
+                                        key={lvl.value}
+                                        value={String(lvl.value)}
+                                      >
+                                        {lvl.value} — {lvl.label}
+                                      </SelectItem>
+                                    ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  }
+                  return null
+                })()}
               </div>
             )}
           </div>
@@ -1048,10 +1185,11 @@ export function SmsSurveyEditor({
       }}
       lockKind="assessment"
       onCreated={(activityId) => {
-        if (createAssessmentTarget === 'survey') {
-          patch({ activity_id: activityId })
-        } else if (typeof createAssessmentTarget === 'number') {
-          patchQuestion(createAssessmentTarget, { activity_id: activityId })
+        if (typeof createAssessmentTarget === 'number') {
+          patchQuestion(createAssessmentTarget, {
+            activity_id: activityId,
+            write_rating: true,
+          })
         }
         onActivityCreated?.(activityId)
         setCreateAssessmentTarget(null)

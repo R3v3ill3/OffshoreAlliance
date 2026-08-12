@@ -16,6 +16,7 @@ import { createClient } from '@/lib/supabase/server'
 import { errorResponse } from '@/lib/api/error-response'
 import { checkRateLimit } from '@/lib/rate-limit-middleware'
 import { isValidTimeZone } from '@/lib/sms/blackout'
+import { validateSurveyAssessmentMappings } from '@/lib/sms/assessment-mapping'
 import {
   validateSurveyQuestions,
   validateSurveySettings,
@@ -167,9 +168,8 @@ export async function POST(
       }
     }
 
-    // Phase 8: per-question activity targets must also live in this
-    // campaign — one batched lookup over the distinct question-level
-    // ids, mirroring the survey-level check above.
+    // Per-question activity targets must live in this campaign and be
+    // compatible with each question's type / option maps.
     const questionActivityIds = [
       ...new Set(
         (body.questions ?? [])
@@ -177,16 +177,19 @@ export async function POST(
           .filter((id): id is number => id != null),
       ),
     ]
+    let questionActivities: { activity_id: number; is_binary: boolean }[] = []
     if (questionActivityIds.length > 0) {
       const { data: activities } = await supabase
         .from('campaign_activities')
-        .select('activity_id, campaign_id')
+        .select('activity_id, campaign_id, is_binary')
         .in('activity_id', questionActivityIds)
-      const validIds = new Set(
-        (activities ?? [])
-          .filter((a) => a.campaign_id === cid)
-          .map((a) => a.activity_id),
-      )
+      questionActivities = (activities ?? [])
+        .filter((a) => a.campaign_id === cid)
+        .map((a) => ({
+          activity_id: a.activity_id as number,
+          is_binary: !!a.is_binary,
+        }))
+      const validIds = new Set(questionActivities.map((a) => a.activity_id))
       const invalidIndex = (body.questions ?? []).findIndex(
         (q) => q.activity_id != null && !validIds.has(q.activity_id),
       )
@@ -197,12 +200,20 @@ export async function POST(
         )
       }
     }
+    const mappingErrors = validateSurveyAssessmentMappings(
+      body.questions ?? [],
+      questionActivities,
+    )
+    if (mappingErrors.length > 0) {
+      return NextResponse.json({ error: mappingErrors.join(' ') }, { status: 400 })
+    }
 
     const { data: survey, error: surveyErr } = await supabase
       .from('sms_surveys')
       .insert({
         campaign_id: cid,
-        activity_id: body.activity_id ?? null,
+        // Survey-level ratings target retired — always null; per-question only.
+        activity_id: null,
         source_worker_list_id: body.source_worker_list_id ?? null,
         title: body.title.trim(),
         // Phase 5: ballots ride the same table — purpose plus the

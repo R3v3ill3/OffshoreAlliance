@@ -20,6 +20,7 @@ import { errorResponse } from '@/lib/api/error-response'
 import { checkRateLimit } from '@/lib/rate-limit-middleware'
 import { isValidTimeZone } from '@/lib/sms/blackout'
 import { computeBallotReceipt } from '@/lib/sms/ballot'
+import { validateSurveyAssessmentMappings } from '@/lib/sms/assessment-mapping'
 import {
   validateSurveyQuestions,
   validateSurveySettings,
@@ -271,7 +272,8 @@ function buildSurveyUpdate(body: PatchSurveyBody): Record<string, unknown> {
   if (body.results_restricted !== undefined) {
     update.results_restricted = !!body.results_restricted
   }
-  if (body.activity_id !== undefined) update.activity_id = body.activity_id
+  // Survey-level ratings target retired — clear if the client still sends it.
+  if (body.activity_id !== undefined) update.activity_id = null
   if (body.source_worker_list_id !== undefined) {
     update.source_worker_list_id = body.source_worker_list_id
   }
@@ -397,16 +399,19 @@ export async function PATCH(
             .filter((id): id is number => id != null),
         ),
       ]
+      let questionActivities: { activity_id: number; is_binary: boolean }[] = []
       if (questionActivityIds.length > 0) {
         const { data: activities } = await supabase
           .from('campaign_activities')
-          .select('activity_id, campaign_id')
+          .select('activity_id, campaign_id, is_binary')
           .in('activity_id', questionActivityIds)
-        const validIds = new Set(
-          (activities ?? [])
-            .filter((a) => a.campaign_id === ids.cid)
-            .map((a) => a.activity_id),
-        )
+        questionActivities = (activities ?? [])
+          .filter((a) => a.campaign_id === ids.cid)
+          .map((a) => ({
+            activity_id: a.activity_id as number,
+            is_binary: !!a.is_binary,
+          }))
+        const validIds = new Set(questionActivities.map((a) => a.activity_id))
         const invalidIndex = body.questions.findIndex(
           (q) => q.activity_id != null && !validIds.has(q.activity_id),
         )
@@ -416,6 +421,16 @@ export async function PATCH(
             { status: 400 },
           )
         }
+      }
+      const mappingErrors = validateSurveyAssessmentMappings(
+        body.questions,
+        questionActivities,
+      )
+      if (mappingErrors.length > 0) {
+        return NextResponse.json(
+          { error: mappingErrors.join(' ') },
+          { status: 400 },
+        )
       }
     }
 

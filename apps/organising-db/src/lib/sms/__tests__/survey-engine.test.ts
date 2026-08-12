@@ -371,29 +371,78 @@ describe("rendering", () => {
 });
 
 describe("outcomeMapping", () => {
-  it("scale 1-5 maps to a rating", () => {
-    expect(outcomeMapping(SCALE, "3")).toEqual({ rating: 3, binary: null });
+  it("scale 1-5 maps to a rating on scale assessments", () => {
+    expect(outcomeMapping(SCALE, "3", { isBinary: false })).toEqual({
+      rating: 3,
+      binary: null,
+    });
   });
   it("scale outside 1-5 maps to nothing (no bogus rating)", () => {
     const zeroTen = q({ qtype: "scale", options: { min: 0, max: 10 } });
-    expect(outcomeMapping(zeroTen, "8")).toEqual({ rating: null, binary: null });
-    expect(outcomeMapping(zeroTen, "0")).toEqual({ rating: null, binary: null });
-    expect(outcomeMapping(zeroTen, "4")).toEqual({ rating: 4, binary: null });
+    expect(outcomeMapping(zeroTen, "8", { isBinary: false })).toEqual({
+      rating: null,
+      binary: null,
+    });
+    expect(outcomeMapping(zeroTen, "0", { isBinary: false })).toEqual({
+      rating: null,
+      binary: null,
+    });
+    expect(outcomeMapping(zeroTen, "4", { isBinary: false })).toEqual({
+      rating: 4,
+      binary: null,
+    });
   });
-  it("yes_no maps to binary", () => {
-    expect(outcomeMapping(YES_NO, "yes")).toEqual({ rating: null, binary: "yes" });
-    expect(outcomeMapping(YES_NO, "no")).toEqual({ rating: null, binary: "no" });
+  it("yes_no maps to binary only on binary assessments", () => {
+    expect(outcomeMapping(YES_NO, "yes", { isBinary: true })).toEqual({
+      rating: null,
+      binary: "yes",
+    });
+    expect(outcomeMapping(YES_NO, "no", { isBinary: true })).toEqual({
+      rating: null,
+      binary: "no",
+    });
+    expect(outcomeMapping(YES_NO, "yes", { isBinary: false })).toEqual({
+      rating: null,
+      binary: null,
+    });
   });
-  it("numeric choice values 1-5 map to a rating; others to binary", () => {
-    expect(outcomeMapping(CHOICE, "2")).toEqual({ rating: 2, binary: null });
-    expect(outcomeMapping(CHOICE, "attending")).toEqual({ rating: null, binary: "attending" });
+  it("choice uses explicit option maps only (no digit heuristic)", () => {
+    const mapped = q({
+      qtype: "choice",
+      options: [
+        { value: "attending", label: "Attending", maps_to_rating: 5 },
+        { value: "maybe", label: "Maybe", maps_to_binary: "unsure" },
+        { value: "no", label: "No", maps_to_rating: null, maps_to_binary: null },
+      ],
+    });
+    expect(outcomeMapping(mapped, "attending", { isBinary: false })).toEqual({
+      rating: 5,
+      binary: null,
+    });
+    expect(outcomeMapping(mapped, "maybe", { isBinary: true })).toEqual({
+      rating: null,
+      binary: "unsure",
+    });
+    expect(outcomeMapping(mapped, "no", { isBinary: true })).toEqual({
+      rating: null,
+      binary: null,
+    });
+    // Unmapped digit value — no longer treated as a rating.
+    expect(outcomeMapping(CHOICE, "2", { isBinary: false })).toEqual({
+      rating: null,
+      binary: null,
+    });
   });
-  it("binary values are clamped to 30 chars (VARCHAR(30))", () => {
-    const long = "x".repeat(40);
-    const mapped = outcomeMapping(CHOICE, long);
-    expect(mapped.binary).toHaveLength(30);
+  it("mismatched method writes nothing", () => {
+    expect(outcomeMapping(SCALE, "3", { isBinary: true })).toEqual({
+      rating: null,
+      binary: null,
+    });
   });
   it("open_text never maps", () => {
-    expect(outcomeMapping(OPEN, "anything at all")).toEqual({ rating: null, binary: null });
+    expect(outcomeMapping(OPEN, "anything at all")).toEqual({
+      rating: null,
+      binary: null,
+    });
   });
 });

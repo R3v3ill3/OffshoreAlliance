@@ -11,7 +11,7 @@ import type {
 } from "@/types/sms";
 import type { SurveyQuestionInput } from "@/lib/sms/survey-validation";
 
-export const BINARY_ASSESSMENT_VALUES = new Set(
+export const BINARY_ASSESSMENT_VALUES: ReadonlySet<string> = new Set(
   VOTE_SUPPORTER_OPTIONS.map((o) => o.value),
 );
 

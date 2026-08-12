@@ -231,7 +231,17 @@ export function validateSurveyQuestions(
     }
     if (q.activity_id != null && !q.write_rating) {
       errors.push(
-        `${label}: a ratings target requires "write answer to the ratings target" to be on.`,
+        `${label}: linking an assessment requires write_rating to be on.`,
+      );
+    }
+    if (q.write_rating && (q.activity_id == null || q.activity_id === undefined)) {
+      errors.push(
+        `${label}: write_rating requires a per-question assessment activity.`,
+      );
+    }
+    if (q.qtype === "open_text" && q.activity_id != null) {
+      errors.push(
+        `${label}: open-text questions cannot write to an assessment.`,
       );
     }
     if (q.branching) {

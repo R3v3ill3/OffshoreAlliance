@@ -13,6 +13,7 @@
  * the heart of Phase 4.
  */
 
+import { normaliseOptionMaps } from "@/lib/sms/assessment-mapping";
 import type {
   SmsSurveyQuestionRow,
   SmsSurveyChoiceOption,
@@ -76,13 +77,23 @@ export function choiceOptions(
       (o): o is Record<string, unknown> =>
         !!o && typeof o === "object" && typeof (o as { value?: unknown }).value === "string",
     )
-    .map((o) => ({
-      value: o.value as string,
-      label: typeof o.label === "string" ? o.label : (o.value as string),
-      synonyms: Array.isArray(o.synonyms)
-        ? (o.synonyms as unknown[]).filter((s): s is string => typeof s === "string")
-        : [],
-    }));
+    .map((o) => {
+      const maps = normaliseOptionMaps({
+        maps_to_rating:
+          typeof o.maps_to_rating === "number" ? o.maps_to_rating : null,
+        maps_to_binary:
+          typeof o.maps_to_binary === "string" ? o.maps_to_binary : null,
+      });
+      return {
+        value: o.value as string,
+        label: typeof o.label === "string" ? o.label : (o.value as string),
+        synonyms: Array.isArray(o.synonyms)
+          ? (o.synonyms as unknown[]).filter((s): s is string => typeof s === "string")
+          : [],
+        maps_to_rating: maps.maps_to_rating,
+        maps_to_binary: maps.maps_to_binary,
+      };
+    });
 }
 
 export function scaleRange(
@@ -357,33 +368,61 @@ export interface OutcomeMapping {
 
 /**
  * How a parsed answer maps onto the existing sms_interactions →
- * trg_sms_to_rating pipeline (brief §5.1):
- *   scale 1–5 (or a numeric choice value 1–5) → maps_to_rating,
- *   yes_no / other choice values → maps_to_binary (VARCHAR(30)),
- *   open_text and out-of-range scales → no mapping (no rating).
+ * trg_sms_to_rating pipeline (brief §5.1), method-aware:
+ *   yes_no → binary assessment only (yes|no),
+ *   scale 1–5 → scale assessment only,
+ *   choice → explicit per-option maps_to_rating / maps_to_binary
+ *            (no digit/heuristic fallback),
+ *   mismatched method or unmapped choice option → no write.
  */
 export function outcomeMapping(
-  question: Pick<SmsSurveyQuestionRow, "qtype">,
+  question: Pick<SmsSurveyQuestionRow, "qtype" | "options">,
   parsedValue: string,
+  opts?: { isBinary?: boolean | null },
 ): OutcomeMapping {
   const none: OutcomeMapping = { rating: null, binary: null };
+  const isBinary = opts?.isBinary;
+
   switch (question.qtype) {
     case "open_text":
       return none;
     case "yes_no":
-      return { rating: null, binary: parsedValue };
+      if (isBinary === false) return none;
+      return { rating: null, binary: parsedValue.slice(0, BINARY_VALUE_MAX) };
     case "scale": {
+      if (isBinary === true) return none;
       const n = Number(parsedValue);
       return Number.isInteger(n) && n >= 1 && n <= 5
         ? { rating: n, binary: null }
         : none;
     }
     case "choice": {
-      if (/^\d+$/.test(parsedValue)) {
-        const n = Number(parsedValue);
-        if (n >= 1 && n <= 5) return { rating: n, binary: null };
+      const opt = choiceOptions(question).find((o) => o.value === parsedValue);
+      if (!opt) return none;
+      if (isBinary === true) {
+        return opt.maps_to_binary
+          ? {
+              rating: null,
+              binary: opt.maps_to_binary.slice(0, BINARY_VALUE_MAX),
+            }
+          : none;
       }
-      return { rating: null, binary: parsedValue.slice(0, BINARY_VALUE_MAX) };
+      if (isBinary === false) {
+        return typeof opt.maps_to_rating === "number"
+          ? { rating: opt.maps_to_rating, binary: null }
+          : none;
+      }
+      // Method unknown — honour whichever explicit map is set.
+      if (typeof opt.maps_to_rating === "number") {
+        return { rating: opt.maps_to_rating, binary: null };
+      }
+      if (opt.maps_to_binary) {
+        return {
+          rating: null,
+          binary: opt.maps_to_binary.slice(0, BINARY_VALUE_MAX),
+        };
+      }
+      return none;
     }
     default:
       return none;

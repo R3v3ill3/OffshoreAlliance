@@ -657,8 +657,22 @@ export async function processSurveyInbound(
     parsed.kind === "parsed" &&
     currentQuestion.write_rating &&
     targetActivityId != null;
+  let targetIsBinary: boolean | null = null;
+  if (isRatingAnswer && targetActivityId != null) {
+    const { data: targetAct } = await db
+      .from("campaign_activities")
+      .select("is_binary")
+      .eq("activity_id", targetActivityId)
+      .maybeSingle();
+    targetIsBinary =
+      typeof targetAct?.is_binary === "boolean" ? targetAct.is_binary : null;
+  }
   const mapping = isRatingAnswer
-    ? outcomeMapping(currentQuestion, parsed.kind === "parsed" ? parsed.value : "")
+    ? outcomeMapping(
+        currentQuestion,
+        parsed.kind === "parsed" ? parsed.value : "",
+        { isBinary: targetIsBinary },
+      )
     : { rating: null, binary: null };
   const hasMapping = mapping.rating != null || mapping.binary != null;
 

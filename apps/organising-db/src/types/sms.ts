@@ -276,6 +276,16 @@ export interface SmsSurveyChoiceOption {
   value: string;
   label: string;
   synonyms?: string[];
+  /**
+   * Explicit write to a 1–5 scale assessment when this option is chosen.
+   * null / omitted = don’t write a rating for this option.
+   */
+  maps_to_rating?: number | null;
+  /**
+   * Explicit write to a binary assessment (yes|no|unsure|abstain).
+   * null / omitted = don’t write a binary value for this option.
+   */
+  maps_to_binary?: string | null;
 }
 
 export interface SmsSurveyScaleRange {

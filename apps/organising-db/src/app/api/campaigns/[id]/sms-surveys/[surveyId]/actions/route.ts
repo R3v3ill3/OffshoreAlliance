@@ -418,7 +418,7 @@ export async function POST(
         .from('sms_surveys')
         .insert({
           campaign_id: cid,
-          activity_id: survey.activity_id,
+          activity_id: null,
           source_worker_list_id: survey.source_worker_list_id,
           title: launchTitleFrom(survey.title),
           purpose: survey.purpose,

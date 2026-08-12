@@ -244,12 +244,15 @@ export class MobileMessageProvider implements SmsProvider {
 
     switch (payload.type) {
       case "inbound":
+        // Mobile Message's inbound webhook uses `sender` (member MSISDN),
+        // not `from`. Accept both so sandbox/docs variants still parse.
         return {
           type: "inbound",
-          from: str("from") ?? "",
+          from: str("from") ?? str("sender") ?? "",
           to: str("to") ?? "",
           body: str("message") ?? str("body") ?? "",
-          providerMessageId: str("message_id"),
+          providerMessageId:
+            str("message_id") ?? str("inbound_message_id") ?? null,
           originalMessageId: str("original_message_id"),
           originalCustomRef: str("original_custom_ref"),
           receivedAt: str("received_at") ?? str("timestamp"),
@@ -257,7 +260,7 @@ export class MobileMessageProvider implements SmsProvider {
       case "unsubscribe":
         return {
           type: "unsubscribe",
-          from: str("from") ?? str("number") ?? "",
+          from: str("from") ?? str("sender") ?? str("number") ?? "",
           to: str("to") ?? "",
           providerMessageId: str("message_id"),
           receivedAt: str("received_at") ?? str("timestamp"),

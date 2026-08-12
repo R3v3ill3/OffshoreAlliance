@@ -8,9 +8,10 @@
  *           optional). Freezes the audience into 'queued'
  *           sms_survey_sessions (opt-out / no-phone workers screened out
  *           and reported, never sessioned); snapshots the live question
- *           definition; the timers cron dispatches invitations on its next
- *           tick, respecting the blackout window and the
- *           one-live-session-per-phone rule.
+ *           definition; then immediately dispatches invitations (same
+ *           path as the timers cron), respecting the blackout window
+ *           and the one-live-session-per-phone rule. Any leftover
+ *           queued sessions are drained by the cron on later ticks.
  * close   — open|paused → closed; clears pause fields; queued + live
  *           sessions → 'expired' (the webhook also expires stragglers).
  * pause   — open → paused with soft|hard pause_mode.
@@ -33,6 +34,8 @@ import {
   type SurveyQuestionInput,
 } from '@/lib/sms/survey-validation'
 import { LIVE_SESSION_STATES, recordBallotEvents } from '@/lib/sms/survey-runtime'
+import { dispatchSurveyInvitations } from '@/lib/sms/survey-invitation-dispatch'
+import { getSmsProvider } from '@/lib/sms/provider'
 import { snapshotSurveyVersion, loadLiveQuestions } from '@/lib/sms/survey-versions'
 import {
   isWithinSendWindow,
@@ -41,6 +44,12 @@ import {
 } from '@/lib/sms/blackout'
 import { insertSurveyQuestions } from '@/lib/sms/survey-authoring'
 import type { SmsSurveyPauseMode, SmsSurveyQuestionRow, SmsSurveyRow } from '@/types/sms'
+
+/** Open may send up to OPEN_INVITE_SEND_CAP invitations inline. */
+export const maxDuration = 60
+
+/** Cap immediate invitation sends on open; remainder drains via cron. */
+const OPEN_INVITE_SEND_CAP = 200
 
 /** PostgREST caps responses at 1000 rows — page source reads. */
 const PAGE_SIZE = 1000
@@ -612,12 +621,13 @@ export async function POST(
         created += inserted?.length ?? 0
       }
 
+      const openedAt = new Date().toISOString()
+
       // Ballot roll freeze (§4.2 "roll first"): the eligibility roll is
       // EXACTLY the invited audience (post consent/phone screening — the
       // same rows that became queued sessions). Turnout reports against
       // this snapshot.
       if (survey.purpose === 'indicative_ballot') {
-        const openedAt = new Date().toISOString()
         for (let i = 0; i < sessionRows.length; i += 500) {
           const { error: rollErr } = await admin.from('sms_ballot_roll').upsert(
             sessionRows.slice(i, i + 500).map((s) => ({
@@ -659,18 +669,60 @@ export async function POST(
       // staff UPDATE policy is draft-only post-Phase 5).
       const { error: openErr } = await admin
         .from('sms_surveys')
-        .update({ status: 'open', opened_at: new Date().toISOString() })
+        .update({ status: 'open', opened_at: openedAt })
         .eq('survey_id', sid)
         .eq('status', 'draft')
       if (openErr) throw openErr
 
       await snapshotSurveyVersion(admin, sid, survey.version)
 
+      // Immediate invitation dispatch — same helper as the timers cron.
+      // Outside the send window (without override) sessions stay queued
+      // for the next cron tick inside the window.
+      const openSurvey: SmsSurveyRow = {
+        ...survey,
+        status: 'open',
+        opened_at: openedAt,
+      }
+      let inviteDispatch: Awaited<ReturnType<typeof dispatchSurveyInvitations>>
+      try {
+        inviteDispatch = await dispatchSurveyInvitations(
+          admin,
+          await getSmsProvider(),
+          { survey: openSurvey, limit: OPEN_INVITE_SEND_CAP },
+        )
+      } catch (err) {
+        // Survey is already open with queued sessions — surface the
+        // dispatch failure but do not roll back the open.
+        console.error('POST sms-survey open: invitation dispatch failed:', err)
+        inviteDispatch = {
+          invited: 0,
+          deferred_live_phone: 0,
+          deferred_blackout: false,
+          noncompliant: false,
+          opted_out: 0,
+          undeliverable: 0,
+          budget_used: 0,
+          remaining_queued: created,
+          errors: [
+            err instanceof Error
+              ? err.message
+              : 'Invitation dispatch failed — cron will retry',
+          ],
+        }
+      }
+
       return NextResponse.json({
         ok: true,
         sessions_created: created,
         opted_out: optedOut,
         skipped_no_phone: noPhone,
+        invitations_sent: inviteDispatch.invited,
+        invitations_remaining_queued: inviteDispatch.remaining_queued,
+        invitations_deferred_blackout: inviteDispatch.deferred_blackout,
+        invitations_deferred_live_phone: inviteDispatch.deferred_live_phone,
+        invitations_undeliverable: inviteDispatch.undeliverable,
+        invitation_errors: inviteDispatch.errors,
       })
     }
 

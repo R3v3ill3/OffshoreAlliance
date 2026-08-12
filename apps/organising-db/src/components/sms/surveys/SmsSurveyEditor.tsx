@@ -642,7 +642,7 @@ export function SmsSurveyEditor({
             />
             <p className="flex items-start gap-1 text-xs text-amber-700">
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-              Messages will send around the clock once queued.
+              Messages will send on open (and around the clock thereafter).
             </p>
           </div>
         )}

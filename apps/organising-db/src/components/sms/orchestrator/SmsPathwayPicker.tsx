@@ -2,10 +2,8 @@
 
 /**
  * SmsPathwayPicker — Blast / Chat / Survey (brief §B/§A decision 3),
- * structurally cloned from PathwayPicker.tsx. Chat renders but is
- * disabled ("Coming in a later release") and cannot be selected by
- * click, Enter, Space or Tab — the picker's onNext can never receive
- * 'chat'.
+ * structurally cloned from PathwayPicker.tsx. All three pathways are
+ * selectable; Chat routes to the P2P chat board (Chats tab).
  */
 
 import { CheckCircle2, ClipboardList, MessagesSquare, Send } from 'lucide-react'
@@ -34,12 +32,11 @@ const OPTIONS: Option[] = [
   },
   {
     value: 'chat',
-    icon: <MessagesSquare className="h-8 w-8 text-muted-foreground" />,
+    icon: <MessagesSquare className="h-8 w-8 text-emerald-500" />,
     headline: 'Peer-to-peer chat',
-    subtitle: 'Coming in a later release',
+    subtitle: 'Chat board',
     explanation:
-      'Work many 1:1 conversations from one board, with a pinned assessment. Not available yet — use Blast or Survey for now.',
-    disabled: true,
+      'Load a working list, then pick people (5–10 at a time) and fire personalised openers. Replies land in the Inbox as 1:1 threads.',
   },
   {
     value: 'survey',
@@ -143,7 +140,7 @@ export function SmsPathwayPicker({
         <Button variant="outline" onClick={onCancel} disabled={isSubmitting}>
           Cancel
         </Button>
-        <Button onClick={onNext} disabled={!value || value === 'chat' || isSubmitting}>
+        <Button onClick={onNext} disabled={!value || isSubmitting}>
           {isSubmitting ? 'Saving…' : nextLabel}
         </Button>
       </div>

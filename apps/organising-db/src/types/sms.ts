@@ -616,3 +616,79 @@ export interface VwSmsCampaignSummaryRow {
   blocked_count: number;
   delivery_rate_pct: number;
 }
+
+// ─── P2P chat boards (20260812140000) ───────────────────────────────
+
+/**
+ * sms_lists.mode: 'blast' = cron-drained broadcast, 'p2p' = chat-board
+ * working list (progressive per-selection sends; never queued/sending).
+ */
+export type SmsListMode = "blast" | "p2p";
+
+/**
+ * vw_sms_campaign_summary after 20260812140000 appends the trailing
+ * `mode` column. Optional until the migration is applied everywhere —
+ * consumers treat a missing mode as 'blast'.
+ */
+export interface VwSmsCampaignSummaryRowWithMode
+  extends VwSmsCampaignSummaryRow {
+  mode?: SmsListMode;
+}
+
+/** Board row DTO from GET /api/campaigns/[id]/sms-lists/[listId]/p2p. */
+export interface SmsP2pBoardItem {
+  item_id: number;
+  worker_id: number;
+  worker_name: string;
+  first_name: string;
+  last_name: string;
+  occupation: string | null;
+  employer_name: string | null;
+  phone_e164: string | null;
+  sort_order: number;
+  status: SmsListItemStatus;
+  failure_reason: string | null;
+  sent_at: string | null;
+  sms_opt_out: boolean;
+  conversation_id: number | null;
+  conversation_state: SmsConversationState | null;
+  unread_count: number;
+}
+
+/** Payload of GET /api/campaigns/[id]/sms-lists/[listId]/p2p. */
+export interface SmsP2pBoardPayload {
+  list: {
+    list_id: number;
+    campaign_id: number;
+    name: string;
+    status: SmsListStatus;
+    mode: SmsListMode;
+    sender_number_id: number | null;
+    sender_phone_e164: string | null;
+    sender_label: string | null;
+    timezone: string;
+    created_at: string;
+  };
+  draft: { draft_id: number; body: string } | null;
+  items: SmsP2pBoardItem[];
+  /** Campaign merge-field base context for client-side previews. */
+  merge_context: Record<string, string | undefined>;
+}
+
+/** Per-item outcome from POST .../p2p-send. */
+export interface SmsP2pSendResultItem {
+  item_id: number;
+  status: "sent" | "failed" | "blocked" | "opted_out" | "skipped";
+  conversation_id: number | null;
+  error: string | null;
+}
+
+export interface SmsP2pSendResponse {
+  ok: true;
+  sent: number;
+  failed: number;
+  blocked: number;
+  opted_out: number;
+  skipped: number;
+  results: SmsP2pSendResultItem[];
+}

@@ -44,22 +44,39 @@ describe("resolveSmsPathwayTarget", () => {
     });
   });
 
-  it("chat is always unavailable with a cohort", () => {
+  it("chat with a cohort navigates to the chats tab with chat_source_list", () => {
     const target = resolveSmsPathwayTarget({
       pathway: "chat",
       campaignId: 12,
       workerListId: 34,
     });
-    expect(target.kind).toBe("unavailable");
+    expect(target).toEqual({
+      kind: "navigate",
+      href: "/campaigns/12?tab=outreach&sub=sms&sms_view=chats&chat_source_list=34",
+    });
   });
 
-  it("chat is always unavailable without a cohort (regression guard: never routes at the inbox)", () => {
+  it("chat without a cohort navigates to the chats tab with new_chat=1", () => {
     const target = resolveSmsPathwayTarget({
       pathway: "chat",
       campaignId: 12,
       workerListId: null,
     });
-    expect(target.kind).toBe("unavailable");
+    expect(target).toEqual({
+      kind: "navigate",
+      href: "/campaigns/12?tab=outreach&sub=sms&sms_view=chats&new_chat=1",
+    });
+  });
+
+  it("chat never fires at pick time — it only navigates (no writes)", () => {
+    for (const workerListId of [null, 34]) {
+      const target = resolveSmsPathwayTarget({
+        pathway: "chat",
+        campaignId: 12,
+        workerListId,
+      });
+      expect(target.kind).toBe("navigate");
+    }
   });
 
   it("every navigate href carries tab=outreach&sub=sms", () => {
@@ -67,6 +84,8 @@ describe("resolveSmsPathwayTarget", () => {
       resolveSmsPathwayTarget({ pathway: "blast", campaignId: 1, workerListId: null }),
       resolveSmsPathwayTarget({ pathway: "survey", campaignId: 1, workerListId: null }),
       resolveSmsPathwayTarget({ pathway: "survey", campaignId: 1, workerListId: 2 }),
+      resolveSmsPathwayTarget({ pathway: "chat", campaignId: 1, workerListId: null }),
+      resolveSmsPathwayTarget({ pathway: "chat", campaignId: 1, workerListId: 2 }),
     ];
     for (const t of targets) {
       if (t.kind === "navigate") {

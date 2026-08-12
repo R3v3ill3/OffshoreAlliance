@@ -12,7 +12,13 @@
  */
 import { useMemo, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { ArrowUpRight, Inbox, Loader2, Search } from 'lucide-react'
+import {
+  ArrowUpRight,
+  Inbox,
+  Loader2,
+  MessageSquarePlus,
+  Search,
+} from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,6 +36,7 @@ import {
 } from '@/lib/hooks/useSmsInbox'
 import { SmsThreadView } from './SmsThreadView'
 import { SmsMemberSidebar } from './SmsMemberSidebar'
+import { SmsNewChatDialog } from './SmsNewChatDialog'
 import { CONVERSATION_STATE_COLORS, conversationTitle } from './sms-inbox-shared'
 
 const TABS: Array<{ value: SmsInboxTab; label: string }> = [
@@ -44,18 +51,33 @@ const TABS: Array<{ value: SmsInboxTab; label: string }> = [
 interface SmsInboxPanelProps {
   /** When set, the queue defaults to this campaign with an "all" toggle. */
   campaignId?: string | number
+  /**
+   * Deep-link (?conversation=<id>): auto-open this thread on mount,
+   * on the 'all' tab so the thread is present whatever its state or
+   * assignment. Read once as initial state — later prop changes never
+   * yank the organiser out of another thread.
+   */
+  initialConversationId?: number | null
 }
 
-export function SmsInboxPanel({ campaignId }: SmsInboxPanelProps) {
+export function SmsInboxPanel({
+  campaignId,
+  initialConversationId,
+}: SmsInboxPanelProps) {
   const cid = campaignId != null ? Number(campaignId) : null
-  const [tab, setTab] = useState<SmsInboxTab>('needs_response')
+  const [tab, setTab] = useState<SmsInboxTab>(
+    initialConversationId != null ? 'all' : 'needs_response',
+  )
   const [scope, setScope] = useState<'campaign' | 'all'>(
     cid != null ? 'campaign' : 'all',
   )
   const [search, setSearch] = useState('')
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [selectedId, setSelectedId] = useState<number | null>(
+    initialConversationId ?? null,
+  )
   const [draft, setDraft] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [newChatOpen, setNewChatOpen] = useState(false)
 
   const filters = useMemo(
     () => ({
@@ -83,14 +105,26 @@ export function SmsInboxPanel({ campaignId }: SmsInboxPanelProps) {
         }`}
       >
         <div className="space-y-2 border-b p-2">
-          <div className="relative">
-            <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              className="h-8 pl-7 text-xs"
-              placeholder="Search name or phone…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+          <div className="flex items-center gap-1.5">
+            <div className="relative flex-1">
+              <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                className="h-8 pl-7 text-xs"
+                placeholder="Search name or phone…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 px-2 text-xs"
+              title="Start a 1:1 chat with a member"
+              onClick={() => setNewChatOpen(true)}
+            >
+              <MessageSquarePlus className="mr-1 h-3.5 w-3.5" />
+              New chat
+            </Button>
           </div>
           <div className="flex flex-wrap gap-1">
             {TABS.map((t) => (
@@ -206,6 +240,16 @@ export function SmsInboxPanel({ campaignId }: SmsInboxPanelProps) {
           )}
         </SheetContent>
       </Sheet>
+
+      <SmsNewChatDialog
+        open={newChatOpen}
+        onOpenChange={setNewChatOpen}
+        campaignId={scope === 'campaign' ? cid : null}
+        onCreated={(conversationId) => {
+          setTab('all')
+          openConversation(conversationId)
+        }}
+      />
     </div>
   )
 }

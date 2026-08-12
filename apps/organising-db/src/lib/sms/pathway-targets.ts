@@ -8,8 +8,9 @@
  * without a cohort it navigates to the Blasts tab and opens
  * NewBlastSheet. Survey never writes at fire time — it always
  * navigates to the Surveys tab, carrying the source list when one is
- * attached. Chat is not routed anywhere; it is always unavailable,
- * defence in depth behind the disabled picker card.
+ * attached. Chat (the P2P board) mirrors Survey: never writes at fire
+ * time, always navigates to the Chats tab, carrying the source list
+ * when one is attached.
  */
 
 export type SmsPathway = "blast" | "chat" | "survey";
@@ -25,9 +26,6 @@ export type SmsPathwayTarget =
   | { kind: "fire"; body: { pathway: "blast" } }
   | { kind: "unavailable"; reason: string };
 
-const CHAT_UNAVAILABLE_REASON =
-  "The SMS chat workspace is coming in a later release";
-
 export function resolveSmsPathwayTarget(
   args: ResolveSmsPathwayTargetArgs,
 ): SmsPathwayTarget {
@@ -35,7 +33,13 @@ export function resolveSmsPathwayTarget(
   const base = `/campaigns/${campaignId}?tab=outreach&sub=sms`;
 
   if (pathway === "chat") {
-    return { kind: "unavailable", reason: CHAT_UNAVAILABLE_REASON };
+    if (workerListId != null) {
+      return {
+        kind: "navigate",
+        href: `${base}&sms_view=chats&chat_source_list=${workerListId}`,
+      };
+    }
+    return { kind: "navigate", href: `${base}&sms_view=chats&new_chat=1` };
   }
 
   if (pathway === "blast") {

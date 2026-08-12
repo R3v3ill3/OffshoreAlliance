@@ -6,20 +6,32 @@
  * page: every conversation the worker appears in plus the blast send
  * log.
  *
+ * "Message" starts (or reopens) an ORG-WIDE thread — the worker page
+ * has no campaign scope — and opens it inline in the thread quick-view
+ * dialog (SmsThreadDialog), so no navigation off the worker page is
+ * needed. Campaign-scoped threads additionally carry a deep link into
+ * that campaign's SMS inbox (?tab=outreach&sub=sms&conversation=<id>).
+ *
  * Conversations come via /api/sms/conversations (the Phase 2 tables are
  * not in the generated types yet); the blast log reads sms_send_log
  * directly through the typed browser client (Phase 1 schema is
  * generated).
  */
+import { useState } from 'react'
+import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
+import { ExternalLink, MessageSquarePlus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { fetchApi } from '@/lib/api/fetch-api'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toDisplay } from '@/lib/phone/normalise-phone'
 import type { SmsConversationListItem } from '@/lib/hooks/useSmsInbox'
+import { SmsNewChatDialog } from '@/components/sms/inbox/SmsNewChatDialog'
+import { SmsThreadDialog } from '@/components/sms/inbox/SmsThreadDialog'
 
 interface WorkerSmsHistoryPanelProps {
   workerId: number
@@ -61,6 +73,9 @@ export function WorkerSmsHistoryPanel({
   limit = 25,
   showHeader = true,
 }: WorkerSmsHistoryPanelProps) {
+  const [newChatOpen, setNewChatOpen] = useState(false)
+  const [threadId, setThreadId] = useState<number | null>(null)
+
   const { data: conversations, isLoading: convsLoading } = useQuery({
     queryKey: ['worker-sms-conversations', workerId],
     queryFn: async () => {
@@ -93,18 +108,52 @@ export function WorkerSmsHistoryPanel({
 
   const isLoading = convsLoading || sendsLoading
 
+  const messageButton = (
+    <Button
+      variant="outline"
+      size="sm"
+      className="ml-auto"
+      title="Start (or reopen) a 1:1 SMS thread with this member"
+      onClick={() => setNewChatOpen(true)}
+    >
+      <MessageSquarePlus className="mr-1 h-3.5 w-3.5" />
+      Message
+    </Button>
+  )
+
+  const dialogs = (
+    <>
+      <SmsNewChatDialog
+        open={newChatOpen}
+        onOpenChange={setNewChatOpen}
+        workerId={workerId}
+        onCreated={(conversationId) => setThreadId(conversationId)}
+      />
+      <SmsThreadDialog
+        conversationId={threadId}
+        onOpenChange={(open) => {
+          if (!open) setThreadId(null)
+        }}
+      />
+    </>
+  )
+
   if (isLoading) {
     return (
       <Card>
         {showHeader && (
           <CardHeader>
-            <CardTitle>SMS history</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              SMS history
+              {messageButton}
+            </CardTitle>
           </CardHeader>
         )}
         <CardContent className="space-y-2">
           <Skeleton className="h-16 w-full" />
           <Skeleton className="h-16 w-full" />
         </CardContent>
+        {dialogs}
       </Card>
     )
   }
@@ -117,14 +166,19 @@ export function WorkerSmsHistoryPanel({
       <Card>
         {showHeader && (
           <CardHeader>
-            <CardTitle>SMS history</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              SMS history
+              {messageButton}
+            </CardTitle>
           </CardHeader>
         )}
-        <CardContent>
+        <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
             No SMS activity recorded for this worker yet.
           </p>
+          {!showHeader && messageButton}
         </CardContent>
+        {dialogs}
       </Card>
     )
   }
@@ -138,10 +192,12 @@ export function WorkerSmsHistoryPanel({
             <Badge variant="secondary">
               {(conversations?.length ?? 0) + (sends?.length ?? 0)}
             </Badge>
+            {messageButton}
           </CardTitle>
         </CardHeader>
       )}
       <CardContent className="space-y-4">
+        {!showHeader && messageButton}
         {(conversations?.length ?? 0) > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted-foreground">
@@ -153,7 +209,12 @@ export function WorkerSmsHistoryPanel({
                 className="rounded-md border border-border p-3 space-y-1"
               >
                 <div className="flex items-center gap-2">
-                  <p className="min-w-0 flex-1 truncate text-sm font-medium">
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 truncate text-left text-sm font-medium hover:underline"
+                    title="Open the thread"
+                    onClick={() => setThreadId(conv.conversation_id)}
+                  >
                     {conv.campaign?.name ?? 'Org-wide'}
                     <span className="ml-1.5 text-xs font-normal text-muted-foreground">
                       via{' '}
@@ -162,13 +223,22 @@ export function WorkerSmsHistoryPanel({
                           ? toDisplay(conv.our_number.phone_e164)
                           : 'unknown number')}
                     </span>
-                  </p>
+                  </button>
                   <Badge
                     variant="secondary"
                     className={`text-xs ${CONVERSATION_STATE_COLORS[conv.state] || ''}`}
                   >
                     {conv.state.replace('_', ' ')}
                   </Badge>
+                  {conv.campaign && (
+                    <Link
+                      href={`/campaigns/${conv.campaign.campaign_id}?tab=outreach&sub=sms&sms_view=inbox&conversation=${conv.conversation_id}`}
+                      title="Open in the campaign SMS inbox"
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Link>
+                  )}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {toDisplay(conv.phone_e164)}
@@ -218,6 +288,7 @@ export function WorkerSmsHistoryPanel({
           </div>
         )}
       </CardContent>
+      {dialogs}
     </Card>
   )
 }

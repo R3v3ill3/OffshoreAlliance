@@ -50,6 +50,20 @@ export async function POST(
       return NextResponse.json({ error: 'List not found' }, { status: 404 })
     }
 
+    // Belt: P2P chat boards send progressively via p2p-send and are
+    // closed via their own PATCH — none of the blast lifecycle actions
+    // apply, and 'queue' in particular must never put a board into the
+    // cron-drained statuses.
+    if ((list.mode ?? 'blast') === 'p2p') {
+      return NextResponse.json(
+        {
+          error:
+            'P2P chat boards are managed from the board (send / close) — blast actions do not apply',
+        },
+        { status: 409 },
+      )
+    }
+
     switch (action) {
       case 'queue': {
         if (list.status !== 'draft') {

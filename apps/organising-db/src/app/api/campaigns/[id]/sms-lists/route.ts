@@ -56,6 +56,12 @@ interface CreateBlastBody {
   blackout_override?: boolean
   blackout_override_reason?: string
   scheduled_for?: string | null
+  /**
+   * 'blast' (default) or 'p2p' — a p2p list is a chat-board working
+   * list: it stays in status 'draft' while the board is active and is
+   * sent progressively via the p2p-send route, never the cron.
+   */
+  mode?: 'blast' | 'p2p'
   audience?:
     | { type: 'worker_list'; worker_list_id: number }
     | { type: 'campaign' }
@@ -83,6 +89,7 @@ export async function POST(
     if (!name) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 })
     }
+    const mode = body.mode === 'p2p' ? 'p2p' : 'blast'
     const audience = body.audience
     if (
       !audience ||
@@ -201,6 +208,10 @@ export async function POST(
         draft_id: draft.draft_id,
         name,
         status: 'draft',
+        // Deploy-order safety: only send `mode` when non-default, so
+        // blast creation keeps working if this code ships before the
+        // 20260812140000 migration applies (column default is 'blast').
+        ...(mode === 'p2p' ? { mode } : {}),
         source_filters:
           audience.type === 'worker_list'
             ? { source: 'worker_list', list_id: audience.worker_list_id }

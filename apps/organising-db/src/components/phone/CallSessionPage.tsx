@@ -43,7 +43,14 @@ import { IssuedLinkResultDialog } from '@/components/share/issued-link-result-di
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   AlertDialog,
@@ -672,6 +679,13 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
               </Button>
             </SheetTrigger>
             <SheetContent side="right" className="w-full sm:w-[400px] p-0">
+              <SheetHeader className="sr-only">
+                <SheetTitle>Call script</SheetTitle>
+                <SheetDescription>
+                  The script sections for this call, with the current section
+                  highlighted.
+                </SheetDescription>
+              </SheetHeader>
               <div className="p-4 h-full overflow-y-auto">
                 <ScriptSidePanel
                   sections={sortedSections}

@@ -804,9 +804,17 @@ function SurveyDetailSheet({
       >
         <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
           {isLoading || !detail ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
+            <>
+              {/* The loaded branches name the sheet; while the detail
+                  is in flight it would otherwise be unnamed. */}
+              <SheetHeader className="sr-only">
+                <SheetTitle>Survey</SheetTitle>
+                <SheetDescription>Loading survey details.</SheetDescription>
+              </SheetHeader>
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            </>
           ) : detail.survey.status === 'draft' ? (
             <DraftDetail
               campaignId={campaignId}

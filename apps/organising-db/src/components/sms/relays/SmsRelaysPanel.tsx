@@ -553,9 +553,17 @@ function RelayDetailSheet({
     <Sheet open={relayId != null} onOpenChange={onOpenChange}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
         {isLoading || !detail ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          </div>
+          <>
+            {/* RelayDetail names the sheet; while it is in flight the
+                sheet would otherwise be unnamed. */}
+            <SheetHeader className="sr-only">
+              <SheetTitle>SMS relay</SheetTitle>
+              <SheetDescription>Loading relay details.</SheetDescription>
+            </SheetHeader>
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          </>
         ) : (
           <RelayDetail detail={detail} />
         )}

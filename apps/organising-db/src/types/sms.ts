@@ -413,6 +413,23 @@ export interface VwSmsSurveyQuestionStatsRow {
   invalid_attempts: number;
 }
 
+/**
+ * Aggregate answer counts per (question, parsed_value) for the visual
+ * report (20260812160000). Aggregate only — no worker ids, no raw
+ * bodies. open_text is excluded (free text belongs in the CSV).
+ */
+export interface VwSmsSurveyAnswerDistributionRow {
+  survey_id: number;
+  question_id: number;
+  sort_order: number;
+  qtype: SmsSurveyQuestionType;
+  parsed_value: string;
+  /** Every session that answered, including still-in-progress ones. */
+  answer_count: number;
+  /** Completed sessions only — the ballot reading of "a response". */
+  completed_answer_count: number;
+}
+
 // ─── Phase 5 (indicative ballot mode) ───────────────────────────────
 
 /** Eligibility roll frozen at ballot open (§4.2 roll-first). */

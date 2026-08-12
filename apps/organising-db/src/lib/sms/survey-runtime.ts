@@ -618,14 +618,21 @@ export async function processSurveyInbound(
       deduplicated: true,
     },
   };
-  if (messageExisted && existingAnswer) return dedupeResponse;
+  // Once an inbound is on the thread, never re-run survey side effects
+  // against a possibly-advanced current_question. MM account webhooks
+  // historically lacked message_id and retried 2–3×; re-processing the
+  // same "2"/"5"/"Yes" against the next question skipped prompts and
+  // fired spurious invalids. Prefer at-most-once sends over recovering
+  // a crash between append and answer upsert.
+  if (messageExisted) return dedupeResponse;
+
+  // Question already has a real answer — webhook retry / out-of-order
+  // delivery must not advance again or send the next prompt twice.
+  if (existingAnswer?.parsed_value != null) return dedupeResponse;
 
   // No provider message id = no dedupe handle. Cheap replay guard: an
   // identical raw body already captured on this question within the
-  // last 10 minutes is treated as a redelivery. Residual window: a
-  // member genuinely re-sending the exact same text within 10 minutes
-  // (id-less providers only — Mobile Message always supplies ids) is
-  // swallowed; accepted and documented in the Phase 4 plan.
+  // last 10 minutes is treated as a redelivery.
   const REPLAY_WINDOW_MS = 10 * 60 * 1000;
   if (
     !providerMessageId &&
@@ -721,11 +728,11 @@ export async function processSurveyInbound(
     }
   }
 
-  // Thread append — idempotent (upsert on provider_message_id); the
-  // dedupe decision was already taken above, so a pre-existing row
-  // here just means we are recovering the crash window.
+  // Thread append — primary idempotency gate on provider_message_id
+  // (including the synthetic MM inbound id). Concurrent retries lose
+  // the upsert race and bail before any session advance / reply send.
   if (conversationId != null) {
-    await appendSurveyMessage(db, {
+    const appendedNew = await appendSurveyMessage(db, {
       conversation_id: conversationId,
       direction: "inbound",
       body,
@@ -735,6 +742,7 @@ export async function processSurveyInbound(
       status: "received",
       created_at: receivedAt,
     });
+    if (!appendedNew) return dedupeResponse;
   }
 
   const sessionWithConv = { ...session, conversation_id: conversationId };
@@ -762,17 +770,22 @@ export async function processSurveyInbound(
   /**
    * Guarded live-state transition. Returns whether a row matched —
    * false means the session left the live states mid-flight (cron
-   * expiry/opt-out race) and the caller must NOT send a reply.
+   * expiry/opt-out race) OR another inbound already advanced
+   * current_question_id, and the caller must NOT send a reply.
    */
   const updateSession = async (
     patch: Record<string, unknown>,
+    opts?: { requireCurrentQuestion?: boolean },
   ): Promise<boolean> => {
-    const { data, error } = await db
+    let q = db
       .from("sms_survey_sessions")
       .update({ last_activity_at: receivedAt, ...patch })
       .eq("session_id", session.session_id)
-      .in("state", [...LIVE_SESSION_STATES])
-      .select("session_id");
+      .in("state", [...LIVE_SESSION_STATES]);
+    if (opts?.requireCurrentQuestion !== false) {
+      q = q.eq("current_question_id", currentQuestion.question_id);
+    }
+    const { data, error } = await q.select("session_id");
     if (error) throw error;
     return (data?.length ?? 0) > 0;
   };

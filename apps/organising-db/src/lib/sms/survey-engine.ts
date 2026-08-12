@@ -155,23 +155,21 @@ export function parseAnswer(
       : { kind: "invalid" };
   }
 
-  // choice — value → label → synonyms → numeric menu position.
+  // choice — value → label → synonyms → first-token of those →
+  // numeric menu position. First-token keeps "Yes please" / "No thanks"
+  // working the same way yes_no does (case-insensitive via normalise).
   const opts = choiceOptions(question);
+  const first = normalised.split(" ")[0] ?? "";
+  const matchesOption = (candidate: string, o: SmsSurveyChoiceOption) => {
+    const n = normaliseAnswer(candidate);
+    if (!n) return false;
+    if (normaliseAnswer(o.value) === n) return true;
+    if (o.label && normaliseAnswer(o.label) === n) return true;
+    return (o.synonyms ?? []).some((syn) => normaliseAnswer(syn) === n);
+  };
   for (const o of opts) {
-    if (normaliseAnswer(o.value) === normalised) {
+    if (matchesOption(normalised, o) || matchesOption(first, o)) {
       return { kind: "parsed", value: o.value };
-    }
-  }
-  for (const o of opts) {
-    if (o.label && normaliseAnswer(o.label) === normalised) {
-      return { kind: "parsed", value: o.value };
-    }
-  }
-  for (const o of opts) {
-    for (const syn of o.synonyms ?? []) {
-      if (normaliseAnswer(syn) === normalised) {
-        return { kind: "parsed", value: o.value };
-      }
     }
   }
   const pos = bareInteger(normalised);

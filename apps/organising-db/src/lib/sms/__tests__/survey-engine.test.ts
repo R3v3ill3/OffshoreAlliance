@@ -95,6 +95,24 @@ describe("parseAnswer — choice", () => {
     expect(parseAnswer(CHOICE, "Perhaps")).toEqual({ kind: "parsed", value: "maybe" });
   });
 
+  it("matches label/value via first token (Yes please → Yes)", () => {
+    expect(parseAnswer(CHOICE, "Attending please")).toEqual({
+      kind: "parsed",
+      value: "attending",
+    });
+    const ballot = q({
+      qtype: "choice",
+      options: [
+        { value: "yes", label: "Yes", synonyms: ["yep"] },
+        { value: "no", label: "No", synonyms: [] },
+        { value: "undecided", label: "Undecided", synonyms: [] },
+      ],
+    });
+    expect(parseAnswer(ballot, "Yes")).toEqual({ kind: "parsed", value: "yes" });
+    expect(parseAnswer(ballot, "YES")).toEqual({ kind: "parsed", value: "yes" });
+    expect(parseAnswer(ballot, "yes please")).toEqual({ kind: "parsed", value: "yes" });
+  });
+
   it("matches numeric menu position (1-based)", () => {
     expect(parseAnswer(CHOICE, "1")).toEqual({ kind: "parsed", value: "attending" });
     expect(parseAnswer(CHOICE, " 3. ")).toEqual({ kind: "parsed", value: "no" });
@@ -192,6 +210,13 @@ describe("parseAnswer — yes_no", () => {
   it("first-token tolerance", () => {
     expect(parseAnswer(YES_NO, "yes please")).toEqual({ kind: "parsed", value: "yes" });
     expect(parseAnswer(YES_NO, "Nah sorry")).toEqual({ kind: "parsed", value: "no" });
+  });
+  it("is case-insensitive (yes / YES / Yes)", () => {
+    expect(parseAnswer(YES_NO, "yes")).toEqual({ kind: "parsed", value: "yes" });
+    expect(parseAnswer(YES_NO, "YES")).toEqual({ kind: "parsed", value: "yes" });
+    expect(parseAnswer(YES_NO, "Yes")).toEqual({ kind: "parsed", value: "yes" });
+    expect(parseAnswer(YES_NO, "No")).toEqual({ kind: "parsed", value: "no" });
+    expect(parseAnswer(YES_NO, "NO")).toEqual({ kind: "parsed", value: "no" });
   });
   it("numeric menu fallbacks 1/2", () => {
     expect(parseAnswer(YES_NO, "1")).toEqual({ kind: "parsed", value: "yes" });

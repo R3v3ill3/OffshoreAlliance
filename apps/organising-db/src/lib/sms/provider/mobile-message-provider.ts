@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHash, createHmac, timingSafeEqual } from "crypto";
 import type {
   MessageDeliveryStatus,
   MessageStatus,
@@ -8,6 +8,29 @@ import type {
   SmsProvider,
   SmsWebhookEvent,
 } from "./types";
+
+/**
+ * Mobile Message's inbound webhook docs omit a stable `message_id`.
+ * Retries therefore arrive without a native idempotency key. Build a
+ * deterministic stand-in from the fields MM always sends so duplicate
+ * deliveries collapse instead of re-answering the next survey question.
+ */
+export function syntheticInboundMessageId(parts: {
+  to: string;
+  from: string;
+  body: string;
+  receivedAt: string | null;
+  originalMessageId: string | null;
+}): string {
+  const basis = [
+    parts.originalMessageId ?? "",
+    parts.to,
+    parts.from,
+    parts.receivedAt ?? "",
+    parts.body,
+  ].join("|");
+  return `mm-in-${createHash("sha256").update(basis).digest("hex").slice(0, 32)}`;
+}
 
 const BASE_URL = "https://api.mobilemessage.com.au";
 /** POST /v1/messages accepts up to 10,000 messages per request. */
@@ -243,20 +266,34 @@ export class MobileMessageProvider implements SmsProvider {
       typeof payload[k] === "string" ? (payload[k] as string) : null;
 
     switch (payload.type) {
-      case "inbound":
+      case "inbound": {
         // Mobile Message's inbound webhook uses `sender` (member MSISDN),
         // not `from`. Accept both so sandbox/docs variants still parse.
+        const from = str("from") ?? str("sender") ?? "";
+        const to = str("to") ?? "";
+        const body = str("message") ?? str("body") ?? "";
+        const receivedAt = str("received_at") ?? str("timestamp");
+        const originalMessageId = str("original_message_id");
+        const nativeId = str("message_id") ?? str("inbound_message_id");
         return {
           type: "inbound",
-          from: str("from") ?? str("sender") ?? "",
-          to: str("to") ?? "",
-          body: str("message") ?? str("body") ?? "",
+          from,
+          to,
+          body,
           providerMessageId:
-            str("message_id") ?? str("inbound_message_id") ?? null,
-          originalMessageId: str("original_message_id"),
+            nativeId ??
+            syntheticInboundMessageId({
+              to,
+              from,
+              body,
+              receivedAt,
+              originalMessageId,
+            }),
+          originalMessageId,
           originalCustomRef: str("original_custom_ref"),
-          receivedAt: str("received_at") ?? str("timestamp"),
+          receivedAt,
         };
+      }
       case "unsubscribe":
         return {
           type: "unsubscribe",

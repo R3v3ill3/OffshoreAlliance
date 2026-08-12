@@ -63,6 +63,13 @@ interface SmsComposerProps {
   value: SmsComposerValue
   onChange: (value: SmsComposerValue) => void
   disabled?: boolean
+  /**
+   * 'blast' (default) shows timezone / schedule / blackout-override
+   * controls for the cron-drained queue. 'p2p' hides them — chat-board
+   * initials are sent live per organiser selection (soft blackout
+   * warning on the board instead of a queue-time hard block).
+   */
+  variant?: 'blast' | 'p2p'
 }
 
 const TIMEZONES = [
@@ -85,6 +92,7 @@ export function SmsComposer({
   value,
   onChange,
   disabled,
+  variant = 'blast',
 }: SmsComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { data: senders, isLoading: sendersLoading } = useSmsSenders()
@@ -95,16 +103,30 @@ export function SmsComposer({
   const [tapNumber, setTapNumber] = useState('')
   const [tapMessage, setTapMessage] = useState('')
 
+  // P2P chats never use relay/survey-purpose numbers — their webhooks
+  // consume replies before conversation routing, orphaning threads.
+  // Filtered client-side so the senders route stays generic for
+  // surfaces that legitimately need those numbers (e.g. surveys).
+  const selectableSenders = useMemo(
+    () =>
+      variant === 'p2p'
+        ? (senders ?? []).filter(
+            (s) => s.purpose !== 'relay' && s.purpose !== 'survey',
+          )
+        : (senders ?? []),
+    [senders, variant],
+  )
+
   // Default the sender to the signed-in organiser's number once loaded.
   const defaultedRef = useRef(false)
   useEffect(() => {
     if (defaultedRef.current || value.sender_number_id != null || !senders) return
-    const mine = senders.find((s) => s.is_mine)
+    const mine = selectableSenders.find((s) => s.is_mine)
     if (mine) {
       defaultedRef.current = true
       onChange({ ...value, sender_number_id: mine.number_id })
     }
-  }, [senders, value, onChange])
+  }, [senders, selectableSenders, value, onChange])
 
   const literal = useMemo(() => countSegments(value.body), [value.body])
   const worstCase = useMemo(
@@ -334,7 +356,7 @@ export function SmsComposer({
               />
             </SelectTrigger>
             <SelectContent>
-              {(senders ?? []).map((s) => (
+              {selectableSenders.map((s) => (
                 <SelectItem key={s.number_id} value={String(s.number_id)}>
                   {senderLabel(s)}
                   {s.is_mine ? ' (you)' : ''}
@@ -349,28 +371,31 @@ export function SmsComposer({
           )}
         </div>
 
-        <div className="space-y-1.5">
-          <Label>Recipient timezone</Label>
-          <Select
-            disabled={disabled}
-            value={value.timezone}
-            onValueChange={(tz) => onChange({ ...value, timezone: tz })}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TIMEZONES.map((tz) => (
-                <SelectItem key={tz.value} value={tz.value}>
-                  {tz.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {variant !== 'p2p' && (
+          <div className="space-y-1.5">
+            <Label>Recipient timezone</Label>
+            <Select
+              disabled={disabled}
+              value={value.timezone}
+              onValueChange={(tz) => onChange({ ...value, timezone: tz })}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TIMEZONES.map((tz) => (
+                  <SelectItem key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       {/* Schedule */}
+      {variant !== 'p2p' && (
       <div className="space-y-1.5">
         <Label htmlFor="sms-schedule">Schedule (optional)</Label>
         <Input
@@ -388,8 +413,10 @@ export function SmsComposer({
           dispatch run after queueing.
         </p>
       </div>
+      )}
 
       {/* Blackout override */}
+      {variant !== 'p2p' && (
       <div className="rounded-md border p-3 space-y-2">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -433,6 +460,7 @@ export function SmsComposer({
           </div>
         )}
       </div>
+      )}
 
       {/* Test send */}
       <div className="rounded-md border p-3 space-y-2">

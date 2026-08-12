@@ -20,8 +20,13 @@
  *   SmsRelaysPanel): dedicated number ↔ external targets, moderation
  *   queue, pause/end, message log.
  *
+ *   Chats — P2P chat boards (SmsP2pPanel): a working list the
+ *   organiser messages progressively, a handful at a time. P2P lists
+ *   (mode='p2p') are excluded from the Blasts view and totals.
+ *
  * Arriving with ?sms_list=<id> (the fire/sms redirect) auto-opens that
- * list's sheet in the Blasts view.
+ * list's sheet in the Blasts view; ?conversation=<id> auto-opens that
+ * thread in the Inbox view.
  */
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
@@ -50,6 +55,7 @@ import {
   ListPlus,
   Loader2,
   MessageSquare,
+  MessagesSquare,
   Pause,
   Play,
   Plus,
@@ -59,6 +65,7 @@ import {
 import { SmsInboxPanel } from '@/components/sms/inbox/SmsInboxPanel'
 import { SmsSurveysPanel } from '@/components/sms/surveys/SmsSurveysPanel'
 import { SmsRelaysPanel } from '@/components/sms/relays/SmsRelaysPanel'
+import { SmsP2pPanel } from '@/components/sms/p2p/SmsP2pPanel'
 import { toast } from 'sonner'
 import {
   useCreateSmsBlast,
@@ -151,14 +158,31 @@ export function InlineSmsOpsPanel({ campaignId }: InlineSmsOpsPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const SMS_VIEWS = ['blasts', 'inbox', 'surveys', 'relays'] as const
+  // ?conversation=<id> deep-link → auto-open the thread in the Inbox
+  // (mirrors the ?sms_list= idiom; read once, not reactive).
+  const [initialConversationId] = useState<number | null>(() => {
+    const raw = searchParams?.get('conversation')
+    const cid = raw ? parseInt(raw, 10) : NaN
+    return Number.isFinite(cid) ? cid : null
+  })
+
+  const SMS_VIEWS = ['blasts', 'inbox', 'surveys', 'relays', 'chats'] as const
   const smsView = searchParams?.get('sms_view')
   const defaultTab = SMS_VIEWS.includes(smsView as (typeof SMS_VIEWS)[number])
     ? (smsView as (typeof SMS_VIEWS)[number])
-    : 'blasts'
+    : initialConversationId != null
+      ? 'inbox'
+      : 'blasts'
+
+  // P2P chat boards live in the Chats view — keep them out of the
+  // blast overview and totals.
+  const blastLists = useMemo(
+    () => (lists ?? []).filter((l) => (l.mode ?? 'blast') !== 'p2p'),
+    [lists],
+  )
 
   const totals = useMemo(() => {
-    const rows = lists ?? []
+    const rows = blastLists
     const sum = (fn: (r: VwSmsCampaignSummaryRow) => number) =>
       rows.reduce((acc, r) => acc + fn(r), 0)
     return {
@@ -169,7 +193,7 @@ export function InlineSmsOpsPanel({ campaignId }: InlineSmsOpsPanelProps) {
       failed: sum((r) => Number(r.failed_count)),
       optedOut: sum((r) => Number(r.opted_out_count) + Number(r.blocked_count)),
     }
-  }, [lists])
+  }, [blastLists])
 
   return (
     <Tabs defaultValue={defaultTab} className="space-y-4">
@@ -186,6 +210,10 @@ export function InlineSmsOpsPanel({ campaignId }: InlineSmsOpsPanelProps) {
           <ClipboardList className="h-3.5 w-3.5 mr-1.5" />
           Surveys
         </TabsTrigger>
+        <TabsTrigger value="chats">
+          <MessagesSquare className="h-3.5 w-3.5 mr-1.5" />
+          Chats
+        </TabsTrigger>
         <TabsTrigger value="relays">
           <ArrowRightLeft className="h-3.5 w-3.5 mr-1.5" />
           Relays
@@ -193,11 +221,18 @@ export function InlineSmsOpsPanel({ campaignId }: InlineSmsOpsPanelProps) {
       </TabsList>
 
       <TabsContent value="inbox">
-        <SmsInboxPanel campaignId={id} />
+        <SmsInboxPanel
+          campaignId={id}
+          initialConversationId={initialConversationId}
+        />
       </TabsContent>
 
       <TabsContent value="surveys">
         <SmsSurveysPanel campaignId={id} />
+      </TabsContent>
+
+      <TabsContent value="chats">
+        <SmsP2pPanel campaignId={id} />
       </TabsContent>
 
       <TabsContent value="relays">
@@ -239,9 +274,9 @@ export function InlineSmsOpsPanel({ campaignId }: InlineSmsOpsPanelProps) {
         <div className="flex items-center justify-center py-6">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
-      ) : lists && lists.length > 0 ? (
+      ) : blastLists.length > 0 ? (
         <div className="space-y-2">
-          {lists.map((list) => (
+          {blastLists.map((list) => (
             <BlastCard
               key={list.list_id}
               campaignId={id}

@@ -8,15 +8,13 @@
  *
  * Two entry modes:
  *
- * 1. Header entry (no worker_list_id): no cohort attached. Blast and
- *    Survey both navigate to the Outreach → SMS sub-tab to open their
- *    respective "new" sheets there.
+ * 1. Header entry (no worker_list_id): no cohort attached. Blast,
+ *    Survey and Chat all navigate to the Outreach → SMS sub-tab to
+ *    open their respective "new" sheets there.
  * 2. Build-list entry (worker_list_id present): the wall-chart Build
  *    List Fire flow already validated the list and ran prepare mode
- *    (no writes). Blast fires immediately from here; Survey carries
- *    the source list through to the survey editor.
- *
- * Chat always renders disabled — it is not reachable from this page.
+ *    (no writes). Blast fires immediately from here; Survey and Chat
+ *    carry the source list through to their editors.
  */
 
 import { useMemo, useState } from 'react'

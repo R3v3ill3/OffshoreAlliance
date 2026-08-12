@@ -64,6 +64,8 @@ interface ListRow {
   campaign_id: number
   draft_id: number | null
   status: string
+  /** 'blast' | 'p2p' (20260812140000); absent pre-migration. */
+  mode?: string
   sender_number_id: number | null
   timezone: string | null
   blackout_override: boolean
@@ -280,6 +282,7 @@ export async function GET(request: Request) {
     lists_paused_non_compliant: [] as number[],
     lists_completed: [] as number[],
     stale_claims_recovered: 0,
+    p2p_items_reset: 0,
     sent: 0,
     blocked: 0,
     failed: 0,
@@ -288,16 +291,36 @@ export async function GET(request: Request) {
     errors: [] as Array<{ list_id: number; error: string }>,
   }
 
+  // P2P list ids — used to scope the blast sweep below and to run the
+  // p2p claim reset. Deploy-order-safe: if the mode column does not
+  // exist yet, the query errors and we behave exactly as before.
+  let p2pListIds: number[] = []
+  {
+    const { data: p2pRows, error: p2pErr } = await supabase
+      .from('sms_lists')
+      .select('list_id')
+      .eq('mode', 'p2p')
+    if (!p2pErr) p2pListIds = (p2pRows ?? []).map((r) => r.list_id as number)
+  }
+
   // Stale-claim recovery: 'sending' rows whose run crashed mid-flight.
+  // Scoped to blast lists — 'queued' is a dead status on p2p boards.
   const staleCutoff = new Date(
     now.getTime() - STALE_CLAIM_MINUTES * 60 * 1000,
   ).toISOString()
-  const { data: recovered, error: recoverErr } = await supabase
+  let recoverQuery = supabase
     .from('sms_list_items')
     .update({ status: 'queued', claimed_at: null })
     .eq('status', 'sending')
     .lt('claimed_at', staleCutoff)
-    .select('item_id')
+  if (p2pListIds.length > 0) {
+    recoverQuery = recoverQuery.not(
+      'list_id',
+      'in',
+      `(${p2pListIds.join(',')})`,
+    )
+  }
+  const { data: recovered, error: recoverErr } = await recoverQuery.select('item_id')
   if (recoverErr) {
     console.error('dispatch-sms-queue: stale-claim recovery failed:', recoverErr)
   } else if (recovered && recovered.length > 0) {
@@ -309,11 +332,38 @@ export async function GET(request: Request) {
     )
   }
 
+  // P2P claim reset: a p2p-send request that died mid-flight leaves
+  // items in 'sending' — return them to 'pending' after the stale
+  // window so the board can retry them. 'queued' rows on a p2p list
+  // (only possible via the old unscoped sweep) are reset regardless.
+  if (p2pListIds.length > 0) {
+    const { data: p2pSending, error: p2pSendErr } = await supabase
+      .from('sms_list_items')
+      .update({ status: 'pending', claimed_at: null })
+      .in('list_id', p2pListIds)
+      .eq('status', 'sending')
+      .lt('claimed_at', staleCutoff)
+      .select('item_id')
+    const { data: p2pQueued, error: p2pQueueErr } = await supabase
+      .from('sms_list_items')
+      .update({ status: 'pending', claimed_at: null })
+      .in('list_id', p2pListIds)
+      .eq('status', 'queued')
+      .select('item_id')
+    if (p2pSendErr || p2pQueueErr) {
+      console.error(
+        'dispatch-sms-queue: p2p claim reset failed:',
+        p2pSendErr ?? p2pQueueErr,
+      )
+    } else {
+      summary.p2p_items_reset =
+        (p2pSending?.length ?? 0) + (p2pQueued?.length ?? 0)
+    }
+  }
+
   const { data: listsRaw, error: listErr } = await supabase
     .from('sms_lists')
-    .select(
-      'list_id, campaign_id, draft_id, status, sender_number_id, timezone, blackout_override, scheduled_for, created_by',
-    )
+    .select('*')
     .in('status', ['queued', 'sending'])
     .or(`scheduled_for.is.null,scheduled_for.lte.${now.toISOString()}`)
     .order('created_at', { ascending: true })
@@ -321,7 +371,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: listErr.message }, { status: 500 })
   }
 
-  const lists = (listsRaw ?? []) as ListRow[]
+  // Belt: P2P chat boards must never be drained by the cron — they
+  // send progressively via the p2p-send route and (primary guard)
+  // never enter queued/sending status at all. select('*') + JS filter
+  // keeps the scan deploy-order-safe against the mode migration.
+  const lists = ((listsRaw ?? []) as ListRow[]).filter(
+    (l) => (l.mode ?? 'blast') !== 'p2p',
+  )
   summary.lists_seen = lists.length
   let capacity = RUN_BATCH_CAP
 

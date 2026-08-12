@@ -47,6 +47,10 @@ import {
   useSmsConversationAction,
   type SmsConversationDetail,
 } from '@/lib/hooks/useSmsInbox'
+import {
+  confirmSmsDoNotContact,
+  useStaffSmsOptOut,
+} from '@/lib/hooks/useSmsOptOut'
 import { SmsAssessmentPanel } from './SmsAssessmentPanel'
 import { conversationTitle } from './sms-inbox-shared'
 
@@ -76,7 +80,7 @@ export function SmsMemberSidebar({
   const [noteBody, setNoteBody] = useState('')
   const [cannedTitle, setCannedTitle] = useState('')
   const [cannedOutcome, setCannedOutcome] = useState<string>(NO_OUTCOME)
-  const [optOutPending, setOptOutPending] = useState(false)
+  const staffOptOut = useStaffSmsOptOut()
 
   const { data: staff } = useQuery({
     queryKey: ['sms-inbox-staff'],
@@ -148,31 +152,28 @@ export function SmsMemberSidebar({
     })
   }
 
-  const setStaffOptOut = async (optOut: boolean) => {
+  const setStaffOptOut = (optOut: boolean) => {
     if (!worker) return
-    setOptOutPending(true)
-    try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from('workers')
-        .update(
-          optOut
-            ? {
-                sms_opt_out: true,
-                sms_opt_out_at: new Date().toISOString(),
-                sms_opt_out_source: 'staff',
-              }
-            : { sms_opt_out: false },
-        )
-        .eq('worker_id', worker.worker_id)
-      if (error) throw error
-      toast.success(optOut ? 'Member opted out of SMS' : 'SMS opt-out lifted')
-      queryClient.invalidateQueries({ queryKey: ['sms-conversation', conversationId] })
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update opt-out')
-    } finally {
-      setOptOutPending(false)
+    if (optOut && !confirmSmsDoNotContact(conversationTitle(conversation))) {
+      return
     }
+    staffOptOut.mutate(
+      { workerId: worker.worker_id, optOut },
+      {
+        onSuccess: () => {
+          toast.success(
+            optOut
+              ? 'Member marked Do not contact (SMS)'
+              : 'SMS opt-out lifted',
+          )
+          queryClient.invalidateQueries({
+            queryKey: ['sms-conversation', conversationId],
+          })
+        },
+        onError: (err: Error) =>
+          toast.error(err.message || 'Failed to update opt-out'),
+      },
+    )
   }
 
   return (
@@ -229,10 +230,10 @@ export function SmsMemberSidebar({
               variant="outline"
               size="sm"
               className="w-full"
-              disabled={optOutPending}
+              disabled={staffOptOut.isPending}
               onClick={() => setStaffOptOut(false)}
             >
-              {optOutPending ? (
+              {staffOptOut.isPending ? (
                 <Loader2 className="mr-1 h-3 w-3 animate-spin" />
               ) : (
                 <Undo2 className="mr-1 h-3 w-3" />
@@ -244,15 +245,16 @@ export function SmsMemberSidebar({
               variant="outline"
               size="sm"
               className="w-full text-red-700 hover:text-red-800"
-              disabled={optOutPending}
+              disabled={staffOptOut.isPending}
+              title="Opts this member out of ALL SMS — blasts, surveys, chats and 1:1 replies"
               onClick={() => setStaffOptOut(true)}
             >
-              {optOutPending ? (
+              {staffOptOut.isPending ? (
                 <Loader2 className="mr-1 h-3 w-3 animate-spin" />
               ) : (
                 <Ban className="mr-1 h-3 w-3" />
               )}
-              Opt out of SMS
+              Do not contact (SMS)
             </Button>
           )}
         </div>

@@ -38,7 +38,8 @@ export async function GET() {
     const { data: campaigns, error: campErr } = await supabase
       .from("campaigns")
       .select("campaign_id, status, name")
-      .in("campaign_id", campaignIds);
+      .in("campaign_id", campaignIds)
+      .eq("is_sms_episode", false);
 
     if (campErr) {
       console.error("campaign-status-batch: campaigns error", campErr);

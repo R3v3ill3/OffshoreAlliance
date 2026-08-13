@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { excludeSmsEpisodes } from "@/lib/campaign/visible-campaigns";
 import { fetchApi, API_FETCH_TIMEOUT_UPLOAD_MS, API_FETCH_TIMEOUT_STREAM_MS } from "@/lib/api/fetch-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -241,7 +242,9 @@ export function CampaignImportWizard({ open, onOpenChange, onComplete }: Campaig
   const { data: campaigns = [] } = useQuery({
     queryKey: ["cil-campaigns"],
     queryFn: async () => {
-      const { data } = await supabase.from("campaigns").select("campaign_id, name").order("created_at", { ascending: false });
+      const { data } = await excludeSmsEpisodes(
+        supabase.from("campaigns").select("campaign_id, name").order("created_at", { ascending: false })
+      );
       return (data ?? []) as { campaign_id: number; name: string }[];
     },
     enabled: open,

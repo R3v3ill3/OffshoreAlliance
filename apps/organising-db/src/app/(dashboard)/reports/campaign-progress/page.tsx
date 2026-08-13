@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { createClient } from "@/lib/supabase/client"
+import { excludeSmsEpisodes } from "@/lib/campaign/visible-campaigns"
 import { useAuth } from "@/lib/supabase/auth-context"
 import { Button } from "@/components/ui/button"
 import {
@@ -50,10 +51,12 @@ function PickerView({ onPick }: { onPick: (id: number) => void }) {
   const { data: campaigns = [], isLoading } = useQuery<CampaignPickRow[]>({
     queryKey: ["progress-report-picker"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("campaigns")
-        .select("campaign_id, name, campaign_type, status, current_phase")
-        .order("name")
+      const { data, error } = await excludeSmsEpisodes(
+        supabase
+          .from("campaigns")
+          .select("campaign_id, name, campaign_type, status, current_phase")
+          .order("name")
+      )
       if (error) return []
       return (data ?? []) as CampaignPickRow[]
     },

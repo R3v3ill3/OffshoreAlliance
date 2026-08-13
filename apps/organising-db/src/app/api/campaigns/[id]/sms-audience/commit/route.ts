@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { ensureSmsEpisodeMembership } from "@/lib/sms/sms-episode";
 
 const schema = z.object({
   name: z.string().trim().max(200).optional(),
@@ -62,6 +63,8 @@ export async function POST(
 
   try {
     const uniqueIds = [...new Set(body.worker_ids)];
+
+    await ensureSmsEpisodeMembership(supabase, campaignId, uniqueIds);
 
     // Verify all workers are campaign members
     const { data: members, error: memErr } = await supabase

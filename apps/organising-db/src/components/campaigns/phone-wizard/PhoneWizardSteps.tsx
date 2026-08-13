@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useCallback, type ReactNode } from 'react
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { excludeSmsEpisodes } from '@/lib/campaign/visible-campaigns'
 import { useAuth } from '@/lib/supabase/auth-context'
 import { useGenerateDraft } from '@/lib/hooks/useGenerateDraft'
 import { fetchApi, API_FETCH_TIMEOUT_LLM_MS } from '@/lib/api/fetch-api'
@@ -433,10 +434,12 @@ export function PhoneWizardSteps() {
   const { data: campaignsData } = useQuery({
     queryKey: ['wizard-campaigns'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('campaigns')
-        .select('campaign_id, name, organiser_id')
-        .order('created_at', { ascending: false })
+      const { data, error } = await excludeSmsEpisodes(
+        supabase
+          .from('campaigns')
+          .select('campaign_id, name, organiser_id')
+          .order('created_at', { ascending: false }),
+      )
       if (error) throw error
       return (data ?? []) as WizardCampaignRow[]
     },

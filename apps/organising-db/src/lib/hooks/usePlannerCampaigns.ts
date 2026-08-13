@@ -8,6 +8,7 @@ import { useAuthAwareMutation, ensureValidSession } from '@/lib/hooks/useAuthAwa
 import { syncAmbitionTargetDatesForCampaign } from '@/lib/supabase/syncAmbitionTargetDates'
 import { logConnectionEvent, generateTraceId } from '@/lib/supabase/connection-monitor'
 import { fetchApi } from '@/lib/api/fetch-api'
+import { excludeSmsEpisodes } from '@/lib/campaign/visible-campaigns'
 
 /** Stage row from the creation wizard → persisted on campaign_stage_plans */
 export type PlannerStageDateInput = {
@@ -35,9 +36,10 @@ export function useCampaigns(options?: { phase?: Phase }) {
   return useQuery({
     queryKey: ['campaigns', phase ?? null],
     queryFn: async () => {
-      let query = supabase
-        .from('campaigns')
-        .select(`
+      let query = excludeSmsEpisodes(
+        supabase
+          .from('campaigns')
+          .select(`
           *,
           organisers(organiser_name, email),
           campaign_stage_plans(plan_id, stage_number, stage_name, status),
@@ -50,7 +52,8 @@ export function useCampaigns(options?: { phase?: Phase }) {
           ),
           gate_definitions(gate_id, gate_number, gate_name, enforcement_type)
         `)
-        .order('created_at', { ascending: false })
+          .order('created_at', { ascending: false }),
+      )
 
       if (phase) {
         query = query.eq('current_phase', phase)

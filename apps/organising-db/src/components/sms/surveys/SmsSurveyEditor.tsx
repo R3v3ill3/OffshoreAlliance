@@ -297,6 +297,8 @@ interface SmsSurveyEditorProps {
   /** Highlight + scroll target when the flow chart selects a question. */
   selectedQuestionIndex?: number | null
   onSelectQuestion?: (index: number) => void
+  /** Standalone SMS episodes cannot write campaign assessments. */
+  hideAssessments?: boolean
 }
 
 export function SmsSurveyEditor({
@@ -308,6 +310,7 @@ export function SmsSurveyEditor({
   onActivityCreated,
   selectedQuestionIndex = null,
   onSelectQuestion,
+  hideAssessments = false,
 }: SmsSurveyEditorProps) {
   const { data: senders } = useSmsSenders()
   /** Question index to attach a newly created assessment to; null = closed. */
@@ -908,7 +911,7 @@ export function SmsSurveyEditor({
               </div>
             )}
 
-            {q.qtype !== 'open_text' && (
+            {!hideAssessments && q.qtype !== 'open_text' && (
               <div className="space-y-2 rounded-md border bg-muted/30 p-2.5">
                 <div className="flex items-center justify-between gap-2">
                   <Label className="text-xs">Assessment (optional)</Label>
@@ -1177,6 +1180,7 @@ export function SmsSurveyEditor({
         </div>
       </div>
     </div>
+    {!hideAssessments && (
     <CreateAssessmentDialog
       campaignId={campaignId}
       open={createAssessmentTarget !== null}
@@ -1195,6 +1199,7 @@ export function SmsSurveyEditor({
         setCreateAssessmentTarget(null)
       }}
     />
+    )}
     </>
   )
 }

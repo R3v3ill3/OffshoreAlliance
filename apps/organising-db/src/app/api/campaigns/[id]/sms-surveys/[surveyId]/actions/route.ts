@@ -43,6 +43,7 @@ import {
   DEFAULT_SMS_TIMEZONE,
 } from '@/lib/sms/blackout'
 import { insertSurveyQuestions } from '@/lib/sms/survey-authoring'
+import { resolveAudienceWorkerIds } from '@/lib/sms/populate-sms-list'
 import type { SmsSurveyPauseMode, SmsSurveyQuestionRow, SmsSurveyRow } from '@/types/sms'
 
 /** Open may send up to OPEN_INVITE_SEND_CAP invitations inline. */
@@ -50,9 +51,6 @@ export const maxDuration = 60
 
 /** Cap immediate invitation sends on open; remainder drains via cron. */
 const OPEN_INVITE_SEND_CAP = 200
-
-/** PostgREST caps responses at 1000 rows — page source reads. */
-const PAGE_SIZE = 1000
 
 type Audience =
   | { type: 'worker_list'; worker_list_id: number }
@@ -84,55 +82,6 @@ function isValidAudience(audience: Audience | undefined): audience is Audience {
       (audience.type === 'worker_list' &&
         Number.isFinite(audience.worker_list_id)))
   )
-}
-
-async function resolveAudienceWorkerIds(
-  supabase: UserClient,
-  cid: number,
-  audience: Audience,
-): Promise<{ workerIds: number[] } | { error: NextResponse }> {
-  const workerIds: number[] = []
-  if (audience.type === 'worker_list') {
-    const { data: wl, error: wlErr } = await supabase
-      .from('campaign_worker_lists')
-      .select('list_id, campaign_id')
-      .eq('list_id', audience.worker_list_id)
-      .maybeSingle()
-    if (wlErr) throw wlErr
-    if (!wl || wl.campaign_id !== cid) {
-      return {
-        error: NextResponse.json(
-          { error: 'Worker list not found' },
-          { status: 404 },
-        ),
-      }
-    }
-    for (let from = 0; ; from += PAGE_SIZE) {
-      const { data: items, error: itemsErr } = await supabase
-        .from('campaign_worker_list_items')
-        .select('worker_id, sort_order')
-        .eq('list_id', audience.worker_list_id)
-        .order('sort_order', { ascending: true })
-        .order('worker_id', { ascending: true })
-        .range(from, from + PAGE_SIZE - 1)
-      if (itemsErr) throw itemsErr
-      workerIds.push(...(items ?? []).map((r) => r.worker_id))
-      if (!items || items.length < PAGE_SIZE) break
-    }
-  } else {
-    for (let from = 0; ; from += PAGE_SIZE) {
-      const { data: members, error: memErr } = await supabase
-        .from('campaign_worker_membership')
-        .select('worker_id')
-        .eq('campaign_id', cid)
-        .order('worker_id', { ascending: true })
-        .range(from, from + PAGE_SIZE - 1)
-      if (memErr) throw memErr
-      workerIds.push(...(members ?? []).map((r) => r.worker_id))
-      if (!members || members.length < PAGE_SIZE) break
-    }
-  }
-  return { workerIds: [...new Set(workerIds)] }
 }
 
 async function screenAudienceWorkers(
@@ -558,8 +507,13 @@ export async function POST(
       }
 
       const resolved = await resolveAudienceWorkerIds(supabase, cid, audience)
-      if ('error' in resolved) return resolved.error
-      const uniqueWorkerIds = resolved.workerIds
+      if (resolved.error) {
+        return NextResponse.json(
+          { error: resolved.error.message },
+          { status: resolved.error.status },
+        )
+      }
+      const uniqueWorkerIds = [...new Set(resolved.workerIds)]
 
       if (body.action === 'open' && uniqueWorkerIds.length === 0) {
         return NextResponse.json(

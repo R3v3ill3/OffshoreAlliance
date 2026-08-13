@@ -25,6 +25,7 @@ import {
   Undo2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { excludeSmsEpisodes } from '@/lib/campaign/visible-campaigns'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -99,10 +100,12 @@ export function SmsMemberSidebar({
     queryKey: ['sms-inbox-campaigns'],
     queryFn: async () => {
       const supabase = createClient()
-      const { data, error } = await supabase
-        .from('campaigns')
-        .select('campaign_id, name')
-        .order('name', { ascending: true })
+      const { data, error } = await excludeSmsEpisodes(
+        supabase
+          .from('campaigns')
+          .select('campaign_id, name')
+          .order('name', { ascending: true }),
+      )
       if (error) throw error
       return data ?? []
     },

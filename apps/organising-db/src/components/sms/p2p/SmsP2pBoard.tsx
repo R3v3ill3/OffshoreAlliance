@@ -73,6 +73,7 @@ import {
   AudiencePicker,
   type AudienceValue,
 } from '@/components/audience/AudiencePicker'
+import { STANDALONE_AUDIENCE_PICKER } from '@/lib/sms/audience-helpers'
 import type { SmsP2pBoardItem } from '@/types/sms'
 
 const ITEM_STATUS_COLORS: Record<string, string> = {
@@ -99,9 +100,14 @@ const STATUS_FILTERS = [
 interface SmsP2pBoardProps {
   campaignId: string
   listId: number
+  standaloneMode?: boolean
 }
 
-export function SmsP2pBoard({ campaignId, listId }: SmsP2pBoardProps) {
+export function SmsP2pBoard({
+  campaignId,
+  listId,
+  standaloneMode = false,
+}: SmsP2pBoardProps) {
   const { data: board, isLoading } = useSmsP2pBoard(campaignId, listId)
   const send = useSmsP2pSend(campaignId, listId)
   const addPeople = useSmsP2pAddPeople(campaignId, listId)
@@ -479,6 +485,7 @@ export function SmsP2pBoard({ campaignId, listId }: SmsP2pBoardProps) {
 
       <AddPeopleDialog
         campaignId={campaignId}
+        standaloneMode={standaloneMode}
         open={addOpen}
         onOpenChange={setAddOpen}
         pending={addPeople.isPending}
@@ -509,12 +516,14 @@ export function SmsP2pBoard({ campaignId, listId }: SmsP2pBoardProps) {
  */
 function AddPeopleDialog({
   campaignId,
+  standaloneMode = false,
   open,
   onOpenChange,
   pending,
   onSubmit,
 }: {
   campaignId: string
+  standaloneMode?: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
   pending: boolean
@@ -562,6 +571,7 @@ function AddPeopleDialog({
           value={audience}
           onChange={setAudience}
           disabled={pending}
+          {...(standaloneMode ? STANDALONE_AUDIENCE_PICKER : {})}
         />
         <DialogFooter>
           <Button disabled={pending || emptyComposed} onClick={submit}>

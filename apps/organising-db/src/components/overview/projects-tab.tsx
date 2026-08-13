@@ -19,6 +19,7 @@ import { Search, MapPin, Building2, FileText, Users, ArrowUpDown } from "lucide-
 import { CampaignStatusBadge, type CampaignWithStages } from "./campaign-status-badge";
 import { ProjectDetailSheet, type ProjectDetail } from "./project-detail-sheet";
 import type { WorkType, ProjectStatus } from "@/types/database";
+import { excludeSmsEpisodes } from "@/lib/campaign/visible-campaigns";
 
 const WORK_TYPES: WorkType[] = [
   "production",
@@ -163,16 +164,18 @@ export function ProjectsTab() {
   const { data: campaigns = [], isLoading: campaignsLoading } = useQuery({
     queryKey: ["overview-campaigns"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("campaigns")
-        .select(`
+      const { data, error } = await excludeSmsEpisodes(
+        supabase
+          .from("campaigns")
+          .select(`
           campaign_id,
           name,
           status,
           campaign_employers (employer_id),
           campaign_stage_plans (stage_number, status)
         `)
-        .in("status", ["planning", "active"]);
+          .in("status", ["planning", "active"])
+      );
       if (error) throw error;
       return data as CampaignWithStages[];
     },

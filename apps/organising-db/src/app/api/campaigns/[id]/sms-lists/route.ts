@@ -3,9 +3,8 @@
  *
  * GET  — list rows merged with vw_sms_campaign_summary counts.
  * POST — create a new blast: campaign_comms_drafts shell (platform='sms')
- *        + sms_lists row + sms_list_items from the chosen audience
- *        (saved worker list or the whole campaign membership), with
- *        opt-out / missing-phone screening at populate time.
+ *        + sms_lists row. Audience is optional — omit it to draft the
+ *        message first and attach a list later via POST .../audience.
  *
  * Mirrors /api/campaigns/[id]/email-lists plus the fire/sms populate
  * logic. RLS (can_write_to_campaign) applies through the user client.
@@ -14,9 +13,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { errorResponse } from '@/lib/api/error-response'
 import { isValidTimeZone } from '@/lib/sms/blackout'
-
-/** PostgREST caps responses at 1000 rows — page source reads. */
-const PAGE_SIZE = 1000
+import {
+  audienceSourceFilters,
+  isSmsApiAudience,
+  populateSmsListItems,
+  resolveAudienceWorkerIds,
+  type SmsApiAudience,
+} from '@/lib/sms/populate-sms-list'
 
 export async function GET(
   _req: NextRequest,
@@ -62,9 +65,8 @@ interface CreateBlastBody {
    * sent progressively via the p2p-send route, never the cron.
    */
   mode?: 'blast' | 'p2p'
-  audience?:
-    | { type: 'worker_list'; worker_list_id: number }
-    | { type: 'campaign' }
+  /** Omit to create a draft and attach a list later. */
+  audience?: SmsApiAudience
 }
 
 export async function POST(
@@ -91,11 +93,7 @@ export async function POST(
     }
     const mode = body.mode === 'p2p' ? 'p2p' : 'blast'
     const audience = body.audience
-    if (
-      !audience ||
-      (audience.type !== 'worker_list' && audience.type !== 'campaign') ||
-      (audience.type === 'worker_list' && !Number.isFinite(audience.worker_list_id))
-    ) {
+    if (audience !== undefined && !isSmsApiAudience(audience)) {
       return NextResponse.json({ error: 'Invalid audience' }, { status: 400 })
     }
     if (body.blackout_override && !body.blackout_override_reason?.trim()) {
@@ -111,69 +109,21 @@ export async function POST(
       )
     }
 
-    // Audience → ordered worker ids.
-    const workerIds: number[] = []
-    if (audience.type === 'worker_list') {
-      const { data: wl, error: wlErr } = await supabase
-        .from('campaign_worker_lists')
-        .select('list_id, campaign_id')
-        .eq('list_id', audience.worker_list_id)
-        .maybeSingle()
-      if (wlErr) throw wlErr
-      if (!wl || wl.campaign_id !== cid) {
-        return NextResponse.json({ error: 'Worker list not found' }, { status: 404 })
+    let workerIds: number[] = []
+    if (audience) {
+      const resolved = await resolveAudienceWorkerIds(supabase, cid, audience)
+      if (resolved.error) {
+        return NextResponse.json(
+          { error: resolved.error.message },
+          { status: resolved.error.status },
+        )
       }
-      // Page: PostgREST caps at 1000 rows; large cohorts must not
-      // silently truncate.
-      for (let from = 0; ; from += PAGE_SIZE) {
-        const { data: wlItems, error: wliErr } = await supabase
-          .from('campaign_worker_list_items')
-          .select('worker_id, sort_order')
-          .eq('list_id', audience.worker_list_id)
-          .order('sort_order', { ascending: true })
-          .order('worker_id', { ascending: true })
-          .range(from, from + PAGE_SIZE - 1)
-        if (wliErr) throw wliErr
-        workerIds.push(...(wlItems ?? []).map((r) => r.worker_id))
-        if (!wlItems || wlItems.length < PAGE_SIZE) break
-      }
-    } else {
-      for (let from = 0; ; from += PAGE_SIZE) {
-        const { data: members, error: memErr } = await supabase
-          .from('campaign_worker_membership')
-          .select('worker_id')
-          .eq('campaign_id', cid)
-          .order('worker_id', { ascending: true })
-          .range(from, from + PAGE_SIZE - 1)
-        if (memErr) throw memErr
-        workerIds.push(...(members ?? []).map((r) => r.worker_id))
-        if (!members || members.length < PAGE_SIZE) break
-      }
-    }
-    if (workerIds.length === 0) {
-      return NextResponse.json(
-        { error: 'Audience is empty — no workers found' },
-        { status: 400 },
-      )
-    }
-
-    // Consent + phone screening (chunked to keep .in() bounded).
-    const workerById = new Map<
-      number,
-      { phone_e164: string | null; sms_opt_out: boolean }
-    >()
-    for (let i = 0; i < workerIds.length; i += 500) {
-      const chunk = workerIds.slice(i, i + 500)
-      const { data: workers, error: wErr } = await supabase
-        .from('workers')
-        .select('worker_id, phone_e164, sms_opt_out')
-        .in('worker_id', chunk)
-      if (wErr) throw wErr
-      for (const w of workers ?? []) {
-        workerById.set(w.worker_id, {
-          phone_e164: w.phone_e164,
-          sms_opt_out: !!w.sms_opt_out,
-        })
+      workerIds = resolved.workerIds
+      if (workerIds.length === 0) {
+        return NextResponse.json(
+          { error: 'Audience is empty — no workers found' },
+          { status: 400 },
+        )
       }
     }
 
@@ -212,10 +162,9 @@ export async function POST(
         // blast creation keeps working if this code ships before the
         // 20260812140000 migration applies (column default is 'blast').
         ...(mode === 'p2p' ? { mode } : {}),
-        source_filters:
-          audience.type === 'worker_list'
-            ? { source: 'worker_list', list_id: audience.worker_list_id }
-            : { source: 'campaign' },
+        source_filters: audience
+          ? audienceSourceFilters(audience)
+          : { source: 'deferred' },
         sender_number_id: body.sender_number_id ?? null,
         timezone: body.timezone || 'Australia/Perth',
         blackout_override: !!body.blackout_override,
@@ -229,36 +178,10 @@ export async function POST(
       .single()
     if (listErr) throw listErr
 
-    const itemRows = workerIds.map((workerId, i) => {
-      const w = workerById.get(workerId)
-      const optedOut = !!w?.sms_opt_out
-      const phone = w?.phone_e164 ?? null
-      return {
-        list_id: smsList.list_id,
-        worker_id: workerId,
-        phone_e164: phone,
-        sort_order: i,
-        status: optedOut ? 'opted_out' : phone ? 'pending' : 'skipped',
-        failure_reason: optedOut
-          ? 'Worker has opted out of SMS'
-          : phone
-            ? null
-            : 'No mobile number on file',
-      }
-    })
-    for (let i = 0; i < itemRows.length; i += 500) {
-      const { error: insErr } = await supabase
-        .from('sms_list_items')
-        .insert(itemRows.slice(i, i + 500))
-      if (insErr) throw insErr
-    }
-
-    const pendingCount = itemRows.filter((r) => r.status === 'pending').length
-    const { error: totalErr } = await supabase
-      .from('sms_lists')
-      .update({ total_items: pendingCount })
-      .eq('list_id', smsList.list_id)
-    if (totalErr) throw totalErr
+    const populated =
+      workerIds.length > 0
+        ? await populateSmsListItems(supabase, smsList.list_id, workerIds)
+        : { pendingCount: 0, optedOut: 0, skippedNoPhone: 0 }
 
     const { error: linkErr } = await supabase
       .from('campaign_comms_drafts')
@@ -270,9 +193,9 @@ export async function POST(
       {
         sms_list_id: smsList.list_id,
         draft_id: draft.draft_id,
-        total_items: pendingCount,
-        opted_out: itemRows.filter((r) => r.status === 'opted_out').length,
-        skipped_no_phone: itemRows.filter((r) => r.status === 'skipped').length,
+        total_items: populated.pendingCount,
+        opted_out: populated.optedOut,
+        skipped_no_phone: populated.skippedNoPhone,
       },
       { status: 201 },
     )

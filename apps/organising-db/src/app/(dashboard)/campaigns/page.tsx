@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import dynamic from "next/dynamic";
-import { Plus, Wand2, ExternalLink, Trash2, Megaphone, FileStack, Mail, Phone, Upload, Settings as SettingsIcon } from "lucide-react";
+import { Plus, Wand2, ExternalLink, Trash2, Megaphone, FileStack, Mail, MessageSquare, Phone, Upload, Settings as SettingsIcon } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -385,6 +385,10 @@ export default function CampaignsPage() {
               <Link href="/campaigns/phone-wizard" className={tabBarActionClassName}>
                 <Phone className="h-4 w-4 shrink-0" />
                 Phone wizard
+              </Link>
+              <Link href="/campaigns/sms-tools" className={tabBarActionClassName}>
+                <MessageSquare className="h-4 w-4 shrink-0" />
+                SMS tools
               </Link>
               <button
                 type="button"

@@ -38,6 +38,7 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
 // Select components removed — audience selection now uses AudiencePicker
 import {
   Sheet,
@@ -68,6 +69,7 @@ import { SmsRelaysPanel } from '@/components/sms/relays/SmsRelaysPanel'
 import { SmsP2pPanel } from '@/components/sms/p2p/SmsP2pPanel'
 import { toast } from 'sonner'
 import {
+  useAttachSmsAudience,
   useCreateSmsBlast,
   useSmsListAction,
   useSmsListDetail,
@@ -138,11 +140,14 @@ function isoToLocal(iso: string | null): string | null {
 }
 
 interface InlineSmsOpsPanelProps {
-  campaignId: string | number
+  campaignId?: string | number | null
 }
 
 export function InlineSmsOpsPanel({ campaignId }: InlineSmsOpsPanelProps) {
-  const id = String(campaignId)
+  const id =
+    campaignId != null && String(campaignId) !== ''
+      ? String(campaignId)
+      : null
   const searchParams = useSearchParams()
   const { data: lists, isLoading } = useSmsLists(id)
   const [newOpen, setNewOpen] = useState(false)
@@ -222,17 +227,31 @@ export function InlineSmsOpsPanel({ campaignId }: InlineSmsOpsPanelProps) {
 
       <TabsContent value="inbox">
         <SmsInboxPanel
-          campaignId={id}
+          campaignId={id ?? undefined}
           initialConversationId={initialConversationId}
         />
       </TabsContent>
 
       <TabsContent value="surveys">
-        <SmsSurveysPanel campaignId={id} />
+        {id ? (
+          <SmsSurveysPanel campaignId={id} />
+        ) : (
+          <CampaignRequiredEmpty
+            title="Surveys need a campaign"
+            description="Pick a campaign above to author surveys, map answers to assessments, and choose a list."
+          />
+        )}
       </TabsContent>
 
       <TabsContent value="chats">
-        <SmsP2pPanel campaignId={id} />
+        {id ? (
+          <SmsP2pPanel campaignId={id} />
+        ) : (
+          <CampaignRequiredEmpty
+            title="Chat boards need a campaign"
+            description="Pick a campaign above to load a working list and message people a handful at a time."
+          />
+        )}
       </TabsContent>
 
       <TabsContent value="relays">
@@ -240,6 +259,8 @@ export function InlineSmsOpsPanel({ campaignId }: InlineSmsOpsPanelProps) {
       </TabsContent>
 
       <TabsContent value="blasts" className="space-y-6">
+      {id ? (
+        <>
       {/* Primary CTA */}
       <div className="flex items-center justify-between gap-3">
         <Button size="lg" onClick={() => setNewOpen(true)}>
@@ -318,8 +339,33 @@ export function InlineSmsOpsPanel({ campaignId }: InlineSmsOpsPanelProps) {
           if (!open) setDetailListId(null)
         }}
       />
+        </>
+      ) : (
+        <CampaignRequiredEmpty
+          title="Blasts need a campaign"
+          description="Pick a campaign above to create a blast — you can write the message first and attach a list later, or build the list first."
+        />
+      )}
       </TabsContent>
     </Tabs>
+  )
+}
+
+function CampaignRequiredEmpty({
+  title,
+  description,
+}: {
+  title: string
+  description: string
+}) {
+  return (
+    <Card className="border-dashed">
+      <CardContent className="p-6 text-center">
+        <MessageSquare className="mx-auto mb-2 h-7 w-7 text-muted-foreground" />
+        <p className="font-medium">{title}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -599,6 +645,7 @@ function NewBlastSheet({
   onCreated: (listId: number) => void
 }) {
   const [name, setName] = useState('')
+  const [deferAudience, setDeferAudience] = useState(false)
   const [audienceValue, setAudienceValue] = useState<AudienceValue>({ mode: 'campaign' })
   const [composer, setComposer] = useState<SmsComposerValue>(EMPTY_COMPOSER)
   const [submitting, setSubmitting] = useState(false)
@@ -612,8 +659,10 @@ function NewBlastSheet({
     }
     try {
       setSubmitting(true)
-      const audience = await toApiAudience(campaignId, audienceValue)
-      if (audienceValue.mode === 'composed') {
+      const audience = deferAudience
+        ? undefined
+        : await toApiAudience(campaignId, audienceValue)
+      if (!deferAudience && audienceValue.mode === 'composed') {
         queryClient.invalidateQueries({
           queryKey: ['worker-lists-for-sms', String(campaignId)],
         })
@@ -635,11 +684,14 @@ function NewBlastSheet({
             if (res.opted_out > 0) notes.push(`${res.opted_out} opted out`)
             if (res.skipped_no_phone > 0) notes.push(`${res.skipped_no_phone} without a mobile`)
             toast.success(
-              `Blast created — ${res.total_items} recipients${
-                notes.length ? ` (${notes.join(', ')} excluded)` : ''
-              }`,
+              res.total_items > 0
+                ? `Blast created — ${res.total_items} recipients${
+                    notes.length ? ` (${notes.join(', ')} excluded)` : ''
+                  }`
+                : 'Draft blast created — attach a list when you are ready',
             )
             setName('')
+            setDeferAudience(false)
             setAudienceValue({ mode: 'campaign' })
             setComposer(EMPTY_COMPOSER)
             onCreated(res.sms_list_id)
@@ -660,9 +712,9 @@ function NewBlastSheet({
         <SheetHeader>
           <SheetTitle>New SMS blast</SheetTitle>
           <SheetDescription>
-            Pick the audience, write the message, then queue it from the blast
-            card. Opted-out workers and workers without a mobile are excluded
-            automatically.
+            Write the message now, pick a list now, or both — you can attach
+            an audience later from the draft. Opted-out workers and workers
+            without a mobile are excluded automatically.
           </SheetDescription>
         </SheetHeader>
         <div className="mt-4 space-y-4 pb-8">
@@ -676,13 +728,30 @@ function NewBlastSheet({
             />
           </div>
 
-          <AudiencePicker
-            channel="sms"
-            campaignId={campaignId}
-            value={audienceValue}
-            onChange={setAudienceValue}
-            disabled={create.isPending || submitting}
-          />
+          <div className="flex items-start gap-2 rounded-md border p-3">
+            <Checkbox
+              id="sms-blast-defer-audience"
+              checked={deferAudience}
+              onCheckedChange={(v) => setDeferAudience(v === true)}
+              disabled={create.isPending || submitting}
+            />
+            <Label
+              htmlFor="sms-blast-defer-audience"
+              className="font-normal leading-snug"
+            >
+              Attach a list later — create the blast first
+            </Label>
+          </div>
+
+          {!deferAudience && (
+            <AudiencePicker
+              channel="sms"
+              campaignId={campaignId}
+              value={audienceValue}
+              onChange={setAudienceValue}
+              disabled={create.isPending || submitting}
+            />
+          )}
 
           <SmsComposer
             campaignId={campaignId}
@@ -753,6 +822,12 @@ function DraftDetail({
 }) {
   const update = useUpdateSmsBlast(campaignId)
   const action = useSmsListAction(campaignId)
+  const attach = useAttachSmsAudience(campaignId)
+  const queryClient = useQueryClient()
+  const [audienceValue, setAudienceValue] = useState<AudienceValue>({
+    mode: 'campaign',
+  })
+  const [attaching, setAttaching] = useState(false)
   const [composer, setComposer] = useState<SmsComposerValue>({
     body: detail.draft?.body ?? '',
     sender_number_id: detail.list.sender_number_id,
@@ -788,14 +863,75 @@ function DraftDetail({
       <SheetHeader>
         <SheetTitle>{detail.list.name}</SheetTitle>
         <SheetDescription>
-          Draft blast — {pendingCount} sendable recipient
-          {pendingCount === 1 ? '' : 's'}
-          {detail.items.length !== pendingCount &&
-            ` (${detail.items.length - pendingCount} excluded)`}
-          .
+          {detail.items.length === 0
+            ? 'Draft blast with no audience yet — attach a list before queueing.'
+            : `Draft blast — ${pendingCount} sendable recipient${
+                pendingCount === 1 ? '' : 's'
+              }${
+                detail.items.length !== pendingCount
+                  ? ` (${detail.items.length - pendingCount} excluded)`
+                  : ''
+              }.`}
         </SheetDescription>
       </SheetHeader>
       <div className="mt-4 space-y-4 pb-8">
+        {detail.items.length === 0 && (
+          <div className="space-y-3 rounded-md border p-3">
+            <p className="text-sm font-medium">Attach an audience</p>
+            <AudiencePicker
+              channel="sms"
+              campaignId={campaignId}
+              value={audienceValue}
+              onChange={setAudienceValue}
+              disabled={attaching || attach.isPending}
+            />
+            <Button
+              className="w-full"
+              disabled={attaching || attach.isPending}
+              onClick={async () => {
+                try {
+                  setAttaching(true)
+                  const audience = await toApiAudience(campaignId, audienceValue)
+                  if (audienceValue.mode === 'composed') {
+                    queryClient.invalidateQueries({
+                      queryKey: ['worker-lists-for-sms', String(campaignId)],
+                    })
+                  }
+                  attach.mutate(
+                    { listId: detail.list.list_id, audience },
+                    {
+                      onSuccess: (res) => {
+                        const notes: string[] = []
+                        if (res.opted_out > 0) notes.push(`${res.opted_out} opted out`)
+                        if (res.skipped_no_phone > 0) {
+                          notes.push(`${res.skipped_no_phone} without a mobile`)
+                        }
+                        toast.success(
+                          `Audience attached — ${res.total_items} sendable${
+                            notes.length ? ` (${notes.join(', ')} excluded)` : ''
+                          }`,
+                        )
+                      },
+                      onError: (err: Error) => toast.error(err.message),
+                    },
+                  )
+                } catch (err) {
+                  toast.error(
+                    err instanceof Error ? err.message : 'Failed to prepare audience',
+                  )
+                } finally {
+                  setAttaching(false)
+                }
+              }}
+            >
+              {(attaching || attach.isPending) && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Attach list
+            </Button>
+          </div>
+        )}
+
         <SmsComposer
           campaignId={campaignId}
           value={composer}
@@ -823,7 +959,12 @@ function DraftDetail({
           </Button>
           <Button
             className="flex-1"
-            disabled={update.isPending || action.isPending || blockers.length > 0}
+            disabled={
+              update.isPending ||
+              action.isPending ||
+              blockers.length > 0 ||
+              pendingCount === 0
+            }
             onClick={() =>
               save(() =>
                 action.mutate(

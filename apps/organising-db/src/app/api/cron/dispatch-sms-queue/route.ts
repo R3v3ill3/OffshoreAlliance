@@ -12,9 +12,9 @@
  *
  * Per eligible list (status queued/sending, schedule due, blackout
  * window open in the list's timezone unless a recorded override):
- *   1. Re-validate the draft body compliance (org name required; opt-out
- *      optional) — a
- *      paused-then-edited draft must never send non-compliant copy; on
+ *   1. Re-validate the draft body for hard compliance failures (org
+ *      name is a client warning, not a send blocker). A paused-then-
+ *      edited draft must never send copy that fails those checks; on
  *      failure the list is paused.
  *   2. Claim a batch, then re-check workers.sms_opt_out at send time
  *      (audience-time screening is not enough — a STOP may arrive
@@ -440,8 +440,8 @@ export async function GET(request: Request) {
       const template = (draft?.body as string | undefined)?.trim()
       if (!template) throw new Error('Draft body is empty')
 
-      // Compliance re-check at dispatch time — never send copy that has
-      // lost its org identification.
+      // Compliance re-check at dispatch time — pause on hard failures
+      // only (missing org name is no longer a send blocker).
       const compliance = validateSmsBody(template)
       if (!compliance.ok) {
         await supabase

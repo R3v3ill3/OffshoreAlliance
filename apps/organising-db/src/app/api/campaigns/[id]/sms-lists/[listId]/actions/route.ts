@@ -1,11 +1,12 @@
 /**
  * SMS list lifecycle actions: queue / pause / resume / cancel.
  *
- * queue  — server-side re-check of the composer's compliance validation
- *          (org name required; opt-out instruction optional — Mobile Message does not append
- *          one), sender number required, then pending → queued with
- *          send_before stamped per the blackout window (brief §7.2).
- *          The dispatch cron does the actual sending.
+ * queue  — server-side re-check of the composer's hard compliance
+ *          failures (org name is a client warning, not a send blocker;
+ *          Mobile Message does not append opt-out text), sender number
+ *          required, then pending → queued with send_before stamped
+ *          per the blackout window (brief §7.2). The dispatch cron
+ *          does the actual sending.
  * pause  — queued/sending → paused (dispatcher skips paused lists).
  * resume — paused → queued.
  * cancel — any non-terminal status → cancelled; queued/pending items
@@ -114,8 +115,8 @@ export async function POST(
             { status: 400 },
           )
         }
-        // Compliance re-check — the composer blocks client-side, this is
-        // the server-side belt (org identification required; opt-out optional).
+        // Compliance re-check — hard errors only (org name is a
+        // client-side warning, not a send blocker).
         const compliance = validateSmsBody(draftBody)
         if (!compliance.ok) {
           return NextResponse.json(

@@ -14729,6 +14729,7 @@ export type Database = {
       }
       sms_list_items: {
         Row: {
+          body_override: string | null
           claimed_at: string | null
           conversation_id: number | null
           created_at: string
@@ -14746,6 +14747,7 @@ export type Database = {
           worker_id: number
         }
         Insert: {
+          body_override?: string | null
           claimed_at?: string | null
           conversation_id?: number | null
           created_at?: string
@@ -14763,6 +14765,7 @@ export type Database = {
           worker_id: number
         }
         Update: {
+          body_override?: string | null
           claimed_at?: string | null
           conversation_id?: number | null
           created_at?: string

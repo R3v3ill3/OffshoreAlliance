@@ -8,8 +8,8 @@
  *   synonyms / assessment maps, scale min/max, yes/no, open text),
  *   per-answer branch selects (→ later question or End), per-question
  *   assessment target + response→rating mapping, invalid/nudge copy.
- * - Invitation body with compliance validation (org name required;
- *   opt-out optional) and a segment counter over the COMBINED
+ * - Invitation body with a warning when the org name is missing
+ *   (opt-out optional) and a segment counter over the COMBINED
  *   invitation + question 1 message (they go out as one send).
  * - >5 questions warning (§4.1: completion cliffs after Q3–Q6).
  * - Live phone-style preview driven by the pure engine renderers.
@@ -623,9 +623,9 @@ export function SmsSurveyEditor({
           {invitationSegments.segments === 1 ? '' : 's'} (
           {invitationSegments.encoding}).
         </p>
-        {!compliance.ok && (
+        {compliance.warnings.length > 0 && (
           <ul className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 space-y-0.5">
-            {compliance.errors.map((e) => (
+            {compliance.warnings.map((e) => (
               <li key={e}>{e}</li>
             ))}
           </ul>

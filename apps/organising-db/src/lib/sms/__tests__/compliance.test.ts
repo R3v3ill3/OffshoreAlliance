@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateSmsBody } from "../compliance";
+import { SMS_ORG_NAME_WARNING, validateSmsBody } from "../compliance";
 
 describe("validateSmsBody", () => {
   it("passes with org name and 'Reply STOP to opt out'", () => {
@@ -8,6 +8,7 @@ describe("validateSmsBody", () => {
     );
     expect(r.ok).toBe(true);
     expect(r.errors).toHaveLength(0);
+    expect(r.warnings).toHaveLength(0);
   });
 
   it("accepts phrasing variants", () => {
@@ -20,15 +21,17 @@ describe("validateSmsBody", () => {
     ];
     for (const b of bodies) {
       expect(validateSmsBody(b).ok, b).toBe(true);
+      expect(validateSmsBody(b).warnings, b).toHaveLength(0);
     }
   });
 
-  it("fails without organisation identification", () => {
+  it("warns without organisation identification but still passes", () => {
     const r = validateSmsBody("Meeting Tuesday. Reply STOP to opt out");
-    expect(r.ok).toBe(false);
+    expect(r.ok).toBe(true);
     expect(r.hasOrgName).toBe(false);
     expect(r.hasOptOut).toBe(true);
-    expect(r.errors).toHaveLength(1);
+    expect(r.errors).toHaveLength(0);
+    expect(r.warnings).toEqual([SMS_ORG_NAME_WARNING]);
   });
 
   it("passes without an opt-out instruction (optional for member traffic)", () => {
@@ -37,6 +40,7 @@ describe("validateSmsBody", () => {
     expect(r.hasOptOut).toBe(false);
     expect(r.hasOrgName).toBe(true);
     expect(r.errors).toHaveLength(0);
+    expect(r.warnings).toHaveLength(0);
   });
 
   it("does not treat unrelated 'stop' as an opt-out instruction", () => {
@@ -46,11 +50,12 @@ describe("validateSmsBody", () => {
     expect(r.hasOptOut).toBe(false);
   });
 
-  it("fails an empty body on the org-name check only", () => {
+  it("warns on an empty body for the org-name check only", () => {
     const r = validateSmsBody("");
-    expect(r.ok).toBe(false);
+    expect(r.ok).toBe(true);
     expect(r.hasOrgName).toBe(false);
     expect(r.hasOptOut).toBe(false);
-    expect(r.errors).toHaveLength(1);
+    expect(r.errors).toHaveLength(0);
+    expect(r.warnings).toEqual([SMS_ORG_NAME_WARNING]);
   });
 });

@@ -3,6 +3,8 @@ import {
   P2P_SEND_CAP,
   filterP2pItems,
   isP2pSendable,
+  p2pBodyOverrideToStore,
+  p2pItemTemplate,
   pruneP2pSelection,
   renderP2pBody,
   selectNextN,
@@ -19,6 +21,41 @@ function item(overrides: Partial<P2pBoardItemLike> & { item_id: number }): P2pBo
     ...overrides,
   };
 }
+
+describe("p2pItemTemplate", () => {
+  it("uses the board template when the override is null/blank", () => {
+    expect(p2pItemTemplate("Hi {{first_name}}", null)).toBe("Hi {{first_name}}");
+    expect(p2pItemTemplate("Hi {{first_name}}", "   ")).toBe("Hi {{first_name}}");
+  });
+
+  it("uses a custom override when present", () => {
+    expect(p2pItemTemplate("Hi {{first_name}}", "G'day Sam — just me")).toBe(
+      "G'day Sam — just me",
+    );
+  });
+});
+
+describe("p2pBodyOverrideToStore", () => {
+  const board = "Hi {{first_name}}, meeting Tuesday. - Offshore Alliance";
+
+  it("stores null when the edit matches the board default", () => {
+    expect(p2pBodyOverrideToStore(board, board)).toBeNull();
+    expect(p2pBodyOverrideToStore(board, `  ${board}  `)).toBeNull();
+  });
+
+  it("stores null for an empty edit (treat as revert)", () => {
+    expect(p2pBodyOverrideToStore(board, "   ")).toBeNull();
+  });
+
+  it("keeps a customised body, including one with merge fields removed", () => {
+    expect(p2pBodyOverrideToStore(board, "Hi Alex, Tuesday still on?")).toBe(
+      "Hi Alex, Tuesday still on?",
+    );
+    expect(p2pBodyOverrideToStore(board, "Hi {{first_name}} — just checking in")).toBe(
+      "Hi {{first_name}} — just checking in",
+    );
+  });
+});
 
 describe("renderP2pBody", () => {
   it("resolves known tokens and strips unknown leftovers", () => {

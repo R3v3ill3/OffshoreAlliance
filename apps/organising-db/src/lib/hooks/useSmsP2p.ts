@@ -3,12 +3,16 @@
 /**
  * TanStack Query hooks for the P2P chat board (the 'chat' pathway).
  * Data access goes through the campaign-scoped /sms-lists/[listId]/p2p*
- * routes; board data polls every 30 s so reply/thread state stays
- * fresh during a session.
+ * routes. The board is a live session: ignore the app-wide 5-minute
+ * staleTime, poll every 10s while the sheet is open, and always
+ * refetch on remount (closing/reopening the sheet).
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchApi } from '@/lib/api/fetch-api'
 import type { SmsP2pBoardPayload, SmsP2pSendResponse } from '@/types/sms'
+
+/** How often the open chat-board sheet reloads thread/reply state. */
+export const P2P_BOARD_POLL_MS = 10_000
 
 async function toError(res: Response, fallback: string): Promise<Error> {
   const err = await res.json().catch(() => ({ error: fallback }))
@@ -29,7 +33,10 @@ export function useSmsP2pBoard(
       return res.json() as Promise<SmsP2pBoardPayload>
     },
     enabled: !!campaignId && listId != null,
-    refetchInterval: 30_000,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchInterval: P2P_BOARD_POLL_MS,
+    refetchIntervalInBackground: true,
   })
 }
 
@@ -97,6 +104,32 @@ export function useSmsP2pAddPeople(
         opted_out?: number
         skipped_no_phone?: number
       }>
+    },
+    onSuccess: invalidate,
+  })
+}
+
+export function useSmsP2pSetItemBody(
+  campaignId: number | string,
+  listId: number | null,
+) {
+  const invalidate = useInvalidateP2p(campaignId, listId)
+  return useMutation({
+    mutationFn: async (input: { itemId: number; body: string | null }) => {
+      const res = await fetchApi(
+        `/api/campaigns/${campaignId}/sms-lists/${listId}/p2p`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'set_item_body',
+            item_id: input.itemId,
+            body: input.body,
+          }),
+        },
+      )
+      if (!res.ok) throw await toError(res, 'Failed to save initiating message')
+      return res.json() as Promise<{ ok: true; body_override: string | null }>
     },
     onSuccess: invalidate,
   })

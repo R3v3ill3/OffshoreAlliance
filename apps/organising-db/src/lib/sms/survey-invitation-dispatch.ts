@@ -117,6 +117,8 @@ export async function dispatchSurveyInvitations(
   const indicativeOk =
     survey.purpose !== "indicative_ballot" ||
     invitationMentionsIndicative(survey.invitation_body);
+  // Org name is a client warning, not a hold. Indicative-ballot
+  // framing remains a hard requirement.
   if (!compliance.ok || !indicativeOk) {
     summary.noncompliant = true;
     summary.errors.push(

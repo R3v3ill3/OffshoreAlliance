@@ -44,6 +44,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import {
+  AlertTriangle,
   ClipboardList,
   Copy,
   Download,
@@ -62,6 +63,7 @@ import {
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils/cn'
 import { BALLOT_COMPLIANCE_BANNER } from '@/lib/sms/survey-validation'
+import { surveySenderPurposeWarning } from '@/lib/sms/sender-purpose'
 import type { IntegrityFinding } from '@/lib/sms/survey-integrity'
 import type {
   SmsBallotDetail,
@@ -988,6 +990,7 @@ function DraftDetail({
 
   const busy = action.isPending || del.isPending || submitting
   const isTest = detail.survey.is_test ?? true
+  const senderWarn = surveySenderPurposeWarning(preview?.sender_purpose)
 
   const runWithAudience = async (
     lifecycleAction: 'preview' | 'open',
@@ -1028,6 +1031,9 @@ function DraftDetail({
                 within_window: res.within_window ?? false,
                 next_window_at: res.next_window_at ?? '',
                 is_test: res.is_test ?? isTest,
+                sender_purpose: res.sender_purpose ?? null,
+                other_open_surveys: res.other_open_surveys ?? [],
+                audience_overlap_count: res.audience_overlap_count ?? 0,
               })
               return
             }
@@ -1037,6 +1043,7 @@ function DraftDetail({
               notes.push(`${res.skipped_no_phone} without a mobile`)
             const sent = res.invitations_sent ?? 0
             const remaining = res.invitations_remaining_queued ?? 0
+            const deferredLive = res.invitations_deferred_live_phone ?? 0
             let sendNote: string
             if (res.invitations_deferred_blackout) {
               sendNote =
@@ -1059,6 +1066,13 @@ function DraftDetail({
                 res.sessions_created === 1 ? '' : 's'
               }${notes.length ? ` (${notes.join(', ')} excluded)` : ''}. ${sendNote}`,
             )
+            if (deferredLive > 0) {
+              toast.warning(
+                `${deferredLive} ${
+                  deferredLive === 1 ? 'person is' : 'people are'
+                } already in another live survey — their invites wait until that session ends.`,
+              )
+            }
             setPreview(null)
           },
           onError: (err: Error) => toast.error(err.message),
@@ -1114,6 +1128,45 @@ function DraftDetail({
           <Card>
             <CardContent className="p-3 space-y-2 text-sm">
               <p className="font-medium">Launch summary</p>
+              {((preview.other_open_surveys?.length ?? 0) > 0 ||
+                (preview.audience_overlap_count ?? 0) > 0) && (
+                <div
+                  className={cn(
+                    'rounded-md border p-2.5 text-xs space-y-1',
+                    (preview.audience_overlap_count ?? 0) > 0
+                      ? 'border-amber-300 bg-amber-50 text-amber-900'
+                      : 'border-amber-200 bg-amber-50 text-amber-800',
+                  )}
+                >
+                  <p className="flex items-start gap-1.5 font-medium">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    {(preview.audience_overlap_count ?? 0) > 0
+                      ? `${preview.audience_overlap_count} ${
+                          preview.audience_overlap_count === 1
+                            ? 'person in this audience is'
+                            : 'people in this audience are'
+                        } already in another live survey. Their invitations stay queued until that session ends.`
+                      : 'Another survey is already open. Disjoint audiences are fine — a member can only have one live session at a time.'}
+                  </p>
+                  {(preview.other_open_surveys?.length ?? 0) > 0 && (
+                    <p className="pl-5 text-amber-800/90">
+                      Open now:{' '}
+                      {preview.other_open_surveys!
+                        .map(
+                          (s) =>
+                            `${s.title}${s.status === 'paused' ? ' (paused)' : ''}`,
+                        )
+                        .join(', ')}
+                    </p>
+                  )}
+                </div>
+              )}
+              {senderWarn && (
+                <p className="flex items-start gap-1.5 text-xs text-amber-800">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  {senderWarn}
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <span className="text-muted-foreground">Questions</span>
                 <span>{preview.question_count}</span>
@@ -1123,6 +1176,24 @@ function DraftDetail({
                 <span>{preview.opted_out}</span>
                 <span className="text-muted-foreground">No phone</span>
                 <span>{preview.skipped_no_phone}</span>
+                {(preview.audience_overlap_count ?? 0) > 0 && (
+                  <>
+                    <span className="text-muted-foreground">
+                      Already in a live survey
+                    </span>
+                    <span>{preview.audience_overlap_count}</span>
+                  </>
+                )}
+                {(preview.other_open_surveys?.length ?? 0) > 0 && (
+                  <>
+                    <span className="text-muted-foreground">Other surveys open</span>
+                    <span>
+                      {preview.other_open_surveys!
+                        .map((s) => s.title)
+                        .join(', ')}
+                    </span>
+                  </>
+                )}
                 <span className="text-muted-foreground">Timezone</span>
                 <span>{preview.timezone}</span>
                 <span className="text-muted-foreground">Send window</span>

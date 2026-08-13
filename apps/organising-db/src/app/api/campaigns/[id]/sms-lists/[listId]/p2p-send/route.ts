@@ -39,6 +39,7 @@ import {
   P2P_SEND_CAP,
   renderP2pBody,
 } from '@/lib/sms/p2p'
+import { inboxUnsafePurposeError } from '@/lib/sms/sender-purpose'
 
 interface SendBody {
   item_ids?: number[]
@@ -185,17 +186,9 @@ export async function POST(
         { status: 409 },
       )
     }
-    // Belt (mirrors POST /api/sms/conversations): relay/survey numbers
-    // have webhook precedence over conversation routing — threads on
-    // them would never see their replies.
-    if (sender.purpose === 'relay' || sender.purpose === 'survey') {
-      return NextResponse.json(
-        {
-          error:
-            'This board uses a relay/survey number — replies would never reach the inbox. Recreate it with an organiser number.',
-        },
-        { status: 409 },
-      )
+    const unsafe = inboxUnsafePurposeError(sender.purpose as string | null)
+    if (unsafe) {
+      return NextResponse.json({ error: unsafe }, { status: 409 })
     }
     const senderDigits = (sender.phone_e164 as string).replace(/^\+/, '')
 

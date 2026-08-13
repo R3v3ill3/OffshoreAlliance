@@ -35,6 +35,7 @@ import {
 } from '@/lib/sms/survey-validation'
 import { LIVE_SESSION_STATES, recordBallotEvents } from '@/lib/sms/survey-runtime'
 import { dispatchSurveyInvitations } from '@/lib/sms/survey-invitation-dispatch'
+import { loadSurveyLaunchConcurrency } from '@/lib/sms/survey-concurrency'
 import { getSmsProvider } from '@/lib/sms/provider'
 import { snapshotSurveyVersion, loadLiveQuestions } from '@/lib/sms/survey-versions'
 import {
@@ -529,6 +530,21 @@ export async function POST(
         survey.version,
       )
 
+      const concurrency = await loadSurveyLaunchConcurrency(admin, {
+        excludeSurveyId: sid,
+        audiencePhones: sessionRows.map((s) => s.phone_e164),
+      })
+
+      let senderPurpose: string | null = null
+      if (survey.sender_number_id) {
+        const { data: senderRow } = await supabase
+          .from('sms_numbers')
+          .select('purpose')
+          .eq('number_id', survey.sender_number_id)
+          .maybeSingle()
+        senderPurpose = (senderRow?.purpose as string | null) ?? null
+      }
+
       if (body.action === 'preview') {
         const { count: questionCount } = await supabase
           .from('sms_survey_questions')
@@ -549,6 +565,9 @@ export async function POST(
           within_window: withinWindow,
           next_window_at: nextWindowOpen(now, tz).toISOString(),
           is_test: !!survey.is_test,
+          sender_purpose: senderPurpose,
+          other_open_surveys: concurrency.other_open_surveys,
+          audience_overlap_count: concurrency.audience_overlap_count,
         })
       }
 
@@ -677,6 +696,8 @@ export async function POST(
         invitations_deferred_live_phone: inviteDispatch.deferred_live_phone,
         invitations_undeliverable: inviteDispatch.undeliverable,
         invitation_errors: inviteDispatch.errors,
+        other_open_surveys: concurrency.other_open_surveys,
+        audience_overlap_count: concurrency.audience_overlap_count,
       })
     }
 

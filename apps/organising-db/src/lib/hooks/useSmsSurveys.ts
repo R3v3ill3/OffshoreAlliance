@@ -44,6 +44,12 @@ export type SurveyAudience =
   | { type: 'worker_list'; worker_list_id: number }
   | { type: 'campaign' }
 
+export interface SurveyLaunchOtherOpen {
+  survey_id: number
+  title: string
+  status: string
+}
+
 export interface SurveyLaunchPreview {
   ok: true
   invitable: number
@@ -55,6 +61,9 @@ export interface SurveyLaunchPreview {
   within_window: boolean
   next_window_at: string
   is_test: boolean
+  sender_purpose?: string | null
+  other_open_surveys?: SurveyLaunchOtherOpen[]
+  audience_overlap_count?: number
 }
 
 async function toError(res: Response, fallback: string): Promise<Error> {
@@ -384,6 +393,9 @@ export function useSmsSurveyAction(campaignId: number | string) {
         invitations_deferred_live_phone?: number
         invitations_undeliverable?: number
         invitation_errors?: string[]
+        sender_purpose?: string | null
+        other_open_surveys?: SurveyLaunchOtherOpen[]
+        audience_overlap_count?: number
       }>
     },
     onSuccess: (_data, vars) => {

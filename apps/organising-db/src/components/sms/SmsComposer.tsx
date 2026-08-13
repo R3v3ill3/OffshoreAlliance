@@ -48,6 +48,11 @@ import {
   type SmsSenderOption,
 } from '@/lib/hooks/useSmsBroadcast'
 import { toDisplay, toE164 } from '@/lib/phone/normalise-phone'
+import {
+  filterInboxSafeSenders,
+  INBOX_UNSAFE_SENDER_MESSAGE,
+  isInboxUnsafePurpose,
+} from '@/lib/sms/sender-purpose'
 
 export interface SmsComposerValue {
   body: string
@@ -103,19 +108,27 @@ export function SmsComposer({
   const [tapNumber, setTapNumber] = useState('')
   const [tapMessage, setTapMessage] = useState('')
 
-  // P2P chats never use relay/survey-purpose numbers — their webhooks
-  // consume replies before conversation routing, orphaning threads.
-  // Filtered client-side so the senders route stays generic for
-  // surfaces that legitimately need those numbers (e.g. surveys).
-  const selectableSenders = useMemo(
-    () =>
-      variant === 'p2p'
-        ? (senders ?? []).filter(
-            (s) => s.purpose !== 'relay' && s.purpose !== 'survey',
-          )
-        : (senders ?? []),
-    [senders, variant],
+  // Blast and chat never use relay/survey-purpose numbers — those
+  // webhooks consume replies before conversation routing. The senders
+  // route stays generic for surfaces that need those numbers (surveys).
+  const inboxSafeSenders = useMemo(
+    () => filterInboxSafeSenders(senders ?? []),
+    [senders],
   )
+  const selectedSender = (senders ?? []).find(
+    (s) => s.number_id === value.sender_number_id,
+  )
+  const senderIsUnsafe = isInboxUnsafePurpose(selectedSender?.purpose)
+  const selectableSenders = useMemo(() => {
+    if (
+      selectedSender &&
+      senderIsUnsafe &&
+      !inboxSafeSenders.some((s) => s.number_id === selectedSender.number_id)
+    ) {
+      return [selectedSender, ...inboxSafeSenders]
+    }
+    return inboxSafeSenders
+  }, [inboxSafeSenders, selectedSender, senderIsUnsafe])
 
   // Default the sender to the signed-in organiser's number once loaded.
   const defaultedRef = useRef(false)
@@ -364,9 +377,17 @@ export function SmsComposer({
               ))}
             </SelectContent>
           </Select>
-          {senders && senders.length === 0 && (
+          {senderIsUnsafe && (
+            <p className="flex items-start gap-1 text-xs text-amber-800">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              {INBOX_UNSAFE_SENDER_MESSAGE}
+            </p>
+          )}
+          {senders && inboxSafeSenders.length === 0 && (
             <p className="text-xs text-muted-foreground">
-              No active numbers — add dedicated numbers in Administration → SMS.
+              {senders.length === 0
+                ? 'No active numbers — add dedicated numbers in Administration → SMS.'
+                : 'No organiser numbers available — survey and relay numbers cannot send blasts or chats.'}
             </p>
           )}
         </div>
@@ -525,11 +546,22 @@ export function SmsComposer({
  * + sender + override-reason. Mirrors the server-side validation in the
  * actions route.
  */
-export function smsComposerBlockers(value: SmsComposerValue): string[] {
+export function smsComposerBlockers(
+  value: SmsComposerValue,
+  senders?: Array<{ number_id: number; purpose: string }>,
+): string[] {
   const blockers: string[] = []
   if (!value.body.trim()) blockers.push('Message body is empty.')
   else blockers.push(...validateSmsBody(value.body).errors)
   if (value.sender_number_id == null) blockers.push('Choose a sender number.')
+  else if (senders) {
+    const purpose = senders.find(
+      (s) => s.number_id === value.sender_number_id,
+    )?.purpose
+    if (isInboxUnsafePurpose(purpose)) {
+      blockers.push(INBOX_UNSAFE_SENDER_MESSAGE)
+    }
+  }
   if (value.blackout_override && !value.blackout_override_reason.trim()) {
     blockers.push('Blackout override requires a reason.')
   }

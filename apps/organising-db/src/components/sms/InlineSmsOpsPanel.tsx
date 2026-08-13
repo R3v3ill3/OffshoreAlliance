@@ -74,6 +74,7 @@ import {
   useSmsListAction,
   useSmsListDetail,
   useSmsLists,
+  useSmsSenders,
   useUpdateSmsBlast,
   type SmsListDetail,
 } from '@/lib/hooks/useSmsBroadcast'
@@ -937,7 +938,8 @@ function DraftDetail({
     scheduled_for: isoToLocal(detail.list.scheduled_for),
   })
 
-  const blockers = smsComposerBlockers(composer)
+  const { data: senders } = useSmsSenders()
+  const blockers = smsComposerBlockers(composer, senders)
   const pendingCount = detail.items.filter((i) => i.status === 'pending').length
 
   const save = (then?: () => void) => {

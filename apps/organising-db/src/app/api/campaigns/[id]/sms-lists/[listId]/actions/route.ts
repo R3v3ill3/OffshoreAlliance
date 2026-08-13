@@ -16,6 +16,7 @@ import { createClient } from '@/lib/supabase/server'
 import { errorResponse } from '@/lib/api/error-response'
 import { validateSmsBody } from '@/lib/sms/compliance'
 import { computeSendBefore } from '@/lib/sms/blackout'
+import { inboxUnsafePurposeError } from '@/lib/sms/sender-purpose'
 
 export async function POST(
   req: NextRequest,
@@ -80,7 +81,7 @@ export async function POST(
         }
         const { data: sender, error: senderErr } = await supabase
           .from('sms_numbers')
-          .select('number_id, status')
+          .select('number_id, status, purpose')
           .eq('number_id', list.sender_number_id)
           .maybeSingle()
         if (senderErr) throw senderErr
@@ -89,6 +90,10 @@ export async function POST(
             { error: 'Sender number is not active' },
             { status: 400 },
           )
+        }
+        const unsafe = inboxUnsafePurposeError(sender.purpose as string | null)
+        if (unsafe) {
+          return NextResponse.json({ error: unsafe }, { status: 409 })
         }
         if (!list.draft_id) {
           return NextResponse.json(

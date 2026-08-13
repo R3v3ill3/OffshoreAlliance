@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { errorResponse } from '@/lib/api/error-response'
 import { isValidTimeZone } from '@/lib/sms/blackout'
+import { inboxUnsafeSenderMessage } from '@/lib/sms/sender-purpose'
 
 async function loadList(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -186,6 +187,15 @@ export async function PATCH(
       listUpdate.name = body.name.trim()
     }
     if (body.sender_number_id !== undefined) {
+      if (body.sender_number_id != null) {
+        const unsafe = await inboxUnsafeSenderMessage(
+          supabase,
+          body.sender_number_id,
+        )
+        if (unsafe) {
+          return NextResponse.json({ error: unsafe }, { status: 409 })
+        }
+      }
       listUpdate.sender_number_id = body.sender_number_id
     }
     if (body.timezone !== undefined) listUpdate.timezone = body.timezone

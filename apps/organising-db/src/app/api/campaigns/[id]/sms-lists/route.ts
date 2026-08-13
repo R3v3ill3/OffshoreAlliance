@@ -20,6 +20,7 @@ import {
   resolveAudienceWorkerIds,
   type SmsApiAudience,
 } from '@/lib/sms/populate-sms-list'
+import { inboxUnsafeSenderMessage } from '@/lib/sms/sender-purpose'
 
 export async function GET(
   _req: NextRequest,
@@ -107,6 +108,16 @@ export async function POST(
         { error: `Invalid timezone "${body.timezone}"` },
         { status: 400 },
       )
+    }
+
+    if (body.sender_number_id != null) {
+      const unsafe = await inboxUnsafeSenderMessage(
+        supabase,
+        body.sender_number_id,
+      )
+      if (unsafe) {
+        return NextResponse.json({ error: unsafe }, { status: 409 })
+      }
     }
 
     let workerIds: number[] = []

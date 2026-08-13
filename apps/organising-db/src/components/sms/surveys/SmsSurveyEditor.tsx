@@ -14,7 +14,7 @@
  * - >5 questions warning (§4.1: completion cliffs after Q3–Q6).
  * - Live phone-style preview driven by the pure engine renderers.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,6 +39,12 @@ import {
   renderQuestion,
 } from '@/lib/sms/survey-engine'
 import { useSmsSenders } from '@/lib/hooks/useSmsBroadcast'
+import {
+  filterSurveySenders,
+  surveySenderPurposeHint,
+  surveySenderPurposeWarning,
+  surveySenderSortKey,
+} from '@/lib/sms/sender-purpose'
 import {
   assessmentLinkError,
 } from '@/lib/sms/assessment-mapping'
@@ -313,11 +319,48 @@ export function SmsSurveyEditor({
   hideAssessments = false,
 }: SmsSurveyEditorProps) {
   const { data: senders } = useSmsSenders()
+  const surveySenders = useMemo(() => {
+    return filterSurveySenders(senders ?? [])
+      .slice()
+      .sort((a, b) => {
+        const d = surveySenderSortKey(a) - surveySenderSortKey(b)
+        if (d !== 0) return d
+        return (a.label || a.phone_e164).localeCompare(b.label || b.phone_e164)
+      })
+  }, [senders])
+  const selectedSender = (senders ?? []).find(
+    (s) => s.number_id === value.sender_number_id,
+  )
+  const pickerSenders = useMemo(() => {
+    if (
+      selectedSender?.purpose === 'relay' &&
+      !surveySenders.some((s) => s.number_id === selectedSender.number_id)
+    ) {
+      return [selectedSender, ...surveySenders]
+    }
+    return surveySenders
+  }, [surveySenders, selectedSender])
+  const senderWarn = surveySenderPurposeWarning(selectedSender?.purpose)
+
   /** Question index to attach a newly created assessment to; null = closed. */
   const [createAssessmentTarget, setCreateAssessmentTarget] = useState<
     number | null
   >(null)
   const questionRefs = useRef<Array<HTMLDivElement | null>>([])
+  const defaultedRef = useRef(false)
+  useEffect(() => {
+    if (defaultedRef.current || value.sender_number_id != null || surveySenders.length === 0)
+      return
+    const preferred =
+      surveySenders.find((s) => s.purpose === 'survey') ??
+      surveySenders.find((s) => s.is_mine) ??
+      surveySenders.find((s) => s.purpose === 'organiser') ??
+      surveySenders[0]
+    if (preferred) {
+      defaultedRef.current = true
+      onChange({ ...value, sender_number_id: preferred.number_id })
+    }
+  }, [surveySenders, value, onChange])
 
   useEffect(() => {
     if (selectedQuestionIndex == null) return
@@ -542,14 +585,25 @@ export function SmsSurveyEditor({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">— choose —</SelectItem>
-              {(senders ?? []).map((s) => (
+              {pickerSenders.map((s) => (
                 <SelectItem key={s.number_id} value={String(s.number_id)}>
                   {s.label || s.phone_e164}
-                  {s.purpose === 'survey' ? ' (survey)' : ''}
+                  {s.is_mine ? ' (you)' : ''}
+                  {surveySenderPurposeHint(s.purpose)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          <p className="text-xs text-muted-foreground">
+            Survey-purpose numbers are preferred. Organiser numbers work, but
+            inbound replies skip the inbox until the session ends.
+          </p>
+          {senderWarn && (
+            <p className="flex items-start gap-1 text-xs text-amber-800">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              {senderWarn}
+            </p>
+          )}
         </div>
       </div>
 

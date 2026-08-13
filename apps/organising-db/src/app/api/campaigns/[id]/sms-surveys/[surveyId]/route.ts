@@ -39,6 +39,7 @@ import {
   loadLiveQuestions,
   snapshotSurveyVersion,
 } from '@/lib/sms/survey-versions'
+import { dedicatedNumberRequiredForNumberId } from '@/lib/sms/sender-inbound-server'
 import type {
   SmsBallotDetail,
   SmsBallotEventRow,
@@ -352,6 +353,15 @@ export async function PATCH(
         { error: `Invalid timezone "${body.timezone}"` },
         { status: 400 },
       )
+    }
+    if (body.sender_number_id != null) {
+      const notDedicated = await dedicatedNumberRequiredForNumberId(
+        supabase,
+        body.sender_number_id,
+      )
+      if (notDedicated) {
+        return NextResponse.json({ error: notDedicated }, { status: 409 })
+      }
     }
     const errors = [
       ...validateSurveySettings(body),

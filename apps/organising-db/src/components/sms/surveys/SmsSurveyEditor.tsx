@@ -45,6 +45,7 @@ import {
   surveySenderPurposeWarning,
   surveySenderSortKey,
 } from '@/lib/sms/sender-purpose'
+import { inboundUnsafeClientMessage } from '@/lib/sms/sender-inbound'
 import {
   assessmentLinkError,
 } from '@/lib/sms/assessment-mapping'
@@ -341,6 +342,7 @@ export function SmsSurveyEditor({
     return surveySenders
   }, [surveySenders, selectedSender])
   const senderWarn = surveySenderPurposeWarning(selectedSender?.purpose)
+  const senderInboundError = inboundUnsafeClientMessage(selectedSender)
 
   /** Question index to attach a newly created assessment to; null = closed. */
   const [createAssessmentTarget, setCreateAssessmentTarget] = useState<
@@ -351,10 +353,13 @@ export function SmsSurveyEditor({
   useEffect(() => {
     if (defaultedRef.current || value.sender_number_id != null || surveySenders.length === 0)
       return
+    const inboundOk = (s: (typeof surveySenders)[number]) =>
+      s.supports_inbound !== false
     const preferred =
-      surveySenders.find((s) => s.purpose === 'survey') ??
-      surveySenders.find((s) => s.is_mine) ??
-      surveySenders.find((s) => s.purpose === 'organiser') ??
+      surveySenders.find((s) => s.purpose === 'survey' && inboundOk(s)) ??
+      surveySenders.find((s) => s.is_mine && inboundOk(s)) ??
+      surveySenders.find((s) => s.purpose === 'organiser' && inboundOk(s)) ??
+      surveySenders.find(inboundOk) ??
       surveySenders[0]
     if (preferred) {
       defaultedRef.current = true
@@ -590,14 +595,25 @@ export function SmsSurveyEditor({
                   {s.label || s.phone_e164}
                   {s.is_mine ? ' (you)' : ''}
                   {surveySenderPurposeHint(s.purpose)}
+                  {s.supports_inbound === false
+                    ? ' (handset — replies go to the phone)'
+                    : ''}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            Survey-purpose numbers are preferred. Organiser numbers work, but
-            inbound replies skip the inbox until the session ends.
+            Must be a dedicated Mobile Message number so answers come back
+            to the survey — not an organiser&apos;s personal handset.
+            Survey-purpose numbers are preferred. Organiser numbers work,
+            but inbound replies skip the inbox until the session ends.
           </p>
+          {senderInboundError && (
+            <p className="flex items-start gap-1 text-xs text-destructive">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              {senderInboundError}
+            </p>
+          )}
           {senderWarn && (
             <p className="flex items-start gap-1 text-xs text-amber-800">
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />

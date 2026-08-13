@@ -24,6 +24,7 @@ import {
   type SurveySettingsInput,
 } from '@/lib/sms/survey-validation'
 import { insertSurveyQuestions } from '@/lib/sms/survey-authoring'
+import { dedicatedNumberRequiredForNumberId } from '@/lib/sms/sender-inbound-server'
 import type { SmsSurveyRow, VwSmsSurveyFunnelRow } from '@/types/sms'
 
 export async function GET(
@@ -206,6 +207,16 @@ export async function POST(
     )
     if (mappingErrors.length > 0) {
       return NextResponse.json({ error: mappingErrors.join(' ') }, { status: 400 })
+    }
+
+    if (body.sender_number_id != null) {
+      const notDedicated = await dedicatedNumberRequiredForNumberId(
+        supabase,
+        body.sender_number_id,
+      )
+      if (notDedicated) {
+        return NextResponse.json({ error: notDedicated }, { status: 409 })
+      }
     }
 
     const { data: survey, error: surveyErr } = await supabase

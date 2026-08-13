@@ -42,6 +42,7 @@ import {
   renderP2pBody,
 } from '@/lib/sms/p2p'
 import { inboxUnsafePurposeError } from '@/lib/sms/sender-purpose'
+import { dedicatedNumberRequiredForNumberId } from '@/lib/sms/sender-inbound-server'
 
 interface SendBody {
   item_ids?: number[]
@@ -192,6 +193,13 @@ export async function POST(
     const unsafe = inboxUnsafePurposeError(sender.purpose as string | null)
     if (unsafe) {
       return NextResponse.json({ error: unsafe }, { status: 409 })
+    }
+    const notDedicated = await dedicatedNumberRequiredForNumberId(
+      supabase,
+      sender.number_id as number,
+    )
+    if (notDedicated) {
+      return NextResponse.json({ error: notDedicated }, { status: 409 })
     }
     const senderDigits = (sender.phone_e164 as string).replace(/^\+/, '')
 

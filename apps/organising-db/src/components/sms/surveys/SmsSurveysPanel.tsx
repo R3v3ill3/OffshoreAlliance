@@ -86,6 +86,8 @@ import {
   type SmsSurveyListRow,
   type SurveyLaunchPreview,
 } from '@/lib/hooks/useSmsSurveys'
+import { useSmsSenders } from '@/lib/hooks/useSmsBroadcast'
+import { inboundUnsafeClientMessage } from '@/lib/sms/sender-inbound'
 import {
   EMPTY_SURVEY,
   EMPTY_SURVEY_QUESTION,
@@ -543,7 +545,11 @@ function SurveyEditorSheet({
   const queryClient = useQueryClient()
   const create = useCreateSmsSurvey(campaignId)
   const update = useUpdateSmsSurvey(campaignId)
+  const { data: senders } = useSmsSenders()
   const pending = create.isPending || update.isPending || duplicating
+  const senderInboundError = inboundUnsafeClientMessage(
+    senders?.find((s) => s.number_id === value.sender_number_id),
+  )
   const { data: catalogue, isLoading: catalogueLoading } = useSmsSurveyCatalogue(
     open && isCreate,
   )
@@ -656,6 +662,10 @@ function SurveyEditorSheet({
   const submit = (acknowledgeHighRisk?: string) => {
     if (!value.title.trim()) {
       toast.error('Give the survey a title')
+      return
+    }
+    if (senderInboundError) {
+      toast.error(senderInboundError)
       return
     }
     const payload = buildPayload(acknowledgeHighRisk)
@@ -804,7 +814,7 @@ function SurveyEditorSheet({
               />
               <Button
                 className="w-full"
-                disabled={pending}
+                disabled={pending || !!senderInboundError}
                 onClick={() => submit()}
               >
                 {pending ? (
@@ -1035,6 +1045,7 @@ function DraftDetail({
                 next_window_at: res.next_window_at ?? '',
                 is_test: res.is_test ?? isTest,
                 sender_purpose: res.sender_purpose ?? null,
+                sender_inbound_error: res.sender_inbound_error ?? null,
                 other_open_surveys: res.other_open_surveys ?? [],
                 audience_overlap_count: res.audience_overlap_count ?? 0,
               })
@@ -1164,6 +1175,12 @@ function DraftDetail({
                   )}
                 </div>
               )}
+              {preview.sender_inbound_error && (
+                <p className="flex items-start gap-1.5 text-xs text-destructive">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  {preview.sender_inbound_error}
+                </p>
+              )}
               {senderWarn && (
                 <p className="flex items-start gap-1.5 text-xs text-amber-800">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -1238,7 +1255,7 @@ function DraftDetail({
           ) : (
             <Button
               className="flex-1"
-              disabled={busy}
+              disabled={busy || !!preview.sender_inbound_error}
               onClick={() => {
                 if (!validateSmsBody(detail.survey.invitation_body ?? '').hasOrgName) {
                   setOrgWarnOpen(true)

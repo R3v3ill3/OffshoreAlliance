@@ -41,11 +41,11 @@ import {
 } from '@/lib/hooks/useSmsBroadcast'
 import {
   SmsComposer,
+  smsComposerBlockers,
   type SmsComposerValue,
 } from '@/components/sms/SmsComposer'
 import { validateSmsBody } from '@/lib/sms/compliance'
 import { SmsOrgNameWarningDialog } from '@/components/sms/SmsOrgNameWarningDialog'
-import { INBOX_UNSAFE_SENDER_MESSAGE, isInboxUnsafePurpose } from '@/lib/sms/sender-purpose'
 import {
   AudiencePicker,
   type AudienceValue,
@@ -334,16 +334,12 @@ function NewChatBoardSheet({
   const create = useCreateSmsBlast(campaignId)
   const { data: senders } = useSmsSenders()
 
-  const selectedPurpose = senders?.find(
-    (s) => s.number_id === composer.sender_number_id,
-  )?.purpose
   const blockers = [
     ...(!name.trim() ? ['Give the chat board a name.'] : []),
+    ...smsComposerBlockers(composer, senders, { requireInbound: true }).filter(
+      (b) => b !== 'Message body is empty.',
+    ),
     ...(!composer.body.trim() ? ['Write the initial message.'] : []),
-    ...(composer.sender_number_id == null ? ['Choose a sender number.'] : []),
-    ...(isInboxUnsafePurpose(selectedPurpose)
-      ? [INBOX_UNSAFE_SENDER_MESSAGE]
-      : []),
   ]
 
   const submit = async () => {

@@ -62,6 +62,7 @@ export interface SurveyLaunchPreview {
   next_window_at: string
   is_test: boolean
   sender_purpose?: string | null
+  sender_inbound_error?: string | null
   other_open_surveys?: SurveyLaunchOtherOpen[]
   audience_overlap_count?: number
 }
@@ -394,6 +395,7 @@ export function useSmsSurveyAction(campaignId: number | string) {
         invitations_undeliverable?: number
         invitation_errors?: string[]
         sender_purpose?: string | null
+        sender_inbound_error?: string | null
         other_open_surveys?: SurveyLaunchOtherOpen[]
         audience_overlap_count?: number
       }>

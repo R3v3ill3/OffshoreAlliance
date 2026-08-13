@@ -21,6 +21,7 @@ import {
   type SmsApiAudience,
 } from '@/lib/sms/populate-sms-list'
 import { inboxUnsafeSenderMessage } from '@/lib/sms/sender-purpose'
+import { dedicatedNumberRequiredForNumberId } from '@/lib/sms/sender-inbound-server'
 
 export async function GET(
   _req: NextRequest,
@@ -117,6 +118,15 @@ export async function POST(
       )
       if (unsafe) {
         return NextResponse.json({ error: unsafe }, { status: 409 })
+      }
+      if (mode === 'p2p') {
+        const notDedicated = await dedicatedNumberRequiredForNumberId(
+          supabase,
+          body.sender_number_id,
+        )
+        if (notDedicated) {
+          return NextResponse.json({ error: notDedicated }, { status: 409 })
+        }
       }
     }
 

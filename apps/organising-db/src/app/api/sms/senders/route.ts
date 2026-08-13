@@ -9,6 +9,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { errorResponse } from '@/lib/api/error-response'
+import { inboundCheckForPhone, matchProviderSender } from '@/lib/sms/sender-inbound'
+import { loadProviderSenderCatalogue } from '@/lib/sms/sender-inbound-server'
 
 export async function GET() {
   try {
@@ -47,9 +49,32 @@ export async function GET() {
       }
     }
 
+    let providerSenders: Awaited<
+      ReturnType<typeof loadProviderSenderCatalogue>
+    >['senders'] = []
+    let providerName = 'mock'
+    let providerLookupOk = false
+    try {
+      const catalogue = await loadProviderSenderCatalogue()
+      providerSenders = catalogue.senders
+      providerName = catalogue.providerName
+      providerLookupOk = true
+    } catch (err) {
+      console.error('GET sms senders: provider catalogue failed:', err)
+    }
+
     const userEmail = (user.email ?? '').toLowerCase()
     const result = (numbers ?? []).map((n) => {
       const org = n.organiser_id ? organiserById.get(n.organiser_id) : undefined
+      const match = matchProviderSender(n.phone_e164, providerSenders)
+      // Mock has no real MM catalogue — don't mark every OA number as a
+      // handset. Live MM: unmatched / own-mobile / alpha cannot receive.
+      const supportsInbound =
+        !providerLookupOk
+          ? null
+          : providerName === 'mock'
+            ? true
+            : inboundCheckForPhone(n.phone_e164, providerSenders) === null
       return {
         number_id: n.number_id,
         phone_e164: n.phone_e164,
@@ -59,6 +84,8 @@ export async function GET() {
         organiser_name: org?.name ?? null,
         is_mine:
           !!userEmail && !!org?.email && org.email.toLowerCase() === userEmail,
+        provider_type: match?.type ?? null,
+        supports_inbound: supportsInbound,
       }
     })
 

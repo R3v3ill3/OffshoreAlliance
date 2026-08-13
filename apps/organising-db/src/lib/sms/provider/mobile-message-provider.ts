@@ -63,6 +63,28 @@ interface MmMessageResult {
   error?: string;
 }
 
+interface MmSenderRow {
+  sender?: string;
+  number?: string;
+  type?: string;
+  status?: string;
+}
+
+/** MM docs return `{ results }`; some payloads use `{ senders }`. */
+export function parseListSendersResponse(data: {
+  senders?: MmSenderRow[];
+  results?: MmSenderRow[];
+}): SenderId[] {
+  const rows = data.senders ?? data.results ?? [];
+  return rows
+    .map((s) => ({
+      sender: s.sender ?? s.number ?? "",
+      type: s.type,
+      status: s.status,
+    }))
+    .filter((s) => s.sender);
+}
+
 /** Minimal promise semaphore for the 5-concurrent-request account limit. */
 class Semaphore {
   private active = 0;
@@ -216,13 +238,10 @@ export class MobileMessageProvider implements SmsProvider {
 
   async listSenders(): Promise<SenderId[]> {
     const data = await this.request<{
-      senders?: { sender?: string; number?: string; type?: string; status?: string }[];
+      senders?: MmSenderRow[];
+      results?: MmSenderRow[];
     }>("GET", "/v1/senders");
-    return (data.senders ?? []).map((s) => ({
-      sender: s.sender ?? s.number ?? "",
-      type: s.type,
-      status: s.status,
-    }));
+    return parseListSendersResponse(data);
   }
 
   async getCreditBalance(): Promise<number> {

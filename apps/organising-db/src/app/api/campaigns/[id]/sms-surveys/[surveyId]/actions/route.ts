@@ -3,15 +3,16 @@
  *
  * preview — same audience screening as open, but does not create sessions
  *           or flip status. Returns invitable counts + blackout window info.
- * open    — draft only. Requires ≥ 1 question, an active sender number
- *           and a COMPLIANT invitation body (org name required; opt-out
- *           optional). Freezes the audience into 'queued'
- *           sms_survey_sessions (opt-out / no-phone workers screened out
- *           and reported, never sessioned); snapshots the live question
- *           definition; then immediately dispatches invitations (same
- *           path as the timers cron), respecting the blackout window
- *           and the one-live-session-per-phone rule. Any leftover
- *           queued sessions are drained by the cron on later ticks.
+ * open    — draft only. Requires ≥ 1 question and an active sender
+ *           number. Invitation org-name is a client-side warning, not
+ *           a hard block (opt-out optional). Freezes the audience into
+ *           'queued' sms_survey_sessions (opt-out / no-phone workers
+ *           screened out and reported, never sessioned); snapshots the
+ *           live question definition; then immediately dispatches
+ *           invitations (same path as the timers cron), respecting the
+ *           blackout window and the one-live-session-per-phone rule.
+ *           Any leftover queued sessions are drained by the cron on
+ *           later ticks.
  * close   — open|paused → closed; clears pause fields; queued + live
  *           sessions → 'expired' (the webhook also expires stragglers).
  * pause   — open → paused with soft|hard pause_mode.
@@ -453,8 +454,8 @@ export async function POST(
           )
         }
 
-        // The invitation is a bulk send — org name required; opt-out optional
-        // (the dispatch cron re-checks as a second belt).
+        // Invitation org-name is a client-side warning, not a send
+        // blocker. Indicative-ballot framing is still required below.
         const compliance = validateSmsBody(survey.invitation_body ?? '')
         if (!compliance.ok) {
           return NextResponse.json(

@@ -5,7 +5,9 @@
  * working list and now progressively selects individuals or subsets
  * (search/filter, checkboxes, "select next N") and fires the
  * personalised initial to just those — start with 5–10, add more as
- * the session progresses.
+ * the session progresses. Each row defaults to the board opener; click
+ * a person to customise theirs (including adding/removing merge fields)
+ * before sending.
  *
  * Sends have no blackout hard-block (organiser-judgement sends — a
  * soft warning banner shows outside 09:00–20:00 board-timezone);
@@ -14,7 +16,7 @@
  * thread column shows the linked conversation state and opens the
  * thread quick-view.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { toast } from 'sonner'
 import {
@@ -23,6 +25,8 @@ import {
   CheckSquare,
   Loader2,
   MessageSquare,
+  Pencil,
+  RefreshCw,
   Send,
   Square,
   UserPlus,
@@ -40,6 +44,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -48,11 +54,15 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { toDisplay } from '@/lib/phone/normalise-phone'
+import { ALL_TEMPLATE_VARIABLES } from '@/lib/comms/template-variables'
 import { isWithinSendWindow } from '@/lib/sms/blackout'
+import { countSegments } from '@/lib/sms/segments'
+import { validateSmsBody } from '@/lib/sms/compliance'
 import {
   P2P_SEND_CAP,
   filterP2pItems,
   isP2pSendable,
+  p2pItemTemplate,
   pruneP2pSelection,
   renderP2pBody,
   selectNextN,
@@ -62,6 +72,7 @@ import {
   useSmsP2pBoard,
   useSmsP2pClose,
   useSmsP2pSend,
+  useSmsP2pSetItemBody,
 } from '@/lib/hooks/useSmsP2p'
 import {
   confirmSmsDoNotContact,
@@ -108,10 +119,14 @@ export function SmsP2pBoard({
   listId,
   standaloneMode = false,
 }: SmsP2pBoardProps) {
-  const { data: board, isLoading } = useSmsP2pBoard(campaignId, listId)
+  const { data: board, isLoading, isFetching, refetch } = useSmsP2pBoard(
+    campaignId,
+    listId,
+  )
   const send = useSmsP2pSend(campaignId, listId)
   const addPeople = useSmsP2pAddPeople(campaignId, listId)
   const closeBoard = useSmsP2pClose(campaignId, listId)
+  const setItemBody = useSmsP2pSetItemBody(campaignId, listId)
   const staffOptOut = useStaffSmsOptOut()
 
   const [search, setSearch] = useState('')
@@ -120,6 +135,7 @@ export function SmsP2pBoard({
   const [nextN, setNextN] = useState('10')
   const [threadId, setThreadId] = useState<number | null>(null)
   const [addOpen, setAddOpen] = useState(false)
+  const [editingItem, setEditingItem] = useState<SmsP2pBoardItem | null>(null)
 
   const items = useMemo(() => board?.items ?? [], [board])
   const filtered = useMemo(
@@ -139,11 +155,12 @@ export function SmsP2pBoard({
     [board],
   )
   const preview = (item: SmsP2pBoardItem) =>
-    renderP2pBody(template, {
+    renderP2pBody(p2pItemTemplate(template, item.body_override), {
       ...mergeContext,
       first_name: item.first_name,
       last_name: item.last_name,
       occupation: item.occupation ?? undefined,
+      employer_name: item.employer_name ?? mergeContext.employer_name,
     })
 
   const boardClosed = board != null && board.list.status !== 'draft'
@@ -234,8 +251,21 @@ export function SmsP2pBoard({
                 ? toDisplay(board.list.sender_phone_e164)
                 : 'no sender')}{' '}
             · {sentCount}/{items.length} messaged · {pendingCount} to go
+            {' · '}auto-refreshes every 10s
           </p>
         </div>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={isFetching}
+          title="Reload replies and send status now"
+          onClick={() => void refetch()}
+        >
+          <RefreshCw
+            className={`mr-1 h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`}
+          />
+          Refresh
+        </Button>
         <Button
           size="sm"
           variant="outline"
@@ -404,6 +434,14 @@ export function SmsP2pBoard({
                   >
                     {item.status.replace('_', ' ')}
                   </Badge>
+                  {item.body_override && isP2pSendable(item) && (
+                    <Badge
+                      variant="secondary"
+                      className="text-[10px] bg-indigo-50 text-indigo-700"
+                    >
+                      Customised
+                    </Badge>
+                  )}
                   {item.conversation_id != null && item.conversation_state && (
                     <button
                       type="button"
@@ -432,12 +470,19 @@ export function SmsP2pBoard({
                   )}
                 </div>
                 {isP2pSendable(item) && template && (
-                  <p
-                    className="mt-0.5 truncate text-xs text-muted-foreground"
-                    title={preview(item)}
+                  <button
+                    type="button"
+                    className="mt-0.5 block w-full truncate text-left text-xs text-muted-foreground hover:text-foreground"
+                    title={
+                      boardClosed
+                        ? preview(item)
+                        : 'Click to customise this opener'
+                    }
+                    disabled={boardClosed}
+                    onClick={() => setEditingItem(item)}
                   >
                     {preview(item)}
-                  </p>
+                  </button>
                 )}
                 {item.failure_reason && (
                   <p className="mt-0.5 text-xs text-red-600">
@@ -446,6 +491,17 @@ export function SmsP2pBoard({
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-1">
+                {sendable && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs"
+                    title="Customise this person's opener"
+                    onClick={() => setEditingItem(item)}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                )}
                 {sendable && (
                   <Button
                     size="sm"
@@ -483,6 +539,33 @@ export function SmsP2pBoard({
         }}
       />
 
+      <EditInitialDialog
+        item={editingItem}
+        boardTemplate={template}
+        mergeContext={mergeContext}
+        pending={setItemBody.isPending}
+        onOpenChange={(open) => {
+          if (!open) setEditingItem(null)
+        }}
+        onSave={(body) => {
+          if (!editingItem) return
+          setItemBody.mutate(
+            { itemId: editingItem.item_id, body },
+            {
+              onSuccess: (res) => {
+                toast.success(
+                  res.body_override
+                    ? `Opener customised for ${editingItem.worker_name}`
+                    : `Using the board message for ${editingItem.worker_name}`,
+                )
+                setEditingItem(null)
+              },
+              onError: (err: Error) => toast.error(err.message),
+            },
+          )
+        }}
+      />
+
       <AddPeopleDialog
         campaignId={campaignId}
         standaloneMode={standaloneMode}
@@ -506,6 +589,140 @@ export function SmsP2pBoard({
         }
       />
     </div>
+  )
+}
+
+function EditInitialDialog({
+  item,
+  boardTemplate,
+  mergeContext,
+  pending,
+  onOpenChange,
+  onSave,
+}: {
+  item: SmsP2pBoardItem | null
+  boardTemplate: string
+  mergeContext: Record<string, string | undefined>
+  pending: boolean
+  onOpenChange: (open: boolean) => void
+  onSave: (body: string) => void
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [body, setBody] = useState('')
+
+  useEffect(() => {
+    if (!item) return
+    setBody(p2pItemTemplate(boardTemplate, item.body_override))
+  }, [item, boardTemplate])
+
+  const preview = item
+    ? renderP2pBody(body, {
+        ...mergeContext,
+        first_name: item.first_name,
+        last_name: item.last_name,
+        occupation: item.occupation ?? undefined,
+        employer_name: item.employer_name ?? mergeContext.employer_name,
+      })
+    : ''
+  const segments = countSegments(preview)
+  const compliance = validateSmsBody(body)
+  const differsFromDefault = body.trim() !== boardTemplate.trim()
+
+  const insertToken = (token: string) => {
+    const insert = `{{${token}}}`
+    const el = textareaRef.current
+    if (!el) {
+      setBody((prev) => prev + insert)
+      return
+    }
+    const start = el.selectionStart ?? body.length
+    const end = el.selectionEnd ?? start
+    const next = body.slice(0, start) + insert + body.slice(end)
+    setBody(next)
+    requestAnimationFrame(() => {
+      el.focus()
+      el.setSelectionRange(start + insert.length, start + insert.length)
+    })
+  }
+
+  return (
+    <Dialog open={item != null} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            Customise opener{item ? ` — ${item.worker_name}` : ''}
+          </DialogTitle>
+          <DialogDescription>
+            Defaults to the board message. You can rewrite it, drop merge
+            fields, or type a one-off note. Tokens still resolve when you send.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="p2p-item-body">Initiating message</Label>
+            <Textarea
+              id="p2p-item-body"
+              ref={textareaRef}
+              rows={6}
+              disabled={pending}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+            />
+            <div className="flex flex-wrap gap-1">
+              {ALL_TEMPLATE_VARIABLES.map((v) => (
+                <button
+                  key={v.key}
+                  type="button"
+                  disabled={pending}
+                  title={v.description}
+                  className="rounded-full border bg-muted px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted/70 disabled:opacity-50"
+                  onClick={() => insertToken(v.key)}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {segments.length} chars · {segments.segments}{' '}
+            {segments.segments === 1 ? 'part' : 'parts'} ({segments.encoding})
+            after merge fields
+          </p>
+          {!compliance.hasOrgName && (
+            <p className="flex items-start gap-1 text-xs text-amber-700">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              Organisation name optional for known contacts — include
+              &quot;Offshore Alliance&quot; for first-contact or cold outreach.
+            </p>
+          )}
+          {preview && (
+            <div className="rounded-md border bg-muted/30 p-2">
+              <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                Sends as
+              </p>
+              <p className="whitespace-pre-wrap text-sm">{preview}</p>
+            </div>
+          )}
+        </div>
+        <DialogFooter className="gap-2 sm:justify-between">
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={pending || !differsFromDefault}
+            onClick={() => setBody(boardTemplate)}
+          >
+            Use board default
+          </Button>
+          <Button
+            disabled={pending}
+            onClick={() => onSave(body)}
+          >
+            {pending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+            Save opener
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

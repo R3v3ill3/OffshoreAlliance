@@ -11,6 +11,9 @@
  *         exactly like blast creation.
  * PATCH — { action: 'close' }: board finished → list status 'sent',
  *         remaining pending items → skipped ("Chat board closed").
+ *         { action: 'set_item_body', item_id, body }: save (or clear)
+ *         a per-person initiating message. NULL/identical-to-default
+ *         falls back to the board draft. Only pending/failed rows.
  *
  * P2P list state model: 'draft' while the board is active, 'sent' when
  * closed. P2P lists never enter 'queued'/'sending', so the dispatch
@@ -24,6 +27,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { errorResponse } from '@/lib/api/error-response'
 import { loadCampaignEmailContext } from '@/lib/comms/campaign-email-context'
+import {
+  P2P_SENDABLE_STATUSES,
+  p2pBodyOverrideToStore,
+} from '@/lib/sms/p2p'
 
 const PAGE_SIZE = 1000
 
@@ -120,6 +127,7 @@ export async function GET(
       failure_reason: string | null
       sent_at: string | null
       conversation_id: number | null
+      body_override: string | null
       worker: {
         worker_id: number
         first_name: string
@@ -141,7 +149,7 @@ export async function GET(
         .from('sms_list_items')
         .select(
           `item_id, worker_id, phone_e164, sort_order, status, failure_reason,
-           sent_at, conversation_id,
+           sent_at, conversation_id, body_override,
            worker:workers(worker_id, first_name, last_name, occupation,
              phone_e164, sms_opt_out,
              employer:employers(employer_id, employer_name)),
@@ -175,6 +183,7 @@ export async function GET(
       conversation_id: r.conversation_id,
       conversation_state: r.conversation?.state ?? null,
       unread_count: r.conversation?.unread_count ?? 0,
+      body_override: r.body_override?.trim() ? r.body_override : null,
     }))
 
     const mergeContext = await loadCampaignEmailContext(
@@ -397,8 +406,65 @@ export async function PATCH(
     if ('error' in loaded) return loaded.error
     const { list } = loaded
 
-    const { action } = (await req.json()) as { action?: string }
-    if (action !== 'close') {
+    const payload = (await req.json()) as {
+      action?: string
+      item_id?: number
+      body?: string | null
+    }
+    if (payload.action === 'set_item_body') {
+      if (list.status !== 'draft') {
+        return NextResponse.json(
+          { error: 'This chat board is closed' },
+          { status: 409 },
+        )
+      }
+      const itemId = payload.item_id
+      if (!Number.isFinite(itemId)) {
+        return NextResponse.json({ error: 'item_id is required' }, { status: 400 })
+      }
+
+      const { data: item, error: itemErr } = await supabase
+        .from('sms_list_items')
+        .select('item_id, status')
+        .eq('list_id', lid)
+        .eq('item_id', itemId as number)
+        .maybeSingle()
+      if (itemErr) throw itemErr
+      if (!item) {
+        return NextResponse.json({ error: 'Person not on this board' }, { status: 404 })
+      }
+      if (!(P2P_SENDABLE_STATUSES as readonly string[]).includes(item.status)) {
+        return NextResponse.json(
+          { error: 'Can only edit the opener before it is sent' },
+          { status: 409 },
+        )
+      }
+
+      let boardTemplate = ''
+      if (list.draft_id != null) {
+        const { data: draft } = await supabase
+          .from('campaign_comms_drafts')
+          .select('body')
+          .eq('draft_id', list.draft_id)
+          .maybeSingle()
+        boardTemplate = draft?.body ?? ''
+      }
+      const bodyOverride = p2pBodyOverrideToStore(
+        boardTemplate,
+        typeof payload.body === 'string' ? payload.body : '',
+      )
+
+      const { error: updErr } = await supabase
+        .from('sms_list_items')
+        .update({ body_override: bodyOverride })
+        .eq('item_id', itemId as number)
+        .eq('list_id', lid)
+      if (updErr) throw updErr
+
+      return NextResponse.json({ ok: true, body_override: bodyOverride })
+    }
+
+    if (payload.action !== 'close') {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
     }
     if (list.status !== 'draft') {
@@ -424,6 +490,6 @@ export async function PATCH(
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('PATCH sms-lists p2p error:', error)
-    return errorResponse('Failed to close chat board', error)
+    return errorResponse('Failed to update chat board', error)
   }
 }

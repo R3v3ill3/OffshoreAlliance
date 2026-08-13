@@ -63,7 +63,9 @@ import {
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils/cn'
 import { BALLOT_COMPLIANCE_BANNER } from '@/lib/sms/survey-validation'
+import { validateSmsBody } from '@/lib/sms/compliance'
 import { surveySenderPurposeWarning } from '@/lib/sms/sender-purpose'
+import { SmsOrgNameWarningDialog } from '@/components/sms/SmsOrgNameWarningDialog'
 import type { IntegrityFinding } from '@/lib/sms/survey-integrity'
 import type {
   SmsBallotDetail,
@@ -978,6 +980,7 @@ function DraftDetail({
   const queryClient = useQueryClient()
   const [submitting, setSubmitting] = useState(false)
   const [preview, setPreview] = useState<SurveyLaunchPreview | null>(null)
+  const [orgWarnOpen, setOrgWarnOpen] = useState(false)
 
   // Default to source_worker_list_id from Phase 8 when present
   const sourceListId = detail.survey.source_worker_list_id
@@ -1236,7 +1239,13 @@ function DraftDetail({
             <Button
               className="flex-1"
               disabled={busy}
-              onClick={() => runWithAudience('open')}
+              onClick={() => {
+                if (!validateSmsBody(detail.survey.invitation_body ?? '').hasOrgName) {
+                  setOrgWarnOpen(true)
+                  return
+                }
+                void runWithAudience('open')
+              }}
             >
               {busy ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -1267,6 +1276,15 @@ function DraftDetail({
           </Button>
         </div>
       </div>
+      <SmsOrgNameWarningDialog
+        open={orgWarnOpen}
+        onOpenChange={setOrgWarnOpen}
+        onConfirm={() => {
+          setOrgWarnOpen(false)
+          void runWithAudience('open')
+        }}
+        confirmLabel="Launch without it"
+      />
     </>
   )
 }

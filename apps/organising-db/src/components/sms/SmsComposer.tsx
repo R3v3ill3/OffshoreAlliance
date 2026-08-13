@@ -7,9 +7,10 @@
  * Guardrails (brief §3.1 item 9):
  *   - live GSM-7/UCS-2 segment counter with worst-case merge-field
  *     expansion and a UCS-2 warning on emoji/smart quotes,
- *   - queueing blocked until the body identifies "Offshore Alliance"
- *     (opt-out instruction is recommended for cold/non-member
- *     audiences but optional — STOP still works provider-side),
+ *   - org-name ("Offshore Alliance") is a warning, not a hard block —
+ *     confirm before queueing when missing (opt-out instruction is
+ *     recommended for cold/non-member audiences but optional — STOP
+ *     still works provider-side),
  *   - test-send-to-self,
  *   - sender number select defaulting to the signed-in organiser's
  *     assigned number,
@@ -325,7 +326,7 @@ export function SmsComposer({
           className={
             compliance.hasOrgName
               ? 'flex items-center gap-1 text-emerald-700'
-              : 'flex items-center gap-1 text-destructive'
+              : 'flex items-center gap-1 text-amber-700'
           }
         >
           {compliance.hasOrgName ? (
@@ -333,7 +334,9 @@ export function SmsComposer({
           ) : (
             <AlertTriangle className="h-3 w-3" />
           )}
-          Identifies the organisation (&quot;Offshore Alliance&quot;)
+          {compliance.hasOrgName
+            ? 'Identifies the organisation ("Offshore Alliance")'
+            : 'Organisation name optional for known contacts — include "Offshore Alliance" for first-contact or cold outreach'}
         </p>
         <p
           className={
@@ -542,8 +545,9 @@ export function SmsComposer({
 }
 
 /**
- * Shared queue-readiness check for the panel's queue buttons: compliance
- * + sender + override-reason. Mirrors the server-side validation in the
+ * Shared queue-readiness check for the panel's queue buttons: empty
+ * body, sender, override-reason. Org-name is a warning (confirmed in
+ * the UI), not a blocker. Mirrors the server-side validation in the
  * actions route.
  */
 export function smsComposerBlockers(

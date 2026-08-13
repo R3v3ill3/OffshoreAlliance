@@ -83,6 +83,8 @@ import {
   smsComposerBlockers,
   type SmsComposerValue,
 } from '@/components/sms/SmsComposer'
+import { SmsOrgNameWarningDialog } from '@/components/sms/SmsOrgNameWarningDialog'
+import { validateSmsBody } from '@/lib/sms/compliance'
 import type {
   VwSmsCampaignRollupRow,
   VwSmsCampaignSummaryRow,
@@ -929,6 +931,7 @@ function DraftDetail({
     standaloneMode ? EMPTY_COMPOSED_AUDIENCE : { mode: 'campaign' },
   )
   const [attaching, setAttaching] = useState(false)
+  const [orgWarnOpen, setOrgWarnOpen] = useState(false)
   const [composer, setComposer] = useState<SmsComposerValue>({
     body: detail.draft?.body ?? '',
     sender_number_id: detail.list.sender_number_id,
@@ -958,6 +961,27 @@ function DraftDetail({
         onError: (err: Error) => toast.error(err.message),
       },
     )
+  }
+
+  const queue = () => {
+    save(() =>
+      action.mutate(
+        { listId: detail.list.list_id, action: 'queue' },
+        {
+          onSuccess: (res) =>
+            toast.success(`Queued ${res.queued} messages for dispatch`),
+          onError: (err: Error) => toast.error(err.message),
+        },
+      ),
+    )
+  }
+
+  const requestQueue = () => {
+    if (!validateSmsBody(composer.body).hasOrgName) {
+      setOrgWarnOpen(true)
+      return
+    }
+    queue()
   }
 
   return (
@@ -1068,18 +1092,7 @@ function DraftDetail({
               blockers.length > 0 ||
               pendingCount === 0
             }
-            onClick={() =>
-              save(() =>
-                action.mutate(
-                  { listId: detail.list.list_id, action: 'queue' },
-                  {
-                    onSuccess: (res) =>
-                      toast.success(`Queued ${res.queued} messages for dispatch`),
-                    onError: (err: Error) => toast.error(err.message),
-                  },
-                ),
-              )
-            }
+            onClick={requestQueue}
           >
             {action.isPending ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -1092,6 +1105,15 @@ function DraftDetail({
 
         <ItemsTable detail={detail} />
       </div>
+      <SmsOrgNameWarningDialog
+        open={orgWarnOpen}
+        onOpenChange={setOrgWarnOpen}
+        onConfirm={() => {
+          setOrgWarnOpen(false)
+          queue()
+        }}
+        confirmLabel="Queue without it"
+      />
     </>
   )
 }

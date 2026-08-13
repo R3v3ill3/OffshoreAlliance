@@ -109,6 +109,8 @@ export interface SmsListItemRow {
   sent_at: string | null;
   delivered_at: string | null;
   send_before: string | null;
+  /** P2P only: per-item opener. NULL uses the board draft body. */
+  body_override: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -680,6 +682,8 @@ export interface SmsP2pBoardItem {
   conversation_id: number | null;
   conversation_state: SmsConversationState | null;
   unread_count: number;
+  /** Per-item opener. NULL = board default. */
+  body_override: string | null;
 }
 
 /** Payload of GET /api/campaigns/[id]/sms-lists/[listId]/p2p. */

@@ -18,6 +18,33 @@ import {
 export const P2P_SEND_CAP = 50;
 
 /**
+ * Template used for one board row: a saved per-item override if the
+ * organiser customised it, otherwise the board's shared draft body.
+ */
+export function p2pItemTemplate(
+  boardTemplate: string,
+  bodyOverride: string | null | undefined,
+): string {
+  const custom = bodyOverride?.trim();
+  return custom || boardTemplate;
+}
+
+/**
+ * Persist a custom opener, or NULL to fall back to the board default.
+ * Identical-to-default copy is stored as NULL so later board-template
+ * edits still apply.
+ */
+export function p2pBodyOverrideToStore(
+  boardTemplate: string,
+  editedBody: string,
+): string | null {
+  const trimmed = editedBody.trim();
+  if (!trimmed) return null;
+  if (trimmed === boardTemplate.trim()) return null;
+  return trimmed;
+}
+
+/**
  * Render a personalised initial: resolve known tokens, strip any
  * leftovers so literal {{x}} never reaches a member's phone, collapse
  * doubled spaces (same treatment as the dispatch cron's resolveBody).

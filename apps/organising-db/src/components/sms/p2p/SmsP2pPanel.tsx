@@ -10,7 +10,7 @@
  * (mode: 'p2p') from the shared AudiencePicker (the full working list
  * — saved lists / whole campaign / manual add / CSV import) plus the
  * initial-message composer (merge fields, segment counter, compliance
- * — initials are bulk-adjacent so org identification is required) and
+ * — org name is recommended for first-contact, optional otherwise) and
  * a sender select. The board itself opens in a full-width sheet.
  *
  * Deep links (from the pathway picker): ?new_chat=1 opens the creation
@@ -44,6 +44,7 @@ import {
   type SmsComposerValue,
 } from '@/components/sms/SmsComposer'
 import { validateSmsBody } from '@/lib/sms/compliance'
+import { SmsOrgNameWarningDialog } from '@/components/sms/SmsOrgNameWarningDialog'
 import { INBOX_UNSAFE_SENDER_MESSAGE, isInboxUnsafePurpose } from '@/lib/sms/sender-purpose'
 import {
   AudiencePicker,
@@ -329,18 +330,16 @@ function NewChatBoardSheet({
   )
   const [composer, setComposer] = useState<SmsComposerValue>(EMPTY_COMPOSER)
   const [submitting, setSubmitting] = useState(false)
+  const [orgWarnOpen, setOrgWarnOpen] = useState(false)
   const create = useCreateSmsBlast(campaignId)
   const { data: senders } = useSmsSenders()
 
-  const complianceErrors = composer.body.trim()
-    ? validateSmsBody(composer.body).errors
-    : ['Write the initial message.']
   const selectedPurpose = senders?.find(
     (s) => s.number_id === composer.sender_number_id,
   )?.purpose
   const blockers = [
     ...(!name.trim() ? ['Give the chat board a name.'] : []),
-    ...complianceErrors,
+    ...(!composer.body.trim() ? ['Write the initial message.'] : []),
     ...(composer.sender_number_id == null ? ['Choose a sender number.'] : []),
     ...(isInboxUnsafePurpose(selectedPurpose)
       ? [INBOX_UNSAFE_SENDER_MESSAGE]
@@ -349,6 +348,14 @@ function NewChatBoardSheet({
 
   const submit = async () => {
     if (blockers.length > 0) return
+    if (!validateSmsBody(composer.body).hasOrgName) {
+      setOrgWarnOpen(true)
+      return
+    }
+    await createBoard()
+  }
+
+  const createBoard = async () => {
     try {
       setSubmitting(true)
       const skipAudience =
@@ -402,7 +409,8 @@ function NewChatBoardSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
         <SheetHeader>
           <SheetTitle>New chat board</SheetTitle>
@@ -453,8 +461,9 @@ function NewChatBoardSheet({
           <div className="space-y-1.5">
             <Label>Initial message</Label>
             <p className="text-xs text-muted-foreground">
-              Sent per person when you fire from the board. As first-contact
-              outreach it must identify Offshore Alliance.
+              Sent per person when you fire from the board. Naming Offshore
+              Alliance is recommended for first-contact; skip it when you
+              already know the member.
             </p>
             <SmsComposer
               campaignId={campaignId}
@@ -487,5 +496,15 @@ function NewChatBoardSheet({
         </div>
       </SheetContent>
     </Sheet>
+      <SmsOrgNameWarningDialog
+        open={orgWarnOpen}
+        onOpenChange={setOrgWarnOpen}
+        onConfirm={() => {
+          setOrgWarnOpen(false)
+          void createBoard()
+        }}
+        confirmLabel="Create without it"
+      />
+    </>
   )
 }

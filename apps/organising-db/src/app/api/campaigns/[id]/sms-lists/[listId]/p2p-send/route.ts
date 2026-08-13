@@ -10,7 +10,8 @@
  *   1. atomic claim (pending → sending) so a double-click can never
  *      double-send,
  *   2. send-time re-check of workers.sms_opt_out / phone,
- *   3. render the initial (merge fields resolved, leftovers stripped),
+ *   3. render the initial (per-item override if set, else the board
+ *      draft; merge fields resolved, leftovers stripped),
  *   4. compliance check on the template (org identification — initial
  *      outreach is bulk-adjacent, unlike inbox replies),
  *   5. one provider.sendBatch for the selection,
@@ -37,6 +38,7 @@ import { loadCampaignEmailContext } from '@/lib/comms/campaign-email-context'
 import {
   P2P_SENDABLE_STATUSES,
   P2P_SEND_CAP,
+  p2pItemTemplate,
   renderP2pBody,
 } from '@/lib/sms/p2p'
 import { inboxUnsafePurposeError } from '@/lib/sms/sender-purpose'
@@ -50,6 +52,7 @@ interface ItemRow {
   worker_id: number
   phone_e164: string | null
   sort_order: number
+  body_override: string | null
 }
 
 interface WorkerRow {
@@ -164,8 +167,8 @@ export async function POST(
     if (!template) {
       return NextResponse.json({ error: 'Message body is empty' }, { status: 400 })
     }
-    // Compliance: the initial is bulk-adjacent outreach — org
-    // identification is required, same as blast dispatch.
+    // Compliance: hard errors only. Missing org name is a client
+    // warning — organisers may send without it after confirming.
     const compliance = validateSmsBody(template)
     if (!compliance.ok) {
       return NextResponse.json(
@@ -202,7 +205,7 @@ export async function POST(
       .eq('list_id', lid)
       .in('item_id', itemIds)
       .in('status', [...P2P_SENDABLE_STATUSES])
-      .select('item_id, worker_id, phone_e164, sort_order')
+      .select('item_id, worker_id, phone_e164, sort_order, body_override')
     if (claimErr) throw claimErr
     const claimed = ((claimedRaw ?? []) as ItemRow[]).sort(
       (a, b) => a.sort_order - b.sort_order,
@@ -256,8 +259,8 @@ export async function POST(
 
     if (sendable.length > 0) {
       const baseContext = await loadCampaignEmailContext(supabase, cid)
-      const resolved = sendable.map(({ worker }) =>
-        renderP2pBody(template, {
+      const resolved = sendable.map(({ item, worker }) =>
+        renderP2pBody(p2pItemTemplate(template, item.body_override), {
           ...baseContext,
           first_name: worker.first_name,
           last_name: worker.last_name,

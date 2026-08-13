@@ -68,6 +68,8 @@ interface WorkerListOption {
   list_id: number
   name: string
   status: string
+  campaign_id?: number
+  campaign_name?: string
   items_count: { count: number }[] | null
 }
 
@@ -86,6 +88,10 @@ export interface AudiencePickerProps {
   value: AudienceValue
   onChange: (v: AudienceValue) => void
   disabled?: boolean
+  /** Hide "whole campaign" — standalone SMS episodes have no campaign workforce. */
+  hideWholeCampaign?: boolean
+  /** Build lists from the org-wide worker directory and saved lists. */
+  orgWideUniverse?: boolean
 }
 
 // ─── Consent basis labels ────────────────────────────────────────────
@@ -105,14 +111,17 @@ export function AudiencePicker({
   value,
   onChange,
   disabled,
+  hideWholeCampaign = false,
+  orgWideUniverse = false,
 }: AudiencePickerProps) {
-  const mode = value.mode
+  const mode =
+    hideWholeCampaign && value.mode === 'campaign' ? 'composed' : value.mode
   const [staged, setStaged] = useState<StagedWorker[]>([])
   const [showManual, setShowManual] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [showFilter, setShowFilter] = useState(false)
 
-  const { data: workerLists } = useQuery({
+  const { data: campaignLists } = useQuery({
     queryKey: ['worker-lists-for-sms', String(campaignId)],
     queryFn: async () => {
       const res = await fetchApi(
@@ -123,8 +132,27 @@ export function AudiencePicker({
     },
   })
 
+  const { data: orgLists } = useQuery({
+    queryKey: ['org-worker-lists-for-sms'],
+    queryFn: async () => {
+      const res = await fetchApi('/api/sms/org-worker-lists')
+      if (!res.ok) throw new Error('Failed to fetch saved lists')
+      return res.json() as Promise<WorkerListOption[]>
+    },
+    enabled: orgWideUniverse,
+  })
+
+  const workerLists = useMemo(() => {
+    const local = campaignLists ?? []
+    if (!orgWideUniverse) return local
+    const cid = Number(campaignId)
+    const extras = (orgLists ?? []).filter((l) => l.campaign_id !== cid)
+    return [...local, ...extras]
+  }, [campaignLists, orgLists, orgWideUniverse, campaignId])
+
   const handleModeChange = (newMode: string) => {
     if (newMode === 'campaign') {
+      if (hideWholeCampaign) return
       onChange({ mode: 'campaign' })
     } else if (newMode === 'worker_list') {
       const first = (workerLists ?? [])[0]
@@ -185,12 +213,16 @@ export function AudiencePicker({
             worker_ids: next.map((s) => s.worker_id),
           })
         } else {
-          onChange({ mode: 'campaign' })
+          onChange(
+            hideWholeCampaign
+              ? { mode: 'composed', worker_ids: [] }
+              : { mode: 'campaign' },
+          )
         }
         return next
       })
     },
-    [onChange]
+    [onChange, hideWholeCampaign]
   )
 
   const sendable = staged.filter(
@@ -215,12 +247,14 @@ export function AudiencePicker({
         disabled={disabled}
         className="space-y-2"
       >
+        {hideWholeCampaign ? null : (
         <div className="flex items-center gap-2">
           <RadioGroupItem value="campaign" id="aud-campaign" />
           <Label htmlFor="aud-campaign" className="font-normal cursor-pointer">
             Whole campaign (all members)
           </Label>
         </div>
+        )}
         <div className="flex items-center gap-2">
           <RadioGroupItem value="worker_list" id="aud-list" />
           <Label htmlFor="aud-list" className="font-normal cursor-pointer">
@@ -254,7 +288,9 @@ export function AudiencePicker({
           <SelectContent>
             {(workerLists ?? []).map((wl) => (
               <SelectItem key={wl.list_id} value={String(wl.list_id)}>
-                {wl.name} ({wl.items_count?.[0]?.count ?? 0})
+                {wl.name}
+                {wl.campaign_name ? ` — ${wl.campaign_name}` : ''}
+                {' '}({wl.items_count?.[0]?.count ?? 0})
               </SelectItem>
             ))}
           </SelectContent>
@@ -392,6 +428,7 @@ export function AudiencePicker({
         open={showFilter}
         onOpenChange={setShowFilter}
         onAdded={addStagedBatch}
+        orgWideUniverse={orgWideUniverse}
       />
     </div>
   )

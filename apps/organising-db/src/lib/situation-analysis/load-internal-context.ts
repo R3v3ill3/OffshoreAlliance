@@ -190,7 +190,8 @@ export async function loadInternalContext(
       const { data: priorCampaigns } = await supabase
         .from("campaigns")
         .select("campaign_id, name, status, campaign_type")
-        .in("campaign_id", priorIds);
+        .in("campaign_id", priorIds)
+        .eq("is_sms_episode", false);
       if (priorCampaigns && priorCampaigns.length > 0) {
         lines.push("Prior campaigns at these employers:");
         for (const p of priorCampaigns) {

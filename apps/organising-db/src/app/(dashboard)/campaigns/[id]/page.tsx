@@ -61,6 +61,7 @@ import { OutreachCleanupPanel } from "@/components/campaigns/OutreachCleanupPane
 import { SituationAnalysisCard } from "@/components/campaigns/planning/SituationAnalysisCard";
 import { SituationAnalysisEditSheet } from "@/components/campaigns/situation-analysis/SituationAnalysisEditSheet";
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
+import { SMS_EPISODE_TOOLS_HREF } from "@/lib/campaign/visible-campaigns";
 import { BargainingInsightsWidget } from "@/components/campaigns/bargaining/BargainingInsightsWidget";
 import { Phase2WizardLaunchCard } from "@/components/campaigns/bargaining/wizard/Phase2WizardLaunchCard";
 import { FoundationalReadinessPanel } from "@/components/campaigns/bargaining/FoundationalReadinessPanel";
@@ -96,6 +97,7 @@ interface CampaignDetail {
   organiser: { organiser_name: string } | null;
   /** Added by Wave 1 of Bargaining to Win (20260510100000). May be absent on older rows. */
   current_phase?: string | null;
+  is_sms_episode?: boolean;
 }
 
 interface UniverseRow {
@@ -258,6 +260,12 @@ export default function CampaignDetailPage() {
     enabled: !!user && campaignIdValid,
   });
 
+  useEffect(() => {
+    if (campaign?.is_sms_episode) {
+      router.replace(SMS_EPISODE_TOOLS_HREF);
+    }
+  }, [campaign, router]);
+
   const { data: universes = [] } = useQuery({
     queryKey: ["campaign-universes", id],
     queryFn: async () => {
@@ -358,6 +366,14 @@ export default function CampaignDetailPage() {
       setActionForm(INITIAL_ACTION_FORM);
     },
   });
+
+  if (campaign?.is_sms_episode) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <EurekaLoadingSpinner size="lg" />
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

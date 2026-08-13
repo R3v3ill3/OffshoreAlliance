@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -22,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useCampaign } from "@/lib/hooks/usePlannerCampaigns";
+import { SMS_EPISODE_TOOLS_HREF } from "@/lib/campaign/visible-campaigns";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -100,6 +101,12 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
   const { data: campaign, isLoading } = useCampaign(numericCampaignId, {
     enabled: campaignIdValid,
   });
+
+  useEffect(() => {
+    if (campaign?.is_sms_episode) {
+      router.replace(SMS_EPISODE_TOOLS_HREF);
+    }
+  }, [campaign, router]);
 
   const actionButtons = canWrite ? (
     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -187,6 +194,10 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
       </DropdownMenu>
     </div>
   ) : null;
+
+  if (campaign?.is_sms_episode) {
+    return null;
+  }
 
   return (
     <>

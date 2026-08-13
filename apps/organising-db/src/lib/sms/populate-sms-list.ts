@@ -4,6 +4,10 @@
  */
 
 import type { createClient } from '@/lib/supabase/server'
+import {
+  campaignIsSmsEpisode,
+  ensureSmsEpisodeMembership,
+} from '@/lib/sms/sms-episode'
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
 
@@ -28,6 +32,7 @@ export async function resolveAudienceWorkerIds(
   audience: SmsApiAudience,
 ): Promise<{ workerIds: number[]; error?: { status: number; message: string } }> {
   const workerIds: number[] = []
+  const isEpisode = await campaignIsSmsEpisode(supabase, campaignId)
   if (audience.type === 'worker_list') {
     const { data: wl, error: wlErr } = await supabase
       .from('campaign_worker_lists')
@@ -35,7 +40,7 @@ export async function resolveAudienceWorkerIds(
       .eq('list_id', audience.worker_list_id)
       .maybeSingle()
     if (wlErr) throw wlErr
-    if (!wl || wl.campaign_id !== campaignId) {
+    if (!wl || (wl.campaign_id !== campaignId && !isEpisode)) {
       return {
         workerIds: [],
         error: { status: 404, message: 'Worker list not found' },
@@ -65,6 +70,9 @@ export async function resolveAudienceWorkerIds(
       workerIds.push(...(members ?? []).map((r) => r.worker_id))
       if (!members || members.length < SMS_LIST_PAGE_SIZE) break
     }
+  }
+  if (isEpisode) {
+    await ensureSmsEpisodeMembership(supabase, campaignId, workerIds)
   }
   return { workerIds }
 }

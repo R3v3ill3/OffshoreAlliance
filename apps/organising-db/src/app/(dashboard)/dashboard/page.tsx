@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { excludeSmsEpisodes } from "@/lib/campaign/visible-campaigns";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -80,10 +81,12 @@ export default function DashboardPage() {
   const { data: campaignCount = 0, isLoading: loadingCampaigns } = useQuery({
     queryKey: ["campaigns-count"],
     queryFn: async () => {
-      const { count, error } = await supabase
-        .from("campaigns")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "active");
+      const { count, error } = await excludeSmsEpisodes(
+        supabase
+          .from("campaigns")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "active")
+      );
       if (error) throw error;
       return count ?? 0;
     },
@@ -122,12 +125,14 @@ export default function DashboardPage() {
   const { data: activeCampaigns = [], isLoading: loadingActiveCampaigns } = useQuery({
     queryKey: ["active-campaigns"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("campaigns")
-        .select("*")
-        .eq("status", "active")
-        .order("start_date", { ascending: false })
-        .limit(5);
+      const { data, error } = await excludeSmsEpisodes(
+        supabase
+          .from("campaigns")
+          .select("*")
+          .eq("status", "active")
+          .order("start_date", { ascending: false })
+          .limit(5)
+      );
       if (error) throw error;
       return data ?? [];
     },

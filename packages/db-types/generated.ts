@@ -8541,6 +8541,7 @@ export type Database = {
           end_date: string | null
           enterprise_agreement_subtype: string | null
           is_standing: boolean
+          is_sms_episode: boolean
           msd_required: boolean
           name: string
           notes: string | null
@@ -8566,6 +8567,7 @@ export type Database = {
           end_date?: string | null
           enterprise_agreement_subtype?: string | null
           is_standing?: boolean
+          is_sms_episode?: boolean
           msd_required?: boolean
           name: string
           notes?: string | null
@@ -8591,6 +8593,7 @@ export type Database = {
           end_date?: string | null
           enterprise_agreement_subtype?: string | null
           is_standing?: boolean
+          is_sms_episode?: boolean
           msd_required?: boolean
           name?: string
           notes?: string | null

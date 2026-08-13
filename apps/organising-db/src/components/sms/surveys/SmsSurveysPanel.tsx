@@ -93,7 +93,13 @@ import {
 import { SmsSurveyFlowChart } from '@/components/sms/surveys/SmsSurveyFlowChart'
 import { SmsSurveyReportDashboard } from '@/components/sms/surveys/SmsSurveyReportDashboard'
 import { AudiencePicker, type AudienceValue } from '@/components/audience/AudiencePicker'
-import { toApiAudience } from '@/lib/sms/audience-helpers'
+import { toApiAudience, EMPTY_COMPOSED_AUDIENCE, STANDALONE_AUDIENCE_PICKER } from '@/lib/sms/audience-helpers'
+import {
+  useCreateSmsEpisode,
+  useDeleteSmsEpisode,
+  useRenameSmsEpisode,
+  useSmsEpisodes,
+} from '@/lib/hooks/useSmsEpisodes'
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-700',
@@ -125,17 +131,78 @@ function matchesListFilter(survey: SmsSurveyListRow, filter: ListFilter): boolea
 }
 
 interface SmsSurveysPanelProps {
-  campaignId: string | number
+  campaignId?: string | number | null
+  standaloneMode?: boolean
 }
 
-export function SmsSurveysPanel({ campaignId }: SmsSurveysPanelProps) {
-  const id = String(campaignId)
+export function SmsSurveysPanel({
+  campaignId,
+  standaloneMode = false,
+}: SmsSurveysPanelProps) {
+  const id = campaignId != null && String(campaignId) !== '' ? String(campaignId) : ''
   const searchParams = useSearchParams()
-  const { data: surveys, isLoading } = useSmsSurveys(id)
+  const { data: campaignSurveys, isLoading: campaignLoading } = useSmsSurveys(id)
+  const { data: episodes, isLoading: episodesLoading } = useSmsEpisodes(standaloneMode)
+  const createEpisode = useCreateSmsEpisode()
+  const deleteEpisode = useDeleteSmsEpisode()
+  const renameEpisode = useRenameSmsEpisode()
   const [editorOpen, setEditorOpen] = useState(false)
+  const [editorCampaignId, setEditorCampaignId] = useState<string | null>(null)
+  const [editorSaved, setEditorSaved] = useState(false)
   const [detailId, setDetailId] = useState<number | null>(null)
+  const [detailCampaignId, setDetailCampaignId] = useState<string | null>(null)
   const [sourceWorkerListId, setSourceWorkerListId] = useState<number | null>(null)
   const [listFilter, setListFilter] = useState<ListFilter>('all')
+
+  const surveys = useMemo(() => {
+    if (standaloneMode) {
+      return (episodes ?? []).flatMap((e) =>
+        e.surveys.map((s) => ({
+          survey_id: s.survey_id,
+          campaign_id: e.campaign_id,
+          title: s.title,
+          status: s.status,
+          is_test: s.is_test,
+          purpose: s.purpose,
+          question_count: s.question_count,
+          funnel: s.funnel,
+        })),
+      )
+    }
+    return campaignSurveys ?? []
+  }, [standaloneMode, episodes, campaignSurveys])
+
+  const isLoading = standaloneMode ? episodesLoading : campaignLoading
+
+  const startNewSurvey = async () => {
+    if (!standaloneMode) {
+      setEditorCampaignId(id)
+      setEditorSaved(false)
+      setEditorOpen(true)
+      return
+    }
+    try {
+      const ep = await createEpisode.mutateAsync({ kind: 'survey' })
+      setEditorCampaignId(String(ep.campaign_id))
+      setEditorSaved(false)
+      setEditorOpen(true)
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Could not start standalone survey',
+      )
+    }
+  }
+
+  const closeEditor = (open: boolean) => {
+    setEditorOpen(open)
+    if (open) return
+    const cid = editorCampaignId
+    if (standaloneMode && cid && !editorSaved) {
+      deleteEpisode.mutate(cid)
+    }
+    setEditorCampaignId(null)
+    setEditorSaved(false)
+  }
 
   // Chain B (Phase 8): the SMS Build List Survey pathway lands here
   // with ?survey_source_list=<lid> (cohort attached) or ?new_survey=1
@@ -146,8 +213,12 @@ export function SmsSurveysPanel({ campaignId }: SmsSurveysPanelProps) {
     if (sourceList) {
       const n = Number(sourceList)
       if (Number.isFinite(n)) setSourceWorkerListId(n)
-      setEditorOpen(true)
-    } else if (newSurvey === '1') {
+      if (!standaloneMode) {
+        setEditorCampaignId(id)
+        setEditorOpen(true)
+      }
+    } else if (newSurvey === '1' && !standaloneMode) {
+      setEditorCampaignId(id)
       setEditorOpen(true)
     }
     // Mount-only: re-running on every searchParams change would reopen
@@ -156,8 +227,8 @@ export function SmsSurveysPanel({ campaignId }: SmsSurveysPanelProps) {
   }, [])
 
   const totals = useMemo(() => {
-    const rows = surveys ?? []
-    const sum = (fn: (r: SmsSurveyListRow) => number) =>
+    const rows = surveys
+    const sum = (fn: (r: (typeof surveys)[number]) => number) =>
       rows.reduce((acc, r) => acc + fn(r), 0)
     return {
       surveys: rows.length,
@@ -168,14 +239,14 @@ export function SmsSurveysPanel({ campaignId }: SmsSurveysPanelProps) {
   }, [surveys])
 
   const filteredSurveys = useMemo(
-    () => (surveys ?? []).filter((s) => matchesListFilter(s, listFilter)),
+    () => surveys.filter((s) => matchesListFilter(s as SmsSurveyListRow, listFilter)),
     [surveys, listFilter],
   )
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
-        <Button size="lg" onClick={() => setEditorOpen(true)}>
+        <Button size="lg" onClick={() => void startNewSurvey()}>
           <ClipboardList className="h-5 w-5 mr-2" />
           New survey
         </Button>
@@ -184,9 +255,9 @@ export function SmsSurveysPanel({ campaignId }: SmsSurveysPanelProps) {
       <div>
         <h3 className="font-semibold">SMS Surveys</h3>
         <p className="text-sm text-muted-foreground">
-          Reply-native surveys with automatic parsing, retries and handoff.
-          Answers land in the inbox thread; marked questions write member
-          ratings.
+          {standaloneMode
+            ? 'Standalone surveys are not tied to a campaign. Answers are recorded; assessment mapping stays off.'
+            : 'Reply-native surveys with automatic parsing, retries and handoff. Answers land in the inbox thread; marked questions write member ratings.'}
         </p>
       </div>
 
@@ -224,7 +295,10 @@ export function SmsSurveysPanel({ campaignId }: SmsSurveysPanelProps) {
               <SurveyCard
                 key={s.survey_id}
                 survey={s}
-                onOpen={() => setDetailId(s.survey_id)}
+                onOpen={() => {
+                  setDetailCampaignId(String(s.campaign_id))
+                  setDetailId(s.survey_id)
+                }}
               />
             ))}
           </div>
@@ -241,7 +315,7 @@ export function SmsSurveysPanel({ campaignId }: SmsSurveysPanelProps) {
               No surveys yet. Keep them short — completion drops sharply past 5
               questions.
             </p>
-            <Button variant="outline" size="sm" onClick={() => setEditorOpen(true)}>
+            <Button variant="outline" size="sm" onClick={() => void startNewSurvey()}>
               <Plus className="h-4 w-4 mr-1" />
               New survey
             </Button>
@@ -249,23 +323,39 @@ export function SmsSurveysPanel({ campaignId }: SmsSurveysPanelProps) {
         </Card>
       )}
 
+      {editorCampaignId && (
       <SurveyEditorSheet
-        campaignId={id}
+        campaignId={editorCampaignId}
         surveyId={null}
         open={editorOpen}
-        onOpenChange={setEditorOpen}
+        onOpenChange={closeEditor}
         sourceWorkerListId={sourceWorkerListId}
-        onSaved={(surveyId) => {
+        hideAssessments={standaloneMode}
+        onSaved={(surveyId, title) => {
+          setEditorSaved(true)
           setEditorOpen(false)
+          if (standaloneMode && title?.trim()) {
+            renameEpisode.mutate({
+              campaignId: editorCampaignId,
+              name: title.trim(),
+            })
+          }
+          setDetailCampaignId(editorCampaignId)
           setDetailId(surveyId)
+          setEditorCampaignId(null)
         }}
       />
+      )}
 
       <SurveyDetailSheet
-        campaignId={id}
+        campaignId={detailCampaignId ?? id}
         surveyId={detailId}
+        hideAssessments={standaloneMode}
         onOpenChange={(open) => {
-          if (!open) setDetailId(null)
+          if (!open) {
+            setDetailId(null)
+            setDetailCampaignId(null)
+          }
         }}
         onPromoted={(newId) => setDetailId(newId)}
       />
@@ -284,11 +374,22 @@ function StatCard({ label, value }: { label: string; value: number }) {
   )
 }
 
+type SurveyCardRow = {
+  survey_id: number
+  campaign_id: number
+  title: string
+  status: string
+  is_test: boolean
+  purpose: string
+  question_count: number
+  funnel: SmsSurveyListRow['funnel']
+}
+
 function SurveyCard({
   survey,
   onOpen,
 }: {
-  survey: SmsSurveyListRow
+  survey: SurveyCardRow
   onOpen: () => void
 }) {
   const funnel = survey.funnel
@@ -411,15 +512,17 @@ function SurveyEditorSheet({
   onOpenChange,
   onSaved,
   sourceWorkerListId,
+  hideAssessments = false,
 }: {
   campaignId: string
   surveyId: number | null
   initial?: SurveyEditorValue
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSaved: (surveyId: number) => void
+  onSaved: (surveyId: number, title?: string) => void
   /** Chain B: the cohort this draft is being created from (create mode only). */
   sourceWorkerListId?: number | null
+  hideAssessments?: boolean
 }) {
   const isCreate = surveyId == null
   const [value, setValue] = useState<SurveyEditorValue>(() =>
@@ -473,7 +576,7 @@ function SurveyEditorSheet({
         is_binary: !!a.is_binary,
       }))
     },
-    enabled: open,
+    enabled: open && !hideAssessments,
   })
 
   const catalogueOptions = useMemo(() => {
@@ -570,7 +673,7 @@ function SurveyEditorSheet({
             setAckFindings(null)
             setAckText('')
             toast.success('Survey saved')
-            onSaved(surveyId)
+            onSaved(surveyId, value.title)
           },
           onError,
         },
@@ -579,7 +682,7 @@ function SurveyEditorSheet({
       create.mutate(payload, {
         onSuccess: (res) => {
           toast.success('Survey created')
-          onSaved(res.survey_id)
+          onSaved(res.survey_id, value.title)
         },
         onError,
       })
@@ -688,6 +791,7 @@ function SurveyEditorSheet({
                 activities={activities ?? []}
                 disabled={pending}
                 campaignId={campaignId}
+                hideAssessments={hideAssessments}
                 selectedQuestionIndex={selectedQuestionIndex}
                 onSelectQuestion={setSelectedQuestionIndex}
                 onActivityCreated={() => {
@@ -785,11 +889,13 @@ function SurveyDetailSheet({
   surveyId,
   onOpenChange,
   onPromoted,
+  hideAssessments = false,
 }: {
   campaignId: string
   surveyId: number | null
   onOpenChange: (open: boolean) => void
   onPromoted?: (newSurveyId: number) => void
+  hideAssessments?: boolean
 }) {
   const { data: detail, isLoading } = useSmsSurveyDetail(campaignId, surveyId)
   const [editing, setEditing] = useState(false)
@@ -819,6 +925,7 @@ function SurveyDetailSheet({
             <DraftDetail
               campaignId={campaignId}
               detail={detail}
+              hideAssessments={hideAssessments}
               onEdit={() => setEditing(true)}
               onGone={() => onOpenChange(false)}
             />
@@ -840,6 +947,7 @@ function SurveyDetailSheet({
           surveyId={detail.survey.survey_id}
           initial={detailToEditorValue(detail)}
           open={editing}
+          hideAssessments={hideAssessments}
           onOpenChange={(open) => {
             if (!open) setEditing(false)
           }}
@@ -855,11 +963,13 @@ function DraftDetail({
   detail,
   onEdit,
   onGone,
+  hideAssessments = false,
 }: {
   campaignId: string
   detail: SmsSurveyDetail
   onEdit: () => void
   onGone: () => void
+  hideAssessments?: boolean
 }) {
   const action = useSmsSurveyAction(campaignId)
   const del = useDeleteSmsSurvey(campaignId)
@@ -871,7 +981,9 @@ function DraftDetail({
   const sourceListId = detail.survey.source_worker_list_id
   const defaultValue: AudienceValue = sourceListId
     ? { mode: 'worker_list', worker_list_id: sourceListId }
-    : { mode: 'campaign' }
+    : hideAssessments
+      ? EMPTY_COMPOSED_AUDIENCE
+      : { mode: 'campaign' }
   const [audienceValue, setAudienceValue] = useState<AudienceValue>(defaultValue)
 
   const busy = action.isPending || del.isPending || submitting
@@ -881,6 +993,13 @@ function DraftDetail({
     lifecycleAction: 'preview' | 'open',
   ) => {
     try {
+      if (
+        audienceValue.mode === 'composed' &&
+        audienceValue.worker_ids.length === 0
+      ) {
+        toast.error('Pick an audience first')
+        return
+      }
       setSubmitting(true)
       const audience = await toApiAudience(campaignId, audienceValue)
       if (audienceValue.mode === 'composed') {
@@ -988,6 +1107,7 @@ function DraftDetail({
             setPreview(null)
           }}
           disabled={busy}
+          {...(hideAssessments ? STANDALONE_AUDIENCE_PICKER : {})}
         />
 
         {preview && (

@@ -58,6 +58,8 @@ interface FilterWorker {
   first_name: string
   last_name: string
   phone: string | null
+  phone_e164?: string | null
+  sms_opt_out?: boolean
   employer_name: string | null
   worksite_name: string | null
 }
@@ -76,6 +78,7 @@ interface AudienceFilterBuildDialogProps {
   open: boolean
   onOpenChange: (v: boolean) => void
   onAdded: (workers: FilterBuildStaged[]) => void
+  orgWideUniverse?: boolean
 }
 
 export function AudienceFilterBuildDialog({
@@ -83,6 +86,7 @@ export function AudienceFilterBuildDialog({
   open,
   onOpenChange,
   onAdded,
+  orgWideUniverse = false,
 }: AudienceFilterBuildDialogProps) {
   const { user } = useAuth()
   const supabase = createClient()
@@ -101,8 +105,19 @@ export function AudienceFilterBuildDialog({
   }
 
   const { data: employers = [] } = useQuery({
-    queryKey: ['campaign-employers', numericId],
+    queryKey: ['audience-filter-employers', numericId, orgWideUniverse],
     queryFn: async () => {
+      if (orgWideUniverse) {
+        const { data, error } = await supabase
+          .from('employers')
+          .select('employer_id, employer_name')
+          .order('employer_name')
+        if (error) throw error
+        return (data ?? []).map((row) => ({
+          employer_id: row.employer_id as number,
+          employer_name: row.employer_name ?? 'Unknown',
+        }))
+      }
       const { data, error } = await supabase
         .from('campaign_employers')
         .select('employer_id, employers(employer_name)')
@@ -119,8 +134,19 @@ export function AudienceFilterBuildDialog({
   })
 
   const { data: worksites = [] } = useQuery({
-    queryKey: ['campaign-worksites', numericId],
+    queryKey: ['audience-filter-worksites', numericId, orgWideUniverse],
     queryFn: async () => {
+      if (orgWideUniverse) {
+        const { data, error } = await supabase
+          .from('worksites')
+          .select('worksite_id, worksite_name')
+          .order('worksite_name')
+        if (error) throw error
+        return (data ?? []).map((row) => ({
+          worksite_id: row.worksite_id as number,
+          worksite_name: row.worksite_name ?? 'Unknown',
+        }))
+      }
       const { data, error } = await supabase
         .from('campaign_worksites')
         .select('worksite_id, worksites(worksite_name)')
@@ -204,8 +230,8 @@ export function AudienceFilterBuildDialog({
         worker_id: w.worker_id,
         first_name: w.first_name,
         last_name: w.last_name,
-        phone_e164: w.phone,
-        sms_opt_out: false,
+        phone_e164: w.phone_e164 ?? w.phone,
+        sms_opt_out: !!w.sms_opt_out,
         source: 'import' as const,
       })),
     )
@@ -219,8 +245,9 @@ export function AudienceFilterBuildDialog({
         <DialogHeader>
           <DialogTitle>Build list with filters</DialogTitle>
           <DialogDescription>
-            Filter the campaign workforce, optionally wash against existing
-            lists, then add the matching people to this audience.
+            {orgWideUniverse
+              ? 'Filter the worker directory, optionally wash against existing lists, then add the matching people to this audience.'
+              : 'Filter the campaign workforce, optionally wash against existing lists, then add the matching people to this audience.'}
           </DialogDescription>
         </DialogHeader>
 

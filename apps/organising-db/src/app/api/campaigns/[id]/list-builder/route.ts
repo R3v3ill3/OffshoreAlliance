@@ -1,6 +1,96 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCampaignMembershipStatus } from "@/lib/campaign/constants";
+import { campaignIsSmsEpisode } from "@/lib/sms/sms-episode";
+
+const WORKER_EMBED = `
+  worker_id,
+  first_name,
+  last_name,
+  email,
+  email_status,
+  phone,
+  phone_e164,
+  sms_opt_out,
+  occupation,
+  employer_id,
+  worksite_id,
+  member_role_type_id,
+  is_bargaining_rep,
+  action_network_id,
+  employers ( employer_name ),
+  worksites ( worksite_name ),
+  member_role_type:member_role_types ( role_name, display_name ),
+  union_membership_type:union_membership_types ( type_name ),
+  non_oa_union_option:non_oa_union_options!workers_non_oa_union_option_id_fkey ( badge_initials )
+`;
+
+type WorkerEmbed = {
+  worker_id: number;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  email_status: string | null;
+  phone: string | null;
+  phone_e164: string | null;
+  sms_opt_out: boolean | null;
+  occupation: string | null;
+  employer_id: number | null;
+  worksite_id: number | null;
+  member_role_type_id: number | null;
+  is_bargaining_rep: boolean | null;
+  action_network_id: string | null;
+  employers: { employer_name: string } | null;
+  worksites: { worksite_name: string } | null;
+  member_role_type:
+    | { role_name: string; display_name: string }
+    | { role_name: string; display_name: string }[]
+    | null;
+  union_membership_type: { type_name: string } | { type_name: string }[] | null;
+  non_oa_union_option: { badge_initials: string } | { badge_initials: string }[] | null;
+};
+
+function mapWorkerToListRow(worker: WorkerEmbed) {
+  const mrt = Array.isArray(worker.member_role_type)
+    ? worker.member_role_type[0]
+    : worker.member_role_type;
+  const umt = Array.isArray(worker.union_membership_type)
+    ? worker.union_membership_type[0]
+    : worker.union_membership_type;
+  const nuo = Array.isArray(worker.non_oa_union_option)
+    ? worker.non_oa_union_option[0]
+    : worker.non_oa_union_option;
+  const membershipStatus = getCampaignMembershipStatus({
+    unionMembershipTypeName: umt?.type_name,
+    memberRoleName: mrt?.role_name,
+    isBargainingRep: worker.is_bargaining_rep,
+  });
+
+  return {
+    worker_id: worker.worker_id,
+    first_name: worker.first_name,
+    last_name: worker.last_name,
+    email: worker.email,
+    email_status: worker.email_status,
+    phone: worker.phone,
+    phone_e164: worker.phone_e164 ?? null,
+    sms_opt_out: !!worker.sms_opt_out,
+    occupation: worker.occupation,
+    employer_name: worker.employers?.employer_name ?? null,
+    worksite_name: worker.worksites?.worksite_name ?? null,
+    organising_role: mrt?.display_name ?? null,
+    organising_role_name: mrt?.role_name ?? null,
+    is_bargaining_rep: worker.is_bargaining_rep ?? false,
+    membership_status: membershipStatus,
+    union_membership_type_name: umt?.type_name ?? null,
+    non_oa_union_badge_initials: nuo?.badge_initials ?? null,
+    action_network_id: worker.action_network_id,
+    employer_id: worker.employer_id,
+    worksite_id: worker.worksite_id,
+    unit_count: 0,
+    is_multi_unit_member: false,
+  };
+}
 
 export async function GET(
   request: NextRequest,
@@ -63,97 +153,51 @@ export async function GET(
     const sortDirOverride: "asc" | "desc" | null =
       sortDirRaw === "asc" || sortDirRaw === "desc" ? sortDirRaw : null;
 
-    const query = supabase
-      .from("campaign_worker_membership")
-      .select(
-        `
+    const isEpisode = await campaignIsSmsEpisode(supabase, campaignId);
+
+    let results: ReturnType<typeof mapWorkerToListRow>[];
+    if (isEpisode) {
+      const PAGE = 1000;
+      const MAX = 10_000;
+      const workers: WorkerEmbed[] = [];
+      for (let from = 0; from < MAX; from += PAGE) {
+        let wq = supabase
+          .from("workers")
+          .select(WORKER_EMBED)
+          .eq("is_active", true)
+          .order("worker_id", { ascending: true });
+        if (employerId && employerId !== "__all__" && Number.isFinite(Number(employerId))) {
+          wq = wq.eq("employer_id", Number(employerId));
+        }
+        if (worksiteId && worksiteId !== "__all__" && Number.isFinite(Number(worksiteId))) {
+          wq = wq.eq("worksite_id", Number(worksiteId));
+        }
+        const { data, error } = await wq.range(from, from + PAGE - 1);
+        if (error) throw error;
+        workers.push(...((data ?? []) as unknown as WorkerEmbed[]));
+        if (!data || data.length < PAGE) break;
+      }
+      results = workers.map(mapWorkerToListRow);
+    } else {
+      const query = supabase
+        .from("campaign_worker_membership")
+        .select(
+          `
         worker_id,
         workers!inner (
-          worker_id,
-          first_name,
-          last_name,
-          email,
-          email_status,
-          phone,
-          occupation,
-          employer_id,
-          worksite_id,
-          member_role_type_id,
-          is_bargaining_rep,
-          action_network_id,
-          employers ( employer_name ),
-          worksites ( worksite_name ),
-          member_role_type:member_role_types ( role_name, display_name ),
-          union_membership_type:union_membership_types ( type_name ),
-          non_oa_union_option:non_oa_union_options!workers_non_oa_union_option_id_fkey ( badge_initials )
+          ${WORKER_EMBED}
         )
       `
-      )
-      .eq("campaign_id", campaignId);
+        )
+        .eq("campaign_id", campaignId);
 
-    const { data: membershipRows, error: membershipError } = await query;
-    if (membershipError) throw membershipError;
+      const { data: membershipRows, error: membershipError } = await query;
+      if (membershipError) throw membershipError;
 
-    let results = (membershipRows ?? []).map((r: Record<string, unknown>) => {
-      const worker = r.workers as {
-        worker_id: number;
-        first_name: string;
-        last_name: string;
-        email: string | null;
-        email_status: string | null;
-        phone: string | null;
-        occupation: string | null;
-        employer_id: number | null;
-        worksite_id: number | null;
-        member_role_type_id: number | null;
-        is_bargaining_rep: boolean | null;
-        action_network_id: string | null;
-        employers: { employer_name: string } | null;
-        worksites: { worksite_name: string } | null;
-        member_role_type:
-          | { role_name: string; display_name: string }
-          | { role_name: string; display_name: string }[]
-          | null;
-        union_membership_type: { type_name: string } | { type_name: string }[] | null;
-        non_oa_union_option: { badge_initials: string } | { badge_initials: string }[] | null;
-      };
-
-      const mrt = Array.isArray(worker.member_role_type) ? worker.member_role_type[0] : worker.member_role_type;
-      const umt = Array.isArray(worker.union_membership_type)
-        ? worker.union_membership_type[0]
-        : worker.union_membership_type;
-      const nuo = Array.isArray(worker.non_oa_union_option)
-        ? worker.non_oa_union_option[0]
-        : worker.non_oa_union_option;
-      const membershipStatus = getCampaignMembershipStatus({
-        unionMembershipTypeName: umt?.type_name,
-        memberRoleName: mrt?.role_name,
-        isBargainingRep: worker.is_bargaining_rep,
-      });
-
-      return {
-        worker_id: worker.worker_id,
-        first_name: worker.first_name,
-        last_name: worker.last_name,
-        email: worker.email,
-        email_status: worker.email_status,
-        phone: worker.phone,
-        occupation: worker.occupation,
-        employer_name: worker.employers?.employer_name ?? null,
-        worksite_name: worker.worksites?.worksite_name ?? null,
-        organising_role: mrt?.display_name ?? null,
-        organising_role_name: mrt?.role_name ?? null,
-        is_bargaining_rep: worker.is_bargaining_rep ?? false,
-        membership_status: membershipStatus,
-        union_membership_type_name: umt?.type_name ?? null,
-        non_oa_union_badge_initials: nuo?.badge_initials ?? null,
-        action_network_id: worker.action_network_id,
-        employer_id: worker.employer_id,
-        worksite_id: worker.worksite_id,
-        unit_count: 0,
-        is_multi_unit_member: false,
-      };
-    });
+      results = (membershipRows ?? []).map((r: Record<string, unknown>) =>
+        mapWorkerToListRow(r.workers as WorkerEmbed)
+      );
+    }
 
     if (roles.length > 0) {
       results = results.filter((w) => w.organising_role_name && roles.includes(w.organising_role_name));
@@ -195,7 +239,7 @@ export async function GET(
       }
     }
 
-    if (ouId || ouType) {
+    if (!isEpisode && (ouId || ouType)) {
       const workerIdsBeforeOu = results.map((w) => w.worker_id);
       if (workerIdsBeforeOu.length > 0) {
         let ouQuery = supabase
@@ -260,7 +304,7 @@ export async function GET(
     workerIds = results.map((w) => w.worker_id);
 
     let summaryByWorker = new Map<number, { unit_count: number; is_multi_unit_member: boolean }>();
-    if (workerIds.length > 0) {
+    if (!isEpisode && workerIds.length > 0) {
       const { data: summaryRows, error: summaryErr } = await supabase
         .from("campaign_worker_unit_membership_summary")
         .select("worker_id, unit_count, is_multi_unit_member")
@@ -300,6 +344,7 @@ export async function GET(
     let connectionContactMap = new Map<number, string | null>();
     const finalWorkerIds = results.map((w) => w.worker_id);
     if (
+      !isEpisode &&
       (sortKey === "recent_contact" || sortKey === "priority_score_desc") &&
       finalWorkerIds.length > 0
     ) {

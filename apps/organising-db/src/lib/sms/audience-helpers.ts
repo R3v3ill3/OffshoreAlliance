@@ -16,6 +16,17 @@ export type ApiAudience =
   | { type: "campaign" }
   | { type: "worker_list"; worker_list_id: number };
 
+export const EMPTY_COMPOSED_AUDIENCE: AudienceValue = {
+  mode: 'composed',
+  worker_ids: [],
+}
+
+/** Audience picker flags for hidden SMS episode campaigns. */
+export const STANDALONE_AUDIENCE_PICKER = {
+  hideWholeCampaign: true,
+  orgWideUniverse: true,
+} as const
+
 export async function toApiAudience(
   campaignId: string | number,
   value: AudienceValue

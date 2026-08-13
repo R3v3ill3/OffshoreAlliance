@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { excludeSmsEpisodes } from '@/lib/campaign/visible-campaigns'
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
     if (campaign_id) {
       campaignQuery = campaignQuery.eq('campaign_id', campaign_id)
     } else {
-      campaignQuery = campaignQuery.eq('status', 'active')
+      campaignQuery = excludeSmsEpisodes(campaignQuery).eq('status', 'active')
     }
 
     const { data: campaigns, error } = await campaignQuery
@@ -92,16 +93,18 @@ export async function GET(req: NextRequest) {
     // Use service role for cron job to bypass RLS
     const supabase = createAdminClient()
 
-    const { data: campaigns, error } = await supabase
-      .from('campaigns')
-      .select(`
+    const { data: campaigns, error } = await excludeSmsEpisodes(
+      supabase
+        .from('campaigns')
+        .select(`
         campaign_id,
         name,
         status,
         campaign_stage_plans(stage_number, stage_name, status),
         gate_definitions(gate_number, gate_name, gate_criteria(is_met, criterion_name))
       `)
-      .eq('status', 'active')
+        .eq('status', 'active'),
+    )
 
     if (error) {
       console.error('[Cron Snapshot] Error fetching campaigns:', error)

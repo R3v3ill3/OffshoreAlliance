@@ -3,6 +3,7 @@
 import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { excludeSmsEpisodes } from "@/lib/campaign/visible-campaigns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,10 +66,12 @@ export function UnionHistoryField({
         )
       );
       if (otherCampaignIds.length === 0) return [];
-      const { data } = await supabase
-        .from("campaigns")
-        .select("campaign_id, name, status, campaign_type")
-        .in("campaign_id", otherCampaignIds);
+      const { data } = await excludeSmsEpisodes(
+        supabase
+          .from("campaigns")
+          .select("campaign_id, name, status, campaign_type")
+          .in("campaign_id", otherCampaignIds)
+      );
       return (data ?? []) as PriorCampaignRow[];
     },
     enabled: campaignEmployerIds.length > 0,

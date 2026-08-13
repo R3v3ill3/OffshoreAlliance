@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { excludeSmsEpisodes } from "@/lib/campaign/visible-campaigns";
 import { useAuth } from "@/lib/supabase/auth-context";
 import {
   Select,
@@ -100,11 +101,13 @@ export function WorkerFilterBar({ filters, onChange }: WorkerFilterBarProps) {
   const { data: campaigns = [] } = useQuery({
     queryKey: ["filter-campaigns"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("campaigns")
-        .select("campaign_id, name")
-        .in("status", ["active", "planning"])
-        .order("name");
+      const { data, error } = await excludeSmsEpisodes(
+        supabase
+          .from("campaigns")
+          .select("campaign_id, name")
+          .in("status", ["active", "planning"])
+          .order("name")
+      );
       if (error) throw error;
       return data ?? [];
     },

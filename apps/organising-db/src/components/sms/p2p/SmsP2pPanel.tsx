@@ -47,7 +47,17 @@ import {
   AudiencePicker,
   type AudienceValue,
 } from '@/components/audience/AudiencePicker'
-import { toApiAudience } from '@/lib/sms/audience-helpers'
+import {
+  toApiAudience,
+  EMPTY_COMPOSED_AUDIENCE,
+  STANDALONE_AUDIENCE_PICKER,
+} from '@/lib/sms/audience-helpers'
+import {
+  useCreateSmsEpisode,
+  useDeleteSmsEpisode,
+  useRenameSmsEpisode,
+  useSmsEpisodes,
+} from '@/lib/hooks/useSmsEpisodes'
 import { SmsP2pBoard } from './SmsP2pBoard'
 
 const EMPTY_COMPOSER: SmsComposerValue = {
@@ -60,35 +70,93 @@ const EMPTY_COMPOSER: SmsComposerValue = {
 }
 
 interface SmsP2pPanelProps {
-  campaignId: string | number
+  campaignId?: string | number | null
+  standaloneMode?: boolean
 }
 
-export function SmsP2pPanel({ campaignId }: SmsP2pPanelProps) {
-  const id = String(campaignId)
+export function SmsP2pPanel({
+  campaignId,
+  standaloneMode = false,
+}: SmsP2pPanelProps) {
+  const id =
+    campaignId != null && String(campaignId) !== '' ? String(campaignId) : ''
   const searchParams = useSearchParams()
-  const { data: lists, isLoading } = useSmsLists(id)
+  const { data: lists, isLoading: listsLoading } = useSmsLists(
+    standaloneMode ? null : id,
+  )
+  const { data: episodes, isLoading: episodesLoading } = useSmsEpisodes(
+    standaloneMode,
+  )
+  const createEpisode = useCreateSmsEpisode()
+  const deleteEpisode = useDeleteSmsEpisode()
+  const renameEpisode = useRenameSmsEpisode()
   const [newOpen, setNewOpen] = useState(false)
+  const [sheetCampaignId, setSheetCampaignId] = useState<string | null>(null)
+  const [sheetSaved, setSheetSaved] = useState(false)
   const [sourceListId, setSourceListId] = useState<number | null>(null)
-  const [boardListId, setBoardListId] = useState<number | null>(null)
+  const [board, setBoard] = useState<{
+    campaignId: string
+    listId: number
+  } | null>(null)
 
   // Pathway-picker deep links (chain B: new_chat=1 / chat_source_list).
   useEffect(() => {
-    if (searchParams?.get('new_chat') === '1') setNewOpen(true)
+    if (searchParams?.get('new_chat') === '1' && !standaloneMode) {
+      setSheetCampaignId(id)
+      setNewOpen(true)
+    }
     const raw = searchParams?.get('chat_source_list')
     const wl = raw ? parseInt(raw, 10) : NaN
-    if (Number.isFinite(wl)) {
+    if (Number.isFinite(wl) && !standaloneMode) {
       setSourceListId(wl)
+      setSheetCampaignId(id)
       setNewOpen(true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const boards = useMemo(
-    () => (lists ?? []).filter((l) => (l.mode ?? 'blast') === 'p2p'),
-    [lists],
-  )
+  const boards = useMemo(() => {
+    if (standaloneMode) {
+      return (episodes ?? []).flatMap((e) =>
+        (e.lists ?? []).filter((l) => (l.mode ?? 'blast') === 'p2p'),
+      )
+    }
+    return (lists ?? []).filter((l) => (l.mode ?? 'blast') === 'p2p')
+  }, [standaloneMode, episodes, lists])
+  const isLoading = standaloneMode ? episodesLoading : listsLoading
   const active = boards.filter((b) => b.list_status === 'draft')
   const closed = boards.filter((b) => b.list_status !== 'draft')
+
+  const startNewChat = async () => {
+    if (!standaloneMode) {
+      setSheetCampaignId(id)
+      setSheetSaved(false)
+      setNewOpen(true)
+      return
+    }
+    try {
+      const ep = await createEpisode.mutateAsync({ kind: 'chat' })
+      setSheetCampaignId(String(ep.campaign_id))
+      setSheetSaved(false)
+      setNewOpen(true)
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Could not start standalone chat',
+      )
+    }
+  }
+
+  const closeNewChat = (open: boolean) => {
+    setNewOpen(open)
+    if (open) return
+    const cid = sheetCampaignId
+    if (standaloneMode && cid && !sheetSaved) {
+      deleteEpisode.mutate(cid)
+    }
+    setSheetCampaignId(null)
+    setSheetSaved(false)
+    setSourceListId(null)
+  }
 
   return (
     <div className="space-y-4">
@@ -96,11 +164,12 @@ export function SmsP2pPanel({ campaignId }: SmsP2pPanelProps) {
         <div>
           <h3 className="font-semibold">P2P chat boards</h3>
           <p className="text-sm text-muted-foreground">
-            Load a working list, then message people a handful at a time.
-            Replies land in the Inbox as 1:1 threads.
+            {standaloneMode
+              ? 'Each standalone chat is its own hidden campaign. Replies land in Inbox, scoped to that board.'
+              : 'Load a working list, then message people a handful at a time. Replies land in the Inbox as 1:1 threads.'}
           </p>
         </div>
-        <Button onClick={() => setNewOpen(true)}>
+        <Button onClick={() => void startNewChat()}>
           <MessagesSquare className="mr-2 h-4 w-4" />
           New chat board
         </Button>
@@ -115,10 +184,11 @@ export function SmsP2pPanel({ campaignId }: SmsP2pPanelProps) {
           <CardContent className="p-4 text-center">
             <MessagesSquare className="mx-auto mb-2 h-7 w-7 text-muted-foreground" />
             <p className="mb-3 text-sm text-muted-foreground">
-              No chat boards yet. Start one here, or pick the Chat pathway from
-              Create SMS.
+              {standaloneMode
+                ? 'No standalone chat boards yet. Start one here — it will not appear on the campaigns list.'
+                : 'No chat boards yet. Start one here, or pick the Chat pathway from Create SMS.'}
             </p>
-            <Button variant="outline" size="sm" onClick={() => setNewOpen(true)}>
+            <Button variant="outline" size="sm" onClick={() => void startNewChat()}>
               <Plus className="mr-1 h-4 w-4" />
               New chat board
             </Button>
@@ -126,39 +196,44 @@ export function SmsP2pPanel({ campaignId }: SmsP2pPanelProps) {
         </Card>
       ) : (
         <div className="space-y-2">
-          {[...active, ...closed].map((board) => (
-            <Card key={board.list_id} className="transition-colors hover:bg-muted/30">
+          {[...active, ...closed].map((row) => (
+            <Card key={row.list_id} className="transition-colors hover:bg-muted/30">
               <CardContent className="p-3">
                 <button
                   type="button"
                   className="flex w-full items-center gap-3 text-left"
-                  onClick={() => setBoardListId(board.list_id)}
+                  onClick={() =>
+                    setBoard({
+                      campaignId: String(row.campaign_id),
+                      listId: row.list_id,
+                    })
+                  }
                 >
                   <div className="min-w-0 flex-1">
                     <div className="mb-1 flex items-center gap-2">
                       <p className="truncate text-sm font-medium">
-                        {board.list_name}
+                        {row.list_name}
                       </p>
                       <Badge
                         variant="secondary"
                         className={
-                          board.list_status === 'draft'
+                          row.list_status === 'draft'
                             ? 'bg-emerald-100 text-emerald-700'
                             : 'bg-slate-100 text-slate-500'
                         }
                       >
-                        {board.list_status === 'draft' ? 'active' : 'closed'}
+                        {row.list_status === 'draft' ? 'active' : 'closed'}
                       </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {Number(board.sent_count) + Number(board.delivered_count)}/
-                      {Number(board.item_count)} messaged
-                      {Number(board.pending_count) > 0 &&
-                        ` · ${Number(board.pending_count)} to go`}
-                      {Number(board.opted_out_count) + Number(board.blocked_count) >
+                      {Number(row.sent_count) + Number(row.delivered_count)}/
+                      {Number(row.item_count)} messaged
+                      {Number(row.pending_count) > 0 &&
+                        ` · ${Number(row.pending_count)} to go`}
+                      {Number(row.opted_out_count) + Number(row.blocked_count) >
                         0 &&
                         ` · ${
-                          Number(board.opted_out_count) + Number(board.blocked_count)
+                          Number(row.opted_out_count) + Number(row.blocked_count)
                         } opted out`}
                     </p>
                   </div>
@@ -170,26 +245,34 @@ export function SmsP2pPanel({ campaignId }: SmsP2pPanelProps) {
         </div>
       )}
 
+      {sheetCampaignId && (
       <NewChatBoardSheet
         key={sourceListId ?? 'no-source'}
-        campaignId={id}
+        campaignId={sheetCampaignId}
+        standaloneMode={standaloneMode}
         open={newOpen}
         sourceListId={sourceListId}
-        onOpenChange={(open) => {
-          setNewOpen(open)
-          if (!open) setSourceListId(null)
-        }}
-        onCreated={(listId) => {
+        onOpenChange={closeNewChat}
+        onCreated={(listId, name) => {
+          setSheetSaved(true)
           setNewOpen(false)
+          if (standaloneMode && name.trim()) {
+            renameEpisode.mutate({
+              campaignId: sheetCampaignId,
+              name: name.trim(),
+            })
+          }
+          setBoard({ campaignId: sheetCampaignId, listId })
+          setSheetCampaignId(null)
           setSourceListId(null)
-          setBoardListId(listId)
         }}
       />
+      )}
 
       <Sheet
-        open={boardListId != null}
+        open={board != null}
         onOpenChange={(open) => {
-          if (!open) setBoardListId(null)
+          if (!open) setBoard(null)
         }}
       >
         <SheetContent className="w-full overflow-y-auto sm:max-w-4xl">
@@ -201,8 +284,12 @@ export function SmsP2pPanel({ campaignId }: SmsP2pPanelProps) {
             </SheetDescription>
           </SheetHeader>
           <div className="mt-4 pb-8">
-            {boardListId != null && (
-              <SmsP2pBoard campaignId={id} listId={boardListId} />
+            {board != null && (
+              <SmsP2pBoard
+                campaignId={board.campaignId}
+                listId={board.listId}
+                standaloneMode={standaloneMode}
+              />
             )}
           </div>
         </SheetContent>
@@ -213,17 +300,19 @@ export function SmsP2pPanel({ campaignId }: SmsP2pPanelProps) {
 
 function NewChatBoardSheet({
   campaignId,
+  standaloneMode = false,
   open,
   sourceListId,
   onOpenChange,
   onCreated,
 }: {
   campaignId: string
+  standaloneMode?: boolean
   open: boolean
   /** Pre-attached cohort from the Build List → Chat pathway. */
   sourceListId: number | null
   onOpenChange: (open: boolean) => void
-  onCreated: (listId: number) => void
+  onCreated: (listId: number, name: string) => void
 }) {
   const [name, setName] = useState('')
   const [deferAudience, setDeferAudience] = useState(false)
@@ -232,7 +321,9 @@ function NewChatBoardSheet({
   const [audienceValue, setAudienceValue] = useState<AudienceValue>(() =>
     sourceListId != null
       ? { mode: 'worker_list', worker_list_id: sourceListId }
-      : { mode: 'campaign' },
+      : standaloneMode
+        ? EMPTY_COMPOSED_AUDIENCE
+        : { mode: 'campaign' },
   )
   const [composer, setComposer] = useState<SmsComposerValue>(EMPTY_COMPOSER)
   const [submitting, setSubmitting] = useState(false)
@@ -251,10 +342,14 @@ function NewChatBoardSheet({
     if (blockers.length > 0) return
     try {
       setSubmitting(true)
-      const audience =
-        deferAudience && sourceListId == null
-          ? undefined
-          : await toApiAudience(campaignId, audienceValue)
+      const skipAudience =
+        (deferAudience && sourceListId == null) ||
+        (standaloneMode &&
+          audienceValue.mode === 'composed' &&
+          audienceValue.worker_ids.length === 0)
+      const audience = skipAudience
+        ? undefined
+        : await toApiAudience(campaignId, audienceValue)
       create.mutate(
         {
           name: name.trim(),
@@ -279,9 +374,11 @@ function NewChatBoardSheet({
             )
             setName('')
             setDeferAudience(false)
-            setAudienceValue({ mode: 'campaign' })
+            setAudienceValue(
+              standaloneMode ? EMPTY_COMPOSED_AUDIENCE : { mode: 'campaign' },
+            )
             setComposer(EMPTY_COMPOSER)
-            onCreated(res.sms_list_id)
+            onCreated(res.sms_list_id, name.trim())
           },
           onError: (err: Error) => toast.error(err.message),
           onSettled: () => setSubmitting(false),
@@ -340,6 +437,7 @@ function NewChatBoardSheet({
               value={audienceValue}
               onChange={setAudienceValue}
               disabled={create.isPending || submitting}
+              {...(standaloneMode ? STANDALONE_AUDIENCE_PICKER : {})}
             />
           )}
 

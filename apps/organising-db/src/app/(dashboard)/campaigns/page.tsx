@@ -26,6 +26,7 @@ import {
   type CampaignDeleteTarget,
 } from "@/components/campaigns/campaign-delete-dialog";
 import { CampaignsDashboard } from "@/components/campaigns/CampaignsDashboard";
+import { excludeSmsEpisodes } from "@/lib/campaign/visible-campaigns";
 
 const TemplatesTab = dynamic(() => import("@/components/campaigns/templates-tab").then((m) => ({ default: m.TemplatesTab })), { ssr: false });
 
@@ -140,15 +141,17 @@ export default function CampaignsPage() {
   const { data: campaigns = [], isLoading } = useQuery({
     queryKey: ["campaigns"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("campaigns")
-        .select(
-          `campaign_id, name, campaign_type, status, is_standing, start_date, end_date,
-           total_worker_estimate, organiser_id,
-           organiser:organisers(organiser_name),
-           campaign_stage_plans(plan_id, stage_number, stage_name, status)`
-        )
-        .order("created_at", { ascending: false });
+      const { data, error } = await excludeSmsEpisodes(
+        supabase
+          .from("campaigns")
+          .select(
+            `campaign_id, name, campaign_type, status, is_standing, start_date, end_date,
+             total_worker_estimate, organiser_id,
+             organiser:organisers(organiser_name),
+             campaign_stage_plans(plan_id, stage_number, stage_name, status)`
+          )
+          .order("created_at", { ascending: false })
+      );
 
       if (error) throw error;
       return (data ?? []) as unknown as CampaignRow[];

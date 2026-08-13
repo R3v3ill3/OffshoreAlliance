@@ -3,8 +3,11 @@
 /**
  * Global SMS tools hub — the campaigns-landing counterpart of
  * Outreach → SMS. Campaign is optional and explicit (email-wizard
- * pattern): no standing-campaign auto-select. Inbox and relays work
- * without a campaign; blasts, surveys and chats need one chosen first.
+ * pattern): no standing-campaign auto-select.
+ *
+ * Standalone — not part of a campaign creates a hidden per-episode
+ * campaign behind the UI so FKs, RLS and inbox threads stay campaign-
+ * scoped. Assessment picker and "whole campaign" audience are hidden.
  */
 
 import { useCallback } from 'react'
@@ -24,6 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { InlineSmsOpsPanel } from '@/components/sms/InlineSmsOpsPanel'
+import { excludeSmsEpisodes } from '@/lib/campaign/visible-campaigns'
 
 export function SmsToolsPage() {
   const router = useRouter()
@@ -34,25 +38,55 @@ export function SmsToolsPage() {
   const campaignIdParam = searchParams.get('campaign_id')
   const parsed = campaignIdParam ? parseInt(campaignIdParam, 10) : NaN
   const campaignId = Number.isFinite(parsed) ? parsed : null
+  const standaloneParam = searchParams.get('standalone') === '1'
 
   const { data: campaigns = [] } = useQuery({
     queryKey: ['wizard-campaigns'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('campaigns')
-        .select('campaign_id, name, organiser_id')
-        .order('created_at', { ascending: false })
+      const { data, error } = await excludeSmsEpisodes(
+        supabase
+          .from('campaigns')
+          .select('campaign_id, name, organiser_id')
+          .order('created_at', { ascending: false }),
+      )
       if (error) throw error
       return data ?? []
     },
     enabled: !!user,
   })
 
-  const setCampaignId = useCallback(
-    (next: number | null) => {
+  const { data: selectedCampaign } = useQuery({
+    queryKey: ['sms-tools-selected-campaign', campaignId],
+    queryFn: async () => {
+      if (campaignId == null) return null
+      const { data, error } = await supabase
+        .from('campaigns')
+        .select('campaign_id, is_sms_episode')
+        .eq('campaign_id', campaignId)
+        .maybeSingle()
+      if (error) throw error
+      return data
+    },
+    enabled: !!user && campaignId != null,
+  })
+
+  const standaloneMode =
+    standaloneParam || !!selectedCampaign?.is_sms_episode
+  const linkedCampaignId = standaloneMode ? null : campaignId
+
+  const setScope = useCallback(
+    (next: 'none' | 'standalone' | number) => {
       const params = new URLSearchParams(searchParams.toString())
-      if (next == null) params.delete('campaign_id')
-      else params.set('campaign_id', String(next))
+      if (next === 'none') {
+        params.delete('campaign_id')
+        params.delete('standalone')
+      } else if (next === 'standalone') {
+        params.delete('campaign_id')
+        params.set('standalone', '1')
+      } else {
+        params.delete('standalone')
+        params.set('campaign_id', String(next))
+      }
       const qs = params.toString()
       router.replace(qs ? `/campaigns/sms-tools?${qs}` : '/campaigns/sms-tools', {
         scroll: false,
@@ -60,6 +94,12 @@ export function SmsToolsPage() {
     },
     [router, searchParams],
   )
+
+  const selectValue = standaloneMode
+    ? '__standalone__'
+    : linkedCampaignId != null
+      ? String(linkedCampaignId)
+      : '__none__'
 
   return (
     <div className="space-y-6">
@@ -76,25 +116,29 @@ export function SmsToolsPage() {
             SMS tools
           </h1>
           <p className="text-sm text-muted-foreground">
-            Blasts, surveys, chats, inbox and relays. Link a campaign to
-            build lists, write assessments, and send — or work the inbox
-            and relays without one.
+            Blasts, surveys, chats, inbox and relays. Link a campaign, or
+            mark a send as standalone — not part of a campaign.
           </p>
         </div>
-        <div className="w-full space-y-1 sm:w-72">
-          <Label htmlFor="sms-tools-campaign">Campaign (optional)</Label>
+        <div className="w-full space-y-1 sm:w-80">
+          <Label htmlFor="sms-tools-campaign">Send as</Label>
           <Select
-            value={campaignId?.toString() ?? '__none__'}
-            onValueChange={(v) =>
-              setCampaignId(v === '__none__' ? null : Number(v))
-            }
+            value={selectValue}
+            onValueChange={(v) => {
+              if (v === '__none__') setScope('none')
+              else if (v === '__standalone__') setScope('standalone')
+              else setScope(Number(v))
+            }}
           >
             <SelectTrigger id="sms-tools-campaign">
-              <SelectValue placeholder="No campaign — inbox and relays" />
+              <SelectValue placeholder="Inbox and relays only" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__none__">
-                No campaign — inbox and relays
+                Inbox and relays only
+              </SelectItem>
+              <SelectItem value="__standalone__">
+                Standalone — not part of a campaign
               </SelectItem>
               {campaigns.map((c) => (
                 <SelectItem key={c.campaign_id} value={c.campaign_id.toString()}>
@@ -104,13 +148,19 @@ export function SmsToolsPage() {
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            Linking a campaign enables list building, assessments, blasts,
-            surveys and chats.
+            {standaloneMode
+              ? 'Each blast, survey or chat is stored as its own hidden campaign. Assessments and wall-chart tools stay off.'
+              : linkedCampaignId != null
+                ? 'List building, assessments, blasts, surveys and chats use this campaign.'
+                : 'Pick a campaign or standalone to send. Inbox and relays work either way.'}
           </p>
         </div>
       </div>
 
-      <InlineSmsOpsPanel campaignId={campaignId} />
+      <InlineSmsOpsPanel
+        campaignId={linkedCampaignId}
+        standaloneMode={standaloneMode}
+      />
     </div>
   )
 }

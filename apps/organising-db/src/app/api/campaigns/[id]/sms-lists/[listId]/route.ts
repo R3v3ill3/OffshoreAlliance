@@ -16,6 +16,7 @@ import { createClient } from '@/lib/supabase/server'
 import { errorResponse } from '@/lib/api/error-response'
 import { isValidTimeZone } from '@/lib/sms/blackout'
 import { inboxUnsafeSenderMessage } from '@/lib/sms/sender-purpose'
+import { dedicatedNumberRequiredForNumberId } from '@/lib/sms/sender-inbound-server'
 
 async function loadList(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -34,6 +35,7 @@ async function loadList(
     campaign_id: number
     draft_id: number | null
     status: string
+    mode: string
     blackout_override: boolean
   }
 }
@@ -194,6 +196,15 @@ export async function PATCH(
         )
         if (unsafe) {
           return NextResponse.json({ error: unsafe }, { status: 409 })
+        }
+        if (list.mode === 'p2p') {
+          const notDedicated = await dedicatedNumberRequiredForNumberId(
+            supabase,
+            body.sender_number_id,
+          )
+          if (notDedicated) {
+            return NextResponse.json({ error: notDedicated }, { status: 409 })
+          }
         }
       }
       listUpdate.sender_number_id = body.sender_number_id

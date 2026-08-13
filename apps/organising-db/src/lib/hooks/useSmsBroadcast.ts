@@ -23,6 +23,14 @@ export interface SmsSenderOption {
   organiser_id: number | null
   organiser_name: string | null
   is_mine: boolean
+  /** Mobile Message sender type (`own`, `dedicated_number`, `alpha`, …). */
+  provider_type?: string | null
+  /**
+   * Whether replies to this number land in OA (dedicated/shared MM
+   * number). `false` = handset or one-way sender ID. `null` = could
+   * not ask the provider.
+   */
+  supports_inbound?: boolean | null
 }
 
 export interface SmsListDetailItem {

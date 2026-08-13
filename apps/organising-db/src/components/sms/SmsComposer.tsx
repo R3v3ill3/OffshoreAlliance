@@ -54,6 +54,7 @@ import {
   INBOX_UNSAFE_SENDER_MESSAGE,
   isInboxUnsafePurpose,
 } from '@/lib/sms/sender-purpose'
+import { inboundUnsafeClientMessage } from '@/lib/sms/sender-inbound'
 
 export interface SmsComposerValue {
   body: string
@@ -86,11 +87,17 @@ const TIMEZONES = [
   { value: 'Australia/Sydney', label: 'Sydney / Melbourne' },
 ]
 
-function senderLabel(s: SmsSenderOption): string {
+function senderLabel(s: SmsSenderOption, opts?: { requireInbound?: boolean }): string {
   const num = toDisplay(s.phone_e164)
-  if (s.organiser_name) return `${num} — ${s.organiser_name}`
-  if (s.label) return `${num} — ${s.label}`
-  return `${num} (${s.purpose})`
+  const base = s.organiser_name
+    ? `${num} — ${s.organiser_name}`
+    : s.label
+      ? `${num} — ${s.label}`
+      : `${num} (${s.purpose})`
+  if (opts?.requireInbound && s.supports_inbound === false) {
+    return `${base} (handset — replies go to the phone)`
+  }
+  return base
 }
 
 export function SmsComposer({
@@ -120,6 +127,8 @@ export function SmsComposer({
     (s) => s.number_id === value.sender_number_id,
   )
   const senderIsUnsafe = isInboxUnsafePurpose(selectedSender?.purpose)
+  const senderInboundError =
+    variant === 'p2p' ? inboundUnsafeClientMessage(selectedSender) : null
   const selectableSenders = useMemo(() => {
     if (
       selectedSender &&
@@ -135,12 +144,24 @@ export function SmsComposer({
   const defaultedRef = useRef(false)
   useEffect(() => {
     if (defaultedRef.current || value.sender_number_id != null || !senders) return
-    const mine = selectableSenders.find((s) => s.is_mine)
+    const mine = selectableSenders.find((s) => {
+      if (!s.is_mine) return false
+      if (variant === 'p2p' && s.supports_inbound === false) return false
+      return true
+    })
     if (mine) {
       defaultedRef.current = true
       onChange({ ...value, sender_number_id: mine.number_id })
+      return
     }
-  }, [senders, selectableSenders, value, onChange])
+    if (variant === 'p2p') {
+      const dedicated = selectableSenders.find((s) => s.supports_inbound !== false)
+      if (dedicated) {
+        defaultedRef.current = true
+        onChange({ ...value, sender_number_id: dedicated.number_id })
+      }
+    }
+  }, [senders, selectableSenders, value, onChange, variant])
 
   const literal = useMemo(() => countSegments(value.body), [value.body])
   const worstCase = useMemo(
@@ -374,7 +395,7 @@ export function SmsComposer({
             <SelectContent>
               {selectableSenders.map((s) => (
                 <SelectItem key={s.number_id} value={String(s.number_id)}>
-                  {senderLabel(s)}
+                  {senderLabel(s, { requireInbound: variant === 'p2p' })}
                   {s.is_mine ? ' (you)' : ''}
                 </SelectItem>
               ))}
@@ -384,6 +405,18 @@ export function SmsComposer({
             <p className="flex items-start gap-1 text-xs text-amber-800">
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
               {INBOX_UNSAFE_SENDER_MESSAGE}
+            </p>
+          )}
+          {senderInboundError && (
+            <p className="flex items-start gap-1 text-xs text-destructive">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              {senderInboundError}
+            </p>
+          )}
+          {variant === 'p2p' && (
+            <p className="text-xs text-muted-foreground">
+              Chat needs a dedicated Mobile Message number so replies land in
+              the board — not an organiser&apos;s personal handset.
             </p>
           )}
           {senders && inboxSafeSenders.length === 0 && (
@@ -552,18 +585,27 @@ export function SmsComposer({
  */
 export function smsComposerBlockers(
   value: SmsComposerValue,
-  senders?: Array<{ number_id: number; purpose: string }>,
+  senders?: Array<{
+    number_id: number
+    purpose: string
+    supports_inbound?: boolean | null
+    provider_type?: string | null
+    phone_e164?: string
+  }>,
+  opts?: { requireInbound?: boolean },
 ): string[] {
   const blockers: string[] = []
   if (!value.body.trim()) blockers.push('Message body is empty.')
   else blockers.push(...validateSmsBody(value.body).errors)
   if (value.sender_number_id == null) blockers.push('Choose a sender number.')
   else if (senders) {
-    const purpose = senders.find(
-      (s) => s.number_id === value.sender_number_id,
-    )?.purpose
-    if (isInboxUnsafePurpose(purpose)) {
+    const sender = senders.find((s) => s.number_id === value.sender_number_id)
+    if (isInboxUnsafePurpose(sender?.purpose)) {
       blockers.push(INBOX_UNSAFE_SENDER_MESSAGE)
+    }
+    if (opts?.requireInbound) {
+      const inbound = inboundUnsafeClientMessage(sender)
+      if (inbound) blockers.push(inbound)
     }
   }
   if (value.blackout_override && !value.blackout_override_reason.trim()) {

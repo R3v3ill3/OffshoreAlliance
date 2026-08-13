@@ -39,6 +39,7 @@ import { dispatchSurveyInvitations } from '@/lib/sms/survey-invitation-dispatch'
 import { loadSurveyLaunchConcurrency } from '@/lib/sms/survey-concurrency'
 import { getSmsProvider } from '@/lib/sms/provider'
 import { snapshotSurveyVersion, loadLiveQuestions } from '@/lib/sms/survey-versions'
+import { dedicatedNumberRequiredForNumberId } from '@/lib/sms/sender-inbound-server'
 import {
   isWithinSendWindow,
   nextWindowOpen,
@@ -453,6 +454,13 @@ export async function POST(
             { status: 400 },
           )
         }
+        const notDedicated = await dedicatedNumberRequiredForNumberId(
+          supabase,
+          survey.sender_number_id,
+        )
+        if (notDedicated) {
+          return NextResponse.json({ error: notDedicated }, { status: 409 })
+        }
 
         // Invitation org-name is a client-side warning, not a send
         // blocker. Indicative-ballot framing is still required below.
@@ -537,6 +545,7 @@ export async function POST(
       })
 
       let senderPurpose: string | null = null
+      let senderInboundError: string | null = null
       if (survey.sender_number_id) {
         const { data: senderRow } = await supabase
           .from('sms_numbers')
@@ -544,6 +553,10 @@ export async function POST(
           .eq('number_id', survey.sender_number_id)
           .maybeSingle()
         senderPurpose = (senderRow?.purpose as string | null) ?? null
+        senderInboundError = await dedicatedNumberRequiredForNumberId(
+          supabase,
+          survey.sender_number_id,
+        )
       }
 
       if (body.action === 'preview') {
@@ -567,6 +580,7 @@ export async function POST(
           next_window_at: nextWindowOpen(now, tz).toISOString(),
           is_test: !!survey.is_test,
           sender_purpose: senderPurpose,
+          sender_inbound_error: senderInboundError,
           other_open_surveys: concurrency.other_open_surveys,
           audience_overlap_count: concurrency.audience_overlap_count,
         })

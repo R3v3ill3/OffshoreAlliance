@@ -8,6 +8,7 @@ const NON_DETAIL_CAMPAIGN_SEGMENTS = new Set([
   "email-wizard",
   "soc-wizard",
   "phone-wizard",
+  "sms-tools",
 ]);
 
 /** Stage planning pages render their own focused chrome — skip the campaign header. */

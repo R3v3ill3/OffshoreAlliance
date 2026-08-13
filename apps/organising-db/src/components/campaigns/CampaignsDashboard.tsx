@@ -237,6 +237,15 @@ export function CampaignsDashboard({
                 </Link>{' '}
                 — calling lists and scripts.
               </li>
+              <li>
+                <Link
+                  href="/campaigns/sms-tools"
+                  className="text-foreground underline-offset-4 hover:underline"
+                >
+                  SMS tools
+                </Link>{' '}
+                — blasts, surveys, chats, inbox and relays.
+              </li>
               {process.env.NEXT_PUBLIC_FEATURE_SOC_WIZARD === 'true' && (
                 <li>
                   <Link

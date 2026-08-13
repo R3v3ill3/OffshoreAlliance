@@ -49,15 +49,15 @@ async function toError(res: Response, fallback: string): Promise<Error> {
   return new Error(err.error || fallback)
 }
 
-export function useSmsLists(campaignId: number | string) {
+export function useSmsLists(campaignId: number | string | null | undefined) {
   return useQuery({
-    queryKey: ['sms-lists', String(campaignId)],
+    queryKey: ['sms-lists', String(campaignId ?? '')],
     queryFn: async () => {
       const res = await fetchApi(`/api/campaigns/${campaignId}/sms-lists`)
       if (!res.ok) throw await toError(res, 'Failed to fetch SMS lists')
       return res.json() as Promise<VwSmsCampaignSummaryRowWithMode[]>
     },
-    enabled: !!campaignId,
+    enabled: campaignId != null && campaignId !== '',
   })
 }
 
@@ -97,7 +97,8 @@ export interface CreateSmsBlastInput {
   scheduled_for?: string | null
   /** 'blast' (default) or 'p2p' (chat-board working list). */
   mode?: 'blast' | 'p2p'
-  audience:
+  /** Omit to create a draft and attach a list later. */
+  audience?:
     | { type: 'worker_list'; worker_list_id: number }
     | { type: 'campaign' }
 }
@@ -122,6 +123,40 @@ export function useCreateSmsBlast(campaignId: number | string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sms-lists', String(campaignId)] })
+    },
+  })
+}
+
+export function useAttachSmsAudience(campaignId: number | string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: {
+      listId: number
+      audience:
+        | { type: 'worker_list'; worker_list_id: number }
+        | { type: 'campaign' }
+    }) => {
+      const res = await fetchApi(
+        `/api/campaigns/${campaignId}/sms-lists/${input.listId}/audience`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ audience: input.audience }),
+        },
+      )
+      if (!res.ok) throw await toError(res, 'Failed to attach audience')
+      return res.json() as Promise<{
+        sms_list_id: number
+        total_items: number
+        opted_out: number
+        skipped_no_phone: number
+      }>
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['sms-lists', String(campaignId)] })
+      queryClient.invalidateQueries({
+        queryKey: ['sms-list', String(campaignId), vars.listId],
+      })
     },
   })
 }

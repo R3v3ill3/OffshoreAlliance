@@ -93,11 +93,11 @@ const SAMPLE_MEMBER_MESSAGE =
 const MERGE_FIELDS = ['first_name', 'last_name', 'employer_name'] as const
 
 interface SmsRelaysPanelProps {
-  campaignId: string | number
+  campaignId?: string | number | null
 }
 
 export function SmsRelaysPanel({ campaignId }: SmsRelaysPanelProps) {
-  const { data: relays, isLoading } = useSmsRelays(campaignId)
+  const { data: relays, isLoading } = useSmsRelays(campaignId ?? undefined)
   const [newOpen, setNewOpen] = useState(false)
   const [detailRelayId, setDetailRelayId] = useState<number | null>(null)
 
@@ -257,7 +257,7 @@ function NewRelaySheet({
   onOpenChange,
   onCreated,
 }: {
-  campaignId: string | number
+  campaignId?: string | number | null
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated: (relayId: number) => void
@@ -266,7 +266,7 @@ function NewRelaySheet({
   const { data: senders, isLoading: sendersLoading } = useSmsSenders()
   const [name, setName] = useState('')
   const [numberId, setNumberId] = useState<number | null>(null)
-  const [orgWide, setOrgWide] = useState(false)
+  const [orgWide, setOrgWide] = useState(campaignId == null)
   const [targets, setTargets] = useState<DraftTarget[]>([
     { phone: '', display_name: '' },
   ])
@@ -302,7 +302,7 @@ function NewRelaySheet({
     create.mutate(
       {
         name: name.trim(),
-        campaign_id: orgWide ? null : Number(campaignId),
+        campaign_id: orgWide || campaignId == null ? null : Number(campaignId),
         number_id: numberId,
         prefix_template: prefix.trim() || null,
         suffix_template: suffix.trim() || null,
@@ -506,6 +506,7 @@ function NewRelaySheet({
                 </Select>
               </div>
             )}
+            {campaignId != null && (
             <div className="flex items-center justify-between gap-3">
               <div>
                 <Label htmlFor="relay-orgwide">Org-wide relay</Label>
@@ -520,6 +521,7 @@ function NewRelaySheet({
                 onCheckedChange={setOrgWide}
               />
             </div>
+            )}
           </div>
 
           <Button

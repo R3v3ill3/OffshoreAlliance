@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Sheet,
   SheetContent,
@@ -225,6 +226,7 @@ function NewChatBoardSheet({
   onCreated: (listId: number) => void
 }) {
   const [name, setName] = useState('')
+  const [deferAudience, setDeferAudience] = useState(false)
   // Build-list entry: seed the audience with the attached cohort (the
   // parent keys this sheet on sourceListId, so a change remounts).
   const [audienceValue, setAudienceValue] = useState<AudienceValue>(() =>
@@ -249,7 +251,10 @@ function NewChatBoardSheet({
     if (blockers.length > 0) return
     try {
       setSubmitting(true)
-      const audience = await toApiAudience(campaignId, audienceValue)
+      const audience =
+        deferAudience && sourceListId == null
+          ? undefined
+          : await toApiAudience(campaignId, audienceValue)
       create.mutate(
         {
           name: name.trim(),
@@ -266,11 +271,14 @@ function NewChatBoardSheet({
               notes.push(`${res.skipped_no_phone} without a mobile`)
             }
             toast.success(
-              `Chat board created — ${res.total_items} sendable${
-                notes.length ? ` (${notes.join(', ')} excluded)` : ''
-              }`,
+              res.total_items > 0
+                ? `Chat board created — ${res.total_items} sendable${
+                    notes.length ? ` (${notes.join(', ')} excluded)` : ''
+                  }`
+                : 'Chat board created — add people from the board',
             )
             setName('')
+            setDeferAudience(false)
             setAudienceValue({ mode: 'campaign' })
             setComposer(EMPTY_COMPOSER)
             onCreated(res.sms_list_id)
@@ -293,8 +301,8 @@ function NewChatBoardSheet({
         <SheetHeader>
           <SheetTitle>New chat board</SheetTitle>
           <SheetDescription>
-            Load the full working list now — you will pick who to message,
-            and when, from the board. Nothing sends on create.
+            Write the opener now, load a working list now, or both — you can
+            add people from the board later. Nothing sends on create.
           </SheetDescription>
         </SheetHeader>
         <div className="mt-4 space-y-4 pb-8">
@@ -308,13 +316,32 @@ function NewChatBoardSheet({
             />
           </div>
 
-          <AudiencePicker
-            channel="sms"
-            campaignId={campaignId}
-            value={audienceValue}
-            onChange={setAudienceValue}
-            disabled={create.isPending || submitting}
-          />
+          {sourceListId == null && (
+            <div className="flex items-start gap-2 rounded-md border p-3">
+              <Checkbox
+                id="p2p-defer-audience"
+                checked={deferAudience}
+                onCheckedChange={(v) => setDeferAudience(v === true)}
+                disabled={create.isPending || submitting}
+              />
+              <Label
+                htmlFor="p2p-defer-audience"
+                className="font-normal leading-snug"
+              >
+                Add people later from the board
+              </Label>
+            </div>
+          )}
+
+          {!deferAudience && (
+            <AudiencePicker
+              channel="sms"
+              campaignId={campaignId}
+              value={audienceValue}
+              onChange={setAudienceValue}
+              disabled={create.isPending || submitting}
+            />
+          )}
 
           <div className="space-y-1.5">
             <Label>Initial message</Label>

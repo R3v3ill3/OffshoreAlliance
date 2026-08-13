@@ -7,13 +7,14 @@
  * render a disabled placeholder. The component offers three modes:
  *   1. Whole campaign
  *   2. Saved worker list
- *   3. Build audience (manual add + CSV/XLSX import)
+ *   3. Build audience (manual add + CSV/XLSX import with wash against
+ *      existing lists + filter/sort list builder)
  *
  * When the parent needs the API audience shape it calls
  * `toApiAudience(campaignId, value)` from lib/sms/audience-helpers.
  */
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchApi } from '@/lib/api/fetch-api'
 import { Badge } from '@/components/ui/badge'
@@ -41,6 +42,7 @@ import {
 import {
   AlertTriangle,
   FileSpreadsheet,
+  Filter,
   Loader2,
   Upload,
   UserPlus,
@@ -51,6 +53,12 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils/cn'
 import type { AudienceValue } from '@/lib/sms/audience-helpers'
 import { CONSENT_BASES, type ConsentBasis } from '@/lib/sms/audience-import'
+import { AudienceFilterBuildDialog } from '@/components/audience/AudienceFilterBuildDialog'
+import {
+  AudienceWashLists,
+  idsExcludedByWash,
+  type WashListOverlap,
+} from '@/components/audience/AudienceWashLists'
 
 export type { AudienceValue }
 
@@ -102,6 +110,7 @@ export function AudiencePicker({
   const [staged, setStaged] = useState<StagedWorker[]>([])
   const [showManual, setShowManual] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [showFilter, setShowFilter] = useState(false)
 
   const { data: workerLists } = useQuery({
     queryKey: ['worker-lists-for-sms', String(campaignId)],
@@ -277,7 +286,7 @@ export function AudiencePicker({
                 </>
               )}
             </div>
-            <div className="flex gap-1">
+            <div className="flex flex-wrap justify-end gap-1">
               <Button
                 type="button"
                 size="sm"
@@ -287,6 +296,16 @@ export function AudiencePicker({
               >
                 <UserPlus className="h-3 w-3 mr-1" />
                 Add person
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={disabled}
+                onClick={() => setShowFilter(true)}
+              >
+                <Filter className="h-3 w-3 mr-1" />
+                Filter &amp; build
               </Button>
               <Button
                 type="button"
@@ -345,7 +364,8 @@ export function AudiencePicker({
 
           {staged.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-4">
-              Add people manually or import from a spreadsheet.
+              Add people manually, import a spreadsheet (washed against
+              existing lists), or build a list with sort and filter.
             </p>
           )}
         </div>
@@ -365,6 +385,13 @@ export function AudiencePicker({
         open={showImport}
         onOpenChange={setShowImport}
         onImported={addStagedBatch}
+      />
+
+      <AudienceFilterBuildDialog
+        campaignId={campaignId}
+        open={showFilter}
+        onOpenChange={setShowFilter}
+        onAdded={addStagedBatch}
       />
     </div>
   )
@@ -577,8 +604,43 @@ function AudienceImportDialog({
   const [consentBasis, setConsentBasis] = useState<ConsentBasis | ''>('')
   const [consentAttested, setConsentAttested] = useState(false)
   const [fileName, setFileName] = useState('')
+  const [washKeys, setWashKeys] = useState<Set<string>>(new Set())
   const fileRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
+
+  const matchedWorkerIds = useMemo(() => {
+    const ids: number[] = []
+    for (const m of matchResults) {
+      if (!m.match) continue
+      if (m.disposition === 'auto') ids.push(m.match.worker.worker_id)
+      else if (
+        (m.disposition === 'confirm' || m.disposition === 'review') &&
+        confirmDecisions[m.key] === 'match'
+      ) {
+        ids.push(m.match.worker.worker_id)
+      }
+    }
+    return ids
+  }, [matchResults, confirmDecisions])
+
+  const washQuery = useQuery({
+    queryKey: ['sms-audience-wash-import', String(campaignId), matchedWorkerIds],
+    queryFn: async () => {
+      const res = await fetchApi(
+        `/api/campaigns/${campaignId}/sms-audience/wash`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ worker_ids: matchedWorkerIds }),
+        }
+      )
+      if (!res.ok) throw new Error('Failed to check existing lists')
+      const data = (await res.json()) as { lists: WashListOverlap[] }
+      return data.lists ?? []
+    },
+    enabled: step === 'consent' && matchedWorkerIds.length > 0,
+  })
+  const washLists = washQuery.data ?? []
 
   const reset = () => {
     setStep('upload')
@@ -589,6 +651,7 @@ function AudienceImportDialog({
     setConsentBasis('')
     setConsentAttested(false)
     setFileName('')
+    setWashKeys(new Set())
   }
 
   const handleClose = (v: boolean) => {
@@ -713,13 +776,24 @@ function AudienceImportDialog({
         })
         .filter(Boolean) as Array<Record<string, unknown>>
 
+      const excluded = idsExcludedByWash(washLists, washKeys)
+      const washed = resolutions.filter((r) => {
+        const wid = r.worker_id as number | undefined
+        if (wid == null) return true
+        return !excluded.has(wid)
+      })
+
+      if (washed.length === 0) {
+        throw new Error('Everyone in this import is already on the selected lists')
+      }
+
       const res = await fetchApi(
         `/api/campaigns/${campaignId}/sms-audience/import/apply`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            resolutions,
+            resolutions: washed,
             consent_basis: consentBasis,
             consent_attested: true,
           }),
@@ -742,7 +816,10 @@ function AudienceImportDialog({
       }>
     },
     onSuccess: (data) => {
-      const staged: StagedWorker[] = data.workers.map((w) => ({
+      const excluded = idsExcludedByWash(washLists, washKeys)
+      const staged: StagedWorker[] = data.workers
+        .filter((w) => !excluded.has(w.worker_id))
+        .map((w) => ({
         worker_id: w.worker_id,
         first_name: w.first_name,
         last_name: w.last_name,
@@ -1002,6 +1079,17 @@ function AudienceImportDialog({
                 method selected above.
               </Label>
             </div>
+            {washQuery.isFetching && (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Checking existing lists…
+              </p>
+            )}
+            <AudienceWashLists
+              lists={washLists}
+              selectedKeys={washKeys}
+              onChange={setWashKeys}
+            />
           </div>
         )}
 

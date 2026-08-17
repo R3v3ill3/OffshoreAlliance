@@ -28,6 +28,10 @@ import {
   ACTIVITY_TEMPLATE_OPTIONS,
   BINARY_SUPPORTER_OUTCOME_OPTIONS,
 } from "@/lib/campaign/constants";
+import {
+  seedIsBinaryForTemplate,
+  supporterOutcomeForSave,
+} from "@/lib/campaign/assessment-form";
 import { RATING_LEVELS } from "@/types/planner-types";
 import { toast } from "sonner";
 import type { CampaignActivityTemplateKey } from "@/types/database";
@@ -87,8 +91,10 @@ export function CreateAssessmentDialog({
       const templateKey =
         templateChoice !== "__custom__" ? (templateChoice as CampaignActivityTemplateKey) : null;
       const fromTemplate = ACTIVITY_TEMPLATE_OPTIONS.find((t) => t.key === templateKey);
-      const is_binary =
-        fromTemplate?.defaultBinary ?? (templateKey === "vote" ? true : form.is_binary);
+      // The author's explicit Response type wins. The template only
+      // seeds it when chosen, so a template's default can be overridden
+      // rather than silently reimposed here.
+      const is_binary = form.is_binary;
       const payload: Record<string, unknown> = {
         campaign_id: Number(campaignId),
         title: form.title || fromTemplate?.label || "Activity",
@@ -98,10 +104,12 @@ export function CreateAssessmentDialog({
         template_key: templateKey,
       };
       if (form.description) payload.description = form.description;
-      if (is_binary && form.supporter_outcome_value) {
-        payload.supporter_outcome_value = form.supporter_outcome_value;
-      } else if (is_binary && templateKey === "vote") {
-        payload.supporter_outcome_value = "yes";
+      const supporterOutcome = supporterOutcomeForSave(
+        is_binary,
+        form.supporter_outcome_value,
+      );
+      if (supporterOutcome != null) {
+        payload.supporter_outcome_value = supporterOutcome;
       }
       if (!is_binary) {
         const nonEmpty = Object.fromEntries(
@@ -164,7 +172,18 @@ export function CreateAssessmentDialog({
         <div className="grid gap-3">
           <div className="space-y-2">
             <Label>From template</Label>
-            <Select value={templateChoice} onValueChange={setTemplateChoice}>
+            <Select
+              value={templateChoice}
+              onValueChange={(value) => {
+                setTemplateChoice(value)
+                // Seed the response type from the template, leaving it
+                // overridable — templates express a default, not a rule.
+                setForm((prev) => ({
+                  ...prev,
+                  is_binary: seedIsBinaryForTemplate(value, prev.is_binary),
+                }));
+              }}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -214,20 +233,31 @@ export function CreateAssessmentDialog({
                 </Select>
               </div>
             )}
-            {templateChoice === "__custom__" && (
-              <div className="flex items-end pb-2">
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={form.is_binary}
-                    onChange={(event) => setForm({ ...form, is_binary: event.target.checked })}
-                  />
-                  Binary / vote-style
-                </label>
-              </div>
-            )}
+            {/* Response type is a real choice, always shown. It used to
+                be a bare checkbox that appeared only under the Custom
+                template, so picking any template silently removed the
+                ability to make a binary assessment — and the option was
+                easy to miss even when present. A template now seeds
+                this, and the author can still override it. */}
+            <div className="space-y-2">
+              <Label>Response type</Label>
+              <Select
+                value={form.is_binary ? "binary" : "scale"}
+                onValueChange={(value) =>
+                  setForm({ ...form, is_binary: value === "binary" })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="scale">Rating scale (1–5)</SelectItem>
+                  <SelectItem value="binary">Binary (yes / no)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          {(form.is_binary || templateChoice === "vote") && (
+          {form.is_binary && (
             <div className="space-y-2">
               <Label>Supporter outcome (for binary)</Label>
               <Select
@@ -248,7 +278,9 @@ export function CreateAssessmentDialog({
             </div>
           )}
 
-          {!form.is_binary && templateChoice !== "vote" && (
+          {/* Keyed off the response type alone: overriding the vote
+              template back to a scale must bring its labels with it. */}
+          {!form.is_binary && (
             <div className="border-t pt-3 space-y-2">
               <button
                 type="button"

@@ -81,6 +81,7 @@ import {
 } from '@/lib/hooks/useSmsOptOut'
 import { SmsThreadDialog } from '@/components/sms/inbox/SmsThreadDialog'
 import { CONVERSATION_STATE_COLORS } from '@/components/sms/inbox/sms-inbox-shared'
+import { SmsEmojiPicker } from '@/components/sms/SmsEmojiPicker'
 import {
   AudiencePicker,
   type AudienceValue,
@@ -664,8 +665,7 @@ function EditInitialDialog({
   const compliance = validateSmsBody(body)
   const differsFromDefault = body.trim() !== boardTemplate.trim()
 
-  const insertToken = (token: string) => {
-    const insert = `{{${token}}}`
+  const insertAtCursor = (insert: string) => {
     const el = textareaRef.current
     if (!el) {
       setBody((prev) => prev + insert)
@@ -680,6 +680,7 @@ function EditInitialDialog({
       el.setSelectionRange(start + insert.length, start + insert.length)
     })
   }
+  const insertToken = (token: string) => insertAtCursor(`{{${token}}}`)
 
   return (
     <Dialog open={item != null} onOpenChange={onOpenChange}>
@@ -704,7 +705,7 @@ function EditInitialDialog({
               value={body}
               onChange={(e) => setBody(e.target.value)}
             />
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap items-center gap-1">
               {ALL_TEMPLATE_VARIABLES.map((v) => (
                 <button
                   key={v.key}
@@ -717,6 +718,11 @@ function EditInitialDialog({
                   {v.label}
                 </button>
               ))}
+              <SmsEmojiPicker
+                disabled={pending}
+                onSelect={insertAtCursor}
+                className="h-6 px-2"
+              />
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -724,6 +730,15 @@ function EditInitialDialog({
             {segments.segments === 1 ? 'part' : 'parts'} ({segments.encoding})
             after merge fields
           </p>
+          {segments.encoding === 'UCS-2' && (
+            <p className="flex items-start gap-1 text-xs text-amber-700">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              Emoji and smart quotes switch this message to UCS-2 — 70
+              characters per part instead of 160, so it costs{' '}
+              {segments.segments}{' '}
+              {segments.segments === 1 ? 'credit' : 'credits'} per recipient.
+            </p>
+          )}
           {!compliance.hasOrgName && (
             <p className="flex items-start gap-1 text-xs text-amber-700">
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
@@ -815,8 +830,7 @@ function BoardMessageDialog({
   const compliance = validateSmsBody(body)
   const changed = body.trim() !== boardTemplate.trim()
 
-  const insertToken = (token: string) => {
-    const insert = `{{${token}}}`
+  const insertAtCursor = (insert: string) => {
     const el = textareaRef.current
     if (!el) {
       setBody((prev) => prev + insert)
@@ -830,6 +844,7 @@ function BoardMessageDialog({
       el.setSelectionRange(start + insert.length, start + insert.length)
     })
   }
+  const insertToken = (token: string) => insertAtCursor(`{{${token}}}`)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -852,7 +867,7 @@ function BoardMessageDialog({
               value={body}
               onChange={(e) => setBody(e.target.value)}
             />
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap items-center gap-1">
               {ALL_TEMPLATE_VARIABLES.map((v) => (
                 <button
                   key={v.key}
@@ -865,6 +880,11 @@ function BoardMessageDialog({
                   {v.label}
                 </button>
               ))}
+              <SmsEmojiPicker
+                disabled={pending}
+                onSelect={insertAtCursor}
+                className="h-6 px-2"
+              />
             </div>
           </div>
 
@@ -873,6 +893,15 @@ function BoardMessageDialog({
             {segments.segments === 1 ? 'part' : 'parts'} ({segments.encoding})
             after merge fields
           </p>
+          {segments.encoding === 'UCS-2' && (
+            <p className="flex items-start gap-1 text-xs text-amber-700">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              Emoji and smart quotes switch this message to UCS-2 — 70
+              characters per part instead of 160, so it costs{' '}
+              {segments.segments}{' '}
+              {segments.segments === 1 ? 'credit' : 'credits'} per recipient.
+            </p>
+          )}
 
           <div className="rounded-md border bg-muted/30 p-2 text-xs">
             <p>

@@ -49,6 +49,7 @@ import type {
   SmsThreadScope,
 } from '@/types/sms'
 import { CONVERSATION_STATE_COLORS, conversationTitle } from './sms-inbox-shared'
+import { SmsEmojiPicker } from '@/components/sms/SmsEmojiPicker'
 
 type TimelineEntry =
   | { kind: 'message'; at: string; message: SmsMessageRow }
@@ -170,6 +171,8 @@ export function SmsThreadView({
 
   const seg = countSegments(draft || '')
 
+  const replyRef = useRef<HTMLTextAreaElement>(null)
+
   const handleDraftChange = (value: string) => {
     onDraftChange(value)
     // Emptying the composer discards the AI-assisted provenance —
@@ -180,6 +183,22 @@ export function SmsThreadView({
     realtime.setTyping(true)
     if (typingTimeout.current) clearTimeout(typingTimeout.current)
     typingTimeout.current = setTimeout(() => realtime.setTyping(false), 2000)
+  }
+
+  /** Emoji land at the caret, not appended, so mid-sentence works. */
+  const insertIntoReply = (insert: string) => {
+    const el = replyRef.current
+    if (!el) {
+      handleDraftChange(draft + insert)
+      return
+    }
+    const start = el.selectionStart ?? draft.length
+    const end = el.selectionEnd ?? start
+    handleDraftChange(draft.slice(0, start) + insert + draft.slice(end))
+    requestAnimationFrame(() => {
+      el.focus()
+      el.setSelectionRange(start + insert.length, start + insert.length)
+    })
   }
 
   const submit = () => {
@@ -391,6 +410,7 @@ export function SmsThreadView({
               </div>
             )}
             <Textarea
+              ref={replyRef}
               value={draft}
               onChange={(e) => handleDraftChange(e.target.value)}
               placeholder="Type a reply… (sent exactly as written — no footer added)"
@@ -407,6 +427,10 @@ export function SmsThreadView({
                   : 'One-to-one replies are never window-blocked.'}
               </span>
               <div className="flex items-center gap-1.5">
+                <SmsEmojiPicker
+                  disabled={sending}
+                  onSelect={insertIntoReply}
+                />
                 <Button
                   size="sm"
                   variant="outline"

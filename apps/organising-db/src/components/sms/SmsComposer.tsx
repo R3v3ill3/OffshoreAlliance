@@ -42,6 +42,7 @@ import {
 } from '@/lib/comms/template-variables'
 import { countSegments, countSegmentsWorstCase } from '@/lib/sms/segments'
 import { validateSmsBody } from '@/lib/sms/compliance'
+import { SmsEmojiPicker } from '@/components/sms/SmsEmojiPicker'
 import { useTemplateLibrary } from '@/lib/hooks/useTemplateLibrary'
 import {
   useSmsSenders,
@@ -242,7 +243,7 @@ export function SmsComposer({
           }
           onChange={(e) => onChange({ ...value, body: e.target.value })}
         />
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           {ALL_TEMPLATE_VARIABLES.map((v) => (
             <button
               key={v.key}
@@ -255,6 +256,11 @@ export function SmsComposer({
               {v.label}
             </button>
           ))}
+          <SmsEmojiPicker
+            disabled={disabled}
+            onSelect={insertAtCursor}
+            className="h-6 px-2"
+          />
           <button
             type="button"
             disabled={disabled}

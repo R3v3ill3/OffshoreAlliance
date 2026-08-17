@@ -173,7 +173,10 @@ export async function POST(
         p_rating: rating ?? undefined,
         p_binary_value: binaryValue ?? undefined,
         p_rating_phase: 'actual',
-        p_source: 'sms',
+        // Phase 12 (§F decision 9): staff capture in the inbox/chat
+        // sidebar is 'sms_chat'; survey answers and keyword-mapped
+        // replies are stamped by fn_sms_to_rating instead.
+        p_source: 'sms_chat',
         p_notes: notes ?? undefined,
         p_actor_id: user.id,
       },

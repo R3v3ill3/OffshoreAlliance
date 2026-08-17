@@ -618,6 +618,41 @@ export interface VwSmsCampaignRollupRow {
   surveys_completed_count: number;
 }
 
+/**
+ * vw_sms_chat_session_report (20260813120000, Phase 12 §F): per P2P
+ * chat session. Denominators count openers that actually went out, so
+ * an unsent roster does not depress the response rate.
+ */
+export interface VwSmsChatSessionReportRow {
+  campaign_id: number | null;
+  list_id: number;
+  name: string;
+  status: SmsListStatus;
+  created_by: string | null;
+  created_at: string;
+  openers_sent: number;
+  replies_received: number;
+  response_rate_pct: number | null;
+  median_first_reply_seconds: number | null;
+  assessments_recorded: number;
+}
+
+/**
+ * vw_sms_assessment_report (20260813120000, Phase 12 §F): SMS-sourced
+ * assessments per (campaign, source) under the split taxonomy. Legacy
+ * 'sms' still appears for any pre-split row.
+ */
+export interface VwSmsAssessmentReportRow {
+  campaign_id: number;
+  source: 'sms' | 'sms_chat' | 'sms_survey' | 'sms_inbound';
+  ratings_count: number;
+  workers_count: number;
+  scale_count: number;
+  binary_count: number;
+  first_rated_at: string | null;
+  last_rated_at: string | null;
+}
+
 export interface VwSmsCampaignSummaryRow {
   campaign_id: number;
   list_id: number;

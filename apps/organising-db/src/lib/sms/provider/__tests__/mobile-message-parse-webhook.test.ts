@@ -71,3 +71,125 @@ describe("MobileMessageProvider.parseWebhook", () => {
     });
   });
 });
+
+/**
+ * Delivery receipts produced no `sms_delivery_events` rows in production
+ * while inbound worked, so the status leg is parsed defensively: the
+ * documented shape, the plausible key/label variants, and a shape-based
+ * fallback. Every case below must yield a status event — anything that
+ * returns "unknown" is dropped by the route and reads as 0% delivered.
+ */
+describe("MobileMessageProvider.parseWebhook — delivery status", () => {
+  it("parses the documented status shape", () => {
+    const event = provider.parseWebhook(
+      JSON.stringify({
+        type: "status",
+        message_id: "3ca7ebc7-adc8-4d39-a05c-b718fa15b012",
+        custom_ref: "42",
+        status: "delivered",
+        occurred_at: "2026-08-12 00:24:27",
+      }),
+    );
+    expect(event).toEqual({
+      type: "status",
+      providerMessageId: "3ca7ebc7-adc8-4d39-a05c-b718fa15b012",
+      customRef: "42",
+      status: "delivered",
+      occurredAt: "2026-08-12 00:24:27",
+    });
+  });
+
+  it.each([
+    "delivery",
+    "delivery_report",
+    "delivery_receipt",
+    "delivery_status",
+    "dlr",
+    "receipt",
+    "status_update",
+    "STATUS",
+  ])("treats type %s as a delivery receipt", (type) => {
+    const event = provider.parseWebhook(
+      JSON.stringify({ type, message_id: "abc", status: "delivered" }),
+    );
+    expect(event).toMatchObject({
+      type: "status",
+      providerMessageId: "abc",
+      status: "delivered",
+    });
+  });
+
+  it("reads alternative field spellings for id, ref, status and time", () => {
+    const event = provider.parseWebhook(
+      JSON.stringify({
+        type: "dlr",
+        id: "msg-7",
+        reference: "99",
+        delivery_status: "DELIVRD",
+        timestamp: "2026-08-12T00:24:27Z",
+      }),
+    );
+    expect(event).toEqual({
+      type: "status",
+      providerMessageId: "msg-7",
+      customRef: "99",
+      status: "delivered",
+      occurredAt: "2026-08-12T00:24:27Z",
+    });
+  });
+
+  it.each([
+    ["submitted", "sent"],
+    ["undeliverable", "failed"],
+    ["rejected", "failed"],
+    ["expired", "failed"],
+    ["Failed", "failed"],
+    ["queued", "pending"],
+    ["canceled", "cancelled"],
+  ])("maps carrier status %s to %s", (raw, expected) => {
+    const event = provider.parseWebhook(
+      JSON.stringify({ type: "status", message_id: "x", status: raw }),
+    );
+    expect(event).toMatchObject({ status: expected });
+  });
+
+  it("infers a delivery receipt when the type discriminator is absent", () => {
+    const event = provider.parseWebhook(
+      JSON.stringify({
+        message_id: "abc",
+        status: "delivered",
+        to: "61428436924",
+      }),
+    );
+    expect(event).toMatchObject({
+      type: "status",
+      providerMessageId: "abc",
+      status: "delivered",
+    });
+  });
+
+  it("infers inbound — not status — when the payload carries a body", () => {
+    // A reply whose body happens to be a status word must never be
+    // mistaken for a receipt; the body is the discriminator.
+    const event = provider.parseWebhook(
+      JSON.stringify({
+        sender: "61428436924",
+        to: "61485900133",
+        message: "delivered",
+      }),
+    );
+    expect(event).toMatchObject({ type: "inbound", body: "delivered" });
+  });
+
+  it("leaves genuinely ambiguous payloads unknown", () => {
+    expect(
+      provider.parseWebhook(JSON.stringify({ foo: "bar" })),
+    ).toMatchObject({ type: "unknown" });
+    // A status value we cannot map is not enough to claim a receipt.
+    expect(
+      provider.parseWebhook(
+        JSON.stringify({ message_id: "abc", status: "weird-carrier-code" }),
+      ),
+    ).toMatchObject({ type: "unknown" });
+  });
+});

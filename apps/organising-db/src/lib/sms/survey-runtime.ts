@@ -703,6 +703,11 @@ export async function processSurveyInbound(
             : null,
         maps_to_rating: mapping.rating,
         maps_to_binary: mapping.binary,
+        // Phase 12 (§F decision 9): tells fn_sms_to_rating to record
+        // this as 'sms_survey' rather than 'sms_inbound'. Stamped
+        // unconditionally — the row is survey-produced whether or not
+        // this particular question maps to a rating.
+        rating_origin: "survey",
         external_message_id: providerMessageId,
         received_at: receivedAt,
         notes: `Survey #${survey.survey_id} Q${currentQuestion.sort_order + 1}`,

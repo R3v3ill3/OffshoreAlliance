@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { ConnectionStatusBanner } from "@/components/connection-status-banner";
+import { Toaster } from "sonner";
 import "../../../../sentry.server.config";
 
 const geistSans = Geist({
@@ -41,6 +42,11 @@ export default async function RootLayout({
         <Providers isMobile={isMobile}>
           {children}
           <ConnectionStatusBanner />
+          {/* sonner's toast() is a no-op unless a Toaster is mounted.
+              Without this every toast.error/success in the app — 450+
+              call sites — resolved silently, so failed actions looked
+              like nothing happened at all. */}
+          <Toaster richColors closeButton position="top-right" />
         </Providers>
       </body>
     </html>

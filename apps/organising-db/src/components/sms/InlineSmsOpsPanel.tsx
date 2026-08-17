@@ -86,8 +86,10 @@ import {
 import { SmsOrgNameWarningDialog } from '@/components/sms/SmsOrgNameWarningDialog'
 import { validateSmsBody } from '@/lib/sms/compliance'
 import type {
+  VwSmsAssessmentReportRow,
   VwSmsCampaignRollupRow,
   VwSmsCampaignSummaryRow,
+  VwSmsChatSessionReportRow,
   VwSmsSenderStatsRow,
 } from '@/types/sms'
 import { toDisplay } from '@/lib/phone/normalise-phone'
@@ -476,6 +478,21 @@ function formatLatency(seconds: number | null): string {
 interface SmsReportingPayload {
   rollup: VwSmsCampaignRollupRow | null
   senders: Array<VwSmsSenderStatsRow & { sender_name: string }>
+  chat_sessions: Array<
+    VwSmsChatSessionReportRow & { created_by_name: string }
+  >
+  assessments: VwSmsAssessmentReportRow[]
+}
+
+/** Phase 12 §F: how each SMS pathway is labelled in the report. */
+const ASSESSMENT_SOURCE_LABELS: Record<
+  VwSmsAssessmentReportRow['source'],
+  string
+> = {
+  sms_chat: 'Chat & inbox capture',
+  sms_survey: 'Survey answers',
+  sms_inbound: 'Keyword replies',
+  sms: 'Pre-split (legacy)',
 }
 
 /**
@@ -496,12 +513,24 @@ function SmsReportingSection({ campaignId }: { campaignId: string }) {
 
   const rollup = data?.rollup
   const senders = data?.senders ?? []
+  const chatSessions = data?.chat_sessions ?? []
+  const assessments = data?.assessments ?? []
+  const assessmentTotal = assessments.reduce(
+    (sum, a) => sum + a.ratings_count,
+    0,
+  )
   const hasActivity =
     !!rollup &&
     (rollup.sends_count > 0 ||
       rollup.conversation_count > 0 ||
       rollup.survey_count > 0)
-  if (!hasActivity && senders.length === 0) return null
+  if (
+    !hasActivity &&
+    senders.length === 0 &&
+    chatSessions.length === 0 &&
+    assessments.length === 0
+  )
+    return null
 
   return (
     <div className="space-y-3">
@@ -565,6 +594,80 @@ function SmsReportingSection({ campaignId }: { campaignId: string }) {
                     {s.ai_assisted_count} AI-assisted
                   </span>
                 )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Phase 12 §F: chats initiated, response rate, time to first
+          reply and assessments — per session, so per-organiser
+          throughput reads off the creator column. */}
+      {chatSessions.length > 0 && (
+        <div className="rounded-md border">
+          <p className="border-b px-3 py-2 text-xs font-medium text-muted-foreground">
+            Chat sessions
+          </p>
+          <div className="divide-y">
+            {chatSessions.map((c) => (
+              <div
+                key={c.list_id}
+                className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-sm"
+              >
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  {c.name}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {c.created_by_name}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {c.openers_sent} initiated · {c.replies_received} replied
+                  {c.response_rate_pct != null && ` (${c.response_rate_pct}%)`}
+                </span>
+                {c.median_first_reply_seconds != null && (
+                  <span
+                    className="text-xs text-muted-foreground"
+                    title="Median opener → first reply"
+                  >
+                    median reply{' '}
+                    {formatLatency(c.median_first_reply_seconds)}
+                  </span>
+                )}
+                {c.assessments_recorded > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {c.assessments_recorded} assessed
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* The point of the Phase 12 taxonomy split: "assessments made
+          over SMS" is only answerable once chat, survey and keyword
+          capture are counted apart. */}
+      {assessments.length > 0 && (
+        <div className="rounded-md border">
+          <p className="border-b px-3 py-2 text-xs font-medium text-muted-foreground">
+            Assessments recorded over SMS · {assessmentTotal} total
+          </p>
+          <div className="divide-y">
+            {assessments.map((a) => (
+              <div
+                key={a.source}
+                className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-sm"
+              >
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  {ASSESSMENT_SOURCE_LABELS[a.source] ?? a.source}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {a.ratings_count} rating{a.ratings_count === 1 ? '' : 's'} ·{' '}
+                  {a.workers_count} member{a.workers_count === 1 ? '' : 's'}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {a.scale_count} scaled · {a.binary_count} binary
+                </span>
               </div>
             ))}
           </div>

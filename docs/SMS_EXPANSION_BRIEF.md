@@ -353,13 +353,12 @@ Opt-out enforcement, the blackout window (09:00–20:00 with recorded overrides)
 | 8 | Realtime approach | **Denormalise `campaign_id` onto `sms_messages`** (populated by a `BEFORE INSERT` trigger, so no insert site is touched) for a single filtered listener, **plus a 5-second pulse poll** as the reconciliation layer. Focused thread keeps its per-conversation channel. | §E5 |
 | 8b | Chat workspace layout | **Member board + focused thread, with a "next member needing a reply" button.** Board tiles adapted from `worker-tile.tsx`; pinned assessment inline in the main column, not the sidebar. | §E0 |
 | 9 | Source taxonomy | **Split** `'sms'` into `sms_chat` / `sms_survey` / `sms_inbound` via a CHECK migration, updating every producer and auditing every reader. | §F |
+| 10 | Backfill of existing `source='sms'` rows | **Reclassify by attributability (decided 2026-08-17, Phase 12 planning).** The 2026-08-11 "nothing to backfill" reading expired — 25 rows existed on PROD by implementation time. Actor present ⇒ `sms_chat`, actor absent ⇒ `sms_survey` (the inbox route always passes an actor; `fn_sms_to_rating` passes `sms_interactions.created_by`, which the survey runtime leaves NULL). Result: 1 `sms_chat`, 24 `sms_survey`, 0 legacy rows. `'sms'` is **retained** in the CHECK — dropping a value is what breaks a forgotten producer. The CHECK was written against the union of both DBs, converging DEV up to PROD. | §F |
 | 11 | Multi-assessment survey targeting | **Ship in Phase 8 (decided 2026-08-11).** Per-question `activity_id` override on `sms_survey_questions` (option (a) from §D): one nullable FK column, `COALESCE(question.activity_id, survey.activity_id)` at the interaction stamp in the survey runtime, per-question target select in `SmsSurveyEditor`. Becomes Phase 8's only migration. | §D |
 
 ### 5.2 Still open — resolve at the relevant phase plan
 
-| # | Question | Blocks |
-|---|---|---|
-| 10 | **Backfill of existing `source='sms'` rows** when the taxonomy splits — reclassify by attributability (`rated_by_user_id` present ⇒ `sms_chat`), or leave `'sms'` as a legacy value in the CHECK? (Ground truth 2026-08-11: zero `source='sms'` rows exist on either DB yet, so this may resolve to "nothing to backfill" — re-check at Phase 12. Also note PROD's `source` CHECK includes `an_sync` / `an_report_import`, which DEV's does not; the Phase 12 CHECK migration must be written against the union.) | Phase 12 (§F) |
+*Empty — Q10 was the last open question and was resolved at Phase 12 planning (recorded in §5.1 above).*
 
 ---
 

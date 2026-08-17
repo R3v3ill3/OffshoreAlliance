@@ -217,11 +217,30 @@ export async function POST(req: NextRequest) {
     if (event.type === 'status') {
       if (!event.providerMessageId) return NextResponse.json({ ok: true })
       const eventType = eventTypeForStatus(event.status)
-      if (!eventType) return NextResponse.json({ ok: true })
+      if (!eventType) {
+        // A status event we recognised but whose value we could not map.
+        // Log it: silently dropping receipts is what kept the delivery
+        // rate pinned at 0% with no trace to diagnose from.
+        console.error(
+          'SMS webhook: unmapped delivery status',
+          JSON.stringify(rawPayload).slice(0, 500),
+        )
+        return NextResponse.json({ ok: true })
+      }
 
-      const partRaw = rawPayload.part_number ?? rawPayload.part
+      // MM posts one status webhook per message part; the part index has
+      // no verified key name, so accept the plausible spellings.
+      const partRaw =
+        rawPayload.part_number ??
+        rawPayload.part ??
+        rawPayload.message_part ??
+        rawPayload.part_index
       const partNumber =
-        typeof partRaw === 'number' && Number.isFinite(partRaw) ? partRaw : 0
+        typeof partRaw === 'number' && Number.isFinite(partRaw)
+          ? partRaw
+          : typeof partRaw === 'string' && /^\d+$/.test(partRaw)
+            ? Number(partRaw)
+            : 0
       const occurredAt = event.occurredAt ?? new Date().toISOString()
 
       const isNew = await insertDeliveryEvent(admin, {
@@ -902,7 +921,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Unknown/unhandled event types: acknowledge so the provider stops
-    // retrying.
+    // retrying, but leave a trace. An unrecognised payload shape is
+    // indistinguishable from "no webhook configured" without this, and
+    // that ambiguity is exactly what hid the missing delivery receipts.
+    console.error(
+      'SMS webhook: unrecognised payload',
+      JSON.stringify(rawPayload).slice(0, 500),
+    )
     return NextResponse.json({ ok: true, skipped: event.type })
   } catch (error) {
     console.error('SMS webhook handler error:', error)

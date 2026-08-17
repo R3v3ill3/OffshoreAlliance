@@ -41,6 +41,7 @@ import {
   Network,
   Globe2,
   Scale,
+  MessageSquare,
 } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import {
@@ -67,7 +68,8 @@ type ReportType =
   | "campaign_progress"
   | "dues_schedule"
   | "bargaining_calendar"
-  | "bargaining_progress";
+  | "bargaining_progress"
+  | "sms_engagement";
 
 interface ReportOption {
   type: ReportType;
@@ -145,6 +147,15 @@ const reportOptions: ReportOption[] = [
     icon: <Scale className="h-8 w-8 text-blue-700" />,
     isNew: true,
     href: "/reports/bargaining",
+  },
+  {
+    type: "sms_engagement",
+    title: "SMS Engagement",
+    description:
+      "Sends, delivery and reply rates, survey completion and assessments recorded per SMS pathway — chat, survey or keyword — across every campaign using SMS.",
+    icon: <MessageSquare className="h-8 w-8 text-sky-500" />,
+    isNew: true,
+    href: "/reports/sms",
   },
   {
     type: "dues_schedule",

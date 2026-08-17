@@ -1070,7 +1070,7 @@ function WorkerListMembershipSection({
   );
 }
 
-function RatingsTab({
+export function RatingsTab({
   campaignId,
   workerId,
   workerName,
@@ -1364,7 +1364,7 @@ function RatingsTab({
 // Units — membership in organising units. Primary toggle, remove, add.
 // ---------------------------------------------------------------------------
 
-function UnitsTab({
+export function UnitsTab({
   campaignId,
   workerId,
   ous,

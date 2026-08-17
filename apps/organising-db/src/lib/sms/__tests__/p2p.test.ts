@@ -9,7 +9,6 @@ import {
   pruneP2pSelection,
   renderP2pBody,
   selectNextN,
-  sortP2pItems,
   type P2pBoardItemLike,
 } from "../p2p";
 
@@ -229,34 +228,6 @@ describe("editing the board template mid-session", () => {
         new Set([1]),
       ).size,
     ).toBe(0);
-  });
-});
-
-describe("sortP2pItems", () => {
-  it("sinks completed chats below live ones", () => {
-    const sorted = sortP2pItems([
-      item({ item_id: 1, closed_at: "2026-08-17T01:00:00Z" }),
-      item({ item_id: 2 }),
-      item({ item_id: 3, closed_at: "2026-08-17T02:00:00Z" }),
-      item({ item_id: 4 }),
-    ]);
-    expect(sorted.map((i) => i.item_id)).toEqual([2, 4, 1, 3]);
-  });
-
-  it("preserves the caller's order within each half", () => {
-    // The board feeds it sort_order; closing one row must not reshuffle
-    // the rest of the list under the organiser.
-    const sorted = sortP2pItems([
-      item({ item_id: 9 }),
-      item({ item_id: 3 }),
-      item({ item_id: 7 }),
-    ]);
-    expect(sorted.map((i) => i.item_id)).toEqual([9, 3, 7]);
-  });
-
-  it("is a no-op when nothing is closed", () => {
-    const input = [item({ item_id: 1 }), item({ item_id: 2 })];
-    expect(sortP2pItems(input).map((i) => i.item_id)).toEqual([1, 2]);
   });
 });
 

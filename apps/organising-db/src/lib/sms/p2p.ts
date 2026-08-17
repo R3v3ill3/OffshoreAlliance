@@ -72,24 +72,6 @@ export interface P2pBoardItemLike {
   last_inbound_at?: string | null;
 }
 
-/**
- * Completed chats sink to the bottom of the working list, keeping the
- * live ones in front of the organiser. Order within each half is left
- * as-is (the caller's sort_order), so the list does not reshuffle for
- * any reason other than closing.
- *
- * Stable by construction: two passes rather than a comparator, so
- * equal-priority rows cannot swap on re-render.
- */
-export function sortP2pItems<T extends P2pBoardItemLike>(items: T[]): T[] {
-  const open: T[] = [];
-  const closed: T[] = [];
-  for (const item of items) {
-    (item.closed_at ? closed : open).push(item);
-  }
-  return [...open, ...closed];
-}
-
 export interface P2pBoardProgress {
   /** Everyone on the board. */
   recipients: number;

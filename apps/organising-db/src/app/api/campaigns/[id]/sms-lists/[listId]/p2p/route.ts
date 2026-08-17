@@ -35,6 +35,7 @@ import {
   P2P_SENDABLE_STATUSES,
   p2pBodyOverrideToStore,
 } from '@/lib/sms/p2p'
+import { campaignIsSmsEpisode } from '@/lib/sms/sms-episode'
 
 const PAGE_SIZE = 1000
 
@@ -48,6 +49,20 @@ interface ListRow {
   sender_number_id: number | null
   timezone: string | null
   created_at: string
+  selected_assessment_ids: number[] | null
+  assessment_campaign_id: number | null
+}
+
+/**
+ * The campaign whose assessments this board records against. Normally
+ * its own; for a standalone board (hidden is_sms_episode campaign) the
+ * nominated real campaign, because an episode campaign has no
+ * assessments and never reaches a wall chart. See
+ * lib/sms/chat-assessment-target.ts and the migration comment on
+ * sms_lists.assessment_campaign_id.
+ */
+function effectiveAssessmentCampaign(list: ListRow): number {
+  return list.assessment_campaign_id ?? list.campaign_id
 }
 
 async function loadP2pList(
@@ -58,7 +73,7 @@ async function loadP2pList(
   const { data: list, error } = await supabase
     .from('sms_lists')
     .select(
-      'list_id, campaign_id, name, status, mode, draft_id, sender_number_id, timezone, created_at',
+      'list_id, campaign_id, name, status, mode, draft_id, sender_number_id, timezone, created_at, selected_assessment_ids, assessment_campaign_id',
     )
     .eq('list_id', lid)
     .maybeSingle()
@@ -171,6 +186,44 @@ export async function GET(
       if (!data || data.length < PAGE_SIZE) break
     }
 
+    // Rating chips for the rail: the pinned assessments' current values
+    // for everyone on the board, in one query rather than N.
+    const pinnedIds = list.selected_assessment_ids ?? []
+    const ratingByWorker = new Map<
+      number,
+      { activity_id: number; rating: number | null; binary_value: string | null }
+    >()
+    if (pinnedIds.length > 0 && rawItems.length > 0) {
+      const { data: ratings, error: ratingErr } = await supabase
+        .from('campaign_activity_ratings')
+        .select('worker_id, activity_id, rating, binary_value')
+        .in('activity_id', pinnedIds)
+        .in(
+          'worker_id',
+          rawItems.map((r) => r.worker_id),
+        )
+        .eq('rating_phase', 'actual')
+        .is('event_id', null)
+      if (ratingErr) throw ratingErr
+      // First pinned assessment wins the chip — the rail has room for
+      // one, and pin order is the organiser's stated priority.
+      const priority = new Map(pinnedIds.map((id, i) => [id, i]))
+      for (const row of ratings ?? []) {
+        const existing = ratingByWorker.get(row.worker_id as number)
+        const rank = priority.get(row.activity_id as number) ?? Number.MAX_SAFE_INTEGER
+        const existingRank = existing
+          ? (priority.get(existing.activity_id) ?? Number.MAX_SAFE_INTEGER)
+          : Number.MAX_SAFE_INTEGER
+        if (!existing || rank < existingRank) {
+          ratingByWorker.set(row.worker_id as number, {
+            activity_id: row.activity_id as number,
+            rating: row.rating as number | null,
+            binary_value: row.binary_value as string | null,
+          })
+        }
+      }
+    }
+
     const items = rawItems.map((r) => ({
       item_id: r.item_id,
       worker_id: r.worker_id,
@@ -190,10 +243,11 @@ export async function GET(
       conversation_id: r.conversation_id,
       conversation_state: r.conversation?.state ?? null,
       unread_count: r.conversation?.unread_count ?? 0,
-      // Drives the board's responded/completed counters and the
-      // closed-to-the-bottom sort.
+      // last_inbound_at/closed_at drive the responded and completed
+      // counters and the completed-to-the-bottom sort.
       last_inbound_at: r.conversation?.last_inbound_at ?? null,
       closed_at: r.conversation?.closed_at ?? null,
+      rating_summary: ratingByWorker.get(r.worker_id) ?? null,
       body_override: r.body_override?.trim() ? r.body_override : null,
     }))
 
@@ -202,6 +256,10 @@ export async function GET(
       cid,
       user.email ?? undefined,
     )
+
+    // The workspace needs to know whether this is a standalone board so
+    // the pinned assessment can ask for a real campaign.
+    const campaignIsEpisode = await campaignIsSmsEpisode(supabase, cid)
 
     return NextResponse.json({
       list: {
@@ -215,6 +273,9 @@ export async function GET(
         sender_label: sender?.label ?? null,
         timezone: list.timezone || 'Australia/Perth',
         created_at: list.created_at,
+        selected_assessment_ids: list.selected_assessment_ids ?? [],
+        assessment_campaign_id: list.assessment_campaign_id,
+        campaign_is_sms_episode: campaignIsEpisode,
       },
       draft,
       items,
@@ -421,6 +482,8 @@ export async function PATCH(
       action?: string
       item_id?: number
       body?: string | null
+      activity_ids?: number[]
+      assessment_campaign_id?: number | null
     }
     // Rewrite the board's shared opener mid-session: send to a small
     // sample, take the feedback, then edit before the next batch.
@@ -484,6 +547,98 @@ export async function PATCH(
       if (draftErr) throw draftErr
 
       return NextResponse.json({ ok: true, body: next })
+    }
+
+    // Pin / unpin the board's assessment targets.
+    if (payload.action === 'set_assessments') {
+      const ids = payload.activity_ids
+      if (!Array.isArray(ids) || ids.some((id) => !Number.isInteger(id))) {
+        return NextResponse.json(
+          { error: 'activity_ids must be an array of integers' },
+          { status: 400 },
+        )
+      }
+      const unique = [...new Set(ids)]
+      const targetCampaign = effectiveAssessmentCampaign(list)
+
+      if (unique.length > 0) {
+        // Postgres cannot FK an array element, so membership is checked
+        // here: every pin must be an assessment in the effective campaign.
+        const { data: valid, error: validErr } = await supabase
+          .from('campaign_activities')
+          .select('activity_id')
+          .eq('campaign_id', targetCampaign)
+          .eq('activity_kind', 'assessment')
+          .in('activity_id', unique)
+        if (validErr) throw validErr
+        const validIds = new Set((valid ?? []).map((a) => a.activity_id))
+        const unknown = unique.filter((id) => !validIds.has(id))
+        if (unknown.length > 0) {
+          return NextResponse.json(
+            {
+              error: `Not assessments in this campaign: ${unknown.join(', ')}`,
+            },
+            { status: 400 },
+          )
+        }
+      }
+
+      const { error: pinErr } = await supabase
+        .from('sms_lists')
+        .update({ selected_assessment_ids: unique })
+        .eq('list_id', lid)
+      if (pinErr) throw pinErr
+
+      return NextResponse.json({ ok: true, selected_assessment_ids: unique })
+    }
+
+    // Standalone boards only: nominate the real campaign whose
+    // assessments this board's ratings belong to (decision 6).
+    if (payload.action === 'nominate_assessment_campaign') {
+      const nominated = payload.assessment_campaign_id ?? null
+
+      if (nominated != null) {
+        if (!(await campaignIsSmsEpisode(supabase, list.campaign_id))) {
+          return NextResponse.json(
+            {
+              error:
+                'This board already belongs to a campaign — its assessments are recorded there.',
+            },
+            { status: 409 },
+          )
+        }
+        if (await campaignIsSmsEpisode(supabase, nominated)) {
+          return NextResponse.json(
+            { error: 'Pick a real campaign, not another standalone session' },
+            { status: 400 },
+          )
+        }
+        // An organiser must not pin assessments from — or write ratings
+        // into — a campaign they cannot write to.
+        const { data: canWrite, error: permErr } = await supabase.rpc(
+          'can_write_to_campaign',
+          { p_campaign_id: nominated },
+        )
+        if (permErr) throw permErr
+        if (!canWrite) {
+          return NextResponse.json(
+            { error: 'No write access to that campaign' },
+            { status: 403 },
+          )
+        }
+      }
+
+      // Changing the target campaign invalidates pins from the old one.
+      const { error: nomErr } = await supabase
+        .from('sms_lists')
+        .update({
+          assessment_campaign_id: nominated,
+          selected_assessment_ids: [],
+        })
+        .eq('list_id', lid)
+      if (nomErr) throw nomErr
+
+      return NextResponse.json({ ok: true, assessment_campaign_id: nominated })
     }
 
     if (payload.action === 'set_item_body') {

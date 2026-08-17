@@ -168,6 +168,38 @@ export function useSmsP2pSetBoardBody(
   })
 }
 
+/**
+ * Mark a board conversation complete (or reopen it), reusing the
+ * inbox's conversation endpoint so close semantics — state, unread
+ * reset, closed_at/closed_by — stay in one place. Invalidates the
+ * board so the row greys out, loses its state colour and sinks.
+ */
+export function useSmsP2pSetConversationClosed(
+  campaignId: number | string,
+  listId: number | null,
+) {
+  const invalidate = useInvalidateP2p(campaignId, listId)
+  return useMutation({
+    mutationFn: async (input: { conversationId: number; close: boolean }) => {
+      const res = await fetchApi(`/api/sms/conversations/${input.conversationId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: input.close ? 'close' : 'reopen' }),
+      })
+      if (!res.ok) {
+        throw await toError(
+          res,
+          input.close
+            ? 'Failed to mark the chat complete'
+            : 'Failed to reopen the chat',
+        )
+      }
+      return res.json() as Promise<unknown>
+    },
+    onSuccess: invalidate,
+  })
+}
+
 export function useSmsP2pClose(
   campaignId: number | string,
   listId: number | null,

@@ -14,7 +14,14 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Ban, CheckCircle2, Loader2, ShieldAlert, Undo2 } from 'lucide-react'
+import {
+  Ban,
+  CheckCircle2,
+  Loader2,
+  RotateCcw,
+  ShieldAlert,
+  Undo2,
+} from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -40,6 +47,12 @@ export interface SmsMemberPaneProps {
   onPinActivity?: (activityId: number) => void
   canPin?: boolean
   canWrite?: boolean
+  /** This chat has been marked complete (conversation closed). */
+  isCompleted?: boolean
+  /** Toggle complete/reopen. Owned by the workspace so closing also
+   *  refreshes the rail, not just the conversation. */
+  onToggleCompleted?: () => void
+  completingPending?: boolean
 }
 
 export function SmsMemberPane({
@@ -51,6 +64,9 @@ export function SmsMemberPane({
   onPinActivity,
   canPin = false,
   canWrite = true,
+  isCompleted = false,
+  onToggleCompleted,
+  completingPending = false,
 }: SmsMemberPaneProps) {
   const { conversation } = detail
   const worker = conversation.worker
@@ -128,6 +144,38 @@ export function SmsMemberPane({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Chat status — bookkeeping, not removal. A completed chat drops
+          down the rail and loses its state tint, but the person stays
+          on the board and the thread stays open in the Inbox. */}
+      {onToggleCompleted && canWrite && (
+        <div className="border-t pt-2">
+          <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+            Chat status
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            disabled={completingPending}
+            onClick={onToggleCompleted}
+          >
+            {completingPending ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : isCompleted ? (
+              <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+            ) : (
+              <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            {isCompleted ? 'Reopen this chat' : 'Mark chat complete'}
+          </Button>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {isCompleted
+              ? 'Completed — sits at the bottom of the roster. Replies still arrive.'
+              : 'Finished with this one? It stays on the board and in the Inbox.'}
+          </p>
         </div>
       )}
 

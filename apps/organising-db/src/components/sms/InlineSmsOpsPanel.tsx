@@ -623,6 +623,8 @@ function SmsReportingSection({ campaignId }: { campaignId: string }) {
                 <span className="text-xs text-muted-foreground">
                   {c.openers_sent} initiated · {c.replies_received} replied
                   {c.response_rate_pct != null && ` (${c.response_rate_pct}%)`}
+                  {' · '}
+                  {c.conversations_closed} completed
                 </span>
                 {c.median_first_reply_seconds != null && (
                   <span

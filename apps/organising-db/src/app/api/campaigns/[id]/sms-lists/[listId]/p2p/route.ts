@@ -161,6 +161,7 @@ export async function GET(
         state: string
         unread_count: number
         last_inbound_at: string | null
+        closed_at: string | null
       } | null
     }
     const rawItems: RawItem[] = []
@@ -173,7 +174,8 @@ export async function GET(
            worker:workers(worker_id, first_name, last_name, occupation,
              phone_e164, sms_opt_out,
              employer:employers(employer_id, employer_name)),
-           conversation:sms_conversations(conversation_id, state, unread_count, last_inbound_at)`,
+           conversation:sms_conversations(conversation_id, state, unread_count,
+             last_inbound_at, closed_at)`,
         )
         .eq('list_id', lid)
         .order('sort_order', { ascending: true })
@@ -241,7 +243,10 @@ export async function GET(
       conversation_id: r.conversation_id,
       conversation_state: r.conversation?.state ?? null,
       unread_count: r.conversation?.unread_count ?? 0,
+      // last_inbound_at/closed_at drive the responded and completed
+      // counters and the completed-to-the-bottom sort.
       last_inbound_at: r.conversation?.last_inbound_at ?? null,
+      closed_at: r.conversation?.closed_at ?? null,
       rating_summary: ratingByWorker.get(r.worker_id) ?? null,
       body_override: r.body_override?.trim() ? r.body_override : null,
     }))

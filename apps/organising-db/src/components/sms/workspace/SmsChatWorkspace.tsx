@@ -56,6 +56,17 @@ import { SmsOpenerComposer } from './SmsOpenerComposer'
 import { SmsMemberPane } from './SmsMemberPane'
 import { SmsAddPeopleDialog } from './SmsAddPeopleDialog'
 import { BoardMessageDialog } from './SmsBoardMessageDialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { p2pBoardProgress } from '@/lib/sms/p2p'
 
 /** Faster than the board sheet's 10s — see the header comment. */
 const WORKSPACE_POLL_MS = 5_000
@@ -92,6 +103,7 @@ export function SmsChatWorkspace({
   const [memberPaneOpen, setMemberPaneOpen] = useState(false)
   const [mobileView, setMobileView] = useState<'rail' | 'chat'>('rail')
   const [addOpen, setAddOpen] = useState(false)
+  const [confirmCloseBoard, setConfirmCloseBoard] = useState(false)
   const [boardMessageOpen, setBoardMessageOpen] = useState(false)
 
   // Per-conversation and per-item drafts. A Map, not a string: switching
@@ -101,6 +113,7 @@ export function SmsChatWorkspace({
   )
 
   const items = useMemo(() => board?.items ?? [], [board])
+  const progress = useMemo(() => p2pBoardProgress(items), [items])
   const selectedItem = useMemo(
     () => items.find((i) => i.item_id === selectedItemId) ?? null,
     [items, selectedItemId],
@@ -167,6 +180,32 @@ export function SmsChatWorkspace({
     })
   }
 
+  /**
+   * Mark the selected chat complete, or reopen it. Invalidates the
+   * board as well as the conversation so the rail re-sorts and the
+   * header's completed count moves immediately.
+   */
+  const toggleCompleted = (item: SmsP2pBoardItem | null) => {
+    if (!item || item.conversation_id == null) return
+    const completed = item.closed_at != null
+    conversationAction.mutate(
+      { action: completed ? 'reopen' : 'close' },
+      {
+        onSuccess: () => {
+          void queryClient.invalidateQueries({
+            queryKey: ['sms-p2p-board', String(campaignId), listId],
+          })
+          toast.success(
+            completed
+              ? 'Chat reopened'
+              : `${item.worker_name} — chat marked complete`,
+          )
+        },
+        onError: (err: Error) => toast.error(err.message),
+      },
+    )
+  }
+
   const pinActivity = (activityId: number) => {
     const current = board?.list.selected_assessment_ids ?? []
     if (current.includes(activityId)) return
@@ -193,6 +232,9 @@ export function SmsChatWorkspace({
       assessmentCampaignId={board.list.assessment_campaign_id}
       canPin={canWrite && !boardClosed}
       canWrite={canWrite}
+      isCompleted={selectedItem?.closed_at != null}
+      completingPending={conversationAction.isPending}
+      onToggleCompleted={() => toggleCompleted(selectedItem)}
       onPinActivity={pinActivity}
       onNominateCampaign={(id) =>
         nominate.mutate(id, {
@@ -222,6 +264,17 @@ export function SmsChatWorkspace({
               board.list.sender_phone_e164 ||
               'no sender'}{' '}
             · updates every {WORKSPACE_POLL_MS / 1000}s
+          </p>
+          {/* Board funnel — the same counts vw_sms_chat_session_report
+              reports per board, so the header and the campaign
+              reporting panel can never tell different stories. */}
+          <p className="truncate text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">
+              {progress.recipients}
+            </span>{' '}
+            recipients · {progress.messaged} messaged ·{' '}
+            {progress.responded} responded · {progress.completed} completed
+            {progress.toGo > 0 && ` · ${progress.toGo} to go`}
           </p>
         </div>
         <Button
@@ -277,18 +330,7 @@ export function SmsChatWorkspace({
             className="h-7 text-xs text-muted-foreground hover:text-destructive"
             disabled={closeBoard.isPending}
             title="Close the board — unsent rows are skipped; threads stay open in the Inbox"
-            onClick={() => {
-              if (
-                window.confirm(
-                  'Close this chat board? People not yet messaged will be skipped. Existing threads stay open in the Inbox.',
-                )
-              ) {
-                closeBoard.mutate(undefined, {
-                  onSuccess: () => toast.success('Chat board closed'),
-                  onError: (err: Error) => toast.error(err.message),
-                })
-              }
-            }}
+            onClick={() => setConfirmCloseBoard(true)}
           >
             <XCircle className="mr-1 h-3 w-3" />
             Close board
@@ -409,6 +451,56 @@ export function SmsChatWorkspace({
           })
         }
       />
+
+      {/* Replaces window.confirm — the native dialog reads as a browser
+          error and gives no room to say what closing actually does. */}
+      <AlertDialog open={confirmCloseBoard} onOpenChange={setConfirmCloseBoard}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Close this chat board?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  The board stops accepting sends and moves to
+                  &ldquo;sent&rdquo;. This is how you finish a session.
+                </p>
+                <ul className="list-disc space-y-1 pl-4">
+                  <li>
+                    {progress.toGo > 0 ? (
+                      <>
+                        <span className="font-medium text-foreground">
+                          {progress.toGo}
+                        </span>{' '}
+                        not yet messaged will be skipped.
+                      </>
+                    ) : (
+                      'Everyone on the board has been messaged.'
+                    )}
+                  </li>
+                  <li>
+                    Existing threads stay open in the Inbox — replies still
+                    arrive and can still be answered.
+                  </li>
+                  <li>Nothing is deleted, and nobody is messaged again.</li>
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep the board open</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() =>
+                closeBoard.mutate(undefined, {
+                  onSuccess: () => toast.success('Chat board closed'),
+                  onError: (err: Error) => toast.error(err.message),
+                })
+              }
+            >
+              Close board
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <SmsAddPeopleDialog
         campaignId={campaignId}

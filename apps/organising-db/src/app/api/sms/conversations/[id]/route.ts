@@ -313,10 +313,22 @@ export async function PATCH(
         updates = { escalated_to_user_id: null }
         break
       case 'close':
-        updates = { state: 'closed', unread_count: 0 }
+        // closed_at/closed_by move with the state so the two can never
+        // disagree — the per-board progress widget counts closed_at,
+        // not state, because state is overwritten by later activity.
+        updates = {
+          state: 'closed',
+          unread_count: 0,
+          closed_at: new Date().toISOString(),
+          closed_by_user_id: user.id,
+        }
         break
       case 'reopen':
-        updates = { state: 'needs_response' }
+        updates = {
+          state: 'needs_response',
+          closed_at: null,
+          closed_by_user_id: null,
+        }
         break
       case 'mark_read':
         // Clears the unread badge and STOPS the chat rail's pulse.

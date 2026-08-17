@@ -25,7 +25,11 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
-import { RATING_LEVELS } from '@/types/planner-types'
+import {
+  RATING_KEY_LEVELS,
+  ratingBg,
+  ratingTooltip,
+} from '@/lib/campaign/rating-display'
 import {
   P2P_SEND_CAP,
   filterP2pItems,
@@ -39,7 +43,7 @@ import {
   shouldPulse,
   type SmsRailState,
 } from '@/lib/sms/chat-rail-state'
-import type { SmsP2pBoardItem } from '@/types/sms'
+import type { SmsP2pBoardItem, SmsP2pBoardPinnedAssessment } from '@/types/sms'
 
 /**
  * Desaturated state tints. Distinct from RATING_LEVELS by construction:
@@ -72,7 +76,7 @@ const RAIL_LABEL: Record<SmsRailState, string> = {
 
 function ratingChipClass(rating: number | null): string {
   if (rating == null) return 'bg-muted text-foreground'
-  return RATING_LEVELS.find((r) => r.value === rating)?.tailwindBg ?? 'bg-muted'
+  return ratingBg(rating)
 }
 
 export interface SmsChatRailProps {
@@ -84,6 +88,8 @@ export interface SmsChatRailProps {
   onSend?: (itemIds: number[]) => void
   sending?: boolean
   boardClosed?: boolean
+  /** Pinned assessments in pin order — names the chips and the key. */
+  pinnedAssessments?: SmsP2pBoardPinnedAssessment[]
 }
 
 export function SmsChatRail({
@@ -94,12 +100,19 @@ export function SmsChatRail({
   onSend,
   sending = false,
   boardClosed = false,
+  pinnedAssessments = [],
 }: SmsChatRailProps) {
   const [search, setSearch] = useState('')
   const [needsReplyOnly, setNeedsReplyOnly] = useState(false)
   const [selectMode, setSelectMode] = useState(false)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [nextN, setNextN] = useState('10')
+  const [keyOpen, setKeyOpen] = useState(false)
+
+  const assessmentById = useMemo(
+    () => new Map(pinnedAssessments.map((a) => [a.activity_id, a])),
+    [pinnedAssessments],
+  )
 
   const rows = useMemo(() => {
     const filtered = filterP2pItems(items, { search, status: 'all' })
@@ -183,6 +196,48 @@ export function SmsChatRail({
         </div>
       </div>
 
+      {/* Ratings key — pinned below the header so the chip colours are
+          decodable without hovering every row. Collapsed by default: it
+          is a reference, and the rail is the working surface. Only
+          shown when something is pinned, since otherwise no chips
+          appear. */}
+      {pinnedAssessments.length > 0 && (
+        <div className="border-b bg-muted/20 px-2 py-1.5">
+          <button
+            type="button"
+            className="flex w-full items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:text-foreground"
+            aria-expanded={keyOpen}
+            onClick={() => setKeyOpen((v) => !v)}
+          >
+            <span>{keyOpen ? '▾' : '▸'}</span>
+            Ratings key
+          </button>
+          {keyOpen && (
+            <div className="mt-1 space-y-1">
+              <div className="flex flex-wrap gap-1">
+                {RATING_KEY_LEVELS.map((level) => (
+                  <span
+                    key={level.value}
+                    title={level.description}
+                    className={`rounded-full px-1.5 text-[10px] text-foreground ${level.tailwindBg}`}
+                  >
+                    {level.value} {level.shortLabel}
+                  </span>
+                ))}
+              </div>
+              <p className="text-[10px] leading-tight text-muted-foreground">
+                {pinnedAssessments.length === 1
+                  ? 'Chips show '
+                  : 'Chips appear in this order: '}
+                {pinnedAssessments.map((a) => a.title).join(', ')}.
+                {pinnedAssessments.some((a) => a.rating_labels) &&
+                  ' Some assessments rename these levels — hover a chip for its own wording.'}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Rows */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {rows.length === 0 && (
@@ -243,17 +298,27 @@ export function SmsChatRail({
                       {item.unread_count}
                     </Badge>
                   )}
-                  {item.rating_summary && (
-                    <span
-                      className={`shrink-0 rounded-full px-1.5 text-[10px] text-foreground ${ratingChipClass(
-                        item.rating_summary.rating,
-                      )}`}
-                      title="Recorded rating"
-                    >
-                      {item.rating_summary.rating ??
-                        item.rating_summary.binary_value}
-                    </span>
-                  )}
+                  {/* One chip per pinned assessment, in pin order. The
+                      hover names the assessment — with several pinned a
+                      bare number says nothing about which one it is. */}
+                  {item.rating_summaries.map((value) => {
+                    const assessment = assessmentById.get(value.activity_id)
+                    return (
+                      <span
+                        key={value.activity_id}
+                        className={`shrink-0 rounded-full px-1.5 text-[10px] text-foreground ${ratingChipClass(
+                          value.rating,
+                        )}`}
+                        title={ratingTooltip(
+                          assessment?.title ?? 'Assessment',
+                          value,
+                          assessment?.rating_labels,
+                        )}
+                      >
+                        {value.rating ?? value.binary_value}
+                      </span>
+                    )
+                  })}
                 </div>
               </button>
             </div>

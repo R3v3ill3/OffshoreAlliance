@@ -37,6 +37,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { RATING_LEVELS } from '@/types/planner-types'
+import {
+  ratingBg as bgForRating,
+  ratingLabel as labelForRating,
+} from '@/lib/campaign/rating-display'
 import { VOTE_SUPPORTER_OPTIONS } from '@/lib/campaign/constants'
 import { CreateAssessmentDialog } from '@/components/campaigns/assessments/create-assessment-dialog'
 import {
@@ -59,18 +63,6 @@ interface SavedRating {
   activity_id: number
   rating: number | null
   binary_value: string | null
-}
-
-function labelForRating(
-  level: number,
-  overrides: Record<string, string> | null,
-): string {
-  if (overrides && overrides[String(level)]) return overrides[String(level)]
-  return RATING_LEVELS.find((r) => r.value === level)?.shortLabel ?? String(level)
-}
-
-function bgForRating(level: number): string {
-  return RATING_LEVELS.find((r) => r.value === level)?.tailwindBg ?? 'bg-muted'
 }
 
 export interface SmsPinnedAssessmentProps {

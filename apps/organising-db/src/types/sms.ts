@@ -729,16 +729,28 @@ export interface SmsP2pBoardItem {
   /** Set when an organiser marked the chat complete; NULL otherwise. */
   closed_at: string | null;
   /**
-   * Current value of the highest-priority pinned assessment, for the
-   * rail's rating chip. NULL when nothing is pinned or unassessed.
+   * Current value of EVERY pinned assessment this worker has been rated
+   * on, in pin order — one rail chip each. Empty when nothing is pinned
+   * or the worker is unassessed on all of them.
    */
-  rating_summary: {
+  rating_summaries: {
     activity_id: number;
     rating: number | null;
     binary_value: string | null;
-  } | null;
+  }[];
   /** Per-item opener. NULL = board default. */
   body_override: string | null;
+}
+
+/**
+ * A pinned assessment as the chat board reports it — enough to name a
+ * rail chip and render its hover text with any renamed levels.
+ */
+export interface SmsP2pBoardPinnedAssessment {
+  activity_id: number;
+  title: string;
+  is_binary: boolean;
+  rating_labels: Record<string, string> | null;
 }
 
 /** Payload of GET /api/campaigns/[id]/sms-lists/[listId]/p2p. */
@@ -760,6 +772,12 @@ export interface SmsP2pBoardPayload {
     assessment_campaign_id: number | null;
     /** True when campaign_id is a hidden is_sms_episode campaign. */
     campaign_is_sms_episode: boolean;
+    /**
+     * Pinned assessments in pin order, with the metadata the rail needs
+     * to name a chip's assessment and honour renamed levels in hover
+     * text.
+     */
+    pinned_assessments: SmsP2pBoardPinnedAssessment[];
   };
   draft: { draft_id: number; body: string } | null;
   items: SmsP2pBoardItem[];

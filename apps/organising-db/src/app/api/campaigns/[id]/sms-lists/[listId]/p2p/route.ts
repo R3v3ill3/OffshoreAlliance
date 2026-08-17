@@ -188,10 +188,14 @@ export async function GET(
 
     // Rating chips for the rail: the pinned assessments' current values
     // for everyone on the board, in one query rather than N.
+    //
+    // Every pinned assessment gets a chip, in pin order — with several
+    // pinned, showing only the first hides the rest of the picture the
+    // organiser deliberately put there.
     const pinnedIds = list.selected_assessment_ids ?? []
-    const ratingByWorker = new Map<
+    const ratingsByWorker = new Map<
       number,
-      { activity_id: number; rating: number | null; binary_value: string | null }
+      { activity_id: number; rating: number | null; binary_value: string | null }[]
     >()
     if (pinnedIds.length > 0 && rawItems.length > 0) {
       const { data: ratings, error: ratingErr } = await supabase
@@ -205,23 +209,59 @@ export async function GET(
         .eq('rating_phase', 'actual')
         .is('event_id', null)
       if (ratingErr) throw ratingErr
-      // First pinned assessment wins the chip — the rail has room for
-      // one, and pin order is the organiser's stated priority.
+      // Pin order is the organiser's stated priority, so chips follow it
+      // rather than whatever order the rows came back in.
       const priority = new Map(pinnedIds.map((id, i) => [id, i]))
       for (const row of ratings ?? []) {
-        const existing = ratingByWorker.get(row.worker_id as number)
-        const rank = priority.get(row.activity_id as number) ?? Number.MAX_SAFE_INTEGER
-        const existingRank = existing
-          ? (priority.get(existing.activity_id) ?? Number.MAX_SAFE_INTEGER)
-          : Number.MAX_SAFE_INTEGER
-        if (!existing || rank < existingRank) {
-          ratingByWorker.set(row.worker_id as number, {
-            activity_id: row.activity_id as number,
-            rating: row.rating as number | null,
-            binary_value: row.binary_value as string | null,
-          })
-        }
+        const workerId = row.worker_id as number
+        const list = ratingsByWorker.get(workerId) ?? []
+        list.push({
+          activity_id: row.activity_id as number,
+          rating: row.rating as number | null,
+          binary_value: row.binary_value as string | null,
+        })
+        ratingsByWorker.set(workerId, list)
       }
+      for (const [workerId, rows] of ratingsByWorker) {
+        rows.sort(
+          (a, b) =>
+            (priority.get(a.activity_id) ?? Number.MAX_SAFE_INTEGER) -
+            (priority.get(b.activity_id) ?? Number.MAX_SAFE_INTEGER),
+        )
+        ratingsByWorker.set(workerId, rows)
+      }
+    }
+
+    // Titles and label overrides for the pinned assessments — the rail
+    // needs them to say WHICH assessment a chip belongs to, and to
+    // honour a renamed level in the hover text.
+    let pinnedAssessments: {
+      activity_id: number
+      title: string
+      is_binary: boolean
+      rating_labels: Record<string, string> | null
+    }[] = []
+    if (pinnedIds.length > 0) {
+      const { data: activities, error: actErr } = await supabase
+        .from('campaign_activities')
+        .select('activity_id, title, is_binary, rating_labels')
+        .in('activity_id', pinnedIds)
+      if (actErr) throw actErr
+      const byId = new Map(
+        (activities ?? []).map((a) => [a.activity_id as number, a]),
+      )
+      // Emitted in pin order so the client can zip chips to assessments
+      // without re-sorting.
+      pinnedAssessments = pinnedIds
+        .map((id: number) => byId.get(id))
+        .filter((a): a is NonNullable<typeof a> => a != null)
+        .map((a) => ({
+          activity_id: a.activity_id as number,
+          title: (a.title as string) ?? 'Assessment',
+          is_binary: !!a.is_binary,
+          rating_labels:
+            (a.rating_labels as Record<string, string> | null) ?? null,
+        }))
     }
 
     const items = rawItems.map((r) => ({
@@ -247,7 +287,7 @@ export async function GET(
       // counters and the completed-to-the-bottom sort.
       last_inbound_at: r.conversation?.last_inbound_at ?? null,
       closed_at: r.conversation?.closed_at ?? null,
-      rating_summary: ratingByWorker.get(r.worker_id) ?? null,
+      rating_summaries: ratingsByWorker.get(r.worker_id) ?? [],
       body_override: r.body_override?.trim() ? r.body_override : null,
     }))
 
@@ -276,6 +316,7 @@ export async function GET(
         selected_assessment_ids: list.selected_assessment_ids ?? [],
         assessment_campaign_id: list.assessment_campaign_id,
         campaign_is_sms_episode: campaignIsEpisode,
+        pinned_assessments: pinnedAssessments,
       },
       draft,
       items,

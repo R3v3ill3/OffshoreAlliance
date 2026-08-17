@@ -30,6 +30,10 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { RATING_LEVELS } from '@/types/planner-types'
+import {
+  ratingBg as bgForRating,
+  ratingLabel as labelForRating,
+} from '@/lib/campaign/rating-display'
 import { VOTE_SUPPORTER_OPTIONS } from '@/lib/campaign/constants'
 import type { SmsCannedReplyRow } from '@/types/sms'
 import {
@@ -51,19 +55,6 @@ interface RatingValue {
 }
 
 const EMPTY_VALUE: RatingValue = { rating: null, binary_value: null, notes: null }
-
-function labelForRating(
-  level: number,
-  overrides: Record<string, string> | null,
-): string {
-  if (overrides && overrides[String(level)]) return overrides[String(level)]
-  const def = RATING_LEVELS.find((r) => r.value === level)
-  return def?.shortLabel ?? String(level)
-}
-
-function bgForRating(level: number): string {
-  return RATING_LEVELS.find((r) => r.value === level)?.tailwindBg ?? 'bg-muted'
-}
 
 function sameValue(a: RatingValue, b: RatingValue): boolean {
   return (

@@ -360,6 +360,7 @@ export function SmsChatWorkspace({
               onSend={canWrite && !boardClosed ? runSend : undefined}
               sending={send.isPending}
               boardClosed={boardClosed}
+              pinnedAssessments={board.list.pinned_assessments}
             />
           </div>
         </div>

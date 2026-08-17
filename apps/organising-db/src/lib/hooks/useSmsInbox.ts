@@ -322,6 +322,11 @@ export function useSaveSmsAssessment(
         queryKey: ['campaign-activity-ratings-dist'],
       })
       queryClient.invalidateQueries({ queryKey: ['worker-activity-ratings'] })
+      // The chat rail's rating chips come from the board payload, not
+      // from the ratings query above. Without this the chip only caught
+      // up on the next 5s poll (or when something else forced a
+      // refetch), so a just-recorded rating appeared to lag.
+      queryClient.invalidateQueries({ queryKey: ['sms-p2p-board'] })
     },
   })
 }

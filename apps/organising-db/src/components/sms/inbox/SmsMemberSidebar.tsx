@@ -23,6 +23,7 @@ import {
   MessageSquarePlus,
   ShieldAlert,
   Undo2,
+  UserRound,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { excludeSmsEpisodes } from '@/lib/campaign/visible-campaigns'
@@ -52,6 +53,7 @@ import {
   confirmSmsDoNotContact,
   useStaffSmsOptOut,
 } from '@/lib/hooks/useSmsOptOut'
+import { WorkerChatCard } from '@/components/workers/WorkerChatCard'
 import { SmsAssessmentPanel } from './SmsAssessmentPanel'
 import { conversationTitle } from './sms-inbox-shared'
 
@@ -80,6 +82,7 @@ export function SmsMemberSidebar({
   const { data: cannedReplies } = useSmsCannedReplies(conversation.campaign_id)
   const [noteBody, setNoteBody] = useState('')
   const [cannedTitle, setCannedTitle] = useState('')
+  const [cardOpen, setCardOpen] = useState(false)
   const [cannedOutcome, setCannedOutcome] = useState<string>(NO_OUTCOME)
   const staffOptOut = useStaffSmsOptOut()
 
@@ -194,10 +197,38 @@ export function SmsMemberSidebar({
             </p>
           )}
         </div>
+        {worker && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2 h-7 w-full text-xs"
+            aria-expanded={cardOpen}
+            onClick={() => setCardOpen((v) => !v)}
+          >
+            <UserRound className="mr-1 h-3 w-3" />
+            {cardOpen ? 'Hide member card' : 'View & edit member card'}
+          </Button>
+        )}
       </div>
 
+      {/* Member card (Phase 10) — the same campaign-optional card the
+          chat workspace shows permanently in its right pane. */}
+      {worker && cardOpen && (
+        <WorkerChatCard
+          key={worker.worker_id}
+          workerId={worker.worker_id}
+          campaignId={conversation.campaign_id}
+          canWrite
+          density="compact"
+          conversationPhoneE164={conversation.phone_e164}
+          conversationId={conversationId}
+        />
+      )}
+
       {/* Rating / assessment capture (Phase 3) — writes through
-          record_assessment_event(source 'sms'). */}
+          record_assessment_event(source 'sms'). The chat workspace's
+          pinned control writes the same slot and invalidates the same
+          query key, so the two can never disagree. */}
       {worker && conversation.campaign_id != null ? (
         <SmsAssessmentPanel
           conversation={conversation}

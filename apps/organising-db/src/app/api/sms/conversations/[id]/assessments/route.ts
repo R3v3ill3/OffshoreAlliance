@@ -44,6 +44,45 @@ interface AssessmentBody {
   notes?: string | null
 }
 
+/**
+ * The campaign whose assessments this conversation writes against.
+ *
+ * Normally the conversation's own campaign. For a standalone chat —
+ * whose campaign is a hidden is_sms_episode row with no assessments and
+ * no wall chart — it is the real campaign nominated on the chat board
+ * (sms_lists.assessment_campaign_id), reached through the list item
+ * that created this thread.
+ *
+ * Returns null when the chat is episode-backed and no nomination has
+ * been made yet; the caller turns that into an actionable 409.
+ */
+async function resolveEffectiveCampaign(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  conversationId: number,
+  conversationCampaignId: number,
+): Promise<number | null> {
+  const { data: campaign, error } = await supabase
+    .from('campaigns')
+    .select('campaign_id, is_sms_episode')
+    .eq('campaign_id', conversationCampaignId)
+    .maybeSingle()
+  if (error) throw error
+  if (!campaign?.is_sms_episode) return conversationCampaignId
+
+  const { data: item, error: itemErr } = await supabase
+    .from('sms_list_items')
+    .select('list:sms_lists(assessment_campaign_id)')
+    .eq('conversation_id', conversationId)
+    .order('item_id', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (itemErr) throw itemErr
+
+  const list = (item as { list?: { assessment_campaign_id: number | null } | null } | null)
+    ?.list
+  return list?.assessment_campaign_id ?? null
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -122,14 +161,34 @@ export async function POST(
       )
     }
 
-    // The activity must belong to the conversation's campaign.
+    // Effective campaign (Phase 10 decision 6). A standalone chat runs
+    // on a hidden is_sms_episode campaign, which carries no assessments
+    // and never reaches a wall chart, so the board nominates a real
+    // campaign in sms_lists.assessment_campaign_id and ratings are
+    // recorded there instead.
+    const effectiveCampaignId = await resolveEffectiveCampaign(
+      supabase,
+      conversationId,
+      conversation.campaign_id,
+    )
+    if (effectiveCampaignId == null) {
+      return NextResponse.json(
+        {
+          error:
+            'This is a standalone chat — choose the campaign these assessments belong to before recording ratings.',
+        },
+        { status: 409 },
+      )
+    }
+
+    // The activity must belong to the effective campaign.
     const { data: activity, error: actErr } = await supabase
       .from('campaign_activities')
       .select('activity_id, campaign_id')
       .eq('activity_id', activityId)
       .maybeSingle()
     if (actErr) throw actErr
-    if (!activity || activity.campaign_id !== conversation.campaign_id) {
+    if (!activity || activity.campaign_id !== effectiveCampaignId) {
       return NextResponse.json(
         { error: 'Activity not found in this conversation’s campaign' },
         { status: 400 },
@@ -140,7 +199,7 @@ export async function POST(
     // DEFINER, so RLS won't do this for us (matches POST …/messages).
     const { data: canWrite, error: permErr } = await supabase.rpc(
       'can_write_to_campaign',
-      { p_campaign_id: conversation.campaign_id },
+      { p_campaign_id: effectiveCampaignId },
     )
     if (permErr) throw permErr
     if (!canWrite) {
@@ -148,6 +207,20 @@ export async function POST(
         { error: 'No write access to this campaign' },
         { status: 403 },
       )
+    }
+
+    // Membership is created HERE, on the first real save, rather than
+    // when the organiser nominates the campaign — nominating must not
+    // bulk-add a 300-person board to a campaign because someone opened
+    // a dropdown.
+    if (effectiveCampaignId !== conversation.campaign_id) {
+      const { error: memberErr } = await supabase
+        .from('campaign_worker_membership')
+        .upsert(
+          { campaign_id: effectiveCampaignId, worker_id: conversation.worker_id },
+          { onConflict: 'campaign_id,worker_id', ignoreDuplicates: true },
+        )
+      if (memberErr) throw memberErr
     }
 
     if (rating == null && binaryValue == null) {

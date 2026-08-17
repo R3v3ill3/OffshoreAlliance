@@ -70,18 +70,39 @@ interface MmSenderRow {
   status?: string;
 }
 
-/** MM docs return `{ results }`; some payloads use `{ senders }`. */
-export function parseListSendersResponse(data: {
-  senders?: MmSenderRow[];
-  results?: MmSenderRow[];
-}): SenderId[] {
-  const rows = data.senders ?? data.results ?? [];
-  return rows
-    .map((s) => ({
-      sender: s.sender ?? s.number ?? "",
-      type: s.type,
-      status: s.status,
-    }))
+/**
+ * MM docs return `{ results }`; some payloads use `{ senders }`, some
+ * wrap in `{ data }`, and a list endpoint may return a bare array.
+ *
+ * The wrapper key matters more than it looks: an unrecognised shape
+ * parses to an empty catalogue, and an empty catalogue makes the
+ * dedicated-number check report "could not verify this number" — which
+ * hard-blocks every chat and survey send with a 409. Accept all four
+ * shapes rather than guess, and treat a numeric/string entry as the
+ * sender itself so a plain `["61485900133"]` still resolves.
+ */
+export function parseListSendersResponse(data: unknown): SenderId[] {
+  const unwrap = (value: unknown): MmSenderRow[] => {
+    if (Array.isArray(value)) return value as MmSenderRow[];
+    if (!value || typeof value !== "object") return [];
+    const obj = value as Record<string, unknown>;
+    for (const key of ["senders", "results", "data", "numbers"]) {
+      if (Array.isArray(obj[key])) return obj[key] as MmSenderRow[];
+    }
+    return [];
+  };
+
+  return unwrap(data)
+    .map((s) => {
+      if (typeof s === "string" || typeof s === "number") {
+        return { sender: String(s), type: undefined, status: undefined };
+      }
+      return {
+        sender: s?.sender ?? s?.number ?? "",
+        type: s?.type,
+        status: s?.status,
+      };
+    })
     .filter((s) => s.sender);
 }
 
@@ -368,11 +389,22 @@ export class MobileMessageProvider implements SmsProvider {
   }
 
   async listSenders(): Promise<SenderId[]> {
-    const data = await this.request<{
-      senders?: MmSenderRow[];
-      results?: MmSenderRow[];
-    }>("GET", "/v1/senders");
-    return parseListSendersResponse(data);
+    const data = await this.request<unknown>("GET", "/v1/senders");
+    const senders = parseListSendersResponse(data);
+    if (senders.length === 0) {
+      // Not merely empty-looking: callers read an empty catalogue as
+      // "unverified" and refuse to send, so log the shape that produced
+      // it rather than failing mutely.
+      console.error(
+        "MM listSenders parsed to an empty catalogue — payload keys:",
+        data && typeof data === "object" && !Array.isArray(data)
+          ? Object.keys(data as Record<string, unknown>)
+          : Array.isArray(data)
+            ? "(bare array)"
+            : typeof data,
+      );
+    }
+    return senders;
   }
 
   async getCreditBalance(): Promise<number> {

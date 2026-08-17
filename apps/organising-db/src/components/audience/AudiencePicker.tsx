@@ -14,7 +14,7 @@
  * `toApiAudience(campaignId, value)` from lib/sms/audience-helpers.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchApi } from '@/lib/api/fetch-api'
 import { Badge } from '@/components/ui/badge'
@@ -44,6 +44,7 @@ import {
   FileSpreadsheet,
   Filter,
   Loader2,
+  Search,
   Upload,
   UserPlus,
   Users,
@@ -79,7 +80,17 @@ interface StagedWorker {
   last_name: string
   phone_e164: string | null
   sms_opt_out: boolean
-  source: 'manual' | 'import'
+  source: 'manual' | 'import' | 'search'
+}
+
+/** One hit from the name search — same shape the picker stages. */
+interface WorkerSearchHit {
+  worker_id: number
+  first_name: string
+  last_name: string
+  phone_e164: string | null
+  sms_opt_out: boolean
+  employer_name: string | null
 }
 
 export interface AudiencePickerProps {
@@ -120,6 +131,7 @@ export function AudiencePicker({
   const [showManual, setShowManual] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [showFilter, setShowFilter] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
 
   const { data: campaignLists } = useQuery({
     queryKey: ['worker-lists-for-sms', String(campaignId)],
@@ -182,6 +194,12 @@ export function AudiencePicker({
       })
     },
     [onChange]
+  )
+
+  /** Ids already staged — the search dialog marks these as added. */
+  const stagedIds = useMemo(
+    () => new Set(staged.map((s) => s.worker_id)),
+    [staged],
   )
 
   const addStagedBatch = useCallback(
@@ -323,6 +341,19 @@ export function AudiencePicker({
               )}
             </div>
             <div className="flex flex-wrap justify-end gap-1">
+              {/* Find someone already in the database. Listed first:
+                  looking a known member up is the common case, and
+                  "Add person" creates a new record. */}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={disabled}
+                onClick={() => setShowSearch(true)}
+              >
+                <Search className="h-3 w-3 mr-1" />
+                Find people
+              </Button>
               <Button
                 type="button"
                 size="sm"
@@ -430,11 +461,223 @@ export function AudiencePicker({
         onAdded={addStagedBatch}
         orgWideUniverse={orgWideUniverse}
       />
+
+      <FindPeopleDialog
+        campaignId={campaignId}
+        open={showSearch}
+        onOpenChange={setShowSearch}
+        onAdded={addStagedBatch}
+        orgWideUniverse={orgWideUniverse}
+        alreadyStaged={stagedIds}
+      />
     </div>
   )
 }
 
 // ─── Manual add dialog ───────────────────────────────────────────────
+
+/**
+ * Find existing people by first or last name and stage them
+ * individually. Complements "Add person" (which creates a record) and
+ * "Filter & build" (which selects in bulk by attribute).
+ */
+function FindPeopleDialog({
+  campaignId,
+  open,
+  onOpenChange,
+  onAdded,
+  orgWideUniverse,
+  alreadyStaged,
+}: {
+  campaignId: string | number
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  onAdded: (workers: StagedWorker[]) => void
+  orgWideUniverse?: boolean
+  alreadyStaged: ReadonlySet<number>
+}) {
+  const [term, setTerm] = useState('')
+  const [debounced, setDebounced] = useState('')
+  const [picked, setPicked] = useState<Map<number, WorkerSearchHit>>(new Map())
+  // Campaign scope is the right default, but a member who is not on the
+  // campaign would otherwise be a dead end with no way forward.
+  const [searchAll, setSearchAll] = useState(false)
+
+  // Debounce so typing a name is one query, not one per keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(term.trim()), 250)
+    return () => clearTimeout(t)
+  }, [term])
+
+  const scope = orgWideUniverse || searchAll ? 'org' : 'campaign'
+  const { data, isFetching } = useQuery({
+    queryKey: ['sms-audience-search', String(campaignId), scope, debounced],
+    queryFn: async () => {
+      const res = await fetchApi(
+        `/api/campaigns/${campaignId}/sms-audience/search?q=${encodeURIComponent(
+          debounced,
+        )}&scope=${scope}`,
+      )
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error((err as { error?: string }).error ?? 'Search failed')
+      }
+      return res.json() as Promise<{ workers: WorkerSearchHit[] }>
+    },
+    enabled: open && debounced.length >= 2,
+  })
+
+  const results = data?.workers ?? []
+
+  const toggle = (w: WorkerSearchHit) => {
+    setPicked((prev) => {
+      const next = new Map(prev)
+      if (next.has(w.worker_id)) next.delete(w.worker_id)
+      else next.set(w.worker_id, w)
+      return next
+    })
+  }
+
+  const close = (v: boolean) => {
+    if (!v) {
+      setTerm('')
+      setDebounced('')
+      setPicked(new Map())
+    }
+    onOpenChange(v)
+  }
+
+  const submit = () => {
+    const chosen = [...picked.values()]
+    if (chosen.length === 0) return
+    onAdded(
+      chosen.map((w) => ({
+        worker_id: w.worker_id,
+        first_name: w.first_name,
+        last_name: w.last_name,
+        phone_e164: w.phone_e164,
+        sms_opt_out: w.sms_opt_out,
+        source: 'search' as const,
+      })),
+    )
+    toast.success(
+      `Added ${chosen.length} ${chosen.length === 1 ? 'person' : 'people'} to the audience`,
+    )
+    close(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={close}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Find people</DialogTitle>
+          <DialogDescription>
+            Search by first or last name, then tick the people to add.
+            {scope === 'campaign'
+              ? ' Searching this campaign’s members.'
+              : ' Searching the whole worker directory.'}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              autoFocus
+              className="pl-8"
+              placeholder="e.g. Chen, or Amy Chen"
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+            />
+          </div>
+
+          {!orgWideUniverse && (
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Checkbox
+                checked={searchAll}
+                onCheckedChange={(v) => setSearchAll(v === true)}
+              />
+              Search everyone, not just this campaign&apos;s members
+            </label>
+          )}
+
+          <div className="max-h-72 divide-y overflow-y-auto rounded-md border">
+            {debounced.length < 2 ? (
+              <p className="p-4 text-center text-xs text-muted-foreground">
+                Type at least two characters to search.
+              </p>
+            ) : isFetching ? (
+              <p className="flex items-center justify-center gap-2 p-4 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Searching…
+              </p>
+            ) : results.length === 0 ? (
+              <p className="p-4 text-center text-xs text-muted-foreground">
+                No one matches “{debounced}”.
+                {scope === 'campaign' &&
+                  ' They may not be a member of this campaign.'}
+              </p>
+            ) : (
+              results.map((w) => {
+                const staged = alreadyStaged.has(w.worker_id)
+                const checked = picked.has(w.worker_id)
+                return (
+                  <label
+                    key={w.worker_id}
+                    className={cn(
+                      'flex cursor-pointer items-center gap-3 px-3 py-2 text-sm',
+                      staged && 'cursor-default opacity-60',
+                      w.sms_opt_out && 'bg-amber-50',
+                    )}
+                  >
+                    <Checkbox
+                      checked={staged || checked}
+                      disabled={staged}
+                      onCheckedChange={() => !staged && toggle(w)}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">
+                        {w.first_name} {w.last_name}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {w.phone_e164 ?? 'No mobile on file'}
+                        {w.employer_name ? ` · ${w.employer_name}` : ''}
+                      </span>
+                    </span>
+                    {staged && (
+                      <Badge variant="secondary" className="text-[10px]">
+                        added
+                      </Badge>
+                    )}
+                    {!staged && w.sms_opt_out && (
+                      <Badge
+                        variant="secondary"
+                        className="bg-amber-100 text-[10px] text-amber-800"
+                      >
+                        opted out
+                      </Badge>
+                    )}
+                  </label>
+                )
+              })
+            )}
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => close(false)}>
+            Cancel
+          </Button>
+          <Button disabled={picked.size === 0} onClick={submit}>
+            <UserPlus className="mr-1.5 h-4 w-4" />
+            Add {picked.size > 0 ? picked.size : ''}{' '}
+            {picked.size === 1 ? 'person' : 'people'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 function ManualAddDialog({
   campaignId,

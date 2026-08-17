@@ -79,7 +79,18 @@ describe("SMS rating source taxonomy", () => {
     expect(fn).toContain("'sms_survey'");
     expect(fn).toContain("'sms_inbound'");
     // The branch must key off the stamped origin, not the notes text.
-    expect(fn).toContain("NEW.rating_origin = 'survey'");
+    expect(fn).toContain("NEW.rating_origin = 'inbound_keyword'");
+  });
+
+  it("defaults unstamped rating rows to the survey pathway", () => {
+    // The survey runtime is the only producer of rating-bearing
+    // inbound rows today, so an unstamped row is a survey answer —
+    // including in the window between this migration applying and the
+    // stamping runtime deploying. A future keyword producer must
+    // stamp 'inbound_keyword' to be counted as sms_inbound.
+    const fn = migration.slice(migration.indexOf("CREATE OR REPLACE FUNCTION"));
+    const branch = fn.slice(fn.indexOf("v_source := CASE"));
+    expect(branch).toMatch(/ELSE\s+'sms_survey'/);
   });
 
   it("records staff capture in the inbox as sms_chat", () => {

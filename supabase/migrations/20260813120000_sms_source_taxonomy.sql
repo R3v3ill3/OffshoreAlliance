@@ -150,11 +150,20 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- §F decision 9. Anything not explicitly stamped by the survey
-  -- runtime is a conversational/keyword-mapped inbound.
+  -- §F decision 9. Only an explicitly-stamped keyword row is
+  -- 'sms_inbound'; everything else is the survey path.
+  --
+  -- The default matters. The survey runtime is the sole producer of
+  -- rating-bearing inbound rows today (the webhook's conversational
+  -- path leaves all three rating fields NULL by design), so defaulting
+  -- the other way would mislabel every survey rating recorded between
+  -- this migration being applied and the runtime that stamps
+  -- rating_origin being deployed — a window this migration creates for
+  -- itself. Any future keyword-mapping producer must stamp
+  -- 'inbound_keyword'; the phase test asserts the stamping contract.
   v_source := CASE
-    WHEN NEW.rating_origin = 'survey' THEN 'sms_survey'
-    ELSE 'sms_inbound'
+    WHEN NEW.rating_origin = 'inbound_keyword' THEN 'sms_inbound'
+    ELSE 'sms_survey'
   END;
 
   PERFORM record_assessment_event(

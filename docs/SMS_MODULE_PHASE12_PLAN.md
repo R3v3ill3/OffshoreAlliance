@@ -28,6 +28,10 @@ So actor present ⇒ `sms_chat`, actor absent ⇒ `sms_survey`. Outcome on PROD:
 
 PROD carried `an_sync` / `an_report_import`; DEV did not (the brief's Q10 note). The new constraint lists the union plus the three SMS values, so applying it converges DEV up to PROD instead of failing on PROD data.
 
+### The trigger defaults to `sms_survey`, not `sms_inbound`
+
+Applying a migration whose companion producer code has not yet deployed opens a window where the trigger runs without the stamp it expects. Since the survey runtime is the only producer of rating-bearing inbound rows today, defaulting unstamped rows to `sms_inbound` would mislabel every survey rating recorded in that window. Only an explicitly stamped `'inbound_keyword'` row is counted as `sms_inbound`; any future keyword-mapping producer must stamp it, and the phase test asserts both halves of that contract.
+
 ### Discriminating `sms_survey` from `sms_inbound`
 
 `fn_sms_to_rating` fires on any rating-bearing inbound `sms_interactions` row and previously could not tell which pathway produced it. Rather than sniffing the `notes` text, a new nullable `sms_interactions.rating_origin` (`'survey' | 'inbound_keyword'`) is stamped by the survey runtime and read by the trigger. Anything unstamped is a conversational/keyword reply ⇒ `sms_inbound`. Existing rating-bearing rows were backfilled to `'survey'`, which is sound because the survey runtime is the sole writer of `maps_to_rating`/`maps_to_binary` today — the webhook's conversational path leaves all three rating fields NULL by design (Phase 3).

@@ -135,6 +135,33 @@ export function useSmsP2pSetItemBody(
   })
 }
 
+/**
+ * Rewrite the board's shared opener mid-session. Sent rows keep the
+ * text they went out with; remaining rows pick up the new wording
+ * unless they carry a per-person override.
+ */
+export function useSmsP2pSetBoardBody(
+  campaignId: number | string,
+  listId: number | null,
+) {
+  const invalidate = useInvalidateP2p(campaignId, listId)
+  return useMutation({
+    mutationFn: async (body: string) => {
+      const res = await fetchApi(
+        `/api/campaigns/${campaignId}/sms-lists/${listId}/p2p`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'set_board_body', body }),
+        },
+      )
+      if (!res.ok) throw await toError(res, 'Failed to save the board message')
+      return res.json() as Promise<{ ok: true; body: string }>
+    },
+    onSuccess: invalidate,
+  })
+}
+
 export function useSmsP2pClose(
   campaignId: number | string,
   listId: number | null,

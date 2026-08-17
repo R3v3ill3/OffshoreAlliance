@@ -178,3 +178,54 @@ describe("pruneP2pSelection", () => {
     expect([...next]).toEqual([1]);
   });
 });
+
+/**
+ * Editing the board opener mid-session (sample → refine → send on).
+ * The guarantees an organiser is relying on when they change copy
+ * halfway through a board, expressed against the pure helpers that
+ * decide which text each row actually sends.
+ */
+describe("editing the board template mid-session", () => {
+  const oldTemplate = "Hi {{first_name}}, it's Troy — testing the chat.";
+  const newTemplate = "Hi {{first_name}}, Troy from Offshore Alliance here.";
+
+  it("moves rows that never had an override onto the new wording", () => {
+    expect(p2pItemTemplate(newTemplate, null)).toBe(newTemplate);
+  });
+
+  it("keeps a genuinely customised opener on the old text", () => {
+    const custom = "Hi Sam, following up on our chat at the gate.";
+    const stored = p2pBodyOverrideToStore(oldTemplate, custom);
+    expect(stored).toBe(custom);
+    expect(p2pItemTemplate(newTemplate, stored)).toBe(custom);
+  });
+
+  it("moves a row whose 'override' merely echoed the old default", () => {
+    // Stored as NULL precisely so a later board edit still reaches it —
+    // otherwise opening the per-person editor and saving without
+    // changing anything would silently pin that row to the old copy.
+    const stored = p2pBodyOverrideToStore(oldTemplate, oldTemplate);
+    expect(stored).toBeNull();
+    expect(p2pItemTemplate(newTemplate, stored)).toBe(newTemplate);
+  });
+
+  it("renders the new template per recipient", () => {
+    expect(
+      renderP2pBody(p2pItemTemplate(newTemplate, null), {
+        first_name: "Amy",
+      }),
+    ).toBe("Hi Amy, Troy from Offshore Alliance here.");
+  });
+
+  it("leaves already-sent rows unsendable, so no one is messaged twice", () => {
+    // The edit changes what *future* sends render; it cannot cause a
+    // re-send, because sent rows are not selectable.
+    expect(isP2pSendable(item({ item_id: 1, status: "sent" }))).toBe(false);
+    expect(
+      pruneP2pSelection(
+        [item({ item_id: 1, status: "sent" })],
+        new Set([1]),
+      ).size,
+    ).toBe(0);
+  });
+});

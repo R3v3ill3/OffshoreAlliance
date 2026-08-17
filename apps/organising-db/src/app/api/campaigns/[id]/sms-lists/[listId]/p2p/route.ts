@@ -14,6 +14,9 @@
  *         { action: 'set_item_body', item_id, body }: save (or clear)
  *         a per-person initiating message. NULL/identical-to-default
  *         falls back to the board draft. Only pending/failed rows.
+ *         { action: 'set_board_body', body }: rewrite the board's
+ *         shared opener mid-session — sample a few, take the feedback,
+ *         edit, then send the rest. Sent rows are unaffected.
  *
  * P2P list state model: 'draft' while the board is active, 'sent' when
  * closed. P2P lists never enter 'queued'/'sending', so the dispatch
@@ -27,6 +30,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { errorResponse } from '@/lib/api/error-response'
 import { loadCampaignEmailContext } from '@/lib/comms/campaign-email-context'
+import { validateSmsBody } from '@/lib/sms/compliance'
 import {
   P2P_SENDABLE_STATUSES,
   p2pBodyOverrideToStore,
@@ -411,6 +415,70 @@ export async function PATCH(
       item_id?: number
       body?: string | null
     }
+    // Rewrite the board's shared opener mid-session: send to a small
+    // sample, take the feedback, then edit before the next batch.
+    // Already-sent rows keep the text they went out with (sms_messages
+    // stores the rendered body), and per-person overrides still win —
+    // an override equal to the old template was stored as NULL, so
+    // those rows correctly pick up the new wording.
+    if (payload.action === 'set_board_body') {
+      if (list.status !== 'draft') {
+        return NextResponse.json(
+          { error: 'This chat board is closed' },
+          { status: 409 },
+        )
+      }
+      if (list.draft_id == null) {
+        return NextResponse.json(
+          { error: 'Board has no message draft' },
+          { status: 400 },
+        )
+      }
+      const next = typeof payload.body === 'string' ? payload.body.trim() : ''
+      if (!next) {
+        return NextResponse.json(
+          { error: 'Message body cannot be empty' },
+          { status: 400 },
+        )
+      }
+      const compliance = validateSmsBody(next)
+      if (!compliance.ok) {
+        return NextResponse.json(
+          { error: compliance.errors.join(' ') },
+          { status: 400 },
+        )
+      }
+
+      // Nothing in the schema stops two lists pointing at one draft
+      // (no UNIQUE on sms_lists.draft_id). Boards each create their own
+      // today, but editing in place would silently rewrite the other
+      // list's message — refuse rather than surprise someone.
+      const { data: sharers, error: shareErr } = await supabase
+        .from('sms_lists')
+        .select('list_id')
+        .eq('draft_id', list.draft_id)
+        .neq('list_id', lid)
+        .limit(1)
+      if (shareErr) throw shareErr
+      if ((sharers ?? []).length > 0) {
+        return NextResponse.json(
+          {
+            error:
+              'This message draft is shared with another send list, so editing it here would change that one too.',
+          },
+          { status: 409 },
+        )
+      }
+
+      const { error: draftErr } = await supabase
+        .from('campaign_comms_drafts')
+        .update({ body: next })
+        .eq('draft_id', list.draft_id)
+      if (draftErr) throw draftErr
+
+      return NextResponse.json({ ok: true, body: next })
+    }
+
     if (payload.action === 'set_item_body') {
       if (list.status !== 'draft') {
         return NextResponse.json(

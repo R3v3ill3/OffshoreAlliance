@@ -72,6 +72,7 @@ import {
   useSmsP2pBoard,
   useSmsP2pClose,
   useSmsP2pSend,
+  useSmsP2pSetBoardBody,
   useSmsP2pSetItemBody,
 } from '@/lib/hooks/useSmsP2p'
 import {
@@ -127,6 +128,7 @@ export function SmsP2pBoard({
   const addPeople = useSmsP2pAddPeople(campaignId, listId)
   const closeBoard = useSmsP2pClose(campaignId, listId)
   const setItemBody = useSmsP2pSetItemBody(campaignId, listId)
+  const setBoardBody = useSmsP2pSetBoardBody(campaignId, listId)
   const staffOptOut = useStaffSmsOptOut()
 
   const [search, setSearch] = useState('')
@@ -136,6 +138,7 @@ export function SmsP2pBoard({
   const [threadId, setThreadId] = useState<number | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<SmsP2pBoardItem | null>(null)
+  const [editingBoard, setEditingBoard] = useState(false)
 
   const items = useMemo(() => board?.items ?? [], [board])
   const filtered = useMemo(
@@ -265,6 +268,16 @@ export function SmsP2pBoard({
             className={`mr-1 h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`}
           />
           Refresh
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={boardClosed || setBoardBody.isPending}
+          title="Rewrite the opener for everyone not yet messaged"
+          onClick={() => setEditingBoard(true)}
+        >
+          <Pencil className="mr-1 h-3.5 w-3.5" />
+          Edit message
         </Button>
         <Button
           size="sm"
@@ -566,6 +579,29 @@ export function SmsP2pBoard({
         }}
       />
 
+      <BoardMessageDialog
+        open={editingBoard}
+        boardTemplate={template}
+        mergeContext={mergeContext}
+        sampleItem={items.find((i) => isP2pSendable(i)) ?? items[0] ?? null}
+        remaining={items.filter(isP2pSendable).length}
+        alreadySent={items.filter((i) => i.sent_at != null).length}
+        customised={
+          items.filter((i) => isP2pSendable(i) && i.body_override).length
+        }
+        pending={setBoardBody.isPending}
+        onOpenChange={setEditingBoard}
+        onSave={(body) =>
+          setBoardBody.mutate(body, {
+            onSuccess: () => {
+              toast.success('Board message updated for everyone not yet messaged')
+              setEditingBoard(false)
+            },
+            onError: (err: Error) => toast.error(err.message),
+          })
+        }
+      />
+
       <AddPeopleDialog
         campaignId={campaignId}
         standaloneMode={standaloneMode}
@@ -719,6 +755,176 @@ function EditInitialDialog({
           >
             {pending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
             Save opener
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/**
+ * Rewrite the board's shared opener mid-session — the sample-then-
+ * refine loop: message a handful, read the replies, fix the wording,
+ * send the rest.
+ *
+ * The dialog states plainly what the edit does and does not touch,
+ * because that is the thing an organiser needs to be sure of before
+ * changing copy halfway through a session: already-sent messages are
+ * unchanged, and rows with a per-person override keep it.
+ */
+function BoardMessageDialog({
+  open,
+  boardTemplate,
+  mergeContext,
+  sampleItem,
+  remaining,
+  alreadySent,
+  customised,
+  pending,
+  onOpenChange,
+  onSave,
+}: {
+  open: boolean
+  boardTemplate: string
+  mergeContext: Record<string, string | undefined>
+  sampleItem: SmsP2pBoardItem | null
+  remaining: number
+  alreadySent: number
+  customised: number
+  pending: boolean
+  onOpenChange: (open: boolean) => void
+  onSave: (body: string) => void
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [body, setBody] = useState('')
+
+  // Re-seed each time it opens so a cancelled edit does not linger,
+  // and a template changed elsewhere is picked up.
+  useEffect(() => {
+    if (open) setBody(boardTemplate)
+  }, [open, boardTemplate])
+
+  const preview = renderP2pBody(body, {
+    ...mergeContext,
+    first_name: sampleItem?.first_name ?? 'Alex',
+    last_name: sampleItem?.last_name ?? 'Taylor',
+    occupation: sampleItem?.occupation ?? undefined,
+    employer_name: sampleItem?.employer_name ?? mergeContext.employer_name,
+  })
+  const segments = countSegments(preview)
+  const compliance = validateSmsBody(body)
+  const changed = body.trim() !== boardTemplate.trim()
+
+  const insertToken = (token: string) => {
+    const insert = `{{${token}}}`
+    const el = textareaRef.current
+    if (!el) {
+      setBody((prev) => prev + insert)
+      return
+    }
+    const start = el.selectionStart ?? body.length
+    const end = el.selectionEnd ?? start
+    setBody(body.slice(0, start) + insert + body.slice(end))
+    requestAnimationFrame(() => {
+      el.focus()
+      el.setSelectionRange(start + insert.length, start + insert.length)
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Edit the board message</DialogTitle>
+          <DialogDescription>
+            Applies to everyone not yet messaged. Sent messages are not
+            changed and nobody is re-sent to.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="p2p-board-body">Initiating message</Label>
+            <Textarea
+              id="p2p-board-body"
+              ref={textareaRef}
+              rows={6}
+              disabled={pending}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+            />
+            <div className="flex flex-wrap gap-1">
+              {ALL_TEMPLATE_VARIABLES.map((v) => (
+                <button
+                  key={v.key}
+                  type="button"
+                  disabled={pending}
+                  title={v.description}
+                  className="rounded-full border bg-muted px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted/70 disabled:opacity-50"
+                  onClick={() => insertToken(v.key)}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            {segments.length} chars · {segments.segments}{' '}
+            {segments.segments === 1 ? 'part' : 'parts'} ({segments.encoding})
+            after merge fields
+          </p>
+
+          <div className="rounded-md border bg-muted/30 p-2 text-xs">
+            <p>
+              <span className="font-medium">{remaining}</span> still to
+              message will use this wording.
+            </p>
+            {alreadySent > 0 && (
+              <p className="text-muted-foreground">
+                {alreadySent} already messaged — unchanged.
+              </p>
+            )}
+            {customised > 0 && (
+              <p className="text-muted-foreground">
+                {customised} unsent{' '}
+                {customised === 1 ? 'person has' : 'people have'} a custom
+                opener and will keep it.
+              </p>
+            )}
+          </div>
+
+          {!compliance.hasOrgName && (
+            <p className="flex items-start gap-1 text-xs text-amber-700">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              Organisation name optional for known contacts — include
+              &quot;Offshore Alliance&quot; for first-contact or cold outreach.
+            </p>
+          )}
+
+          {preview && (
+            <div className="rounded-md border bg-muted/30 p-2">
+              <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                Sends as{sampleItem ? ` — ${sampleItem.worker_name}` : ''}
+              </p>
+              <p className="whitespace-pre-wrap text-sm">{preview}</p>
+            </div>
+          )}
+        </div>
+        <DialogFooter className="gap-2 sm:justify-between">
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={pending || !changed}
+            onClick={() => setBody(boardTemplate)}
+          >
+            Revert changes
+          </Button>
+          <Button
+            disabled={pending || !changed || !body.trim()}
+            onClick={() => onSave(body)}
+          >
+            {pending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+            Save message
           </Button>
         </DialogFooter>
       </DialogContent>

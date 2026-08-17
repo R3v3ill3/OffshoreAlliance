@@ -99,6 +99,37 @@
   }
 }
 
+/* SMS chat rail — "a reply just landed" (Phase 10).
+ *
+ * A slow background wash between two amber tints, NOT an opacity or
+ * transform animation: the member's name has to stay legible the whole
+ * time. 2.4s alternate reads as a pulse rather than a strobe, which
+ * matters when a dozen rows can be doing it at once.
+ *
+ * The reduced-motion branch is a hard requirement, not polish — a
+ * persistently animating list is a vestibular trigger. The unread count
+ * badge carries the same signal independently of both motion and
+ * colour. */
+@keyframes sms-rail-pulse {
+  from {
+    background-color: rgb(255 237 213); /* orange-100 */
+  }
+  to {
+    background-color: rgb(254 215 170); /* orange-200 */
+  }
+}
+
+.sms-rail-pulse {
+  animation: sms-rail-pulse 2.4s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sms-rail-pulse {
+    animation: none;
+    background-color: rgb(254 215 170); /* orange-200 */
+  }
+}
+
 @layer base {
   * {
     @apply border-border;

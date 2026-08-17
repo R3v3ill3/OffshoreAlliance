@@ -269,7 +269,14 @@ export async function GET(
 }
 
 interface PatchBody {
-  action?: 'assign' | 'escalate' | 'de_escalate' | 'close' | 'reopen' | 'attach'
+  action?:
+    | 'assign'
+    | 'escalate'
+    | 'de_escalate'
+    | 'close'
+    | 'reopen'
+    | 'attach'
+    | 'mark_read'
   user_id?: string | null
   campaign_id?: number | null
   activity_id?: number | null
@@ -310,6 +317,14 @@ export async function PATCH(
         break
       case 'reopen':
         updates = { state: 'needs_response' }
+        break
+      case 'mark_read':
+        // Clears the unread badge and STOPS the chat rail's pulse.
+        // `state` is deliberately untouched: a thread the organiser has
+        // looked at but not answered stays 'needs_response', so the rail
+        // drops from pulsing orange to static amber rather than going
+        // quiet (Phase 10 decision 8).
+        updates = { unread_count: 0 }
         break
       case 'attach': {
         updates = {}

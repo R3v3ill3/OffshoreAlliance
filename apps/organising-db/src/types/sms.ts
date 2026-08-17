@@ -717,6 +717,17 @@ export interface SmsP2pBoardItem {
   conversation_id: number | null;
   conversation_state: SmsConversationState | null;
   unread_count: number;
+  /** Newest inbound on the linked thread — the rail's relative time. */
+  last_inbound_at: string | null;
+  /**
+   * Current value of the highest-priority pinned assessment, for the
+   * rail's rating chip. NULL when nothing is pinned or unassessed.
+   */
+  rating_summary: {
+    activity_id: number;
+    rating: number | null;
+    binary_value: string | null;
+  } | null;
   /** Per-item opener. NULL = board default. */
   body_override: string | null;
 }
@@ -734,6 +745,12 @@ export interface SmsP2pBoardPayload {
     sender_label: string | null;
     timezone: string;
     created_at: string;
+    /** Assessments pinned to this board (Phase 10). */
+    selected_assessment_ids: number[];
+    /** Standalone boards: the nominated real campaign for ratings. */
+    assessment_campaign_id: number | null;
+    /** True when campaign_id is a hidden is_sms_episode campaign. */
+    campaign_is_sms_episode: boolean;
   };
   draft: { draft_id: number; body: string } | null;
   items: SmsP2pBoardItem[];

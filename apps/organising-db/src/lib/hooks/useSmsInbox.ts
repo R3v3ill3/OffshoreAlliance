@@ -233,6 +233,8 @@ export type SmsConversationAction =
   | { action: 'close' }
   | { action: 'reopen' }
   | { action: 'attach'; campaign_id?: number | null; activity_id?: number | null }
+  /** Clears unread (stops the chat rail's pulse) without touching state. */
+  | { action: 'mark_read' }
 
 export function useSmsConversationAction(conversationId: number | null) {
   const invalidate = useInvalidateConversation(conversationId)

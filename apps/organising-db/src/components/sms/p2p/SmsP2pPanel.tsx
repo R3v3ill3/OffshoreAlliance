@@ -18,7 +18,7 @@
  * pre-attached.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { Loader2, MessagesSquare, Plus } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -45,6 +45,10 @@ import {
   type SmsComposerValue,
 } from '@/components/sms/SmsComposer'
 import { validateSmsBody } from '@/lib/sms/compliance'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { createClient as createSupabaseClient } from '@/lib/supabase/client'
+import { fetchApi } from '@/lib/api/fetch-api'
+import { CreateAssessmentDialog } from '@/components/campaigns/assessments/create-assessment-dialog'
 import { SmsOrgNameWarningDialog } from '@/components/sms/SmsOrgNameWarningDialog'
 import {
   AudiencePicker,
@@ -61,7 +65,6 @@ import {
   useRenameSmsEpisode,
   useSmsEpisodes,
 } from '@/lib/hooks/useSmsEpisodes'
-import { SmsP2pBoard } from './SmsP2pBoard'
 
 const EMPTY_COMPOSER: SmsComposerValue = {
   body: '',
@@ -84,6 +87,7 @@ export function SmsP2pPanel({
   const id =
     campaignId != null && String(campaignId) !== '' ? String(campaignId) : ''
   const searchParams = useSearchParams()
+  const router = useRouter()
   const { data: lists, isLoading: listsLoading } = useSmsLists(
     standaloneMode ? null : id,
   )
@@ -97,10 +101,13 @@ export function SmsP2pPanel({
   const [sheetCampaignId, setSheetCampaignId] = useState<string | null>(null)
   const [sheetSaved, setSheetSaved] = useState(false)
   const [sourceListId, setSourceListId] = useState<number | null>(null)
-  const [board, setBoard] = useState<{
-    campaignId: string
-    listId: number
-  } | null>(null)
+  /**
+   * Opening a board navigates to the full-height 3-pane workspace
+   * (Phase 10) rather than mounting it in a sheet — three panes do not
+   * fit in sm:max-w-4xl, and a workspace wants a URL.
+   */
+  const openBoard = (boardCampaignId: string, listId: number) =>
+    router.push(`/campaigns/${boardCampaignId}/sms/chat/${listId}`)
 
   // Pathway-picker deep links (chain B: new_chat=1 / chat_source_list).
   useEffect(() => {
@@ -206,10 +213,7 @@ export function SmsP2pPanel({
                   type="button"
                   className="flex w-full items-center gap-3 text-left"
                   onClick={() =>
-                    setBoard({
-                      campaignId: String(row.campaign_id),
-                      listId: row.list_id,
-                    })
+                    openBoard(String(row.campaign_id), row.list_id)
                   }
                 >
                   <div className="min-w-0 flex-1">
@@ -265,38 +269,13 @@ export function SmsP2pPanel({
               name: name.trim(),
             })
           }
-          setBoard({ campaignId: sheetCampaignId, listId })
+          openBoard(sheetCampaignId, listId)
           setSheetCampaignId(null)
           setSourceListId(null)
         }}
       />
       )}
 
-      <Sheet
-        open={board != null}
-        onOpenChange={(open) => {
-          if (!open) setBoard(null)
-        }}
-      >
-        <SheetContent className="w-full overflow-y-auto sm:max-w-4xl">
-          <SheetHeader>
-            <SheetTitle>Chat board</SheetTitle>
-            <SheetDescription>
-              Select people and send them the personalised opener — start
-              small, add more as conversations progress.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="mt-4 pb-8">
-            {board != null && (
-              <SmsP2pBoard
-                campaignId={board.campaignId}
-                listId={board.listId}
-                standaloneMode={standaloneMode}
-              />
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
     </div>
   )
 }
@@ -331,8 +310,32 @@ function NewChatBoardSheet({
   const [composer, setComposer] = useState<SmsComposerValue>(EMPTY_COMPOSER)
   const [submitting, setSubmitting] = useState(false)
   const [orgWarnOpen, setOrgWarnOpen] = useState(false)
+  const [pinnedAssessments, setPinnedAssessments] = useState<number[]>([])
+  const [createAssessmentOpen, setCreateAssessmentOpen] = useState(false)
   const create = useCreateSmsBlast(campaignId)
   const { data: senders } = useSmsSenders()
+  const queryClient = useQueryClient()
+
+  // Assessments the organiser can pin up front (Phase 10 WI-11), the
+  // SMS analogue of the phone pathway's assessment-setup step. Skipped
+  // for standalone boards: their campaign is a hidden episode with no
+  // assessments — those nominate a real campaign from the workspace.
+  const { data: campaignAssessments = [] } = useQuery({
+    queryKey: ['sms-chat-setup-assessments', campaignId],
+    queryFn: async () => {
+      const supabase = createSupabaseClient()
+      const { data, error } = await supabase
+        .from('campaign_activities')
+        .select('activity_id, title')
+        .eq('campaign_id', Number(campaignId))
+        .eq('activity_kind', 'assessment')
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return (data ?? []) as { activity_id: number; title: string }[]
+    },
+    enabled: open && !standaloneMode,
+    staleTime: 30_000,
+  })
 
   const blockers = [
     ...(!name.trim() ? ['Give the chat board a name.'] : []),
@@ -390,6 +393,27 @@ function NewChatBoardSheet({
               standaloneMode ? EMPTY_COMPOSED_AUDIENCE : { mode: 'campaign' },
             )
             setComposer(EMPTY_COMPOSER)
+            // Pin up front so the workspace opens ready to assess. A
+            // failure here must not lose the board — the organiser can
+            // pin from the member pane instead.
+            if (pinnedAssessments.length > 0) {
+              void fetchApi(
+                `/api/campaigns/${campaignId}/sms-lists/${res.sms_list_id}/p2p`,
+                {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    action: 'set_assessments',
+                    activity_ids: pinnedAssessments,
+                  }),
+                },
+              ).catch(() =>
+                toast.warning(
+                  'Board created, but the assessment could not be pinned — pin it from the member panel.',
+                ),
+              )
+            }
+            setPinnedAssessments([])
             onCreated(res.sms_list_id, name.trim())
           },
           onError: (err: Error) => toast.error(err.message),
@@ -468,6 +492,67 @@ function NewChatBoardSheet({
               variant="p2p"
             />
           </div>
+
+          {!standaloneMode && (
+            <div className="space-y-1.5">
+              <Label>Assessment for this chat (optional)</Label>
+              <p className="text-xs text-muted-foreground">
+                Pinned assessments show as one-tap chips beside every
+                conversation, so you can rate as you go. You can also pin one
+                later.
+              </p>
+              {campaignAssessments.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  This campaign has no assessments yet.
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {campaignAssessments.map((a) => (
+                    <label
+                      key={a.activity_id}
+                      className="flex items-start gap-2 rounded-md border p-2 text-sm"
+                    >
+                      <Checkbox
+                        checked={pinnedAssessments.includes(a.activity_id)}
+                        disabled={create.isPending || submitting}
+                        onCheckedChange={(v) =>
+                          setPinnedAssessments((prev) =>
+                            v === true
+                              ? [...prev, a.activity_id]
+                              : prev.filter((id) => id !== a.activity_id),
+                          )
+                        }
+                      />
+                      <span className="font-normal leading-snug">{a.title}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                disabled={create.isPending || submitting}
+                onClick={() => setCreateAssessmentOpen(true)}
+              >
+                <Plus className="mr-1 h-3.5 w-3.5" />
+                Create an assessment
+              </Button>
+              <CreateAssessmentDialog
+                campaignId={campaignId}
+                open={createAssessmentOpen}
+                onOpenChange={setCreateAssessmentOpen}
+                lockKind="assessment"
+                onCreated={(activityId) => {
+                  queryClient.invalidateQueries({
+                    queryKey: ['sms-chat-setup-assessments', campaignId],
+                  })
+                  setPinnedAssessments((prev) => [...prev, activityId])
+                }}
+              />
+            </div>
+          )}
 
           {blockers.length > 0 && (
             <ul className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">

@@ -22,6 +22,12 @@ async function toError(res: Response, fallback: string): Promise<Error> {
 export function useSmsP2pBoard(
   campaignId: number | string,
   listId: number | null,
+  /**
+   * The 3-pane workspace polls faster than the board sheet: a "new
+   * reply" pulse that starts ten seconds late undercuts the signal it
+   * exists to carry.
+   */
+  options?: { pollMs?: number },
 ) {
   return useQuery({
     queryKey: ['sms-p2p-board', String(campaignId), listId],
@@ -35,7 +41,7 @@ export function useSmsP2pBoard(
     enabled: !!campaignId && listId != null,
     staleTime: 0,
     refetchOnMount: 'always',
-    refetchInterval: P2P_BOARD_POLL_MS,
+    refetchInterval: options?.pollMs ?? P2P_BOARD_POLL_MS,
     refetchIntervalInBackground: true,
   })
 }
@@ -179,6 +185,71 @@ export function useSmsP2pClose(
       )
       if (!res.ok) throw await toError(res, 'Failed to close chat board')
       return res.json() as Promise<{ ok: true }>
+    },
+    onSuccess: invalidate,
+  })
+}
+
+/**
+ * Pin / unpin the board's assessment targets (Phase 10). The server
+ * validates every id is an assessment in the board's effective campaign.
+ */
+export function useSmsP2pSetAssessments(
+  campaignId: number | string,
+  listId: number | null,
+) {
+  const invalidate = useInvalidateP2p(campaignId, listId)
+  return useMutation({
+    mutationFn: async (activityIds: number[]) => {
+      const res = await fetchApi(
+        `/api/campaigns/${campaignId}/sms-lists/${listId}/p2p`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'set_assessments',
+            activity_ids: activityIds,
+          }),
+        },
+      )
+      if (!res.ok) throw await toError(res, 'Failed to pin assessments')
+      return res.json() as Promise<{
+        ok: true
+        selected_assessment_ids: number[]
+      }>
+    },
+    onSuccess: invalidate,
+  })
+}
+
+/**
+ * Standalone boards only: nominate the real campaign whose assessments
+ * this board's ratings are recorded against. Clears existing pins,
+ * which belonged to the previous target.
+ */
+export function useSmsP2pNominateAssessmentCampaign(
+  campaignId: number | string,
+  listId: number | null,
+) {
+  const invalidate = useInvalidateP2p(campaignId, listId)
+  return useMutation({
+    mutationFn: async (assessmentCampaignId: number | null) => {
+      const res = await fetchApi(
+        `/api/campaigns/${campaignId}/sms-lists/${listId}/p2p`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'nominate_assessment_campaign',
+            assessment_campaign_id: assessmentCampaignId,
+          }),
+        },
+      )
+      if (!res.ok) throw await toError(res, 'Failed to set the campaign')
+      return res.json() as Promise<{
+        ok: true
+        assessment_campaign_id: number | null
+      }>
     },
     onSuccess: invalidate,
   })

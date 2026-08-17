@@ -144,6 +144,25 @@ describe("matchRows", () => {
     expect(r.candidates).toEqual([]);
   });
 
+  it("suggests surname-only candidates for review when first name differs", () => {
+    const [r] = matchRows(
+      [{ key: "0", emails: [], phones: [], firstName: "Robert", lastName: "Smith" }],
+      workers
+    );
+    expect(r.disposition).toBe("review");
+    expect(r.match).toBeNull();
+    expect(r.candidates.map((c) => c.worker.worker_id)).toEqual([2]);
+    expect(r.candidates[0].method).toBe("name");
+  });
+
+  it("does not auto-match on surname alone even with a single candidate", () => {
+    const [r] = matchRows(
+      [{ key: "0", emails: [], phones: [], firstName: "Charlene", lastName: "Brown" }],
+      workers
+    );
+    expect(r.disposition).toBe("review");
+  });
+
   it("email outranks a conflicting name hit", () => {
     const [r] = matchRows(
       [

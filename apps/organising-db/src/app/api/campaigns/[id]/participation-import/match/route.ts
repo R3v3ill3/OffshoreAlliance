@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import {
+  lastNameKey,
   matchRows,
   nameKey,
   normaliseEmail,
@@ -27,7 +28,7 @@ const matchSchema = z.object({
     )
     .min(1)
     .max(5000),
-  activity_id: z.number().int().positive().nullish(),
+  activity_ids: z.array(z.number().int().positive()).max(20).nullish(),
 });
 
 export async function POST(
@@ -76,6 +77,7 @@ export async function POST(
   const emailSet = new Set<string>();
   const phoneSet = new Set<string>();
   const nameKeySet = new Set<string>();
+  const lastNameSet = new Set<string>();
   for (const row of unresolvedRows) {
     for (const e of row.emails) {
       const n = normaliseEmail(e);
@@ -87,13 +89,17 @@ export async function POST(
     }
     const nk = nameKey(row.firstName, row.lastName);
     if (nk) nameKeySet.add(nk);
+    const lk = lastNameKey(row.lastName);
+    if (lk) lastNameSet.add(lk);
   }
 
-  // One round trip: candidate workers across the whole DB.
+  // One round trip: candidate workers across the whole DB (surname hits
+  // feed the tier-4 suggestion list, never auto-matches).
   const { data: candidates, error: rpcErr } = await supabase.rpc("match_workers_for_import", {
     p_emails: Array.from(emailSet),
     p_phones: Array.from(phoneSet),
     p_name_keys: Array.from(nameKeySet),
+    p_last_names: Array.from(lastNameSet),
   });
   if (rpcErr) {
     return NextResponse.json(
@@ -154,13 +160,13 @@ export async function POST(
     for (const m of memberships ?? []) inCampaign.add(m.worker_id);
   }
 
-  // Existing ratings on the target assessment (for conflict display).
-  const existingByWorker = new Map<number, { rating: number | null; binary_value: string | null }>();
-  if (body.activity_id && candidateIds.length > 0) {
+  // Workers already rated on any of the target assessments (badge only).
+  const alreadyRated = new Set<number>();
+  if (body.activity_ids?.length && candidateIds.length > 0) {
     const { data: ratings, error: ratErr } = await supabase
       .from("campaign_activity_ratings")
-      .select("worker_id, rating, binary_value")
-      .eq("activity_id", body.activity_id)
+      .select("worker_id")
+      .in("activity_id", body.activity_ids)
       .eq("rating_phase", "actual")
       .is("event_id", null)
       .in("worker_id", candidateIds);
@@ -170,9 +176,7 @@ export async function POST(
         { status: 500 }
       );
     }
-    for (const r of ratings ?? []) {
-      existingByWorker.set(r.worker_id, { rating: r.rating, binary_value: r.binary_value });
-    }
+    for (const r of ratings ?? []) alreadyRated.add(r.worker_id);
   }
 
   const matchable: MatchableWorker[] = candidateRows.map((c) => ({
@@ -208,21 +212,17 @@ export async function POST(
     },
     method: ParticipationMatchCandidate["method"],
     inCampaignFlag: boolean
-  ): ParticipationMatchCandidate => {
-    const existing = existingByWorker.get(worker.worker_id);
-    return {
-      worker_id: worker.worker_id,
-      first_name: worker.first_name,
-      last_name: worker.last_name,
-      preferred_name: worker.preferred_name ?? null,
-      email: worker.email,
-      phone: worker.phone,
-      in_campaign: inCampaignFlag,
-      method,
-      existing_rating: existing?.rating ?? null,
-      existing_binary_value: existing?.binary_value ?? null,
-    };
-  };
+  ): ParticipationMatchCandidate => ({
+    worker_id: worker.worker_id,
+    first_name: worker.first_name,
+    last_name: worker.last_name,
+    preferred_name: worker.preferred_name ?? null,
+    email: worker.email,
+    phone: worker.phone,
+    in_campaign: inCampaignFlag,
+    method,
+    already_rated: alreadyRated.has(worker.worker_id),
+  });
 
   const response: ParticipationMatchResponse = {
     success: true,

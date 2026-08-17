@@ -13,6 +13,12 @@ import type { ResponseValueTarget } from "@/lib/import/participation-import-shar
 
 const IGNORE = "__ignore__";
 
+/** Import targets extend the vote options with "maybe" (neutral, never supportive). */
+const IMPORT_BINARY_OPTIONS: { value: string; label: string }[] = [
+  ...VOTE_SUPPORTER_OPTIONS,
+  { value: "maybe", label: "Maybe" },
+];
+
 /**
  * Picker for what a response value (or the whole import) maps to:
  * a 1–5 rating (with the campaign's labels) or a binary value.
@@ -60,7 +66,7 @@ export function RatingTargetSelect({
           </SelectItem>
         )}
         {isBinary
-          ? VOTE_SUPPORTER_OPTIONS.map((o) => (
+          ? IMPORT_BINARY_OPTIONS.map((o) => (
               <SelectItem key={o.value} value={`b${o.value}`} className="text-xs">
                 {o.label}
               </SelectItem>

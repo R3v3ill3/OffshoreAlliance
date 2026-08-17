@@ -12,7 +12,6 @@ import {
 import { Loader2 } from "lucide-react";
 import { useParticipationImport } from "./use-participation-import";
 import { StepSource } from "./step-source";
-import { StepAssessment } from "./step-assessment";
 import { StepMapping } from "./step-mapping";
 import { StepMatch } from "./step-match";
 import { StepReview } from "./step-review";
@@ -20,8 +19,7 @@ import type { WizardStep } from "./types";
 
 const STEP_TITLES: Record<WizardStep, string> = {
   source: "Import participation — source",
-  assessment: "Import participation — assessment",
-  mapping: "Import participation — map responses",
+  mapping: "Import participation — map questions",
   match: "Import participation — match workers",
   review: "Import participation — review & apply",
   done: "Import participation — complete",
@@ -29,8 +27,8 @@ const STEP_TITLES: Record<WizardStep, string> = {
 
 /**
  * Wall chart / list "Import participation" wizard: bring participation
- * and ratings in from an Action Network report (CSV) or, via re-sync,
- * the AN API, and record them against a campaign assessment.
+ * and ratings in from an Action Network report (CSV) or the AN API,
+ * mapping one or more survey questions onto campaign assessments.
  */
 export function ImportParticipationDialog({
   campaignId,
@@ -49,14 +47,15 @@ export function ImportParticipationDialog({
     onOpenChange(next);
   }
 
-  const assessmentValid = useMemo(() => {
-    const a = controller.assessment;
-    if (!a) return false;
-    if (a.mode === "existing") return true;
-    return a.title.trim().length > 0;
-  }, [controller.assessment]);
-
-  const mappingValid = controller.canMatch;
+  const mappingValid = useMemo(() => {
+    const active = controller.questions.filter((q) => q.assessment != null);
+    if (active.length === 0) return false;
+    const titlesOk = active.every(
+      (q) =>
+        q.assessment!.mode === "existing" || q.assessment!.title.trim().length > 0
+    );
+    return titlesOk && controller.canMatch;
+  }, [controller.questions, controller.canMatch]);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -67,11 +66,8 @@ export function ImportParticipationDialog({
 
         <div className="min-h-0 flex-1 overflow-y-auto py-1 pr-1">
           {step === "source" && <StepSource campaignId={campaignId} controller={controller} />}
-          {step === "assessment" && (
-            <StepAssessment campaignId={campaignId} controller={controller} />
-          )}
-          {step === "mapping" && <StepMapping controller={controller} />}
-          {step === "match" && <StepMatch controller={controller} />}
+          {step === "mapping" && <StepMapping campaignId={campaignId} controller={controller} />}
+          {step === "match" && <StepMatch campaignId={campaignId} controller={controller} />}
           {(step === "review" || step === "done") && <StepReview controller={controller} />}
         </div>
 
@@ -88,17 +84,12 @@ export function ImportParticipationDialog({
               variant="outline"
               disabled={busy}
               onClick={() => {
-                const order: WizardStep[] = ["source", "assessment", "mapping", "match", "review"];
+                const order: WizardStep[] = ["source", "mapping", "match", "review"];
                 const idx = order.indexOf(step);
                 if (idx > 0) setStep(order[idx - 1]);
               }}
             >
               Back
-            </Button>
-          )}
-          {step === "assessment" && (
-            <Button type="button" disabled={!assessmentValid || busy} onClick={() => setStep("mapping")}>
-              Next
             </Button>
           )}
           {step === "mapping" && (

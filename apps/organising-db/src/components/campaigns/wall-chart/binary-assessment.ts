@@ -1,6 +1,6 @@
 export const DEFAULT_SUPPORTIVE_BINARY_OUTCOME = "yes";
 
-const NEUTRAL_BINARY_OUTCOMES = new Set(["unsure", "unknown", "abstain", "abstained"]);
+const NEUTRAL_BINARY_OUTCOMES = new Set(["unsure", "unknown", "abstain", "abstained", "maybe"]);
 const YES_BINARY_OUTCOMES = new Set(["yes", "y", "true", "t", "1"]);
 const NO_BINARY_OUTCOMES = new Set(["no", "n", "false", "f", "0"]);
 

@@ -108,18 +108,149 @@ class Semaphore {
   }
 }
 
+/**
+ * Delivery-status vocabulary. The documented values are the six in
+ * MessageDeliveryStatus, but MM's live payloads have already proven
+ * looser than the docs once (the inbound webhook sends `sender`, not
+ * `from`), and carrier DLR text varies. Normalise case and accept the
+ * common synonyms so a wording difference cannot silently drop a
+ * receipt — the failure mode is invisible, because an unmapped status
+ * becomes "unknown" and the route discards the event.
+ */
 function mapDeliveryStatus(raw: string | undefined | null): MessageDeliveryStatus {
-  switch (raw) {
+  const v = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  switch (v) {
     case "pending":
+    case "queued":
+      return "pending";
     case "scheduled":
+      return "scheduled";
     case "sent":
+    case "submitted":
+    case "accepted":
+      return "sent";
     case "delivered":
+    case "delivrd":
+    case "success":
+    case "successful":
+      return "delivered";
     case "failed":
+    case "failure":
+    case "error":
+    case "undelivered":
+    case "undeliverable":
+    case "rejected":
+    case "expired":
+    case "bounced":
+    case "blocked":
+      return "failed";
     case "cancelled":
-      return raw;
+    case "canceled":
+      return "cancelled";
     default:
       return "unknown";
   }
+}
+
+/** Read the first present string value across candidate key spellings. */
+function pickString(
+  payload: Record<string, unknown>,
+  keys: string[],
+): string | null {
+  for (const k of keys) {
+    const v = payload[k];
+    if (typeof v === "string" && v.length > 0) return v;
+    // Some providers send numeric ids/timestamps unquoted.
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  }
+  return null;
+}
+
+const STATUS_ID_KEYS = [
+  "message_id",
+  "messageId",
+  "provider_message_id",
+  "msg_id",
+  "id",
+];
+const STATUS_VALUE_KEYS = [
+  "status",
+  "delivery_status",
+  "message_status",
+  "state",
+];
+const STATUS_TIME_KEYS = [
+  "occurred_at",
+  "timestamp",
+  "status_at",
+  "updated_at",
+  "delivered_at",
+];
+const STATUS_REF_KEYS = ["custom_ref", "customRef", "reference", "ref"];
+
+/**
+ * Map the payload's `type` discriminator onto our three event kinds,
+ * tolerating the spellings a delivery-receipt webhook is plausibly
+ * labelled with. Returns null when the value is absent or unrecognised,
+ * which hands the decision to shape inference below.
+ */
+function normaliseEventType(
+  raw: unknown,
+): "inbound" | "unsubscribe" | "status" | null {
+  if (typeof raw !== "string") return null;
+  switch (raw.trim().toLowerCase()) {
+    case "inbound":
+    case "inbound_message":
+    case "mo":
+    case "reply":
+      return "inbound";
+    case "unsubscribe":
+    case "unsubscribed":
+    case "optout":
+    case "opt_out":
+    case "opt-out":
+      return "unsubscribe";
+    case "status":
+    case "status_update":
+    case "delivery":
+    case "delivery_report":
+    case "delivery_receipt":
+    case "delivery_status":
+    case "dlr":
+    case "receipt":
+      return "status";
+    default:
+      return null;
+  }
+}
+
+/**
+ * Last-resort classification for payloads whose `type` we do not
+ * recognise. Deliberately conservative: a delivery receipt is only
+ * inferred when the payload carries a status value that maps to a
+ * *known* delivery state alongside a message id, and carries no message
+ * body (which would make it an inbound reply). Anything ambiguous stays
+ * unknown rather than being mis-routed.
+ */
+function inferEventType(
+  payload: Record<string, unknown>,
+): "inbound" | "status" | null {
+  const hasBody = pickString(payload, ["message", "body", "content"]) !== null;
+  const statusValue = pickString(payload, STATUS_VALUE_KEYS);
+  const hasId = pickString(payload, STATUS_ID_KEYS) !== null;
+
+  if (
+    !hasBody &&
+    hasId &&
+    statusValue !== null &&
+    mapDeliveryStatus(statusValue) !== "unknown"
+  ) {
+    return "status";
+  }
+  if (hasBody && pickString(payload, ["from", "sender"]) !== null) {
+    return "inbound";
+  }
+  return null;
 }
 
 export class MobileMessageProvider implements SmsProvider {
@@ -284,7 +415,13 @@ export class MobileMessageProvider implements SmsProvider {
     const str = (k: string): string | null =>
       typeof payload[k] === "string" ? (payload[k] as string) : null;
 
-    switch (payload.type) {
+    // Accept the documented `type` values plus the near-spellings a
+    // delivery receipt may use; fall back to shape inference when the
+    // discriminator is missing or unfamiliar. Without this an unmatched
+    // label makes the event vanish silently (200 OK, nothing recorded).
+    const kind = normaliseEventType(payload.type) ?? inferEventType(payload);
+
+    switch (kind) {
       case "inbound": {
         // Mobile Message's inbound webhook uses `sender` (member MSISDN),
         // not `from`. Accept both so sandbox/docs variants still parse.
@@ -322,12 +459,15 @@ export class MobileMessageProvider implements SmsProvider {
           receivedAt: str("received_at") ?? str("timestamp"),
         };
       case "status":
+        // Field spellings are tolerated for the same reason as inbound:
+        // the live payload shape has not been verified against MM, and a
+        // missed key here reads as a permanent 0% delivery rate.
         return {
           type: "status",
-          providerMessageId: str("message_id"),
-          customRef: str("custom_ref"),
-          status: mapDeliveryStatus(str("status")),
-          occurredAt: str("occurred_at") ?? str("timestamp"),
+          providerMessageId: pickString(payload, STATUS_ID_KEYS),
+          customRef: pickString(payload, STATUS_REF_KEYS),
+          status: mapDeliveryStatus(pickString(payload, STATUS_VALUE_KEYS)),
+          occurredAt: pickString(payload, STATUS_TIME_KEYS),
         };
       default:
         return { type: "unknown", raw: payload };

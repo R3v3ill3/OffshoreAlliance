@@ -634,6 +634,10 @@ export interface VwSmsChatSessionReportRow {
   replies_received: number;
   response_rate_pct: number | null;
   median_first_reply_seconds: number | null;
+  /** Threads with any inbound — distinct from replies to this opener. */
+  conversations_responded: number;
+  /** Chats an organiser marked complete. */
+  conversations_closed: number;
   assessments_recorded: number;
 }
 
@@ -717,6 +721,10 @@ export interface SmsP2pBoardItem {
   conversation_id: number | null;
   conversation_state: SmsConversationState | null;
   unread_count: number;
+  /** Last inbound on the thread — drives the "responded" counter. */
+  last_inbound_at: string | null;
+  /** Set when an organiser marked the chat complete; NULL otherwise. */
+  closed_at: string | null;
   /** Per-item opener. NULL = board default. */
   body_override: string | null;
 }

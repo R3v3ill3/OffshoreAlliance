@@ -24,7 +24,9 @@ import {
   Ban,
   CheckSquare,
   Loader2,
+  CheckCircle2,
   MessageSquare,
+  RotateCcw,
   Pencil,
   RefreshCw,
   Send,
@@ -63,7 +65,9 @@ import {
   filterP2pItems,
   isP2pSendable,
   p2pItemTemplate,
+  p2pBoardProgress,
   pruneP2pSelection,
+  sortP2pItems,
   renderP2pBody,
   selectNextN,
 } from '@/lib/sms/p2p'
@@ -73,6 +77,7 @@ import {
   useSmsP2pClose,
   useSmsP2pSend,
   useSmsP2pSetBoardBody,
+  useSmsP2pSetConversationClosed,
   useSmsP2pSetItemBody,
 } from '@/lib/hooks/useSmsP2p'
 import {
@@ -82,6 +87,16 @@ import {
 import { SmsThreadDialog } from '@/components/sms/inbox/SmsThreadDialog'
 import { CONVERSATION_STATE_COLORS } from '@/components/sms/inbox/sms-inbox-shared'
 import { SmsEmojiPicker } from '@/components/sms/SmsEmojiPicker'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import {
   AudiencePicker,
   type AudienceValue,
@@ -130,6 +145,7 @@ export function SmsP2pBoard({
   const closeBoard = useSmsP2pClose(campaignId, listId)
   const setItemBody = useSmsP2pSetItemBody(campaignId, listId)
   const setBoardBody = useSmsP2pSetBoardBody(campaignId, listId)
+  const setConvClosed = useSmsP2pSetConversationClosed(campaignId, listId)
   const staffOptOut = useStaffSmsOptOut()
 
   const [search, setSearch] = useState('')
@@ -140,10 +156,11 @@ export function SmsP2pBoard({
   const [addOpen, setAddOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<SmsP2pBoardItem | null>(null)
   const [editingBoard, setEditingBoard] = useState(false)
+  const [confirmCloseBoard, setConfirmCloseBoard] = useState(false)
 
   const items = useMemo(() => board?.items ?? [], [board])
   const filtered = useMemo(
-    () => filterP2pItems(items, { search, status: statusFilter }),
+    () => sortP2pItems(filterP2pItems(items, { search, status: statusFilter })),
     [items, search, statusFilter],
   )
   // Selection survives refetches but drops rows that stopped being
@@ -237,10 +254,7 @@ export function SmsP2pBoard({
     )
   }
 
-  const sentCount = items.filter((i) =>
-    ['sent', 'delivered'].includes(i.status),
-  ).length
-  const pendingCount = items.filter((i) => isP2pSendable(i)).length
+  const progress = p2pBoardProgress(items)
 
   return (
     <div className="space-y-3">
@@ -253,8 +267,15 @@ export function SmsP2pBoard({
             {board.list.sender_label ||
               (board.list.sender_phone_e164
                 ? toDisplay(board.list.sender_phone_e164)
-                : 'no sender')}{' '}
-            · {sentCount}/{items.length} messaged · {pendingCount} to go
+                : 'no sender')}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">
+              {progress.recipients}
+            </span>{' '}
+            recipients · {progress.messaged} messaged ·{' '}
+            {progress.responded} responded · {progress.completed} completed
+            {progress.toGo > 0 && ` · ${progress.toGo} to go`}
             {' · '}auto-refreshes every 10s
           </p>
         </div>
@@ -295,18 +316,7 @@ export function SmsP2pBoard({
           className="text-muted-foreground hover:text-destructive"
           disabled={boardClosed || closeBoard.isPending}
           title="Close the board — remaining unsent rows are skipped; existing threads stay open in the Inbox"
-          onClick={() => {
-            if (
-              window.confirm(
-                'Close this chat board? Rows not yet messaged will be skipped. Existing threads stay open in the Inbox.',
-              )
-            ) {
-              closeBoard.mutate(undefined, {
-                onSuccess: () => toast.success('Chat board closed'),
-                onError: (err: Error) => toast.error(err.message),
-              })
-            }
-          }}
+          onClick={() => setConfirmCloseBoard(true)}
         >
           <XCircle className="mr-1 h-3.5 w-3.5" />
           Close board
@@ -417,13 +427,15 @@ export function SmsP2pBoard({
         )}
         {filtered.map((item) => {
           const sendable = isP2pSendable(item) && !boardClosed
-          const greyed = item.sms_opt_out || item.status === 'opted_out'
+          const completed = item.closed_at != null
+          const greyed =
+            item.sms_opt_out || item.status === 'opted_out' || completed
           return (
             <div
               key={item.item_id}
               className={`flex items-start gap-2 px-3 py-2 text-sm ${
                 greyed ? 'opacity-50' : ''
-              }`}
+              } ${completed ? 'bg-muted/30' : ''}`}
             >
               <Checkbox
                 className="mt-0.5"
@@ -462,15 +474,30 @@ export function SmsP2pBoard({
                       title="Open the thread"
                       onClick={() => setThreadId(item.conversation_id)}
                     >
+                      {/* Completed chats lose their state colour — the
+                          colour coding is a call to action, and a
+                          finished chat is not asking for anything. */}
                       <Badge
                         variant="secondary"
                         className={`cursor-pointer text-[10px] ${
-                          CONVERSATION_STATE_COLORS[item.conversation_state] || ''
+                          completed
+                            ? 'bg-transparent text-muted-foreground'
+                            : CONVERSATION_STATE_COLORS[
+                                item.conversation_state
+                              ] || ''
                         }`}
                       >
-                        <MessageSquare className="mr-0.5 h-2.5 w-2.5" />
-                        {item.conversation_state.replace('_', ' ')}
-                        {item.unread_count > 0 ? ` · ${item.unread_count}` : ''}
+                        {completed ? (
+                          <CheckCircle2 className="mr-0.5 h-2.5 w-2.5" />
+                        ) : (
+                          <MessageSquare className="mr-0.5 h-2.5 w-2.5" />
+                        )}
+                        {completed
+                          ? 'Completed'
+                          : item.conversation_state.replace('_', ' ')}
+                        {!completed && item.unread_count > 0
+                          ? ` · ${item.unread_count}`
+                          : ''}
                       </Badge>
                     </button>
                   )}
@@ -505,6 +532,44 @@ export function SmsP2pBoard({
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-1">
+                {/* Mark complete: the chat is finished, but the person
+                    stays on the board — this is not a removal. */}
+                {item.conversation_id != null && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs"
+                    disabled={setConvClosed.isPending}
+                    title={
+                      completed
+                        ? 'Reopen this chat'
+                        : 'Mark this chat complete — stays on the board, drops to the bottom'
+                    }
+                    onClick={() =>
+                      setConvClosed.mutate(
+                        {
+                          conversationId: item.conversation_id as number,
+                          close: !completed,
+                        },
+                        {
+                          onSuccess: () =>
+                            toast.success(
+                              completed
+                                ? `Reopened ${item.worker_name}`
+                                : `${item.worker_name} marked complete`,
+                            ),
+                          onError: (err: Error) => toast.error(err.message),
+                        },
+                      )
+                    }
+                  >
+                    {completed ? (
+                      <RotateCcw className="h-3 w-3" />
+                    ) : (
+                      <CheckCircle2 className="h-3 w-3" />
+                    )}
+                  </Button>
+                )}
                 {sendable && (
                   <Button
                     size="sm"
@@ -579,6 +644,59 @@ export function SmsP2pBoard({
           )
         }}
       />
+
+      {/* Replaces window.confirm — the native dialog reads as a browser
+          error and gives no room to say what closing actually does. */}
+      <AlertDialog
+        open={confirmCloseBoard}
+        onOpenChange={setConfirmCloseBoard}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Close this chat board?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  The board stops accepting sends and moves to
+                  &ldquo;sent&rdquo;. This is how you finish a session.
+                </p>
+                <ul className="list-disc space-y-1 pl-4">
+                  <li>
+                    {progress.toGo > 0 ? (
+                      <>
+                        <span className="font-medium text-foreground">
+                          {progress.toGo}
+                        </span>{' '}
+                        not yet messaged will be skipped.
+                      </>
+                    ) : (
+                      'Everyone on the board has been messaged.'
+                    )}
+                  </li>
+                  <li>
+                    Existing threads stay open in the Inbox — replies still
+                    arrive and can still be answered.
+                  </li>
+                  <li>Nothing is deleted, and nobody is messaged again.</li>
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep the board open</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() =>
+                closeBoard.mutate(undefined, {
+                  onSuccess: () => toast.success('Chat board closed'),
+                  onError: (err: Error) => toast.error(err.message),
+                })
+              }
+            >
+              Close board
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <BoardMessageDialog
         open={editingBoard}

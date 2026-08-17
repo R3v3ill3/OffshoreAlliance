@@ -66,6 +66,65 @@ export interface P2pBoardItemLike {
   employer_name: string | null;
   phone_e164: string | null;
   sms_opt_out: boolean;
+  /** Set once an organiser marks the chat complete. */
+  closed_at?: string | null;
+  /** Last inbound on the linked thread, if any. */
+  last_inbound_at?: string | null;
+}
+
+/**
+ * Completed chats sink to the bottom of the working list, keeping the
+ * live ones in front of the organiser. Order within each half is left
+ * as-is (the caller's sort_order), so the list does not reshuffle for
+ * any reason other than closing.
+ *
+ * Stable by construction: two passes rather than a comparator, so
+ * equal-priority rows cannot swap on re-render.
+ */
+export function sortP2pItems<T extends P2pBoardItemLike>(items: T[]): T[] {
+  const open: T[] = [];
+  const closed: T[] = [];
+  for (const item of items) {
+    (item.closed_at ? closed : open).push(item);
+  }
+  return [...open, ...closed];
+}
+
+export interface P2pBoardProgress {
+  /** Everyone on the board. */
+  recipients: number;
+  /** Openers actually delivered to the handset queue. */
+  messaged: number;
+  /** Threads that have received at least one inbound. */
+  responded: number;
+  /** Chats an organiser marked complete. */
+  completed: number;
+  /** Still sendable — the "to go" figure. */
+  toGo: number;
+}
+
+/**
+ * Board progress for the header line and the per-board widget.
+ *
+ * `responded` and `completed` are independent of send status on
+ * purpose: a chat stays counted as responded once it has a reply, and
+ * as completed once closed, even after later activity rewrites the
+ * conversation state.
+ */
+export function p2pBoardProgress<T extends P2pBoardItemLike>(
+  items: T[],
+): P2pBoardProgress {
+  let messaged = 0;
+  let responded = 0;
+  let completed = 0;
+  let toGo = 0;
+  for (const item of items) {
+    if (item.status === "sent" || item.status === "delivered") messaged += 1;
+    if (item.last_inbound_at) responded += 1;
+    if (item.closed_at) completed += 1;
+    if (isP2pSendable(item)) toGo += 1;
+  }
+  return { recipients: items.length, messaged, responded, completed, toGo };
 }
 
 export interface P2pBoardFilter {

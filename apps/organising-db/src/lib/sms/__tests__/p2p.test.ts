@@ -4,10 +4,12 @@ import {
   filterP2pItems,
   isP2pSendable,
   p2pBodyOverrideToStore,
+  p2pBoardProgress,
   p2pItemTemplate,
   pruneP2pSelection,
   renderP2pBody,
   selectNextN,
+  sortP2pItems,
   type P2pBoardItemLike,
 } from "../p2p";
 
@@ -227,5 +229,91 @@ describe("editing the board template mid-session", () => {
         new Set([1]),
       ).size,
     ).toBe(0);
+  });
+});
+
+describe("sortP2pItems", () => {
+  it("sinks completed chats below live ones", () => {
+    const sorted = sortP2pItems([
+      item({ item_id: 1, closed_at: "2026-08-17T01:00:00Z" }),
+      item({ item_id: 2 }),
+      item({ item_id: 3, closed_at: "2026-08-17T02:00:00Z" }),
+      item({ item_id: 4 }),
+    ]);
+    expect(sorted.map((i) => i.item_id)).toEqual([2, 4, 1, 3]);
+  });
+
+  it("preserves the caller's order within each half", () => {
+    // The board feeds it sort_order; closing one row must not reshuffle
+    // the rest of the list under the organiser.
+    const sorted = sortP2pItems([
+      item({ item_id: 9 }),
+      item({ item_id: 3 }),
+      item({ item_id: 7 }),
+    ]);
+    expect(sorted.map((i) => i.item_id)).toEqual([9, 3, 7]);
+  });
+
+  it("is a no-op when nothing is closed", () => {
+    const input = [item({ item_id: 1 }), item({ item_id: 2 })];
+    expect(sortP2pItems(input).map((i) => i.item_id)).toEqual([1, 2]);
+  });
+});
+
+describe("p2pBoardProgress", () => {
+  it("counts recipients, messaged, responded, completed and to-go", () => {
+    const progress = p2pBoardProgress([
+      item({ item_id: 1, status: "pending" }),
+      item({ item_id: 2, status: "sent", last_inbound_at: "2026-08-17T01:00:00Z" }),
+      item({
+        item_id: 3,
+        status: "delivered",
+        last_inbound_at: "2026-08-17T01:00:00Z",
+        closed_at: "2026-08-17T02:00:00Z",
+      }),
+      item({ item_id: 4, status: "sent" }),
+    ]);
+    expect(progress).toEqual({
+      recipients: 4,
+      messaged: 3,
+      responded: 2,
+      completed: 1,
+      toGo: 1,
+    });
+  });
+
+  it("keeps counting a completed chat as responded", () => {
+    // Closing is an organiser's bookkeeping act; it must not erase the
+    // fact that the member replied, or the funnel would go backwards.
+    const progress = p2pBoardProgress([
+      item({
+        item_id: 1,
+        status: "sent",
+        last_inbound_at: "2026-08-17T01:00:00Z",
+        closed_at: "2026-08-17T02:00:00Z",
+      }),
+    ]);
+    expect(progress.responded).toBe(1);
+    expect(progress.completed).toBe(1);
+  });
+
+  it("excludes opted-out and no-phone rows from to-go", () => {
+    const progress = p2pBoardProgress([
+      item({ item_id: 1, sms_opt_out: true }),
+      item({ item_id: 2, phone_e164: null }),
+      item({ item_id: 3 }),
+    ]);
+    expect(progress.recipients).toBe(3);
+    expect(progress.toGo).toBe(1);
+  });
+
+  it("returns zeroes for an empty board", () => {
+    expect(p2pBoardProgress([])).toEqual({
+      recipients: 0,
+      messaged: 0,
+      responded: 0,
+      completed: 0,
+      toGo: 0,
+    });
   });
 });

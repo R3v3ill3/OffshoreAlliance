@@ -115,7 +115,6 @@ export function SmsPinnedAssessment({
     workerId,
   )
 
-  const [createOpen, setCreateOpen] = useState(false)
   const [saving, setSaving] = useState<string | null>(null)
   // Optimistic chip state, keyed activityId → value. Cleared per row on
   // settle so the row re-syncs from the ratings query.
@@ -298,47 +297,12 @@ export function SmsPinnedAssessment({
             : 'No assessment pinned to this conversation.'}
         </p>
         {canPin && (
-          <>
-            {assessments.length > 0 && (
-              <Select value="" onValueChange={(v) => onPinActivity?.(Number(v))}>
-                <SelectTrigger className="h-8 w-full text-xs">
-                  <SelectValue placeholder="Pin an existing assessment…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {assessments.map((a) => (
-                    <SelectItem key={a.activity_id} value={String(a.activity_id)}>
-                      {a.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 w-full text-xs"
-              onClick={() => setCreateOpen(true)}
-            >
-              <Plus className="mr-1 h-3 w-3" />
-              Create an assessment
-            </Button>
-            {campaignId != null && (
-              <CreateAssessmentDialog
-                campaignId={String(campaignId)}
-                open={createOpen}
-                onOpenChange={setCreateOpen}
-                lockKind="assessment"
-                onCreated={(activityId) => {
-                  // Create AND pin in one gesture — the point of having
-                  // this here rather than on the wall-chart header.
-                  queryClient.invalidateQueries({
-                    queryKey: ['sms-pinned-assessments', campaignId],
-                  })
-                  onPinActivity?.(activityId)
-                }}
-              />
-            )}
-          </>
+          <PinControls
+            campaignId={campaignId}
+            assessments={assessments}
+            livePinned={livePinned}
+            onPinActivity={onPinActivity}
+          />
         )}
       </div>
     )
@@ -407,23 +371,97 @@ export function SmsPinnedAssessment({
           </div>
         )
       })}
-      {canPin && assessments.length > pinnedActivities.length && (
+      {canPin && (
+        <div className="space-y-1.5 pt-0.5">
+          <PinControls
+            dense
+            campaignId={campaignId}
+            assessments={assessments}
+            livePinned={livePinned}
+            onPinActivity={onPinActivity}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Pin an existing assessment, or create a new one.
+ *
+ * Shared by the empty and populated states. Creating used to be offered
+ * only when nothing was pinned yet, so the moment an organiser pinned
+ * their first assessment the ability to make another one disappeared —
+ * and mid-chat is exactly when the need for a new one shows up.
+ */
+function PinControls({
+  campaignId,
+  assessments,
+  livePinned,
+  onPinActivity,
+  dense = false,
+}: {
+  campaignId: number | null
+  assessments: AssessmentActivity[]
+  livePinned: number[]
+  onPinActivity?: (activityId: number) => void
+  dense?: boolean
+}) {
+  const queryClient = useQueryClient()
+  const [createOpen, setCreateOpen] = useState(false)
+  const unpinned = assessments.filter(
+    (a) => !livePinned.includes(a.activity_id),
+  )
+  const control = dense ? 'h-7 text-[11px]' : 'h-8 text-xs'
+
+  return (
+    <>
+      {unpinned.length > 0 && (
         <Select value="" onValueChange={(v) => onPinActivity?.(Number(v))}>
-          <SelectTrigger className="h-7 w-full text-[11px]">
-            <SelectValue placeholder="Pin another…" />
+          <SelectTrigger className={`${control} w-full`}>
+            <SelectValue
+              placeholder={
+                livePinned.length > 0
+                  ? 'Pin another…'
+                  : 'Pin an existing assessment…'
+              }
+            />
           </SelectTrigger>
           <SelectContent>
-            {assessments
-              .filter((a) => !livePinned.includes(a.activity_id))
-              .map((a) => (
-                <SelectItem key={a.activity_id} value={String(a.activity_id)}>
-                  {a.title}
-                </SelectItem>
-              ))}
+            {unpinned.map((a) => (
+              <SelectItem key={a.activity_id} value={String(a.activity_id)}>
+                {a.title}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       )}
-    </div>
+      <Button
+        size="sm"
+        variant="outline"
+        className={`${control} w-full`}
+        onClick={() => setCreateOpen(true)}
+      >
+        <Plus className="mr-1 h-3 w-3" />
+        Create an assessment
+      </Button>
+      {campaignId != null && (
+        <CreateAssessmentDialog
+          campaignId={String(campaignId)}
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          lockKind="assessment"
+          onCreated={(activityId) => {
+            // Create AND pin in one gesture — the point of having this
+            // here rather than on the wall-chart header.
+            queryClient.invalidateQueries({
+              queryKey: ['sms-pinned-assessments', campaignId],
+            })
+            onPinActivity?.(activityId)
+          }}
+        />
+      )}
+    </>
   )
 }
 

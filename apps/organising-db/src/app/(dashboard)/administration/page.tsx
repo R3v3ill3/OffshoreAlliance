@@ -1580,6 +1580,12 @@ function SettingsTab() {
   const [mmUsername, setMmUsername] = useState("");
   const [mmPassword, setMmPassword] = useState("");
   const [smsProvider, setSmsProvider] = useState("mock");
+  const [emailProvider, setEmailProvider] = useState("mock");
+  const [sendgridApiKey, setSendgridApiKey] = useState("");
+  const [sendgridWebhookKey, setSendgridWebhookKey] = useState("");
+  const [emailFromAddress, setEmailFromAddress] = useState("");
+  const [emailFromName, setEmailFromName] = useState("");
+  const [emailReplyTo, setEmailReplyTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -1593,6 +1599,12 @@ function SettingsTab() {
         setMmUsername(data.mobile_message_api_username ?? "");
         setMmPassword(data.mobile_message_api_password ?? "");
         setSmsProvider(data.sms_provider || "mock");
+        setEmailProvider(data.email_provider || "mock");
+        setSendgridApiKey(data.sendgrid_api_key ?? "");
+        setSendgridWebhookKey(data.sendgrid_webhook_public_key ?? "");
+        setEmailFromAddress(data.email_from_address ?? "");
+        setEmailFromName(data.email_from_name ?? "");
+        setEmailReplyTo(data.email_reply_to ?? "");
       })
       .catch(() => setLoadError("Failed to load settings"))
       .finally(() => setLoading(false));
@@ -1609,6 +1621,12 @@ function SettingsTab() {
           mobile_message_api_username: mmUsername,
           mobile_message_api_password: mmPassword,
           sms_provider: smsProvider,
+          email_provider: emailProvider,
+          sendgrid_api_key: sendgridApiKey,
+          sendgrid_webhook_public_key: sendgridWebhookKey,
+          email_from_address: emailFromAddress,
+          email_from_name: emailFromName,
+          email_reply_to: emailReplyTo,
         }),
       });
       if (!res.ok) {
@@ -1700,6 +1718,88 @@ function SettingsTab() {
                 value={mmPassword}
                 onChange={(e) => setMmPassword(e.target.value)}
                 placeholder={loading ? "Loading…" : "Enter API password…"}
+                disabled={loading}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Key className="h-4 w-4" />
+              Platform email (SendGrid — reveille.net.au)
+            </CardTitle>
+            <CardDescription>
+              On-platform email sending via the reveille.net.au SendGrid
+              account. Setup steps (domain authentication, webhooks, inbound
+              parse) are in docs/EMAIL_SENDGRID_SETUP.md. Use the mock
+              provider until live credentials are configured.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Provider</Label>
+              <Select
+                value={emailProvider}
+                onValueChange={setEmailProvider}
+                disabled={loading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mock">Mock (testing)</SelectItem>
+                  <SelectItem value="sendgrid">SendGrid</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>API key</Label>
+              <Input
+                type="password"
+                value={sendgridApiKey}
+                onChange={(e) => setSendgridApiKey(e.target.value)}
+                placeholder={loading ? "Loading…" : "SG.…"}
+                disabled={loading}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>From address</Label>
+              <Input
+                type="email"
+                value={emailFromAddress}
+                onChange={(e) => setEmailFromAddress(e.target.value)}
+                placeholder={loading ? "Loading…" : "organising@reveille.net.au"}
+                disabled={loading}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>From name</Label>
+              <Input
+                value={emailFromName}
+                onChange={(e) => setEmailFromName(e.target.value)}
+                placeholder={loading ? "Loading…" : "Offshore Alliance"}
+                disabled={loading}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Reply-to (blank = from address)</Label>
+              <Input
+                type="email"
+                value={emailReplyTo}
+                onChange={(e) => setEmailReplyTo(e.target.value)}
+                placeholder={loading ? "Loading…" : "organising@reveille.net.au"}
+                disabled={loading}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Event webhook verification key</Label>
+              <Input
+                type="password"
+                value={sendgridWebhookKey}
+                onChange={(e) => setSendgridWebhookKey(e.target.value)}
+                placeholder={loading ? "Loading…" : "Signed Event Webhook public key…"}
                 disabled={loading}
               />
             </div>

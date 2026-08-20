@@ -10,6 +10,16 @@ const ALLOWED_KEYS = [
   // Shared-secret fallback for /api/sms/webhook (?token=) — seeded by
   // the Phase 1 migration; listed here so admins can rotate it.
   "sms_webhook_token",
+  // Platform email (SendGrid) — provider, credentials, sender identity
+  // and the webhook / inbound shared-secret tokens.
+  "email_provider",
+  "sendgrid_api_key",
+  "sendgrid_webhook_public_key",
+  "email_from_address",
+  "email_from_name",
+  "email_reply_to",
+  "email_webhook_token",
+  "email_inbound_token",
 ] as const;
 
 type SettingKey = (typeof ALLOWED_KEYS)[number];

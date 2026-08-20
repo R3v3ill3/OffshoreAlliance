@@ -262,6 +262,13 @@ Preconditions: §1.1 (domain auth for `offshore-alliance.au`) verified, §1.5
 key + §1.6 webhook configured, `email_provider` set to `sendgrid`, from
 address configured, default wrapper reviewed at `/email/wrappers`.
 
+Note on sequencing: the §1.4 forwarding rule (and the M365 external-
+forwarding block) does NOT gate test sends — outbound goes app → SendGrid →
+recipient and never touches the mailbox. Forwarding only feeds the in-app
+inbox leg; until it works, replies sit in the real mailbox only. It is not
+retroactive, so enable it before sends whose replies you want in
+`/email/inbox`.
+
 1. **Test send to self.** In the composer: "Send test…" → "via platform".
    Confirm: DKIM pass (`d=offshore-alliance.au` in headers), wrapper + footer
    rendered, unsubscribe link resolves, reply lands in the real mailbox AND

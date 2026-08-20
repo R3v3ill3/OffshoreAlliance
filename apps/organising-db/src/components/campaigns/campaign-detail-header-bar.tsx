@@ -12,6 +12,7 @@ import {
   Pencil,
   Phone,
   Settings as SettingsIcon,
+  Upload,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -29,6 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { CampaignBasicsEditSheet } from "@/components/campaigns/campaign-basics-edit-sheet";
 import { CreateAssessmentDialog } from "@/components/campaigns/assessments/create-assessment-dialog";
+import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 import { CreatePhoneCallOrchestrator } from "@/components/phone/CreatePhoneCallOrchestrator";
 import { ResumeBanner } from "@/components/phone/orchestrator/ResumeBanner";
 import { CreateEmailOrchestrator } from "@/components/email/CreateEmailOrchestrator";
@@ -76,6 +78,7 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
 
   const [basicsSheetOpen, setBasicsSheetOpen] = useState(false);
   const [createAssessmentOpen, setCreateAssessmentOpen] = useState(false);
+  const [importWorkersOpen, setImportWorkersOpen] = useState(false);
 
   const isBuildListOpen = searchParams.get("buildList") === "1";
   const handleToggleBuildList = useCallback(() => {
@@ -130,6 +133,10 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
             Build list
           </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => setImportWorkersOpen(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Import worker list
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setCreateAssessmentOpen(true)}>
             Add assessment
           </DropdownMenuItem>
@@ -282,6 +289,17 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
               queryClient.invalidateQueries({
                 queryKey: ["campaign-assessments-rated", numericCampaignId],
               });
+            }}
+          />
+          <WorkerImportWizard
+            open={importWorkersOpen}
+            onOpenChange={setImportWorkersOpen}
+            campaignId={campaignId}
+            onComplete={() => {
+              queryClient.invalidateQueries({
+                queryKey: ["campaign-members-full", campaignId],
+              });
+              queryClient.invalidateQueries({ queryKey: ["workers"] });
             }}
           />
         </>

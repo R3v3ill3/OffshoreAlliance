@@ -50,10 +50,14 @@ SendGrid → Settings → Sender Authentication → **Authenticate Your Domain**
 - Domain: `offshore-alliance.au`
 - Use automated security (rotating DKIM) — yes.
 - SendGrid issues **3 CNAME records** (2 × DKIM `s1._domainkey` /
-  `s2._domainkey` + 1 return-path, e.g. `em1234.offshore-alliance.au`). Add
-  them in GoDaddy → DNS for `offshore-alliance.au`, then click Verify.
-  (GoDaddy tip: enter only the host part, e.g. `s1._domainkey`, not the full
-  name — GoDaddy appends the domain automatically.)
+  `s2._domainkey` + 1 return-path — SendGrid auto-assigned ours as
+  `em823.offshore-alliance.au`; the `em###` prefix is random per account and
+  not choosable). Add them in GoDaddy → DNS for `offshore-alliance.au`, then
+  click Verify. (GoDaddy tip: enter only the host part, e.g. `s1._domainkey`
+  or `em823`, not the full name — GoDaddy appends the domain automatically.)
+- **Single Sender Verification is NOT needed.** Domain authentication covers
+  every address at the domain (including `organise@`); ignore any SendGrid
+  prompt to "verify a single sender".
 
 Without this, mail goes out `via sendgrid.net` and fails DMARC alignment.
 
@@ -70,11 +74,11 @@ receivers. Edit the existing record in place:
   being proven). Tighten back to `p=quarantine` once the pilot shows clean
   `d=offshore-alliance.au` DKIM alignment.
 - `rua=mailto:dmarc_rua@onsecureserver.net` → a mailbox we actually read,
-  e.g. `rua=mailto:organising@offshore-alliance.au`, so the aggregate
+  e.g. `rua=mailto:organise@offshore-alliance.au`, so the aggregate
   reports come to us rather than GoDaddy.
 
 Pilot-period record:
-`v=DMARC1; p=none; adkim=r; aspf=r; rua=mailto:organising@offshore-alliance.au;`
+`v=DMARC1; p=none; adkim=r; aspf=r; rua=mailto:organise@offshore-alliance.au;`
 
 ### 1.2 Link branding (recommended)
 
@@ -87,15 +91,20 @@ SendGrid → Settings → Sender Authentication → **Brand Your Links**:
 ### 1.3 Purpose-built mailbox (the From / Reply-To identity)
 
 Create a **real mailbox** on the new domain, e.g.
-`organising@offshore-alliance.au`. This is:
+`organise@offshore-alliance.au`. This is:
 
 - the From address on every platform send, and
 - the Reply-To address — replies land in the real mailbox (authoritative copy).
 
-**GoDaddy Microsoft 365 Email Essentials is sufficient.** The mailbox only
-receives replies and sends occasional 1:1 mail — SendGrid does all bulk
-sending — so the cheapest real-mailbox tier (10 GB Exchange Online, webmail)
-covers it. Notes:
+**GoDaddy Microsoft 365 Email Essentials is sufficient** (and is what we
+use; the provisioned account is `organise@offshore-alliance.au`). The
+mailbox only receives replies and sends occasional 1:1 mail — SendGrid does
+all bulk sending — so the cheapest real-mailbox tier (10 GB Exchange Online,
+webmail) covers it. Access the mailbox at outlook.office.com (or GoDaddy's
+email sign-in) with the account password from the GoDaddy Email & Office
+dashboard — webmail is sufficient; the §1.4 forwarding rule is created in
+Outlook on the web (Settings → Mail → Rules). Desktop Outlook is optional.
+Notes:
 
 - Adding the mailbox lets GoDaddy auto-configure the root MX + SPF
   (`include:spf.protection.outlook.com`). That coexists fine with SendGrid:
@@ -143,7 +152,7 @@ domain (the real mailbox owns the root MX). So:
      migration; read it via Administration → Settings or SQL).
    - Leave "POST the raw, full MIME message" **unchecked** (we consume the
      parsed multipart fields).
-3. On the real mailbox (`organising@offshore-alliance.au`), add a **forwarding
+3. On the real mailbox (`organise@offshore-alliance.au`), add a **forwarding
    rule** that forwards a copy of every incoming message to
    `inbox@parse.offshore-alliance.au`.
 
@@ -200,7 +209,7 @@ composer draft + wrapper pick
       → /api/email/webhook                        signed events → email_delivery_events
                                                   → email_send_log / email_list_items
                                                   → workers.email_status / email_opt_out
-recipient reply → organising@offshore-alliance.au (real mailbox, authoritative)
+recipient reply → organise@offshore-alliance.au (real mailbox, authoritative)
       → forwarding rule → inbox@parse.offshore-alliance.au
       → /api/email/inbound (Inbound Parse)        → email_conversations / email_messages
       → /email/inbox                              staff reply goes back out via SendGrid
@@ -232,7 +241,7 @@ Key modules:
 | `email_provider` | `EMAIL_PROVIDER` | `sendgrid` \| `mock` (empty = mock) |
 | `sendgrid_api_key` | `SENDGRID_API_KEY` | Mail Send key (§1.5) |
 | `sendgrid_webhook_public_key` | `SENDGRID_WEBHOOK_PUBLIC_KEY` | Signed Event Webhook verification key (§1.6) |
-| `email_from_address` | `EMAIL_FROM_ADDRESS` | e.g. `organising@offshore-alliance.au` |
+| `email_from_address` | `EMAIL_FROM_ADDRESS` | e.g. `organise@offshore-alliance.au` |
 | `email_from_name` | `EMAIL_FROM_NAME` | e.g. `Offshore Alliance` |
 | `email_reply_to` | `EMAIL_REPLY_TO` | Defaults to the from address |
 | `email_webhook_token` | — | Query-param fallback auth for `/api/email/webhook` (seeded random) |

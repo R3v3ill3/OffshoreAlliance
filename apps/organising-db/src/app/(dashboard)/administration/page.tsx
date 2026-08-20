@@ -1771,7 +1771,7 @@ function SettingsTab() {
                 type="email"
                 value={emailFromAddress}
                 onChange={(e) => setEmailFromAddress(e.target.value)}
-                placeholder={loading ? "Loading…" : "organising@offshore-alliance.au"}
+                placeholder={loading ? "Loading…" : "organise@offshore-alliance.au"}
                 disabled={loading}
               />
             </div>
@@ -1790,7 +1790,7 @@ function SettingsTab() {
                 type="email"
                 value={emailReplyTo}
                 onChange={(e) => setEmailReplyTo(e.target.value)}
-                placeholder={loading ? "Loading…" : "organising@offshore-alliance.au"}
+                placeholder={loading ? "Loading…" : "organise@offshore-alliance.au"}
                 disabled={loading}
               />
             </div>

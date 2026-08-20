@@ -8,7 +8,7 @@
  */
 
 export interface EmailSenderIdentity {
-  /** e.g. organising@offshore-alliance.au — must be on the authenticated domain. */
+  /** e.g. organise@offshore-alliance.au — must be on the authenticated domain. */
   fromEmail: string;
   /** Display name, e.g. "Offshore Alliance". */
   fromName: string;

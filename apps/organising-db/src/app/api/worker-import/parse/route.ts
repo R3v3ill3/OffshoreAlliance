@@ -58,6 +58,7 @@ const KNOWN_HEADER_PATTERNS = [
   /^(last[\s_-]?name|lastname|surname|family[\s_-]?name|familyname|last)$/i,
   /^(email|email[\s_-]?address|emailaddress)$/i,
   /^(mobile|phone|mobile[\s_-]?no|mobile[\s_-]?number|phone[\s_-]?number|phone[\s_-]?no|contact[\s_-]?number|contact[\s_-]?no|mob|contact)$/i,
+  /^(employer|employer[\s_-]?name|company|company[\s_-]?name|contractor|contractor[\s_-]?name|business|organisation|organization)$/i,
   /^(worksite|site|location|work[\s_-]?site|work[\s_-]?location)$/i,
   /^(name|full[\s_-]?name|fullname|worker[\s_-]?name|employee[\s_-]?name)$/i,
   /^(preferred[\s_-]?name|preferredname|nickname|nick[\s_-]?name|known[\s_-]?as|alias|preferred[\s_-]?first[\s_-]?name)$/i,

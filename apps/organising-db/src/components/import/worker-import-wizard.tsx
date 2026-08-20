@@ -10,6 +10,8 @@ import {
 } from "@/lib/api/fetch-api";
 import { matchWorksiteCandidates } from "@/lib/utils/worksite-fuzzy";
 import type { WorksiteCandidate } from "@/lib/utils/worksite-fuzzy";
+import { matchEmployerCandidates } from "@/lib/utils/employer-match";
+import type { EmployerCandidate } from "@/lib/utils/employer-match";
 import type { ParsedWorkerRow, ParsedWorkerGroup } from "@/app/api/worker-import/parse/route";
 import { parseMembershipStatus } from "@/lib/workers/worker-import-membership";
 import type {
@@ -70,6 +72,7 @@ type WizardStep =
   | "value_mapping"
   | "assessment_mapping"
   | "employer_selection"
+  | "employer_matching"
   | "worksite_matching"
   | "ou_matching"
   | "occupation_matching"
@@ -88,6 +91,7 @@ type MappableField =
   | "preferred_name"
   | "email"
   | "phone"
+  | "employer"
   | "worksite"
   | "organising_unit"
   | "occupation"
@@ -110,6 +114,17 @@ interface WorksiteResolution {
   worksiteId: number | null;
   worksiteName: string | null;
   candidates: WorksiteCandidate[];
+  confirmed: boolean;
+  createdDuringImport?: boolean;
+}
+
+interface EmployerResolution {
+  /** Raw employer value from the mapped employer column */
+  rawValue: string;
+  occurrences: number;
+  employerId: number | null;
+  employerName: string | null;
+  candidates: EmployerCandidate[];
   confirmed: boolean;
   createdDuringImport?: boolean;
 }
@@ -144,6 +159,9 @@ interface ReviewRow extends ParsedWorkerRow {
   groupName: string;
   resolvedWorksiteId: number | null;
   resolvedWorksiteName: string | null;
+  /** Per-row employer resolved from a mapped employer column (multi-employer imports) */
+  resolvedEmployerId: number | null;
+  resolvedEmployerName: string | null;
   resolvedOuId: number | null;
   resolvedOuName: string | null;
   /** Notes from a mapped column or user-entered */
@@ -272,6 +290,7 @@ const ALL_STEPS: { id: WizardStep; label: string }[] = [
   { id: "value_mapping", label: "Map Values" },
   { id: "assessment_mapping", label: "Assessments" },
   { id: "employer_selection", label: "Employer" },
+  { id: "employer_matching", label: "Employers" },
   { id: "worksite_matching", label: "Worksites" },
   { id: "ou_matching", label: "Units" },
   { id: "occupation_matching", label: "Occupations" },
@@ -289,6 +308,7 @@ const MAPPABLE_FIELDS: { value: MappableField; label: string }[] = [
   { value: "preferred_name", label: "Preferred / Nickname" },
   { value: "email", label: "Email" },
   { value: "phone", label: "Phone / Mobile" },
+  { value: "employer", label: "Employer / Company" },
   { value: "worksite", label: "Worksite" },
   { value: "organising_unit", label: "Organising unit / team" },
   { value: "occupation", label: "Occupation / Job Title" },
@@ -330,6 +350,14 @@ function autoMapHeader(header: string): MappableField {
     ].includes(h)
   )
     return "phone";
+  if (
+    [
+      "employer", "employername", "company", "companyname", "contractor",
+      "contractorname", "business", "businessname", "organisation", "organization",
+      "employercompany", "hiringcompany", "engagingemployer",
+    ].includes(h)
+  )
+    return "employer";
   if (["worksite", "site", "location", "worklocation"].includes(h)) return "worksite";
   if (
     [
@@ -497,6 +525,13 @@ export function WorkerImportWizard({
   const [selectedEmployerId, setSelectedEmployerId] = useState<number | null>(null);
   const [selectedEmployerName, setSelectedEmployerName] = useState<string | null>(null);
   const [employerSearch, setEmployerSearch] = useState("");
+  // Multi-employer matching (header format with a mapped employer column)
+  const [employerResolutions, setEmployerResolutions] = useState<EmployerResolution[]>([]);
+  const [employerMatchSearch, setEmployerMatchSearch] = useState<Record<string, string>>({});
+  const [createEmployerFor, setCreateEmployerFor] = useState<string | null>(null);
+  const [newEmployerName, setNewEmployerName] = useState("");
+  const [isCreatingEmployer, setIsCreatingEmployer] = useState(false);
+  const [createEmployerError, setCreateEmployerError] = useState<string | null>(null);
   const [reviewRows, setReviewRows] = useState<ReviewRow[]>([]);
   const [dedupMatches, setDedupMatches] = useState<DedupMatch[]>([]);
   const [occupationResolutions, setOccupationResolutions] = useState<OccupationResolution[]>([]);
@@ -703,6 +738,40 @@ export function WorkerImportWizard({
 
   function hasOuColumn() {
     return columnMappings.some((m) => m.field === "organising_unit");
+  }
+
+  function hasEmployerColumn() {
+    return columnMappings.some((m) => m.field === "employer");
+  }
+
+  /**
+   * Which employer step to show next. When the file carries a per-row employer
+   * column we run the multi-employer matching step; otherwise we fall back to
+   * the single-employer picker applied to every row.
+   */
+  function firstEmployerStep(): WizardStep {
+    return hasEmployerColumn() ? "employer_matching" : "employer_selection";
+  }
+
+  function buildEmployerResolutions(): EmployerResolution[] {
+    const employerCol = columnMappings.find((m) => m.field === "employer")?.header ?? "";
+    if (!employerCol) return [];
+    const unique = [
+      ...new Set(headerRows.map((r) => String(r[employerCol] ?? "").trim()).filter(Boolean)),
+    ];
+    return unique.map((val) => {
+      const candidates = matchEmployerCandidates(val, employers);
+      const top = candidates[0];
+      const autoAccept = top?.confidence === "high";
+      return {
+        rawValue: val,
+        occurrences: headerRows.filter((r) => String(r[employerCol] ?? "").trim() === val).length,
+        employerId: autoAccept ? top.employer.employer_id : null,
+        employerName: autoAccept ? top.employer.employer_name : null,
+        candidates,
+        confirmed: autoAccept,
+      };
+    });
   }
 
   function scoreOu(raw: string, ou: { name: string }): number {
@@ -917,13 +986,19 @@ export function WorkerImportWizard({
             s.id !== "column_mapping" &&
             s.id !== "occupation_matching" &&
             s.id !== "assessment_mapping" &&
-            s.id !== "ou_matching"
+            s.id !== "ou_matching" &&
+            // Group format never carries a per-row employer column
+            s.id !== "employer_matching"
         )
       : ALL_STEPS.filter(
           (s) =>
             (s.id !== "occupation_matching" || hasOccupationColumn()) &&
             (s.id !== "assessment_mapping" || hasAssessmentColumn()) &&
-            (s.id !== "ou_matching" || (hasOuColumn() && numericCampaignId != null))
+            (s.id !== "ou_matching" || (hasOuColumn() && numericCampaignId != null)) &&
+            // Show per-row employer matching when the file has an employer
+            // column; otherwise fall back to the single-employer picker.
+            (s.id !== "employer_matching" || hasEmployerColumn()) &&
+            (s.id !== "employer_selection" || !hasEmployerColumn())
         );
     return steps.filter(
       (s) =>
@@ -999,6 +1074,12 @@ export function WorkerImportWizard({
     setSelectedEmployerId(null);
     setSelectedEmployerName(null);
     setEmployerSearch("");
+    setEmployerResolutions([]);
+    setEmployerMatchSearch({});
+    setCreateEmployerFor(null);
+    setNewEmployerName("");
+    setIsCreatingEmployer(false);
+    setCreateEmployerError(null);
     setReviewRows([]);
     setDedupMatches([]);
     setResult(null);
@@ -1153,6 +1234,10 @@ export function WorkerImportWizard({
     setOccupationResolutions(buildOccupationResolutions());
     setOccupationSearch({});
 
+    // Eagerly build employer resolutions for the multi-employer matching step
+    setEmployerResolutions(buildEmployerResolutions());
+    setEmployerMatchSearch({});
+
     const vr = buildValueResolutions();
     setValueResolutions(vr);
     const ar = buildAssessmentResolutions();
@@ -1163,7 +1248,7 @@ export function WorkerImportWizard({
     } else if (ar.length > 0) {
       setStep("assessment_mapping");
     } else {
-      setStep("employer_selection");
+      setStep(firstEmployerStep());
     }
   }
 
@@ -1171,7 +1256,7 @@ export function WorkerImportWizard({
     if (assessmentResolutions.length > 0) {
       setStep("assessment_mapping");
     } else {
-      setStep("employer_selection");
+      setStep(firstEmployerStep());
     }
   }
 
@@ -1208,6 +1293,21 @@ export function WorkerImportWizard({
           };
         })
       );
+      setStep("worksite_matching");
+    } else if (hasOuColumn() && numericCampaignId != null && ouResolutions.length > 0) {
+      setStep("ou_matching");
+    } else if (hasOccupationColumn()) {
+      setStep("occupation_matching");
+    } else {
+      proceedToRowReview();
+    }
+  }
+
+  // Multi-employer path: worksite matching here is independent of any single
+  // employer, so we skip the employer-context re-sorting that
+  // proceedFromEmployerSelection applies.
+  function proceedFromEmployerMatching() {
+    if (worksiteResolutions.length > 0) {
       setStep("worksite_matching");
     } else if (hasOuColumn() && numericCampaignId != null && ouResolutions.length > 0) {
       setStep("ou_matching");
@@ -1290,6 +1390,56 @@ export function WorkerImportWizard({
     }
   }
 
+  function resolveEmployer(
+    rawValue: string,
+    employer: { employer_id: number; employer_name: string } | null
+  ) {
+    setEmployerResolutions((prev) =>
+      prev.map((r) =>
+        r.rawValue === rawValue
+          ? {
+              ...r,
+              employerId: employer?.employer_id ?? null,
+              employerName: employer?.employer_name ?? null,
+              confirmed: true,
+            }
+          : r
+      )
+    );
+  }
+
+  async function handleCreateEmployer(rawValue: string) {
+    if (!newEmployerName.trim()) return;
+    setIsCreatingEmployer(true);
+    setCreateEmployerError(null);
+    try {
+      const response = await fetchApi("/api/worker-import/employers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employerName: newEmployerName.trim() }),
+      });
+      const json = await response.json();
+      if (!response.ok || !json.success) {
+        throw new Error(json.error ?? "Failed to create employer");
+      }
+      resolveEmployer(rawValue, json.employer as { employer_id: number; employer_name: string });
+      setEmployerResolutions((prev) =>
+        prev.map((r) =>
+          r.rawValue === rawValue ? { ...r, createdDuringImport: true } : r
+        )
+      );
+      await queryClient.invalidateQueries({ queryKey: ["employers-active"] });
+      setCreateEmployerFor(null);
+      setNewEmployerName("");
+    } catch (err) {
+      setCreateEmployerError(
+        err instanceof Error ? err.message : "Failed to create employer"
+      );
+    } finally {
+      setIsCreatingEmployer(false);
+    }
+  }
+
   function resolveOu(rawValue: string, ou: { ou_id: number; name: string; ou_type: string } | null) {
     setOuResolutions((prev) =>
       prev.map((r) =>
@@ -1342,6 +1492,7 @@ export function WorkerImportWizard({
 
   function proceedToRowReview() {
     const resolutionMap = new Map(worksiteResolutions.map((r) => [r.groupName, r]));
+    const employerResMap = new Map(employerResolutions.map((r) => [r.rawValue, r]));
     const ouResMap = new Map(ouResolutions.map((r) => [r.rawValue, r]));
     const occResMap = new Map(occupationResolutions.map((r) => [r.rawValue, r]));
     const assessmentCols = assessmentResolutions.map((assessment) => assessment.columnHeader);
@@ -1368,6 +1519,7 @@ export function WorkerImportWizard({
       const emailCol = columnMappings.find((m) => m.field === "email")?.header ?? "";
       const phoneCol = columnMappings.find((m) => m.field === "phone")?.header ?? "";
       const worksiteCol = columnMappings.find((m) => m.field === "worksite")?.header ?? "";
+      const employerCol = columnMappings.find((m) => m.field === "employer")?.header ?? "";
       const ouCol = columnMappings.find((m) => m.field === "organising_unit")?.header ?? "";
       const occupationCol = columnMappings.find((m) => m.field === "occupation")?.header ?? "";
       const membershipCol = columnMappings.find((m) => m.field === "membership_status")?.header ?? "";
@@ -1383,6 +1535,8 @@ export function WorkerImportWizard({
             ? String(row[worksiteCol] ?? "").trim()
             : "";
           const resolution = resolutionMap.get(rawWorksiteVal);
+          const rawEmployerVal = employerCol ? String(row[employerCol] ?? "").trim() : "";
+          const employerRes = rawEmployerVal ? employerResMap.get(rawEmployerVal) : undefined;
           const rawOuVal = ouCol ? String(row[ouCol] ?? "").trim() : "";
           const ouRes = ouResMap.get(rawOuVal);
 
@@ -1501,6 +1655,8 @@ export function WorkerImportWizard({
             groupName: rawWorksiteVal,
             resolvedWorksiteId: resolution?.worksiteId ?? null,
             resolvedWorksiteName: resolution?.worksiteName ?? null,
+            resolvedEmployerId: employerRes?.confirmed ? (employerRes.employerId ?? null) : null,
+            resolvedEmployerName: employerRes?.confirmed ? (employerRes.employerName ?? null) : null,
             resolvedOuId: ouRes?.confirmed ? (ouRes.ouId ?? null) : null,
             resolvedOuName: ouRes?.confirmed ? (ouRes.ouName ?? null) : null,
             rawOccupation,
@@ -1526,6 +1682,8 @@ export function WorkerImportWizard({
           groupName: g.groupName,
           resolvedWorksiteId: resolution?.worksiteId ?? null,
           resolvedWorksiteName: resolution?.worksiteName ?? null,
+          resolvedEmployerId: null,
+          resolvedEmployerName: null,
           resolvedOuId: null,
           resolvedOuName: null,
           rawOccupation: null,
@@ -1702,7 +1860,9 @@ export function WorkerImportWizard({
         joinDate: row.overrideJoinDate ?? row.joinDate ?? null,
         rejoinDate: row.overrideRejoinDate ?? row.rejoinDate ?? null,
         worksiteId: row.resolvedWorksiteId,
-        employerId: selectedEmployerId,
+        // Per-row employer (multi-employer imports) takes precedence; otherwise
+        // fall back to the single employer chosen for the whole import.
+        employerId: row.resolvedEmployerId ?? selectedEmployerId,
         rawMembershipStatus: row.rawMembershipStatus,
         notes: row.overrideNotes ?? row.notes ?? null,
         canonicalOccupationId: row.resolvedOccupationId ?? null,
@@ -2392,8 +2552,12 @@ export function WorkerImportWizard({
           <Button variant="outline" onClick={() => setStep(backStep)}>
             <ArrowLeft className="h-4 w-4 mr-1" /> Back
           </Button>
-          <Button onClick={() => setStep("employer_selection")} disabled={!allConfirmed}>
-            Select Employer <ArrowRight className="h-4 w-4 ml-1" />
+          <Button onClick={() => setStep(firstEmployerStep())} disabled={!allConfirmed}>
+            {hasEmployerColumn() ? (
+              <>Match Employers <ArrowRight className="h-4 w-4 ml-1" /></>
+            ) : (
+              <>Select Employer <ArrowRight className="h-4 w-4 ml-1" /></>
+            )}
           </Button>
         </DialogFooter>
       </div>
@@ -2507,6 +2671,260 @@ export function WorkerImportWizard({
               <>Match Worksites <ArrowRight className="h-4 w-4 ml-1" /></>
             ) : (
               <>Review Rows <ArrowRight className="h-4 w-4 ml-1" /></>
+            )}
+          </Button>
+        </DialogFooter>
+      </div>
+    );
+  }
+
+  function renderEmployerMatching() {
+    const allConfirmed = employerResolutions.every((r) => r.confirmed);
+    const employerCol = columnMappings.find((m) => m.field === "employer")?.header ?? "";
+    const hasWorksites = columnMappings.some((m) => m.field === "worksite");
+
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          {employerResolutions.length} unique employer
+          {employerResolutions.length !== 1 ? "s" : ""} detected. Match each to an
+          existing employer, create a new one, or leave unassigned.
+        </p>
+
+        <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+          {employerResolutions.map((resolution) => {
+            const workerCount = employerCol
+              ? headerRows.filter(
+                  (r) => String(r[employerCol] ?? "").trim() === resolution.rawValue
+                ).length
+              : 0;
+
+            const searchTerm = employerMatchSearch[resolution.rawValue] ?? "";
+            const filteredEmployers = searchTerm
+              ? employers.filter(
+                  (e) =>
+                    e.employer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    (e.trading_name ?? "").toLowerCase().includes(searchTerm.toLowerCase())
+                )
+              : [];
+
+            return (
+              <div
+                key={resolution.rawValue}
+                className="border rounded-lg p-4 space-y-3"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-medium text-sm">{resolution.rawValue}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {workerCount} worker{workerCount !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  {resolution.confirmed ? (
+                    <Badge variant="default" className="gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      {resolution.employerName ?? "No Employer"}
+                      {resolution.createdDuringImport ? " (new)" : ""}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline">Needs Review</Badge>
+                  )}
+                </div>
+
+                {resolution.candidates.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Suggested matches — click to select:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {resolution.candidates.map((c) => {
+                        const isSelected =
+                          resolution.confirmed &&
+                          resolution.employerId === c.employer.employer_id;
+                        return (
+                          <Button
+                            key={c.employer.employer_id}
+                            variant={isSelected ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => resolveEmployer(resolution.rawValue, c.employer)}
+                            className="h-8 text-xs gap-1.5"
+                          >
+                            {isSelected && (
+                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                            )}
+                            <Badge
+                              variant={
+                                isSelected
+                                  ? "secondary"
+                                  : confidenceBadgeVariant(c.confidence)
+                              }
+                              className="text-[10px] px-1 py-0 h-4"
+                            >
+                              {c.confidence}
+                            </Badge>
+                            {c.employer.employer_name}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Search employers..."
+                    value={searchTerm}
+                    onChange={(e) =>
+                      setEmployerMatchSearch((prev) => ({
+                        ...prev,
+                        [resolution.rawValue]: e.target.value,
+                      }))
+                    }
+                    className="pl-8 h-8 text-sm"
+                  />
+                  {searchTerm && filteredEmployers.length > 0 && (
+                    <div className="absolute z-10 top-full left-0 right-0 mt-1 border rounded-md bg-background shadow-md max-h-40 overflow-y-auto">
+                      {filteredEmployers.slice(0, 30).map((e) => (
+                        <button
+                          key={e.employer_id}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
+                          onClick={() => {
+                            resolveEmployer(resolution.rawValue, e);
+                            setEmployerMatchSearch((prev) => ({
+                              ...prev,
+                              [resolution.rawValue]: "",
+                            }));
+                          }}
+                        >
+                          {e.employer_name}
+                          {e.trading_name && (
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              ({e.trading_name})
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {createEmployerFor === resolution.rawValue ? (
+                  <div className="border rounded-md p-3 space-y-2 bg-muted/30">
+                    <p className="text-xs font-medium">New employer</p>
+                    <Input
+                      placeholder="Employer name"
+                      value={newEmployerName}
+                      onChange={(e) => setNewEmployerName(e.target.value)}
+                      className="h-8 text-sm"
+                      autoFocus
+                    />
+                    {createEmployerError && (
+                      <p className="text-xs text-destructive">{createEmployerError}</p>
+                    )}
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={!newEmployerName.trim() || isCreatingEmployer}
+                        onClick={() => handleCreateEmployer(resolution.rawValue)}
+                      >
+                        {isCreatingEmployer ? (
+                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        ) : (
+                          <Plus className="h-3 w-3 mr-1" />
+                        )}
+                        Create
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          setCreateEmployerFor(null);
+                          setNewEmployerName("");
+                          setCreateEmployerError(null);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="flex gap-2">
+                  <Button
+                    variant={
+                      resolution.confirmed && !resolution.employerId
+                        ? "default"
+                        : "outline"
+                    }
+                    size="sm"
+                    onClick={() =>
+                      setEmployerResolutions((prev) =>
+                        prev.map((r) =>
+                          r.rawValue === resolution.rawValue
+                            ? {
+                                ...r,
+                                employerId: null,
+                                employerName: null,
+                                confirmed: true,
+                                createdDuringImport: false,
+                              }
+                            : r
+                        )
+                      )
+                    }
+                    className="text-xs h-7 gap-1"
+                  >
+                    {resolution.confirmed && !resolution.employerId ? (
+                      <CheckCircle2 className="h-3 w-3" />
+                    ) : (
+                      <X className="h-3 w-3" />
+                    )}
+                    No Employer
+                  </Button>
+                  {createEmployerFor !== resolution.rawValue && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-7 gap-1"
+                      onClick={() => {
+                        setCreateEmployerFor(resolution.rawValue);
+                        setNewEmployerName(resolution.rawValue);
+                        setCreateEmployerError(null);
+                      }}
+                    >
+                      <Plus className="h-3 w-3" />
+                      Create new
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (assessmentResolutions.length > 0) {
+                setStep("assessment_mapping");
+              } else if (valueResolutions.length > 0) {
+                setStep("value_mapping");
+              } else {
+                setStep("column_mapping");
+              }
+            }}
+          >
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back
+          </Button>
+          <Button onClick={proceedFromEmployerMatching} disabled={!allConfirmed}>
+            {hasWorksites ? (
+              <>Match Worksites <ArrowRight className="h-4 w-4 ml-1" /></>
+            ) : (
+              <>Continue <ArrowRight className="h-4 w-4 ml-1" /></>
             )}
           </Button>
         </DialogFooter>
@@ -2795,7 +3213,7 @@ export function WorkerImportWizard({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setStep("employer_selection")}>
+          <Button variant="outline" onClick={() => setStep(firstEmployerStep())}>
             <ArrowLeft className="h-4 w-4 mr-1" /> Back
           </Button>
           <Button onClick={proceedFromWorksiteMatching} disabled={!allConfirmed}>
@@ -3075,7 +3493,7 @@ export function WorkerImportWizard({
       ? "ou_matching"
       : worksiteResolutions.length > 0
       ? "worksite_matching"
-      : "employer_selection";
+      : firstEmployerStep();
 
     return (
       <div className="space-y-4">
@@ -3173,6 +3591,9 @@ export function WorkerImportWizard({
                 <TableHead className="text-xs">Join Date</TableHead>
                 <TableHead className="text-xs">Re-join Date</TableHead>
                 <TableHead className="text-xs">Notes</TableHead>
+                {hasEmployerColumn() && (
+                  <TableHead className="text-xs">Employer</TableHead>
+                )}
                 <TableHead className="text-xs">Worksite</TableHead>
                 <TableHead className="text-xs w-8"></TableHead>
               </TableRow>
@@ -3314,6 +3735,11 @@ export function WorkerImportWizard({
                       placeholder="—"
                     />
                   </TableCell>
+                  {hasEmployerColumn() && (
+                    <TableCell className="p-1 text-xs text-muted-foreground whitespace-nowrap">
+                      {row.resolvedEmployerName ?? "—"}
+                    </TableCell>
+                  )}
                   <TableCell className="p-1 text-xs text-muted-foreground whitespace-nowrap">
                     {row.resolvedWorksiteName ?? "—"}
                   </TableCell>
@@ -3349,7 +3775,7 @@ export function WorkerImportWizard({
       ? "ou_matching"
       : worksiteResolutions.length > 0
       ? "worksite_matching"
-      : "employer_selection";
+      : firstEmployerStep();
 
     return (
       <div className="space-y-4">
@@ -4106,6 +4532,7 @@ export function WorkerImportWizard({
             {step === "value_mapping" && renderValueMapping()}
             {step === "assessment_mapping" && renderAssessmentMapping()}
             {step === "employer_selection" && renderEmployerSelection()}
+            {step === "employer_matching" && renderEmployerMatching()}
             {step === "worksite_matching" && renderWorksiteMatching()}
             {step === "ou_matching" && renderOuMatching()}
             {step === "occupation_matching" && renderOccupationMatching()}

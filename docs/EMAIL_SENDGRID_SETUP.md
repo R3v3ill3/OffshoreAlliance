@@ -87,11 +87,27 @@ SendGrid → Settings → Sender Authentication → **Brand Your Links**:
 ### 1.3 Purpose-built mailbox (the From / Reply-To identity)
 
 Create a **real mailbox** on the new domain, e.g.
-`organising@offshore-alliance.au` (GoDaddy sells Microsoft 365 mailboxes, or
-attach the domain to an existing Google Workspace / M365 tenancy). This is:
+`organising@offshore-alliance.au`. This is:
 
 - the From address on every platform send, and
 - the Reply-To address — replies land in the real mailbox (authoritative copy).
+
+**GoDaddy Microsoft 365 Email Essentials is sufficient.** The mailbox only
+receives replies and sends occasional 1:1 mail — SendGrid does all bulk
+sending — so the cheapest real-mailbox tier (10 GB Exchange Online, webmail)
+covers it. Notes:
+
+- Adding the mailbox lets GoDaddy auto-configure the root MX + SPF
+  (`include:spf.protection.outlook.com`). That coexists fine with SendGrid:
+  the bounce/return-path domain is the `em…` CNAME (§1.1) and Inbound Parse
+  uses only the `parse.` subdomain MX (§1.4) — root mail DNS is untouched.
+- The §1.4 forwarding rule is a standard Outlook-on-the-web inbox rule
+  ("forward a copy to"). BUT Microsoft 365 blocks automatic forwarding to
+  external addresses by default, and `parse.offshore-alliance.au` counts as
+  external (it is not an accepted domain in the tenant). If forwarded copies
+  bounce with `5.7.520 … external forwarding is disabled`, enable outbound
+  forwarding via the GoDaddy Email & Office dashboard / GoDaddy support
+  (GoDaddy-managed tenants restrict direct Exchange admin access).
 
 Record the final address + display name in Administration → Settings (see §3).
 

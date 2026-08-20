@@ -355,10 +355,13 @@ GRANT EXECUTE ON FUNCTION touch_email_conversation_outbound(INTEGER, TIMESTAMPTZ
 
 ALTER TABLE campaign_comms_drafts
   DROP CONSTRAINT IF EXISTS campaign_comms_drafts_sent_via_check;
+-- 'outlook_direct' is included because send-via-outlook already writes
+-- it (the previous CHECK silently rejected that update).
 ALTER TABLE campaign_comms_drafts
   ADD CONSTRAINT campaign_comms_drafts_sent_via_check
   CHECK (sent_via IS NULL OR sent_via IN
-    ('action_network', 'yabbr', 'manual', 'mobile_message', 'sendgrid'));
+    ('action_network', 'yabbr', 'manual', 'mobile_message', 'sendgrid',
+     'outlook_direct'));
 
 ALTER TABLE campaign_comms_drafts
   ADD COLUMN IF NOT EXISTS wrapper_id INTEGER

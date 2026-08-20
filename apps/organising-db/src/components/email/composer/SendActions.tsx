@@ -1,11 +1,13 @@
 'use client'
 
 /**
- * SendActions — the composer's footer bar with three send paths:
+ * SendActions — the composer's footer bar with four send paths:
  *   1. Push to Action Network (existing flow, identical behaviour).
  *   2. Save to Outlook drafts via OAuth (personalised per-recipient or
  *      shared BCC), plus optional direct send from the connected mailbox.
- *   3. Send test — single recipient via Outlook direct send (Mail.Send).
+ *   3. Platform email (SendGrid) — queue an on-platform send drained by
+ *      the dispatch cron, plus a platform test send (PlatformSendControls).
+ *   4. Send test — single recipient via Outlook direct send (Mail.Send).
  */
 
 import { useEffect, useMemo, useState } from 'react'
@@ -51,6 +53,7 @@ import { extractMergeFieldKeys } from '@/lib/comms/chip-html'
 import type { AnalysedRecipient } from '@/lib/comms/bcc-token-analysis'
 import { BccPreSendDialog } from './BccPreSendDialog'
 import { DirectSendConfirmDialog } from './DirectSendConfirmDialog'
+import { PlatformSendControls } from './PlatformSendControls'
 import { fetchApi, API_FETCH_TIMEOUT_UPLOAD_MS } from '@/lib/api/fetch-api'
 
 export interface SendActionsProps {
@@ -469,6 +472,16 @@ export function SendActions({
           <TestTube2 className="h-3.5 w-3.5 mr-1.5" />
           Send test…
         </Button>
+
+        <PlatformSendControls
+          campaignId={campaignId}
+          draftId={draftId}
+          selectedWorkerIds={selectedWorkerIds}
+          recipientCount={recipientCount}
+          hasBody={hasBody}
+          disabled={disabled}
+          userEmail={userEmail}
+        />
 
         {onSaveToOutlook && (
           <DropdownMenu>

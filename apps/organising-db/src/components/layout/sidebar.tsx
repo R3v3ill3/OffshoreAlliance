@@ -19,6 +19,8 @@ import {
   MailOpen,
   Compass,
   GraduationCap,
+  Inbox,
+  LayoutTemplate,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -30,12 +32,14 @@ export const navItems = [
   { href: "/overview", label: "Overview", icon: LayoutGrid },
   { href: "/worksites", label: "Worksites", icon: MapPin },
   { href: "/upcoming-projects", label: "Upcoming Projects", icon: Compass },
+  { href: "/email/inbox", label: "Email Inbox", icon: Inbox },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/help", label: "Guides", icon: GraduationCap },
 ];
 
 export const adminItems = [
   { href: "/email-imports", label: "Email Imports", icon: MailOpen },
+  { href: "/email/wrappers", label: "Email Wrappers", icon: LayoutTemplate },
   { href: "/administration", label: "Administration", icon: Settings },
 ];
 

@@ -13,9 +13,10 @@
  */
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/lib/supabase/auth-context'
 import { Button } from '@/components/ui/button'
@@ -121,6 +122,12 @@ export default function EmailSetupOrderPage() {
             Where do you want to start?
           </p>
         </div>
+        <Button variant="outline" size="sm" asChild>
+          <Link href={`/campaigns/${campaignId}/email/import`}>
+            <Upload className="h-4 w-4 mr-1" />
+            Import recipients
+          </Link>
+        </Button>
       </div>
 
       <Card>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
+import NextLink from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
@@ -1841,7 +1841,7 @@ function SettingsTab() {
             </div>
             <div className="md:col-span-2">
               <Button variant="outline" size="sm" asChild>
-                <Link href="/email/wrappers">Manage email wrappers</Link>
+                <NextLink href="/email/wrappers">Manage email wrappers</NextLink>
               </Button>
               <p className="mt-1 text-xs text-muted-foreground">
                 Wrappers are the reusable header/footer applied around every

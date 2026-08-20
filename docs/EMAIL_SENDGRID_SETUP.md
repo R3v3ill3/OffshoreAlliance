@@ -107,7 +107,25 @@ covers it. Notes:
   external (it is not an accepted domain in the tenant). If forwarded copies
   bounce with `5.7.520 … external forwarding is disabled`, enable outbound
   forwarding via the GoDaddy Email & Office dashboard / GoDaddy support
-  (GoDaddy-managed tenants restrict direct Exchange admin access).
+  (GoDaddy-managed tenants restrict direct Exchange admin access). This is a
+  one-time settings change, not an ongoing limitation.
+
+**Alternatives without the forwarding block** (mailbox host is swappable —
+the platform only needs the from/reply-to address in Administration →
+Settings; only root MX/SPF records differ per provider):
+
+- **Google Workspace Business Starter** (~US$8.40/user/mo) — most robust:
+  the Admin console routing setting ("deliver to additional recipient")
+  duplicates every incoming message to the parse address with no external-
+  forwarding block and no destination verification, and users can't
+  accidentally turn it off.
+- **Zoho Mail Lite** (~US$1/user/mo) — cheapest: forwarding allowed but Zoho
+  emails a verification code to the destination. Not a dead end here: the
+  code lands in the in-app inbox (`/email/inbox`, triage) via Inbound Parse
+  — just make sure the §1.4 MX + webhook are live BEFORE setting up the
+  forward.
+- **Fastmail** (~US$5/mo) — rules-based forwarding without an M365-style
+  block.
 
 Record the final address + display name in Administration → Settings (see §3).
 

@@ -5,7 +5,7 @@ import { useParams, useRouter, useSearchParams, usePathname } from "next/navigat
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { format } from "date-fns";
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -35,6 +35,7 @@ import type {
   EnterpriseAgreementSubtype,
 } from "@/types/database";
 import type { Database } from "@oa/db-types";
+import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 import { CampaignAssessmentsSection } from "@/components/campaigns/campaign-assessments";
 import { CampaignReportingCharts } from "@/components/campaigns/campaign-reporting";
 import { CampaignProgressReport } from "@/components/reports/CampaignProgressReport";
@@ -245,6 +246,7 @@ export default function CampaignDetailPage() {
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [actionForm, setActionForm] = useState(INITIAL_ACTION_FORM);
   const [situationSheetOpen, setSituationSheetOpen] = useState(false);
+  const [importWizardOpen, setImportWizardOpen] = useState(false);
 
   const { data: campaign, isLoading } = useQuery({
     queryKey: ["campaign", id],
@@ -425,6 +427,14 @@ export default function CampaignDetailPage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
+          {canWrite && (
+            <div className="flex justify-end">
+              <Button onClick={() => setImportWizardOpen(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                Import worker list
+              </Button>
+            </div>
+          )}
           <CampaignOverviewMetrics campaignId={campaignId} campaignLabel={campaign?.name ?? undefined} />
           <ActivistOverviewCard campaignId={id} />
           <CampaignEmployersWorksitesCard campaignId={id} />
@@ -818,6 +828,16 @@ export default function CampaignDetailPage() {
           onOpenChange={setSituationSheetOpen}
         />
       )}
+
+      <WorkerImportWizard
+        open={importWizardOpen}
+        onOpenChange={setImportWizardOpen}
+        campaignId={id}
+        onComplete={() => {
+          queryClient.invalidateQueries({ queryKey: ["campaign-members-full", id] });
+          queryClient.invalidateQueries({ queryKey: ["workers"] });
+        }}
+      />
     </div>
   );
 }

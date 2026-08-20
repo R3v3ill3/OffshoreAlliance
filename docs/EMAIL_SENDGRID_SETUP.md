@@ -1,30 +1,59 @@
-# On-platform email sending via SendGrid (reveille.net.au)
+# On-platform email sending via SendGrid (offshore-alliance.au)
 
 Ops runbook + architecture reference for the platform email module. This is the
 email counterpart of the SMS module (see `docs/SMS_MODULE_BRIEF.md`) — same
 provider-abstraction / queued-list / dispatch-cron / signed-webhook shape,
-sending through the existing **reveille.net.au SendGrid account** instead of
+sending through SendGrid from the **offshore-alliance.au** domain instead of
 round-tripping through Action Network.
 
 The Action Network push path is untouched and remains available; platform
 sending runs alongside it until proven, after which AN deprecation is a
 separate decision.
 
+> **Domain spelling check:** the registered domain is assumed to be
+> `offshore-alliance.au`. Verify the exact spelling in your GoDaddy account
+> before creating DNS records — if it differs, use the registered spelling
+> everywhere this document says `offshore-alliance.au`.
+
 ---
 
-## 1. One-time SendGrid account setup (ops checklist, no code)
+## 0. SendGrid account & plan
 
-Work through these in order in the reveille.net.au SendGrid account.
+- **Account:** sign up / log in with `troy@reveille.net.au`. That is fine —
+  the SendGrid **account login identity is independent of the sending
+  domain**. One account can authenticate any number of domains; we will
+  authenticate `offshore-alliance.au` in it.
+- **Plan:** **Email API — Essentials, US$19.95/month for 50,000 emails/month**
+  is the right tier for the pilot and current volumes (a 200-email pilot plus
+  regular blasts sit comfortably inside 50k). Two Essentials caveats to know:
+  - Essentials uses **shared IPs** — fine at this volume; no IP warm-up
+    needed. A dedicated IP requires the Pro tier and is not needed now.
+  - Everything this module uses — Mail Send API, domain authentication, link
+    branding, **Event Webhook** and **Inbound Parse** — is included on
+    Essentials.
+- **Important — do NOT reuse the reveille.net.au domain authentication.** The
+  `reveille.net.au` DKIM/`_domainkey` CNAMEs already in that DNS zone belong
+  to a different email setup. Leave them untouched. We authenticate the new
+  `offshore-alliance.au` domain instead; the two coexist without conflict
+  (they live in different DNS zones entirely).
+
+## 1. One-time SendGrid setup (ops checklist, no code)
+
+Work through these in order in the SendGrid account. All DNS records below
+are created at **GoDaddy** (the registrar and DNS host for
+`offshore-alliance.au`).
 
 ### 1.1 Domain authentication (required before any live send)
 
 SendGrid → Settings → Sender Authentication → **Authenticate Your Domain**:
 
-- Domain: `reveille.net.au`
+- Domain: `offshore-alliance.au`
 - Use automated security (rotating DKIM) — yes.
 - SendGrid issues **3 CNAME records** (2 × DKIM `s1._domainkey` /
-  `s2._domainkey` + 1 return-path, e.g. `em1234.reveille.net.au`). Add them at
-  the DNS host for `reveille.net.au`, then click Verify.
+  `s2._domainkey` + 1 return-path, e.g. `em1234.offshore-alliance.au`). Add
+  them in GoDaddy → DNS for `offshore-alliance.au`, then click Verify.
+  (GoDaddy tip: enter only the host part, e.g. `s1._domainkey`, not the full
+  name — GoDaddy appends the domain automatically.)
 
 Without this, mail goes out `via sendgrid.net` and fails DMARC alignment.
 
@@ -32,14 +61,15 @@ Without this, mail goes out `via sendgrid.net` and fails DMARC alignment.
 
 SendGrid → Settings → Sender Authentication → **Brand Your Links**:
 
-- Subdomain suggestion: `link.reveille.net.au` (2 more CNAMEs).
+- Subdomain suggestion: `link.offshore-alliance.au` (2 more CNAMEs).
 - This makes SendGrid's click/open tracking URLs resolve on our domain rather
   than `sendgrid.net` — better deliverability and less alarming to recipients.
 
 ### 1.3 Purpose-built mailbox (the From / Reply-To identity)
 
-Create a **real mailbox** at the domain's mail provider, e.g.
-`organising@reveille.net.au`. This is:
+Create a **real mailbox** on the new domain, e.g.
+`organising@offshore-alliance.au` (GoDaddy sells Microsoft 365 mailboxes, or
+attach the domain to an existing Google Workspace / M365 tenancy). This is:
 
 - the From address on every platform send, and
 - the Reply-To address — replies land in the real mailbox (authoritative copy).
@@ -51,18 +81,18 @@ Record the final address + display name in Administration → Settings (see §3)
 Inbound Parse needs an MX record pointed at SendGrid, which cannot be the root
 domain (the real mailbox owns the root MX). So:
 
-1. DNS: add `parse.reveille.net.au` **MX 10 mx.sendgrid.net`**.
+1. GoDaddy DNS: add `parse.offshore-alliance.au` **MX 10 `mx.sendgrid.net`**.
 2. SendGrid → Settings → **Inbound Parse** → Add Host & URL:
-   - Receiving domain: `parse.reveille.net.au`
+   - Receiving domain: `parse.offshore-alliance.au`
    - Destination URL:
      `https://oa.uconstruct.app/api/email/inbound?token=<email_inbound_token>`
      (the token is seeded into `app_settings.email_inbound_token` by the
      migration; read it via Administration → Settings or SQL).
    - Leave "POST the raw, full MIME message" **unchecked** (we consume the
      parsed multipart fields).
-3. On the real mailbox (`organising@reveille.net.au`), add a **forwarding
+3. On the real mailbox (`organising@offshore-alliance.au`), add a **forwarding
    rule** that forwards a copy of every incoming message to
-   `inbox@parse.reveille.net.au`.
+   `inbox@parse.offshore-alliance.au`.
 
 Result: replies land in **both** the real mailbox and the in-app inbox
 (`/email/inbox`).
@@ -117,8 +147,8 @@ composer draft + wrapper pick
       → /api/email/webhook                        signed events → email_delivery_events
                                                   → email_send_log / email_list_items
                                                   → workers.email_status / email_opt_out
-recipient reply → organising@reveille.net.au (real mailbox, authoritative)
-      → forwarding rule → inbox@parse.reveille.net.au
+recipient reply → organising@offshore-alliance.au (real mailbox, authoritative)
+      → forwarding rule → inbox@parse.offshore-alliance.au
       → /api/email/inbound (Inbound Parse)        → email_conversations / email_messages
       → /email/inbox                              staff reply goes back out via SendGrid
 unsubscribe link → /u/[token]                     → workers.email_opt_out = true
@@ -149,7 +179,7 @@ Key modules:
 | `email_provider` | `EMAIL_PROVIDER` | `sendgrid` \| `mock` (empty = mock) |
 | `sendgrid_api_key` | `SENDGRID_API_KEY` | Mail Send key (§1.5) |
 | `sendgrid_webhook_public_key` | `SENDGRID_WEBHOOK_PUBLIC_KEY` | Signed Event Webhook verification key (§1.6) |
-| `email_from_address` | `EMAIL_FROM_ADDRESS` | e.g. `organising@reveille.net.au` |
+| `email_from_address` | `EMAIL_FROM_ADDRESS` | e.g. `organising@offshore-alliance.au` |
 | `email_from_name` | `EMAIL_FROM_NAME` | e.g. `Offshore Alliance` |
 | `email_reply_to` | `EMAIL_REPLY_TO` | Defaults to the from address |
 | `email_webhook_token` | — | Query-param fallback auth for `/api/email/webhook` (seeded random) |
@@ -175,12 +205,12 @@ Key modules:
 
 ## 3. Go-live: the 200-email pilot
 
-Preconditions: §1.1 (domain auth) verified, §1.5 key + §1.6 webhook configured,
-`email_provider` set to `sendgrid`, from address configured, default wrapper
-reviewed at `/email/wrappers`.
+Preconditions: §1.1 (domain auth for `offshore-alliance.au`) verified, §1.5
+key + §1.6 webhook configured, `email_provider` set to `sendgrid`, from
+address configured, default wrapper reviewed at `/email/wrappers`.
 
 1. **Test send to self.** In the composer: "Send test…" → "via platform".
-   Confirm: DKIM pass (`d=reveille.net.au` in headers), wrapper + footer
+   Confirm: DKIM pass (`d=offshore-alliance.au` in headers), wrapper + footer
    rendered, unsubscribe link resolves, reply lands in the real mailbox AND
    `/email/inbox`.
 2. **Internal send (~10 staff).** Build a small list, queue it, watch
@@ -194,7 +224,9 @@ reviewed at `/email/wrappers`.
    composer's "Platform email" menu inside the send window.
    200 fits in a single cron batch; no IP warm-up needed at this volume on
    shared IPs. Monitor: bounce rate (< 2% healthy), spam reports (0 expected),
-   delivered ≥ 97%.
+   delivered ≥ 97%. Note the domain is **brand new** with no sending history —
+   expect slightly softer inbox placement on the first sends; it improves as
+   positive engagement accrues.
 4. **Scale-up gate.** Only after the pilot: review bounce/spam/unsubscribe
    rates before larger lists. AN push stays available throughout.
 
@@ -211,5 +243,9 @@ reviewed at `/email/wrappers`.
   (§1.4.3) missing, or Inbound Parse host/URL misconfigured.
 - **Sends pause with "non-compliant"** → wrapper footer lost its
   `{{unsubscribe_url}}` placeholder; fix the wrapper at `/email/wrappers`.
-- **Mail lands in spam** → confirm §1.1 CNAMEs verify, add/align the DMARC
-  record for `reveille.net.au`, and check link branding (§1.2).
+- **Mail lands in spam** → confirm §1.1 CNAMEs verify in GoDaddy, add a DMARC
+  record for `offshore-alliance.au` (e.g. TXT `_dmarc` →
+  `v=DMARC1; p=none; rua=mailto:organising@offshore-alliance.au`), and check
+  link branding (§1.2). New domains take a few weeks to build reputation.
+- **DNS records not verifying** → GoDaddy auto-appends the domain: enter host
+  parts only (`s1._domainkey`, not `s1._domainkey.offshore-alliance.au`).

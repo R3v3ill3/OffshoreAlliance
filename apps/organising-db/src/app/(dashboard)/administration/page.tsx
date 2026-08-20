@@ -1728,13 +1728,14 @@ function SettingsTab() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Key className="h-4 w-4" />
-              Platform email (SendGrid — reveille.net.au)
+              Platform email (SendGrid — offshore-alliance.au)
             </CardTitle>
             <CardDescription>
-              On-platform email sending via the reveille.net.au SendGrid
-              account. Setup steps (domain authentication, webhooks, inbound
-              parse) are in docs/EMAIL_SENDGRID_SETUP.md. Use the mock
-              provider until live credentials are configured.
+              On-platform email sending via SendGrid from the
+              offshore-alliance.au domain. Setup steps (domain
+              authentication, webhooks, inbound parse) are in
+              docs/EMAIL_SENDGRID_SETUP.md. Use the mock provider until live
+              credentials are configured.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-2">
@@ -1770,7 +1771,7 @@ function SettingsTab() {
                 type="email"
                 value={emailFromAddress}
                 onChange={(e) => setEmailFromAddress(e.target.value)}
-                placeholder={loading ? "Loading…" : "organising@reveille.net.au"}
+                placeholder={loading ? "Loading…" : "organising@offshore-alliance.au"}
                 disabled={loading}
               />
             </div>
@@ -1789,7 +1790,7 @@ function SettingsTab() {
                 type="email"
                 value={emailReplyTo}
                 onChange={(e) => setEmailReplyTo(e.target.value)}
-                placeholder={loading ? "Loading…" : "organising@reveille.net.au"}
+                placeholder={loading ? "Loading…" : "organising@offshore-alliance.au"}
                 disabled={loading}
               />
             </div>

@@ -2,7 +2,7 @@
 
 /**
  * Hybrid email inbox — replies to platform sends, forwarded from the
- * real reveille.net.au mailbox via SendGrid Inbound Parse. Structural
+ * real offshore-alliance.au mailbox via SendGrid Inbound Parse. Structural
  * clone of the SMS inbox: conversation list with state filters on the
  * left, thread + reply pane on the right, staff opt-out toggle.
  *
@@ -179,7 +179,7 @@ export default function EmailInboxPage() {
           Email inbox
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Replies to platform sends, forwarded from the reveille.net.au
+          Replies to platform sends, forwarded from the offshore-alliance.au
           mailbox. The mailbox keeps the authoritative copy — replies sent
           here go out via the platform.
         </p>

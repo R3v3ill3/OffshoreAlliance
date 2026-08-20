@@ -1,5 +1,5 @@
 -- ============================================================
--- Platform email sending (SendGrid, reveille.net.au) — Phase 1
+-- Platform email sending (SendGrid, offshore-alliance.au) — Phase 1
 --
 -- Clone of the SMS module's Phase 0/1 groundwork for the email
 -- channel (see 20260810100000_sms_foundations.sql and
@@ -566,7 +566,7 @@ COMMENT ON TABLE email_unsubscribe_tokens IS
   'Per-(worker, send) unsubscribe tokens for /u/[token]. Service-role only.';
 COMMENT ON TABLE email_conversations IS
   'Email threads for the hybrid in-app inbox, fed by SendGrid Inbound '
-  'Parse (forwarded from the real reveille.net.au mailbox). One thread '
+  'Parse (forwarded from the real offshore-alliance.au mailbox). One thread '
   'per member address per campaign scope (UNIQUE NULLS NOT DISTINCT).';
 COMMENT ON TABLE email_messages IS
   'Per-message rows in an email conversation (inbound + outbound). '

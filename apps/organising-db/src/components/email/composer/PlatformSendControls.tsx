@@ -267,7 +267,7 @@ export function PlatformSendControls({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-80">
           <DropdownMenuLabel className="text-[10px] uppercase tracking-wide">
-            Send from the platform (SendGrid — reveille.net.au)
+            Send from the platform (SendGrid — offshore-alliance.au)
           </DropdownMenuLabel>
           <DropdownMenuItem
             onClick={() => {

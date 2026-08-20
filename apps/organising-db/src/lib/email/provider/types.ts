@@ -1,14 +1,14 @@
 /**
  * Email provider interface — modelled on `lib/sms/provider/types.ts`.
  *
- * First implementation is SendGrid (the reveille.net.au account); a mock
- * provider covers local dev and tests. The interface keeps a future
+ * First implementation is SendGrid; a mock provider covers local dev and
+ * tests. The interface keeps a future
  * provider swap (SES, Postmark, etc.) cheap: consumers only ever see
  * `getEmailProvider()` from `@/lib/email/provider`.
  */
 
 export interface EmailSenderIdentity {
-  /** e.g. organising@reveille.net.au — must be on the authenticated domain. */
+  /** e.g. organising@offshore-alliance.au — must be on the authenticated domain. */
   fromEmail: string;
   /** Display name, e.g. "Offshore Alliance". */
   fromName: string;

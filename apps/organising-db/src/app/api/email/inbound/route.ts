@@ -1,7 +1,7 @@
 /**
  * SendGrid Inbound Parse webhook — the in-app leg of the hybrid inbox.
  *
- * The real mailbox (e.g. organising@reveille.net.au) stays the
+ * The real mailbox (e.g. organising@offshore-alliance.au) stays the
  * authoritative copy; a forwarding rule sends a copy of every incoming
  * message to inbox@parse.<domain>, whose MX points at SendGrid, which
  * POSTs the parsed message here as multipart/form-data.

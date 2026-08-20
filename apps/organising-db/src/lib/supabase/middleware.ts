@@ -56,7 +56,12 @@ export async function updateSession(request: NextRequest) {
     !pathname.startsWith("/leader/task") &&
     // Shareable mobile call dialer is token-gated (URL token + password session
     // cookie); volunteers must reach it without a Supabase user session.
-    !pathname.startsWith("/call/")
+    !pathname.startsWith("/call/") &&
+    // Public email-recipient endpoints: click-tracking redirector and the
+    // unsubscribe page. Both are token-addressed and must work for
+    // recipients with no app session.
+    !pathname.startsWith("/r/") &&
+    !pathname.startsWith("/u/")
   ) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";

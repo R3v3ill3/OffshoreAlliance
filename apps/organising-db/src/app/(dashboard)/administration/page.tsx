@@ -1586,6 +1586,8 @@ function SettingsTab() {
   const [emailFromAddress, setEmailFromAddress] = useState("");
   const [emailFromName, setEmailFromName] = useState("");
   const [emailReplyTo, setEmailReplyTo] = useState("");
+  const [emailWebhookToken, setEmailWebhookToken] = useState("");
+  const [emailInboundToken, setEmailInboundToken] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -1605,6 +1607,8 @@ function SettingsTab() {
         setEmailFromAddress(data.email_from_address ?? "");
         setEmailFromName(data.email_from_name ?? "");
         setEmailReplyTo(data.email_reply_to ?? "");
+        setEmailWebhookToken(data.email_webhook_token ?? "");
+        setEmailInboundToken(data.email_inbound_token ?? "");
       })
       .catch(() => setLoadError("Failed to load settings"))
       .finally(() => setLoading(false));
@@ -1804,6 +1808,36 @@ function SettingsTab() {
                 disabled={loading}
               />
             </div>
+            <div className="space-y-2 md:col-span-2 rounded-md border bg-muted/40 p-3">
+              <Label className="text-xs uppercase tracking-wide">
+                Webhook URLs (paste into SendGrid — tokens are seeded by the
+                migration)
+              </Label>
+              <WebhookUrlRow
+                label="Event Webhook URL (SendGrid → Mail Settings → Event Webhook)"
+                url={
+                  emailWebhookToken
+                    ? `${typeof window !== "undefined" ? window.location.origin : ""}/api/email/webhook?token=${emailWebhookToken}`
+                    : ""
+                }
+                loading={loading}
+              />
+              <WebhookUrlRow
+                label="Inbound Parse URL (SendGrid → Settings → Inbound Parse)"
+                url={
+                  emailInboundToken
+                    ? `${typeof window !== "undefined" ? window.location.origin : ""}/api/email/inbound?token=${emailInboundToken}`
+                    : ""
+                }
+                loading={loading}
+              />
+              {!loading && !emailWebhookToken && !emailInboundToken && (
+                <p className="text-xs text-amber-700">
+                  Tokens not found — the 20260820100000 migration has not been
+                  applied to this database yet (supabase db push).
+                </p>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -1814,6 +1848,42 @@ function SettingsTab() {
       </Button>
 
       <SmsStatusPanel />
+    </div>
+  );
+}
+
+// ---------- Webhook URL readout (copyable) ----------
+
+function WebhookUrlRow({
+  label,
+  url,
+  loading,
+}: {
+  label: string;
+  url: string;
+  loading: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  if (loading || !url) return null;
+  return (
+    <div className="space-y-1">
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <div className="flex items-center gap-2">
+        <Input readOnly value={url} className="font-mono text-xs" />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            void navigator.clipboard.writeText(url).then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            });
+          }}
+        >
+          {copied ? "Copied!" : "Copy"}
+        </Button>
+      </div>
     </div>
   );
 }

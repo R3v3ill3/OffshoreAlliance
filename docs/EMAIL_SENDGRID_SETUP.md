@@ -144,6 +144,10 @@ Inbound Parse needs an MX record pointed at SendGrid, which cannot be the root
 domain (the real mailbox owns the root MX). So:
 
 1. GoDaddy DNS: add `parse.offshore-alliance.au` **MX 10 `mx.sendgrid.net`**.
+   Field-by-field in GoDaddy: Type = `MX`, Name = `parse` (host part only —
+   GoDaddy appends the domain), Priority = `10`, Value = `mx.sendgrid.net`,
+   TTL = default. This MX only affects mail to `…@parse.offshore-alliance.au`;
+   the root domain's MX (the M365 mailbox) is untouched.
 2. SendGrid → Settings → **Inbound Parse** → Add Host & URL:
    - Receiving domain: `parse.offshore-alliance.au`
    - Destination URL:

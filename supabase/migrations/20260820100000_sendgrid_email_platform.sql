@@ -153,6 +153,44 @@ CREATE INDEX IF NOT EXISTS idx_ede_occurred ON email_delivery_events(occurred_at
 CREATE INDEX IF NOT EXISTS idx_ede_send ON email_delivery_events(send_id)
   WHERE send_id IS NOT NULL;
 
+-- Atomic engagement counters (never read-modify-write from the webhook —
+-- the increment_sms_reply_count idiom). Service-role only.
+CREATE OR REPLACE FUNCTION increment_email_open_count(
+  p_send_id BIGINT,
+  p_occurred_at TIMESTAMPTZ DEFAULT now()
+)
+RETURNS VOID
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  UPDATE email_send_log
+  SET open_count = open_count + 1,
+      first_open_at = COALESCE(first_open_at, p_occurred_at)
+  WHERE send_id = p_send_id;
+$$;
+
+REVOKE EXECUTE ON FUNCTION increment_email_open_count(BIGINT, TIMESTAMPTZ) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION increment_email_open_count(BIGINT, TIMESTAMPTZ) TO service_role;
+
+CREATE OR REPLACE FUNCTION increment_email_click_count(
+  p_send_id BIGINT,
+  p_occurred_at TIMESTAMPTZ DEFAULT now()
+)
+RETURNS VOID
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  UPDATE email_send_log
+  SET click_count = click_count + 1,
+      first_click_at = COALESCE(first_click_at, p_occurred_at)
+  WHERE send_id = p_send_id;
+$$;
+
+REVOKE EXECUTE ON FUNCTION increment_email_click_count(BIGINT, TIMESTAMPTZ) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION increment_email_click_count(BIGINT, TIMESTAMPTZ) TO service_role;
+
 -- ─────────────────────────────────────────────────────────────
 -- 6. email_wrappers
 -- ─────────────────────────────────────────────────────────────

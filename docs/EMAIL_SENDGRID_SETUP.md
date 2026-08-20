@@ -137,6 +137,7 @@ Key modules:
 | Wrapper CRUD | `/email/wrappers` UI + `/api/email/wrappers` |
 | In-app inbox | `/email/inbox` UI + `/api/email/conversations` |
 | Queue + test-send routes | `/api/campaigns/[id]/emails/[draftId]/{queue-platform-send,send-test-via-platform,platform-stats}` |
+| Audience CSV upload | `/campaigns/[id]/email/import` UI + `/api/campaigns/[id]/email-audience/import` (consent attestation required) |
 | Migration | `supabase/migrations/20260820100000_sendgrid_email_platform.sql` |
 
 ### Settings / secrets
@@ -186,7 +187,11 @@ reviewed at `/email/wrappers`.
    `/api/cron/dispatch-email-queue` drain it. Verify delivered events arrive
    in the stats panel, click a tracked link, unsubscribe one address and
    confirm `workers.email_opt_out` flips and the next queue screens it out.
-3. **The 200 send.** Queue the 200-recipient list inside the send window.
+3. **The 200 send.** Build the list internally (wall chart / list builder)
+   or upload it at `/campaigns/[id]/email/import` (consent attestation
+   required; matched addresses link to existing workers, new ones create
+   workers with `email_consent_source = 'import'`). Queue it from the
+   composer's "Platform email" menu inside the send window.
    200 fits in a single cron batch; no IP warm-up needed at this volume on
    shared IPs. Monitor: bounce rate (< 2% healthy), spam reports (0 expected),
    delivered ≥ 97%.

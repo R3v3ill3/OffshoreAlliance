@@ -57,6 +57,25 @@ SendGrid → Settings → Sender Authentication → **Authenticate Your Domain**
 
 Without this, mail goes out `via sendgrid.net` and fails DMARC alignment.
 
+**DMARC record (`_dmarc` TXT):** GoDaddy pre-creates one on new domains
+(`v=DMARC1; p=quarantine; adkim=r; aspf=r; rua=mailto:dmarc_rua@onsecureserver.net;`)
+and SendGrid's wizard asks for the same record under its fully-qualified
+name `_dmarc.offshore-alliance.au` — they are the SAME record, not a
+conflict (GoDaddy appends the domain to the `_dmarc` host). **Keep exactly
+one** `_dmarc` TXT record; publishing two is invalid and breaks DMARC at
+receivers. Edit the existing record in place:
+
+- `p=quarantine` → `p=none` for the pilot period (a brand-new domain with
+  `quarantine` sends any alignment hiccup to spam while the setup is still
+  being proven). Tighten back to `p=quarantine` once the pilot shows clean
+  `d=offshore-alliance.au` DKIM alignment.
+- `rua=mailto:dmarc_rua@onsecureserver.net` → a mailbox we actually read,
+  e.g. `rua=mailto:organising@offshore-alliance.au`, so the aggregate
+  reports come to us rather than GoDaddy.
+
+Pilot-period record:
+`v=DMARC1; p=none; adkim=r; aspf=r; rua=mailto:organising@offshore-alliance.au;`
+
 ### 1.2 Link branding (recommended)
 
 SendGrid → Settings → Sender Authentication → **Brand Your Links**:
@@ -243,9 +262,9 @@ address configured, default wrapper reviewed at `/email/wrappers`.
   (§1.4.3) missing, or Inbound Parse host/URL misconfigured.
 - **Sends pause with "non-compliant"** → wrapper footer lost its
   `{{unsubscribe_url}}` placeholder; fix the wrapper at `/email/wrappers`.
-- **Mail lands in spam** → confirm §1.1 CNAMEs verify in GoDaddy, add a DMARC
-  record for `offshore-alliance.au` (e.g. TXT `_dmarc` →
-  `v=DMARC1; p=none; rua=mailto:organising@offshore-alliance.au`), and check
-  link branding (§1.2). New domains take a few weeks to build reputation.
+- **Mail lands in spam** → confirm §1.1 CNAMEs verify in GoDaddy, check the
+  single `_dmarc` record matches the §1.1 pilot-period value (and that a
+  duplicate wasn't created), and check link branding (§1.2). New domains
+  take a few weeks to build reputation.
 - **DNS records not verifying** → GoDaddy auto-appends the domain: enter host
   parts only (`s1._domainkey`, not `s1._domainkey.offshore-alliance.au`).

@@ -202,6 +202,7 @@ const STATUS_VALUE_KEYS = [
 ];
 const STATUS_TIME_KEYS = [
   "occurred_at",
+  "received_at",
   "timestamp",
   "status_at",
   "updated_at",
@@ -247,11 +248,13 @@ function normaliseEventType(
 
 /**
  * Last-resort classification for payloads whose `type` we do not
- * recognise. Deliberately conservative: a delivery receipt is only
- * inferred when the payload carries a status value that maps to a
- * *known* delivery state alongside a message id, and carries no message
- * body (which would make it an inbound reply). Anything ambiguous stays
- * unknown rather than being mis-routed.
+ * recognise. Mobile Message's documented status webhook omits `type`
+ * and includes the original SMS `message` body plus `status` +
+ * `message_id`. Treat that shape as a delivery receipt first — requiring
+ * "no body" used to classify every live DLR as inbound, which pinned
+ * blast delivery rates at 0%. Inbound replies carry `type: "inbound"`
+ * (so they never reach this helper) or a body without a mappable
+ * delivery `status`.
  */
 function inferEventType(
   payload: Record<string, unknown>,
@@ -261,7 +264,6 @@ function inferEventType(
   const hasId = pickString(payload, STATUS_ID_KEYS) !== null;
 
   if (
-    !hasBody &&
     hasId &&
     statusValue !== null &&
     mapDeliveryStatus(statusValue) !== "unknown"

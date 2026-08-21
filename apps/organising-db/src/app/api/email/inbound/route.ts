@@ -60,6 +60,42 @@ function headerValue(rawHeaders: string, name: string): string | null {
   return m ? m[1].trim() : null
 }
 
+/**
+ * Parse the Inbound Parse POST robustly. SendGrid sends Content-Type
+ * variants that undici's strict req.formData() rejects with
+ * `Content-Type was not one of "multipart/form-data" or
+ * "application/x-www-form-urlencoded"`. Read the raw bytes, recover the
+ * multipart boundary (from the header, or sniffed from the body's first
+ * line), and re-wrap with a canonical Content-Type before parsing.
+ */
+async function parseInboundForm(req: NextRequest): Promise<FormData> {
+  const raw = Buffer.from(await req.arrayBuffer())
+  const contentType = req.headers.get('content-type') ?? ''
+
+  if (/application\/x-www-form-urlencoded/i.test(contentType)) {
+    return new Response(raw, {
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    }).formData()
+  }
+
+  let boundary =
+    contentType.match(/boundary\s*=\s*"?([^";,]+)"?/i)?.[1]?.trim() ?? null
+  if (!boundary && raw.subarray(0, 2).toString('latin1') === '--') {
+    const nl = raw.indexOf('\r\n')
+    const end = nl > 2 ? nl : raw.indexOf('\n')
+    if (end > 2) boundary = raw.subarray(2, end).toString('utf8').trim()
+  }
+  if (!boundary) {
+    throw new Error(
+      `Unparseable inbound payload — content-type: "${contentType}", ` +
+        `body starts with: ${JSON.stringify(raw.subarray(0, 80).toString('latin1'))}`,
+    )
+  }
+  return new Response(raw, {
+    headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+  }).formData()
+}
+
 export async function POST(req: NextRequest) {
   try {
     const admin = createAdminClient()
@@ -77,7 +113,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Parse the multipart payload ──────────────────────────
-    const form = await req.formData()
+    const form = await parseInboundForm(req)
     const field = (name: string): string | null => {
       const v = form.get(name)
       return typeof v === 'string' ? v : null

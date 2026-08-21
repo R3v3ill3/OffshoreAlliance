@@ -28,6 +28,10 @@ import type {
 } from "@/types/database";
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
 import {
+  stampEmployerWorksiteFromOu,
+  syncWorkersToMatchingCampaigns,
+} from "@/lib/workers/sync-campaign-universe";
+import {
   campaignOrganiserPickerValueForUser,
   resolveCampaignOrganiserId,
 } from "@/lib/campaign/resolve-campaign-organiser";
@@ -1114,6 +1118,19 @@ export function CampaignWizard() {
             .from("campaign_worker_ou")
             .insert(allocationRows);
           if (error) throw error;
+        }
+
+        for (const u of units) {
+          if (u.ou_id == null || !u.unit_basis) continue;
+          const ids = selectedWorkers.filter((wid) =>
+            workerUnitAllocations[wid]?.has(u.ou_id as number)
+          );
+          if (ids.length > 0) {
+            await stampEmployerWorksiteFromOu(supabase, ids, u.unit_basis);
+          }
+        }
+        if (selectedWorkers.length > 0) {
+          await syncWorkersToMatchingCampaigns(supabase, selectedWorkers);
         }
       });
     },

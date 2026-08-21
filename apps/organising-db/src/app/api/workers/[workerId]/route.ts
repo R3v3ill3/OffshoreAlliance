@@ -28,6 +28,7 @@ import { createClient } from '@/lib/supabase/server'
 import { errorResponse } from '@/lib/api/error-response'
 import { checkRateLimit } from '@/lib/rate-limit-middleware'
 import { toE164 } from '@/lib/phone/normalise-phone'
+import { syncWorkersToMatchingCampaigns } from '@/lib/workers/sync-campaign-universe'
 
 const WORKER_SELECT = `
   worker_id, first_name, last_name, preferred_name, email, phone,
@@ -286,6 +287,17 @@ export async function PATCH(
         if (logErr) {
           console.error('worker_activity_log insert failed:', logErr)
         }
+      }
+    }
+
+    if (
+      ('employer_id' in fieldDiff || 'worksite_id' in fieldDiff) &&
+      (after.employer_id != null || after.worksite_id != null)
+    ) {
+      try {
+        await syncWorkersToMatchingCampaigns(supabase, [workerId])
+      } catch (syncErr) {
+        console.error('syncWorkersToMatchingCampaigns failed:', syncErr)
       }
     }
 

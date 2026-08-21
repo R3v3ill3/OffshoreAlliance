@@ -60,7 +60,7 @@ export function ImportParticipationDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="flex max-h-[88vh] max-w-3xl flex-col overflow-hidden">
+      <DialogContent className="flex max-h-[88vh] max-w-4xl flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>{STEP_TITLES[step]}</DialogTitle>
         </DialogHeader>
@@ -70,7 +70,9 @@ export function ImportParticipationDialog({
           {step === "assessment" && (
             <StepAssessment campaignId={campaignId} controller={controller} />
           )}
-          {step === "mapping" && <StepMapping controller={controller} />}
+          {step === "mapping" && (
+            <StepMapping campaignId={campaignId} controller={controller} />
+          )}
           {step === "match" && <StepMatch controller={controller} />}
           {(step === "review" || step === "done") && <StepReview controller={controller} />}
         </div>

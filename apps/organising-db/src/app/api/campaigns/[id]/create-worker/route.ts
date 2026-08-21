@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { toE164 } from "@/lib/phone/normalise-phone";
+import {
+  matchRow,
+  buildWorkerIndex,
+  type MatchableWorker,
+} from "@/lib/import/worker-matching";
+import {
+  stampEmployerWorksiteFromOu,
+  syncWorkersToMatchingCampaigns,
+} from "@/lib/workers/sync-campaign-universe";
 
 const createWorkerSchema = z.object({
   first_name: z.string().trim().min(1).max(100),
@@ -11,12 +20,109 @@ const createWorkerSchema = z.object({
   employer_id: z.number().int().positive().optional().nullable(),
   worksite_id: z.number().int().positive().optional().nullable(),
   ou_id: z.number().int().positive().optional().nullable(),
+  /** Attach this existing worker instead of inserting a new row. */
+  attach_existing_worker_id: z.number().int().positive().optional().nullable(),
+  /** Bypass duplicate confirmation and insert anyway. */
+  force_create: z.boolean().optional(),
 });
 
 function emptyToNull(v: string | null | undefined): string | null {
   if (v == null) return null;
   const t = v.trim();
   return t === "" ? null : t;
+}
+
+type DuplicateMatch = {
+  worker_id: number;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  phone: string | null;
+  method: "email" | "phone" | "name" | "an_id";
+  in_campaign: boolean;
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function loadDuplicateCandidates(
+  supabase: any,
+  campaignId: number,
+  identity: { email: string | null; phone: string | null; first_name: string; last_name: string }
+): Promise<MatchableWorker[]> {
+  const byId = new Map<number, MatchableWorker>();
+
+  const take = (rows: {
+    worker_id: number;
+    first_name: string;
+    last_name: string;
+    preferred_name: string | null;
+    email: string | null;
+    phone: string | null;
+  }[]) => {
+    for (const row of rows) {
+      if (byId.has(row.worker_id)) continue;
+      byId.set(row.worker_id, {
+        worker_id: row.worker_id,
+        first_name: row.first_name,
+        last_name: row.last_name,
+        preferred_name: row.preferred_name,
+        email: row.email,
+        phone: row.phone,
+        in_campaign: false,
+      });
+    }
+  };
+
+  const select =
+    "worker_id, first_name, last_name, preferred_name, email, phone";
+
+  if (identity.email) {
+    const { data } = await supabase
+      .from("workers")
+      .select(select)
+      .ilike("email", identity.email)
+      .limit(20);
+    take(data ?? []);
+  }
+
+  const e164 = toE164(identity.phone);
+  if (e164) {
+    const { data } = await supabase
+      .from("workers")
+      .select(select)
+      .eq("phone_e164", e164)
+      .limit(20);
+    take(data ?? []);
+  }
+  if (identity.phone) {
+    const { data } = await supabase
+      .from("workers")
+      .select(select)
+      .eq("phone", identity.phone)
+      .limit(20);
+    take(data ?? []);
+  }
+
+  const { data: nameHits } = await supabase
+    .from("workers")
+    .select(select)
+    .ilike("first_name", identity.first_name)
+    .ilike("last_name", identity.last_name)
+    .limit(20);
+  take(nameHits ?? []);
+
+  const ids = [...byId.keys()];
+  if (ids.length === 0) return [];
+
+  const { data: members } = await supabase
+    .from("campaign_worker_membership")
+    .select("worker_id")
+    .eq("campaign_id", campaignId)
+    .in("worker_id", ids);
+  const inCampaign = new Set((members ?? []).map((r: { worker_id: number }) => r.worker_id));
+  for (const worker of byId.values()) {
+    worker.in_campaign = inCampaign.has(worker.worker_id);
+  }
+  return [...byId.values()];
 }
 
 export async function POST(
@@ -111,10 +217,11 @@ export async function POST(
     }
   }
 
+  let ouUnitBasis: unknown = null;
   if (body.ou_id != null) {
     const { data: ouRow, error: ouErr } = await supabase
       .from("campaign_organising_units")
-      .select("ou_id, is_group_container")
+      .select("ou_id, is_group_container, unit_basis")
       .eq("ou_id", body.ou_id)
       .eq("campaign_id", campaignId)
       .maybeSingle();
@@ -133,6 +240,136 @@ export async function POST(
         },
         { status: 400 }
       );
+    }
+    ouUnitBasis = (ouRow as { unit_basis: unknown }).unit_basis;
+  }
+
+  const finishAttach = async (workerId: number, fillBlanks: boolean) => {
+    const { error: memErr } = await supabase.from("campaign_worker_membership").upsert(
+      { campaign_id: campaignId, worker_id: workerId },
+      {
+        onConflict: "campaign_id,worker_id",
+        ignoreDuplicates: true,
+      }
+    );
+    if (memErr) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Membership failed: ${memErr.message}`,
+        },
+        { status: 500 }
+      );
+    }
+
+    if (fillBlanks && (body.employer_id != null || body.worksite_id != null)) {
+      const { data: existing } = await supabase
+        .from("workers")
+        .select("employer_id, worksite_id")
+        .eq("worker_id", workerId)
+        .maybeSingle();
+      const patch: { employer_id?: number; worksite_id?: number } = {};
+      if (body.employer_id != null && existing?.employer_id == null) {
+        patch.employer_id = body.employer_id;
+      }
+      if (body.worksite_id != null && existing?.worksite_id == null) {
+        patch.worksite_id = body.worksite_id;
+      }
+      if (Object.keys(patch).length > 0) {
+        await supabase.from("workers").update(patch).eq("worker_id", workerId);
+      }
+    }
+
+    if (body.ou_id != null) {
+      const { error: ouAssignErr } = await supabase.from("campaign_worker_ou").upsert(
+        {
+          ou_id: body.ou_id,
+          worker_id: workerId,
+          is_primary: false,
+          assignment_source: "manual",
+        },
+        {
+          onConflict: "ou_id,worker_id",
+          ignoreDuplicates: true,
+        }
+      );
+      if (ouAssignErr) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `OU assignment failed: ${ouAssignErr.message}`,
+          },
+          { status: 500 }
+        );
+      }
+      await stampEmployerWorksiteFromOu(supabase, [workerId], ouUnitBasis);
+    }
+
+    await syncWorkersToMatchingCampaigns(supabase, [workerId]);
+    return NextResponse.json({
+      success: true,
+      worker_id: workerId,
+      attached_existing: fillBlanks,
+    });
+  };
+
+  if (body.attach_existing_worker_id != null) {
+    const { data: existing, error: exErr } = await supabase
+      .from("workers")
+      .select("worker_id")
+      .eq("worker_id", body.attach_existing_worker_id)
+      .maybeSingle();
+    if (exErr || !existing) {
+      return NextResponse.json(
+        { success: false, error: "Existing worker not found" },
+        { status: 404 }
+      );
+    }
+    return finishAttach(body.attach_existing_worker_id, true);
+  }
+
+  if (!body.force_create) {
+    const candidates = await loadDuplicateCandidates(supabase, campaignId, {
+      email,
+      phone,
+      first_name: body.first_name,
+      last_name: body.last_name,
+    });
+    if (candidates.length > 0) {
+      const result = matchRow(
+        {
+          key: "new",
+          emails: email ? [email] : [],
+          phones: phone ? [phone] : [],
+          firstName: body.first_name,
+          lastName: body.last_name,
+        },
+        buildWorkerIndex(candidates)
+      );
+      if (result.disposition !== "unmatched" && result.candidates.length > 0) {
+        const matches: DuplicateMatch[] = result.candidates.map((c) => ({
+          worker_id: c.worker.worker_id,
+          first_name: c.worker.first_name,
+          last_name: c.worker.last_name,
+          email: c.worker.email,
+          phone: c.worker.phone,
+          method: c.method,
+          in_campaign: c.worker.in_campaign,
+        }));
+        const alreadyIn = matches.filter((m) => m.in_campaign);
+        return NextResponse.json(
+          {
+            success: false,
+            code: result.disposition === "auto" ? "duplicate" : "possible_duplicate",
+            error:
+              alreadyIn.length > 0
+                ? `${alreadyIn[0].first_name} ${alreadyIn[0].last_name} is already in this campaign.`
+                : `A matching worker already exists in the database.`,
+            matches,
+          },
+          { status: 409 }
+        );
+      }
     }
   }
 
@@ -163,51 +400,5 @@ export async function POST(
     );
   }
 
-  const workerId = inserted.worker_id as number;
-
-  const { error: memErr } = await supabase.from("campaign_worker_membership").upsert(
-    { campaign_id: campaignId, worker_id: workerId },
-    {
-      onConflict: "campaign_id,worker_id",
-      ignoreDuplicates: true,
-    }
-  );
-  if (memErr) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: `Membership failed: ${memErr.message}`,
-      },
-      { status: 500 }
-    );
-  }
-
-  if (body.ou_id != null) {
-    const { error: ouAssignErr } = await supabase.from("campaign_worker_ou").upsert(
-      {
-        ou_id: body.ou_id,
-        worker_id: workerId,
-        is_primary: false,
-        assignment_source: "manual",
-      },
-      {
-        onConflict: "ou_id,worker_id",
-        ignoreDuplicates: true,
-      }
-    );
-    if (ouAssignErr) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `OU assignment failed: ${ouAssignErr.message}`,
-        },
-        { status: 500 }
-      );
-    }
-  }
-
-  return NextResponse.json({
-    success: true,
-    worker_id: workerId,
-  });
+  return finishAttach(inserted.worker_id as number, false);
 }

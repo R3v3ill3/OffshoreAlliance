@@ -2,9 +2,11 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Download, LayoutGrid, List } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { fetchApi } from "@/lib/api/fetch-api";
 import { CampaignWallChart } from "../campaign-wall-chart";
 import { ImportParticipationDialog } from "../wall-chart/participation-import/import-participation-dialog";
 import { WorkforceListView } from "./workforce-list-view";
@@ -44,6 +46,33 @@ export function WorkforceBoard({
   );
 
   const [importOpen, setImportOpen] = useState(false);
+  const queryClient = useQueryClient();
+
+  useQuery({
+    queryKey: ["sync-universe-workers", campaignId],
+    queryFn: async () => {
+      const res = await fetchApi(`/api/campaigns/${campaignId}/sync-universe-workers`, {
+        method: "POST",
+      });
+      const json = (await res.json()) as {
+        success?: boolean;
+        workersAdded?: number;
+        error?: string;
+      };
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Universe sync failed");
+      }
+      if ((json.workersAdded ?? 0) > 0) {
+        queryClient.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
+        queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
+      }
+      return json;
+    },
+    enabled: canWrite,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
 
   return (
     <div className="space-y-3">

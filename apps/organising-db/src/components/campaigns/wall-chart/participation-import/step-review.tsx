@@ -34,6 +34,15 @@ export function StepReview({ controller }: { controller: ParticipationImportCont
           {result.non_responders_marked > 0 && (
             <SummaryItem label="Non-responders marked" value={result.non_responders_marked} />
           )}
+          {result.extra_ratings_applied > 0 && (
+            <SummaryItem label="Extra assessment entries" value={result.extra_ratings_applied} />
+          )}
+          {result.contacts_promoted > 0 && (
+            <SummaryItem label="Promoted to Contact" value={result.contacts_promoted} />
+          )}
+          {result.contacts_already_leader > 0 && (
+            <SummaryItem label="Already Contact / Activist / Delegate" value={result.contacts_already_leader} />
+          )}
         </dl>
         <p className="text-xs text-muted-foreground">
           The wall chart and list view have been refreshed. Select the
@@ -58,8 +67,55 @@ export function StepReview({ controller }: { controller: ParticipationImportCont
         {preview.non_responder_count > 0 && (
           <SummaryItem label="Non-responders to mark" value={preview.non_responder_count} />
         )}
+        {preview.extra_ratings_to_create + preview.extra_ratings_to_update > 0 && (
+          <SummaryItem
+            label="Extra assessment entries"
+            value={preview.extra_ratings_to_create + preview.extra_ratings_to_update}
+          />
+        )}
+        {preview.contacts_to_promote > 0 && (
+          <SummaryItem label="Promote to Contact" value={preview.contacts_to_promote} />
+        )}
+        {preview.contacts_already_leader > 0 && (
+          <SummaryItem
+            label="Already Contact / Activist / Delegate"
+            value={preview.contacts_already_leader}
+          />
+        )}
       </dl>
 
+      {preview.extra_conflicts.length > 0 && (
+        <div className="space-y-1.5">
+          <h4 className="text-xs font-semibold text-amber-700 dark:text-amber-500">
+            {preview.extra_conflicts.length} extra-assessment{" "}
+            {preview.extra_conflicts.length === 1 ? "entry" : "entries"} already exist
+          </h4>
+          <div className="max-h-48 overflow-y-auto rounded-md border">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b bg-muted/40 text-left">
+                  <th className="p-2 font-medium">Worker</th>
+                  <th className="p-2 font-medium">Assessment</th>
+                  <th className="p-2 font-medium">Current</th>
+                  <th className="p-2 font-medium">Imported</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.extra_conflicts.map((c) => (
+                  <tr key={c.key} className="border-b last:border-0">
+                    <td className="p-2">{c.worker_name}</td>
+                    <td className="p-2">{c.activity_label ?? "—"}</td>
+                    <td className="p-2">
+                      {describeValue(c.existing_rating, c.existing_binary_value)}
+                    </td>
+                    <td className="p-2">{describeValue(c.new_rating, c.new_binary_value)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {preview.conflicts.length > 0 && (
         <div className="space-y-1.5">
           <h4 className="text-xs font-semibold text-amber-700 dark:text-amber-500">

@@ -54,7 +54,6 @@ export function autoMapParticipationHeader(header: string): ParticipationMappabl
       "can2phone",
       "canphone",
       "contactnumber",
-      "contact",
       "mob",
     ].includes(h)
   )
@@ -77,6 +76,107 @@ export interface ResponseValueMapping {
   rawValue: string;
   count: number;
   target: ResponseValueTarget;
+}
+
+// ─── Extra CSV column mappings (multi-target) ────────────────────────────────
+
+/** How a cell in an extra-mapping column is interpreted. */
+export type ExtraMatchMode = "truthy" | "contains" | "exact";
+
+export const EXTRA_MATCH_MODES: { value: ExtraMatchMode; label: string; help: string }[] = [
+  {
+    value: "truthy",
+    label: "Checked / yes",
+    help: "Matches Action Network checkbox columns (1) and yes/true/checked.",
+  },
+  {
+    value: "contains",
+    label: "Contains text",
+    help: "Matches when the cell contains a phrase — use for combined multi-select answers.",
+  },
+  {
+    value: "exact",
+    label: "Map each value",
+    help: "List distinct answers and map each one, same as the main response column.",
+  },
+];
+
+/** Values AN checkbox / yes-no columns commonly store when the option is selected. */
+const TRUTHY_CELLS = new Set([
+  "1",
+  "yes",
+  "y",
+  "true",
+  "t",
+  "checked",
+  "x",
+  "on",
+  "selected",
+]);
+
+export function isTruthyCell(raw: string): boolean {
+  return TRUTHY_CELLS.has(raw.trim().toLowerCase());
+}
+
+/**
+ * Case-insensitive substring match. Splits the cell on common multi-select
+ * separators first so "Be a contact, Ask others" matches "be a contact"
+ * without also matching a shorter token that is only part of another option
+ * when the token itself is present as a whole segment.
+ *
+ * Falls back to a raw substring check so organisers can still match a phrase
+ * inside a sentence-length answer.
+ */
+export function cellContainsToken(raw: string, token: string): boolean {
+  const needle = token.trim().toLowerCase();
+  if (!needle) return false;
+  const cell = raw.trim().toLowerCase();
+  if (!cell) return false;
+  const segments = cell.split(/[,;/|]|\band\b/).map((s) => s.trim()).filter(Boolean);
+  if (segments.some((s) => s === needle || s.includes(needle))) return true;
+  return cell.includes(needle);
+}
+
+export type ExtraMatchSpec =
+  | { mode: "truthy" }
+  | { mode: "contains"; token: string }
+  | { mode: "exact"; valueMappings: ResponseValueMapping[] };
+
+/**
+ * Resolve one extra-mapping cell to a rating/binary/ignore target.
+ * `matchedTarget` is used for truthy and contains modes (the value to record
+ * when the cell hits). Exact mode uses the per-value map.
+ */
+export function resolveExtraCell(
+  raw: string,
+  spec: ExtraMatchSpec,
+  matchedTarget: ResponseValueTarget
+): ResponseValueTarget {
+  if (spec.mode === "truthy") {
+    return isTruthyCell(raw) ? matchedTarget : { kind: "ignore" };
+  }
+  if (spec.mode === "contains") {
+    return cellContainsToken(raw, spec.token) ? matchedTarget : { kind: "ignore" };
+  }
+  const value = raw.trim();
+  const mapping = spec.valueMappings.find((m) => m.rawValue === value);
+  return mapping?.target ?? { kind: "ignore" };
+}
+
+export function targetToRatingFields(target: ResponseValueTarget): {
+  rating: number | null;
+  binary_value: string | null;
+} {
+  if (target.kind === "rating") return { rating: target.rating, binary_value: null };
+  if (target.kind === "binary") return { rating: null, binary_value: target.value };
+  return { rating: null, binary_value: null };
+}
+
+export const LEADERSHIP_ROLE_NAMES = ["contact", "activist", "delegate"] as const;
+
+export function isLeadershipRoleName(roleName: string | null | undefined): boolean {
+  if (!roleName) return false;
+  return (LEADERSHIP_ROLE_NAMES as readonly string[]).includes(roleName.trim().toLowerCase());
 }
 
 // ─── Parse route contract ────────────────────────────────────────────────────
@@ -135,6 +235,14 @@ export interface ParticipationMatchResponse {
 
 // ─── Apply route contract ────────────────────────────────────────────────────
 
+/** Extra assessment write for one matched worker (CSV multi-target). */
+export interface ParticipationApplyExtraHit {
+  activity_key: string;
+  rating: number | null;
+  binary_value: string | null;
+  notes?: string | null;
+}
+
 export type ParticipationApplyRow =
   | {
       key: string;
@@ -146,6 +254,9 @@ export type ParticipationApplyRow =
       notes?: string | null;
       /** AN sync mode: backfills workers.action_network_id when unset. */
       an_person_id?: string | null;
+      extra?: ParticipationApplyExtraHit[];
+      /** Guarded Contact promotion when the mapped column matched. */
+      promote_contact?: boolean;
     }
   | {
       key: string;
@@ -162,6 +273,8 @@ export type ParticipationApplyRow =
       notes?: string | null;
       /** AN sync mode: stored as the new worker's action_network_id. */
       an_person_id?: string | null;
+      extra?: ParticipationApplyExtraHit[];
+      promote_contact?: boolean;
     }
   | { key: string; action: "skip" };
 
@@ -177,6 +290,14 @@ export type ParticipationApplyActivity =
 
 export interface ParticipationApplyRequest {
   activity: ParticipationApplyActivity;
+  /**
+   * Additional assessments written in the same CSV import. Each `key` is
+   * referenced from `rows[].extra[].activity_key`. Ignored for AN API sync.
+   */
+  extra_activities?: Array<{
+    key: string;
+    activity: ParticipationApplyActivity;
+  }>;
   source_kind: "an_api" | "an_report_csv";
   file_name?: string | null;
   an_resource?: {
@@ -192,7 +313,7 @@ export interface ParticipationApplyRequest {
   /**
    * When enabled, campaign workforce members NOT present in the import get
    * the given value. Never overwrites an existing rating regardless of
-   * conflict_policy.
+   * conflict_policy. Applies to the primary assessment only.
    */
   non_responders?: {
     enabled: boolean;
@@ -214,6 +335,8 @@ export interface ParticipationConflict {
   existing_binary_value: string | null;
   new_rating: number | null;
   new_binary_value: string | null;
+  /** Set on extra-assessment conflicts so the review table can show which mapping. */
+  activity_label?: string | null;
 }
 
 export interface ParticipationApplyPreview {
@@ -226,6 +349,11 @@ export interface ParticipationApplyPreview {
   memberships_to_add: number;
   non_responder_count: number;
   conflicts: ParticipationConflict[];
+  extra_ratings_to_create: number;
+  extra_ratings_to_update: number;
+  extra_conflicts: ParticipationConflict[];
+  contacts_to_promote: number;
+  contacts_already_leader: number;
 }
 
 export interface ParticipationApplyResult {
@@ -233,13 +361,17 @@ export interface ParticipationApplyResult {
   dry_run: false;
   batch_id: number;
   activity_id: number;
+  extra_activity_ids: number[];
   ratings_applied: number;
+  extra_ratings_applied: number;
   rows_created: number;
   rows_updated: number;
   rows_skipped: number;
   workers_created: number;
   memberships_added: number;
   non_responders_marked: number;
+  contacts_promoted: number;
+  contacts_already_leader: number;
 }
 
 // ─── AN API sync (Phase 2) ───────────────────────────────────────────────────

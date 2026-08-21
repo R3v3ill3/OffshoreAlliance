@@ -16,7 +16,8 @@ import { useCampaignWorkerDetail } from "../campaign-worker-detail-provider";
 import { WorkforceBulkToolbar } from "./workforce-bulk-toolbar";
 import { AssessmentSelector } from "../wall-chart/assessment-selector";
 import {
-  CAMPAIGN_MEMBERS_FULL_SELECT,
+  fetchCampaignMembersFull,
+  fetchOuAssignments,
   normalizeCampaignMemberRows,
   type RawCampaignMemberRow,
 } from "../wall-chart/normalize-members";
@@ -154,12 +155,7 @@ export function WorkforceListView({
   const { data: members = [] } = useQuery({
     queryKey: ["campaign-members-full", campaignId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("campaign_worker_membership")
-        .select(CAMPAIGN_MEMBERS_FULL_SELECT)
-        .eq("campaign_id", campaignId);
-      if (error) throw error;
-      return (data ?? []) as unknown as RawCampaignMemberRow[];
+      return (await fetchCampaignMembersFull(supabase, campaignId)) as RawCampaignMemberRow[];
     },
   });
 
@@ -197,12 +193,7 @@ export function WorkforceListView({
     queryFn: async () => {
       const ids = ous.map((o) => o.ou_id);
       if (ids.length === 0) return [] as WallChartOUAssignment[];
-      const { data, error } = await supabase
-        .from("campaign_worker_ou")
-        .select("ou_id, worker_id, is_primary")
-        .in("ou_id", ids);
-      if (error) throw error;
-      return (data ?? []) as WallChartOUAssignment[];
+      return (await fetchOuAssignments(supabase, ids)) as WallChartOUAssignment[];
     },
     enabled: ous.length > 0,
   });

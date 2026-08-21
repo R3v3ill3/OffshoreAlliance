@@ -50,6 +50,7 @@ import type {
 } from '@/types/sms'
 import { CONVERSATION_STATE_COLORS, conversationTitle } from './sms-inbox-shared'
 import { SmsEmojiPicker } from '@/components/sms/SmsEmojiPicker'
+import { TAPBACK_KIND_LABEL, foldTapbackMessages } from '@/lib/sms/tapback'
 
 type TimelineEntry =
   | { kind: 'message'; at: string; message: SmsMessageRow }
@@ -144,7 +145,9 @@ export function SmsThreadView({
     : scoped.data?.conversation_labels
 
   const timeline = useMemo<TimelineEntry[]>(() => {
-    const displayMessages = scopeIsNative ? messages : (scopedMessages ?? [])
+    const displayMessages = foldTapbackMessages(
+      scopeIsNative ? messages : (scopedMessages ?? []),
+    )
     const entries: TimelineEntry[] = [
       ...displayMessages.map((m) => ({
         kind: 'message' as const,
@@ -495,6 +498,27 @@ function MessageBubble({
           </span>
         )}
         {message.body || <span className="italic opacity-70">(empty)</span>}
+        {(message.reactions ?? []).length > 0 && (
+          <div
+            className={`mt-1.5 flex flex-wrap gap-1 ${
+              inbound ? 'justify-start' : 'justify-end'
+            }`}
+          >
+            {(message.reactions ?? []).map((reaction, i) => (
+              <span
+                key={`${reaction.kind}-${reaction.at}-${i}`}
+                title={TAPBACK_KIND_LABEL[reaction.kind]}
+                className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-xs leading-none ${
+                  inbound
+                    ? 'border-border bg-background'
+                    : 'border-primary-foreground/30 bg-primary-foreground/15'
+                }`}
+              >
+                {reaction.emoji}
+              </span>
+            ))}
+          </div>
+        )}
         <div
           className={`mt-1 flex items-center gap-1.5 text-[10px] ${
             inbound ? 'text-muted-foreground' : 'text-primary-foreground/70'

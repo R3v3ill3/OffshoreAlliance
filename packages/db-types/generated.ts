@@ -15107,6 +15107,7 @@ export type Database = {
           message_id: number
           phone_e164: string | null
           provider_message_id: string | null
+          reactions: Json
           segments: number | null
           sender_user_id: string | null
           status: string
@@ -15122,6 +15123,7 @@ export type Database = {
           message_id?: number
           phone_e164?: string | null
           provider_message_id?: string | null
+          reactions?: Json
           segments?: number | null
           sender_user_id?: string | null
           status?: string
@@ -15137,6 +15139,7 @@ export type Database = {
           message_id?: number
           phone_e164?: string | null
           provider_message_id?: string | null
+          reactions?: Json
           segments?: number | null
           sender_user_id?: string | null
           status?: string

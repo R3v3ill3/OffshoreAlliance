@@ -109,7 +109,7 @@ export async function GET(
     }
 
     const MESSAGE_COLUMNS =
-      'message_id, conversation_id, direction, body, phone_e164, sender_user_id, provider_message_id, interaction_id, status, error, segments, created_at'
+      'message_id, conversation_id, direction, body, phone_e164, sender_user_id, provider_message_id, interaction_id, status, error, segments, reactions, created_at'
 
     let messages: Record<string, unknown>[] = []
     let hasMore = false

@@ -21,6 +21,7 @@ import {
   GraduationCap,
   Inbox,
   LayoutTemplate,
+  MessageSquare,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,7 @@ export const navItems = [
   { href: "/worksites", label: "Worksites", icon: MapPin },
   { href: "/upcoming-projects", label: "Upcoming Projects", icon: Compass },
   { href: "/email/inbox", label: "Email Inbox", icon: Inbox },
+  { href: "/sms/inbox", label: "SMS Inbox", icon: MessageSquare },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/help", label: "Guides", icon: GraduationCap },
 ];

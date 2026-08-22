@@ -42,6 +42,7 @@ import {
   Globe2,
   Scale,
   MessageSquare,
+  ClipboardList,
 } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import {
@@ -69,7 +70,8 @@ type ReportType =
   | "dues_schedule"
   | "bargaining_calendar"
   | "bargaining_progress"
-  | "sms_engagement";
+  | "sms_engagement"
+  | "campaign_facts";
 
 interface ReportOption {
   type: ReportType;
@@ -156,6 +158,15 @@ const reportOptions: ReportOption[] = [
     icon: <MessageSquare className="h-8 w-8 text-sky-500" />,
     isNew: true,
     href: "/reports/sms",
+  },
+  {
+    type: "campaign_facts",
+    title: "Campaign data fields",
+    description:
+      "Claim rank distributions and compliance witness counts by field, worksite and occupation — not wall-chart assessments.",
+    icon: <ClipboardList className="h-8 w-8 text-teal-600" />,
+    isNew: true,
+    href: "/reports/campaign-facts",
   },
   {
     type: "dues_schedule",

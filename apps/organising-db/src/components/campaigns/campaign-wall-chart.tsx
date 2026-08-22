@@ -41,6 +41,11 @@ import { MoreVertical, Layers, Trash2 } from "lucide-react";
 import { DeleteOrganisingUnitDialog, type DeleteUnitWorker } from "./wall-chart/delete-organising-unit-dialog";
 import { SplitUnitDialog, type SplitMember } from "./wall-chart/split-unit-dialog";
 import { humanizeOuType, ouDisplayName, type ListActivityChannel } from "./wall-chart/types";
+import {
+  useCampaignDataFields,
+  useCampaignFacts,
+  factsByWorkerField,
+} from "@/lib/hooks/useCampaignDataFields";
 import { useCampaignWorkerListActivity } from "@/lib/hooks/useCampaignWorkerListActivity";
 import {
   ListBadgeSelector,
@@ -88,6 +93,7 @@ import {
   DEFAULT_FILTER_STATE,
   applyFilters,
   applySort,
+  factSortOpts,
   type RatingFilterAssessmentContext,
   type WallChartFilterState,
 } from "./wall-chart/filters";
@@ -371,6 +377,14 @@ export function CampaignWallChart({
       return (data ?? []) as WallChartRatingSummary[];
     },
   });
+
+  const { data: dataFieldsCat } = useCampaignDataFields(campaignId);
+  const dataFields = dataFieldsCat?.fields ?? [];
+  const { data: campaignFacts = [] } = useCampaignFacts(campaignId);
+  const factsByWorker = useMemo(
+    () => factsByWorkerField(campaignFacts),
+    [campaignFacts]
+  );
 
   const [campaignAssessmentDefault, setCampaignAssessmentDefault] =
     useState<AssessmentSelection>({ kind: "cumulative" });
@@ -1390,7 +1404,8 @@ export function CampaignWallChart({
             ratingByWorker,
             filter,
             fa.activityRatings,
-            fa.ratingCtx
+            fa.ratingCtx,
+            factsByWorker
           );
           const sorted = applySort(
             filtered,
@@ -1400,6 +1415,7 @@ export function CampaignWallChart({
             {
               ...(fa.sortAssessment ? { assessmentSort: fa.sortAssessment } : {}),
               relationshipLinks: allLinks,
+              ...factSortOpts(filter, factsByWorker),
             }
           );
           const effScope = effectiveAssessmentForScope(
@@ -1470,6 +1486,7 @@ export function CampaignWallChart({
                     onChange={(next) => setFilter(UNASSIGNED_KEY, next)}
                     membershipTypes={derivedOptions.membershipTypes}
                     occupations={derivedOptions.occupations}
+                    dataFields={dataFields}
                     onApplyToAll={() => {
                       const next = new Map<number, WallChartFilterState>();
                       next.set(UNASSIGNED_KEY, filter);
@@ -1575,7 +1592,8 @@ export function CampaignWallChart({
                     ratingByWorker,
                     filter,
                     fa.activityRatings,
-                    fa.ratingCtx
+                    fa.ratingCtx,
+                    factsByWorker
                   );
                   const sorted = applySort(
                     filtered,
@@ -1585,6 +1603,7 @@ export function CampaignWallChart({
                     {
                       ...(fa.sortAssessment ? { assessmentSort: fa.sortAssessment } : {}),
                       relationshipLinks: allLinks,
+                      ...factSortOpts(filter, factsByWorker),
                     }
                   );
                   const placeholders = Math.max(0, est - ids.length);
@@ -1821,6 +1840,7 @@ export function CampaignWallChart({
                             onChange={(next) => setFilter(ou.ou_id, next)}
                             membershipTypes={derivedOptions.membershipTypes}
                             occupations={derivedOptions.occupations}
+                            dataFields={dataFields}
                             onApplyToAll={() => {
                               const next = new Map<number, WallChartFilterState>();
                               next.set(UNASSIGNED_KEY, { ...filter });
@@ -1890,7 +1910,8 @@ export function CampaignWallChart({
                                 ratingByWorker,
                                 childFilter,
                                 childFa.activityRatings,
-                                childFa.ratingCtx
+                                childFa.ratingCtx,
+                                factsByWorker
                               );
                               const childSorted = applySort(
                                 childFiltered,
@@ -1902,6 +1923,7 @@ export function CampaignWallChart({
                                     ? { assessmentSort: childFa.sortAssessment }
                                     : {}),
                                   relationshipLinks: allLinks,
+                                  ...factSortOpts(childFilter, factsByWorker),
                                 }
                               );
                               const childMetrics = metricsByOu.get(child.ou_id);
@@ -2025,10 +2047,11 @@ export function CampaignWallChart({
                                               unitAssessmentOverride,
                                               activityRatingsByActivityId
                                             );
-                                            const gcFiltered = applyFilters(gcIds, workerById, ratingByWorker, gcFilter, gcFa.activityRatings, gcFa.ratingCtx);
+                                            const gcFiltered = applyFilters(gcIds, workerById, ratingByWorker, gcFilter, gcFa.activityRatings, gcFa.ratingCtx, factsByWorker);
                                             const gcSorted = applySort(gcFiltered, workerById, ratingByWorker, gcFilter.sort, {
                                               ...(gcFa.sortAssessment ? { assessmentSort: gcFa.sortAssessment } : {}),
                                               relationshipLinks: allLinks,
+                                              ...factSortOpts(gcFilter, factsByWorker),
                                             });
                                             return (
                                               <div key={gc.ou_id} data-ou-id={gc.ou_id}>

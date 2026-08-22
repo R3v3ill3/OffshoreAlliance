@@ -55,7 +55,8 @@ export type AssessmentChoice =
 
 export type ExtraMappingDestination =
   | { kind: "assessment"; assessment: AssessmentChoice }
-  | { kind: "contact_role" };
+  | { kind: "contact_role" }
+  | { kind: "fact"; field_id: number };
 
 /** Extra CSV column → assessment or guarded Contact promotion. */
 export interface ExtraColumnMapping {
@@ -95,7 +96,12 @@ export interface ImportRow {
   lastName: string;
   rawResponse: string | null;
   target: ResponseValueTarget;
-  extraHits: Array<{ mappingId: string; rawValue: string; target: ResponseValueTarget }>;
+  extraHits: Array<{
+    mappingId: string;
+    rawValue: string;
+    target: ResponseValueTarget;
+    factFieldId?: number;
+  }>;
   promoteContact: boolean;
   /** AN sync mode: pre-resolved worker + AN person id. */
   resolvedWorkerId?: number | null;

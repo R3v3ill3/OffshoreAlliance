@@ -4,7 +4,10 @@ import { useState, useMemo, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
-import { fetchApi, API_FETCH_TIMEOUT_UPLOAD_MS } from "@/lib/api/fetch-api";
+import { FactFilterControls } from "@/components/campaigns/data-fields/fact-filter-controls";
+import { useCampaignDataFields } from "@/lib/hooks/useCampaignDataFields";
+import type { FactFilter } from "@/lib/campaign-facts/types";
+import { encodeFactsQueryParam } from "@/lib/campaign-facts/values";
 import {
   Mail,
   Phone,
@@ -122,6 +125,8 @@ export function CampaignListBuilder({
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const numericId = Number(campaignId);
+  const { data: dataFieldsCat } = useCampaignDataFields(campaignId);
+  const dataFields = dataFieldsCat?.fields ?? [];
 
   const [membershipFilter, setMembershipFilter] = useState<string[]>([]);
   const [roleFilter, setRoleFilter] = useState<string[]>([]);
@@ -133,6 +138,7 @@ export function CampaignListBuilder({
   const [multiUnitOnly, setMultiUnitOnly] = useState(false);
   const [includeAnTags, setIncludeAnTags] = useState<string[]>([]);
   const [excludeAnTags, setExcludeAnTags] = useState<string[]>([]);
+  const [factFilters, setFactFilters] = useState<FactFilter[]>([]);
   const [showAnTags, setShowAnTags] = useState(false);
   const [selectedWorkers, setSelectedWorkers] = useState<Set<number>>(
     new Set()
@@ -278,6 +284,7 @@ export function CampaignListBuilder({
       occupationSearch,
       includeAnTags,
       excludeAnTags,
+      factFilters,
       sortKey,
     ],
     queryFn: async () => {
@@ -296,6 +303,7 @@ export function CampaignListBuilder({
         params.set("an_tags", includeAnTags.join(","));
       if (excludeAnTags.length)
         params.set("exclude_an_tags", excludeAnTags.join(","));
+      if (factFilters.length) params.set("facts", encodeFactsQueryParam(factFilters));
       params.set("sort", sortKey);
 
       const res = await fetchApi(
@@ -423,6 +431,7 @@ export function CampaignListBuilder({
       occupation: occupationSearch.trim() || undefined,
       an_tags: includeAnTags.length > 0 ? includeAnTags.join(",") : undefined,
       exclude_an_tags: excludeAnTags.length > 0 ? excludeAnTags.join(",") : undefined,
+      facts: factFilters.length > 0 ? encodeFactsQueryParam(factFilters) : undefined,
     };
   }
 
@@ -472,7 +481,7 @@ export function CampaignListBuilder({
       setCreatingLists(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listBaseName, numericId, membershipFilter, roleFilter, employerFilter, worksiteFilter, ouFilter, ouTypeFilter, multiUnitOnly, occupationSearch, includeAnTags, excludeAnTags, queryClient]);
+  }, [listBaseName, numericId, membershipFilter, roleFilter, employerFilter, worksiteFilter, ouFilter, ouTypeFilter, multiUnitOnly, occupationSearch, includeAnTags, excludeAnTags, factFilters, queryClient]);
 
   return (
     <div className="space-y-4">
@@ -719,6 +728,14 @@ export function CampaignListBuilder({
               </div>
             )}
           </div>
+
+          {dataFields.some((f) => f.filterable) && (
+            <FactFilterControls
+              fields={dataFields}
+              filters={factFilters}
+              onChange={setFactFilters}
+            />
+          )}
 
         </CardContent>
       </Card>

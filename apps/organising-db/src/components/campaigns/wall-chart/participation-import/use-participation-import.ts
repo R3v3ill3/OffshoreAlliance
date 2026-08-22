@@ -7,6 +7,8 @@ import { fetchApi, API_FETCH_TIMEOUT_UPLOAD_MS } from "@/lib/api/fetch-api";
 import {
   autoMapParticipationHeader,
   resolveExtraCell,
+  isTruthyCell,
+  cellContainsToken,
   targetToRatingFields,
   type AnActionListItem,
   type AnFetchResponse,
@@ -44,10 +46,13 @@ function extraMatchSpec(m: ExtraColumnMapping): ExtraMatchSpec {
 export function extraMappingStatus(m: ExtraColumnMapping): "empty" | "incomplete" | "ready" {
   if (!m.column) return "empty";
   if (m.matchMode === "contains" && !m.containsToken.trim()) return "incomplete";
+  if (m.destination.kind === "contact_role") return "ready";
+  if (m.destination.kind === "fact") {
+    return m.destination.field_id > 0 ? "ready" : "incomplete";
+  }
   if (m.matchMode === "exact" && !m.valueMappings.some((v) => v.target.kind !== "ignore")) {
     return "incomplete";
   }
-  if (m.destination.kind === "contact_role") return "ready";
   if (m.matchMode !== "exact" && m.matchedTarget.kind === "ignore") return "incomplete";
   const a = m.destination.assessment;
   if (a.mode === "new") return a.title.trim().length > 0 ? "ready" : "incomplete";
@@ -355,6 +360,22 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
       for (const mapping of readyExtras) {
         if (!mapping.column) continue;
         const raw = (row[mapping.column] ?? "").trim();
+        if (mapping.destination.kind === "fact") {
+          let hit = false;
+          if (mapping.matchMode === "truthy") hit = isTruthyCell(raw);
+          else if (mapping.matchMode === "contains") {
+            hit = cellContainsToken(raw, mapping.containsToken);
+          } else hit = raw.length > 0;
+          if (hit) {
+            extraHits.push({
+              mappingId: mapping.id,
+              rawValue: raw,
+              target: { kind: "ignore" },
+              factFieldId: mapping.destination.field_id,
+            });
+          }
+          continue;
+        }
         const resolved = resolveExtraCell(raw, extraMatchSpec(mapping), mapping.matchedTarget);
         if (resolved.kind === "ignore") continue;
         if (mapping.destination.kind === "contact_role") {
@@ -487,6 +508,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
         const binary = row.target.kind === "binary" ? row.target.value : null;
         const notes = row.rawResponse ? `AN response: ${row.rawResponse}` : null;
         const extra = row.extraHits
+          .filter((hit) => hit.factFieldId == null)
           .map((hit) => {
             const fields = targetToRatingFields(hit.target);
             if (fields.rating == null && fields.binary_value == null) return null;
@@ -498,6 +520,12 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
             };
           })
           .filter((v): v is NonNullable<typeof v> => v != null);
+        const facts = row.extraHits
+          .filter((hit) => hit.factFieldId != null)
+          .map((hit) => ({
+            field_key: hit.mappingId,
+            raw: hit.rawValue,
+          }));
         if (decision.action === "match" && decision.workerId != null) {
           return {
             key: res.key,
@@ -509,6 +537,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
             notes,
             an_person_id: row.anPersonId ?? null,
             extra,
+            facts,
             promote_contact: row.promoteContact,
           };
         }
@@ -528,6 +557,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
             notes,
             an_person_id: row.anPersonId ?? null,
             extra,
+            facts,
             promote_contact: row.promoteContact,
           };
         }
@@ -549,10 +579,16 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
         if (m.destination.kind !== "assessment") return [];
         return [{ key: m.id, activity: activityPayload(m.destination.assessment) }];
       });
+      const extra_fields = extraMappings.flatMap((m) => {
+        if (extraMappingStatus(m) !== "ready") return [];
+        if (m.destination.kind !== "fact") return [];
+        return [{ key: m.id, field_id: m.destination.field_id }];
+      });
 
       return {
         activity: activityPayload(assessment),
         extra_activities: extra_activities.length > 0 ? extra_activities : undefined,
+        extra_fields: extra_fields.length > 0 ? extra_fields : undefined,
         source_kind: source.kind === "an" ? "an_api" : "an_report_csv",
         file_name: source.kind === "csv" ? source.csv.fileName : null,
         an_resource:

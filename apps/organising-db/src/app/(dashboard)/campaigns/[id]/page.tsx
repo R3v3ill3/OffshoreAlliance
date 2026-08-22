@@ -37,6 +37,7 @@ import type {
 import type { Database } from "@oa/db-types";
 import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 import { CampaignAssessmentsSection } from "@/components/campaigns/campaign-assessments";
+import { CampaignDataFieldsSection } from "@/components/campaigns/data-fields/campaign-data-fields-section";
 import { CampaignReportingCharts } from "@/components/campaigns/campaign-reporting";
 import { CampaignProgressReport } from "@/components/reports/CampaignProgressReport";
 import { WorkforceBoard } from "@/components/campaigns/workforce/workforce-board";
@@ -614,6 +615,7 @@ export default function CampaignDetailPage() {
               <TabsTrigger value="campaign-units">Campaign Units</TabsTrigger>
               <TabsTrigger value="universe">Scope</TabsTrigger>
               <TabsTrigger value="assessments">Assessments</TabsTrigger>
+              <TabsTrigger value="data-fields">Data fields</TabsTrigger>
               <TabsTrigger value="activists">Activists &amp; WOCs</TabsTrigger>
               <TabsTrigger value="foundational-readiness">Foundational Readiness</TabsTrigger>
             </TabsList>
@@ -726,6 +728,10 @@ export default function CampaignDetailPage() {
 
             <TabsContent value="assessments">
               <CampaignAssessmentsSection campaignId={id} canWrite={!!canWrite} />
+            </TabsContent>
+
+            <TabsContent value="data-fields">
+              <CampaignDataFieldsSection campaignId={id} canWrite={!!canWrite} />
             </TabsContent>
 
             <TabsContent value="wall-chart">

@@ -20,6 +20,8 @@ export interface SurveyQuestionInput {
   write_rating?: boolean;
   /** Phase 8: per-question override of the survey's ratings target. */
   activity_id?: number | null;
+  write_fact?: boolean;
+  field_id?: number | null;
   invalid_prompt?: string | null;
   nudge_text?: string | null;
 }
@@ -238,6 +240,19 @@ export function validateSurveyQuestions(
       errors.push(
         `${label}: write_rating requires a per-question assessment activity.`,
       );
+    }
+    if (q.field_id != null && !q.write_fact) {
+      errors.push(`${label}: linking a data field requires write_fact to be on.`);
+    }
+    if (q.write_fact && (q.field_id == null || q.field_id === undefined)) {
+      errors.push(`${label}: write_fact requires a data field.`);
+    }
+    if (
+      q.field_id !== undefined &&
+      q.field_id !== null &&
+      (!Number.isInteger(q.field_id) || q.field_id <= 0)
+    ) {
+      errors.push(`${label}: field_id must be null or a positive integer.`);
     }
     if (q.qtype === "open_text" && q.activity_id != null) {
       errors.push(

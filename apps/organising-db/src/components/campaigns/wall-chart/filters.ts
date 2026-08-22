@@ -1,4 +1,6 @@
-import { assessmentNumericForWallChart } from "./rating-colour";
+import type { FactFilter } from "@/lib/campaign-facts/types";
+import type { WorkerCampaignFact } from "@/lib/campaign-facts/types";
+import { numericFactValue, workerPassesFactFilters } from "@/lib/campaign-facts/values";
 import type {
   ActivityRating,
   AssessmentSelection,
@@ -19,7 +21,9 @@ export type SortKey =
   | "last_activity_desc"
   | "last_activity_asc"
   | "relationships"
-  | "occupation";
+  | "occupation"
+  | "fact_desc"
+  | "fact_asc";
 
 export type RelationshipSortLink = {
   leader_worker_id: number;
@@ -39,6 +43,8 @@ export type WallChartFilterState = {
   /** Empty set = all. */
   ratings: Set<RatingBucket>;
   occupationIds: Set<number>;
+  factFilters: FactFilter[];
+  sortFactFieldId: number | null;
 };
 
 export const DEFAULT_FILTER_STATE = (): WallChartFilterState => ({
@@ -48,6 +54,8 @@ export const DEFAULT_FILTER_STATE = (): WallChartFilterState => ({
   roles: new Set(),
   ratings: new Set(),
   occupationIds: new Set(),
+  factFilters: [],
+  sortFactFieldId: null,
 });
 
 export function hasActiveFilter(s: WallChartFilterState): boolean {
@@ -56,7 +64,8 @@ export function hasActiveFilter(s: WallChartFilterState): boolean {
     s.includeNonMember ||
     s.roles.size > 0 ||
     s.ratings.size > 0 ||
-    s.occupationIds.size > 0
+    s.occupationIds.size > 0 ||
+    s.factFilters.length > 0
   );
 }
 
@@ -89,7 +98,8 @@ export function applyFilters(
   /** When provided, the Rating filter is applied against these per-activity ratings instead of cumulative. */
   activityRatings?: Map<number, ActivityRating>,
   /** Required when `activityRatings` is set and the assessment is binary — selects correct numeric band. */
-  ratingAssessmentContext?: RatingFilterAssessmentContext
+  ratingAssessmentContext?: RatingFilterAssessmentContext,
+  factsByWorker?: Map<number, Map<number, WorkerCampaignFact>>
 ): number[] {
   if (!hasActiveFilter(state)) return ids;
 
@@ -134,6 +144,17 @@ export function applyFilters(
       if (oId == null || !state.occupationIds.has(oId)) return false;
     }
 
+    if (state.factFilters.length > 0) {
+      if (
+        !workerPassesFactFilters(
+          factsByWorker?.get(id) ?? new Map(),
+          state.factFilters
+        )
+      ) {
+        return false;
+      }
+    }
+
     return true;
   });
 }
@@ -149,6 +170,10 @@ export function applySort(
       activityRatings: Map<number, ActivityRating>;
     };
     relationshipLinks?: RelationshipSortLink[];
+    factSort?: {
+      fieldId: number;
+      factsByWorker: Map<number, Map<number, WorkerCampaignFact>>;
+    };
   }
 ): number[] {
   const copy = [...ids];
@@ -238,6 +263,16 @@ export function applySort(
         );
         return c !== 0 ? c : cmpString(wa?.last_name, wb?.last_name);
       }
+      case "fact_desc":
+      case "fact_asc": {
+        const fieldId = opts?.factSort?.fieldId;
+        const byWorker = opts?.factSort?.factsByWorker;
+        const num = (id: number) =>
+          fieldId == null
+            ? null
+            : numericFactValue(byWorker?.get(id)?.get(fieldId) ?? null);
+        return sort === "fact_desc" ? cmpNumDesc(num(a), num(b)) : cmpNumAsc(num(a), num(b));
+      }
       case "last_name":
       default: {
         const c = cmpString(wa?.last_name, wb?.last_name);
@@ -246,6 +281,26 @@ export function applySort(
     }
   });
   return copy;
+}
+
+export function factSortOpts(
+  filter: WallChartFilterState,
+  factsByWorker: Map<number, Map<number, WorkerCampaignFact>>
+): {
+  factSort?: {
+    fieldId: number;
+    factsByWorker: Map<number, Map<number, WorkerCampaignFact>>;
+  };
+} {
+  if (
+    (filter.sort === "fact_asc" || filter.sort === "fact_desc") &&
+    filter.sortFactFieldId != null
+  ) {
+    return {
+      factSort: { fieldId: filter.sortFactFieldId, factsByWorker },
+    };
+  }
+  return {};
 }
 
 function sortByRelationships(

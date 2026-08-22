@@ -9,6 +9,8 @@ import type {
 } from "@/lib/import/participation-import-shared";
 import { isLeadershipRoleName } from "@/lib/import/participation-import-shared";
 import { toE164 } from "@/lib/phone/normalise-phone";
+import { parseFactRawValue } from "@/lib/campaign-facts/values";
+import { recordCampaignFactRpc } from "@/lib/campaign-facts/record-fact";
 
 const extraHitSchema = z.object({
   activity_key: z.string().min(1).max(80),
@@ -35,6 +37,15 @@ const valueFields = {
   add_to_campaign: z.boolean(),
   an_person_id: z.string().max(100).nullish(),
   extra: z.array(extraHitSchema).max(10).optional(),
+  facts: z
+    .array(
+      z.object({
+        field_key: z.string().min(1).max(80),
+        raw: z.string().max(4000),
+      })
+    )
+    .max(20)
+    .optional(),
   promote_contact: z.boolean().optional(),
 };
 
@@ -64,6 +75,15 @@ const applySchema = z.object({
   extra_activities: z
     .array(z.object({ key: z.string().min(1).max(80), activity: activitySchema }))
     .max(10)
+    .optional(),
+  extra_fields: z
+    .array(
+      z.object({
+        key: z.string().min(1).max(80),
+        field_id: z.number().int().positive(),
+      })
+    )
+    .max(20)
     .optional(),
   source_kind: z.enum(["an_api", "an_report_csv"]),
   file_name: z.string().max(300).nullish(),
@@ -226,9 +246,14 @@ export async function POST(
   }
 
   const extraActivities = body.extra_activities ?? [];
+  const extraFields = body.extra_fields ?? [];
   const extraKeys = new Set(extraActivities.map((e) => e.key));
   if (extraKeys.size !== extraActivities.length) {
     return jsonError("Duplicate extra mapping keys", 400);
+  }
+  const extraFieldKeys = new Set(extraFields.map((e) => e.key));
+  if (extraFieldKeys.size !== extraFields.length) {
+    return jsonError("Duplicate extra field keys", 400);
   }
 
   const valueRows = body.rows.filter(
@@ -236,7 +261,9 @@ export async function POST(
   );
 
   const wantsCsvExtras =
-    extraActivities.length > 0 || valueRows.some((r) => (r.extra?.length ?? 0) > 0 || r.promote_contact);
+    extraActivities.length > 0 ||
+    extraFields.length > 0 ||
+    valueRows.some((r) => (r.extra?.length ?? 0) > 0 || (r.facts?.length ?? 0) > 0 || r.promote_contact);
   if (body.source_kind === "an_api" && wantsCsvExtras) {
     return jsonError(
       "Extra column mappings and Contact promotion are only available on CSV report import",
@@ -254,9 +281,14 @@ export async function POST(
         return jsonError(`Row ${row.key}: extra mapping ${hit.activity_key} needs a rating or binary value`, 400);
       }
     }
-    if (!hasRatingValue(row) && extras.length === 0 && !row.promote_contact) {
+    for (const hit of row.facts ?? []) {
+      if (!extraFieldKeys.has(hit.field_key)) {
+        return jsonError(`Row ${row.key}: unknown extra field mapping ${hit.field_key}`, 400);
+      }
+    }
+    if (!hasRatingValue(row) && extras.length === 0 && !row.promote_contact && (row.facts?.length ?? 0) === 0) {
       return jsonError(
-        `Row ${row.key}: needs a rating, a binary value, an extra mapping, or Contact promotion`,
+        `Row ${row.key}: needs a rating, a binary value, an extra mapping, a data field, or Contact promotion`,
         400
       );
     }
@@ -472,6 +504,7 @@ export async function POST(
       extra_ratings_to_create: extraToCreate,
       extra_ratings_to_update: extraToUpdate,
       extra_conflicts: extraConflicts,
+      extra_facts_to_write: valueRows.reduce((n, r) => n + (r.facts?.length ?? 0), 0),
       contacts_to_promote: contactsToPromote,
       contacts_already_leader: contactsAlreadyLeader,
     };
@@ -672,6 +705,68 @@ export async function POST(
     extraRatingsApplied += extraWritten.applied;
   }
 
+  let extraFactsApplied = 0;
+  if (extraFields.length > 0) {
+    const { data: fieldRows, error: fieldErr } = await supabase
+      .from("campaign_data_fields")
+      .select("*")
+      .eq("campaign_id", campaignId)
+      .in(
+        "field_id",
+        extraFields.map((f) => f.field_id)
+      );
+    if (fieldErr) {
+      return jsonError(`Data field lookup failed: ${fieldErr.message}`, 500, { batch_id: batchId });
+    }
+    const fieldById = new Map((fieldRows ?? []).map((f) => [f.field_id, f]));
+    for (const extra of extraFields) {
+      if (!fieldById.has(extra.field_id)) {
+        return jsonError(
+          `Data field ${extra.field_id} is missing or not on this campaign`,
+          400,
+          { batch_id: batchId }
+        );
+      }
+    }
+    const fieldIdByKey = new Map(extraFields.map((f) => [f.key, f.field_id]));
+    const writeFactsFor = async (workerId: number, hits: { field_key: string; raw: string }[]) => {
+      for (const hit of hits) {
+        const fieldId = fieldIdByKey.get(hit.field_key);
+        if (fieldId == null) continue;
+        const field = fieldById.get(fieldId);
+        if (!field) continue;
+        const parsed = parseFactRawValue(field, hit.raw);
+        if (parsed.kind === "empty" || parsed.kind === "invalid") continue;
+        try {
+          await recordCampaignFactRpc(supabase, {
+            fieldId,
+            workerId,
+            campaignId,
+            parsed,
+            source: "an_csv",
+            sourceRef: `participation_import:${batchId}`,
+            actorId: user.id,
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          throw new Error(`Data field write failed (${field.label}): ${message}`);
+        }
+        extraFactsApplied += 1;
+      }
+    };
+    try {
+      for (const row of existingActionRows) {
+        await writeFactsFor(row.worker_id, row.facts ?? []);
+      }
+      for (let i = 0; i < createActionRows.length; i++) {
+        await writeFactsFor(createdWorkerIds[i], createActionRows[i].facts ?? []);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return jsonError(message, 500, { batch_id: batchId });
+    }
+  }
+
   let contactsPromoted = 0;
   if (wantsContact && contactId != null) {
     const promoteIds = [
@@ -727,6 +822,7 @@ export async function POST(
     extra_activity_ids: extraActivityIds,
     ratings_applied: ratingsApplied,
     extra_ratings_applied: extraRatingsApplied,
+    extra_facts_applied: extraFactsApplied,
     rows_created: Math.max(rowsCreatedCount, 0),
     rows_updated: rowsUpdated,
     rows_skipped: rowsSkipped,

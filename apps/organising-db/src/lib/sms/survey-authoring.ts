@@ -58,6 +58,8 @@ export async function insertSurveyQuestions(
         branching: null, // rewritten below once ids exist
         write_rating: !!q.write_rating,
         activity_id: q.activity_id ?? null,
+        write_fact: !!q.write_fact,
+        field_id: q.field_id ?? null,
         invalid_prompt: q.invalid_prompt?.trim() || null,
         nudge_text: q.nudge_text?.trim() || null,
       })),
@@ -100,6 +102,8 @@ export async function replaceSurveyQuestionsPreservingAnswers(
           options: q.options ?? null,
           write_rating: !!q.write_rating,
           activity_id: q.activity_id ?? null,
+          write_fact: !!q.write_fact,
+          field_id: q.field_id ?? null,
           invalid_prompt: q.invalid_prompt?.trim() || null,
           nudge_text: q.nudge_text?.trim() || null,
           retired_at: null,
@@ -119,6 +123,8 @@ export async function replaceSurveyQuestionsPreservingAnswers(
           branching: null,
           write_rating: !!q.write_rating,
           activity_id: q.activity_id ?? null,
+          write_fact: !!q.write_fact,
+          field_id: q.field_id ?? null,
           invalid_prompt: q.invalid_prompt?.trim() || null,
           nudge_text: q.nudge_text?.trim() || null,
         })

@@ -243,6 +243,11 @@ export interface ParticipationApplyExtraHit {
   notes?: string | null;
 }
 
+export interface ParticipationApplyFactHit {
+  field_key: string;
+  raw: string;
+}
+
 export type ParticipationApplyRow =
   | {
       key: string;
@@ -255,6 +260,7 @@ export type ParticipationApplyRow =
       /** AN sync mode: backfills workers.action_network_id when unset. */
       an_person_id?: string | null;
       extra?: ParticipationApplyExtraHit[];
+      facts?: ParticipationApplyFactHit[];
       /** Guarded Contact promotion when the mapped column matched. */
       promote_contact?: boolean;
     }
@@ -274,6 +280,7 @@ export type ParticipationApplyRow =
       /** AN sync mode: stored as the new worker's action_network_id. */
       an_person_id?: string | null;
       extra?: ParticipationApplyExtraHit[];
+      facts?: ParticipationApplyFactHit[];
       promote_contact?: boolean;
     }
   | { key: string; action: "skip" };
@@ -297,6 +304,10 @@ export interface ParticipationApplyRequest {
   extra_activities?: Array<{
     key: string;
     activity: ParticipationApplyActivity;
+  }>;
+  extra_fields?: Array<{
+    key: string;
+    field_id: number;
   }>;
   source_kind: "an_api" | "an_report_csv";
   file_name?: string | null;
@@ -352,6 +363,7 @@ export interface ParticipationApplyPreview {
   extra_ratings_to_create: number;
   extra_ratings_to_update: number;
   extra_conflicts: ParticipationConflict[];
+  extra_facts_to_write?: number;
   contacts_to_promote: number;
   contacts_already_leader: number;
 }
@@ -364,6 +376,7 @@ export interface ParticipationApplyResult {
   extra_activity_ids: number[];
   ratings_applied: number;
   extra_ratings_applied: number;
+  extra_facts_applied?: number;
   rows_created: number;
   rows_updated: number;
   rows_skipped: number;

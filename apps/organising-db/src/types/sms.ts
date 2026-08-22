@@ -358,6 +358,8 @@ export interface SmsSurveyQuestionRow {
   write_rating: boolean;
   /** Phase 8 (20260811180000): per-question override of the survey ratings target. NULL = fall back to survey.activity_id. */
   activity_id: number | null;
+  write_fact: boolean;
+  field_id: number | null;
   invalid_prompt: string | null;
   nudge_text: string | null;
   /** Set when a post-open edit removes a question that already has answers. */

@@ -18,12 +18,14 @@ import { RatingTargetSelect } from "./rating-target-select";
 import type { ExtraColumnMapping } from "./types";
 import { newExtraColumnMapping } from "./types";
 import { extraMappingStatus } from "./use-participation-import";
+import { useCampaignDataFields } from "@/lib/hooks/useCampaignDataFields";
 import type { ParticipationImportController } from "./use-participation-import";
 
 const NONE = "__none__";
 const DEST_NEW = "new";
 const DEST_EXISTING = "existing";
 const DEST_CONTACT = "contact";
+const DEST_FACT = "fact";
 const MAX_EXTRAS = 8;
 
 function distinctValueMappings(
@@ -56,6 +58,8 @@ function matchCount(
       if (isTruthyCell(raw)) n += 1;
     } else if (mapping.matchMode === "contains") {
       if (cellContainsToken(raw, mapping.containsToken)) n += 1;
+    } else if (mapping.destination.kind === "fact") {
+      if (raw.length > 0) n += 1;
     } else {
       const mapped = mapping.valueMappings.find((m) => m.rawValue === raw);
       if (mapped && mapped.target.kind !== "ignore") n += 1;
@@ -77,6 +81,8 @@ export function ExtraColumnMappings({
 }) {
   const { source, assessment, extraMappings, setExtraMappings } = controller;
   const { data: options = [] } = useWallChartAssessmentOptions(campaignId);
+  const { data: dataFieldsCat } = useCampaignDataFields(campaignId);
+  const dataFields = dataFieldsCat?.fields ?? [];
   if (!source || source.kind !== "csv") return null;
 
   const headers = source.csv.headers;
@@ -108,9 +114,10 @@ export function ExtraColumnMappings({
       <div>
         <h3 className="text-sm font-semibold">Additional column mappings</h3>
         <p className="text-xs text-muted-foreground">
-          Optional. Map other question columns onto more assessments, or promote
-          matching workers to union role Contact — skipped if they are already
-          Contact, Activist, or Delegate.
+          Optional. Map other question columns onto more assessments, campaign
+          data fields (claim ranks, compliance witnesses — not wall-chart
+          colour), or promote matching workers to union role Contact — skipped
+          if they are already Contact, Activist, or Delegate.
         </p>
       </div>
 
@@ -120,9 +127,11 @@ export function ExtraColumnMappings({
         const destKind =
           mapping.destination.kind === "contact_role"
             ? DEST_CONTACT
-            : mapping.destination.assessment.mode === "existing"
-              ? DEST_EXISTING
-              : DEST_NEW;
+            : mapping.destination.kind === "fact"
+              ? DEST_FACT
+              : mapping.destination.assessment.mode === "existing"
+                ? DEST_EXISTING
+                : DEST_NEW;
         const destAssessment =
           mapping.destination.kind === "assessment" ? mapping.destination.assessment : null;
         const isBinary =
@@ -205,7 +214,14 @@ export function ExtraColumnMappings({
               </div>
             )}
 
-            {mapping.matchMode === "exact" && mapping.column && (
+            {mapping.destination.kind === "fact" && mapping.matchMode === "exact" && (
+              <p className="text-[11px] text-muted-foreground">
+                Non-empty cells write the cell value to the data field. They do
+                not record an assessment.
+              </p>
+            )}
+
+            {mapping.matchMode === "exact" && mapping.column && mapping.destination.kind !== "fact" && (
               <div className="overflow-x-auto rounded-md border">
                 <table className="w-full text-xs">
                   <thead>
@@ -286,6 +302,15 @@ export function ExtraColumnMappings({
                     patch(mapping.id, { ...mapping, destination: { kind: "contact_role" } });
                     return;
                   }
+                  if (v === DEST_FACT) {
+                    const first = dataFields[0];
+                    if (!first) return;
+                    patch(mapping.id, {
+                      ...mapping,
+                      destination: { kind: "fact", field_id: first.field_id },
+                    });
+                    return;
+                  }
                   if (v === DEST_EXISTING) {
                     const first = options.find((o) => o.activity_id !== primaryExistingId);
                     if (!first) return;
@@ -330,9 +355,45 @@ export function ExtraColumnMappings({
                   >
                     Union role — Contact (guarded)
                   </SelectItem>
+                  <SelectItem
+                    value={DEST_FACT}
+                    className="text-xs"
+                    disabled={dataFields.length === 0}
+                  >
+                    Data field (not an assessment)
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {mapping.destination.kind === "fact" && (
+              <div className="space-y-1">
+                <Label className="text-xs">Data field</Label>
+                <Select
+                  value={String(mapping.destination.field_id)}
+                  onValueChange={(v) =>
+                    patch(mapping.id, {
+                      ...mapping,
+                      destination: { kind: "fact", field_id: Number(v) },
+                    })
+                  }
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dataFields.map((f) => (
+                      <SelectItem key={f.field_id} value={String(f.field_id)} className="text-xs">
+                        {f.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Matching cells write this fact. They do not colour the wall chart.
+                </p>
+              </div>
+            )}
 
             {destAssessment?.mode === "new" && mapping.destination.kind === "assessment" && (
               <div className="space-y-2 pl-1">

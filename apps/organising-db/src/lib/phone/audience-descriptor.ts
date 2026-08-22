@@ -6,6 +6,8 @@
  * Phase E — UX coherence: audience descriptor.
  */
 
+import type { FactFilter } from "@/lib/campaign-facts/types"
+
 export type AudienceDescriptorV1 = {
   version: 1
   filters: {
@@ -16,6 +18,7 @@ export type AudienceDescriptorV1 = {
     occupations?: string[]
     assessment?: { activity_id: number; rating_buckets: string[] }
     cumulative_rating?: { min?: number; max?: number; include_unrated?: boolean }
+    facts?: FactFilter[]
   }
   narrative?: {
     tone?: string[]

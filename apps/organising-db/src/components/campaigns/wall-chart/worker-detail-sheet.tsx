@@ -34,6 +34,7 @@ import type { LucideIcon } from "lucide-react";
 import { WorkerRelationshipsTab } from "./worker-relationships-tab";
 import { WorkerDevelopmentTab } from "../activists/worker-development-tab";
 import { RatingPicker } from "../assessments/rating-picker";
+import { WorkerFactsTab } from "../data-fields/worker-facts-tab";
 import { CreateTaskListDialog } from "../task-lists/create-task-list-dialog";
 import { useCampaignWorkerListActivity } from "@/lib/hooks/useCampaignWorkerListActivity";
 import type {
@@ -144,6 +145,7 @@ export function WorkerDetailSheet({
       <TabsList className="grid grid-cols-5 w-full">
         <TabsTrigger value="details">Details</TabsTrigger>
         <TabsTrigger value="ratings">Activity</TabsTrigger>
+        <TabsTrigger value="facts">Data fields</TabsTrigger>
         <TabsTrigger value="units">Units</TabsTrigger>
         <TabsTrigger value="relationships">Relationships</TabsTrigger>
         <TabsTrigger value="development">Development</TabsTrigger>
@@ -167,6 +169,14 @@ export function WorkerDetailSheet({
           campaignId={campaignId}
           workerId={workerId}
           workerName={`${worker.first_name} ${worker.last_name}`}
+          canWrite={canWrite}
+        />
+      </TabsContent>
+
+      <TabsContent value="facts">
+        <WorkerFactsTab
+          campaignId={campaignId}
+          workerId={workerId}
           canWrite={canWrite}
         />
       </TabsContent>

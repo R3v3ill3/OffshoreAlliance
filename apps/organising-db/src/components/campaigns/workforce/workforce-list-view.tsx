@@ -32,6 +32,14 @@ import {
   type WallChartWorker,
 } from "../wall-chart/types";
 import { CumulativeRatingDot, WorkerBadgeRow } from "../wall-chart/worker-badges";
+import { FactFilterControls } from "../data-fields/fact-filter-controls";
+import type { FactFilter } from "@/lib/campaign-facts/types";
+import { workerPassesFactFilters } from "@/lib/campaign-facts/values";
+import {
+  factsByWorkerField,
+  useCampaignDataFields,
+  useCampaignFacts,
+} from "@/lib/hooks/useCampaignDataFields";
 
 type Row = {
   id: string;
@@ -67,6 +75,7 @@ type FilterState = {
   ouIds: Set<number>;
   employerIds: Set<number>;
   worksiteIds: Set<number>;
+  factFilters: FactFilter[];
 };
 
 type RatingBucket = "unrated" | "1" | "2" | "3" | "4" | "5";
@@ -82,6 +91,7 @@ const DEFAULT_FILTER: FilterState = {
   ouIds: new Set(),
   employerIds: new Set(),
   worksiteIds: new Set(),
+  factFilters: [],
 };
 
 function ratingBucket(rating: number | null | undefined): RatingBucket {
@@ -103,7 +113,8 @@ function hasActiveFilter(s: FilterState): boolean {
     s.ouGroupIds.size > 0 ||
     s.ouIds.size > 0 ||
     s.employerIds.size > 0 ||
-    s.worksiteIds.size > 0
+    s.worksiteIds.size > 0 ||
+    s.factFilters.length > 0
   );
 }
 
@@ -151,6 +162,13 @@ export function WorkforceListView({
   const [assessment, setAssessment] = useState<AssessmentSelection>({ kind: "cumulative" });
   const [groupedView, setGroupedView] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
+  const { data: dataFieldsCat } = useCampaignDataFields(campaignId);
+  const dataFields = dataFieldsCat?.fields ?? [];
+  const { data: campaignFacts = [] } = useCampaignFacts(campaignId);
+  const factsByWorker = useMemo(
+    () => factsByWorkerField(campaignFacts),
+    [campaignFacts]
+  );
 
   const { data: members = [] } = useQuery({
     queryKey: ["campaign-members-full", campaignId],
@@ -431,9 +449,19 @@ export function WorkforceListView({
         });
         if (!inGroup) return false;
       }
+      if (filter.factFilters.length > 0) {
+        if (
+          !workerPassesFactFilters(
+            factsByWorker.get(r.worker_id) ?? new Map(),
+            filter.factFilters
+          )
+        ) {
+          return false;
+        }
+      }
       return true;
     });
-  }, [rows, filter, assessment, ouById]);
+  }, [rows, filter, assessment, ouById, factsByWorker]);
 
   // Map membership-id-keyed selection back to worker IDs for bulk actions.
   const selectedWorkerIds = useMemo(() => {
@@ -565,7 +593,8 @@ export function WorkforceListView({
     filter.ouGroupIds.size +
     filter.ouIds.size +
     filter.employerIds.size +
-    filter.worksiteIds.size;
+    filter.worksiteIds.size +
+    filter.factFilters.length;
 
   // For grouped view: bucket filtered rows by their employer group (ou_group_id
   // of their primary unit, or "—" for ungrouped/unassigned).
@@ -641,6 +670,7 @@ export function WorkforceListView({
                 filter={filter}
                 onChange={setFilter}
                 options={filterOptions}
+                dataFields={dataFields}
               />
             </PopoverContent>
           </Popover>
@@ -827,10 +857,12 @@ function FilterPanel({
   filter,
   onChange,
   options,
+  dataFields,
 }: {
   filter: FilterState;
   onChange: (next: FilterState) => void;
   options: FilterOptions;
+  dataFields: import("@/lib/campaign-facts/types").CampaignDataField[];
 }) {
   const toggleNum = (set: Set<number>, id: number) => {
     const next = new Set(set);
@@ -989,6 +1021,11 @@ function FilterPanel({
           </div>
         </Section>
       )}
+      <FactFilterControls
+        fields={dataFields}
+        filters={filter.factFilters}
+        onChange={(factFilters) => onChange({ ...filter, factFilters })}
+      />
       <div className="flex items-center justify-between gap-2 pt-2 border-t">
         <Button
           type="button"

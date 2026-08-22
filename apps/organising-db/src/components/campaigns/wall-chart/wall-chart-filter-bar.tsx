@@ -20,6 +20,8 @@ import {
   type SortKey,
   type WallChartFilterState,
 } from "./filters";
+import { FactFilterControls } from "../data-fields/fact-filter-controls";
+import type { CampaignDataField } from "@/lib/campaign-facts/types";
 
 export type MembershipTypeOption = { id: number; label: string };
 export type OccupationOption = { id: number; label: string };
@@ -60,6 +62,7 @@ export type WallChartFilterBarProps = {
   occupations: OccupationOption[];
   onApplyToAll?: () => void;
   compact?: boolean;
+  dataFields?: CampaignDataField[];
 };
 
 export function WallChartFilterBar({
@@ -69,6 +72,7 @@ export function WallChartFilterBar({
   occupations,
   onApplyToAll,
   compact,
+  dataFields = [],
 }: WallChartFilterBarProps) {
   const active = hasActiveFilter(state);
   const activeCount =
@@ -76,7 +80,9 @@ export function WallChartFilterBar({
     (state.includeNonMember ? 1 : 0) +
     state.roles.size +
     state.ratings.size +
-    state.occupationIds.size;
+    state.occupationIds.size +
+    state.factFilters.length;
+  const sortableFields = dataFields.filter((f) => f.sortable);
 
   const toggle = <T,>(set: Set<T>, value: T): Set<T> => {
     const next = new Set(set);
@@ -184,6 +190,62 @@ export function WallChartFilterBar({
                     />
                   ))}
                 </div>
+              </Section>
+            )}
+
+            {dataFields.some((f) => f.filterable) && (
+              <FactFilterControls
+                fields={dataFields}
+                filters={state.factFilters}
+                onChange={(factFilters) => onChange({ ...state, factFilters })}
+              />
+            )}
+
+            {sortableFields.length > 0 && (
+              <Section label="Sort by data field">
+                <Select
+                  value={
+                    state.sortFactFieldId != null
+                      ? `${state.sort}:${state.sortFactFieldId}`
+                      : "none"
+                  }
+                  onValueChange={(v) => {
+                    if (v === "none") {
+                      onChange({
+                        ...state,
+                        sortFactFieldId: null,
+                        sort:
+                          state.sort === "fact_asc" || state.sort === "fact_desc"
+                            ? "last_name"
+                            : state.sort,
+                      });
+                      return;
+                    }
+                    const [dir, id] = v.split(":");
+                    onChange({
+                      ...state,
+                      sort: dir as SortKey,
+                      sortFactFieldId: Number(id),
+                    });
+                  }}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="None" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {sortableFields.map((f) => (
+                      <SelectItem key={`d-${f.field_id}`} value={`fact_desc:${f.field_id}`}>
+                        {f.label} (high → low)
+                      </SelectItem>
+                    ))}
+                    {sortableFields.map((f) => (
+                      <SelectItem key={`a-${f.field_id}`} value={`fact_asc:${f.field_id}`}>
+                        {f.label} (low → high)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Section>
             )}
 

@@ -26045,6 +26045,15 @@ export type Database = {
       }
       materialise_sequence_run: { Args: { p_run_id: number }; Returns: number }
       merge_employers: { Args: { payload: Json }; Returns: Json }
+      merge_workers: {
+        Args: {
+          p_actor_id?: string
+          p_campaign_id?: number
+          p_survivor_id: number
+          p_victim_ids: number[]
+        }
+        Returns: number
+      }
       normalise_phone_au: { Args: { p: string }; Returns: string }
       record_assessment_event: {
         Args: {
@@ -26126,6 +26135,10 @@ export type Database = {
       release_sms_conversation: {
         Args: { p_conversation_id: number }
         Returns: boolean
+      }
+      remap_worker_id: {
+        Args: { p_from: number; p_to: number }
+        Returns: undefined
       }
       renew_call_list_item_claim: {
         Args: {

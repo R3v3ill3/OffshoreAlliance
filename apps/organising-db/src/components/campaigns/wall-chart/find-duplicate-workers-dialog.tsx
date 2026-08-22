@@ -95,7 +95,10 @@ export function FindDuplicateWorkersDialog({
 
   const apply = useAuthAwareMutation({
     mutationFn: async () => {
-      const actions = clusters.flatMap((c) => {
+      const actions = clusters.flatMap((c): Array<
+        | { action: "remove"; keep_worker_id: number; remove_worker_ids: number[] }
+        | { action: "merge"; keep_worker_id: number; merge_from_worker_ids: number[] }
+      > => {
         const d = drafts[c.cluster_id];
         if (!d?.confirmed || d.action === "skip") return [];
         const others = d.includeWorkerIds.filter((id) => id !== d.keepWorkerId);

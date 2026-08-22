@@ -8,6 +8,7 @@ import { FactFilterControls } from "@/components/campaigns/data-fields/fact-filt
 import { useCampaignDataFields } from "@/lib/hooks/useCampaignDataFields";
 import type { FactFilter } from "@/lib/campaign-facts/types";
 import { encodeFactsQueryParam } from "@/lib/campaign-facts/values";
+import { fetchApi, API_FETCH_TIMEOUT_UPLOAD_MS } from "@/lib/api/fetch-api";
 import {
   Mail,
   Phone,

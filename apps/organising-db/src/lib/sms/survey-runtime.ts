@@ -77,11 +77,12 @@ async function maybeWriteSurveyFact(
   },
 ): Promise<void> {
   if (!args.question.write_fact || args.question.field_id == null) return;
+  const fieldId = args.question.field_id;
   try {
     const { data: field } = await db
       .from("campaign_data_fields")
       .select("*")
-      .eq("field_id", args.question.field_id)
+      .eq("field_id", fieldId)
       .eq("campaign_id", args.survey.campaign_id)
       .maybeSingle();
     if (!field) return;
@@ -92,7 +93,7 @@ async function maybeWriteSurveyFact(
     );
     if (parsed.kind === "empty" || parsed.kind === "invalid") return;
     await recordCampaignFactRpc(db, {
-      fieldId: args.question.field_id,
+      fieldId,
       workerId: args.workerId,
       campaignId: args.survey.campaign_id,
       parsed,

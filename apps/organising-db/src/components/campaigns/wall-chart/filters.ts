@@ -1,6 +1,7 @@
 import type { FactFilter } from "@/lib/campaign-facts/types";
 import type { WorkerCampaignFact } from "@/lib/campaign-facts/types";
 import { numericFactValue, workerPassesFactFilters } from "@/lib/campaign-facts/values";
+import { assessmentNumericForWallChart } from "./rating-colour";
 import type {
   ActivityRating,
   AssessmentSelection,

@@ -4,6 +4,7 @@ import { getCampaignMembershipStatus } from "@/lib/campaign/constants";
 import { errorResponse } from "@/lib/api/error-response";
 import { parseFactsQueryParam } from "@/lib/campaign-facts/values";
 import { filterWorkerIdsByFacts } from "@/lib/campaign-facts/server-filter";
+import { campaignIsSmsEpisode } from "@/lib/sms/sms-episode";
 
 const WORKER_EMBED = `
   worker_id,

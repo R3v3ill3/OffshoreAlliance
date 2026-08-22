@@ -84,7 +84,14 @@ export async function POST(
       clear?: boolean;
     };
 
-    if (!Number.isInteger(body.worker_id) || !Number.isInteger(body.field_id)) {
+    const workerId = body.worker_id;
+    const fieldId = body.field_id;
+    if (
+      typeof workerId !== "number" ||
+      typeof fieldId !== "number" ||
+      !Number.isInteger(workerId) ||
+      !Number.isInteger(fieldId)
+    ) {
       return NextResponse.json(
         { error: "worker_id and field_id are required" },
         { status: 400 }
@@ -98,7 +105,7 @@ export async function POST(
     const { data: field, error: fieldErr } = await supabase
       .from("campaign_data_fields")
       .select("*")
-      .eq("field_id", body.field_id)
+      .eq("field_id", fieldId)
       .eq("campaign_id", campaignId)
       .maybeSingle();
     if (fieldErr) throw fieldErr;
@@ -106,8 +113,8 @@ export async function POST(
 
     if (body.clear) {
       const factId = await recordCampaignFactRpc(supabase, {
-        fieldId: body.field_id,
-        workerId: body.worker_id,
+        fieldId,
+        workerId,
         campaignId,
         source,
         sourceRef: body.source_ref,
@@ -147,8 +154,8 @@ export async function POST(
     }
 
     const factId = await recordCampaignFactRpc(supabase, {
-      fieldId: body.field_id,
-      workerId: body.worker_id,
+      fieldId,
+      workerId,
       campaignId,
       parsed,
       source,

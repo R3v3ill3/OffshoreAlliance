@@ -23,6 +23,10 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { FactFilterControls } from '@/components/campaigns/data-fields/fact-filter-controls'
+import { useCampaignDataFields } from '@/lib/hooks/useCampaignDataFields'
+import type { FactFilter } from '@/lib/campaign-facts/types'
+import { encodeFactsQueryParam } from '@/lib/campaign-facts/values'
 import {
   Select,
   SelectContent,
@@ -99,6 +103,9 @@ export function AudienceFilterBuildDialog({
   const [occupationSearch, setOccupationSearch] = useState('')
   const [sortKey, setSortKey] = useState('name_asc')
   const [washKeys, setWashKeys] = useState<Set<string>>(new Set())
+  const [factFilters, setFactFilters] = useState<FactFilter[]>([])
+  const { data: dataFieldsCat } = useCampaignDataFields(open ? campaignId : null)
+  const dataFields = dataFieldsCat?.fields ?? []
 
   const toggle = (list: string[], value: string, set: (v: string[]) => void) => {
     set(list.includes(value) ? list.filter((v) => v !== value) : [...list, value])
@@ -172,6 +179,7 @@ export function AudienceFilterBuildDialog({
       worksiteFilter,
       occupationSearch,
       sortKey,
+      factFilters,
     ],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -184,6 +192,7 @@ export function AudienceFilterBuildDialog({
         params.set('worksite_id', worksiteFilter)
       }
       if (occupationSearch.trim()) params.set('occupation', occupationSearch.trim())
+      if (factFilters.length) params.set('facts', encodeFactsQueryParam(factFilters))
       params.set('sort', sortKey)
       const res = await fetchApi(
         `/api/campaigns/${campaignId}/list-builder?${params.toString()}`,
@@ -357,6 +366,14 @@ export function AudienceFilterBuildDialog({
               </Select>
             </div>
           </div>
+
+          {dataFields.some((f) => f.filterable) && (
+            <FactFilterControls
+              fields={dataFields}
+              filters={factFilters}
+              onChange={setFactFilters}
+            />
+          )}
 
           <p className="text-sm text-muted-foreground">
             {listQuery.isFetching ? (

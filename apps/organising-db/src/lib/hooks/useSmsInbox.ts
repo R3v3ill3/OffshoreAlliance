@@ -17,6 +17,7 @@ import {
 } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { fetchApi, API_FETCH_TIMEOUT_LLM_MS } from '@/lib/api/fetch-api'
+import { excludeSmsEpisodes } from '@/lib/campaign/visible-campaigns'
 import type {
   SmsCannedReplyRow,
   SmsConversationNoteRow,
@@ -84,6 +85,45 @@ async function toError(res: Response, fallback: string): Promise<Error> {
 }
 
 // ─── Queries ────────────────────────────────────────────────────────
+
+export interface SmsInboxCampaignOption {
+  campaign_id: number
+  name: string
+  status: string
+}
+
+const CAMPAIGN_STATUS_RANK: Record<string, number> = {
+  active: 0,
+  planning: 1,
+  completed: 2,
+  suspended: 3,
+}
+
+/** Campaigns for the inbox switcher — same visibility as the campaigns list. */
+export function useSmsInboxCampaigns() {
+  return useQuery({
+    queryKey: ['sms-inbox-campaigns'],
+    queryFn: async () => {
+      const supabase = createClient()
+      const { data, error } = await excludeSmsEpisodes(
+        supabase
+          .from('campaigns')
+          .select('campaign_id, name, status')
+          .order('name'),
+      )
+      if (error) throw error
+      const rows = (data ?? []) as SmsInboxCampaignOption[]
+      return [...rows].sort((a, b) => {
+        const rank =
+          (CAMPAIGN_STATUS_RANK[a.status] ?? 9) -
+          (CAMPAIGN_STATUS_RANK[b.status] ?? 9)
+        if (rank !== 0) return rank
+        return a.name.localeCompare(b.name)
+      })
+    },
+    staleTime: 60_000,
+  })
+}
 
 export function useSmsConversations(filters: SmsConversationFilters) {
   return useQuery({

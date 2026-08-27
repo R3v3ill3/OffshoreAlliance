@@ -1,7 +1,9 @@
 import type { WallChartAssessmentOption } from "../types";
 import type {
+  ExtraMatchMode,
   ParticipationMappableField,
   ParticipationMatchResultRow,
+  ResponseValueMapping,
   ResponseValueTarget,
 } from "@/lib/import/participation-import-shared";
 
@@ -51,6 +53,38 @@ export type AssessmentChoice =
   | { mode: "existing"; option: WallChartAssessmentOption }
   | { mode: "new"; title: string; isBinary: boolean; supporterOutcomeValue: string };
 
+export type ExtraMappingDestination =
+  | { kind: "assessment"; assessment: AssessmentChoice }
+  | { kind: "contact_role" }
+  | { kind: "fact"; field_id: number };
+
+/** Extra CSV column → assessment or guarded Contact promotion. */
+export interface ExtraColumnMapping {
+  id: string;
+  column: string | null;
+  matchMode: ExtraMatchMode;
+  containsToken: string;
+  valueMappings: ResponseValueMapping[];
+  /** Value recorded when truthy/contains matches (assessment destinations). */
+  matchedTarget: ResponseValueTarget;
+  destination: ExtraMappingDestination;
+}
+
+export function newExtraColumnMapping(): ExtraColumnMapping {
+  return {
+    id: crypto.randomUUID(),
+    column: null,
+    matchMode: "truthy",
+    containsToken: "",
+    valueMappings: [],
+    matchedTarget: { kind: "binary", value: "yes" },
+    destination: {
+      kind: "assessment",
+      assessment: { mode: "new", title: "", isBinary: true, supporterOutcomeValue: "yes" },
+    },
+  };
+}
+
 export type ColumnMap = Partial<Record<ParticipationMappableField, string>>;
 
 /** One import row after identity extraction + response resolution. */
@@ -62,6 +96,13 @@ export interface ImportRow {
   lastName: string;
   rawResponse: string | null;
   target: ResponseValueTarget;
+  extraHits: Array<{
+    mappingId: string;
+    rawValue: string;
+    target: ResponseValueTarget;
+    factFieldId?: number;
+  }>;
+  promoteContact: boolean;
   /** AN sync mode: pre-resolved worker + AN person id. */
   resolvedWorkerId?: number | null;
   anPersonId?: string | null;

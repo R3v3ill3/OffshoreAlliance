@@ -1,3 +1,7 @@
+import type { SmsMessageReaction } from "@/lib/sms/tapback";
+
+export type { SmsMessageReaction };
+
 // Hand-written row types for the SMS module tables:
 //   - 20260810100000_sms_foundations (sms_numbers, sms_number_assignments)
 //   - 20260810120000_sms_broadcast (sms_lists, sms_list_items,
@@ -12,6 +16,7 @@
 //     sms_relay_messages)
 //   - 20260811190000_sms_ai_reporting (sms_messages.ai_assisted,
 //     vw_sms_sender_stats, vw_sms_campaign_rollup)
+//   - 20260821120000_sms_message_reactions (sms_messages.reactions)
 // TODO: replace with generated types after migration apply (pnpm gen:types).
 
 export type SmsNumberPurpose = "organiser" | "relay" | "survey" | "spare";
@@ -205,6 +210,11 @@ export interface SmsMessageRow {
    * originated from an AI "Draft reply" candidate (possibly edited).
    */
   ai_assisted: boolean;
+  /**
+   * iOS/Android tapbacks on this message (20260821120000). Empty
+   * array when none. Not a bubble — chips render on the parent.
+   */
+  reactions?: SmsMessageReaction[];
   created_at: string;
 }
 
@@ -348,6 +358,8 @@ export interface SmsSurveyQuestionRow {
   write_rating: boolean;
   /** Phase 8 (20260811180000): per-question override of the survey ratings target. NULL = fall back to survey.activity_id. */
   activity_id: number | null;
+  write_fact: boolean;
+  field_id: number | null;
   invalid_prompt: string | null;
   nudge_text: string | null;
   /** Set when a post-open edit removes a question that already has answers. */

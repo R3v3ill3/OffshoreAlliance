@@ -242,6 +242,24 @@ export function WorkerChatCard({
   const { data: worksites = [] } = useQuery({
     queryKey: ['worker-card-worksites', form?.employer_id],
     queryFn: async () => {
+      if (form?.employer_id != null) {
+        const { data: roles, error: roleErr } = await supabase
+          .from('employer_worksite_roles')
+          .select('worksite_id')
+          .eq('employer_id', form.employer_id)
+          .eq('is_current', true)
+        if (roleErr) throw roleErr
+        const ids = [...new Set((roles ?? []).map((r) => r.worksite_id as number))]
+        if (ids.length > 0) {
+          const { data, error } = await supabase
+            .from('worksites')
+            .select('worksite_id, worksite_name')
+            .in('worksite_id', ids)
+            .order('worksite_name')
+          if (error) throw error
+          return (data ?? []) as { worksite_id: number; worksite_name: string }[]
+        }
+      }
       const { data, error } = await supabase
         .from('worksites')
         .select('worksite_id, worksite_name')

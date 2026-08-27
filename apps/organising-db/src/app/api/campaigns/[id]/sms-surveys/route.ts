@@ -209,6 +209,34 @@ export async function POST(
       return NextResponse.json({ error: mappingErrors.join(' ') }, { status: 400 })
     }
 
+    const questionFieldIds = [
+      ...new Set(
+        (body.questions ?? [])
+          .map((q) => q.field_id)
+          .filter((id): id is number => id != null),
+      ),
+    ]
+    if (questionFieldIds.length > 0) {
+      const { data: fields } = await supabase
+        .from('campaign_data_fields')
+        .select('field_id, campaign_id')
+        .in('field_id', questionFieldIds)
+      const valid = new Set(
+        (fields ?? [])
+          .filter((f) => f.campaign_id === cid)
+          .map((f) => f.field_id),
+      )
+      const invalidIndex = (body.questions ?? []).findIndex(
+        (q) => q.field_id != null && !valid.has(q.field_id),
+      )
+      if (invalidIndex !== -1) {
+        return NextResponse.json(
+          { error: `Question ${invalidIndex + 1}: data field not found in this campaign` },
+          { status: 400 },
+        )
+      }
+    }
+
     if (body.sender_number_id != null) {
       const notDedicated = await dedicatedNumberRequiredForNumberId(
         supabase,

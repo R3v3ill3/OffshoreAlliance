@@ -23,6 +23,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { isWorkerMemberLike } from "@/lib/campaign/constants";
+import { syncWorkersToMatchingCampaigns } from "@/lib/workers/sync-campaign-universe";
 import {
   MembershipNonOaFields,
   type NonOaUnionOptionRow,
@@ -33,6 +34,7 @@ import type { LucideIcon } from "lucide-react";
 import { WorkerRelationshipsTab } from "./worker-relationships-tab";
 import { WorkerDevelopmentTab } from "../activists/worker-development-tab";
 import { RatingPicker } from "../assessments/rating-picker";
+import { WorkerFactsTab } from "../data-fields/worker-facts-tab";
 import { CreateTaskListDialog } from "../task-lists/create-task-list-dialog";
 import { useCampaignWorkerListActivity } from "@/lib/hooks/useCampaignWorkerListActivity";
 import type {
@@ -143,6 +145,7 @@ export function WorkerDetailSheet({
       <TabsList className="grid grid-cols-5 w-full">
         <TabsTrigger value="details">Details</TabsTrigger>
         <TabsTrigger value="ratings">Activity</TabsTrigger>
+        <TabsTrigger value="facts">Data fields</TabsTrigger>
         <TabsTrigger value="units">Units</TabsTrigger>
         <TabsTrigger value="relationships">Relationships</TabsTrigger>
         <TabsTrigger value="development">Development</TabsTrigger>
@@ -166,6 +169,14 @@ export function WorkerDetailSheet({
           campaignId={campaignId}
           workerId={workerId}
           workerName={`${worker.first_name} ${worker.last_name}`}
+          canWrite={canWrite}
+        />
+      </TabsContent>
+
+      <TabsContent value="facts">
+        <WorkerFactsTab
+          campaignId={campaignId}
+          workerId={workerId}
           canWrite={canWrite}
         />
       </TabsContent>
@@ -251,6 +262,8 @@ function DetailsTab({
   const [nonOaUnionOptionId, setNonOaUnionOptionId] = useState<number | null>(
     worker.non_oa_union_option_id
   );
+  const [employerId, setEmployerId] = useState<number | null>(worker.employer_id);
+  const [worksiteId, setWorksiteId] = useState<number | null>(worker.worksite_id);
   const [noteText, setNoteText] = useState("");
   const [flagForFollowUp, setFlagForFollowUp] = useState(false);
 
@@ -297,6 +310,85 @@ function DetailsTab({
     },
     enabled: !!canWrite,
     staleTime: 60_000,
+  });
+
+  const { data: employers = [] } = useQuery({
+    queryKey: ["worker-detail-employers"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("employers")
+        .select("employer_id, employer_name")
+        .eq("is_active", true)
+        .order("employer_name");
+      if (error) throw error;
+      return (data ?? []) as { employer_id: number; employer_name: string }[];
+    },
+    staleTime: 60_000,
+  });
+
+  const { data: worksites = [] } = useQuery({
+    queryKey: ["worker-detail-worksites", employerId],
+    queryFn: async () => {
+      if (employerId != null) {
+        const { data: roles, error: roleErr } = await supabase
+          .from("employer_worksite_roles")
+          .select("worksite_id")
+          .eq("employer_id", employerId)
+          .eq("is_current", true);
+        if (roleErr) throw roleErr;
+        const ids = [...new Set((roles ?? []).map((r) => r.worksite_id as number))];
+        if (ids.length > 0) {
+          const { data, error } = await supabase
+            .from("worksites")
+            .select("worksite_id, worksite_name")
+            .in("worksite_id", ids)
+            .eq("is_active", true)
+            .order("worksite_name");
+          if (error) throw error;
+          return (data ?? []) as { worksite_id: number; worksite_name: string }[];
+        }
+      }
+      const { data, error } = await supabase
+        .from("worksites")
+        .select("worksite_id, worksite_name")
+        .eq("is_active", true)
+        .order("worksite_name");
+      if (error) throw error;
+      return (data ?? []) as { worksite_id: number; worksite_name: string }[];
+    },
+    staleTime: 60_000,
+  });
+
+  const { data: extraAssignments = [] } = useQuery({
+    queryKey: ["worker-detail-assignments", workerId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worker_assignments")
+        .select(
+          `assignment_id, is_current,
+           contract:worksite_contracts(
+             worksite:worksites(worksite_id, worksite_name),
+             contractor:employers(employer_name)
+           )`
+        )
+        .eq("worker_id", workerId)
+        .eq("is_current", true);
+      if (error) throw error;
+      return (data ?? []) as unknown as {
+        assignment_id: number;
+        is_current: boolean;
+        contract:
+          | {
+              worksite: { worksite_id: number; worksite_name: string } | null;
+              contractor: { employer_name: string } | null;
+            }
+          | {
+              worksite: { worksite_id: number; worksite_name: string } | null;
+              contractor: { employer_name: string } | null;
+            }[]
+          | null;
+      }[];
+    },
   });
 
   const { data: workerNotes = [] } = useQuery({
@@ -355,9 +447,14 @@ function DetailsTab({
           is_bargaining_rep: isBargainingRep,
           union_membership_type_id: unionMembershipTypeId,
           non_oa_union_option_id: nonOaUnionOptionId,
+          employer_id: employerId,
+          worksite_id: worksiteId,
         })
         .eq("worker_id", workerId);
       if (error) throw error;
+      if (employerId != null || worksiteId != null) {
+        await syncWorkersToMatchingCampaigns(supabase, [workerId]);
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
@@ -367,6 +464,8 @@ function DetailsTab({
       qc.invalidateQueries({ queryKey: ["campaign-list-builder-workers", cid] });
       qc.invalidateQueries({ queryKey: ["worker", String(workerId)] });
       qc.invalidateQueries({ queryKey: ["workers"] });
+      qc.invalidateQueries({ queryKey: ["worker-detail-assignments", workerId] });
+      qc.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
     },
   });
 
@@ -419,6 +518,17 @@ function DetailsTab({
     },
   });
 
+  const extraWorksites = extraAssignments
+    .map((row) => {
+      const contract = Array.isArray(row.contract) ? row.contract[0] : row.contract;
+      const siteName = contract?.worksite?.worksite_name;
+      const siteId = contract?.worksite?.worksite_id;
+      const contractor = contract?.contractor?.employer_name;
+      if (!siteName || siteId === worksiteId) return null;
+      return { id: row.assignment_id, siteName, contractor };
+    })
+    .filter((row): row is { id: number; siteName: string; contractor: string | undefined } => row != null);
+
   return (
     <div className="grid gap-3 py-3">
       <div className="grid grid-cols-2 gap-2">
@@ -445,6 +555,79 @@ function DetailsTab({
           disabled={!canWrite}
         />
       </Field>
+      <Field label="Employer">
+        <Select
+          value={employerId != null ? String(employerId) : "__none__"}
+          onValueChange={(v) => {
+            setEmployerId(v === "__none__" ? null : Number(v));
+            setWorksiteId(null);
+          }}
+          disabled={!canWrite}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="No employer" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">No employer</SelectItem>
+            {employers.map((e) => (
+              <SelectItem key={e.employer_id} value={String(e.employer_id)}>
+                {e.employer_name}
+              </SelectItem>
+            ))}
+            {employerId != null &&
+              !employers.some((e) => e.employer_id === employerId) &&
+              worker.employer && (
+                <SelectItem value={String(employerId)}>
+                  {worker.employer.employer_name}
+                </SelectItem>
+              )}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="Worksite">
+        <Select
+          value={worksiteId != null ? String(worksiteId) : "__none__"}
+          onValueChange={(v) => setWorksiteId(v === "__none__" ? null : Number(v))}
+          disabled={!canWrite}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="No worksite" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">No worksite</SelectItem>
+            {worksites.map((w) => (
+              <SelectItem key={w.worksite_id} value={String(w.worksite_id)}>
+                {w.worksite_name}
+              </SelectItem>
+            ))}
+            {worksiteId != null &&
+              !worksites.some((w) => w.worksite_id === worksiteId) &&
+              worker.worksite && (
+                <SelectItem value={String(worksiteId)}>
+                  {worker.worksite.worksite_name}
+                </SelectItem>
+              )}
+          </SelectContent>
+        </Select>
+      </Field>
+      {extraWorksites.length > 0 && (
+        <div className="rounded-md border bg-muted/40 px-3 py-2 space-y-1">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+            Additional worksites
+          </p>
+          <ul className="text-sm space-y-0.5">
+            {extraWorksites.map((row) => (
+              <li key={row.id}>
+                {row.siteName}
+                {row.contractor ? ` · ${row.contractor}` : ""}
+              </li>
+            ))}
+          </ul>
+          <p className="text-[11px] text-muted-foreground">
+            Extra contract placements are edited on the full worker profile.
+          </p>
+        </div>
+      )}
       <Field label="Occupation">
         <OccupationCombobox
           value={occupationId}

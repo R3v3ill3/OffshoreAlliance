@@ -1,4 +1,5 @@
 import type { WallChartMemberRow, WallChartWorker } from "./types";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 
 /**
  * Raw shape coming back from Supabase for the `campaign-members-full` query.
@@ -120,3 +121,33 @@ export const CAMPAIGN_MEMBERS_FULL_SELECT = `membership_id, worker_id,
     employer:employers!workers_employer_id_fkey(employer_id, employer_name),
     worksite:worksites!workers_worksite_id_fkey(worksite_id, worksite_name)
   )` as const;
+
+/** Page through PostgREST so wall chart / list / detail sheet see every member. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function fetchCampaignMembersFull(
+  supabase: any,
+  campaignId: string | number
+): Promise<RawCampaignMemberRow[]> {
+  return fetchAllRows((from, to) =>
+    supabase
+      .from("campaign_worker_membership")
+      .select(CAMPAIGN_MEMBERS_FULL_SELECT)
+      .eq("campaign_id", campaignId)
+      .range(from, to)
+  ) as Promise<RawCampaignMemberRow[]>;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function fetchOuAssignments(
+  supabase: any,
+  ouIds: number[]
+): Promise<{ ou_id: number; worker_id: number; is_primary: boolean | null }[]> {
+  if (ouIds.length === 0) return [];
+  return fetchAllRows((from, to) =>
+    supabase
+      .from("campaign_worker_ou")
+      .select("ou_id, worker_id, is_primary")
+      .in("ou_id", ouIds)
+      .range(from, to)
+  ) as Promise<{ ou_id: number; worker_id: number; is_primary: boolean | null }[]>;
+}

@@ -3,6 +3,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
+import {
+  stampEmployerWorksiteFromOu,
+  syncWorkersToMatchingCampaigns,
+} from "@/lib/workers/sync-campaign-universe";
 
 export type MoveWorkerVars = {
   /**
@@ -280,10 +284,24 @@ export function useMoveWorkersMutation(campaignId: string | number) {
         }
       }
 
+      if (vars.toOuId != null) {
+        const { data: targetOu } = await supabase
+          .from("campaign_organising_units")
+          .select("unit_basis")
+          .eq("ou_id", vars.toOuId)
+          .maybeSingle();
+        if (targetOu?.unit_basis) {
+          await stampEmployerWorksiteFromOu(supabase, workerIds, targetOu.unit_basis);
+        }
+        await syncWorkersToMatchingCampaigns(supabase, workerIds);
+      }
+
       return { inserted, deleted, skipped };
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["campaign-worker-ou", String(campaignId)] });
+      qc.invalidateQueries({ queryKey: ["campaign-members-full", String(campaignId)] });
+      qc.invalidateQueries({ queryKey: ["workers"] });
     },
   });
 }

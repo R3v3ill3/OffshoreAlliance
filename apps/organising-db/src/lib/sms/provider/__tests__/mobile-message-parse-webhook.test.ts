@@ -168,6 +168,31 @@ describe("MobileMessageProvider.parseWebhook — delivery status", () => {
     });
   });
 
+  it("parses the documented MM status payload (body present, no type)", () => {
+    // Live status webhooks look like this: no `type`, original SMS in
+    // `message`, sender id, status + message_id. Must not be inbound.
+    const event = provider.parseWebhook(
+      JSON.stringify({
+        to: "61412345678",
+        message: "Hello, this is message 1",
+        sender: "Mobile MSG",
+        custom_ref: "tracking001",
+        status: "delivered",
+        message_id: "044b035f-0396-4a47-8428-12d5273ab04a",
+        received_at: "2024-09-30 14:35:00",
+        part_number: 1,
+        total_parts: 1,
+      }),
+    );
+    expect(event).toEqual({
+      type: "status",
+      providerMessageId: "044b035f-0396-4a47-8428-12d5273ab04a",
+      customRef: "tracking001",
+      status: "delivered",
+      occurredAt: "2024-09-30 14:35:00",
+    });
+  });
+
   it("infers inbound — not status — when the payload carries a body", () => {
     // A reply whose body happens to be a status word must never be
     // mistaken for a receipt; the body is the discriminator.

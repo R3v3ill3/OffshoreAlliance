@@ -37,6 +37,8 @@ import {
   type WorkerFilters,
 } from "@/components/workers/worker-filter-bar";
 import type { CampaignOuType } from "@/types/organising-row-types";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
+import { workerSearchBlob } from "@/lib/workers/worker-search-blob";
 
 interface AddWorkersClientProps {
   campaignId: number;
@@ -56,6 +58,7 @@ interface WorkerRow {
   union_membership_type_id: number | null;
   member_role_type_id: number | null;
   canonical_occupation_id: number | null;
+  search_blob: string;
   employer: { employer_name: string } | null;
   worksite: { worksite_name: string } | null;
   union_membership_type: { display_name: string } | null;
@@ -118,20 +121,34 @@ export function AddWorkersClient({ campaignId, campaignName }: AddWorkersClientP
   const { data: workers = [], isLoading: workersLoading } = useQuery({
     queryKey: ["add-workers-candidate-pool", campaignId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("workers")
-        .select(
-          `worker_id, first_name, last_name, email, phone, is_active, is_hsr,
-           employer_id, worksite_id, union_membership_type_id, member_role_type_id,
-           canonical_occupation_id,
-           employer:employers(employer_name),
-           worksite:worksites(worksite_name),
-           union_membership_type:union_membership_types(display_name),
-           member_role_type:member_role_types(display_name)`,
-        )
-        .order("last_name", { ascending: true });
-      if (error) throw error;
-      return (data ?? []) as unknown as WorkerRow[];
+      const data = await fetchAllRows((from, to) =>
+        supabase
+          .from("workers")
+          .select(
+            `worker_id, first_name, last_name, preferred_name, email, phone, is_active, is_hsr,
+             employer_id, worksite_id, union_membership_type_id, member_role_type_id,
+             canonical_occupation_id,
+             employer:employers(employer_name),
+             worksite:worksites(worksite_name),
+             union_membership_type:union_membership_types(display_name),
+             member_role_type:member_role_types(display_name)`,
+          )
+          .order("last_name", { ascending: true })
+          .range(from, to)
+      );
+      return data.map((row) => {
+        const r = row as unknown as WorkerRow;
+        return {
+          ...r,
+          search_blob: workerSearchBlob({
+            first_name: r.first_name,
+            last_name: r.last_name,
+            preferred_name: (row as { preferred_name?: string | null }).preferred_name,
+            email: r.email,
+            phone: r.phone,
+          }),
+        };
+      });
     },
     enabled: !!user,
   });
@@ -139,12 +156,14 @@ export function AddWorkersClient({ campaignId, campaignName }: AddWorkersClientP
   const { data: existingMemberIds } = useQuery({
     queryKey: ["add-workers-existing-membership", campaignId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("campaign_worker_membership")
-        .select("worker_id")
-        .eq("campaign_id", campaignId);
-      if (error) throw error;
-      return new Set((data ?? []).map((r: { worker_id: number }) => r.worker_id));
+      const rows = await fetchAllRows<{ worker_id: number }>((from, to) =>
+        supabase
+          .from("campaign_worker_membership")
+          .select("worker_id")
+          .eq("campaign_id", campaignId)
+          .range(from, to)
+      );
+      return new Set(rows.map((r) => r.worker_id));
     },
     enabled: !!user,
   });
@@ -383,8 +402,8 @@ export function AddWorkersClient({ campaignId, campaignName }: AddWorkersClientP
       <DataTable<WorkerRow>
         data={clientFiltered}
         columns={columns}
-        searchPlaceholder="Search by name or email..."
-        searchKeys={["first_name", "last_name", "email"]}
+        searchPlaceholder="Search by name, email, or phone..."
+        searchKeys={["search_blob"]}
         loading={workersLoading}
         selection={selection}
         filterBar={<WorkerFilterBar filters={filters} onChange={applyFilter} />}

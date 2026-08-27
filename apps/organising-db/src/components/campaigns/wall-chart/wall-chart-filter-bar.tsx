@@ -12,17 +12,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { X } from "lucide-react";
 import {
+  activeAssessmentFilters,
   DEFAULT_FILTER_STATE,
   hasActiveFilter,
+  type ContactPresence,
   type RatingBucket,
   type RoleFilterKey,
   type SortKey,
   type WallChartFilterState,
 } from "./filters";
+import { FactFilterControls } from "../data-fields/fact-filter-controls";
+import type { CampaignDataField } from "@/lib/campaign-facts/types";
 
 export type MembershipTypeOption = { id: number; label: string };
 export type OccupationOption = { id: number; label: string };
+export type AssessmentFilterOption = {
+  activityId: number;
+  title: string;
+  isBinary: boolean;
+};
+
+const PRESENCE_OPTIONS: { key: ContactPresence; label: string }[] = [
+  { key: "any", label: "Any" },
+  { key: "has", label: "Has" },
+  { key: "missing", label: "Doesn’t have" },
+];
 
 const ROLE_OPTIONS: { key: RoleFilterKey; label: string }[] = [
   { key: "delegate", label: "Delegate" },
@@ -60,6 +76,8 @@ export type WallChartFilterBarProps = {
   occupations: OccupationOption[];
   onApplyToAll?: () => void;
   compact?: boolean;
+  dataFields?: CampaignDataField[];
+  assessmentOptions?: AssessmentFilterOption[];
 };
 
 export function WallChartFilterBar({
@@ -69,6 +87,8 @@ export function WallChartFilterBar({
   occupations,
   onApplyToAll,
   compact,
+  dataFields = [],
+  assessmentOptions = [],
 }: WallChartFilterBarProps) {
   const active = hasActiveFilter(state);
   const activeCount =
@@ -76,7 +96,12 @@ export function WallChartFilterBar({
     (state.includeNonMember ? 1 : 0) +
     state.roles.size +
     state.ratings.size +
-    state.occupationIds.size;
+    state.occupationIds.size +
+    (state.phone !== "any" ? 1 : 0) +
+    (state.email !== "any" ? 1 : 0) +
+    activeAssessmentFilters(state).length +
+    state.factFilters.length;
+  const sortableFields = dataFields.filter((f) => f.sortable);
 
   const toggle = <T,>(set: Set<T>, value: T): Set<T> => {
     const next = new Set(set);
@@ -84,6 +109,40 @@ export function WallChartFilterBar({
     else next.add(value);
     return next;
   };
+
+  const addedAssessmentIds = new Set(
+    state.assessmentFilters.map((f) => f.activityId)
+  );
+  const addableAssessments = assessmentOptions.filter(
+    (o) => !addedAssessmentIds.has(o.activityId)
+  );
+
+  const addAssessmentFilter = (activityId: number) =>
+    onChange({
+      ...state,
+      assessmentFilters: [
+        ...state.assessmentFilters,
+        { activityId, buckets: new Set<RatingBucket>() },
+      ],
+    });
+
+  const removeAssessmentFilter = (activityId: number) =>
+    onChange({
+      ...state,
+      assessmentFilters: state.assessmentFilters.filter(
+        (f) => f.activityId !== activityId
+      ),
+    });
+
+  const toggleAssessmentBucket = (activityId: number, bucket: RatingBucket) =>
+    onChange({
+      ...state,
+      assessmentFilters: state.assessmentFilters.map((f) =>
+        f.activityId === activityId
+          ? { ...f, buckets: toggle(f.buckets, bucket) }
+          : f
+      ),
+    });
 
   const reset = () => onChange(DEFAULT_FILTER_STATE());
 
@@ -187,6 +246,150 @@ export function WallChartFilterBar({
               </Section>
             )}
 
+            <Section label="Contact details">
+              <div className="grid grid-cols-2 gap-2">
+                <PresenceSelect
+                  label="Phone"
+                  value={state.phone}
+                  onChange={(phone) => onChange({ ...state, phone })}
+                />
+                <PresenceSelect
+                  label="Email"
+                  value={state.email}
+                  onChange={(email) => onChange({ ...state, email })}
+                />
+              </div>
+            </Section>
+
+            {(assessmentOptions.length > 0 ||
+              state.assessmentFilters.length > 0) && (
+              <Section label="Assessment ratings">
+                <div className="space-y-2">
+                  {state.assessmentFilters.map((af) => {
+                    const opt = assessmentOptions.find(
+                      (o) => o.activityId === af.activityId
+                    );
+                    return (
+                      <div
+                        key={af.activityId}
+                        className="rounded border p-2 space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-medium truncate">
+                            {opt?.title ?? `Assessment ${af.activityId}`}
+                            {opt?.isBinary ? " (binary)" : ""}
+                          </span>
+                          <button
+                            type="button"
+                            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                            onClick={() => removeAssessmentFilter(af.activityId)}
+                            aria-label={`Remove ${opt?.title ?? "assessment"} filter`}
+                            title="Remove"
+                          >
+                            <X className="h-3.5 w-3.5" aria-hidden />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {RATING_OPTIONS.map((r) => (
+                            <CheckboxRow
+                              key={r.key}
+                              label={r.key === "unrated" ? "Not rated" : r.label}
+                              checked={af.buckets.has(r.key)}
+                              onChange={() =>
+                                toggleAssessmentBucket(af.activityId, r.key)
+                              }
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {addableAssessments.length > 0 && (
+                    <Select
+                      value="__add__"
+                      onValueChange={(v) => {
+                        if (v !== "__add__") addAssessmentFilter(Number(v));
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Add assessment filter…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__add__" disabled>
+                          Add assessment filter…
+                        </SelectItem>
+                        {addableAssessments.map((o) => (
+                          <SelectItem
+                            key={o.activityId}
+                            value={String(o.activityId)}
+                          >
+                            {o.title}
+                            {o.isBinary ? " (binary)" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              </Section>
+            )}
+
+            {dataFields.some((f) => f.filterable) && (
+              <FactFilterControls
+                fields={dataFields}
+                filters={state.factFilters}
+                onChange={(factFilters) => onChange({ ...state, factFilters })}
+              />
+            )}
+
+            {sortableFields.length > 0 && (
+              <Section label="Sort by data field">
+                <Select
+                  value={
+                    state.sortFactFieldId != null
+                      ? `${state.sort}:${state.sortFactFieldId}`
+                      : "none"
+                  }
+                  onValueChange={(v) => {
+                    if (v === "none") {
+                      onChange({
+                        ...state,
+                        sortFactFieldId: null,
+                        sort:
+                          state.sort === "fact_asc" || state.sort === "fact_desc"
+                            ? "last_name"
+                            : state.sort,
+                      });
+                      return;
+                    }
+                    const [dir, id] = v.split(":");
+                    onChange({
+                      ...state,
+                      sort: dir as SortKey,
+                      sortFactFieldId: Number(id),
+                    });
+                  }}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="None" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {sortableFields.map((f) => (
+                      <SelectItem key={`d-${f.field_id}`} value={`fact_desc:${f.field_id}`}>
+                        {f.label} (high → low)
+                      </SelectItem>
+                    ))}
+                    {sortableFields.map((f) => (
+                      <SelectItem key={`a-${f.field_id}`} value={`fact_asc:${f.field_id}`}>
+                        {f.label} (low → high)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Section>
+            )}
+
             <div className="flex items-center justify-between gap-2 pt-2 border-t">
               <Button
                 type="button"
@@ -225,6 +428,34 @@ function Section({ label, children }: { label: string; children: React.ReactNode
       </p>
       {children}
     </div>
+  );
+}
+
+function PresenceSelect({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: ContactPresence;
+  onChange: (value: ContactPresence) => void;
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] text-muted-foreground">{label}</span>
+      <Select value={value} onValueChange={(v) => onChange(v as ContactPresence)}>
+        <SelectTrigger className="h-7 text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {PRESENCE_OPTIONS.map((o) => (
+            <SelectItem key={o.key} value={o.key}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </label>
   );
 }
 

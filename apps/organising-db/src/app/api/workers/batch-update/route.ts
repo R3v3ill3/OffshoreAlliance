@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { syncWorkersToMatchingCampaigns } from "@/lib/workers/sync-campaign-universe";
 
 const batchUpdateSchema = z.object({
   worker_ids: z.array(z.number().int().positive()).min(1).max(500),
@@ -123,6 +124,17 @@ export async function POST(request: NextRequest) {
       );
     }
     agreementsRemoved = count ?? 0;
+  }
+
+  if (
+    updates &&
+    (updates.employer_id != null || updates.worksite_id != null)
+  ) {
+    try {
+      await syncWorkersToMatchingCampaigns(supabase, worker_ids);
+    } catch (syncErr) {
+      console.error("syncWorkersToMatchingCampaigns failed:", syncErr);
+    }
   }
 
   return NextResponse.json({

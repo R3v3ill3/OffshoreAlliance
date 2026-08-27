@@ -115,6 +115,7 @@ import { AddCampaignWorkerDialog } from "./wall-chart/add-campaign-worker-dialog
 import { WallChartAssessmentCharts } from "./WallChartAssessmentCharts";
 import { BuildListPanel } from "./wall-chart/build-list-panel";
 import { useBuildList, type FiredTaskDraft } from "./wall-chart/use-build-list";
+import { WorkerSearch, type WorkerSearchItem } from "./wall-chart/worker-search";
 
 
 function activityIdsForWallChartSelections(
@@ -305,7 +306,9 @@ export function CampaignWallChart({
   const focusOuId = wallChartSearchParams.get("ou")
     ? Number(wallChartSearchParams.get("ou"))
     : null;
-  const [highlightedOuId, setHighlightedOuId] = useState<number | null>(null);
+  const [highlightedOuId, setHighlightedOuId] = useState<
+    number | "unassigned" | null
+  >(null);
 
   // Multi-select state for bulk Move/Copy/Link/Remove actions.
   const selection = useWallChartSelection();
@@ -614,6 +617,89 @@ export function CampaignWallChart({
     }
     return m;
   }, [ouAssign]);
+
+  const primaryOuByWorker = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const a of ouAssign) {
+      if (a.is_primary) m.set(a.worker_id, a.ou_id);
+    }
+    return m;
+  }, [ouAssign]);
+
+  // Flat, name-sorted list backing the wall chart worker search typeahead.
+  const workerSearchItems = useMemo<WorkerSearchItem[]>(() => {
+    const items: WorkerSearchItem[] = [];
+    for (const row of memberRows) {
+      const w = row.worker;
+      if (!w) continue;
+      const ouIds = unitsByWorker.get(row.worker_id) ?? [];
+      const unitLabel =
+        ouIds.length === 0
+          ? "Unassigned"
+          : ouIds
+              .map((id) => ouNameById.get(id))
+              .filter((n): n is string => Boolean(n))
+              .join(", ") || "Unassigned";
+      items.push({
+        workerId: row.worker_id,
+        name: `${w.first_name} ${w.last_name}`.trim(),
+        unitLabel,
+        sublabel:
+          w.canonical_occupation?.canonical_name ??
+          w.member_role_type?.display_name ??
+          null,
+      });
+    }
+    items.sort((a, b) => a.name.localeCompare(b.name));
+    return items;
+  }, [memberRows, unitsByWorker, ouNameById]);
+
+  // Search → jump: centre the worker's unit card and open their detail sheet.
+  const focusWorker = useCallback(
+    (workerId: number) => {
+      const ouIds = unitsByWorker.get(workerId) ?? [];
+      // Preferred unit first (primary, else first assignment), then the rest as
+      // fallbacks in case the preferred card isn't rendered (e.g. a sub-unit in
+      // a collapsed group). Unassigned workers target the unassigned card.
+      const candidates: (number | "unassigned")[] =
+        ouIds.length === 0
+          ? ["unassigned"]
+          : Array.from(
+              new Set<number>([
+                primaryOuByWorker.get(workerId) ?? ouIds[0],
+                ...ouIds,
+              ])
+            );
+
+      // Un-hide the preferred unit if the user has it collapsed so its card is
+      // in the DOM to scroll to.
+      const preferred = candidates[0];
+      if (
+        typeof preferred === "number" &&
+        unitVisibility.hiddenOuIds.has(preferred)
+      ) {
+        unitVisibility.toggleOu(preferred);
+      }
+
+      // Open the detail sheet right away; scroll after a tick so any un-hide /
+      // re-render has painted the target card first.
+      workerDetail?.openWorkerDetail(workerId);
+
+      window.setTimeout(() => {
+        for (const key of candidates) {
+          const el = document.querySelector<HTMLElement>(
+            `[data-ou-id="${key}"]`
+          );
+          if (!el) continue;
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          setHighlightedOuId(key);
+          window.setTimeout(() => setHighlightedOuId(null), 2500);
+          break;
+        }
+      }, 80);
+    },
+    [unitsByWorker, primaryOuByWorker, unitVisibility, workerDetail]
+  );
 
   const compareWorkerIds = useCallback(
     (a: number, b: number) => {
@@ -1295,6 +1381,11 @@ export function CampaignWallChart({
           }
           rightSlot={
             <div className="flex items-center gap-2">
+              <WorkerSearch
+                items={workerSearchItems}
+                onSelect={focusWorker}
+                disabled={workerSearchItems.length === 0}
+              />
               {canWrite && (
                 <Button
                   type="button"
@@ -1428,6 +1519,14 @@ export function CampaignWallChart({
           const assessmentLabelForCard =
             effScope.kind === "assessment" ? effScope.title : "Cumulative";
           return (
+            <div
+              data-ou-id="unassigned"
+              className={
+                highlightedOuId === "unassigned"
+                  ? "rounded-lg ring-2 ring-primary ring-offset-2 transition-shadow duration-300"
+                  : "transition-shadow duration-300"
+              }
+            >
             <CampaignUnitCard
               ou={null}
               fallbackTitle="Unassigned workers"
@@ -1499,6 +1598,7 @@ export function CampaignWallChart({
             >
               {sorted.map((wid) => renderTile(wid, null, UNASSIGNED_KEY))}
             </CampaignUnitCard>
+            </div>
           );
         })()}
 
@@ -1937,7 +2037,15 @@ export function CampaignWallChart({
                               const childAssessmentLabel =
                                 childEffScope.kind === "assessment" ? childEffScope.title : "Cumulative";
                               return (
-                                <div key={child.ou_id} data-ou-id={child.ou_id}>
+                                <div
+                                  key={child.ou_id}
+                                  data-ou-id={child.ou_id}
+                                  className={
+                                    highlightedOuId === child.ou_id
+                                      ? "rounded-lg ring-2 ring-primary ring-offset-2 transition-shadow duration-300"
+                                      : "transition-shadow duration-300"
+                                  }
+                                >
                                   <CampaignUnitCard
                                     ou={child}
                                     workerCount={childSorted.length}
@@ -2054,7 +2162,15 @@ export function CampaignWallChart({
                                               ...factSortOpts(gcFilter, factsByWorker),
                                             });
                                             return (
-                                              <div key={gc.ou_id} data-ou-id={gc.ou_id}>
+                                              <div
+                                                key={gc.ou_id}
+                                                data-ou-id={gc.ou_id}
+                                                className={
+                                                  highlightedOuId === gc.ou_id
+                                                    ? "rounded-lg ring-2 ring-primary ring-offset-2 transition-shadow duration-300"
+                                                    : "transition-shadow duration-300"
+                                                }
+                                              >
                                                 <CampaignUnitCard
                                                   ou={gc}
                                                   workerCount={gcSorted.length}

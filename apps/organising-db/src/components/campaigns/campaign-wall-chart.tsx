@@ -56,6 +56,7 @@ import { collapseActivityRatingsToWorkerMap } from "@/lib/utils/collapse-activit
 import {
   AssessmentSelector,
   UnitAssessmentViewControl,
+  useWallChartAssessmentOptions,
 } from "./wall-chart/assessment-selector";
 import { computeMetrics, type AssessmentMetricsInput } from "./wall-chart/metrics";
 import {
@@ -70,6 +71,7 @@ import { useDisplayMode } from "./wall-chart/use-display-mode";
 import {
   WallChartFilterBar,
   useDerivedOptions,
+  type AssessmentFilterOption,
 } from "./wall-chart/wall-chart-filter-bar";
 import {
   MoveOrCopyWorkersDialog,
@@ -94,6 +96,7 @@ import {
   applyFilters,
   applySort,
   factSortOpts,
+  type AssessmentFilterLookup,
   type RatingFilterAssessmentContext,
   type WallChartFilterState,
 } from "./wall-chart/filters";
@@ -395,6 +398,46 @@ export function CampaignWallChart({
     Map<number, AssessmentSelection>
   >(() => new Map());
 
+  // Per-unit filter state. Key 0 = unassigned, positive = ou_id. Declared here
+  // (above the ratings query) so a per-assessment rating filter can pull that
+  // assessment's ratings into the query below.
+  const [filterByScope, setFilterByScope] = useState<
+    Map<number, WallChartFilterState>
+  >(() => new Map());
+
+  // Assessment metadata for the filter bar's per-assessment rating filters and
+  // for evaluating them (binary-aware). Shares the cached selector query.
+  const { data: assessmentOptions = [] } =
+    useWallChartAssessmentOptions(campaignId);
+
+  const assessmentFilterOptions = useMemo<AssessmentFilterOption[]>(
+    () =>
+      assessmentOptions.map((o) => ({
+        activityId: o.activity_id,
+        title: o.title,
+        isBinary: o.is_binary,
+      })),
+    [assessmentOptions]
+  );
+
+  const assessmentSelectionByActivity = useMemo(() => {
+    const m = new Map<
+      number,
+      Extract<AssessmentSelection, { kind: "assessment" }>
+    >();
+    for (const o of assessmentOptions) {
+      m.set(o.activity_id, {
+        kind: "assessment",
+        activityId: o.activity_id,
+        title: o.title,
+        isBinary: o.is_binary,
+        supporterOutcomeValue: o.supporter_outcome_value,
+        ratingLabels: o.rating_labels,
+      });
+    }
+    return m;
+  }, [assessmentOptions]);
+
   // Which list-activity badges (phone / email / activist list / sms) show on
   // worker tiles. Campaign-level default, overridable per unit (undefined =
   // inherit default). Default off so tiles stay uncluttered until opted in.
@@ -408,10 +451,22 @@ export function CampaignWallChart({
   const { byWorker: listActivityByWorker } =
     useCampaignWorkerListActivity(campaignId);
 
-  const activityIdsForRatings = useMemo(
-    () => activityIdsForWallChartSelections(campaignAssessmentDefault, unitAssessmentOverride),
-    [campaignAssessmentDefault, unitAssessmentOverride]
-  );
+  // Assessment ids whose ratings must be loaded: the campaign/unit view
+  // selections plus any per-assessment rating filter across scopes.
+  const activityIdsForRatings = useMemo(() => {
+    const set = new Set<number>(
+      activityIdsForWallChartSelections(
+        campaignAssessmentDefault,
+        unitAssessmentOverride
+      )
+    );
+    for (const st of filterByScope.values()) {
+      for (const af of st.assessmentFilters) {
+        if (af.buckets.size > 0) set.add(af.activityId);
+      }
+    }
+    return [...set].sort((a, b) => a - b);
+  }, [campaignAssessmentDefault, unitAssessmentOverride, filterByScope]);
 
   const activityIdsKey = activityIdsForRatings.join(",");
 
@@ -442,6 +497,14 @@ export function CampaignWallChart({
         return out;
       },
     });
+
+  const assessmentFilterLookup = useMemo<AssessmentFilterLookup>(
+    () => ({
+      ratingsByActivity: activityRatingsByActivityId,
+      selectionByActivity: assessmentSelectionByActivity,
+    }),
+    [activityRatingsByActivityId, assessmentSelectionByActivity]
+  );
 
   const { data: ous = [] } = useQuery({
     queryKey: ["campaign-ous", campaignId],
@@ -858,11 +921,9 @@ export function CampaignWallChart({
     return (workerId: number) => ids.has(workerId);
   }, [participation.useAnyRatingFallback, participation.participatedIds]);
 
-  // Per-unit filter state. Key 0 = unassigned, positive = ou_id.
+  // Per-unit filter state key: 0 = unassigned, positive = ou_id.
+  // (State is declared earlier so the ratings query can react to it.)
   const UNASSIGNED_KEY = 0;
-  const [filterByScope, setFilterByScope] = useState<Map<number, WallChartFilterState>>(
-    () => new Map()
-  );
 
   const getFilter = (scope: number) => filterByScope.get(scope) ?? DEFAULT_FILTER_STATE();
   const setFilter = (scope: number, next: WallChartFilterState) => {
@@ -1496,7 +1557,8 @@ export function CampaignWallChart({
             filter,
             fa.activityRatings,
             fa.ratingCtx,
-            factsByWorker
+            factsByWorker,
+            assessmentFilterLookup
           );
           const sorted = applySort(
             filtered,
@@ -1586,6 +1648,7 @@ export function CampaignWallChart({
                     membershipTypes={derivedOptions.membershipTypes}
                     occupations={derivedOptions.occupations}
                     dataFields={dataFields}
+                    assessmentOptions={assessmentFilterOptions}
                     onApplyToAll={() => {
                       const next = new Map<number, WallChartFilterState>();
                       next.set(UNASSIGNED_KEY, filter);
@@ -1693,7 +1756,8 @@ export function CampaignWallChart({
                     filter,
                     fa.activityRatings,
                     fa.ratingCtx,
-                    factsByWorker
+                    factsByWorker,
+                    assessmentFilterLookup
                   );
                   const sorted = applySort(
                     filtered,
@@ -1941,6 +2005,7 @@ export function CampaignWallChart({
                             membershipTypes={derivedOptions.membershipTypes}
                             occupations={derivedOptions.occupations}
                             dataFields={dataFields}
+                            assessmentOptions={assessmentFilterOptions}
                             onApplyToAll={() => {
                               const next = new Map<number, WallChartFilterState>();
                               next.set(UNASSIGNED_KEY, { ...filter });
@@ -2011,7 +2076,8 @@ export function CampaignWallChart({
                                 childFilter,
                                 childFa.activityRatings,
                                 childFa.ratingCtx,
-                                factsByWorker
+                                factsByWorker,
+                                assessmentFilterLookup
                               );
                               const childSorted = applySort(
                                 childFiltered,
@@ -2155,7 +2221,7 @@ export function CampaignWallChart({
                                               unitAssessmentOverride,
                                               activityRatingsByActivityId
                                             );
-                                            const gcFiltered = applyFilters(gcIds, workerById, ratingByWorker, gcFilter, gcFa.activityRatings, gcFa.ratingCtx, factsByWorker);
+                                            const gcFiltered = applyFilters(gcIds, workerById, ratingByWorker, gcFilter, gcFa.activityRatings, gcFa.ratingCtx, factsByWorker, assessmentFilterLookup);
                                             const gcSorted = applySort(gcFiltered, workerById, ratingByWorker, gcFilter.sort, {
                                               ...(gcFa.sortAssessment ? { assessmentSort: gcFa.sortAssessment } : {}),
                                               relationshipLinks: allLinks,

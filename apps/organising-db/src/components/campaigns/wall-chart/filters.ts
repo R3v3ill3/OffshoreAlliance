@@ -35,6 +35,34 @@ export type RatingBucket = "unrated" | "1" | "2" | "3" | "4" | "5";
 
 export type RoleFilterKey = "delegate" | "activist" | "contact" | "hsr" | "bargaining_rep" | "none";
 
+/** Tri-state presence filter for a contact field (phone / email). */
+export type ContactPresence = "any" | "has" | "missing";
+
+/**
+ * Filter on a *specific* assessment's ratings, independent of the unit's
+ * current assessment view. `buckets` reuses the RatingBucket scale where
+ * "unrated" means the worker has no rating on this assessment and "1".."5"
+ * are the rating bands (binary votes map through the same colour bands).
+ * Empty `buckets` = the filter is inactive.
+ */
+export type AssessmentRatingFilter = {
+  activityId: number;
+  buckets: Set<RatingBucket>;
+};
+
+/**
+ * Ratings + metadata needed to evaluate {@link AssessmentRatingFilter}s. The
+ * wall chart loads ratings for any filtered assessment on demand and supplies
+ * this lookup to {@link applyFilters}.
+ */
+export type AssessmentFilterLookup = {
+  ratingsByActivity: Map<number, Map<number, ActivityRating>>;
+  selectionByActivity: Map<
+    number,
+    Extract<AssessmentSelection, { kind: "assessment" }>
+  >;
+};
+
 export type WallChartFilterState = {
   sort: SortKey;
   membershipTypeIds: Set<number>;
@@ -44,6 +72,12 @@ export type WallChartFilterState = {
   /** Empty set = all. */
   ratings: Set<RatingBucket>;
   occupationIds: Set<number>;
+  /** Presence of a phone number. */
+  phone: ContactPresence;
+  /** Presence of an email address. */
+  email: ContactPresence;
+  /** Per-assessment rating filters (AND across entries). */
+  assessmentFilters: AssessmentRatingFilter[];
   factFilters: FactFilter[];
   sortFactFieldId: number | null;
 };
@@ -55,9 +89,19 @@ export const DEFAULT_FILTER_STATE = (): WallChartFilterState => ({
   roles: new Set(),
   ratings: new Set(),
   occupationIds: new Set(),
+  phone: "any",
+  email: "any",
+  assessmentFilters: [],
   factFilters: [],
   sortFactFieldId: null,
 });
+
+/** Assessment filters that actually constrain (at least one bucket chosen). */
+export function activeAssessmentFilters(
+  s: WallChartFilterState
+): AssessmentRatingFilter[] {
+  return s.assessmentFilters.filter((f) => f.buckets.size > 0);
+}
 
 export function hasActiveFilter(s: WallChartFilterState): boolean {
   return (
@@ -66,8 +110,21 @@ export function hasActiveFilter(s: WallChartFilterState): boolean {
     s.roles.size > 0 ||
     s.ratings.size > 0 ||
     s.occupationIds.size > 0 ||
+    s.phone !== "any" ||
+    s.email !== "any" ||
+    activeAssessmentFilters(s).length > 0 ||
     s.factFilters.length > 0
   );
+}
+
+function hasValue(v: string | null | undefined): boolean {
+  return typeof v === "string" && v.trim() !== "";
+}
+
+function passesPresence(present: boolean, filter: ContactPresence): boolean {
+  if (filter === "has") return present;
+  if (filter === "missing") return !present;
+  return true;
 }
 
 function roleKey(worker: WallChartWorker): RoleFilterKey[] {
@@ -100,9 +157,13 @@ export function applyFilters(
   activityRatings?: Map<number, ActivityRating>,
   /** Required when `activityRatings` is set and the assessment is binary — selects correct numeric band. */
   ratingAssessmentContext?: RatingFilterAssessmentContext,
-  factsByWorker?: Map<number, Map<number, WorkerCampaignFact>>
+  factsByWorker?: Map<number, Map<number, WorkerCampaignFact>>,
+  /** Ratings + metadata for evaluating per-assessment rating filters. */
+  assessmentLookup?: AssessmentFilterLookup
 ): number[] {
   if (!hasActiveFilter(state)) return ids;
+
+  const assessmentFilters = activeAssessmentFilters(state);
 
   return ids.filter((id) => {
     const w = workerById.get(id);
@@ -143,6 +204,24 @@ export function applyFilters(
     if (state.occupationIds.size > 0) {
       const oId = w.canonical_occupation_id;
       if (oId == null || !state.occupationIds.has(oId)) return false;
+    }
+
+    // Phone / email presence
+    if (!passesPresence(hasValue(w.phone), state.phone)) return false;
+    if (!passesPresence(hasValue(w.email), state.email)) return false;
+
+    // Per-assessment rating filters (AND across assessments, OR within buckets).
+    if (assessmentFilters.length > 0) {
+      for (const af of assessmentFilters) {
+        const selection = assessmentLookup?.selectionByActivity.get(af.activityId);
+        const ratings = assessmentLookup?.ratingsByActivity.get(af.activityId);
+        // Metadata not loaded yet (e.g. mid-fetch): the worker counts as
+        // unrated for this assessment until the ratings arrive.
+        const numeric = selection
+          ? assessmentNumericForWallChart(selection, ratings?.get(id))
+          : null;
+        if (!af.buckets.has(ratingBucket(numeric))) return false;
+      }
     }
 
     if (state.factFilters.length > 0) {

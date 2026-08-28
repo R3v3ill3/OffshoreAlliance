@@ -29,11 +29,14 @@ import {
 } from '@/lib/sms/survey-validation'
 import {
   insertSurveyQuestions,
+  clearSurveyTestData,
+  rebuildSurveyQuestions,
   replaceSurveyQuestionsPreservingAnswers,
 } from '@/lib/sms/survey-authoring'
 import {
   assessSurveyEditIntegrity,
   hasHighRiskFindings,
+  LIVE_SURVEY_STRUCTURAL_EDIT_MESSAGE,
 } from '@/lib/sms/survey-integrity'
 import {
   loadLiveQuestions,
@@ -510,17 +513,38 @@ export async function PATCH(
       includeRetired: true,
     })
     let findings: ReturnType<typeof assessSurveyEditIntegrity> = []
+    // A high-risk edit means the answers already collected can no
+    // longer be read against the new question set. What to do about
+    // that depends entirely on whether the answers are testers' or
+    // members'.
+    let structural = false
     if (body.questions !== undefined) {
       findings = assessSurveyEditIntegrity(existingQuestions, body.questions)
-      if (
-        hasHighRiskFindings(findings) &&
-        body.acknowledge_high_risk !== 'EDIT'
-      ) {
+      structural = hasHighRiskFindings(findings)
+
+      if (structural && !survey.is_test) {
+        // Live survey: no acknowledge can make this safe. Real members
+        // have answered these questions; refiling their answers against
+        // different ones would corrupt the result. Wording stays
+        // editable — restructuring means a fresh survey.
+        return NextResponse.json(
+          {
+            error: LIVE_SURVEY_STRUCTURAL_EDIT_MESSAGE,
+            findings,
+          },
+          { status: 409 },
+        )
+      }
+
+      if (structural && survey.is_test && body.acknowledge_high_risk !== 'EDIT') {
+        // Test survey: allowed, but the tester data goes. The client
+        // confirms so the discard is never a surprise.
         return NextResponse.json(
           {
             error:
-              'High-risk edits require acknowledge_high_risk: "EDIT"',
+              'This change restructures the survey, so the test answers collected so far will be discarded. Re-send to confirm.',
             findings,
+            discards_test_data: true,
           },
           { status: 409 },
         )
@@ -541,13 +565,24 @@ export async function PATCH(
       .eq('status', 'paused')
     if (updErr) throw updErr
 
+    let discarded: { sessions: number; answers: number } | null = null
     if (body.questions !== undefined) {
-      await replaceSurveyQuestionsPreservingAnswers(
-        admin,
-        ids.sid,
-        body.questions,
-        existingQuestions,
-      )
+      if (structural) {
+        // Only reachable for a test survey (live structural edits were
+        // rejected above). Clear first, then rebuild the questions from
+        // scratch — preserving FKs is pointless once the answers they
+        // pointed at are gone, and positional remapping is the very
+        // thing that produced the mismatch.
+        discarded = await clearSurveyTestData(admin, ids.sid)
+        await rebuildSurveyQuestions(admin, ids.sid, body.questions)
+      } else {
+        await replaceSurveyQuestionsPreservingAnswers(
+          admin,
+          ids.sid,
+          body.questions,
+          existingQuestions,
+        )
+      }
     }
 
     const liveAfter = await loadLiveQuestions(admin, ids.sid)

@@ -40,6 +40,7 @@ import { loadSurveyLaunchConcurrency } from '@/lib/sms/survey-concurrency'
 import { getSmsProvider } from '@/lib/sms/provider'
 import { snapshotSurveyVersion, loadLiveQuestions } from '@/lib/sms/survey-versions'
 import { dedicatedNumberRequiredForNumberId } from '@/lib/sms/sender-inbound-server'
+import { resolveTestAudienceWorkerIds } from '@/lib/sms/survey-test-audience'
 import {
   isWithinSendWindow,
   nextWindowOpen,
@@ -516,7 +517,13 @@ export async function POST(
         }
       }
 
-      const resolved = await resolveAudienceWorkerIds(supabase, cid, audience)
+      // Test mode resolves its own audience. The organiser's pick is
+      // deliberately ignored rather than validated: in test mode there
+      // is no legitimate way to reach the campaign workforce, which is
+      // the whole point of a switch that defaults to on.
+      const resolved = survey.is_test
+        ? await resolveTestAudienceWorkerIds(supabase, cid)
+        : await resolveAudienceWorkerIds(supabase, cid, audience)
       if (resolved.error) {
         return NextResponse.json(
           { error: resolved.error.message },

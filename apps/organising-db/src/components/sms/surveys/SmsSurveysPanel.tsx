@@ -519,6 +519,7 @@ function SurveyEditorSheet({
   onSaved,
   sourceWorkerListId,
   hideAssessments = false,
+  lockStructure = false,
 }: {
   campaignId: string
   surveyId: number | null
@@ -529,6 +530,8 @@ function SurveyEditorSheet({
   /** Chain B: the cohort this draft is being created from (create mode only). */
   sourceWorkerListId?: number | null
   hideAssessments?: boolean
+  /** Live survey — question order/type/set are frozen (server enforces). */
+  lockStructure?: boolean
 }) {
   const isCreate = surveyId == null
   const [value, setValue] = useState<SurveyEditorValue>(() =>
@@ -806,6 +809,7 @@ function SurveyEditorSheet({
                 disabled={pending}
                 campaignId={campaignId}
                 hideAssessments={hideAssessments}
+                lockStructure={lockStructure}
                 selectedQuestionIndex={selectedQuestionIndex}
                 onSelectQuestion={setSelectedQuestionIndex}
                 onActivityCreated={() => {
@@ -962,6 +966,12 @@ function SurveyDetailSheet({
           initial={detailToEditorValue(detail)}
           open={editing}
           hideAssessments={hideAssessments}
+          // A live survey that has already been opened: real members
+          // have answered, so structure is frozen. Test surveys stay
+          // fully editable — that is what test mode is for.
+          lockStructure={
+            !detail.survey.is_test && detail.survey.status !== 'draft'
+          }
           onOpenChange={(open) => {
             if (!open) setEditing(false)
           }}

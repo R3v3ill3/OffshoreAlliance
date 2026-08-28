@@ -348,6 +348,7 @@ export type SurveyLifecycleAction =
   | 'resume'
   | 'promote'
   | 'preview'
+  | 'reset_test_data'
 
 export function useSmsSurveyAction(campaignId: number | string) {
   const queryClient = useQueryClient()
@@ -378,6 +379,12 @@ export function useSmsSurveyAction(campaignId: number | string) {
         opted_out?: number
         skipped_no_phone?: number
         expired_sessions?: number
+        /** resume: members re-prompted after a hard pause. */
+        reprompted?: number
+        reprompt_failed?: number
+        /** reset_test_data: what was discarded. */
+        sessions_cleared?: number
+        answers_cleared?: number
         survey_id?: number
         invitable?: number
         question_count?: number

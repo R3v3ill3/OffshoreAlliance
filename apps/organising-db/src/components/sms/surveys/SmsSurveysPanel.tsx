@@ -56,6 +56,7 @@ import {
   PieChart,
   Play,
   Plus,
+  Eraser,
   Rocket,
   Scale,
   Trash2,
@@ -1392,6 +1393,36 @@ function FunnelDetail({
     )
   }
 
+  /**
+   * Clear a test survey's answers without touching its questions.
+   * Structural edits discard test data on the way through; this covers
+   * re-running the same questions from a clean slate, so results
+   * reflect the latest round rather than every rehearsal.
+   */
+  const runResetTestData = () => {
+    if (
+      !window.confirm(
+        'Discard the answers collected by this test?\n\nThe questions are unchanged — only the test sessions and answers are removed, so you can re-run the same survey from a clean slate. This cannot be undone.',
+      )
+    ) {
+      return
+    }
+    action.mutate(
+      { surveyId: detail.survey.survey_id, action: 'reset_test_data' },
+      {
+        onSuccess: (res) => {
+          const a = (res as { answers_cleared?: number })?.answers_cleared ?? 0
+          toast.success(
+            a > 0
+              ? `Test data cleared — ${a} answer${a === 1 ? '' : 's'} discarded`
+              : 'Test data cleared',
+          )
+        },
+        onError: (err: Error) => toast.error(err.message),
+      },
+    )
+  }
+
   const runPromote = () => {
     action.mutate(
       { surveyId: detail.survey.survey_id, action: 'promote' },
@@ -1574,7 +1605,17 @@ function FunnelDetail({
                       action: 'resume',
                     },
                     {
-                      onSuccess: () => toast.success('Survey resumed'),
+                      onSuccess: (res) => {
+                        const n =
+                          (res as { reprompted?: number })?.reprompted ?? 0
+                        toast.success(
+                          n > 0
+                            ? `Survey resumed — followed up with ${n} ${
+                                n === 1 ? 'person' : 'people'
+                              } who replied while it was paused`
+                            : 'Survey resumed',
+                        )
+                      },
                       onError: (err: Error) => toast.error(err.message),
                     },
                   )
@@ -1600,6 +1641,17 @@ function FunnelDetail({
                   Promote
                 </Button>
               )}
+              {isTest && (
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  title="Discard this test's answers and keep the questions"
+                  onClick={runResetTestData}
+                >
+                  <Eraser className="h-4 w-4 mr-2" />
+                  Reset test data
+                </Button>
+              )}
             </>
           )}
 
@@ -1609,6 +1661,17 @@ function FunnelDetail({
                 <Button variant="outline" disabled={busy} onClick={runPromote}>
                   <Rocket className="h-4 w-4 mr-2" />
                   Promote
+                </Button>
+              )}
+              {isTest && (
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  title="Discard this test's answers and keep the questions"
+                  onClick={runResetTestData}
+                >
+                  <Eraser className="h-4 w-4 mr-2" />
+                  Reset test data
                 </Button>
               )}
               {isAdmin && (

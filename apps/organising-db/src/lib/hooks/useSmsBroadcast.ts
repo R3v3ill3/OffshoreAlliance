@@ -57,6 +57,18 @@ async function toError(res: Response, fallback: string): Promise<Error> {
   return new Error(err.error || fallback)
 }
 
+/**
+ * Blasts are drained by a background cron (every ~5 min), so a
+ * just-queued list keeps showing 'queued' until the dispatcher runs and
+ * a manual refresh lands. While any list/item is still in flight we poll
+ * so the status advances on its own; polling stops once everything has
+ * settled (no query left running against a fully-dispatched list).
+ */
+const ACTIVE_LIST_STATUSES = new Set(['queued', 'sending'])
+const ACTIVE_ITEM_STATUSES = new Set(['pending', 'queued', 'sending'])
+/** Poll cadence while a blast is mid-dispatch. */
+const SMS_ACTIVE_POLL_MS = 10_000
+
 export function useSmsLists(campaignId: number | string | null | undefined) {
   return useQuery({
     queryKey: ['sms-lists', String(campaignId ?? '')],
@@ -66,6 +78,16 @@ export function useSmsLists(campaignId: number | string | null | undefined) {
       return res.json() as Promise<VwSmsCampaignSummaryRowWithMode[]>
     },
     enabled: campaignId != null && campaignId !== '',
+    // Advance 'queued' → 'sending' → 'sent' without a manual refresh.
+    refetchInterval: (query) => {
+      const rows = query.state.data as
+        | VwSmsCampaignSummaryRowWithMode[]
+        | undefined
+      const hasActive = (rows ?? []).some((r) =>
+        ACTIVE_LIST_STATUSES.has(r.list_status),
+      )
+      return hasActive ? SMS_ACTIVE_POLL_MS : false
+    },
   })
 }
 
@@ -81,6 +103,18 @@ export function useSmsListDetail(
       return res.json() as Promise<SmsListDetail>
     },
     enabled: !!campaignId && listId != null,
+    // Poll the open detail sheet while the list is dispatching or any
+    // recipient is still pending/queued/sending, so per-recipient rows
+    // move to sent/delivered live. Stops once the list has drained.
+    refetchInterval: (query) => {
+      const data = query.state.data as SmsListDetail | undefined
+      if (!data) return false
+      const listActive = ACTIVE_LIST_STATUSES.has(data.list.status)
+      const itemsActive = data.items.some((i) =>
+        ACTIVE_ITEM_STATUSES.has(i.status),
+      )
+      return listActive || itemsActive ? SMS_ACTIVE_POLL_MS : false
+    },
   })
 }
 

@@ -6,10 +6,15 @@ import { toast } from "sonner";
 import { fetchApi, API_FETCH_TIMEOUT_UPLOAD_MS } from "@/lib/api/fetch-api";
 import {
   autoMapParticipationHeader,
+  resolveExtraCell,
+  isTruthyCell,
+  cellContainsToken,
+  targetToRatingFields,
   type AnActionListItem,
   type AnFetchResponse,
   type AnResolvedPerson,
   type AnResolvePeopleResponse,
+  type ExtraMatchSpec,
   type ParticipationApplyPreview,
   type ParticipationApplyRequest,
   type ParticipationApplyResult,
@@ -22,6 +27,7 @@ import type {
   AnParticipantRow,
   AssessmentChoice,
   ColumnMap,
+  ExtraColumnMapping,
   ImportRow,
   MatchState,
   RowDecision,
@@ -30,6 +36,43 @@ import type {
 } from "./types";
 
 const RESOLVE_CHUNK = 25;
+
+function extraMatchSpec(m: ExtraColumnMapping): ExtraMatchSpec {
+  if (m.matchMode === "truthy") return { mode: "truthy" };
+  if (m.matchMode === "contains") return { mode: "contains", token: m.containsToken };
+  return { mode: "exact", valueMappings: m.valueMappings };
+}
+
+export function extraMappingStatus(m: ExtraColumnMapping): "empty" | "incomplete" | "ready" {
+  if (!m.column) return "empty";
+  if (m.matchMode === "contains" && !m.containsToken.trim()) return "incomplete";
+  if (m.destination.kind === "contact_role") return "ready";
+  if (m.destination.kind === "fact") {
+    return m.destination.field_id > 0 ? "ready" : "incomplete";
+  }
+  if (m.matchMode === "exact" && !m.valueMappings.some((v) => v.target.kind !== "ignore")) {
+    return "incomplete";
+  }
+  if (m.matchMode !== "exact" && m.matchedTarget.kind === "ignore") return "incomplete";
+  const a = m.destination.assessment;
+  if (a.mode === "new") return a.title.trim().length > 0 ? "ready" : "incomplete";
+  return "ready";
+}
+
+function rowHasIdentity(r: Pick<ImportRow, "emails" | "phones" | "firstName" | "lastName">): boolean {
+  return r.emails.length > 0 || r.phones.length > 0 || Boolean(r.firstName && r.lastName);
+}
+
+function activityPayload(choice: AssessmentChoice): ParticipationApplyRequest["activity"] {
+  return choice.mode === "existing"
+    ? { mode: "existing", activity_id: choice.option.activity_id }
+    : {
+        mode: "new",
+        title: choice.title,
+        is_binary: choice.isBinary,
+        supporter_outcome_value: choice.isBinary ? choice.supporterOutcomeValue : null,
+      };
+}
 
 function splitFullName(raw: string): { firstName: string; lastName: string } {
   const cleaned = raw.replace(/\s*\([^)]*\)\s*/g, " ").trim();
@@ -68,6 +111,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
     enabled: false,
     target: { kind: "binary", value: "no" },
   });
+  const [extraMappings, setExtraMappings] = useState<ExtraColumnMapping[]>([]);
   const [matchState, setMatchState] = useState<MatchState | null>(null);
   const [preview, setPreview] = useState<ParticipationApplyPreview | null>(null);
   const [result, setResult] = useState<ParticipationApplyResult | null>(null);
@@ -84,6 +128,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
     setFixedTarget({ kind: "binary", value: "yes" });
     setConflictPolicy("overwrite");
     setNonResponders({ enabled: false, target: { kind: "binary", value: "no" } });
+    setExtraMappings([]);
     setMatchState(null);
     setPreview(null);
     setResult(null);
@@ -116,6 +161,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
           if (field !== "ignore" && !(field in map)) map[field] = h;
         }
         setColumnMap(map);
+        setExtraMappings([]);
         setStep("assessment");
       } catch (e) {
         setError(e instanceof Error ? e.message : "Upload failed");
@@ -213,6 +259,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
         setSource({ kind: "an", action, participants });
         setResponseColumn(null);
         setFixedTarget({ kind: "binary", value: "yes" });
+        setExtraMappings([]);
         setStep("assessment");
       } catch (e) {
         setError(e instanceof Error ? e.message : "Action Network fetch failed");
@@ -271,6 +318,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
 
   const importRows = useMemo((): ImportRow[] => {
     if (!source) return [];
+    const readyExtras = extraMappings.filter((m) => extraMappingStatus(m) === "ready");
     if (source.kind === "an") {
       return source.participants.map((p) => ({
         key: p.an_person_id,
@@ -280,6 +328,8 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
         lastName: p.family_name,
         rawResponse: null,
         target: fixedTarget,
+        extraHits: [],
+        promoteContact: false,
         resolvedWorkerId: p.resolved_worker_id,
         anPersonId: p.an_person_id,
       }));
@@ -304,6 +354,37 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
       const target: ResponseValueTarget = responseColumn
         ? (targetByValue.get(rawResponse ?? "") ?? { kind: "ignore" })
         : fixedTarget;
+
+      let promoteContact = false;
+      const extraHits: ImportRow["extraHits"] = [];
+      for (const mapping of readyExtras) {
+        if (!mapping.column) continue;
+        const raw = (row[mapping.column] ?? "").trim();
+        if (mapping.destination.kind === "fact") {
+          let hit = false;
+          if (mapping.matchMode === "truthy") hit = isTruthyCell(raw);
+          else if (mapping.matchMode === "contains") {
+            hit = cellContainsToken(raw, mapping.containsToken);
+          } else hit = raw.length > 0;
+          if (hit) {
+            extraHits.push({
+              mappingId: mapping.id,
+              rawValue: raw,
+              target: { kind: "ignore" },
+              factFieldId: mapping.destination.field_id,
+            });
+          }
+          continue;
+        }
+        const resolved = resolveExtraCell(raw, extraMatchSpec(mapping), mapping.matchedTarget);
+        if (resolved.kind === "ignore") continue;
+        if (mapping.destination.kind === "contact_role") {
+          promoteContact = true;
+        } else {
+          extraHits.push({ mappingId: mapping.id, rawValue: raw, target: resolved });
+        }
+      }
+
       return {
         key: String(i),
         emails: emailCol ? [(row[emailCol] ?? "").trim()].filter(Boolean) : [],
@@ -312,22 +393,32 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
         lastName,
         rawResponse,
         target,
+        extraHits,
+        promoteContact,
       };
     });
-  }, [source, columnMap, responseColumn, valueMappings, fixedTarget]);
+  }, [source, columnMap, responseColumn, valueMappings, fixedTarget, extraMappings]);
 
-  /** Rows that will actually be recorded (target not "ignore"). */
+  /** Rows that will actually be recorded (identity + at least one write). */
   const effectiveRows = useMemo(
-    () => importRows.filter((r) => r.target.kind !== "ignore"),
+    () =>
+      importRows.filter(
+        (r) =>
+          rowHasIdentity(r) &&
+          (r.target.kind !== "ignore" || r.promoteContact || r.extraHits.length > 0)
+      ),
     [importRows]
   );
 
+  const extraMappingsValid = useMemo(
+    () => extraMappings.every((m) => extraMappingStatus(m) !== "incomplete"),
+    [extraMappings]
+  );
+
   const canMatch = useMemo(() => {
-    if (effectiveRows.length === 0) return false;
-    return effectiveRows.some(
-      (r) => r.emails.length > 0 || r.phones.length > 0 || (r.firstName && r.lastName)
-    );
-  }, [effectiveRows]);
+    if (!extraMappingsValid || effectiveRows.length === 0) return false;
+    return effectiveRows.some(rowHasIdentity);
+  }, [effectiveRows, extraMappingsValid]);
 
   // ── Match step ──────────────────────────────────────────────────────────────
 
@@ -416,6 +507,25 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
         const rating = row.target.kind === "rating" ? row.target.rating : null;
         const binary = row.target.kind === "binary" ? row.target.value : null;
         const notes = row.rawResponse ? `AN response: ${row.rawResponse}` : null;
+        const extra = row.extraHits
+          .filter((hit) => hit.factFieldId == null)
+          .map((hit) => {
+            const fields = targetToRatingFields(hit.target);
+            if (fields.rating == null && fields.binary_value == null) return null;
+            return {
+              activity_key: hit.mappingId,
+              rating: fields.rating,
+              binary_value: fields.binary_value,
+              notes: hit.rawValue ? `AN extra: ${hit.rawValue}` : null,
+            };
+          })
+          .filter((v): v is NonNullable<typeof v> => v != null);
+        const facts = row.extraHits
+          .filter((hit) => hit.factFieldId != null)
+          .map((hit) => ({
+            field_key: hit.mappingId,
+            raw: hit.rawValue,
+          }));
         if (decision.action === "match" && decision.workerId != null) {
           return {
             key: res.key,
@@ -426,6 +536,9 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
             binary_value: binary,
             notes,
             an_person_id: row.anPersonId ?? null,
+            extra,
+            facts,
+            promote_contact: row.promoteContact,
           };
         }
         if (decision.action === "create" && row.firstName && row.lastName) {
@@ -443,6 +556,9 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
             binary_value: binary,
             notes,
             an_person_id: row.anPersonId ?? null,
+            extra,
+            facts,
+            promote_contact: row.promoteContact,
           };
         }
         return { key: res.key, action: "skip" };
@@ -458,18 +574,21 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
           }
         : null;
 
+      const extra_activities = extraMappings.flatMap((m) => {
+        if (extraMappingStatus(m) !== "ready") return [];
+        if (m.destination.kind !== "assessment") return [];
+        return [{ key: m.id, activity: activityPayload(m.destination.assessment) }];
+      });
+      const extra_fields = extraMappings.flatMap((m) => {
+        if (extraMappingStatus(m) !== "ready") return [];
+        if (m.destination.kind !== "fact") return [];
+        return [{ key: m.id, field_id: m.destination.field_id }];
+      });
+
       return {
-        activity:
-          assessment.mode === "existing"
-            ? { mode: "existing", activity_id: assessment.option.activity_id }
-            : {
-                mode: "new",
-                title: assessment.title,
-                is_binary: assessment.isBinary,
-                supporter_outcome_value: assessment.isBinary
-                  ? assessment.supporterOutcomeValue
-                  : null,
-              },
+        activity: activityPayload(assessment),
+        extra_activities: extra_activities.length > 0 ? extra_activities : undefined,
+        extra_fields: extra_fields.length > 0 ? extra_fields : undefined,
         source_kind: source.kind === "an" ? "an_api" : "an_report_csv",
         file_name: source.kind === "csv" ? source.csv.fileName : null,
         an_resource:
@@ -489,6 +608,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
           fixedTarget,
           conflictPolicy,
           nonResponders: nonRespondersPayload,
+          extraMappings,
         },
         rows,
         dry_run: dryRun,
@@ -501,10 +621,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
       effectiveRows,
       conflictPolicy,
       nonResponders,
-      columnMap,
-      responseColumn,
-      valueMappings,
-      fixedTarget,
+      extraMappings,
     ]
   );
 
@@ -554,9 +671,17 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
       invalidate(["worker-activity-ratings", campaignId]);
       invalidate(["campaign-assessments-rated", campaignId]);
       invalidate(["campaign-members-full", campaignId]);
+      invalidate(["campaign-members", campaignId]);
       invalidate(["campaign-activities", campaignId]);
+      invalidate(["campaign-assessments-rated", campaignId]);
+      invalidate(["activist-register", campaignId]);
+      invalidate(["workers"]);
       onDataChanged?.();
-      toast.success(`Recorded ${json.ratings_applied} participation entries`);
+      toast.success(
+        json.contacts_promoted > 0
+          ? `Recorded ${json.ratings_applied} participation entries and promoted ${json.contacts_promoted} workers to Contact`
+          : `Recorded ${json.ratings_applied} participation entries`
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Import failed");
     } finally {
@@ -589,6 +714,9 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
     setConflictPolicy,
     nonResponders,
     setNonResponders,
+    extraMappings,
+    setExtraMappings,
+    extraMappingsValid,
     importRows,
     effectiveRows,
     canMatch,

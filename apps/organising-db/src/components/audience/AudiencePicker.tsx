@@ -251,7 +251,9 @@ export function AudiencePicker({
   if (channel !== 'sms') {
     return (
       <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-        Audience picker is not yet available for the {channel} channel.
+        Audience picker is not yet available for the {channel} channel. For
+        email, build lists from the wall chart / list builder, or upload a
+        CSV at /campaigns/{String(campaignId)}/email/import.
       </div>
     )
   }

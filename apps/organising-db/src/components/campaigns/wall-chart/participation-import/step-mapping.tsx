@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import type { ParticipationMappableField } from "@/lib/import/participation-import-shared";
 import { RatingTargetSelect } from "./rating-target-select";
+import { ExtraColumnMappings } from "./extra-column-mappings";
 import type { ParticipationImportController } from "./use-participation-import";
 
 const NONE = "__none__";
@@ -29,7 +30,13 @@ const IDENTITY_FIELDS: { field: ParticipationMappableField; label: string }[] = 
  * Step 3 — map identity columns, choose the response column and map its
  * values to ratings, and set the import options.
  */
-export function StepMapping({ controller }: { controller: ParticipationImportController }) {
+export function StepMapping({
+  campaignId,
+  controller,
+}: {
+  campaignId: string;
+  controller: ParticipationImportController;
+}) {
   const {
     source,
     assessment,
@@ -142,7 +149,7 @@ export function StepMapping({ controller }: { controller: ParticipationImportCon
 
       {/* ── Response mapping ── */}
       <section className="space-y-2">
-        <h3 className="text-sm font-semibold">Responses</h3>
+        <h3 className="text-sm font-semibold">Participation assessment</h3>
         <div className="space-y-1">
           <Label className="text-xs">Response / answer column</Label>
           <Select
@@ -217,11 +224,13 @@ export function StepMapping({ controller }: { controller: ParticipationImportCon
         )}
         {ignoredCount > 0 && (
           <p className="text-xs text-muted-foreground">
-            {ignoredCount} row{ignoredCount === 1 ? "" : "s"} will be ignored
-            (unmapped answer values). {effectiveRows.length} will be recorded.
+            {ignoredCount} row{ignoredCount === 1 ? "" : "s"} will not be imported
+            (no identity match, or no value to write). {effectiveRows.length} will be recorded.
           </p>
         )}
       </section>
+
+      <ExtraColumnMappings campaignId={campaignId} controller={controller} />
 
       <ImportOptions
         conflictPolicy={conflictPolicy}

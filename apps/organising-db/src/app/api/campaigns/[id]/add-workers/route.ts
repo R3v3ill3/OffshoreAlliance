@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import {
+  stampEmployerWorksiteFromOu,
+  syncWorkersToMatchingCampaigns,
+} from "@/lib/workers/sync-campaign-universe";
 
 const ouTypeSchema = z.enum([
   "shift",
@@ -109,12 +113,13 @@ export async function POST(
 
   // Step 2: resolve the target ou_id (if any), creating a new unit when asked.
   let targetOuId: number | null = null;
+  let targetOuBasis: unknown = null;
   let createdOu: { ou_id: number; name: string } | null = null;
 
   if (body.unitMode === "existing") {
     const { data: ouRow, error: ouErr } = await supabase
       .from("campaign_organising_units")
-      .select("ou_id")
+      .select("ou_id, unit_basis")
       .eq("ou_id", body.ou_id)
       .eq("campaign_id", campaignId)
       .maybeSingle();
@@ -125,6 +130,7 @@ export async function POST(
       );
     }
     targetOuId = body.ou_id;
+    targetOuBasis = (ouRow as { unit_basis: unknown }).unit_basis;
   } else if (body.unitMode === "new") {
     const { data: maxRow } = await supabase
       .from("campaign_organising_units")
@@ -185,7 +191,12 @@ export async function POST(
       );
     }
     ouAssignmentsCount = ouRows.length;
+    if (targetOuBasis) {
+      await stampEmployerWorksiteFromOu(supabase, body.worker_ids, targetOuBasis);
+    }
   }
+
+  await syncWorkersToMatchingCampaigns(supabase, body.worker_ids);
 
   return NextResponse.json({
     success: true,

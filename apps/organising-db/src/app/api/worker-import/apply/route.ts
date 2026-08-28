@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { lookupNonOaUnionOptionId } from "@/lib/workers/other-union-display";
 import { toE164 } from "@/lib/phone/normalise-phone";
+import {
+  ensureCampaignUniverseJunctions,
+  stampEmployerWorksiteFromOu,
+  syncWorkersToMatchingCampaigns,
+} from "@/lib/workers/sync-campaign-universe";
 
 export interface WorkerImportAssessmentColumn {
   columnHeader: string;
@@ -359,6 +364,27 @@ export async function POST(request: NextRequest) {
   }
 
   const nonOaCatalogRows = nonOaUnionCatalog ?? [];
+  const syncedWorkerIds: number[] = [];
+  const importedEmployerIds: number[] = [];
+  const importedWorksiteIds: number[] = [];
+  let campaignOuBasis: Map<number, unknown> | null = null;
+  if (campaignId) {
+    // Prefetch OU bases so an import that maps workers onto an employer/
+    // worksite unit also stamps the global FKs.
+    const ouIds = [
+      ...new Set(rows.map((r) => r.ouId).filter((id): id is number => id != null)),
+    ];
+    if (ouIds.length > 0) {
+      const { data: ouRows } = await supabase
+        .from("campaign_organising_units")
+        .select("ou_id, unit_basis")
+        .eq("campaign_id", campaignId)
+        .in("ou_id", ouIds);
+      campaignOuBasis = new Map(
+        (ouRows ?? []).map((r: { ou_id: number; unit_basis: unknown }) => [r.ou_id, r.unit_basis])
+      );
+    }
+  }
 
   if (errors.length > 0) {
     return NextResponse.json(
@@ -547,7 +573,17 @@ export async function POST(request: NextRequest) {
         await syncWorkerExtras(supabase, workerId, additionalOccupationIds, specialisationIds);
         await maybeAddWorkerToCampaign(supabase, campaignId, workerId);
         await maybeAssignWorkerToOu(supabase, campaignId, workerId, row.ouId);
+        if (row.ouId && campaignOuBasis) {
+          await stampEmployerWorksiteFromOu(
+            supabase,
+            [workerId],
+            campaignOuBasis.get(row.ouId)
+          );
+        }
         await recordAssessmentEvents(supabase, workerId, row, activityIdByColumn, user.id);
+        syncedWorkerIds.push(workerId);
+        if (row.employerId) importedEmployerIds.push(row.employerId);
+        if (row.worksiteId) importedWorksiteIds.push(row.worksiteId);
       } catch (error) {
         rowErrors.push(error instanceof Error ? error.message : String(error));
       }
@@ -563,6 +599,32 @@ export async function POST(request: NextRequest) {
       status: rowErrors.length > 0 ? "error" : row.action === "update" ? "updated" : "created",
       errors: rowErrors,
     });
+  }
+
+  if (campaignId) {
+    try {
+      await ensureCampaignUniverseJunctions(
+        supabase,
+        campaignId,
+        importedEmployerIds,
+        importedWorksiteIds
+      );
+    } catch (error) {
+      errors.push(
+        `Campaign employer/worksite link: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
+  if (syncedWorkerIds.length > 0) {
+    try {
+      await syncWorkersToMatchingCampaigns(supabase, syncedWorkerIds);
+    } catch (error) {
+      errors.push(
+        `Campaign universe sync: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 
   // Log to import_logs

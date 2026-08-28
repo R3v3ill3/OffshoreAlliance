@@ -23,6 +23,8 @@ function q(overrides: Partial<SmsSurveyQuestionRow>): SmsSurveyQuestionRow {
     branching: null,
     write_rating: false,
     activity_id: null,
+    write_fact: false,
+    field_id: null,
     invalid_prompt: null,
     nudge_text: null,
     retired_at: null,

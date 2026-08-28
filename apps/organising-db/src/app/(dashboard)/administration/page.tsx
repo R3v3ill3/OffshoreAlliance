@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import NextLink from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
@@ -1580,6 +1581,14 @@ function SettingsTab() {
   const [mmUsername, setMmUsername] = useState("");
   const [mmPassword, setMmPassword] = useState("");
   const [smsProvider, setSmsProvider] = useState("mock");
+  const [emailProvider, setEmailProvider] = useState("mock");
+  const [sendgridApiKey, setSendgridApiKey] = useState("");
+  const [sendgridWebhookKey, setSendgridWebhookKey] = useState("");
+  const [emailFromAddress, setEmailFromAddress] = useState("");
+  const [emailFromName, setEmailFromName] = useState("");
+  const [emailReplyTo, setEmailReplyTo] = useState("");
+  const [emailWebhookToken, setEmailWebhookToken] = useState("");
+  const [emailInboundToken, setEmailInboundToken] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -1593,6 +1602,14 @@ function SettingsTab() {
         setMmUsername(data.mobile_message_api_username ?? "");
         setMmPassword(data.mobile_message_api_password ?? "");
         setSmsProvider(data.sms_provider || "mock");
+        setEmailProvider(data.email_provider || "mock");
+        setSendgridApiKey(data.sendgrid_api_key ?? "");
+        setSendgridWebhookKey(data.sendgrid_webhook_public_key ?? "");
+        setEmailFromAddress(data.email_from_address ?? "");
+        setEmailFromName(data.email_from_name ?? "");
+        setEmailReplyTo(data.email_reply_to ?? "");
+        setEmailWebhookToken(data.email_webhook_token ?? "");
+        setEmailInboundToken(data.email_inbound_token ?? "");
       })
       .catch(() => setLoadError("Failed to load settings"))
       .finally(() => setLoading(false));
@@ -1609,6 +1626,12 @@ function SettingsTab() {
           mobile_message_api_username: mmUsername,
           mobile_message_api_password: mmPassword,
           sms_provider: smsProvider,
+          email_provider: emailProvider,
+          sendgrid_api_key: sendgridApiKey,
+          sendgrid_webhook_public_key: sendgridWebhookKey,
+          email_from_address: emailFromAddress,
+          email_from_name: emailFromName,
+          email_reply_to: emailReplyTo,
         }),
       });
       if (!res.ok) {
@@ -1705,6 +1728,128 @@ function SettingsTab() {
             </div>
           </CardContent>
         </Card>
+
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Key className="h-4 w-4" />
+              Platform email (SendGrid — offshore-alliance.au)
+            </CardTitle>
+            <CardDescription>
+              On-platform email sending via SendGrid from the
+              offshore-alliance.au domain. Setup steps (domain
+              authentication, webhooks, inbound parse) are in
+              docs/EMAIL_SENDGRID_SETUP.md. Use the mock provider until live
+              credentials are configured.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Provider</Label>
+              <Select
+                value={emailProvider}
+                onValueChange={setEmailProvider}
+                disabled={loading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mock">Mock (testing)</SelectItem>
+                  <SelectItem value="sendgrid">SendGrid</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>API key</Label>
+              <Input
+                type="password"
+                value={sendgridApiKey}
+                onChange={(e) => setSendgridApiKey(e.target.value)}
+                placeholder={loading ? "Loading…" : "SG.…"}
+                disabled={loading}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>From address</Label>
+              <Input
+                type="email"
+                value={emailFromAddress}
+                onChange={(e) => setEmailFromAddress(e.target.value)}
+                placeholder={loading ? "Loading…" : "organise@offshore-alliance.au"}
+                disabled={loading}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>From name</Label>
+              <Input
+                value={emailFromName}
+                onChange={(e) => setEmailFromName(e.target.value)}
+                placeholder={loading ? "Loading…" : "Offshore Alliance"}
+                disabled={loading}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Reply-to (blank = from address)</Label>
+              <Input
+                type="email"
+                value={emailReplyTo}
+                onChange={(e) => setEmailReplyTo(e.target.value)}
+                placeholder={loading ? "Loading…" : "organise@offshore-alliance.au"}
+                disabled={loading}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Event webhook verification key</Label>
+              <Input
+                type="password"
+                value={sendgridWebhookKey}
+                onChange={(e) => setSendgridWebhookKey(e.target.value)}
+                placeholder={loading ? "Loading…" : "Signed Event Webhook public key…"}
+                disabled={loading}
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2 rounded-md border bg-muted/40 p-3">
+              <Label className="text-xs uppercase tracking-wide">
+                Webhook URLs (paste into SendGrid — tokens are seeded by the
+                migration)
+              </Label>
+              <WebhookUrlRow
+                label="Event Webhook URL (SendGrid → Mail Settings → Event Webhook)"
+                url={
+                  emailWebhookToken
+                    ? `${typeof window !== "undefined" ? window.location.origin : ""}/api/email/webhook?token=${emailWebhookToken}`
+                    : ""
+                }
+                loading={loading}
+              />
+              <WebhookUrlRow
+                label="Inbound Parse URL (SendGrid → Settings → Inbound Parse)"
+                url={
+                  emailInboundToken
+                    ? `${typeof window !== "undefined" ? window.location.origin : ""}/api/email/inbound?token=${emailInboundToken}`
+                    : ""
+                }
+                loading={loading}
+              />
+              {!loading && !emailWebhookToken && !emailInboundToken && (
+                <p className="text-xs text-amber-700">
+                  Tokens not found — the 20260820100000 migration has not been
+                  applied to this database yet (supabase db push).
+                </p>
+              )}
+            </div>
+            <div className="md:col-span-2">
+              <Button variant="outline" size="sm" asChild>
+                <NextLink href="/email/wrappers">Manage email wrappers</NextLink>
+              </Button>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Wrappers are the reusable header/footer applied around every
+                platform email (the default is &ldquo;OA Standard&rdquo;).
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Button onClick={handleSave} disabled={loading || saving}>
@@ -1713,6 +1858,42 @@ function SettingsTab() {
       </Button>
 
       <SmsStatusPanel />
+    </div>
+  );
+}
+
+// ---------- Webhook URL readout (copyable) ----------
+
+function WebhookUrlRow({
+  label,
+  url,
+  loading,
+}: {
+  label: string;
+  url: string;
+  loading: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  if (loading || !url) return null;
+  return (
+    <div className="space-y-1">
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <div className="flex items-center gap-2">
+        <Input readOnly value={url} className="font-mono text-xs" />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            void navigator.clipboard.writeText(url).then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            });
+          }}
+        >
+          {copied ? "Copied!" : "Copy"}
+        </Button>
+      </div>
     </div>
   );
 }

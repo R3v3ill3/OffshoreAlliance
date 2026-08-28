@@ -40,6 +40,7 @@ import {
   renderQuestion,
 } from '@/lib/sms/survey-engine'
 import { useSmsSenders } from '@/lib/hooks/useSmsBroadcast'
+import { useCampaignDataFields } from '@/lib/hooks/useCampaignDataFields'
 import {
   filterSurveySenders,
   surveySenderPurposeHint,
@@ -86,6 +87,8 @@ export interface SurveyEditorQuestion {
   write_rating: boolean
   /** Per-question assessment activity (survey-level target retired). */
   activity_id: number | null
+  write_fact: boolean
+  field_id: number | null
   invalid_prompt: string
   nudge_text: string
 }
@@ -144,6 +147,8 @@ export const EMPTY_SURVEY_QUESTION: SurveyEditorQuestion = {
   branching: {},
   write_rating: false,
   activity_id: null,
+  write_fact: false,
+  field_id: null,
   invalid_prompt: '',
   nudge_text: '',
 }
@@ -195,6 +200,8 @@ export function toQuestionInputs(
     branching: Object.keys(q.branching).length > 0 ? q.branching : null,
     write_rating: q.write_rating,
     activity_id: q.activity_id,
+    write_fact: q.write_fact,
+    field_id: q.field_id,
     invalid_prompt: q.invalid_prompt.trim() || null,
     nudge_text: q.nudge_text.trim() || null,
   }))
@@ -241,6 +248,8 @@ export function fromQuestionRows(
       branching,
       write_rating: q.write_rating,
       activity_id: q.activity_id,
+      write_fact: !!q.write_fact,
+      field_id: q.field_id ?? null,
       invalid_prompt: q.invalid_prompt ?? '',
       nudge_text: q.nudge_text ?? '',
     }
@@ -274,6 +283,8 @@ function toPreviewRow(
     branching: null,
     write_rating: q.write_rating,
     activity_id: q.activity_id,
+    write_fact: q.write_fact,
+    field_id: q.field_id,
     invalid_prompt: null,
     nudge_text: null,
     retired_at: null,
@@ -327,6 +338,8 @@ export function SmsSurveyEditor({
   hideAssessments = false,
   lockStructure = false,
 }: SmsSurveyEditorProps) {
+  const { data: dataFieldsCat } = useCampaignDataFields(campaignId)
+  const dataFields = dataFieldsCat?.fields ?? []
   const { data: senders } = useSmsSenders()
   const surveySenders = useMemo(() => {
     return filterSurveySenders(senders ?? [])
@@ -1197,6 +1210,40 @@ export function SmsSurveyEditor({
                 })()}
               </div>
             )}
+
+            <div className="space-y-2 rounded-md border bg-muted/30 p-2.5">
+              <Label className="text-xs">Data field (optional)</Label>
+              <p className="text-[11px] text-muted-foreground">
+                Writes a campaign fact — not a wall-chart rating. Use this for
+                claim ranks and compliance witnesses.
+              </p>
+              <Select
+                value={q.field_id != null ? String(q.field_id) : 'none'}
+                disabled={disabled}
+                onValueChange={(v) => {
+                  if (v === 'none') {
+                    patchQuestion(i, { field_id: null, write_fact: false })
+                    return
+                  }
+                  patchQuestion(i, {
+                    field_id: Number(v),
+                    write_fact: true,
+                  })
+                }}
+              >
+                <SelectTrigger className="h-8 w-full">
+                  <SelectValue placeholder="None — answers only" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None — answers only</SelectItem>
+                  {dataFields.map((f) => (
+                    <SelectItem key={f.field_id} value={String(f.field_id)}>
+                      {f.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         ))}
 

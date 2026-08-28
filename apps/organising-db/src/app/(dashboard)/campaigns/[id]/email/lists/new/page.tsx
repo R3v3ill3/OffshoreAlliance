@@ -17,6 +17,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
@@ -45,6 +46,7 @@ import {
   ListChecks,
   Loader2,
   Mail,
+  Upload,
   Users,
 } from 'lucide-react'
 import { OccupationMultiSelect } from '@/components/phone/OccupationMultiSelect'
@@ -406,6 +408,12 @@ export default function NewEmailListPage() {
             </p>
           )}
         </div>
+        <Button variant="outline" size="sm" asChild>
+          <Link href={`/campaigns/${campaignId}/email/import`}>
+            <Upload className="h-4 w-4 mr-1" />
+            Import recipients
+          </Link>
+        </Button>
       </div>
 
       {draftId != null && (

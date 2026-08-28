@@ -29,6 +29,12 @@ export async function POST(
         : filters.occupation
       if (occVal) listBuilderUrl.searchParams.set('occupation', occVal)
     }
+    if (filters.facts) {
+      const factsVal = typeof filters.facts === 'string'
+        ? filters.facts
+        : JSON.stringify(filters.facts)
+      listBuilderUrl.searchParams.set('facts', factsVal)
+    }
 
     const workerRes = await fetch(listBuilderUrl.toString(), {
       headers: { cookie: req.headers.get('cookie') || '' },

@@ -196,8 +196,9 @@ function CsvUpload({ controller }: { controller: ParticipationImportController }
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
         Upload a report exported from Action Network (CSV or Excel). The report
-        should include the workers&apos; email and/or mobile columns, plus one
-        column per question if you want to map answers to ratings.
+        should include the workers&apos; email and/or mobile columns. You can
+        record everyone as having completed the form, and optionally map other
+        question columns onto more assessments or a Contact role.
       </p>
       <div
         role="button"
@@ -241,8 +242,8 @@ function CsvUpload({ controller }: { controller: ParticipationImportController }
         <FileSpreadsheet className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
         <span>
           In Action Network: open the action → <em>Reports</em> → download the
-          CSV. Question answers are only included in report exports — the AN
-          API alone can&apos;t provide them.
+          CSV. Question answers are only included in report exports. Checkbox
+          options usually arrive as their own columns with a value of 1.
         </span>
       </div>
     </div>

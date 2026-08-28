@@ -54,6 +54,7 @@ import {
   type CampaignAmbitionDraft,
 } from "@/components/campaigns/step-campaign-ambitions";
 import { CAMPAIGN_SCOPE_LABELS, EA_SUBTYPE_LABELS } from "@/lib/campaign/constants";
+import { syncCampaignUniverseFromEmployersWorksites } from "@/lib/workers/sync-campaign-universe";
 import type {
   CampaignAmbitionCategory,
   CampaignOuType,
@@ -439,9 +440,12 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
           if (error) throw error;
         }
       });
+      await syncCampaignUniverseFromEmployersWorksites(supabase, campaignId);
     },
     onSuccess: () => {
       invalidateScope();
+      queryClient.invalidateQueries({ queryKey: ["campaign-members-full", String(campaignId)] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", String(campaignId)] });
       toast.success("Employers and worksites saved.");
     },
     onError: (error: Error) => {

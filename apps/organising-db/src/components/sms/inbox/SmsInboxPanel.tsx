@@ -6,11 +6,13 @@
  * the sidebar in a bottom Sheet.
  *
  * Queue tabs: Mine / Needs response / Unassigned / Triage / Escalated /
- * All (the escalation inbox is sticky — brief §3.1 item 5). Rendered
- * inside the campaign SMS sub-tab with a campaign-scope toggle; also
- * usable unscoped.
+ * All (the escalation inbox is sticky — brief §3.1 item 5).
+ *
+ * Campaign filter: from a campaign SMS tab the queue defaults to that
+ * campaign; from the global /sms/inbox menu it defaults to all
+ * conversations. The campaign switcher is always available.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import {
   ArrowUpRight,
@@ -23,14 +25,25 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { cn } from '@/lib/utils/cn'
 import {
   useSmsConversationDetail,
   useSmsConversations,
+  useSmsInboxCampaigns,
   type SmsConversationListItem,
   type SmsInboxTab,
 } from '@/lib/hooks/useSmsInbox'
@@ -48,8 +61,10 @@ const TABS: Array<{ value: SmsInboxTab; label: string }> = [
   { value: 'all', label: 'All' },
 ]
 
+const ALL_CAMPAIGNS = 'all'
+
 interface SmsInboxPanelProps {
-  /** When set, the queue defaults to this campaign with an "all" toggle. */
+  /** When set, the queue defaults to this campaign. */
   campaignId?: string | number
   /**
    * Deep-link (?conversation=<id>): auto-open this thread on mount,
@@ -58,18 +73,24 @@ interface SmsInboxPanelProps {
    * yank the organiser out of another thread.
    */
   initialConversationId?: number | null
+  /** Extra classes on the three-pane shell (dedicated page uses a taller box). */
+  className?: string
+  /** Fired when the organiser picks a campaign (or all conversations). */
+  onCampaignIdChange?: (campaignId: number | null) => void
 }
 
 export function SmsInboxPanel({
   campaignId,
   initialConversationId,
+  className,
+  onCampaignIdChange,
 }: SmsInboxPanelProps) {
   const cid = campaignId != null ? Number(campaignId) : null
   const [tab, setTab] = useState<SmsInboxTab>(
     initialConversationId != null ? 'all' : 'needs_response',
   )
-  const [scope, setScope] = useState<'campaign' | 'all'>(
-    cid != null ? 'campaign' : 'all',
+  const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(
+    cid,
   )
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<number | null>(
@@ -79,13 +100,35 @@ export function SmsInboxPanel({
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [newChatOpen, setNewChatOpen] = useState(false)
 
+  useEffect(() => {
+    setSelectedCampaignId(cid)
+  }, [cid])
+
+  const { data: campaigns = [] } = useSmsInboxCampaigns()
+  const campaignOptions = useMemo(() => {
+    if (
+      selectedCampaignId != null &&
+      !campaigns.some((c) => c.campaign_id === selectedCampaignId)
+    ) {
+      return [
+        {
+          campaign_id: selectedCampaignId,
+          name: 'This campaign',
+          status: 'active',
+        },
+        ...campaigns,
+      ]
+    }
+    return campaigns
+  }, [campaigns, selectedCampaignId])
+
   const filters = useMemo(
     () => ({
       inbox: tab,
-      campaignId: scope === 'campaign' ? cid : null,
+      campaignId: selectedCampaignId,
       search: search.trim() || undefined,
     }),
-    [tab, scope, cid, search],
+    [tab, selectedCampaignId, search],
   )
   const { data: conversations, isLoading } = useSmsConversations(filters)
   const { data: detail } = useSmsConversationDetail(selectedId)
@@ -96,8 +139,22 @@ export function SmsInboxPanel({
     setSidebarOpen(false)
   }
 
+  const chooseCampaign = (value: string) => {
+    const next = value === ALL_CAMPAIGNS ? null : Number(value)
+    const campaign = Number.isFinite(next) ? next : null
+    setSelectedCampaignId(campaign)
+    setSelectedId(null)
+    setDraft('')
+    onCampaignIdChange?.(campaign)
+  }
+
   return (
-    <div className="flex h-[70vh] min-h-[480px] overflow-hidden rounded-md border bg-background">
+    <div
+      className={cn(
+        'flex h-[70vh] min-h-[480px] overflow-hidden rounded-md border bg-background',
+        className,
+      )}
+    >
       {/* Queue list */}
       <div
         className={`w-full flex-col md:flex md:w-80 md:shrink-0 md:border-r ${
@@ -139,26 +196,29 @@ export function SmsInboxPanel({
               </Button>
             ))}
           </div>
-          {cid != null && (
-            <div className="flex gap-1">
-              <Button
-                size="sm"
-                variant={scope === 'campaign' ? 'secondary' : 'ghost'}
-                className="h-6 px-2 text-[11px]"
-                onClick={() => setScope('campaign')}
-              >
-                This campaign
-              </Button>
-              <Button
-                size="sm"
-                variant={scope === 'all' ? 'secondary' : 'ghost'}
-                className="h-6 px-2 text-[11px]"
-                onClick={() => setScope('all')}
-              >
-                All conversations
-              </Button>
-            </div>
-          )}
+          <Select
+            value={
+              selectedCampaignId != null
+                ? String(selectedCampaignId)
+                : ALL_CAMPAIGNS
+            }
+            onValueChange={chooseCampaign}
+          >
+            <SelectTrigger className="h-8 w-full text-xs">
+              <SelectValue placeholder="All conversations" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_CAMPAIGNS}>All conversations</SelectItem>
+              <SelectGroup>
+                <SelectLabel className="text-[11px]">Campaigns</SelectLabel>
+                {campaignOptions.map((c) => (
+                  <SelectItem key={c.campaign_id} value={String(c.campaign_id)}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {isLoading ? (
@@ -244,7 +304,7 @@ export function SmsInboxPanel({
       <SmsNewChatDialog
         open={newChatOpen}
         onOpenChange={setNewChatOpen}
-        campaignId={scope === 'campaign' ? cid : null}
+        campaignId={selectedCampaignId}
         onCreated={(conversationId) => {
           setTab('all')
           openConversation(conversationId)

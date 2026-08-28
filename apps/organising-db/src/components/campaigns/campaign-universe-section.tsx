@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Building2, MapPin, Plus, Trash2 } from "lucide-react";
 import { invalidateEmployerQueries } from "@/lib/query-invalidation/employers";
+import { syncCampaignUniverseFromEmployersWorksites } from "@/lib/workers/sync-campaign-universe";
 
 const SCOPE_KEYS = {
   employers: (cid: string) => ["campaign-universe-employers", cid] as const,
@@ -72,6 +73,8 @@ export function CampaignUniverseSection({
     queryClient.invalidateQueries({ queryKey: SCOPE_KEYS.worksites(campaignId) });
     queryClient.invalidateQueries({ queryKey: ["campaign-members", campaignId] });
     queryClient.invalidateQueries({ queryKey: ["campaign-member-ids", campaignId] });
+    queryClient.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
+    queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
     queryClient.invalidateQueries({ queryKey: ["campaign", campaignId] });
   };
 
@@ -249,6 +252,8 @@ export function CampaignUniverseSection({
       });
       if (error) throw error;
 
+      await syncCampaignUniverseFromEmployersWorksites(supabase, cid);
+
       if (
         campaignMeta?.replaced_agreement_id &&
         campaignMeta.enterprise_agreement_subtype === "replacement"
@@ -304,6 +309,7 @@ export function CampaignUniverseSection({
       if (employerIds.length > 0) {
         await linkEmployerWorksite(employerIds[0], worksite_id);
       }
+      await syncCampaignUniverseFromEmployersWorksites(supabase, cid);
     },
     onSuccess: () => {
       invalidateScope();

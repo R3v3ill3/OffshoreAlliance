@@ -61,6 +61,8 @@ import { getSmsProvider } from '@/lib/sms/provider'
 import type { MessageDeliveryStatus } from '@/lib/sms/provider'
 import { toE164 } from '@/lib/phone/normalise-phone'
 import { countSegments } from '@/lib/sms/segments'
+import { parseSmsTapback } from '@/lib/sms/tapback'
+import { applySmsTapback } from '@/lib/sms/tapback-inbound'
 import {
   findNumberForInbound,
   resolveInboundConversation,
@@ -516,6 +518,30 @@ export async function POST(req: NextRequest) {
           opted_out: matchedWorkerIds.length,
           sessions_terminated: terminated.length,
         })
+      }
+
+      // iOS/Android tapbacks arrive as a quoted copy of our outbound
+      // ("Gefällt: „…“" / 'Liked “…”'). Attach a reaction chip to the
+      // parent and skip survey/relay/inbox-reply side effects.
+      const tapback = parseSmsTapback(event.body ?? '')
+      if (tapback && phone) {
+        const attached = await applySmsTapback(admin, {
+          phoneE164: phone,
+          tapback,
+          providerMessageId: event.providerMessageId,
+          originalMessageId: event.originalMessageId,
+          receivedAt,
+        })
+        if (event.providerMessageId) {
+          await insertDeliveryEvent(admin, {
+            provider_message_id: event.providerMessageId,
+            event_type: 'replied',
+            part_number: 0,
+            payload: { ...rawPayload, tapback: true, attached },
+            occurred_at: receivedAt,
+          })
+        }
+        return NextResponse.json({ ok: true, tapback: true, attached })
       }
 
       // ── Phase 4 precedence step 2: open survey session ───────

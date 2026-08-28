@@ -60,8 +60,9 @@ export function StepAssessment({
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        The import records a participation entry per worker against one
-        assessment, which then colours the wall chart.
+        {source?.kind === "csv"
+          ? "Everyone in the file is recorded on this assessment (typically binary yes = completed the form). Next you can map other question columns onto more assessments, or promote matching workers to Contact."
+          : "The import records a participation entry per worker against one assessment, which then colours the wall chart."}
       </p>
       <RadioGroup
         value={mode}

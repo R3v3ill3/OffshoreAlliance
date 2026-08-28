@@ -46,6 +46,9 @@ import type {
   SmsSurveySessionRow,
 } from "@/types/sms";
 import { loadQuestionsForVersion } from "@/lib/sms/survey-versions";
+import { mapSurveyAnswerToFact } from "@/lib/sms/fact-mapping";
+import { recordCampaignFactRpc } from "@/lib/campaign-facts/record-fact";
+import type { CampaignDataField } from "@/lib/campaign-facts/types";
 
 const UNIQUE_VIOLATION = "23505";
 /** sms_interactions.phone_number is VARCHAR(30). */
@@ -61,6 +64,46 @@ const CTA_MAX = 30;
 type Db = SupabaseClient<any, any, any>;
 
 export const LIVE_SESSION_STATES = ["invited", "active"] as const;
+
+async function maybeWriteSurveyFact(
+  db: Db,
+  args: {
+    survey: SmsSurveyRow;
+    question: SmsSurveyQuestionRow;
+    workerId: number;
+    parsedValue: string;
+    rawBody: string;
+    sourceRef: string;
+  },
+): Promise<void> {
+  if (!args.question.write_fact || args.question.field_id == null) return;
+  const fieldId = args.question.field_id;
+  try {
+    const { data: field } = await db
+      .from("campaign_data_fields")
+      .select("*")
+      .eq("field_id", fieldId)
+      .eq("campaign_id", args.survey.campaign_id)
+      .maybeSingle();
+    if (!field) return;
+    const parsed = mapSurveyAnswerToFact(
+      field as CampaignDataField,
+      args.parsedValue,
+      args.rawBody,
+    );
+    if (parsed.kind === "empty" || parsed.kind === "invalid") return;
+    await recordCampaignFactRpc(db, {
+      fieldId,
+      workerId: args.workerId,
+      campaignId: args.survey.campaign_id,
+      parsed,
+      source: "sms_survey",
+      sourceRef: args.sourceRef,
+    });
+  } catch (err) {
+    console.error("sms survey fact write failed:", err);
+  }
+}
 
 export interface SurveyBundle {
   survey: SmsSurveyRow;
@@ -867,6 +910,14 @@ export async function processSurveyInbound(
       existingAnswer?.invalid_attempts ?? 0,
     );
     await quietTouch();
+    await maybeWriteSurveyFact(db, {
+      survey,
+      question: currentQuestion,
+      workerId: session.worker_id,
+      parsedValue: parsed.value,
+      rawBody: body,
+      sourceRef: `sms_survey_answer:${session.session_id}:${currentQuestion.question_id}`,
+    });
 
     const step = nextStep(questions, currentQuestion, parsed.value);
     if (step.kind === "question") {

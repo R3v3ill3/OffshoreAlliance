@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils/cn";
 import type {
   AssessmentSelection,
   WallChartAssessmentOption,
@@ -22,6 +23,18 @@ import type {
 
 export const CUMULATIVE_VALUE = "__cumulative__";
 export const INHERIT_VALUE = "__inherit__";
+
+/** True when two assessment selections resolve to the same view. */
+function assessmentSelectionsEqual(
+  a: AssessmentSelection,
+  b: AssessmentSelection
+): boolean {
+  if (a.kind === "cumulative" && b.kind === "cumulative") return true;
+  if (a.kind === "assessment" && b.kind === "assessment") {
+    return a.activityId === b.activityId;
+  }
+  return false;
+}
 
 export async function fetchWallChartAssessmentOptions(
   supabase: SupabaseClient,
@@ -342,6 +355,15 @@ export function UnitAssessmentViewControl({
 
   const inheritHint = campaignDefaultShortLabel(campaignDefault);
 
+  // Highlight the selector when this unit is showing a different assessment
+  // than the campaign summary section — i.e. it has been overridden away from
+  // the campaign default. Inheriting units resolve to the campaign default and
+  // are never highlighted.
+  const differsFromCampaignDefault = !assessmentSelectionsEqual(
+    effective,
+    campaignDefault
+  );
+
   return (
     <div className="flex flex-col gap-0.5 min-w-[10rem] max-w-[12rem]">
       <Label className="text-[9px] uppercase tracking-wide text-muted-foreground">
@@ -353,7 +375,18 @@ export function UnitAssessmentViewControl({
         onOpenChange={handleSelectOpenChange}
         disabled={isLoading}
       >
-        <SelectTrigger className="h-7 text-[10px] px-2">
+        <SelectTrigger
+          className={cn(
+            "h-7 text-[10px] px-2",
+            differsFromCampaignDefault &&
+              "border-amber-400 bg-amber-100 font-medium text-amber-900 dark:border-amber-500/60 dark:bg-amber-500/25 dark:text-amber-100"
+          )}
+          title={
+            differsFromCampaignDefault
+              ? `Overridden for this unit — differs from campaign default (${inheritHint})`
+              : undefined
+          }
+        >
           <SelectValue placeholder={isLoading ? "…" : "View"} />
         </SelectTrigger>
         <SelectContent>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { toE164 } from "@/lib/phone/normalise-phone";
+import { syncWorkersToMatchingCampaigns } from "@/lib/workers/sync-campaign-universe";
 import type {
   CampaignImportApplyRequest,
   CampaignImportApplyResponse,
@@ -468,6 +469,13 @@ export async function POST(req: NextRequest) {
     const workerIds = [...new Set(assigned.map((a) => a.workerId))];
     for (const batch of chunk(workerIds.map((worker_id) => ({ campaign_id: campaignId, worker_id })), CHUNK)) {
       await supabase.from("campaign_worker_membership").upsert(batch, { onConflict: "campaign_id,worker_id", ignoreDuplicates: true });
+    }
+    try {
+      await syncWorkersToMatchingCampaigns(supabase, workerIds);
+    } catch (syncErr) {
+      errors.push(
+        `Campaign universe sync: ${syncErr instanceof Error ? syncErr.message : String(syncErr)}`
+      );
     }
   }
 

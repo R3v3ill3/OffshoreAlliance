@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCampaignMembershipStatus } from "@/lib/campaign/constants";
+import { errorResponse } from "@/lib/api/error-response";
+import { parseFactsQueryParam } from "@/lib/campaign-facts/values";
+import { filterWorkerIdsByFacts } from "@/lib/campaign-facts/server-filter";
 import { campaignIsSmsEpisode } from "@/lib/sms/sms-episode";
 
 const WORKER_EMBED = `
@@ -336,6 +339,19 @@ export async function GET(
 
     if (multiUnitOnly) {
       results = results.filter((w) => w.is_multi_unit_member);
+    }
+
+    const factFilters = parseFactsQueryParam(searchParams.get("facts"));
+    if (factFilters.length > 0) {
+      const allowed = new Set(
+        await filterWorkerIdsByFacts(
+          supabase,
+          campaignId,
+          results.map((w) => w.worker_id),
+          factFilters
+        )
+      );
+      results = results.filter((w) => allowed.has(w.worker_id));
     }
 
     // --- Sort ---

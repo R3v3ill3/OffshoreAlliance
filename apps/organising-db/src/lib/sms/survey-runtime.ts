@@ -581,6 +581,14 @@ export async function processSurveyInbound(
               "This survey is paused — please wait for a follow-up message. Offshore Alliance.",
             kind: "nudge",
           });
+          // Record that this member is now waiting on a follow-up.
+          // Resume re-prompts exactly the stamped sessions: without
+          // this it cannot tell them apart from the members who never
+          // replied during the pause and would re-prompt everyone.
+          await db
+            .from("sms_survey_sessions")
+            .update({ pause_notified_at: receivedAt })
+            .eq("session_id", session.session_id);
         }
       } catch (err) {
         console.error("hard-pause auto-reply failed:", err);
@@ -1360,4 +1368,96 @@ export async function processBallotPostCompletion(
     providerMessageId,
     receivedAt,
   });
+}
+
+/**
+ * Deliver the follow-up a hard pause promised.
+ *
+ * While hard-paused, an inbound is answered with "please wait for a
+ * follow-up message" and the reply is discarded. Resume used to flip
+ * the status and send nothing, so that follow-up never arrived and the
+ * member sat waiting on an answer we had already thrown away.
+ *
+ * Re-prompts exactly the sessions stamped with pause_notified_at —
+ * never the whole roster. Someone who never replied during the pause
+ * still holds an unanswered question from before it, and re-sending
+ * would be a second unexplained message rather than a reply to
+ * anything.
+ *
+ * Best-effort per session: one failed send must not strand the rest,
+ * and a session whose stamp is not cleared is simply re-prompted on the
+ * next resume, which is the safe direction.
+ */
+export async function repromptPausedSessions(
+  db: Db,
+  provider: SmsProvider,
+  surveyId: number,
+): Promise<{ reprompted: number; failed: number }> {
+  const { data: survey } = await db
+    .from("sms_surveys")
+    .select("survey_id, sender_number_id")
+    .eq("survey_id", surveyId)
+    .maybeSingle();
+  if (!survey) return { reprompted: 0, failed: 0 };
+
+  const senderDigits = await loadSenderDigits(
+    db,
+    (survey as { sender_number_id: number | null }).sender_number_id,
+  );
+  if (!senderDigits) return { reprompted: 0, failed: 0 };
+
+  const { data: waiting } = await db
+    .from("sms_survey_sessions")
+    .select("*")
+    .eq("survey_id", surveyId)
+    .not("pause_notified_at", "is", null)
+    .in("state", [...LIVE_SESSION_STATES]);
+  const sessions = (waiting ?? []) as SmsSurveySessionRow[];
+  if (sessions.length === 0) return { reprompted: 0, failed: 0 };
+
+  const { data: questionRows } = await db
+    .from("sms_survey_questions")
+    .select("*")
+    .eq("survey_id", surveyId)
+    .is("retired_at", null)
+    .order("sort_order", { ascending: true });
+  const questions = (questionRows ?? []) as SmsSurveyQuestionRow[];
+
+  let reprompted = 0;
+  let failed = 0;
+  for (const session of sessions) {
+    const question =
+      questions.find((q) => q.question_id === session.current_question_id) ??
+      questions[0];
+    if (!question) {
+      failed += 1;
+      continue;
+    }
+    try {
+      const result = await sendSurveyPrompt(db, provider, {
+        session,
+        senderDigits,
+        // Names the wait explicitly: this is the follow-up they were
+        // told to expect, not a bare re-send of the question.
+        body: `Thanks for waiting — the survey is open again. ${renderQuestion(question)}`,
+        kind: "reprompt",
+      });
+      if (result?.status !== "success") {
+        failed += 1;
+        continue;
+      }
+      await db
+        .from("sms_survey_sessions")
+        .update({ pause_notified_at: null })
+        .eq("session_id", session.session_id);
+      reprompted += 1;
+    } catch (err) {
+      console.error(
+        `repromptPausedSessions: session ${session.session_id} failed:`,
+        err,
+      );
+      failed += 1;
+    }
+  }
+  return { reprompted, failed };
 }

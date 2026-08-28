@@ -38,6 +38,8 @@ import { LIVE_SESSION_STATES, recordBallotEvents } from '@/lib/sms/survey-runtim
 import { dispatchSurveyInvitations } from '@/lib/sms/survey-invitation-dispatch'
 import { loadSurveyLaunchConcurrency } from '@/lib/sms/survey-concurrency'
 import { getSmsProvider } from '@/lib/sms/provider'
+import { repromptPausedSessions } from '@/lib/sms/survey-runtime'
+import { clearSurveyTestData } from '@/lib/sms/survey-authoring'
 import { snapshotSurveyVersion, loadLiveQuestions } from '@/lib/sms/survey-versions'
 import { dedicatedNumberRequiredForNumberId } from '@/lib/sms/sender-inbound-server'
 import { resolveTestAudienceWorkerIds } from '@/lib/sms/survey-test-audience'
@@ -60,7 +62,14 @@ type Audience =
   | { type: 'worker_list'; worker_list_id: number }
   | { type: 'campaign' }
 
-type SurveyAction = 'preview' | 'open' | 'close' | 'pause' | 'resume' | 'promote'
+type SurveyAction =
+  | 'preview'
+  | 'open'
+  | 'close'
+  | 'pause'
+  | 'resume'
+  | 'promote'
+  | 'reset_test_data'
 
 interface ActionBody {
   action?: SurveyAction
@@ -75,6 +84,7 @@ const ACTIONS = new Set<SurveyAction>([
   'pause',
   'resume',
   'promote',
+  'reset_test_data',
 ])
 
 type UserClient = Awaited<ReturnType<typeof createClient>>
@@ -349,7 +359,52 @@ export async function POST(
         .eq('survey_id', sid)
         .eq('status', 'paused')
       if (resumeErr) throw resumeErr
-      return NextResponse.json({ ok: true, status: 'open' })
+
+      // Deliver the follow-up the hard-pause auto-reply promised.
+      // Best-effort: the survey is already open, and a send failure
+      // leaves the stamp in place so the next resume retries rather
+      // than blocking the resume itself.
+      let reprompt = { reprompted: 0, failed: 0 }
+      try {
+        reprompt = await repromptPausedSessions(
+          admin,
+          await getSmsProvider(),
+          sid,
+        )
+      } catch (err) {
+        console.error('resume: re-prompt of paused sessions failed:', err)
+      }
+
+      return NextResponse.json({
+        ok: true,
+        status: 'open',
+        reprompted: reprompt.reprompted,
+        reprompt_failed: reprompt.failed,
+      })
+    }
+
+    // ── reset_test_data ──────────────────────────────────────
+    // Clear a test survey's collected answers without touching its
+    // questions. Structural edits already discard test data on the way
+    // through; this is for the other half of iterating on a test —
+    // re-running the same questions from a clean slate so the results
+    // reflect the latest round rather than every rehearsal.
+    if (body.action === 'reset_test_data') {
+      if (!survey.is_test) {
+        return NextResponse.json(
+          {
+            error:
+              'Only test surveys can have their data reset — a live survey holds real members\u2019 answers.',
+          },
+          { status: 409 },
+        )
+      }
+      const discarded = await clearSurveyTestData(admin, sid)
+      return NextResponse.json({
+        ok: true,
+        sessions_cleared: discarded.sessions,
+        answers_cleared: discarded.answers,
+      })
     }
 
     // ── promote ──────────────────────────────────────────────

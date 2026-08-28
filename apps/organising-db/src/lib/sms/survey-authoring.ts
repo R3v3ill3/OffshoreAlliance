@@ -71,6 +71,78 @@ export async function insertSurveyQuestions(
 }
 
 /**
+ * Discard a test survey's collected data so its questions can be
+ * restructured freely.
+ *
+ * Only ever called for `is_test` surveys. Reordering or retyping a
+ * question makes existing answers unreadable — they are stored by
+ * question_id against a question that has changed meaning — and during
+ * testing the answers are the tester's own throwaway replies, so
+ * dropping them is strictly better than carrying a mismatch into the
+ * live promote.
+ *
+ * Sessions go with the answers: a session left mid-flight would resume
+ * against a question set it never saw.
+ */
+export async function clearSurveyTestData(
+  supabase: Db,
+  surveyId: number,
+): Promise<{ sessions: number; answers: number }> {
+  const { data: sessions, error: sErr } = await supabase
+    .from("sms_survey_sessions")
+    .select("session_id")
+    .eq("survey_id", surveyId);
+  if (sErr) throw sErr;
+  const sessionIds = (sessions ?? []).map(
+    (s: { session_id: number }) => s.session_id,
+  );
+  if (sessionIds.length === 0) return { sessions: 0, answers: 0 };
+
+  const { count: answerCount, error: cErr } = await supabase
+    .from("sms_survey_answers")
+    .select("answer_id", { count: "exact", head: true })
+    .in("session_id", sessionIds);
+  if (cErr) throw cErr;
+
+  // Answers first — sms_survey_answers FKs the session.
+  const { error: aErr } = await supabase
+    .from("sms_survey_answers")
+    .delete()
+    .in("session_id", sessionIds);
+  if (aErr) throw aErr;
+
+  const { error: dErr } = await supabase
+    .from("sms_survey_sessions")
+    .delete()
+    .eq("survey_id", surveyId);
+  if (dErr) throw dErr;
+
+  return { sessions: sessionIds.length, answers: answerCount ?? 0 };
+}
+
+/**
+ * Rebuild a survey's questions from scratch.
+ *
+ * Safe only once no answers reference them — i.e. straight after
+ * clearSurveyTestData. Deleting and reinserting is deliberate: the
+ * positional remap that preserves FKs is exactly what mis-files
+ * answers when the structure changes, and with the answers gone there
+ * is nothing left to preserve.
+ */
+export async function rebuildSurveyQuestions(
+  supabase: Db,
+  surveyId: number,
+  questions: SurveyQuestionInput[],
+): Promise<void> {
+  const { error } = await supabase
+    .from("sms_survey_questions")
+    .delete()
+    .eq("survey_id", surveyId);
+  if (error) throw error;
+  await insertSurveyQuestions(supabase, surveyId, questions);
+}
+
+/**
  * Post-open (paused) question replace that preserves answer FKs:
  * update existing rows in order, insert extras, retire/delete removed.
  */

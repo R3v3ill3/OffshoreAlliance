@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils/cn'
 import { CreateAssessmentDialog } from '@/components/campaigns/assessments/create-assessment-dialog'
 import { countSegments } from '@/lib/sms/segments'
 import { validateSmsBody } from '@/lib/sms/compliance'
+import { SmsTestRecipients } from '@/components/sms/surveys/SmsTestRecipients'
 import {
   SURVEY_QUESTION_SOFT_CAP,
   renderInvitation,
@@ -306,6 +307,12 @@ interface SmsSurveyEditorProps {
   onSelectQuestion?: (index: number) => void
   /** Standalone SMS episodes cannot write campaign assessments. */
   hideAssessments?: boolean
+  /**
+   * Live survey: members have already answered these questions, so
+   * order, type and the question set are frozen. Wording stays
+   * editable — the server enforces the same rule.
+   */
+  lockStructure?: boolean
 }
 
 export function SmsSurveyEditor({
@@ -318,6 +325,7 @@ export function SmsSurveyEditor({
   selectedQuestionIndex = null,
   onSelectQuestion,
   hideAssessments = false,
+  lockStructure = false,
 }: SmsSurveyEditorProps) {
   const { data: senders } = useSmsSenders()
   const surveySenders = useMemo(() => {
@@ -477,22 +485,31 @@ export function SmsSurveyEditor({
         />
       </div>
 
-      <div className="flex items-center justify-between gap-3 rounded-md border p-3">
-        <div>
-          <Label htmlFor="survey-is-test">Test survey</Label>
-          <p className="text-xs text-muted-foreground">
-            New surveys start as tests. Promote to launch when the wording is
-            ready — that creates a fresh survey with a new audience and clean
-            reporting.
-          </p>
+      <div className="space-y-2 rounded-md border p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <Label htmlFor="survey-is-test">Test mode</Label>
+            <p className="text-xs text-muted-foreground">
+              {value.is_test
+                ? 'On — opening this survey sends only to your test recipients below, never to the campaign audience. Question order and types can still be changed while testing.'
+                : 'Off — opening this survey sends to the audience you choose. Once it is open, question order and types are locked; only wording can be edited.'}
+            </p>
+          </div>
+          <Switch
+            id="survey-is-test"
+            checked={value.is_test}
+            disabled={disabled}
+            onCheckedChange={(checked) => patch({ is_test: checked })}
+          />
         </div>
-        <Switch
-          id="survey-is-test"
-          checked={value.is_test}
-          disabled={disabled}
-          onCheckedChange={(checked) => patch({ is_test: checked })}
-        />
+        <p className="text-xs text-muted-foreground">
+          New surveys start in test mode. When the wording is right, use
+          Promote to create the live survey — a fresh copy with its own
+          audience and clean reporting, leaving this test and its data behind.
+        </p>
       </div>
+
+      {value.is_test && <SmsTestRecipients campaignId={campaignId} />}
 
       <div className="space-y-1.5">
         <Label>Type</Label>
@@ -723,12 +740,24 @@ export function SmsSurveyEditor({
 
       {/* Questions */}
       <div className="space-y-3">
+        {lockStructure && (
+          <p className="flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              This survey is live — members have already answered these
+              questions, so the order, types and the question set are locked.
+              You can still fix wording. To change the structure, close this
+              survey and promote a fresh test copy.
+            </span>
+          </p>
+        )}
+
         <div className="flex items-center justify-between">
           <Label>Questions</Label>
           <Button
             size="sm"
             variant="outline"
-            disabled={disabled}
+            disabled={disabled || lockStructure}
             onClick={addQuestion}
           >
             <Plus className="h-3.5 w-3.5 mr-1" />
@@ -761,7 +790,7 @@ export function SmsSurveyEditor({
               <Badge variant="secondary">Q{i + 1}</Badge>
               <Select
                 value={q.qtype}
-                disabled={disabled}
+                disabled={disabled || lockStructure}
                 onValueChange={(v) => {
                   const qtype = v as SmsSurveyQuestionType
                   patchQuestion(i, {
@@ -787,7 +816,7 @@ export function SmsSurveyEditor({
                 <Button
                   size="sm"
                   variant="ghost"
-                  disabled={disabled || i === 0}
+                  disabled={disabled || lockStructure || i === 0}
                   onClick={() => moveQuestion(i, -1)}
                 >
                   <ArrowUp className="h-3.5 w-3.5" />
@@ -795,7 +824,7 @@ export function SmsSurveyEditor({
                 <Button
                   size="sm"
                   variant="ghost"
-                  disabled={disabled || i === value.questions.length - 1}
+                  disabled={disabled || lockStructure || i === value.questions.length - 1}
                   onClick={() => moveQuestion(i, 1)}
                 >
                   <ArrowDown className="h-3.5 w-3.5" />
@@ -804,7 +833,7 @@ export function SmsSurveyEditor({
                   size="sm"
                   variant="ghost"
                   className="text-muted-foreground hover:text-destructive"
-                  disabled={disabled || value.questions.length <= 1}
+                  disabled={disabled || lockStructure || value.questions.length <= 1}
                   onClick={() => removeQuestion(i)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />

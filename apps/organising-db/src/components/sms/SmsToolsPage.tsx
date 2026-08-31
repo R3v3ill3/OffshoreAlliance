@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { InlineSmsOpsPanel } from '@/components/sms/InlineSmsOpsPanel'
+import { SmsActivityOverview } from '@/components/sms/SmsActivityOverview'
 import { excludeSmsEpisodes } from '@/lib/campaign/visible-campaigns'
 
 export function SmsToolsPage() {
@@ -157,10 +158,27 @@ export function SmsToolsPage() {
         </div>
       </div>
 
-      <InlineSmsOpsPanel
-        campaignId={linkedCampaignId}
-        standaloneMode={standaloneMode}
-      />
+      {/* Whole-of-universe first: the hub's purpose is seeing what has
+          run and what is running, which the campaign-scoped panel below
+          cannot show when no campaign is selected. */}
+      <div className="space-y-2">
+        <h2 className="text-sm font-medium">All SMS activity</h2>
+        <SmsActivityOverview campaignId={linkedCampaignId} />
+      </div>
+
+      {/* The working panel, once a scope is chosen. Without one it has
+          nothing to act on, so say that rather than render empty tabs. */}
+      {linkedCampaignId != null ? (
+        <InlineSmsOpsPanel
+          campaignId={linkedCampaignId}
+          standaloneMode={standaloneMode}
+        />
+      ) : (
+        <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+          Pick a campaign, or Standalone, in &ldquo;Send as&rdquo; above to
+          build a list and send. The inbox and relays work without one.
+        </p>
+      )}
     </div>
   )
 }

@@ -57,6 +57,7 @@ import {
   Play,
   Plus,
   Eraser,
+  FileText,
   Rocket,
   Scale,
   Trash2,
@@ -1601,6 +1602,21 @@ function FunnelDetail({
         )}
 
         <div className="flex flex-wrap gap-2">
+          {/* Available at every status: a printable copy is for the
+              members SMS cannot reach, which is as true of a closed
+              survey being followed up as a draft being circulated. */}
+          <Button
+            variant="outline"
+            asChild
+            title="Download a printable Word copy for members you cannot text"
+          >
+            <a
+              href={`/api/campaigns/${campaignId}/sms-surveys/${detail.survey.survey_id}/document`}
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              Word copy
+            </a>
+          </Button>
           {status === 'open' && (
             <>
               <Button

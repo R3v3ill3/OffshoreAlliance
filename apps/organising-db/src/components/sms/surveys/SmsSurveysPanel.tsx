@@ -1429,7 +1429,7 @@ function FunnelDetail({
   const runResetTestData = () => {
     if (
       !window.confirm(
-        'Discard the answers collected by this test?\n\nThe questions are unchanged — only the test sessions and answers are removed, so you can re-run the same survey from a clean slate. This cannot be undone.',
+        'Discard the answers collected by this test?\n\nThe questions are unchanged — only the test sessions and answers are removed. The survey returns to draft so you can launch the test again from a clean slate. This cannot be undone.',
       )
     ) {
       return
@@ -1441,8 +1441,10 @@ function FunnelDetail({
           const a = (res as { answers_cleared?: number })?.answers_cleared ?? 0
           toast.success(
             a > 0
-              ? `Test data cleared — ${a} answer${a === 1 ? '' : 's'} discarded`
-              : 'Test data cleared',
+              ? `Test data cleared — ${a} answer${
+                  a === 1 ? '' : 's'
+                } discarded. Back to draft, ready to launch again.`
+              : 'Test data cleared — back to draft, ready to launch again.',
           )
         },
         onError: (err: Error) => toast.error(err.message),
@@ -1618,6 +1620,20 @@ function FunnelDetail({
                 )}
                 {isBallot ? 'Close ballot' : 'Close survey'}
               </Button>
+              {/* Reset is reachable straight from an open test: the
+                  point of a test round is to clear it and run again,
+                  and forcing a pause first added a step for nothing. */}
+              {isTest && (
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  title="Discard this test's answers and return it to draft so you can launch again"
+                  onClick={runResetTestData}
+                >
+                  <Eraser className="h-4 w-4 mr-2" />
+                  Reset test data
+                </Button>
+              )}
             </>
           )}
 

@@ -48,6 +48,10 @@ export interface SurveyLaunchOtherOpen {
   survey_id: number
   title: string
   status: string
+  campaign_id: number | null
+  campaign_name: string | null
+  /** How many of THIS audience the other survey is holding. */
+  overlap_count: number
 }
 
 export interface SurveyLaunchPreview {

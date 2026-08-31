@@ -1174,37 +1174,39 @@ function DraftDetail({
                   campaign audience.
                 </p>
               )}
-              {((preview.other_open_surveys?.length ?? 0) > 0 ||
-                (preview.audience_overlap_count ?? 0) > 0) && (
-                <div
-                  className={cn(
-                    'rounded-md border p-2.5 text-xs space-y-1',
-                    (preview.audience_overlap_count ?? 0) > 0
-                      ? 'border-amber-300 bg-amber-50 text-amber-900'
-                      : 'border-amber-200 bg-amber-50 text-amber-800',
-                  )}
-                >
+              {/* Only warn when something is actually held. A survey
+                  open elsewhere with no one in common is not a problem,
+                  and warning about it sent organisers hunting for a
+                  blocker that did not exist. */}
+              {(preview.audience_overlap_count ?? 0) > 0 && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs space-y-1 text-amber-900">
                   <p className="flex items-start gap-1.5 font-medium">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    {(preview.audience_overlap_count ?? 0) > 0
-                      ? `${preview.audience_overlap_count} ${
-                          preview.audience_overlap_count === 1
-                            ? 'person in this audience is'
-                            : 'people in this audience are'
-                        } already in another live survey. Their invitations stay queued until that session ends.`
-                      : 'Another survey is already open. Disjoint audiences are fine — a member can only have one live session at a time.'}
+                    {preview.audience_overlap_count}{' '}
+                    {preview.audience_overlap_count === 1
+                      ? 'person in this audience is'
+                      : 'people in this audience are'}{' '}
+                    already in another live survey. Their invitations stay
+                    queued until that session ends.
                   </p>
-                  {(preview.other_open_surveys?.length ?? 0) > 0 && (
-                    <p className="pl-5 text-amber-800/90">
-                      Open now:{' '}
-                      {preview.other_open_surveys!
-                        .map(
-                          (s) =>
-                            `${s.title}${s.status === 'paused' ? ' (paused)' : ''}`,
-                        )
-                        .join(', ')}
-                    </p>
-                  )}
+                  {/* Name the blocker, its status and its campaign — the
+                      survey holding them is often paused, and in another
+                      campaign, which is why it could not be found. */}
+                  <ul className="space-y-0.5 pl-5 text-amber-800/90">
+                    {preview
+                      .other_open_surveys!.filter((s) => (s.overlap_count ?? 0) > 0)
+                      .map((s) => (
+                        <li key={s.survey_id}>
+                          <span className="font-medium">{s.title}</span> —{' '}
+                          {s.overlap_count} of them, {s.status}
+                          {s.campaign_name ? ` · ${s.campaign_name}` : ''}
+                        </li>
+                      ))}
+                  </ul>
+                  <p className="pl-5 text-amber-800/90">
+                    Close that survey to free them, or launch now and they
+                    will be invited when it ends.
+                  </p>
                 </div>
               )}
               {preview.sender_inbound_error && (

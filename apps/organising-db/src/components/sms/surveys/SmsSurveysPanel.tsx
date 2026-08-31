@@ -100,6 +100,7 @@ import {
 import { SmsSurveyFlowChart } from '@/components/sms/surveys/SmsSurveyFlowChart'
 import { SmsSurveyReportDashboard } from '@/components/sms/surveys/SmsSurveyReportDashboard'
 import { AudiencePicker, type AudienceValue } from '@/components/audience/AudiencePicker'
+import { SmsTestRecipients } from '@/components/sms/surveys/SmsTestRecipients'
 import { toApiAudience, EMPTY_COMPOSED_AUDIENCE, STANDALONE_AUDIENCE_PICKER } from '@/lib/sms/audience-helpers'
 import {
   useCreateSmsEpisode,
@@ -1126,9 +1127,12 @@ function DraftDetail({
         </SheetTitle>
         <SheetDescription>
           {detail.questions.length} question
-          {detail.questions.length === 1 ? '' : 's'} — pick the audience,
-          review the launch summary, then launch. Opted-out workers and workers
-          without a mobile are excluded automatically.
+          {detail.questions.length === 1 ? '' : 's'} —{' '}
+          {isTest
+            ? 'this is a TEST. It sends only to the test recipients below, never to a campaign audience. Turn Test mode off in the editor, or Promote, to reach real members.'
+            : 'pick the audience, review the launch summary, then launch.'}{' '}
+          Opted-out workers and workers without a mobile are excluded
+          automatically.
         </SheetDescription>
       </SheetHeader>
       <div className="mt-4 space-y-4 pb-8">
@@ -1137,22 +1141,39 @@ function DraftDetail({
         )}
         <QuestionListPreview detail={detail} />
 
-        <AudiencePicker
-          channel="sms"
-          campaignId={campaignId}
-          value={audienceValue}
-          onChange={(next) => {
-            setAudienceValue(next)
-            setPreview(null)
-          }}
-          disabled={busy}
-          {...(hideAssessments ? STANDALONE_AUDIENCE_PICKER : {})}
-        />
+        {/* In test mode the picked audience is discarded server-side, so
+            showing a picker here invited the reasonable assumption that
+            it was the destination. Show what actually receives it. */}
+        {isTest ? (
+          <SmsTestRecipients campaignId={campaignId} />
+        ) : (
+          <AudiencePicker
+            channel="sms"
+            campaignId={campaignId}
+            value={audienceValue}
+            onChange={(next) => {
+              setAudienceValue(next)
+              setPreview(null)
+            }}
+            disabled={busy}
+            {...(hideAssessments ? STANDALONE_AUDIENCE_PICKER : {})}
+          />
+        )}
 
         {preview && (
           <Card>
             <CardContent className="p-3 space-y-2 text-sm">
               <p className="font-medium">Launch summary</p>
+              {/* The count is the reliable tell for where this is going:
+                  a test resolves the roster, never the picked audience. */}
+              {preview.is_test && (
+                <p className="rounded-md border border-violet-200 bg-violet-50 p-2 text-xs text-violet-900">
+                  <span className="font-medium">Test send.</span> This goes to
+                  your {preview.invitable} test recipient
+                  {preview.invitable === 1 ? '' : 's'} only — not to any
+                  campaign audience.
+                </p>
+              )}
               {((preview.other_open_surveys?.length ?? 0) > 0 ||
                 (preview.audience_overlap_count ?? 0) > 0) && (
                 <div
@@ -1261,7 +1282,7 @@ function DraftDetail({
               ) : (
                 <Play className="h-4 w-4 mr-2" />
               )}
-              Review & launch
+              {isTest ? 'Review test send' : 'Review & launch'}
             </Button>
           ) : (
             <Button
@@ -1280,7 +1301,13 @@ function DraftDetail({
               ) : (
                 <Play className="h-4 w-4 mr-2" />
               )}
-              {isTest ? 'Launch test' : 'Launch survey'}
+              {isTest
+                ? `Launch test to ${preview.invitable} test recipient${
+                    preview.invitable === 1 ? '' : 's'
+                  }`
+                : `Launch survey to ${preview.invitable} member${
+                    preview.invitable === 1 ? '' : 's'
+                  }`}
             </Button>
           )}
           <Button

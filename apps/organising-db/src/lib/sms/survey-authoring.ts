@@ -90,6 +90,23 @@ export async function clearSurveyTestData(
   supabase: Db,
   surveyId: number,
 ): Promise<{ sessions: number; answers: number }> {
+  // Back to draft. Clearing the data leaves a test with no sessions, and
+  // an open/paused survey cannot be opened again — so without this the
+  // organiser is stranded: nothing to prompt, and no way to re-invite
+  // the roster. A test with no collected data IS an unstarted test, so
+  // draft is also the honest status for it.
+  const { error: statusErr } = await supabase
+    .from("sms_surveys")
+    .update({
+      status: "draft",
+      pause_mode: null,
+      paused_at: null,
+      opened_at: null,
+    })
+    .eq("survey_id", surveyId)
+    .eq("is_test", true);
+  if (statusErr) throw statusErr;
+
   const { data: sessions, error: sErr } = await supabase
     .from("sms_survey_sessions")
     .select("session_id")

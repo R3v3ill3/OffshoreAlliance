@@ -10,7 +10,32 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.4"
+    PostgrestVersion: "14.5"
+  }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -16077,7 +16102,9 @@ export type Database = {
       }
       sms_relays: {
         Row: {
+          bridge_replies: boolean
           campaign_id: number | null
+          confirmation_template: string | null
           created_at: string
           created_by: string | null
           moderation_required: boolean
@@ -16092,7 +16119,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          bridge_replies?: boolean
           campaign_id?: number | null
+          confirmation_template?: string | null
           created_at?: string
           created_by?: string | null
           moderation_required?: boolean
@@ -16107,7 +16136,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          bridge_replies?: boolean
           campaign_id?: number | null
+          confirmation_template?: string | null
           created_at?: string
           created_by?: string | null
           moderation_required?: boolean
@@ -16537,6 +16568,7 @@ export type Database = {
           last_activity_at: string | null
           last_prompt_at: string | null
           nudged: boolean
+          pause_notified_at: string | null
           phone_e164: string
           reminders_sent: number
           retry_count: number
@@ -16557,6 +16589,7 @@ export type Database = {
           last_activity_at?: string | null
           last_prompt_at?: string | null
           nudged?: boolean
+          pause_notified_at?: string | null
           phone_e164: string
           reminders_sent?: number
           retry_count?: number
@@ -16577,6 +16610,7 @@ export type Database = {
           last_activity_at?: string | null
           last_prompt_at?: string | null
           nudged?: boolean
+          pause_notified_at?: string | null
           phone_e164?: string
           reminders_sent?: number
           retry_count?: number
@@ -16865,6 +16899,132 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "campaign_worker_lists"
             referencedColumns: ["list_id"]
+          },
+        ]
+      }
+      sms_test_recipients: {
+        Row: {
+          campaign_id: number | null
+          created_at: string
+          created_by: string | null
+          label: string | null
+          test_recipient_id: number
+          worker_id: number
+        }
+        Insert: {
+          campaign_id?: number | null
+          created_at?: string
+          created_by?: string | null
+          label?: string | null
+          test_recipient_id?: number
+          worker_id: number
+        }
+        Update: {
+          campaign_id?: number | null
+          created_at?: string
+          created_by?: string | null
+          label?: string | null
+          test_recipient_id?: number
+          worker_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_test_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_test_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_test_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_test_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_bargaining_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_test_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_test_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_test_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_test_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_test_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_test_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_test_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "sms_test_recipients_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_soc_recording_grid"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "sms_test_recipients_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "sms_test_recipients_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers_view"
+            referencedColumns: ["worker_id"]
           },
         ]
       }
@@ -26403,6 +26563,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       campaign_phase_enum: [

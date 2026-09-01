@@ -724,6 +724,7 @@ export async function processRelayInbound(
     suffixTemplate: relay.suffix_template,
     memberBody: event.body ?? "",
     context,
+    bridgeReplies: relay.bridge_replies,
   });
 
   const decision = decideMemberForward({

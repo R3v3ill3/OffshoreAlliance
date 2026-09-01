@@ -68,9 +68,9 @@ export interface RelayTargetLike {
  * Tolerant match of a raw phone value against a list of stored
  * numbers (`+614…` / `614…` / `04…` all match; non-AU shapes fall
  * back to exact digit comparison). Shared by target-direction
- * matching, the own-number target guard (a platform sms_number can
- * never be a relay target — kills relay rings and self-targets),
- * and bridge-candidate exclusion.
+ * matching, the own-number target guard (relay-target-guard.ts — a
+ * platform sms_number may be a target only while nothing is routing
+ * on it), and bridge-candidate exclusion.
  */
 export function matchPhoneInList<T extends { phone_e164: string }>(
   rows: T[],

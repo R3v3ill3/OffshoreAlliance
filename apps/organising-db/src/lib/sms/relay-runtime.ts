@@ -32,6 +32,11 @@ import {
   resolveRelayDirection,
   type RelayMemberContext,
 } from "@/lib/sms/relay-engine";
+import {
+  stripRingDestinations,
+  type OwnNumberUsage,
+} from "@/lib/sms/relay-target-guard";
+import { LIVE_SESSION_STATES } from "@/lib/sms/survey-runtime";
 import type {
   SmsRelayMessageRow,
   SmsRelayRow,
@@ -109,6 +114,116 @@ export async function loadRelayTargets(
     .order("target_id", { ascending: true });
   if (error) throw error;
   return (data ?? []) as SmsRelayTargetRow[];
+}
+
+/**
+ * Our numbers, each with whatever is currently holding it — the input
+ * to the relay-target guard (see relay-target-guard.ts for why a
+ * platform number is only conditionally refused as a target).
+ *
+ * Three small reads rather than a view: sms_numbers is a handful of
+ * rows, and the session lookup is bounded by those numbers' phones.
+ */
+export async function loadOwnNumberUsage(db: Db): Promise<OwnNumberUsage[]> {
+  const { data: numbers, error: numErr } = await db
+    .from("sms_numbers")
+    .select("number_id, phone_e164, label");
+  if (numErr) throw numErr;
+  const rows = (numbers ?? []) as Array<{
+    number_id: number;
+    phone_e164: string;
+    label: string | null;
+  }>;
+  if (rows.length === 0) return [];
+
+  const { data: relays, error: relayErr } = await db
+    .from("sms_relays")
+    .select("relay_id, name, number_id")
+    .in("status", [...LIVE_RELAY_STATUSES]);
+  if (relayErr) throw relayErr;
+  const relayByNumber = new Map<number, { relay_id: number; name: string | null }>();
+  for (const r of (relays ?? []) as Array<{
+    relay_id: number;
+    name: string | null;
+    number_id: number;
+  }>) {
+    if (!relayByNumber.has(r.number_id)) {
+      relayByNumber.set(r.number_id, { relay_id: r.relay_id, name: r.name });
+    }
+  }
+
+  const { data: sessions, error: sessErr } = await db
+    .from("sms_survey_sessions")
+    .select("survey_id, phone_e164")
+    .in(
+      "phone_e164",
+      rows.map((n) => n.phone_e164),
+    )
+    .in("state", [...LIVE_SESSION_STATES]);
+  if (sessErr) throw sessErr;
+  const sessionRows = (sessions ?? []) as Array<{
+    survey_id: number;
+    phone_e164: string | null;
+  }>;
+  // Titles in a second read: the survey embed comes back as an array
+  // through PostgREST, and a name for the error message is not worth
+  // reshaping it.
+  const titleById = new Map<number, string | null>();
+  const surveyIds = [...new Set(sessionRows.map((s) => s.survey_id))];
+  if (surveyIds.length > 0) {
+    const { data: surveys, error: surveyErr } = await db
+      .from("sms_surveys")
+      .select("survey_id, title")
+      .in("survey_id", surveyIds);
+    if (surveyErr) throw surveyErr;
+    for (const s of (surveys ?? []) as Array<{
+      survey_id: number;
+      title: string | null;
+    }>) {
+      titleById.set(s.survey_id, s.title);
+    }
+  }
+  const surveyByPhone = new Map<string, { survey_id: number; title: string | null }>();
+  for (const s of sessionRows) {
+    if (!s.phone_e164 || surveyByPhone.has(s.phone_e164)) continue;
+    surveyByPhone.set(s.phone_e164, {
+      survey_id: s.survey_id,
+      title: titleById.get(s.survey_id) ?? null,
+    });
+  }
+
+  return rows.map((n) => ({
+    number_id: n.number_id,
+    phone_e164: n.phone_e164,
+    label: n.label,
+    live_relay: relayByNumber.get(n.number_id) ?? null,
+    live_survey: surveyByPhone.get(n.phone_e164) ?? null,
+  }));
+}
+
+/**
+ * Phones that carry a live relay right now — the send-time ring belt's
+ * input. Deliberately not cached: the whole point is that it reflects
+ * the state at the moment of the forward, not at target-add time.
+ */
+export async function loadLiveRelayPhones(db: Db): Promise<string[]> {
+  const { data: relays, error } = await db
+    .from("sms_relays")
+    .select("number_id")
+    .in("status", [...LIVE_RELAY_STATUSES]);
+  if (error) throw error;
+  const numberIds = [
+    ...new Set((relays ?? []).map((r) => r.number_id as number)),
+  ];
+  if (numberIds.length === 0) return [];
+  const { data: numbers, error: numErr } = await db
+    .from("sms_numbers")
+    .select("phone_e164")
+    .in("number_id", numberIds);
+  if (numErr) throw numErr;
+  return (numbers ?? [])
+    .map((n) => n.phone_e164 as string | null)
+    .filter((p): p is string => !!p);
 }
 
 /** Provider send wrapper — a throw returns null (caller decides). */
@@ -282,7 +397,26 @@ export async function forwardRelayMessageNow(
     destinations: Array<{ phone_e164: string }>;
   },
 ): Promise<RelayForwardOutcome> {
-  const { relayMessageId, forwardedBody, senderDigits, destinations } = args;
+  const { relayMessageId, forwardedBody, senderDigits } = args;
+
+  // Ring belt. A platform number may be a relay target (see
+  // relay-target-guard.ts), but only while nothing is routing on it —
+  // and a relay can be stood up on that number after it was accepted.
+  // Checked here, on every forward, because this is the last moment
+  // the answer is still true.
+  const { kept: destinations, dropped } = stripRingDestinations(
+    args.destinations,
+    await loadLiveRelayPhones(db),
+  );
+  if (dropped.length > 0) {
+    console.warn(
+      `relay forward ${relayMessageId}: dropped ${dropped.length} destination(s) ` +
+        `now carrying a live relay (${dropped
+          .map((d) => d.phone_e164)
+          .join(", ")}) — forwarding there would ring`,
+    );
+  }
+
   if (destinations.length === 0) {
     // Nothing to forward to: hold rather than fail — staff can add
     // a target and the row stays visible in the log.
@@ -291,7 +425,15 @@ export async function forwardRelayMessageNow(
       .update({ forward_status: "held" })
       .eq("relay_message_id", relayMessageId)
       .eq("forward_status", "queued");
-    return { claimed: false, sent: 0, failed: 0, error: "No active targets" };
+    return {
+      claimed: false,
+      sent: 0,
+      failed: 0,
+      error:
+        dropped.length > 0
+          ? "Every destination now carries a live relay — forwarding would ring"
+          : "No active targets",
+    };
   }
 
   const nowIso = new Date().toISOString();

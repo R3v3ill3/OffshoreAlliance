@@ -26,6 +26,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { errorResponse } from '@/lib/api/error-response'
 import { checkRateLimit } from '@/lib/rate-limit-middleware'
 import { isValidTimeZone } from '@/lib/sms/blackout'
+import { RELAY_CONFIRMATION_MAX_LENGTH } from '@/lib/sms/relay-engine'
 import { decideRelayTarget } from '@/lib/sms/relay-target-guard'
 import { loadOwnNumberUsage } from '@/lib/sms/relay-runtime'
 import { toE164 } from '@/lib/phone/normalise-phone'
@@ -114,6 +115,7 @@ interface CreateRelayBody {
   moderation_required?: boolean
   quiet_hours_respected?: boolean
   bridge_replies?: boolean
+  confirmation_template?: string | null
   timezone?: string
   targets?: Array<{ phone_e164?: string; display_name?: string | null }>
 }
@@ -141,6 +143,17 @@ export async function POST(req: NextRequest) {
     if (body.number_id == null || !Number.isFinite(body.number_id)) {
       return NextResponse.json(
         { error: 'A dedicated relay number is required' },
+        { status: 400 },
+      )
+    }
+    if (
+      (body.confirmation_template?.trim().length ?? 0) >
+      RELAY_CONFIRMATION_MAX_LENGTH
+    ) {
+      return NextResponse.json(
+        {
+          error: `The member confirmation must be ${RELAY_CONFIRMATION_MAX_LENGTH} characters or fewer`,
+        },
         { status: 400 },
       )
     }
@@ -262,6 +275,12 @@ export async function POST(req: NextRequest) {
         moderation_required: !!body.moderation_required,
         quiet_hours_respected: body.quiet_hours_respected !== false,
         bridge_replies: body.bridge_replies !== false,
+        // undefined → NULL (use the mode default); "" is kept as an
+        // explicit "send no confirmation".
+        confirmation_template:
+          body.confirmation_template === undefined
+            ? null
+            : (body.confirmation_template?.trim() ?? ''),
         timezone: body.timezone || 'Australia/Perth',
         created_by: user.id,
       })

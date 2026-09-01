@@ -47,7 +47,12 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { SAMPLE_DATA } from '@/lib/comms/template-variables'
-import { composeForwardBody } from '@/lib/sms/relay-engine'
+import {
+  composeForwardBody,
+  firstForwardConfirmation,
+  RELAY_CONFIRMATION_MAX_LENGTH,
+} from '@/lib/sms/relay-engine'
+import { countSegments } from '@/lib/sms/segments'
 import { toDisplay } from '@/lib/phone/normalise-phone'
 import { useSmsSenders } from '@/lib/hooks/useSmsBroadcast'
 import {
@@ -288,6 +293,20 @@ function NewRelaySheet({
   // misroutes as soon as two members write in before a reply lands.
   // Existing relays keep bridging (the column defaults true).
   const [bridgeReplies, setBridgeReplies] = useState(false)
+  const [confirmation, setConfirmation] = useState(
+    firstForwardConfirmation(false),
+  )
+  // The two modes' defaults make opposite promises about where a reply
+  // goes, so flipping the mode must not leave the other mode's wording
+  // sitting there. Only re-seed while the organiser has not written
+  // their own — once they have, their words survive the toggle.
+  const confirmationEdited =
+    confirmation !== firstForwardConfirmation(true) &&
+    confirmation !== firstForwardConfirmation(false)
+  const setBridgeRepliesAndCopy = (next: boolean) => {
+    setBridgeReplies(next)
+    if (!confirmationEdited) setConfirmation(firstForwardConfirmation(next))
+  }
   const [quietHours, setQuietHours] = useState(true)
   const [timezone, setTimezone] = useState('Australia/Perth')
 
@@ -322,6 +341,7 @@ function NewRelaySheet({
         moderation_required: moderation,
         quiet_hours_respected: quietHours,
         bridge_replies: bridgeReplies,
+        confirmation_template: confirmation.trim(),
         timezone,
         targets: cleanTargets,
       },
@@ -478,6 +498,45 @@ function NewRelaySheet({
 
           <TemplatePreview prefix={prefix} suffix={suffix} />
 
+          <div className="space-y-1.5">
+            <Label htmlFor="relay-confirmation">
+              Reply to the member (sent once, on their first message)
+            </Label>
+            <Textarea
+              id="relay-confirmation"
+              rows={3}
+              maxLength={RELAY_CONFIRMATION_MAX_LENGTH}
+              value={confirmation}
+              onChange={(e) => setConfirmation(e.target.value)}
+            />
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                {confirmation.trim()
+                  ? `${confirmation.length}/${RELAY_CONFIRMATION_MAX_LENGTH} — ${countSegments(confirmation).segments} segment${countSegments(confirmation).segments === 1 ? '' : 's'}`
+                  : 'Empty — no confirmation will be sent.'}
+              </p>
+              {confirmation !== firstForwardConfirmation(bridgeReplies) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setConfirmation(firstForwardConfirmation(bridgeReplies))
+                  }
+                >
+                  Reset to default
+                </Button>
+              )}
+            </div>
+            {!bridgeReplies && (
+              <p className="text-xs text-amber-600 dark:text-amber-500">
+                This is the only message the member gets, and the only place
+                they are told their mobile was passed on to the target. Worth
+                keeping that in the wording.
+              </p>
+            )}
+          </div>
+
           <div className="rounded-md border p-3 space-y-3">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -505,7 +564,7 @@ function NewRelaySheet({
               <Switch
                 id="relay-bridge"
                 checked={bridgeReplies}
-                onCheckedChange={setBridgeReplies}
+                onCheckedChange={setBridgeRepliesAndCopy}
               />
             </div>
             <div className="flex items-center justify-between gap-3">

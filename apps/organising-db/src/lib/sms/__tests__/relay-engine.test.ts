@@ -6,6 +6,9 @@ import {
   composeMemberAttribution,
   composeTargetReplyBody,
   firstForwardConfirmation,
+  resolveFirstForwardConfirmation,
+  RELAY_FIRST_FORWARD_CONFIRMATION,
+  RELAY_FIRST_FORWARD_CONFIRMATION_DIRECT,
   decideMemberForward,
   matchPhoneInList,
   matchRelayTarget,
@@ -263,6 +266,82 @@ describe("composeMemberAttribution", () => {
     expect(
       composeMemberAttribution({ first_name: "Alex", last_name: "Mitchell" }),
     ).toBe("Alex Mitchell");
+  });
+});
+
+describe("resolveFirstForwardConfirmation", () => {
+  const context = {
+    first_name: "Alex",
+    last_name: "Mitchell",
+    employer_name: "Woodside Energy",
+    phone: "0400 100 014",
+  };
+
+  it("uses the relay's own wording when it has one", () => {
+    expect(
+      resolveFirstForwardConfirmation({
+        template: "Thanks — the office has your message.",
+        bridgeReplies: false,
+        context,
+      }),
+    ).toBe("Thanks — the office has your message.");
+  });
+
+  it("resolves merge fields in it", () => {
+    expect(
+      resolveFirstForwardConfirmation({
+        template: "Thanks {{first_name}} — passed on.",
+        bridgeReplies: false,
+        context,
+      }),
+    ).toBe("Thanks Alex — passed on.");
+  });
+
+  it("strips an unresolved token rather than sending it literally", () => {
+    expect(
+      resolveFirstForwardConfirmation({
+        template: "Thanks {{nickname}} — passed on.",
+        bridgeReplies: false,
+        context,
+      }),
+    ).toBe("Thanks — passed on.");
+  });
+
+  it("falls back to the mode default when never configured", () => {
+    // NULL is what every pre-existing relay carries.
+    expect(
+      resolveFirstForwardConfirmation({
+        template: null,
+        bridgeReplies: true,
+        context,
+      }),
+    ).toBe(RELAY_FIRST_FORWARD_CONFIRMATION);
+    expect(
+      resolveFirstForwardConfirmation({
+        template: undefined,
+        bridgeReplies: false,
+        context,
+      }),
+    ).toBe(RELAY_FIRST_FORWARD_CONFIRMATION_DIRECT);
+  });
+
+  it("sends nothing when deliberately cleared", () => {
+    // An empty string is a choice, unlike NULL. The runtime skips the
+    // send rather than texting a blank message.
+    expect(
+      resolveFirstForwardConfirmation({
+        template: "",
+        bridgeReplies: false,
+        context,
+      }),
+    ).toBe("");
+    expect(
+      resolveFirstForwardConfirmation({
+        template: "   ",
+        bridgeReplies: false,
+        context,
+      }),
+    ).toBe("");
   });
 });
 

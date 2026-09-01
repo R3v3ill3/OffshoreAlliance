@@ -554,6 +554,11 @@ export interface SmsRelayRow {
    * forward's attribution line.
    */
   bridge_replies: boolean;
+  /**
+   * One-time reply to the member on their first forwarded message.
+   * NULL = use the built-in default for the reply mode; "" = send none.
+   */
+  confirmation_template: string | null;
   timezone: string;
   created_by: string | null;
   created_at: string;

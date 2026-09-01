@@ -4,7 +4,8 @@
  * GET   — relay + number + targets + message log (latest 200, both
  *         directions) + pending-moderation queue.
  * PATCH — name / prefix_template / suffix_template /
- *         moderation_required / quiet_hours_respected / timezone.
+ *         moderation_required / quiet_hours_respected /
+ *         bridge_replies / confirmation_template / timezone.
  *         Status transitions live in ./actions (activate/pause/end),
  *         NOT here. sms_relays is service-role-write-only, so the
  *         update runs on the ADMIN client after the explicit
@@ -16,6 +17,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { errorResponse } from '@/lib/api/error-response'
 import { checkRateLimit } from '@/lib/rate-limit-middleware'
 import { isValidTimeZone } from '@/lib/sms/blackout'
+import { RELAY_CONFIRMATION_MAX_LENGTH } from '@/lib/sms/relay-engine'
 import { requireRelayWriteAccess } from '@/lib/sms/relay-route-helpers'
 
 const MESSAGE_LOG_LIMIT = 200
@@ -116,6 +118,8 @@ interface UpdateRelayBody {
   suffix_template?: string | null
   moderation_required?: boolean
   quiet_hours_respected?: boolean
+  bridge_replies?: boolean
+  confirmation_template?: string | null
   timezone?: string
 }
 
@@ -165,6 +169,17 @@ export async function PATCH(
     if (body.name !== undefined && !body.name.trim()) {
       return NextResponse.json({ error: 'Name cannot be empty' }, { status: 400 })
     }
+    if (
+      (body.confirmation_template?.trim().length ?? 0) >
+      RELAY_CONFIRMATION_MAX_LENGTH
+    ) {
+      return NextResponse.json(
+        {
+          error: `The member confirmation must be ${RELAY_CONFIRMATION_MAX_LENGTH} characters or fewer`,
+        },
+        { status: 400 },
+      )
+    }
 
     const updates: Record<string, unknown> = {}
     if (body.name !== undefined) updates.name = body.name.trim()
@@ -179,6 +194,18 @@ export async function PATCH(
     }
     if (body.quiet_hours_respected !== undefined) {
       updates.quiet_hours_respected = !!body.quiet_hours_respected
+    }
+    if (body.bridge_replies !== undefined) {
+      updates.bridge_replies = !!body.bridge_replies
+    }
+    if (body.confirmation_template !== undefined) {
+      // Distinct from prefix/suffix: '' is preserved rather than
+      // collapsed to NULL, because here the two mean different things
+      // — no confirmation at all, versus fall back to the default.
+      updates.confirmation_template =
+        body.confirmation_template === null
+          ? null
+          : body.confirmation_template.trim()
     }
     if (body.timezone !== undefined) updates.timezone = body.timezone
     if (Object.keys(updates).length === 0) {

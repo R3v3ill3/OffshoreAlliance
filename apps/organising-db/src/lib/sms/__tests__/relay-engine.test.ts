@@ -4,6 +4,7 @@ import {
   chooseBridgeMember,
   composeForwardBody,
   composeMemberAttribution,
+  composeReplyInstruction,
   composeTargetReplyBody,
   firstForwardConfirmation,
   resolveFirstForwardConfirmation,
@@ -211,6 +212,91 @@ describe("renderRelayTemplate / composeForwardBody", () => {
       context,
     });
     expect(body.startsWith(attribution)).toBe(true);
+  });
+});
+
+describe("composeReplyInstruction", () => {
+  const context = {
+    first_name: "Alex",
+    last_name: "Mitchell",
+    employer_name: "Woodside Energy",
+    phone: "0400 100 014",
+  };
+
+  it("tells the target to text the member, not this number", () => {
+    // Without it the target hits reply, the answer lands in an Inbox
+    // thread the member never sees, and the member concludes nobody
+    // responded.
+    const line = composeReplyInstruction({ bridgeReplies: false, context });
+    expect(line).toContain("0400 100 014");
+    expect(line).toContain("Alex");
+    expect(line).toContain("not passed on");
+  });
+
+  it("is omitted when bridging is on", () => {
+    // Replying to the relay number is then exactly right.
+    expect(composeReplyInstruction({ bridgeReplies: true, context })).toBe("");
+  });
+
+  it("drops the name for a sender we cannot name", () => {
+    const line = composeReplyInstruction({
+      bridgeReplies: false,
+      context: { phone: "0400 100 014" },
+    });
+    expect(line).toContain("0400 100 014");
+    expect(line.startsWith("To reply, text")).toBe(true);
+  });
+
+  it("says nothing rather than half a sentence without a number", () => {
+    expect(
+      composeReplyInstruction({ bridgeReplies: false, context: {} }),
+    ).toBe("");
+  });
+});
+
+describe("composeForwardBody reply instruction", () => {
+  const context = {
+    first_name: "Alex",
+    last_name: "Mitchell",
+    employer_name: "Woodside Energy",
+    phone: "0400 100 014",
+  };
+
+  it("closes with the instruction when replies are not bridged", () => {
+    const body = composeForwardBody({
+      prefixTemplate: null,
+      suffixTemplate: null,
+      memberBody: "Back the crews.",
+      context,
+      bridgeReplies: false,
+    });
+    expect(body.split("\n").at(-1)).toContain("text 0400 100 014 directly");
+  });
+
+  it("sits after the organiser's own suffix", () => {
+    const body = composeForwardBody({
+      prefixTemplate: null,
+      suffixTemplate: "— via Offshore Alliance",
+      memberBody: "Back the crews.",
+      context,
+      bridgeReplies: false,
+    });
+    const lines = body.split("\n");
+    expect(lines.at(-2)).toBe("— via Offshore Alliance");
+    expect(lines.at(-1)).toContain("not passed on");
+  });
+
+  it("omits it when bridging, and when the flag is not passed at all", () => {
+    for (const args of [{ bridgeReplies: true }, {}]) {
+      const body = composeForwardBody({
+        prefixTemplate: null,
+        suffixTemplate: null,
+        memberBody: "Back the crews.",
+        context,
+        ...args,
+      });
+      expect(body).not.toContain("not passed on");
+    }
   });
 });
 

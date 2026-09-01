@@ -259,23 +259,54 @@ export function renderRelayTemplate(
 }
 
 /**
- * member→target forward body: attribution + rendered prefix + member
- * message + rendered suffix, newline-joined, empty parts dropped.
+ * Closing instruction telling the target where a reply actually goes.
  *
- * The attribution leads and is not optional. Everything after it is
- * the organiser's to write.
+ * Only when bridging is OFF, and it is the counterpart to the
+ * attribution line: without it the target does the obvious thing —
+ * hits reply — and their answer lands in an Inbox thread the member
+ * never sees. The member is left believing nobody responded.
+ *
+ * Composed rather than left to the suffix template for the same reason
+ * as the attribution: in this mode the message does not work without
+ * it, so it must not be one reword away from deletion. With bridging
+ * ON it is omitted, because replying to the relay number IS then the
+ * correct thing to do.
+ */
+export function composeReplyInstruction(args: {
+  bridgeReplies: boolean;
+  context: RelayMemberContext;
+}): string {
+  if (args.bridgeReplies) return "";
+  const name = (args.context.first_name ?? "").trim();
+  const phone = (args.context.phone ?? "").trim();
+  if (!phone) return "";
+  const who = name ? `to ${name}` : "";
+  return `To reply${who ? ` ${who}` : ""}, text ${phone} directly — replies to this number are not passed on.`;
+}
+
+/**
+ * member→target forward body: attribution + rendered prefix + member
+ * message + rendered suffix + reply instruction, newline-joined, empty
+ * parts dropped.
+ *
+ * The attribution leads and the reply instruction closes; neither is
+ * optional. Everything between them is the organiser's to write.
  */
 export function composeForwardBody(args: {
   prefixTemplate: string | null;
   suffixTemplate: string | null;
   memberBody: string;
   context: RelayMemberContext;
+  /** Omitted = bridged, the pre-existing behaviour. */
+  bridgeReplies?: boolean;
 }): string {
+  const bridgeReplies = args.bridgeReplies !== false;
   const parts = [
     composeMemberAttribution(args.context),
     renderRelayTemplate(args.prefixTemplate, args.context),
     args.memberBody.trim(),
     renderRelayTemplate(args.suffixTemplate, args.context),
+    composeReplyInstruction({ bridgeReplies, context: args.context }),
   ].filter((p) => p.length > 0);
   return parts.join("\n");
 }

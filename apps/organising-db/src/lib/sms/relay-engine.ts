@@ -34,9 +34,25 @@ export const RELAY_OPTED_OUT_REPLY =
  * One-time confirmation on the member's FIRST forwarded message on a
  * relay (avoids per-message chattiness). Only sent when the forward
  * actually went out — never for held/queued/pending messages.
+ *
+ * Two variants, because the two reply modes make opposite promises and
+ * the wrong one is a lie the member acts on. Bridged: replies come
+ * back through this number. Direct (bridging off): the forward carried
+ * their mobile, so a reply lands on their own handset from the other
+ * party's number — and they are told their number was passed on,
+ * because by then it has been.
  */
 export const RELAY_FIRST_FORWARD_CONFIRMATION =
   "Your message has been passed on. Replies will come from this number.";
+
+export const RELAY_FIRST_FORWARD_CONFIRMATION_DIRECT =
+  "Your message has been passed on, along with your name and mobile so they can reply to you directly.";
+
+export function firstForwardConfirmation(bridgeReplies: boolean): string {
+  return bridgeReplies
+    ? RELAY_FIRST_FORWARD_CONFIRMATION
+    : RELAY_FIRST_FORWARD_CONFIRMATION_DIRECT;
+}
 
 /** Prefix context for a member we could not match to a worker. */
 export const GENERIC_MEMBER_CONTEXT: RelayMemberContext = {
@@ -159,7 +175,38 @@ export interface RelayMemberContext {
   first_name?: string;
   last_name?: string;
   employer_name?: string;
+  /** The member's own mobile — always known (see composeMemberAttribution). */
+  phone?: string;
   [key: string]: string | undefined;
+}
+
+/**
+ * The attribution line every forward carries: who wrote it and how to
+ * reach them.
+ *
+ * Deliberately NOT part of the editable prefix. A `{{phone}}` token in
+ * a template is one careless reword away from being deleted, and the
+ * failure is silent — the forward goes out anonymous and the target
+ * has no way to answer the person who wrote it. Composed here instead,
+ * unconditionally, so it cannot be edited away.
+ *
+ * The phone is the one field that is always available. It comes from
+ * the webhook, not the worker record, and the member leg refuses an
+ * unparseable number before anything is stored — whereas name and
+ * employer are blank for a sender we cannot match to a worker. So a
+ * nameless attribution still carries the number, and the number alone
+ * is enough for the target to reply.
+ */
+export function composeMemberAttribution(context: RelayMemberContext): string {
+  const name = [context.first_name, context.last_name]
+    .map((part) => (part ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+  const employer = (context.employer_name ?? "").trim();
+  const phone = (context.phone ?? "").trim();
+  const who = employer ? (name ? `${name} (${employer})` : employer) : name;
+  if (!who) return phone;
+  return phone ? `${who} — ${phone}` : who;
 }
 
 /**
@@ -180,8 +227,11 @@ export function renderRelayTemplate(
 }
 
 /**
- * member→target forward body: rendered prefix + member message +
- * rendered suffix, newline-joined, empty parts dropped.
+ * member→target forward body: attribution + rendered prefix + member
+ * message + rendered suffix, newline-joined, empty parts dropped.
+ *
+ * The attribution leads and is not optional. Everything after it is
+ * the organiser's to write.
  */
 export function composeForwardBody(args: {
   prefixTemplate: string | null;
@@ -190,6 +240,7 @@ export function composeForwardBody(args: {
   context: RelayMemberContext;
 }): string {
   const parts = [
+    composeMemberAttribution(args.context),
     renderRelayTemplate(args.prefixTemplate, args.context),
     args.memberBody.trim(),
     renderRelayTemplate(args.suffixTemplate, args.context),

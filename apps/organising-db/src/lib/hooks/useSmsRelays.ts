@@ -75,6 +75,7 @@ export interface CreateSmsRelayInput {
   suffix_template?: string | null
   moderation_required?: boolean
   quiet_hours_respected?: boolean
+  bridge_replies?: boolean
   timezone?: string
   targets?: Array<{ phone_e164: string; display_name?: string | null }>
 }

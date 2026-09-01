@@ -649,16 +649,22 @@ export async function POST(req: NextRequest) {
             matchedWorkerIds,
             receivedAt,
           })
-          if (event.providerMessageId) {
-            await insertDeliveryEvent(admin, {
-              provider_message_id: event.providerMessageId,
-              event_type: 'replied',
-              part_number: 0,
-              payload: rawPayload,
-              occurred_at: receivedAt,
-            })
+          // A relay with bridging off logs a target reply and hands it
+          // back rather than answering it: the reply belongs in the
+          // Inbox on this number, which the conversational routing
+          // below already builds correctly.
+          if (relayResult.handled) {
+            if (event.providerMessageId) {
+              await insertDeliveryEvent(admin, {
+                provider_message_id: event.providerMessageId,
+                event_type: 'replied',
+                part_number: 0,
+                payload: rawPayload,
+                occurred_at: receivedAt,
+              })
+            }
+            return NextResponse.json(relayResult.response)
           }
-          return NextResponse.json(relayResult.response)
         }
       }
 

@@ -21,7 +21,7 @@ import type { SmsProvider, SendResult } from "@/lib/sms/provider";
 import { isWithinSendWindow } from "@/lib/sms/blackout";
 import {
   GENERIC_MEMBER_CONTEXT,
-  RELAY_FIRST_FORWARD_CONFIRMATION,
+  firstForwardConfirmation,
   RELAY_OPTED_OUT_REPLY,
   RELAY_PAUSED_REPLY,
   chooseBridgeMember,
@@ -37,6 +37,7 @@ import {
   type OwnNumberUsage,
 } from "@/lib/sms/relay-target-guard";
 import { LIVE_SESSION_STATES } from "@/lib/sms/survey-runtime";
+import { toDisplay } from "@/lib/phone/normalise-phone";
 import type {
   SmsRelayMessageRow,
   SmsRelayRow,
@@ -341,17 +342,26 @@ async function isPhoneOptedOut(db: Db, phoneE164: string): Promise<boolean> {
 }
 
 /** Worker merge-field context for prefix/suffix rendering. */
+/**
+ * `phone` is threaded in from the webhook rather than the worker row:
+ * it is the only attribution field guaranteed to exist (the member leg
+ * refuses an unparseable number before anything is stored), and for an
+ * unmatched sender it is the only one we have at all.
+ */
 async function loadMemberContext(
   db: Db,
   workerId: number | null,
+  phoneDisplay: string,
 ): Promise<RelayMemberContext> {
-  if (workerId == null) return GENERIC_MEMBER_CONTEXT;
+  if (workerId == null) {
+    return { ...GENERIC_MEMBER_CONTEXT, phone: phoneDisplay };
+  }
   const { data } = await db
     .from("workers")
     .select("first_name, last_name, employers(employer_name)")
     .eq("worker_id", workerId)
     .maybeSingle();
-  if (!data) return GENERIC_MEMBER_CONTEXT;
+  if (!data) return { ...GENERIC_MEMBER_CONTEXT, phone: phoneDisplay };
   const employer = data.employers as
     | { employer_name: string | null }
     | { employer_name: string | null }[]
@@ -363,6 +373,7 @@ async function loadMemberContext(
     first_name: (data.first_name as string | null) ?? "",
     last_name: (data.last_name as string | null) ?? "",
     employer_name: employerName ?? "",
+    phone: phoneDisplay,
   };
 }
 
@@ -524,10 +535,17 @@ export interface RelayInboundArgs {
   receivedAt: string;
 }
 
-export interface RelayInboundResult {
-  handled: true;
-  response: Record<string, unknown>;
-}
+export type RelayInboundResult =
+  | { handled: true; response: Record<string, unknown> }
+  /**
+   * The relay leg logged the message but is not answering it — the
+   * webhook should carry on to ordinary conversational routing. Used
+   * for a target reply on a relay with bridging off: it belongs in the
+   * Inbox on the relay number, and the webhook's existing create/attach
+   * path already does that correctly, so this defers to it rather than
+   * duplicating conversation logic here.
+   */
+  | { handled: false };
 
 /**
  * The webhook relay leg — both directions. Fires only when the
@@ -548,6 +566,32 @@ export async function processRelayInbound(
   // ── Target → member ─────────────────────────────────────────
   if (direction.direction === "target_to_member") {
     const target = direction.target;
+
+    // ── Bridging off: the reply stays here ────────────────────
+    // The forward carried the member's own mobile, so the target can
+    // answer them directly and nothing needs guessing at who a reply
+    // belongs to. Logged against the relay for the record, then handed
+    // back to the webhook so its ordinary create/attach path files it
+    // as an Inbox thread on the relay number — where an organiser will
+    // actually see it. This is the one place relay traffic becomes a
+    // conversation; the Phase 6 "no conversations" rule still holds for
+    // everything else, because a reply nobody reads is a reply lost.
+    if (!relay.bridge_replies) {
+      await insertRelayMessage(db, {
+        relay_id: relay.relay_id,
+        direction: "target_to_member",
+        member_worker_id: null,
+        member_phone_e164: null,
+        target_id: target.target_id,
+        body: event.body,
+        forwarded_body: null,
+        moderation_status: "auto_approved",
+        provider_message_id: event.providerMessageId,
+        forward_status: "held",
+        created_at: receivedAt,
+      });
+      return { handled: false };
+    }
 
     // Bridging map: the last member whose message was actually
     // forwarded on this relay (pure chooseBridgeMember over the
@@ -674,7 +718,7 @@ export async function processRelayInbound(
 
   // Render the forward AT RECEIPT TIME (deferred/moderated forwards
   // keep the wording current at receipt).
-  const context = await loadMemberContext(db, workerId);
+  const context = await loadMemberContext(db, workerId, toDisplay(phoneE164));
   const forwardedBody = composeForwardBody({
     prefixTemplate: relay.prefix_template,
     suffixTemplate: relay.suffix_template,
@@ -767,7 +811,7 @@ export async function processRelayInbound(
   if (outcome.sent > 0 && isFirstMessage) {
     await sendFromRelay(provider, {
       to: phoneE164,
-      body: RELAY_FIRST_FORWARD_CONFIRMATION,
+      body: firstForwardConfirmation(relay.bridge_replies),
       senderDigits,
       customRef: `relay-confirm-${relayMessageId}`,
       idempotencyKey: `sms-relay-confirm-${relayMessageId}`,

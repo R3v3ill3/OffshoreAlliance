@@ -14,6 +14,12 @@
  */
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -230,9 +236,11 @@ interface DraftTarget {
 function TemplatePreview({
   prefix,
   suffix,
+  bridgeReplies,
 }: {
   prefix: string
   suffix: string
+  bridgeReplies: boolean
 }) {
   const preview = useMemo(
     () =>
@@ -246,9 +254,11 @@ function TemplatePreview({
           employer_name: SAMPLE_DATA.employer_name,
           phone: SAMPLE_MEMBER_PHONE,
         },
+        bridgeReplies,
       }),
-    [prefix, suffix],
+    [prefix, suffix, bridgeReplies],
   )
+  const { segments } = countSegments(preview)
   return (
     <div className="rounded-md border bg-muted/30 p-3">
       <p className="text-xs text-muted-foreground mb-1">
@@ -257,8 +267,12 @@ function TemplatePreview({
       <p className="text-sm whitespace-pre-wrap">{preview}</p>
       <p className="text-xs text-muted-foreground mt-2">
         The first line names the member and carries their mobile so the
-        target can reply to them directly. It is always sent and cannot be
-        edited out.
+        target can reply to them directly
+        {bridgeReplies
+          ? '. It is always sent and cannot be edited out.'
+          : ', and the last line tells them to use it. Both are always sent and cannot be edited out.'}{' '}
+        A member&apos;s own message adds to this — {segments} segment
+        {segments === 1 ? '' : 's'} before theirs.
       </p>
     </div>
   )
@@ -496,7 +510,11 @@ function NewRelaySheet({
             />
           </div>
 
-          <TemplatePreview prefix={prefix} suffix={suffix} />
+          <TemplatePreview
+            prefix={prefix}
+            suffix={suffix}
+            bridgeReplies={bridgeReplies}
+          />
 
           <div className="space-y-1.5">
             <Label htmlFor="relay-confirmation">
@@ -554,21 +572,6 @@ function NewRelaySheet({
             </div>
             <div className="flex items-center justify-between gap-3">
               <div>
-                <Label htmlFor="relay-bridge">Bridge replies back to members</Label>
-                <p className="text-xs text-muted-foreground">
-                  {bridgeReplies
-                    ? 'A reply is sent to the last member forwarded. Under concurrent messages that can reach the wrong person — leave this off unless the relay carries one conversation at a time.'
-                    : 'Replies stay on the relay number and land in Inbox. Members reach the target directly on the mobile in the attribution line.'}
-                </p>
-              </div>
-              <Switch
-                id="relay-bridge"
-                checked={bridgeReplies}
-                onCheckedChange={setBridgeRepliesAndCopy}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <div>
                 <Label htmlFor="relay-quiet">Respect quiet hours (9am–8pm)</Label>
                 <p className="text-xs text-muted-foreground">
                   Member messages arriving outside the window queue and forward
@@ -615,6 +618,53 @@ function NewRelaySheet({
             </div>
             )}
           </div>
+
+          {/* Reply routing is the baseline for every relay, so it is not
+              a choice presented up front — the default is correct for a
+              campaign of any size. Bridging is the exception, and it
+              lives here because turning it on when more than one member
+              is writing sends replies to the wrong person, silently. */}
+          <Accordion type="single" collapsible>
+            <AccordionItem value="advanced" className="border rounded-md px-3">
+              <AccordionTrigger className="text-sm">
+                More options
+              </AccordionTrigger>
+              <AccordionContent className="space-y-3 pb-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <Label htmlFor="relay-bridge">
+                      Two-way conversation through this number
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Special case. The target&apos;s replies are texted back
+                      to the last member forwarded, instead of landing in
+                      Inbox — for a back-and-forth with one member at a time.
+                    </p>
+                  </div>
+                  <Switch
+                    id="relay-bridge"
+                    checked={bridgeReplies}
+                    onCheckedChange={setBridgeRepliesAndCopy}
+                  />
+                </div>
+                {bridgeReplies ? (
+                  <p className="text-xs text-amber-600 dark:text-amber-500">
+                    Only safe when one member is in conversation at a time. If
+                    two write in before the target answers, the reply goes to
+                    whichever was forwarded last — the other member never
+                    learns a reply came, and it is not copied to Inbox.
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Off: replies land in Inbox on the relay number, and the
+                    target is told to text the member directly on the mobile
+                    in the header. This is the right setting for a campaign
+                    of any size.
+                  </p>
+                )}
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
 
           <Button
             className="w-full"
@@ -717,8 +767,8 @@ function RelayDetail({ detail }: { detail: SmsRelayDetail }) {
           {relay.quiet_hours_respected && ' — forwards 9am–8pm'}
           {relay.moderation_required && ' — moderated'}
           {relay.bridge_replies
-            ? ' — replies bridged to the last member forwarded'
-            : ' — replies land in Inbox on this number'}
+            ? ' — two-way: replies texted to the last member forwarded'
+            : ' — replies land in Inbox; members are reached on their own number'}
         </SheetDescription>
       </SheetHeader>
       <div className="mt-4 space-y-5 pb-8">

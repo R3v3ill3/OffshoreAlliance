@@ -44,8 +44,10 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
+      # v7 runs on Node 24. v5 targets Node 20, which the runners now
+      # force onto 24 anyway and annotate every run about.
       - name: Commit updated types
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "chore: regenerate database types"
           file_pattern: "packages/db-types/generated.ts"

@@ -1547,15 +1547,30 @@ function FunnelDetail({
               Visual report
             </Button>
             {!restricted && (
-              <Button asChild variant="outline" size="sm">
-                <a
-                  href={`/api/campaigns/${campaignId}/sms-surveys/${detail.survey.survey_id}/export`}
-                  download
-                >
-                  <Download className="h-3 w-3 mr-1" />
-                  Export answers CSV
-                </a>
-              </Button>
+              <>
+                <Button asChild variant="outline" size="sm">
+                  <a
+                    href={`/api/campaigns/${campaignId}/sms-surveys/${detail.survey.survey_id}/export`}
+                    download
+                    title="One row per respondent, one column per question"
+                  >
+                    <Download className="h-3 w-3 mr-1" />
+                    Export answers CSV
+                  </a>
+                </Button>
+                {/* The old row-per-answer shape, kept for loading into a
+                    stats tool rather than a spreadsheet. */}
+                <Button asChild variant="ghost" size="sm">
+                  <a
+                    href={`/api/campaigns/${campaignId}/sms-surveys/${detail.survey.survey_id}/export?format=long`}
+                    download
+                    title="One row per answer — for stats tools"
+                  >
+                    <Download className="h-3 w-3 mr-1" />
+                    Long format
+                  </a>
+                </Button>
+              </>
             )}
           </div>
           <SurveyCohortButtons

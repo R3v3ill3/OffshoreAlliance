@@ -112,6 +112,17 @@ interface AddNumberBody {
   label?: string | null;
 }
 
+interface SetStatusBody {
+  action: "set_status";
+  number_id: number;
+  status: "active" | "retired";
+}
+
+interface DeleteNumberBody {
+  action: "delete_number";
+  number_id: number;
+}
+
 export async function POST(request: NextRequest) {
   const rateLimitResult = await checkRateLimit(request);
   if (!rateLimitResult.allowed) {
@@ -124,7 +135,7 @@ export async function POST(request: NextRequest) {
   const { error, status, supabase } = await requireAdmin();
   if (error || !supabase) return NextResponse.json({ error }, { status });
 
-  let body: AssignBody | AddNumberBody;
+  let body: AssignBody | AddNumberBody | SetStatusBody | DeleteNumberBody;
   try {
     body = await request.json();
   } catch {
@@ -163,6 +174,47 @@ export async function POST(request: NextRequest) {
       label: body.label?.trim() || null,
     });
     if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+    return NextResponse.json({ success: true });
+  }
+
+  if (body.action === "set_status") {
+    if (!body.number_id || (body.status !== "active" && body.status !== "retired")) {
+      return NextResponse.json(
+        { error: "number_id and a status of 'active' or 'retired' required" },
+        { status: 400 }
+      );
+    }
+    const { error: updateError } = await supabase
+      .from("sms_numbers")
+      .update({ status: body.status })
+      .eq("number_id", body.number_id);
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+    return NextResponse.json({ success: true });
+  }
+
+  if (body.action === "delete_number") {
+    if (!body.number_id) {
+      return NextResponse.json({ error: "number_id required" }, { status: 400 });
+    }
+    const { error: deleteError } = await supabase
+      .from("sms_numbers")
+      .delete()
+      .eq("number_id", body.number_id);
+    if (deleteError) {
+      // 23503 = foreign-key violation: the number is still referenced by a
+      // conversation, relay, or survey. Postgres blocks the delete; disabling
+      // (retiring) is the safe path for a number that has been in service.
+      if (deleteError.code === "23503") {
+        return NextResponse.json(
+          {
+            error:
+              "This number is used by existing conversations, relays, or surveys and can't be deleted. Disable it instead.",
+          },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json({ error: deleteError.message }, { status: 500 });
+    }
     return NextResponse.json({ success: true });
   }
 

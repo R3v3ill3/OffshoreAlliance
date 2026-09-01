@@ -1,8 +1,17 @@
 /**
  * GET /api/campaigns/[id]/sms-surveys/[surveyId]/export — survey
- * answers export, CSV (Phase 7). Long format: one row per (session,
- * answered question), plus a single answerless row for sessions with
- * no parsed answers, so the funnel states are visible in the same file.
+ * answers export, CSV.
+ *
+ * WIDE by default: one row per respondent, one column per question,
+ * with the member's verbatim reply beside each parsed answer. The
+ * original long format (one row per answered question) shipped first
+ * and is still available as ?format=long — it suits loading into a
+ * stats tool, but reading how one member answered meant scanning nine
+ * rows, and comparing members meant building a pivot before any
+ * analysis could start.
+ *
+ *   ?format=long    row per answer (the previous default)
+ *   ?verbatim=0     omit the verbatim columns
  *
  * Results-restricted ballots are 403'd: their ONLY reporting surface
  * is the aggregate tally (Phase 5 rule) — a per-member answer export
@@ -13,6 +22,13 @@ import { createClient } from '@/lib/supabase/server'
 import { requireStaffUser } from '@/lib/campaign/auth-api'
 import { errorResponse } from '@/lib/api/error-response'
 import { csvResponse } from '@/lib/api/csv'
+import {
+  buildLongSurveyExport,
+  buildWideSurveyExport,
+  type ExportAnswer,
+  type ExportQuestion,
+  type ExportSession,
+} from '@/lib/sms/survey-export'
 
 const PAGE_SIZE = 1000
 const CHUNK_SIZE = 500
@@ -37,7 +53,7 @@ interface AnswerRow {
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string; surveyId: string }> },
 ) {
   try {
@@ -73,7 +89,7 @@ export async function GET(
 
     const { data: questions, error: qErr } = await supabase
       .from('sms_survey_questions')
-      .select('question_id, sort_order, prompt, qtype')
+      .select('question_id, sort_order, prompt, qtype, retired_at')
       .eq('survey_id', sid)
       .order('sort_order', { ascending: true })
       .order('question_id', { ascending: true })
@@ -97,21 +113,26 @@ export async function GET(
       if (!data || data.length < PAGE_SIZE) break
     }
 
-    // Worker names (chunked lookups).
+    // Worker names + employer (chunked). Employer is worth carrying:
+    // it is the cut an organiser reaches for first, and joining it back
+    // by hand afterwards is the tedious part of using this file.
     const workerName = new Map<number, string>()
+    const workerEmployer = new Map<number, string | null>()
     const workerIds = [...new Set(sessions.map((s) => s.worker_id))]
     for (let i = 0; i < workerIds.length; i += CHUNK_SIZE) {
       const { data, error } = await supabase
         .from('workers')
-        .select('worker_id, first_name, last_name')
+        .select('worker_id, first_name, last_name, employer:employers(employer_name)')
         .in('worker_id', workerIds.slice(i, i + CHUNK_SIZE))
       if (error) throw error
-      for (const w of (data ?? []) as Array<{
+      for (const w of (data ?? []) as unknown as Array<{
         worker_id: number
         first_name: string
         last_name: string
+        employer: { employer_name: string | null } | null
       }>) {
         workerName.set(w.worker_id, `${w.first_name} ${w.last_name}`.trim())
+        workerEmployer.set(w.worker_id, w.employer?.employer_name ?? null)
       }
     }
 
@@ -138,52 +159,60 @@ export async function GET(
       }
     }
 
-    const rows: Record<string, unknown>[] = []
-    for (const s of sessions) {
-      const base = {
-        session_id: s.session_id,
-        worker_id: s.worker_id,
-        worker_name: workerName.get(s.worker_id) ?? `#${s.worker_id}`,
-        phone_e164: s.phone_e164,
-        session_state: s.state,
-        invited_at: s.invited_at,
-        first_answer_at: s.first_answer_at,
-        completed_at: s.completed_at,
-      }
-      const answers = (answersBySession.get(s.session_id) ?? []).sort(
-        (a, b) =>
-          (questionByIdx.get(a.question_id)?.number ?? 0) -
-          (questionByIdx.get(b.question_id)?.number ?? 0),
-      )
-      if (answers.length === 0) {
-        rows.push({
-          ...base,
-          question_no: null,
-          question: null,
-          qtype: null,
-          parsed_value: null,
-          raw_body: null,
-          invalid_attempts: null,
-          received_at: null,
-        })
-        continue
-      }
-      for (const a of answers) {
-        const q = questionByIdx.get(a.question_id)
-        rows.push({
-          ...base,
-          question_no: q?.number ?? null,
-          question: q?.prompt ?? `#${a.question_id}`,
-          qtype: q?.qtype ?? null,
+    const exportQuestions: ExportQuestion[] = (questions ?? []).map((q, i) => ({
+      question_id: q.question_id,
+      number: i + 1,
+      prompt: q.prompt,
+      qtype: q.qtype,
+      retired_at: (q as { retired_at?: string | null }).retired_at ?? null,
+    }))
+
+    const exportSessions: ExportSession[] = sessions.map((s) => ({
+      session_id: s.session_id,
+      worker_id: s.worker_id,
+      worker_name: workerName.get(s.worker_id) ?? `#${s.worker_id}`,
+      employer_name: workerEmployer.get(s.worker_id) ?? null,
+      phone_e164: s.phone_e164,
+      state: s.state,
+      invited_at: s.invited_at,
+      first_answer_at: s.first_answer_at,
+      completed_at: s.completed_at,
+    }))
+
+    const exportAnswers = new Map<number, ExportAnswer[]>()
+    for (const [sessionId, list] of answersBySession) {
+      exportAnswers.set(
+        sessionId,
+        list.map((a) => ({
+          question_id: a.question_id,
           parsed_value: a.parsed_value,
           raw_body: a.raw_body,
           invalid_attempts: a.invalid_attempts,
           received_at: a.received_at,
-        })
-      }
+        })),
+      )
     }
 
-    return csvResponse(rows, `sms-survey-${sid}-campaign-${cid}`)
+    const long = req.nextUrl.searchParams.get('format') === 'long'
+    const built = long
+      ? buildLongSurveyExport({
+          sessions: exportSessions,
+          questions: exportQuestions,
+          answersBySession: exportAnswers,
+        })
+      : buildWideSurveyExport({
+          sessions: exportSessions,
+          questions: exportQuestions,
+          answersBySession: exportAnswers,
+          includeVerbatim:
+            req.nextUrl.searchParams.get('verbatim') !== '0',
+        })
+
+    return csvResponse(
+      built.rows,
+      `sms-survey-${sid}-campaign-${cid}${long ? '-long' : ''}`,
+      built.headers,
+    )
   } catch (error) {
     console.error('GET sms-surveys/[surveyId]/export error:', error)
     return errorResponse('Failed to export SMS survey answers', error)

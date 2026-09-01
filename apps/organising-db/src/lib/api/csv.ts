@@ -3,11 +3,20 @@ import { NextResponse } from 'next/server'
 /**
  * CSV serialisation shared by the export routes (lifted from the
  * phone attempts export — /api/campaigns/[id]/phone/attempts/export).
- * Headers come from the first row's keys.
+ *
+ * Headers default to the first row's keys. Pass them explicitly when
+ * the column set is known up front: it fixes the order regardless of
+ * key insertion, and an export with no rows still returns its header
+ * line rather than an empty file that reads as a failure.
  */
-export function rowsToCsv(rows: Record<string, unknown>[]): string {
-  if (rows.length === 0) return ''
-  const headers = Object.keys(rows[0])
+export function rowsToCsv(
+  rows: Record<string, unknown>[],
+  explicitHeaders?: string[],
+): string {
+  if (rows.length === 0 && !explicitHeaders?.length) return ''
+  const headers = explicitHeaders?.length
+    ? explicitHeaders
+    : Object.keys(rows[0])
   const escape = (v: unknown): string => {
     if (v == null) return ''
     let s = String(v)
@@ -31,9 +40,10 @@ export function rowsToCsv(rows: Record<string, unknown>[]): string {
 export function csvResponse(
   rows: Record<string, unknown>[],
   filenameBase: string,
+  explicitHeaders?: string[],
 ): NextResponse {
   const ts = new Date().toISOString().slice(0, 10)
-  return new NextResponse(rowsToCsv(rows), {
+  return new NextResponse(rowsToCsv(rows, explicitHeaders), {
     status: 200,
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',

@@ -423,6 +423,10 @@ function NewRelaySheet({
               <Plus className="h-3.5 w-3.5 mr-1" />
               Add target
             </Button>
+            <p className="text-xs text-muted-foreground">
+              For a test run you can use one of our own numbers, as long as it
+              has no live relay or survey session on it.
+            </p>
           </div>
 
           <div className="space-y-1.5">

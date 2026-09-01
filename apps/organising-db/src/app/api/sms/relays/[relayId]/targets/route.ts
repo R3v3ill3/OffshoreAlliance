@@ -10,14 +10,16 @@
  *
  * sms_relay_targets is service-role-write-only: writes run on the
  * ADMIN client after the explicit requireRelayWriteAccess check.
- * Platform sms_numbers can never be targets (relay-ring guard).
+ * A platform sms_number may be a target only while nothing is routing
+ * on it (relay-ring guard — lib/sms/relay-target-guard.ts).
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { errorResponse } from '@/lib/api/error-response'
 import { checkRateLimit } from '@/lib/rate-limit-middleware'
-import { matchPhoneInList } from '@/lib/sms/relay-engine'
+import { decideRelayTarget } from '@/lib/sms/relay-target-guard'
+import { loadOwnNumberUsage } from '@/lib/sms/relay-runtime'
 import { toE164 } from '@/lib/phone/normalise-phone'
 import { requireRelayWriteAccess } from '@/lib/sms/relay-route-helpers'
 
@@ -69,20 +71,16 @@ export async function POST(
       )
     }
 
-    // Relay-ring guard: none of OUR sms_numbers — any purpose, any
-    // status — may be a relay target (a platform number as a target
-    // would loop relay traffic back into the webhook).
-    const { data: allNumbers } = await supabase
-      .from('sms_numbers')
-      .select('number_id, phone_e164')
-    if (matchPhoneInList(allNumbers ?? [], e164)) {
-      return NextResponse.json(
-        {
-          error:
-            'That number is one of our own SMS numbers — platform numbers cannot be relay targets',
-        },
-        { status: 400 },
-      )
+    // Relay-ring guard. One of our own numbers is allowed as a target
+    // — that is how a relay gets tested end to end — but only while
+    // nothing is routing on it. See lib/sms/relay-target-guard.ts.
+    const verdict = decideRelayTarget({
+      phone: e164,
+      ownNumbers: await loadOwnNumberUsage(supabase),
+      relayNumberId: access.relay.number_id,
+    })
+    if (!verdict.allowed) {
+      return NextResponse.json({ error: verdict.reason }, { status: 400 })
     }
 
     const { data: inserted, error } = await createAdminClient()

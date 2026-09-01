@@ -9,9 +9,10 @@
  * POST — create a relay (created 'paused'; explicit activation via
  *        the actions route): explicit can_write_to_campaign check
  *        when campaign-scoped, validates the number is an active
- *        spare-pool number with no live relay and that NO target is
- *        one of our own sms_numbers (a platform number as a target
- *        would build a relay ring / self-loop), inserts the relay +
+ *        spare-pool number with no live relay and that no target is
+ *        a platform number currently routing traffic (a live relay or
+ *        live survey session on it would ring / eat the reply — see
+ *        lib/sms/relay-target-guard.ts), inserts the relay +
  *        targets via the ADMIN client (sms_relays/sms_relay_targets
  *        are service-role-write-only — the relay leg outranks
  *        conversational routing, so rows must be route-mediated),
@@ -25,7 +26,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { errorResponse } from '@/lib/api/error-response'
 import { checkRateLimit } from '@/lib/rate-limit-middleware'
 import { isValidTimeZone } from '@/lib/sms/blackout'
-import { matchPhoneInList } from '@/lib/sms/relay-engine'
+import { decideRelayTarget } from '@/lib/sms/relay-target-guard'
+import { loadOwnNumberUsage } from '@/lib/sms/relay-runtime'
 import { toE164 } from '@/lib/phone/normalise-phone'
 import type { SmsRelayRow } from '@/types/sms'
 
@@ -190,21 +192,20 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Own-number target guard: none of OUR sms_numbers — any
-    // purpose, any status — may be a relay target. A platform
-    // number as a target would loop relay traffic back into the
-    // webhook (relay rings, self-targets).
-    const { data: allNumbers } = await supabase
-      .from('sms_numbers')
-      .select('number_id, phone_e164')
+    // Own-number target guard. One of our own numbers may be a target
+    // — that is how a relay gets tested end to end — but only while
+    // nothing is routing on it: no live relay (the ring), no live
+    // survey session (the reply would be read as a survey answer), and
+    // never this relay's own number. See lib/sms/relay-target-guard.ts.
+    const ownNumbers = await loadOwnNumberUsage(supabase)
     for (const t of targetRows) {
-      if (matchPhoneInList(allNumbers ?? [], t.phone_e164)) {
-        return NextResponse.json(
-          {
-            error: `Target ${t.phone_e164} is one of our own SMS numbers — platform numbers cannot be relay targets`,
-          },
-          { status: 400 },
-        )
+      const verdict = decideRelayTarget({
+        phone: t.phone_e164,
+        ownNumbers,
+        relayNumberId: body.number_id,
+      })
+      if (!verdict.allowed) {
+        return NextResponse.json({ error: verdict.reason }, { status: 400 })
       }
     }
 

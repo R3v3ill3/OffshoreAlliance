@@ -1,31 +1,46 @@
 name: Regenerate database types
 
+# Runs on main only. The types come from the PRODUCTION project, so
+# regenerating on a feature branch describes a schema that branch has
+# not shipped yet — and the auto-commit would then travel through every
+# merge. Migrations are applied to prod as they land, so main is the
+# one branch where generated types and database agree.
 on:
   push:
+    branches:
+      - main
     paths:
       - "supabase/migrations/**"
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   gen-types:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
+      # No pnpm setup: this job installs the Supabase CLI with npm and
+      # runs it directly — it never touches the workspace. The step used
+      # to be here, pinned to pnpm 9, and failed every run because
+      # package.json pins pnpm 10 via packageManager.
       - name: Install Supabase CLI
         run: npm install -g supabase
 
+      # Writes generated.ts, NOT index.ts. index.ts is hand-written: it
+      # re-exports ./generated and adds the app-level aliases
+      # (MemberEndorsementVote, VBargainingProgress, …). Overwriting it
+      # with generated output would break every `@oa/db-types` import in
+      # the app, since package.json points main/types at index.ts.
       - name: Generate types
         run: |
           supabase gen types typescript \
             --project-id gteygwfgjvczanmrwgbr \
-            > packages/db-types/index.ts
+            > packages/db-types/generated.ts
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
@@ -33,4 +48,4 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore: regenerate database types"
-          file_pattern: "packages/db-types/index.ts"
+          file_pattern: "packages/db-types/generated.ts"

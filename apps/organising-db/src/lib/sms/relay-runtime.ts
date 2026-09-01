@@ -21,7 +21,7 @@ import type { SmsProvider, SendResult } from "@/lib/sms/provider";
 import { isWithinSendWindow } from "@/lib/sms/blackout";
 import {
   GENERIC_MEMBER_CONTEXT,
-  firstForwardConfirmation,
+  resolveFirstForwardConfirmation,
   RELAY_OPTED_OUT_REPLY,
   RELAY_PAUSED_REPLY,
   chooseBridgeMember,
@@ -809,13 +809,22 @@ export async function processRelayInbound(
     destinations: targets.filter((t) => t.is_active),
   });
   if (outcome.sent > 0 && isFirstMessage) {
-    await sendFromRelay(provider, {
-      to: phoneE164,
-      body: firstForwardConfirmation(relay.bridge_replies),
-      senderDigits,
-      customRef: `relay-confirm-${relayMessageId}`,
-      idempotencyKey: `sms-relay-confirm-${relayMessageId}`,
+    const confirmation = resolveFirstForwardConfirmation({
+      template: relay.confirmation_template,
+      bridgeReplies: relay.bridge_replies,
+      context,
     });
+    // Empty = the relay's confirmation was deliberately cleared. Never
+    // send a blank SMS to say nothing.
+    if (confirmation) {
+      await sendFromRelay(provider, {
+        to: phoneE164,
+        body: confirmation,
+        senderDigits,
+        customRef: `relay-confirm-${relayMessageId}`,
+        idempotencyKey: `sms-relay-confirm-${relayMessageId}`,
+      });
+    }
   }
   return {
     handled: true,

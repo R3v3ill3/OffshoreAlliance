@@ -76,6 +76,7 @@ export interface CreateSmsRelayInput {
   moderation_required?: boolean
   quiet_hours_respected?: boolean
   bridge_replies?: boolean
+  confirmation_template?: string | null
   timezone?: string
   targets?: Array<{ phone_e164: string; display_name?: string | null }>
 }
@@ -115,6 +116,8 @@ export function useUpdateSmsRelay(relayId: number) {
       suffix_template?: string | null
       moderation_required?: boolean
       quiet_hours_respected?: boolean
+      bridge_replies?: boolean
+      confirmation_template?: string | null
       timezone?: string
     }) => {
       const res = await fetchApi(`/api/sms/relays/${relayId}`, {

@@ -48,10 +48,42 @@ export const RELAY_FIRST_FORWARD_CONFIRMATION =
 export const RELAY_FIRST_FORWARD_CONFIRMATION_DIRECT =
   "Your message has been passed on, along with your name and mobile so they can reply to you directly.";
 
+/**
+ * Cap on an organiser-authored confirmation. Roughly two GSM-7
+ * segments — this is an acknowledgement, not a second message, and an
+ * unbounded field here bills the campaign per part per member.
+ */
+export const RELAY_CONFIRMATION_MAX_LENGTH = 320;
+
 export function firstForwardConfirmation(bridgeReplies: boolean): string {
   return bridgeReplies
     ? RELAY_FIRST_FORWARD_CONFIRMATION
     : RELAY_FIRST_FORWARD_CONFIRMATION_DIRECT;
+}
+
+/**
+ * The confirmation actually sent: the relay's own wording when it has
+ * one, otherwise the built-in default for its reply mode.
+ *
+ * Rendered through the same template path as prefix/suffix, so merge
+ * fields work and an unresolved `{{token}}` is stripped rather than
+ * reaching a member literally. An empty result sends nothing — an
+ * organiser who clears the field wants silence, not a blank SMS.
+ */
+export function resolveFirstForwardConfirmation(args: {
+  template: string | null | undefined;
+  bridgeReplies: boolean;
+  context: RelayMemberContext;
+}): string {
+  const raw = args.template?.trim();
+  if (raw === undefined || raw === "") {
+    // undefined/null = never configured, fall back to the default.
+    // "" = deliberately cleared, so send nothing.
+    return args.template == null
+      ? firstForwardConfirmation(args.bridgeReplies)
+      : "";
+  }
+  return renderRelayTemplate(raw, args.context);
 }
 
 /** Prefix context for a member we could not match to a worker. */

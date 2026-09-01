@@ -547,6 +547,13 @@ export interface SmsRelayRow {
   status: SmsRelayStatus;
   moderation_required: boolean;
   quiet_hours_respected: boolean;
+  /**
+   * TRUE: a target reply is bridged back to the last-forwarded member.
+   * FALSE: it stays on the relay number and routes to the Inbox — the
+   * member reaches the target directly on the mobile carried in the
+   * forward's attribution line.
+   */
+  bridge_replies: boolean;
   timezone: string;
   created_by: string | null;
   created_at: string;

@@ -90,6 +90,8 @@ const TIMEZONES = [
 const SAMPLE_MEMBER_MESSAGE =
   'Please support the crews on the KM8 — we deserve a fair agreement.'
 
+const SAMPLE_MEMBER_PHONE = '0400 100 014'
+
 const MERGE_FIELDS = ['first_name', 'last_name', 'employer_name'] as const
 
 interface SmsRelaysPanelProps {
@@ -237,6 +239,7 @@ function TemplatePreview({
           first_name: SAMPLE_DATA.first_name,
           last_name: SAMPLE_DATA.last_name,
           employer_name: SAMPLE_DATA.employer_name,
+          phone: SAMPLE_MEMBER_PHONE,
         },
       }),
     [prefix, suffix],
@@ -247,6 +250,11 @@ function TemplatePreview({
         Preview (what the target receives):
       </p>
       <p className="text-sm whitespace-pre-wrap">{preview}</p>
+      <p className="text-xs text-muted-foreground mt-2">
+        The first line names the member and carries their mobile so the
+        target can reply to them directly. It is always sent and cannot be
+        edited out.
+      </p>
     </div>
   )
 }
@@ -275,6 +283,11 @@ function NewRelaySheet({
   )
   const [suffix, setSuffix] = useState('')
   const [moderation, setModeration] = useState(false)
+  // Off by default for new relays: the forward now carries the member's
+  // own mobile, so the target can answer them directly, and bridging
+  // misroutes as soon as two members write in before a reply lands.
+  // Existing relays keep bridging (the column defaults true).
+  const [bridgeReplies, setBridgeReplies] = useState(false)
   const [quietHours, setQuietHours] = useState(true)
   const [timezone, setTimezone] = useState('Australia/Perth')
 
@@ -308,6 +321,7 @@ function NewRelaySheet({
         suffix_template: suffix.trim() || null,
         moderation_required: moderation,
         quiet_hours_respected: quietHours,
+        bridge_replies: bridgeReplies,
         timezone,
         targets: cleanTargets,
       },
@@ -481,6 +495,21 @@ function NewRelaySheet({
             </div>
             <div className="flex items-center justify-between gap-3">
               <div>
+                <Label htmlFor="relay-bridge">Bridge replies back to members</Label>
+                <p className="text-xs text-muted-foreground">
+                  {bridgeReplies
+                    ? 'A reply is sent to the last member forwarded. Under concurrent messages that can reach the wrong person — leave this off unless the relay carries one conversation at a time.'
+                    : 'Replies stay on the relay number and land in Inbox. Members reach the target directly on the mobile in the attribution line.'}
+                </p>
+              </div>
+              <Switch
+                id="relay-bridge"
+                checked={bridgeReplies}
+                onCheckedChange={setBridgeReplies}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <div>
                 <Label htmlFor="relay-quiet">Respect quiet hours (9am–8pm)</Label>
                 <p className="text-xs text-muted-foreground">
                   Member messages arriving outside the window queue and forward
@@ -628,6 +657,9 @@ function RelayDetail({ detail }: { detail: SmsRelayDetail }) {
           {number ? `Relay number ${toDisplay(number.phone_e164)}` : 'No number'}
           {relay.quiet_hours_respected && ' — forwards 9am–8pm'}
           {relay.moderation_required && ' — moderated'}
+          {relay.bridge_replies
+            ? ' — replies bridged to the last member forwarded'
+            : ' — replies land in Inbox on this number'}
         </SheetDescription>
       </SheetHeader>
       <div className="mt-4 space-y-5 pb-8">

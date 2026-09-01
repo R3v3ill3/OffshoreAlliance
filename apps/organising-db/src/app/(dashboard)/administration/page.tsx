@@ -59,6 +59,8 @@ import {
   Server,
   Database,
   Clock,
+  Power,
+  PowerOff,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { EmployerWizard } from "@/components/administration/employer-wizard";
@@ -1927,6 +1929,7 @@ function SmsStatusPanel() {
   const [newNumber, setNewNumber] = useState("");
   const [newLabel, setNewLabel] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SmsStatusData["numbers"][number] | null>(null);
 
   const { data, isLoading } = useQuery<SmsStatusData>({
     queryKey: ["admin-sms-status"],
@@ -2054,65 +2057,110 @@ function SmsStatusPanel() {
                       <Badge variant="outline">{n.status}</Badge>
                     )}
                     <div className="ml-auto flex items-center gap-2">
-                      <Select
-                        value={purpose}
-                        onValueChange={(v) =>
-                          setAssignPurpose((p) => ({ ...p, [n.number_id]: v }))
-                        }
-                      >
-                        <SelectTrigger className="w-32">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {SMS_NUMBER_PURPOSES.map((p) => (
-                            <SelectItem key={p} value={p}>
-                              {p}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {purpose === "organiser" && (
-                        <Select
-                          value={organiser}
-                          onValueChange={(v) =>
-                            setAssignOrganiser((p) => ({ ...p, [n.number_id]: v }))
-                          }
-                        >
-                          <SelectTrigger className="w-44">
-                            <SelectValue placeholder="Select organiser" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {data.organisers.map((o) => (
-                              <SelectItem
-                                key={o.organiser_id}
-                                value={String(o.organiser_id)}
-                              >
-                                {o.organiser_name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                      {n.status === "active" ? (
+                        <>
+                          <Select
+                            value={purpose}
+                            onValueChange={(v) =>
+                              setAssignPurpose((p) => ({ ...p, [n.number_id]: v }))
+                            }
+                          >
+                            <SelectTrigger className="w-32">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {SMS_NUMBER_PURPOSES.map((p) => (
+                                <SelectItem key={p} value={p}>
+                                  {p}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {purpose === "organiser" && (
+                            <Select
+                              value={organiser}
+                              onValueChange={(v) =>
+                                setAssignOrganiser((p) => ({ ...p, [n.number_id]: v }))
+                              }
+                            >
+                              <SelectTrigger className="w-44">
+                                <SelectValue placeholder="Select organiser" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {data.organisers.map((o) => (
+                                  <SelectItem
+                                    key={o.organiser_id}
+                                    value={String(o.organiser_id)}
+                                  >
+                                    {o.organiser_name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={
+                              postAction.isPending ||
+                              (purpose === "organiser" && !organiser)
+                            }
+                            onClick={() =>
+                              postAction.mutate({
+                                action: "assign",
+                                number_id: n.number_id,
+                                purpose,
+                                organiser_id:
+                                  purpose === "organiser" && organiser
+                                    ? Number(organiser)
+                                    : null,
+                              })
+                            }
+                          >
+                            Assign
+                          </Button>
+                        </>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          Disabled — can&apos;t be assigned until re-enabled.
+                        </span>
                       )}
                       <Button
                         size="sm"
-                        variant="outline"
-                        disabled={
-                          postAction.isPending ||
-                          (purpose === "organiser" && !organiser)
+                        variant="ghost"
+                        title={
+                          n.status === "active"
+                            ? "Disable number"
+                            : "Enable number"
                         }
+                        disabled={postAction.isPending}
                         onClick={() =>
                           postAction.mutate({
-                            action: "assign",
+                            action: "set_status",
                             number_id: n.number_id,
-                            purpose,
-                            organiser_id:
-                              purpose === "organiser" && organiser
-                                ? Number(organiser)
-                                : null,
+                            status: n.status === "active" ? "retired" : "active",
                           })
                         }
                       >
-                        Assign
+                        {n.status === "active" ? (
+                          <PowerOff className="h-4 w-4" />
+                        ) : (
+                          <Power className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive"
+                        title="Delete number"
+                        disabled={postAction.isPending}
+                        onClick={() => {
+                          postAction.reset();
+                          setActionError(null);
+                          setDeleteTarget(n);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
@@ -2162,6 +2210,59 @@ function SmsStatusPanel() {
           </div>
         </div>
       </CardContent>
+
+      <Dialog
+        open={deleteTarget != null}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete number</DialogTitle>
+            <DialogDescription>
+              Permanently remove this number from the registry. A number already
+              used by conversations, relays, or surveys can&apos;t be deleted —
+              disable it instead.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteTarget && (
+            <p className="text-sm py-1">
+              Delete{" "}
+              <span className="font-mono">{deleteTarget.phone_e164}</span>
+              {deleteTarget.label ? ` — ${deleteTarget.label}` : ""}?
+            </p>
+          )}
+          {postAction.error && (
+            <p className="text-sm text-destructive">
+              {(postAction.error as Error).message}
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+              disabled={postAction.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={postAction.isPending}
+              onClick={() =>
+                deleteTarget &&
+                postAction.mutate(
+                  { action: "delete_number", number_id: deleteTarget.number_id },
+                  { onSuccess: () => setDeleteTarget(null) }
+                )
+              }
+            >
+              {postAction.isPending && (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

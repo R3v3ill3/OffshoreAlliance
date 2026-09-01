@@ -3,7 +3,9 @@ import {
   GENERIC_MEMBER_CONTEXT,
   chooseBridgeMember,
   composeForwardBody,
+  composeMemberAttribution,
   composeTargetReplyBody,
+  firstForwardConfirmation,
   decideMemberForward,
   matchPhoneInList,
   matchRelayTarget,
@@ -143,7 +145,9 @@ describe("renderRelayTemplate / composeForwardBody", () => {
     first_name: "Alex",
     last_name: "Mitchell",
     employer_name: "Woodside Energy",
+    phone: "0400 100 014",
   };
+  const attribution = "Alex Mitchell (Woodside Energy) — 0400 100 014";
 
   it("resolves worker merge fields", () => {
     expect(
@@ -169,7 +173,7 @@ describe("renderRelayTemplate / composeForwardBody", () => {
     ).toBe("Message from A member :");
   });
 
-  it("composes prefix + member message + suffix, dropping empty parts", () => {
+  it("composes attribution + prefix + member message + suffix", () => {
     expect(
       composeForwardBody({
         prefixTemplate: "From {{first_name}}:",
@@ -177,8 +181,12 @@ describe("renderRelayTemplate / composeForwardBody", () => {
         memberBody: "We want the EBA voted on.",
         context,
       }),
-    ).toBe("From Alex:\nWe want the EBA voted on.\n— via Offshore Alliance");
+    ).toBe(
+      `${attribution}\nFrom Alex:\nWe want the EBA voted on.\n— via Offshore Alliance`,
+    );
+  });
 
+  it("still leads with the attribution when there is no prefix or suffix", () => {
     expect(
       composeForwardBody({
         prefixTemplate: null,
@@ -186,7 +194,90 @@ describe("renderRelayTemplate / composeForwardBody", () => {
         memberBody: "  bare message  ",
         context,
       }),
-    ).toBe("bare message");
+    ).toBe(`${attribution}\nbare message`);
+  });
+
+  it("cannot be edited away — an empty prefix does not remove it", () => {
+    // The whole reason attribution is composed rather than templated:
+    // a {{phone}} token in the prefix is one reword from deletion, and
+    // the forward would go out anonymous with no error anywhere.
+    const body = composeForwardBody({
+      prefixTemplate: "   ",
+      suffixTemplate: "",
+      memberBody: "hello",
+      context,
+    });
+    expect(body.startsWith(attribution)).toBe(true);
+  });
+});
+
+describe("composeMemberAttribution", () => {
+  it("names the member, their employer and their mobile", () => {
+    expect(
+      composeMemberAttribution({
+        first_name: "Alex",
+        last_name: "Mitchell",
+        employer_name: "Woodside Energy",
+        phone: "0400 100 014",
+      }),
+    ).toBe("Alex Mitchell (Woodside Energy) — 0400 100 014");
+  });
+
+  it("drops the employer when we do not know it", () => {
+    expect(
+      composeMemberAttribution({
+        first_name: "Alex",
+        last_name: "Mitchell",
+        employer_name: "",
+        phone: "0400 100 014",
+      }),
+    ).toBe("Alex Mitchell — 0400 100 014");
+  });
+
+  it("falls back to the number alone for a sender we cannot name", () => {
+    // The number is the only field guaranteed to exist, and on its own
+    // it is still enough for the target to reply to the right person.
+    expect(composeMemberAttribution({ phone: "0400 100 014" })).toBe(
+      "0400 100 014",
+    );
+  });
+
+  it("keeps the generic label rather than leading with a bare number", () => {
+    expect(
+      composeMemberAttribution({
+        ...GENERIC_MEMBER_CONTEXT,
+        phone: "0400 100 014",
+      }),
+    ).toBe("A member — 0400 100 014");
+  });
+
+  it("uses the employer when that is all we have", () => {
+    expect(
+      composeMemberAttribution({ employer_name: "Fugro", phone: "0400 100 014" }),
+    ).toBe("Fugro — 0400 100 014");
+  });
+
+  it("does not leave a dangling separator when the phone is missing", () => {
+    // Cannot happen at runtime, but the string must not read
+    // "Alex Mitchell —" if it ever did.
+    expect(
+      composeMemberAttribution({ first_name: "Alex", last_name: "Mitchell" }),
+    ).toBe("Alex Mitchell");
+  });
+});
+
+describe("firstForwardConfirmation", () => {
+  it("promises replies on this number when bridging is on", () => {
+    expect(firstForwardConfirmation(true)).toContain("this number");
+  });
+
+  it("tells the member their mobile was passed on when it is not", () => {
+    // Both halves of the bridged copy are false in direct mode: the
+    // reply comes from the target, to their own handset.
+    const copy = firstForwardConfirmation(false);
+    expect(copy).toContain("mobile");
+    expect(copy).toContain("directly");
+    expect(copy).not.toContain("this number");
   });
 });
 

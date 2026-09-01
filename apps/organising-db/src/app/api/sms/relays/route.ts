@@ -113,6 +113,7 @@ interface CreateRelayBody {
   suffix_template?: string | null
   moderation_required?: boolean
   quiet_hours_respected?: boolean
+  bridge_replies?: boolean
   timezone?: string
   targets?: Array<{ phone_e164?: string; display_name?: string | null }>
 }
@@ -260,6 +261,7 @@ export async function POST(req: NextRequest) {
         status: 'paused',
         moderation_required: !!body.moderation_required,
         quiet_hours_respected: body.quiet_hours_respected !== false,
+        bridge_replies: body.bridge_replies !== false,
         timezone: body.timezone || 'Australia/Perth',
         created_by: user.id,
       })

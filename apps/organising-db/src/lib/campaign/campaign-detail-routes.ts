@@ -26,6 +26,17 @@ export function getCampaignIdFromPath(pathname: string | null): string | null {
   return segment;
 }
 
+/**
+ * The SMS chat workspace (/campaigns/[id]/sms/chat/[listId]). A
+ * standalone board's campaign is a hidden episode; the campaign header
+ * must not bounce it to the hub the way it does for the episode's
+ * detail page.
+ */
+export function isSmsChatWorkspaceRoute(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return /^\/campaigns\/[^/]+\/sms\/chat\/[^/]+/.test(pathname);
+}
+
 /** True for /campaigns/[id] and sub-routes, excluding list/wizard flows. */
 export function isCampaignDetailRoute(pathname: string | null): boolean {
   if (!pathname) return false;

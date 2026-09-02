@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Menu, LogOut, RefreshCcw, Loader2 } from "lucide-react";
-import { navItems, adminItems } from "./sidebar";
+import { navItems, adminItems, allNavHrefs } from "./sidebar";
+import { isNavItemActive } from "@/lib/nav/active-nav";
 
 export function MobileNav() {
   const [open, setOpen] = useState(false);
@@ -74,8 +75,7 @@ export function MobileNav() {
         <div className="flex-1 overflow-y-auto py-4">
           <nav className="grid gap-1 px-2">
             {navItems.map((item) => {
-              const isActive =
-                pathname === item.href || pathname.startsWith(item.href + "/");
+              const isActive = isNavItemActive(pathname, item.href, allNavHrefs);
               return (
                 <Link
                   key={item.href}
@@ -98,8 +98,7 @@ export function MobileNav() {
               <>
                 <Separator className="my-2" />
                 {adminItems.map((item) => {
-                  const isActive =
-                    pathname === item.href || pathname.startsWith(item.href + "/");
+                  const isActive = isNavItemActive(pathname, item.href, allNavHrefs);
                   return (
                     <Link
                       key={item.href}

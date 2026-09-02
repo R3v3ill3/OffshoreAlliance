@@ -22,10 +22,12 @@ import {
   Inbox,
   LayoutTemplate,
   MessageSquare,
+  MessageSquareMore,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { isNavItemActive } from "@/lib/nav/active-nav";
 
 export const navItems = [
   { href: "/campaigns", label: "Campaigns", icon: Megaphone },
@@ -34,6 +36,7 @@ export const navItems = [
   { href: "/worksites", label: "Worksites", icon: MapPin },
   { href: "/upcoming-projects", label: "Upcoming Projects", icon: Compass },
   { href: "/email/inbox", label: "Email Inbox", icon: Inbox },
+  { href: "/sms", label: "SMS Tools", icon: MessageSquareMore },
   { href: "/sms/inbox", label: "SMS Inbox", icon: MessageSquare },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/help", label: "Guides", icon: GraduationCap },
@@ -44,6 +47,9 @@ export const adminItems = [
   { href: "/email/wrappers", label: "Email Wrappers", icon: LayoutTemplate },
   { href: "/administration", label: "Administration", icon: Settings },
 ];
+
+/** Every sidebar href, so nested items (e.g. /sms and /sms/inbox) resolve to one active entry. */
+export const allNavHrefs = [...navItems, ...adminItems].map((i) => i.href);
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -105,8 +111,7 @@ export function Sidebar() {
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-2">
         {navItems.map((item) => {
-          const isActive =
-            pathname === item.href || pathname.startsWith(item.href + "/");
+          const isActive = isNavItemActive(pathname, item.href, allNavHrefs);
           return (
             <Link
               key={item.href}
@@ -128,8 +133,7 @@ export function Sidebar() {
           <>
             <Separator className="my-2" />
             {adminItems.map((item) => {
-              const isActive =
-                pathname === item.href || pathname.startsWith(item.href + "/");
+              const isActive = isNavItemActive(pathname, item.href, allNavHrefs);
               return (
                 <Link
                   key={item.href}

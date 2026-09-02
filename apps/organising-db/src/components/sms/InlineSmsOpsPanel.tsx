@@ -821,25 +821,37 @@ function BlastCard({
   )
 }
 
-function NewBlastSheet({
+/** Seed for a new blast — the hub's Duplicate hands in the source's copy. */
+export interface NewBlastInitial {
+  name?: string
+  composer?: Partial<SmsComposerValue>
+}
+
+export function NewBlastSheet({
   campaignId,
   standaloneMode = false,
   open,
   onOpenChange,
   onCreated,
+  initial,
 }: {
   campaignId: string
   standaloneMode?: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated: (listId: number, name: string) => void
+  /** Prefill (duplicate). Audience is never copied — attach it fresh. */
+  initial?: NewBlastInitial
 }) {
-  const [name, setName] = useState('')
+  const [name, setName] = useState(initial?.name ?? '')
   const [deferAudience, setDeferAudience] = useState(false)
   const [audienceValue, setAudienceValue] = useState<AudienceValue>(
     standaloneMode ? EMPTY_COMPOSED_AUDIENCE : { mode: 'campaign' },
   )
-  const [composer, setComposer] = useState<SmsComposerValue>(EMPTY_COMPOSER)
+  const [composer, setComposer] = useState<SmsComposerValue>({
+    ...EMPTY_COMPOSER,
+    ...(initial?.composer ?? {}),
+  })
   const [submitting, setSubmitting] = useState(false)
   const create = useCreateSmsBlast(campaignId)
   const queryClient = useQueryClient()
@@ -977,7 +989,7 @@ function NewBlastSheet({
   )
 }
 
-function ListDetailSheet({
+export function ListDetailSheet({
   campaignId,
   listId,
   standaloneMode = false,

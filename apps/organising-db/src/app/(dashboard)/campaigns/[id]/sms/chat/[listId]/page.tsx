@@ -18,9 +18,11 @@
  */
 import { useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/supabase/auth-context'
+import { createClient } from '@/lib/supabase/client'
 import { SmsChatWorkspace } from '@/components/sms/workspace/SmsChatWorkspace'
 
 export default function SmsChatWorkspacePage() {
@@ -33,6 +35,24 @@ export default function SmsChatWorkspacePage() {
     const parsed = parseInt(params?.listId ?? '', 10)
     return Number.isFinite(parsed) ? parsed : null
   }, [params?.listId])
+
+  // A standalone board's campaign is a hidden episode: the workspace
+  // then offers the org-wide audience picker rather than campaign lists.
+  const { data: isEpisode } = useQuery({
+    queryKey: ['sms-chat-campaign-is-episode', campaignId],
+    queryFn: async () => {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('campaigns')
+        .select('is_sms_episode')
+        .eq('campaign_id', Number(campaignId))
+        .maybeSingle()
+      if (error) throw error
+      return !!data?.is_sms_episode
+    },
+    enabled: !!campaignId && Number.isFinite(Number(campaignId)),
+    staleTime: 5 * 60_000,
+  })
 
   if (!campaignId || listId == null) {
     return (
@@ -59,6 +79,7 @@ export default function SmsChatWorkspacePage() {
         campaignId={campaignId}
         listId={listId}
         canWrite={!!canWrite}
+        standaloneMode={!!isEpisode}
       />
     </div>
   )

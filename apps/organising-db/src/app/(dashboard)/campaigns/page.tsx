@@ -389,7 +389,7 @@ export default function CampaignsPage() {
                 <Phone className="h-4 w-4 shrink-0" />
                 Phone wizard
               </Link>
-              <Link href="/campaigns/sms-tools" className={tabBarActionClassName}>
+              <Link href="/sms" className={tabBarActionClassName}>
                 <MessageSquare className="h-4 w-4 shrink-0" />
                 SMS tools
               </Link>

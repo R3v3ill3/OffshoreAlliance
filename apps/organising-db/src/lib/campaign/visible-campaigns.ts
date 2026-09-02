@@ -7,7 +7,7 @@
  * Typed loosely so PostgREST builders are not instantiated recursively
  * (TS2589).
  */
-export const SMS_EPISODE_TOOLS_HREF = '/campaigns/sms-tools?standalone=1'
+export const SMS_EPISODE_TOOLS_HREF = '/sms?scope=standalone'
 
 export function excludeSmsEpisodes<T>(query: T): T {
   return (query as { eq: (column: string, value: boolean) => T }).eq(

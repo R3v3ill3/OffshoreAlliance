@@ -278,37 +278,64 @@ function TemplatePreview({
   )
 }
 
-function NewRelaySheet({
+/**
+ * Seed for a new relay — the hub's Duplicate hands in the source's
+ * settings and targets. The number is never copied: one live relay
+ * per number, so the copy must claim its own.
+ */
+export interface NewRelayInitial {
+  name?: string
+  targets?: Array<{ phone: string; display_name: string }>
+  prefix?: string | null
+  suffix?: string | null
+  moderation_required?: boolean
+  quiet_hours_respected?: boolean
+  bridge_replies?: boolean
+  confirmation_template?: string | null
+  timezone?: string
+}
+
+export function NewRelaySheet({
   campaignId,
   open,
   onOpenChange,
   onCreated,
+  initial,
+  lockScope = false,
 }: {
   campaignId?: string | number | null
   open: boolean
   onOpenChange: (open: boolean) => void
   onCreated: (relayId: number) => void
+  /** Prefill (duplicate). */
+  initial?: NewRelayInitial
+  /** The hub wizard has already settled org-wide vs campaign — hide the toggle. */
+  lockScope?: boolean
 }) {
   const create = useCreateSmsRelay()
   const { data: senders, isLoading: sendersLoading } = useSmsSenders()
-  const [name, setName] = useState('')
+  const [name, setName] = useState(initial?.name ?? '')
   const [numberId, setNumberId] = useState<number | null>(null)
   const [orgWide, setOrgWide] = useState(campaignId == null)
-  const [targets, setTargets] = useState<DraftTarget[]>([
-    { phone: '', display_name: '' },
-  ])
-  const [prefix, setPrefix] = useState(
-    'Message from {{first_name}} {{last_name}} ({{employer_name}}), via Offshore Alliance:',
+  const [targets, setTargets] = useState<DraftTarget[]>(
+    initial?.targets && initial.targets.length > 0
+      ? initial.targets
+      : [{ phone: '', display_name: '' }],
   )
-  const [suffix, setSuffix] = useState('')
-  const [moderation, setModeration] = useState(false)
+  const [prefix, setPrefix] = useState(
+    initial?.prefix ??
+      'Message from {{first_name}} {{last_name}} ({{employer_name}}), via Offshore Alliance:',
+  )
+  const [suffix, setSuffix] = useState(initial?.suffix ?? '')
+  const [moderation, setModeration] = useState(initial?.moderation_required ?? false)
   // Off by default for new relays: the forward now carries the member's
   // own mobile, so the target can answer them directly, and bridging
   // misroutes as soon as two members write in before a reply lands.
   // Existing relays keep bridging (the column defaults true).
-  const [bridgeReplies, setBridgeReplies] = useState(false)
+  const [bridgeReplies, setBridgeReplies] = useState(initial?.bridge_replies ?? false)
   const [confirmation, setConfirmation] = useState(
-    firstForwardConfirmation(false),
+    initial?.confirmation_template ??
+      firstForwardConfirmation(initial?.bridge_replies ?? false),
   )
   // The two modes' defaults make opposite promises about where a reply
   // goes, so flipping the mode must not leave the other mode's wording
@@ -321,8 +348,8 @@ function NewRelaySheet({
     setBridgeReplies(next)
     if (!confirmationEdited) setConfirmation(firstForwardConfirmation(next))
   }
-  const [quietHours, setQuietHours] = useState(true)
-  const [timezone, setTimezone] = useState('Australia/Perth')
+  const [quietHours, setQuietHours] = useState(initial?.quiet_hours_respected ?? true)
+  const [timezone, setTimezone] = useState(initial?.timezone ?? 'Australia/Perth')
 
   // Relays draw numbers from the spare pool (§7.0).
   const spareNumbers = useMemo(
@@ -601,7 +628,7 @@ function NewRelaySheet({
                 </Select>
               </div>
             )}
-            {campaignId != null && (
+            {campaignId != null && !lockScope && (
             <div className="flex items-center justify-between gap-3">
               <div>
                 <Label htmlFor="relay-orgwide">Org-wide relay</Label>
@@ -684,7 +711,7 @@ function NewRelaySheet({
   )
 }
 
-function RelayDetailSheet({
+export function RelayDetailSheet({
   relayId,
   onOpenChange,
 }: {

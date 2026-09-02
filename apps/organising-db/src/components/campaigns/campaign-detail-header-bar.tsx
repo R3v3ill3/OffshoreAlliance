@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useCampaign } from "@/lib/hooks/usePlannerCampaigns";
 import { SMS_EPISODE_TOOLS_HREF } from "@/lib/campaign/visible-campaigns";
+import { isSmsChatWorkspaceRoute } from "@/lib/campaign/campaign-detail-routes";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -105,11 +107,33 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
     enabled: campaignIdValid,
   });
 
+  // A hidden episode campaign has no detail page of its own — send the
+  // organiser to the SMS hub. Its chat workspace is the one legitimate
+  // place to be, so that route keeps a minimal header instead.
+  const onChatWorkspace = isSmsChatWorkspaceRoute(pathname);
   useEffect(() => {
-    if (campaign?.is_sms_episode) {
+    if (campaign?.is_sms_episode && !onChatWorkspace) {
       router.replace(SMS_EPISODE_TOOLS_HREF);
     }
-  }, [campaign, router]);
+  }, [campaign, onChatWorkspace, router]);
+
+  if (campaign?.is_sms_episode && onChatWorkspace) {
+    return (
+      <header className="flex h-16 items-center gap-3 border-b bg-background px-4 md:px-6">
+        <MobileNav />
+        <Button variant="ghost" size="sm" asChild>
+          <Link href={SMS_EPISODE_TOOLS_HREF}>
+            <ArrowLeft className="mr-1 h-4 w-4" />
+            SMS
+          </Link>
+        </Button>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold">{campaign.name}</p>
+          <p className="text-xs text-muted-foreground">Standalone chat board</p>
+        </div>
+      </header>
+    );
+  }
 
   const actionButtons = canWrite ? (
     <div className="flex flex-wrap items-center justify-end gap-2">

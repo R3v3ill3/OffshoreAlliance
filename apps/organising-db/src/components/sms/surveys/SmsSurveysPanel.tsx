@@ -513,7 +513,7 @@ function freshEditorValue(initial?: SurveyEditorValue): SurveyEditorValue {
   )
 }
 
-function SurveyEditorSheet({
+export function SurveyEditorSheet({
   campaignId,
   surveyId,
   initial,
@@ -523,6 +523,7 @@ function SurveyEditorSheet({
   sourceWorkerListId,
   hideAssessments = false,
   lockStructure = false,
+  duplicateFrom = null,
 }: {
   campaignId: string
   surveyId: number | null
@@ -535,6 +536,11 @@ function SurveyEditorSheet({
   hideAssessments?: boolean
   /** Live survey — question order/type/set are frozen (server enforces). */
   lockStructure?: boolean
+  /**
+   * Create mode: seed from an existing survey, as `campaignId:surveyId`
+   * (the catalogue key). The hub's Duplicate lands here.
+   */
+  duplicateFrom?: string | null
 }) {
   const isCreate = surveyId == null
   const [value, setValue] = useState<SurveyEditorValue>(() =>
@@ -571,6 +577,7 @@ function SurveyEditorSheet({
     setShowFlow(true)
     setAckFindings(null)
     setAckText('')
+    if (isCreate && duplicateFrom) void applyDuplicate(duplicateFrom)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, surveyId])
 
@@ -905,7 +912,7 @@ function SurveyEditorSheet({
   )
 }
 
-function SurveyDetailSheet({
+export function SurveyDetailSheet({
   campaignId,
   surveyId,
   onOpenChange,

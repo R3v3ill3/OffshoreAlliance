@@ -239,12 +239,12 @@ export function CampaignsDashboard({
               </li>
               <li>
                 <Link
-                  href="/campaigns/sms-tools"
+                  href="/sms"
                   className="text-foreground underline-offset-4 hover:underline"
                 >
                   SMS tools
                 </Link>{' '}
-                — blasts, surveys, chats, inbox and relays.
+                — blasts, chat boards, surveys, relays, inbox and numbers.
               </li>
               {process.env.NEXT_PUBLIC_FEATURE_SOC_WIZARD === 'true' && (
                 <li>

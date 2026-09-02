@@ -7,8 +7,9 @@
  */
 import { Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Loader2, MessageSquare } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { SmsInboxPanel } from '@/components/sms/inbox/SmsInboxPanel'
+import { SmsHubHeader } from '@/components/sms/hub/SmsHubNav'
 
 function parsePositiveInt(raw: string | null): number | undefined {
   if (!raw) return undefined
@@ -33,20 +34,15 @@ function SmsInboxPageInner() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-semibold">
-          <MessageSquare className="h-6 w-6" />
-          SMS inbox
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Replies to platform SMS. Opens on all conversations; use the
-          campaign menu to narrow or switch campaigns.
-        </p>
-      </div>
+      <SmsHubHeader
+        current="inbox"
+        title="SMS inbox"
+        description="Replies to platform SMS. Opens on all conversations; use the campaign menu to narrow or switch campaigns."
+      />
       <SmsInboxPanel
         campaignId={campaignId}
         initialConversationId={conversationId ?? null}
-        className="h-[calc(100dvh-12rem)]"
+        className="h-[calc(100dvh-15rem)]"
         onCampaignIdChange={onCampaignIdChange}
       />
     </div>

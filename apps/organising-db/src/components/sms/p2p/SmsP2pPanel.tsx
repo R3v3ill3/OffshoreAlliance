@@ -280,13 +280,20 @@ export function SmsP2pPanel({
   )
 }
 
-function NewChatBoardSheet({
+/** Seed for a new board — the hub's Duplicate hands in the source's opener. */
+export interface NewChatBoardInitial {
+  name?: string
+  composer?: Partial<SmsComposerValue>
+}
+
+export function NewChatBoardSheet({
   campaignId,
   standaloneMode = false,
   open,
   sourceListId,
   onOpenChange,
   onCreated,
+  initial,
 }: {
   campaignId: string
   standaloneMode?: boolean
@@ -295,8 +302,10 @@ function NewChatBoardSheet({
   sourceListId: number | null
   onOpenChange: (open: boolean) => void
   onCreated: (listId: number, name: string) => void
+  /** Prefill (duplicate). People are never copied — load them fresh. */
+  initial?: NewChatBoardInitial
 }) {
-  const [name, setName] = useState('')
+  const [name, setName] = useState(initial?.name ?? '')
   const [deferAudience, setDeferAudience] = useState(false)
   // Build-list entry: seed the audience with the attached cohort (the
   // parent keys this sheet on sourceListId, so a change remounts).
@@ -307,7 +316,10 @@ function NewChatBoardSheet({
         ? EMPTY_COMPOSED_AUDIENCE
         : { mode: 'campaign' },
   )
-  const [composer, setComposer] = useState<SmsComposerValue>(EMPTY_COMPOSER)
+  const [composer, setComposer] = useState<SmsComposerValue>({
+    ...EMPTY_COMPOSER,
+    ...(initial?.composer ?? {}),
+  })
   const [submitting, setSubmitting] = useState(false)
   const [orgWarnOpen, setOrgWarnOpen] = useState(false)
   const [pinnedAssessments, setPinnedAssessments] = useState<number[]>([])

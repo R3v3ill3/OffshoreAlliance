@@ -1,6 +1,6 @@
 # Dropbox Integration — Research Brief & Recommendations
 
-**Status:** Research only (2026-09-03). No code, schema, or Dropbox content was changed in this phase.
+**Status:** Research only (2026-09-03, updated the same day after clarification of the Dropbox team topology, see §2.2). No code, schema, or Dropbox content was changed in this phase.
 **Scope:** Bring the Offshore Alliance team's Dropbox filing system into the organising app (`apps/organising-db`) so that files are found, filed and shared from inside the campaign context the team already works in.
 **Audience:** Troy (product owner), and the Claude Code agents that will implement the phases in §9.
 **Companion docs:** `docs/DEVELOPMENT_WORKFLOW.md` (branch/env rules), `docs/OUTLOOK_OAUTH_SETUP.md` (the OAuth pattern this reuses), `CLAUDE.md`.
@@ -16,7 +16,7 @@ The recommendation is **not** to build a file manager and **not** to mirror Drop
 1. **Dropbox stays the system of record for files.** The app stores folder and file *identifiers* only, never file bodies.
 2. **Every campaign, employer and agreement gets a bound Dropbox folder**, created by the app from a standard template, and shown in context (a campaign's files appear on the campaign page).
 3. **Filing is done by the app, not the user.** Drag a file onto a campaign, pick what it is (flyer, employer letter, PABO application), and the app puts it in the right subfolder with a consistent name. "Save to Dropbox" sits beside every "Download".
-4. **Access follows Dropbox permissions**, using per-user OAuth exactly the way the existing Outlook connection works (`user_oauth_connections`, encrypted tokens, PKCE routes). A team-level connection is added later only for background provisioning and indexing.
+4. **Access follows Dropbox permissions**, using per-user OAuth exactly the way the existing Outlook connection works (`user_oauth_connections`, encrypted tokens, PKCE routes). A team-level connection is added later only for background provisioning and indexing. The Offshore Alliance has its own Dropbox team; Troy reaches its folders as an external collaborator from his Reveille account, so the app must address folders by id and never assume two users see the same path (§2.2, §8.4).
 5. **The folder structure is campaign-first and mirrors the app's entity model** (§7), so the two systems describe the world the same way.
 
 This can be delivered in four phases (§9). Phase 0 is a Dropbox-side tidy-up and folder standard that needs no code; Phase 1 gives the team a working "campaign folder in the app" within one development cycle; Phases 2–4 extend to filing app outputs, bargaining attachments, activity feeds, search, file requests and AI-assisted filing.
@@ -37,7 +37,11 @@ This can be delivered in four phases (§9). Phase 0 is a Dropbox-side tidy-up an
 
 This session runs in a remote container; `/Users/troyburton/Reveille Dropbox/Troy Burton` does not exist here and no Dropbox connector is attached. Everything in §7 about the *existing* structure is therefore inferred from the app's data model and from how Dropbox teams are laid out, not from your folders.
 
-One structural observation from the path you gave: in a Dropbox Business team, `/[Team name] Dropbox/[Member name]` is the **member folder** (Troy's personal area inside the Reveille team space). Team folders live one level up, at `/Reveille Dropbox/<Team folder>`. So the OA structure is currently either (a) a shared folder living inside your member folder, which every other member sees under *their own* member folder, or (b) a proper team folder and you gave the member path by habit. The distinction matters (see §7.4).
+**Team topology (clarified by Troy).** The Offshore Alliance has its own Dropbox Business team. Every organiser is a member of that team only, so for them the OA structure *is* their team space: on their Macs it appears at `/[OA team name] Dropbox/...`. Troy is a member of a different team (Reveille), and one Dropbox account can belong to only one team, so the OA folders reach him as an **external share** mounted inside his Reveille member folder (`/Reveille Dropbox/Troy Burton/...`). Three consequences run through the rest of this brief:
+
+- The same folder has a different `path_display` for Troy than for an OA member, and a different local path. The app must bind and address folders by **id**, and render local paths per connection (§8.4).
+- Dropbox does not let a team folder itself be shared outside the team, only subfolders within it. Whatever Troy sees as "the OA folder" is therefore either a shared folder owned by an OA member, or a subfolder of an OA team folder shared out to him. Which one it is decides how the standard in §7 is applied (§7.4).
+- Anything that needs an OA **team admin** (the team-linked app in Phase 4, team-folder creation, subfolder permissions) cannot be done from Troy's Reveille account. Either an OA member who is a team admin performs those steps, or Troy holds a second, OA-team account for admin work.
 
 ### 2.3 What to send so the structure analysis can be completed
 
@@ -45,7 +49,7 @@ Run these in Terminal on the Mac and send the two text files plus the answers:
 
 ```bash
 # 1. Directory tree of the OA folder, four levels deep (no file names, no dot-folders)
-cd "/Users/troyburton/Reveille Dropbox/Troy Burton"     # or the team-folder path if it lives at /Reveille Dropbox/<OA folder>
+cd "/Users/troyburton/Reveille Dropbox/Troy Burton"     # Troy's external mount; an organiser would use "/Users/<name>/<OA team> Dropbox"
 find "<OA folder name>" -type d -not -path '*/.*' -maxdepth 4 | sort > ~/Desktop/oa-dropbox-tree.txt
 
 # 2. Where the files actually are: file count per folder, busiest first
@@ -57,12 +61,13 @@ find "<OA folder name>" -type f -not -name '.*' | sed -n 's/.*\.\([A-Za-z0-9]*\)
 
 And answer, from the Dropbox web app / admin console:
 
-1. Is the OA folder a **team folder** or a **shared folder** (Admin console → Content, or the folder's "…" menu)?
-2. Which Dropbox plan is the Reveille team on (Standard / Advanced / Business Plus / Enterprise), and is Troy a **team admin**?
-3. Who else is on the Dropbox team, and does the OA organising team map 1:1 to app users (13 app users today)?
+1. In the **OA team's** admin console (Content), is the structure a **team folder** or a **shared folder** owned by a member, and which folder(s) exactly are shared out to Troy's Reveille account?
+2. Which Dropbox plan is the OA team on (Standard / Advanced / Business Plus / Enterprise), and who are its **team admins**? Does Troy have, or want, a separate OA-team account for admin tasks?
+3. Who is on the OA Dropbox team, and does it map 1:1 to the app's 13 users? Are there other external collaborators (AWU/MUA staff, lawyers, designers)?
 4. Are there folders that must stay restricted (legal advice, HR, member data), and who may see them?
 5. Any naming conventions already in use, even informal ones (e.g. how a campaign folder is named today).
 6. Roughly how many files and how much data (Admin console → Content, or Finder "Get Info" on the folder).
+7. The exact team name as it appears in the desktop path on an organiser's Mac (`/[Team name] Dropbox/`), so the app can render the path organisers actually see.
 
 ---
 
@@ -93,7 +98,7 @@ And answer, from the Dropbox web app / admin console:
 | Capability | What it gives us | Notes |
 |---|---|---|
 | **Scoped OAuth 2 with PKCE and refresh tokens** | Same flow as the Outlook integration. `token_access_type=offline` returns a long-lived refresh token that does not rotate; short-lived access tokens are refreshed on demand. | Scopes needed: `account_info.read`, `files.metadata.read`, `files.content.read`, `files.content.write`, `sharing.read`, `sharing.write`, later `file_requests.write`. Access type must be **Full Dropbox** (App-folder apps cannot see existing content). |
-| **Team space addressing** | `/2/users/get_current_account` returns `root_namespace_id` vs `home_namespace_id`. Sending `Dropbox-API-Path-Root: {".tag":"root","root":"<root_namespace_id>"}` makes calls operate on the *team space* so team folders resolve at `/Offshore Alliance/...`. | Without the header, calls default to the member's home folder and team folders are invisible. Teams still on the legacy layout use `/2/team/team_folder/list` instead; the guide is explicit that only one of the two applies. |
+| **Team space addressing** | `/2/users/get_current_account` returns `root_namespace_id` vs `home_namespace_id`. Sending `Dropbox-API-Path-Root: {".tag":"root","root":"<root_namespace_id>"}` makes calls operate on the *team space* so team folders resolve at `/<team folder>/...`. | Without the header, calls default to the member's home folder and team folders are invisible. Teams still on the legacy layout use `/2/team/team_folder/list` instead; the guide is explicit that only one of the two applies. For an external collaborator such as Troy the OA folders are mounted shared folders inside *his* root, so the same header rule (root = that user's own `root_namespace_id`) plus **id-based addressing** works uniformly for both kinds of user. |
 | **Team-linked apps** | With the `team_data.member` scope, a team token plus `Dropbox-API-Select-User: <member_id>` acts as a member; `Dropbox-API-Select-Admin` bypasses per-member permissions. | Powerful and broad. Use only for provisioning and indexing (Phase 4), never for user-facing browsing. Needs a team admin to authorise. |
 | **Listing, metadata, cursors** | `/2/files/list_folder` (+ `/continue`, `/longpoll`), `get_metadata`, `search_v2` scoped to a path. | Folder and file **ids** are stable across renames and moves; store ids, cache `path_display`. |
 | **Downloads and previews** | `get_temporary_link` (4-hour direct link, no token exposure), `get_thumbnail_v2` (images, PDFs, Office docs), `get_preview` (PDF/HTML preview of Office docs). | Enough for in-app preview without a shared link. |
@@ -121,7 +126,7 @@ And answer, from the Dropbox web app / admin console:
 
 - **Context, not a file manager.** Nobody should open a "Dropbox" screen to find a campaign's files; they open the campaign. The folder shows up where the work is.
 - **The app knows the structure so people don't have to.** Uploads ask *what* the file is, never *where* it goes. The subfolder and file name are derived.
-- **Bridge to Finder, not away from it.** Users who live in Finder get a copyable local path (`Reveille Dropbox/Offshore Alliance/01 Campaigns/UGL – Varanus – 2026/3 Comms`) and an "Open in Dropbox" button. On a phone, the same button opens the Dropbox app.
+- **Bridge to Finder, not away from it.** Users who live in Finder get a copyable local path (`[OA team] Dropbox/OA Files/01 Campaigns/UGL – Varanus – 2026/3 Comms`) and an "Open in Dropbox" button. The path is rendered per connection, so Troy sees his Reveille mount path while organisers see the team-space path. On a phone, the same button opens the Dropbox app.
 - **Read first, write carefully.** Browsing, previewing, downloading and uploading in v1. No moving, renaming or deleting from the app until the team trusts it.
 - **Same words everywhere.** Folder names, app doc types and filing guide use one vocabulary (§7.3).
 - **Guardrails over training.** A file dropped in the wrong place is nudged, not blocked; the app's "unfiled" list is the teaching tool.
@@ -205,7 +210,7 @@ Ordered roughly by value ÷ effort. Items marked **(structure)** depend on the f
 
 ### 7.1 Design intent
 
-- **One team folder** named `Offshore Alliance` at the team-space root so every member sees the same path (`Reveille Dropbox/Offshore Alliance/...`) and the app can show one local path for everyone.
+- **One team folder** in the OA team space (working name `OA Files`; the team name already says "Offshore Alliance") holding the numbered areas as subfolders. Every OA member then sees the identical path (`[OA team] Dropbox/OA Files/...`), restricted areas are handled with subfolder permissions, and external collaborators such as Troy can be given the specific subfolders they need (team folders cannot be shared externally as a whole, subfolders can). The alternative, one team folder per numbered area, gives cleaner per-area permissions but makes external sharing and the app's root binding fiddlier; choose it only if the plan lacks subfolder permissions.
 - **Campaign-first**, because that is how the app and the team think. Things that outlive a campaign (employer, agreement) get their own home so they are not buried in whichever campaign happened first.
 - **Shallow and numbered at the top level only.** Numbers order Finder and the Dropbox web list the way the team should read them (start here, then campaigns); inside a campaign the single-digit prefixes do the same for the workflow order.
 - **Names come from the app.** A campaign folder is named exactly like the app campaign; the app records the folder id so a rename on either side does not break the link.
@@ -213,8 +218,8 @@ Ordered roughly by value ÷ effort. Items marked **(structure)** depend on the f
 ### 7.2 Proposed tree
 
 ```text
-Reveille Dropbox/
-└── Offshore Alliance/                     ← team folder (everyone sees the same path)
+[OA team] Dropbox/                         ← the OA team space, as every organiser sees it
+└── OA Files/                              ← one team folder; Troy sees its subfolders mounted in Reveille Dropbox/Troy Burton/
     ├── 00 Start here/                     README, filing guide, naming rules, this brief
     ├── 01 Campaigns/
     │   ├── UGL – Varanus – 2026/          ← one folder per app campaign (app creates & binds)
@@ -256,7 +261,7 @@ Mapping to the app's doc types (`campaign-library-documents.tsx`): flyer/social 
 
 Without the tree (§2.3) this can only be sketched, but the likely steps are:
 
-1. **Convert to a team folder** if the OA folder is a shared folder inside a member folder (Admin console → Content → convert, or create the team folder and move). This is the single biggest UX improvement for Finder users because the path becomes identical for everyone.
+1. **Make the root a team folder in the OA team space** if it is currently a shared folder owned by a member (Admin console → Content → convert, or create the team folder and move; an OA team admin must do this). Then re-share the subfolders Troy needs to his Reveille account. This is the single biggest UX improvement for organisers because the path becomes identical for everyone on the team and no longer depends on one member's account.
 2. **Map existing top-level folders** to the tree above. Expect most content to be employer- or campaign-named already; the reconciliation table (old path → new path) is a Phase 0 deliverable and is executed by a person in Finder or the Dropbox web app, never by an agent.
 3. **Bind, don't move, where possible.** Existing campaign folders can be linked to app campaigns by id and only *subfolders* added, so nothing breaks for people with local shortcuts.
 4. **Restricted folders** (`2 Workforce`, `08 Membership data`, HR) need subfolder permissions. Confirm the Reveille plan supports team-folder subfolder permissions (Business plans generally do; verify in the admin console before relying on it).
@@ -289,7 +294,17 @@ src/components/dropbox/DropboxConnectionCard.tsx, DropboxFolderPanel.tsx, Dropbo
 ALTER TABLE user_oauth_connections DROP CONSTRAINT IF EXISTS user_oauth_connections_provider_check;
 ALTER TABLE user_oauth_connections ADD CONSTRAINT user_oauth_connections_provider_check
   CHECK (provider IN ('microsoft','google','dropbox'));
--- root_namespace_id and home_namespace_id can be stored in the existing tenant_id / display columns or two new columns.
+-- Per-connection view of the OA root: namespaces and where the OA root is mounted for *this* user
+-- (team-space path for OA members; "/Troy Burton/<shared folder>" style mount for an external collaborator).
+CREATE TABLE dropbox_connection_roots (
+  connection_id     BIGINT PRIMARY KEY REFERENCES user_oauth_connections(connection_id) ON DELETE CASCADE,
+  root_namespace_id VARCHAR(40) NOT NULL,
+  home_namespace_id VARCHAR(40) NOT NULL,
+  is_oa_team_member BOOLEAN NOT NULL,          -- false for external collaborators (Reveille account)
+  oa_root_mount_path TEXT,                     -- path_display of the OA root as seen by this user
+  desktop_prefix    TEXT,                      -- e.g. "Offshore Alliance Dropbox" or "Reveille Dropbox/Troy Burton"
+  resolved_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 CREATE TABLE dropbox_folder_bindings (
   binding_id      SERIAL PRIMARY KEY,
@@ -300,6 +315,7 @@ CREATE TABLE dropbox_folder_bindings (
   namespace_id    VARCHAR(40),                      -- team space root namespace
   template_version INTEGER NOT NULL DEFAULT 1,
   status          VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active','missing','archived')),
+  -- path_display above is the OA-team view; external users get their own view from dropbox_connection_roots.
   created_by      UUID REFERENCES auth.users(id),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -341,16 +357,18 @@ RLS follows the house pattern (authenticated read; writes via `can_write_to_camp
 | Env (Vercel, per environment) | `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REDIRECT_URI` | OAuth app credentials (add to `turbo.json` `env` list) |
 | Env | `NEXT_PUBLIC_DROPBOX_APP_KEY` | Only if drop-ins (Chooser/Saver/Embedder) are used; the app key is public by design |
 | Env | `OAUTH_TOKEN_ENCRYPTION_KEY` | Already exists; reused |
+| DEV sandbox | a folder Troy owns in his Reveille account, shared to the dev test accounts, bound by id as the DEV `dropbox_root_folder_id` | Keeps development entirely out of the OA team space; nothing in the app depends on which team owns the root |
 | `app_settings` | `dropbox_enabled`, `dropbox_root_folder_id`, `dropbox_root_namespace_id`, `dropbox_template_version`, `dropbox_team_token_ct` (Phase 4 only) | Runtime configuration, admin-editable |
 
 ### 8.4 Security posture
 
+- **Address by id, never by path.** Bindings store `id:` values; `path_display` is a per-user cache. The same folder has different paths for OA members and for Troy's external mount, and paths change on rename. Every files/sharing call sends `Dropbox-API-Path-Root` with the *calling user's* `root_namespace_id`.
 - Tokens are server-only, encrypted with the existing AES-256-GCM helper; API routes never return them; drop-ins only ever see the public app key.
 - All Dropbox calls go through the server with the *acting user's* token, so Dropbox's own permissions are the ceiling. The app adds its usual `canWrite` gate on top.
 - Uploads are validated (size ≤150 MB via single upload; MIME allow-list) and named by the filing module; user-supplied names are sanitised.
 - No `delete` endpoint is ever called by the app. `move_v2` is limited to the "unfiled → subfolder" nudge in Phase 3 and always logged to `worker_activity_log`-style audit (a `dropbox_audit` table or reuse of `oauth_send_batches` pattern).
 - Shared links, if created, default to `audience: team`.
-- The Phase 4 team token is a break-glass credential: stored encrypted in `app_settings`, used only by cron and admin actions, with `Dropbox-API-Select-User` set to the acting admin's member id so Dropbox's audit log still shows a person.
+- The Phase 4 team token is a break-glass credential: stored encrypted in `app_settings`, used only by cron and admin actions, with `Dropbox-API-Select-User` set to the acting admin's member id so Dropbox's audit log still shows a person. It must be authorised by an **OA team admin account**; Troy's Reveille account cannot grant it.
 
 ---
 
@@ -396,7 +414,7 @@ File requests from leader/call-share pages; AI filing suggestion on upload; team
 
 ### Workflow for every code phase
 
-Follows `docs/DEVELOPMENT_WORKFLOW.md` Workflow B: build on `develop` (or a short feature branch off it), migration applied to DEV first, types regenerated from DEV, test on the develop preview with the *dev* Dropbox app credentials pointed at a **sandbox copy** of the team folder (e.g. `Offshore Alliance (DEV)`), then promote. One commit per completed phase, no worktrees, per `CLAUDE.md`.
+Follows `docs/DEVELOPMENT_WORKFLOW.md` Workflow B: build on `develop` (or a short feature branch off it), migration applied to DEV first, types regenerated from DEV, test on the develop preview with the *dev* Dropbox app credentials pointed at a **sandbox folder** (`Offshore Alliance (DEV)`, owned by Troy in Reveille and shared to the test accounts, never inside the OA team space), then promote. One commit per completed phase, no worktrees, per `CLAUDE.md`.
 
 ---
 
@@ -418,10 +436,14 @@ Non-negotiables
 - Never rename or restructure existing Dropbox folders. Create new folders only under the bound parent named in the plan.
 - Tokens are server-only: encrypt with lib/security/oauth-tokens.ts, never log them, never return them from an API route,
   never call Dropbox from client components.
-- Send Dropbox-API-Path-Root with the user's root_namespace_id on every files/* and sharing/* call so team folders resolve.
+- Send Dropbox-API-Path-Root with the *calling user's* root_namespace_id on every files/* and sharing/* call so team folders resolve.
+- Address every folder and file by its Dropbox id. Never persist a path as the key, never compare paths between users:
+  the OA team members see the team-space path, Troy (Reveille account, external collaborator) sees a mount inside his member folder.
+  Render local paths from dropbox_connection_roots for the current user.
 - All user-facing Dropbox calls use the acting user's token (per-user OAuth). No team token until Phase 4.
 - Every upload goes through lib/dropbox/filing.ts for subfolder + name. Never trust a client-supplied path.
-- Point every test at a sandbox folder (app_settings.dropbox_root_folder_id in DEV = "Offshore Alliance (DEV)"); never at production folders.
+- Point every test at the sandbox folder (app_settings.dropbox_root_folder_id in DEV = "Offshore Alliance (DEV)", a Reveille-owned shared folder);
+  never at the OA team's folders.
 - Feature-flag new surfaces behind app_settings.dropbox_enabled; leave the legacy Documents sub-tab reachable until told to remove it.
 
 House conventions
@@ -499,18 +521,19 @@ Use the same pattern as the SMS module: a phase plan doc (`docs/DROPBOX_PHASE<n>
 
 | # | Item | Why it matters | Proposed resolution |
 |---|---|---|---|
-| 1 | **Team folder vs shared folder** | Determines whether everyone has the same local path and whether the app's root binding is stable | Convert to a team folder in Phase 0 |
+| 1 | **Team folder vs shared folder in the OA team** | Determines whether every organiser has the same local path and whether the root survives a member leaving | Make the root a team folder in the OA team space in Phase 0 (OA team admin action); re-share subfolders to Troy |
+| 1b | **Troy is external to the OA Dropbox team** | Paths differ per user; team-admin actions and the Phase 4 team token need an OA admin account | Id-based addressing and per-connection roots (§8); decide whether Troy gets an OA-team account or an OA admin performs admin steps |
 | 2 | **Dropbox plan features** (subfolder permissions on team folders, file-request deadlines, team-linked API) | Restricted `2 Workforce` / `08 Membership data` and Phase 4 depend on them | Confirm plan in the admin console (§2.3 Q2) |
 | 3 | **PII in Dropbox** | Worker lists and membership data are personal information; Dropbox folders are easy to over-share | Restricted subfolders, app never files worker-level data outside `2 Workforce` / `08`, no worker-profile document surface |
 | 4 | **Who connects** | Per-user OAuth means an unconnected user sees an empty Library tab | Inline connect prompt; admin can see who has connected; consider Phase 4 team token for read-only fallback |
-| 5 | **Two apps, two environments** | Dev preview must never write into the production team folder | Separate Dropbox app for DEV, sandbox folder `Offshore Alliance (DEV)`, root id per environment in `app_settings` |
+| 5 | **Two apps, two environments** | Dev preview must never write into the OA team's folders | Separate Dropbox app for DEV, sandbox folder `Offshore Alliance (DEV)` owned in Reveille, root id per environment in `app_settings` |
 | 6 | **Rename drift** | A campaign renamed in the app will not rename its folder (by design) | Show both names; offer an admin "Rename folder to match" action in Phase 3 |
 | 7 | **Rate limits and cold starts** | Listing on every page view is slow on Vercel functions | Cache in `dropbox_index` from Phase 3; in Phase 1 list only the selected subfolder with a 60 s React Query stale time |
 | 8 | **Legacy `documents` table and buckets** | Dead code paths confuse future agents | Drop in a cleanup migration after Phase 2 |
 | 9 | **Existing security advisory** | Supabase reports RLS disabled on `employer_state_bargaining_phase_map` and three `_archive_*` tables | Unrelated to Dropbox; the Supabase advisor's remediation SQL is `ALTER TABLE … ENABLE ROW LEVEL SECURITY` for each, with policies decided first. Flagged for a separate task. |
 | 10 | **Team habit change** | The integration only helps if uploads go through the app or into the standard folders | Guides clips, "unfiled" nudges, and Save-to-Dropbox on every output so the easy path is the right path |
 
-Decisions needed from Troy before Phase 0 starts: (a) answers to §2.3; (b) approval of the §7 tree and naming; (c) whether the OA team is comfortable with per-user Dropbox connections as the primary mode; (d) which Phase 4 extensions matter most.
+Decisions needed from Troy before Phase 0 starts: (a) answers to §2.3; (b) approval of the §7 tree and naming; (c) whether the OA team is comfortable with per-user Dropbox connections as the primary mode; (d) who acts as OA Dropbox team admin for Phase 0 and Phase 4 steps; (e) which Phase 4 extensions matter most.
 
 ---
 

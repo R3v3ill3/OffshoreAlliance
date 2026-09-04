@@ -28,7 +28,7 @@
  * list's sheet in the Blasts view; ?conversation=<id> auto-opens that
  * thread in the Inbox view.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchApi } from '@/lib/api/fetch-api'
@@ -49,12 +49,14 @@ import {
 } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
+  AlertTriangle,
   ArrowRightLeft,
   ClipboardList,
   Download,
   Inbox,
   ListPlus,
   Loader2,
+  Megaphone,
   MessageSquare,
   MessagesSquare,
   Pause,
@@ -93,6 +95,16 @@ import type {
   VwSmsSenderStatsRow,
 } from '@/types/sms'
 import { toDisplay } from '@/lib/phone/normalise-phone'
+import {
+  launchBodyMentionsRelayNumber,
+  renderRelayLaunchBody,
+  type RelayLaunchSenderMode,
+} from '@/lib/sms/relay-launch'
+import {
+  RelayLaunchSenderChoice,
+  relayLaunchSenderNumberId,
+} from '@/components/sms/relays/RelayLaunchSenderChoice'
+import { useSmsRelayDetail, useUpdateSmsRelay } from '@/lib/hooks/useSmsRelays'
 import { AudiencePicker, type AudienceValue } from '@/components/audience/AudiencePicker'
 import { toApiAudience, EMPTY_COMPOSED_AUDIENCE, STANDALONE_AUDIENCE_PICKER } from '@/lib/sms/audience-helpers'
 import {
@@ -821,10 +833,112 @@ function BlastCard({
   )
 }
 
+/**
+ * A blast that is a LAUNCH TEXT for a relay: it invites members to text
+ * the relay number, which is why that number is a legal sender here
+ * and nowhere else (lib/sms/relay-launch.ts).
+ */
+export interface NewBlastRelaySeed {
+  relay_id: number
+  phone_e164: string
+  number_id: number
+  name?: string
+  /** Current relay setting — drives the moderation nudge. */
+  moderation_required?: boolean
+  /**
+   * Ask "who does this come from?" at the top of this sheet. The relay
+   * wizard asks before the sheet opens, so only the
+   * `/sms/new?launch_relay=` entry point sets it.
+   */
+  chooseSender?: boolean
+}
+
 /** Seed for a new blast — the hub's Duplicate hands in the source's copy. */
 export interface NewBlastInitial {
   name?: string
   composer?: Partial<SmsComposerValue>
+  /** Present only for a launch text. */
+  relay?: NewBlastRelaySeed
+}
+
+/** Orientation line on any sheet showing a launch text. */
+function LaunchTextNotice({
+  relayName,
+  phoneE164,
+}: {
+  relayName?: string | null
+  phoneE164: string
+}) {
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+      <Megaphone className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      <span>
+        Launch text{relayName ? ` for ${relayName}` : ''} — the message should
+        tell members to text{' '}
+        <span className="font-medium">{toDisplay(phoneE164)}</span>.
+      </span>
+    </div>
+  )
+}
+
+/**
+ * The two things that quietly ruin a launch text, both warn-only:
+ * a body that never names the relay number (members have nowhere to
+ * write), and square-bracket placeholders left in from the seed. The
+ * second is a warning rather than a block because a member's suggested
+ * starter may legitimately use brackets.
+ */
+function LaunchTextWarnings({
+  relay,
+  body,
+  senderNumberId,
+  onInsertNumber,
+}: {
+  relay: NewBlastRelaySeed
+  body: string
+  senderNumberId: number | null
+  onInsertNumber: (text: string) => void
+}) {
+  const sentFromRelay = senderNumberId === relay.number_id
+  const missingNumber =
+    !sentFromRelay && !launchBodyMentionsRelayNumber(body, relay.phone_e164)
+  const hasPlaceholder = /\[[^\]\n]{1,80}\]/.test(body)
+  if (!missingNumber && !hasPlaceholder) return null
+
+  return (
+    <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+      {missingNumber && (
+        <div className="space-y-2">
+          <p className="flex items-start gap-1">
+            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+            This text doesn&apos;t mention the relay number — members won&apos;t
+            know where to text.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              onInsertNumber(
+                renderRelayLaunchBody(
+                  'Text {{relay_number}} — {{relay_sms_link}}',
+                  relay.phone_e164,
+                ),
+              )
+            }
+          >
+            Insert number and tap-to-text link
+          </Button>
+        </div>
+      )}
+      {hasPlaceholder && (
+        <p className="flex items-start gap-1">
+          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+          This still has placeholder text in square brackets.
+        </p>
+      )}
+    </div>
+  )
 }
 
 export function NewBlastSheet({
@@ -856,6 +970,53 @@ export function NewBlastSheet({
   const create = useCreateSmsBlast(campaignId)
   const queryClient = useQueryClient()
 
+  // ── Launch text ────────────────────────────────────────────────
+  const relay = initial?.relay
+  const insertRef = useRef<((text: string) => void) | null>(null)
+  const [launchMode, setLaunchMode] = useState<RelayLaunchSenderMode>(
+    relay && initial?.composer?.sender_number_id === relay.number_id
+      ? 'relay_number'
+      : 'different_number',
+  )
+  const [launchOrganiserId, setLaunchOrganiserId] = useState<number | null>(
+    relay && initial?.composer?.sender_number_id !== relay.number_id
+      ? (initial?.composer?.sender_number_id ?? null)
+      : null,
+  )
+  const [relayModeration, setRelayModeration] = useState(
+    relay?.moderation_required ?? false,
+  )
+  const updateRelay = useUpdateSmsRelay(relay?.relay_id ?? 0)
+
+  // While this sheet asks the sender question, the radio owns the
+  // answer — derived rather than synced into state, so there is one
+  // source of truth and no render cascade.
+  const chooseSender = !!relay?.chooseSender
+  const chosenSenderId = relay
+    ? relayLaunchSenderNumberId({
+        mode: launchMode,
+        relayNumberId: relay.number_id,
+        organiserNumberId: launchOrganiserId,
+      })
+    : null
+  const effective: SmsComposerValue =
+    chooseSender && chosenSenderId != null
+      ? { ...composer, sender_number_id: chosenSenderId }
+      : composer
+
+  /** The composer's own sender select feeds the radio back. */
+  const onComposerChange = (next: SmsComposerValue) => {
+    setComposer(next)
+    if (!relay || !chooseSender) return
+    if (next.sender_number_id === effective.sender_number_id) return
+    if (next.sender_number_id === relay.number_id) {
+      setLaunchMode('relay_number')
+    } else {
+      setLaunchMode('different_number')
+      setLaunchOrganiserId(next.sender_number_id)
+    }
+  }
+
   const submit = async () => {
     if (!name.trim()) {
       toast.error('Give the blast a name')
@@ -879,12 +1040,13 @@ export function NewBlastSheet({
       create.mutate(
         {
           name,
-          body: composer.body,
-          sender_number_id: composer.sender_number_id ?? undefined,
-          timezone: composer.timezone,
-          blackout_override: composer.blackout_override,
-          blackout_override_reason: composer.blackout_override_reason,
-          scheduled_for: localToIso(composer.scheduled_for),
+          body: effective.body,
+          sender_number_id: effective.sender_number_id ?? undefined,
+          timezone: effective.timezone,
+          blackout_override: effective.blackout_override,
+          blackout_override_reason: effective.blackout_override_reason,
+          scheduled_for: localToIso(effective.scheduled_for),
+          ...(relay ? { relay_id: relay.relay_id } : {}),
           audience,
         },
         {
@@ -921,7 +1083,7 @@ export function NewBlastSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
         <SheetHeader>
-          <SheetTitle>New SMS blast</SheetTitle>
+          <SheetTitle>{relay ? 'Launch text' : 'New SMS blast'}</SheetTitle>
           <SheetDescription>
             Write the message now, pick a list now, or both — you can attach
             an audience later from the draft. Opted-out workers and workers
@@ -929,6 +1091,46 @@ export function NewBlastSheet({
           </SheetDescription>
         </SheetHeader>
         <div className="mt-4 space-y-4 pb-8">
+          {relay && (
+            <LaunchTextNotice
+              relayName={relay.name}
+              phoneE164={relay.phone_e164}
+            />
+          )}
+
+          {relay && chooseSender && (
+            <div className="space-y-2">
+              <Label>Who does it come from?</Label>
+              <RelayLaunchSenderChoice
+                mode={launchMode}
+                onModeChange={setLaunchMode}
+                organiserNumberId={launchOrganiserId}
+                onOrganiserNumberChange={setLaunchOrganiserId}
+                relayPhoneE164={relay.phone_e164}
+                moderationRequired={relayModeration}
+                onModerationChange={(value) => {
+                  setRelayModeration(value)
+                  updateRelay.mutate(
+                    { moderation_required: value },
+                    {
+                      onSuccess: () =>
+                        toast.success(
+                          value
+                            ? 'Moderation queue turned on for this relay'
+                            : 'Moderation queue turned off',
+                        ),
+                      onError: (err: Error) => {
+                        setRelayModeration(!value)
+                        toast.error(err.message)
+                      },
+                    },
+                  )
+                }}
+                disabled={create.isPending || submitting}
+              />
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <Label htmlFor="sms-blast-name">Name</Label>
             <Input
@@ -967,9 +1169,20 @@ export function NewBlastSheet({
 
           <SmsComposer
             campaignId={campaignId}
-            value={composer}
-            onChange={setComposer}
+            value={effective}
+            onChange={onComposerChange}
+            allowRelayNumberId={relay?.number_id}
+            insertRef={relay ? insertRef : undefined}
           />
+
+          {relay && (
+            <LaunchTextWarnings
+              relay={relay}
+              body={effective.body}
+              senderNumberId={effective.sender_number_id}
+              onInsertNumber={(text) => insertRef.current?.(text)}
+            />
+          )}
 
           <Button
             className="w-full"
@@ -981,7 +1194,7 @@ export function NewBlastSheet({
             ) : (
               <Plus className="h-4 w-4 mr-2" />
             )}
-            Create blast
+            {relay ? 'Create launch text' : 'Create blast'}
           </Button>
         </div>
       </SheetContent>
@@ -1059,7 +1272,14 @@ function DraftDetail({
   })
 
   const { data: senders } = useSmsSenders()
-  const blockers = smsComposerBlockers(composer, senders)
+  // A launch text may keep its relay's own number as sender; the relay
+  // says which number that is (cached — the relay sheet shares the key).
+  const launchRelayId = detail.list.relay_id ?? null
+  const launchRelay = useSmsRelayDetail(launchRelayId)
+  const allowRelayNumberId = launchRelay.data?.relay.number_id
+  const blockers = smsComposerBlockers(composer, senders, {
+    allowRelayNumberId,
+  })
   const pendingCount = detail.items.filter((i) => i.status === 'pending').length
 
   const save = (then?: () => void) => {
@@ -1118,6 +1338,13 @@ function DraftDetail({
         </SheetDescription>
       </SheetHeader>
       <div className="mt-4 space-y-4 pb-8">
+        {launchRelayId != null && launchRelay.data?.number && (
+          <LaunchTextNotice
+            relayName={launchRelay.data.relay.name}
+            phoneE164={launchRelay.data.number.phone_e164}
+          />
+        )}
+
         {detail.items.length === 0 && (
           <div className="space-y-3 rounded-md border p-3">
             <p className="text-sm font-medium">Attach an audience</p>
@@ -1181,6 +1408,7 @@ function DraftDetail({
           value={composer}
           onChange={setComposer}
           disabled={update.isPending || action.isPending}
+          allowRelayNumberId={allowRelayNumberId}
         />
 
         {blockers.length > 0 && (

@@ -24,6 +24,22 @@ export interface SmsRelayLogMessage extends SmsRelayMessageRow {
   member_name: string | null
 }
 
+/**
+ * A launch text for this relay — the blast that invites members to
+ * text it. Returned with the detail so the relay sheet's Launch text
+ * card needs no per-row fetch.
+ */
+export interface SmsRelayLaunchList {
+  list_id: number
+  /** The blast's own campaign (an episode for an org-wide relay). */
+  campaign_id: number
+  name: string
+  status: string
+  total_items: number
+  sent_items: number
+  mode: string
+}
+
 export interface SmsRelayDetail {
   relay: SmsRelayRow
   number: {
@@ -36,6 +52,7 @@ export interface SmsRelayDetail {
   targets: SmsRelayTargetRow[]
   messages: SmsRelayLogMessage[]
   pending: SmsRelayMessageRow[]
+  launch_lists: SmsRelayLaunchList[]
 }
 
 async function toError(res: Response, fallback: string): Promise<Error> {

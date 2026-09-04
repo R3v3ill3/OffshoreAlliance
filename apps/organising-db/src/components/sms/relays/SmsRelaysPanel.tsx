@@ -6,13 +6,26 @@
  * List of relay cards → create wizard (spare-number picker,
  * targets, prefix/suffix templates with a live preview rendered via
  * SAMPLE_DATA, moderation + quiet-hours toggles) → detail sheet
- * (activate/pause/resume/end, per-target activity + toggle,
- * moderation queue with approve/reject, message log with direction
- * badges). A relay is created PAUSED and starts forwarding only on
- * explicit activation; ending it releases the number back to the
- * spare pool.
+ * (activate/pause/resume/end, per-target activity + toggle, launch
+ * texts, moderation queue with approve/reject, message log with
+ * direction badges). A relay is created PAUSED and starts forwarding
+ * only on explicit activation; ending it releases the number back to
+ * the spare pool.
+ *
+ * A relay nobody knows the number of is dead on arrival, so the create
+ * wizard ends with an optional LAUNCH TEXT — a blast inviting members
+ * to text the relay, sent either from an organiser number
+ * (recommended) or from the relay number itself, with the warning that
+ * choice deserves. The blast side is never built here: the sheet hands
+ * back a RelayLaunchIntent and the hub wizard (or, from the campaign
+ * tab, /sms/new?kind=blast&launch_relay=…) opens the blast sheet, so
+ * there is one code path for the blast. The launch text cannot be
+ * queued until the relay is active — see lib/sms/relay-launch.ts.
  */
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import {
   Accordion,
@@ -44,9 +57,11 @@ import {
   ArrowRightLeft,
   Check,
   Loader2,
+  Megaphone,
   Pause,
   Play,
   Plus,
+  Send,
   ShieldQuestion,
   Square,
   X,
@@ -57,10 +72,20 @@ import {
   composeForwardBody,
   firstForwardConfirmation,
   RELAY_CONFIRMATION_MAX_LENGTH,
+  RELAY_PAUSED_REPLY,
 } from '@/lib/sms/relay-engine'
 import { countSegments } from '@/lib/sms/segments'
 import { toDisplay } from '@/lib/phone/normalise-phone'
-import { useSmsSenders } from '@/lib/hooks/useSmsBroadcast'
+import {
+  relayLaunchQueueBlocker,
+  type RelayLaunchSenderMode,
+} from '@/lib/sms/relay-launch'
+import {
+  RelayLaunchSenderChoice,
+  relayLaunchSenderNumberId,
+} from '@/components/sms/relays/RelayLaunchSenderChoice'
+import { ListDetailSheet } from '@/components/sms/InlineSmsOpsPanel'
+import { useSmsListAction, useSmsSenders } from '@/lib/hooks/useSmsBroadcast'
 import {
   useAddSmsRelayTarget,
   useCreateSmsRelay,
@@ -70,6 +95,7 @@ import {
   useSmsRelays,
   useUpdateSmsRelayTarget,
   type SmsRelayDetail,
+  type SmsRelayLaunchList,
   type SmsRelayListRow,
 } from '@/lib/hooks/useSmsRelays'
 import type { SmsRelayForwardStatus } from '@/types/sms'
@@ -110,6 +136,7 @@ interface SmsRelaysPanelProps {
 }
 
 export function SmsRelaysPanel({ campaignId }: SmsRelaysPanelProps) {
+  const router = useRouter()
   const { data: relays, isLoading } = useSmsRelays(campaignId ?? undefined)
   const [newOpen, setNewOpen] = useState(false)
   const [detailRelayId, setDetailRelayId] = useState<number | null>(null)
@@ -166,8 +193,24 @@ export function SmsRelaysPanel({ campaignId }: SmsRelaysPanelProps) {
         campaignId={campaignId}
         open={newOpen}
         onOpenChange={setNewOpen}
-        onCreated={(relayId) => {
+        onCreated={(relayId, launch) => {
           setNewOpen(false)
+          if (launch) {
+            // The blast side lives in the hub wizard — one code path for
+            // audience, episode handling and the composer. The sender
+            // answer travels with it so nobody is asked twice.
+            const sender =
+              launch.senderMode === 'relay_number'
+                ? 'relay'
+                : launch.senderNumberId != null
+                  ? String(launch.senderNumberId)
+                  : null
+            router.push(
+              `/sms/new?kind=blast&launch_relay=${relayId}` +
+                (sender ? `&launch_sender=${sender}` : ''),
+            )
+            return
+          }
           setDetailRelayId(relayId)
         }}
       />
@@ -293,6 +336,26 @@ export interface NewRelayInitial {
   bridge_replies?: boolean
   confirmation_template?: string | null
   timezone?: string
+  /** Open with the launch-text step already switched on. */
+  launch?: boolean
+}
+
+/**
+ * What the sheet hands back when the organiser asked for a launch
+ * text. Everything the blast side needs to seed itself without a
+ * second round trip — the phone and number id are known client-side
+ * before create returns, because the relay claims a number the sheet
+ * already listed.
+ */
+export interface RelayLaunchIntent {
+  relayId: number
+  relayName: string
+  relayPhoneE164: string
+  relayNumberId: number
+  relayCampaignId: number | null
+  senderMode: RelayLaunchSenderMode
+  /** The relay number id when senderMode is 'relay_number'. */
+  senderNumberId: number | null
 }
 
 export function NewRelaySheet({
@@ -306,8 +369,8 @@ export function NewRelaySheet({
   campaignId?: string | number | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  onCreated: (relayId: number) => void
-  /** Prefill (duplicate). */
+  onCreated: (relayId: number, launch: RelayLaunchIntent | null) => void
+  /** Prefill (duplicate, or the hub wizard asking for a launch text). */
   initial?: NewRelayInitial
   /** The hub wizard has already settled org-wide vs campaign — hide the toggle. */
   lockScope?: boolean
@@ -351,10 +414,27 @@ export function NewRelaySheet({
   const [quietHours, setQuietHours] = useState(initial?.quiet_hours_respected ?? true)
   const [timezone, setTimezone] = useState(initial?.timezone ?? 'Australia/Perth')
 
+  // Launch text. Off by default — an organiser setting up a relay for
+  // an existing audience may already have the invitation out.
+  const [launchOn, setLaunchOn] = useState(initial?.launch ?? false)
+  const [launchMode, setLaunchMode] =
+    useState<RelayLaunchSenderMode>('different_number')
+  const [launchSenderId, setLaunchSenderId] = useState<number | null>(null)
+
   // Relays draw numbers from the spare pool (§7.0).
   const spareNumbers = useMemo(
     () => (senders ?? []).filter((s) => s.purpose === 'spare'),
     [senders],
+  )
+  // The chosen number, known here before create returns — the launch
+  // intent carries its phone so the blast can seed its body straight
+  // away.
+  // Looked up across all senders, not just the spare pool: the number's
+  // purpose flips to 'relay' the moment create returns, and the intent
+  // must not go missing if the senders query refetches first.
+  const relayNumber = useMemo(
+    () => (senders ?? []).find((s) => s.number_id === numberId) ?? null,
+    [senders, numberId],
   )
 
   const submit = () => {
@@ -389,10 +469,28 @@ export function NewRelaySheet({
       {
         onSuccess: (res) => {
           toast.success('Relay created (paused) — activate it when ready')
+          const relayCampaignId =
+            orgWide || campaignId == null ? null : Number(campaignId)
+          const launch: RelayLaunchIntent | null =
+            launchOn && relayNumber
+              ? {
+                  relayId: res.relay_id,
+                  relayName: name.trim(),
+                  relayPhoneE164: relayNumber.phone_e164,
+                  relayNumberId: numberId,
+                  relayCampaignId,
+                  senderMode: launchMode,
+                  senderNumberId: relayLaunchSenderNumberId({
+                    mode: launchMode,
+                    relayNumberId: numberId,
+                    organiserNumberId: launchSenderId,
+                  }),
+                }
+              : null
           setName('')
           setNumberId(null)
           setTargets([{ phone: '', display_name: '' }])
-          onCreated(res.relay_id)
+          onCreated(res.relay_id, launch)
         },
         onError: (err: Error) => toast.error(err.message),
       },
@@ -693,6 +791,51 @@ export function NewRelaySheet({
             </AccordionItem>
           </Accordion>
 
+          {/* Launch text — a relay nobody has the number for is dead
+              on arrival, so this is the last step rather than an
+              afterthought. The blast itself is built elsewhere (one
+              code path); this only settles whether there is one and
+              who it comes from. */}
+          <div className="rounded-md border p-3 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <Label htmlFor="relay-launch">
+                  Send a launch text to invite members
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  A blast telling members what has happened and asking them to
+                  text this relay. You write it next.
+                </p>
+              </div>
+              <Switch
+                id="relay-launch"
+                checked={launchOn}
+                onCheckedChange={setLaunchOn}
+              />
+            </div>
+            {launchOn && (
+              <>
+                <RelayLaunchSenderChoice
+                  mode={launchMode}
+                  onModeChange={setLaunchMode}
+                  organiserNumberId={launchSenderId}
+                  onOrganiserNumberChange={setLaunchSenderId}
+                  relayPhoneE164={relayNumber?.phone_e164 ?? ''}
+                  moderationRequired={moderation}
+                  onModerationChange={setModeration}
+                  disabled={create.isPending}
+                />
+                <p className="text-xs text-muted-foreground">
+                  The relay is created paused, so the launch text stays a draft
+                  until you activate it — a member who texts in before then just
+                  gets &ldquo;{RELAY_PAUSED_REPLY}&rdquo; and their message is
+                  never forwarded. The relay detail has one button that does
+                  both.
+                </p>
+              </>
+            )}
+          </div>
+
           <Button
             className="w-full"
             disabled={create.isPending || !name.trim() || numberId == null}
@@ -745,6 +888,7 @@ export function RelayDetailSheet({
 
 function RelayDetail({ detail }: { detail: SmsRelayDetail }) {
   const { relay, number, targets, messages, pending } = detail
+  const launchLists = detail.launch_lists ?? []
   const action = useSmsRelayAction(relay.relay_id)
   const moderate = useModerateSmsRelayMessage(relay.relay_id)
   const addTarget = useAddSmsRelayTarget(relay.relay_id)
@@ -835,6 +979,12 @@ function RelayDetail({ detail }: { detail: SmsRelayDetail }) {
             </Button>
           </div>
         )}
+
+        {/* Launch text — the blast that tells members this number
+            exists. Queueing one is gated on the relay being active, so
+            the paused case gets a single button that does both rather
+            than two the organiser can do in the wrong order. */}
+        <RelayLaunchCard relay={relay} launchLists={launchLists} />
 
         {/* Moderation queue */}
         {pending.length > 0 && (
@@ -1044,5 +1194,173 @@ function RelayDetail({ detail }: { detail: SmsRelayDetail }) {
         </div>
       </div>
     </>
+  )
+}
+
+const LAUNCH_STATUS_COLORS: Record<string, string> = {
+  draft: 'bg-slate-100 text-slate-700',
+  queued: 'bg-sky-100 text-sky-800',
+  sending: 'bg-sky-100 text-sky-800',
+  sent: 'bg-blue-100 text-blue-800',
+  paused: 'bg-amber-100 text-amber-800',
+  cancelled: 'bg-rose-100 text-rose-800',
+}
+
+/**
+ * Launch texts for a relay: what is out, and the one action that is
+ * easy to get wrong. Queueing a launch text while the relay is paused
+ * is refused by the server (relayLaunchQueueBlocker), so when both
+ * conditions hold the card offers activation and queueing as a single
+ * button — activate first, then queue, and if the queue fails the
+ * relay stays active and the error is shown rather than swallowed.
+ */
+function RelayLaunchCard({
+  relay,
+  launchLists,
+}: {
+  relay: SmsRelayDetail['relay']
+  launchLists: SmsRelayLaunchList[]
+}) {
+  const queryClient = useQueryClient()
+  const action = useSmsRelayAction(relay.relay_id)
+  const [openList, setOpenList] = useState<SmsRelayLaunchList | null>(null)
+  const [running, setRunning] = useState(false)
+  const draft = launchLists.find((l) => l.status === 'draft') ?? null
+  // The queue action is campaign-scoped on the BLAST's campaign, which
+  // for an org-wide relay is a hidden episode, not the relay's.
+  const queueList = useSmsListAction(draft?.campaign_id ?? 0)
+
+  const queueDraft = async () => {
+    if (!draft) return
+    setRunning(true)
+    try {
+      const res = await queueList.mutateAsync({
+        listId: draft.list_id,
+        action: 'queue',
+      })
+      toast.success(`Launch text queued — ${res.queued ?? 0} recipients`)
+    } catch (err) {
+      // The 409 from the queue gate lands here verbatim.
+      toast.error(err instanceof Error ? err.message : 'Could not queue the launch text')
+    } finally {
+      // The card reads launch_lists off the relay detail, which the
+      // list mutation does not know about.
+      void queryClient.invalidateQueries({
+        queryKey: ['sms-relay', relay.relay_id],
+      })
+      setRunning(false)
+    }
+  }
+
+  const activateAndQueue = async () => {
+    if (!draft) return
+    setRunning(true)
+    try {
+      await action.mutateAsync('activate')
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Could not activate the relay',
+      )
+      setRunning(false)
+      return
+    }
+    // Activation stands even if the queue then fails — that is the half
+    // it is safe to leave done, and the error says what to retry.
+    setRunning(false)
+    await queueDraft()
+  }
+
+  const gate = relayLaunchQueueBlocker(relay.status)
+  const busy = running || action.isPending || queueList.isPending
+
+  return (
+    <div className="space-y-2">
+      <h4 className="text-sm font-semibold flex items-center gap-1.5">
+        <Megaphone className="h-4 w-4" />
+        Launch text
+      </h4>
+      {launchLists.length === 0 ? (
+        <div className="rounded-md border border-dashed p-3 space-y-2">
+          <p className="text-sm text-muted-foreground">
+            Nobody can use a relay they do not know the number of. Send a blast
+            inviting members to text{' '}
+            {relay.status === 'ended' ? 'it' : 'this number'}.
+          </p>
+          {relay.status !== 'ended' && (
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/sms/new?kind=blast&launch_relay=${relay.relay_id}`}>
+                <Send className="h-3.5 w-3.5 mr-1" />
+                Send launch text
+              </Link>
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-md border divide-y">
+          {launchLists.map((l) => (
+            <button
+              key={l.list_id}
+              type="button"
+              className="w-full px-3 py-2 text-left hover:bg-muted/30 transition-colors"
+              onClick={() => setOpenList(l)}
+            >
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium truncate">{l.name}</p>
+                <Badge
+                  variant="secondary"
+                  className={LAUNCH_STATUS_COLORS[l.status] || ''}
+                >
+                  {l.status}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {l.sent_items}/{l.total_items} messaged
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {draft && relay.status === 'paused' && (
+        <div className="space-y-1.5">
+          <Button size="sm" disabled={busy} onClick={() => void activateAndQueue()}>
+            {busy ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+            ) : (
+              <Play className="h-3.5 w-3.5 mr-1" />
+            )}
+            Activate relay and queue launch text
+          </Button>
+          {gate && <p className="text-xs text-muted-foreground">{gate}</p>}
+        </div>
+      )}
+      {draft && relay.status === 'active' && (
+        <Button
+          size="sm"
+          disabled={busy}
+          onClick={() => void queueDraft()}
+        >
+          {queueList.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+          ) : (
+            <Send className="h-3.5 w-3.5 mr-1" />
+          )}
+          Queue launch text
+        </Button>
+      )}
+
+      <ListDetailSheet
+        campaignId={String(openList?.campaign_id ?? '')}
+        listId={openList?.list_id ?? null}
+        // A launch text that is not in the relay's own campaign lives in
+        // a hidden episode — the audience picker has to know.
+        standaloneMode={
+          openList != null && openList.campaign_id !== relay.campaign_id
+        }
+        onOpenChange={(open) => {
+          if (!open) setOpenList(null)
+        }}
+      />
+    </div>
   )
 }

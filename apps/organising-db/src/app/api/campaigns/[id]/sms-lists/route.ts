@@ -5,6 +5,9 @@
  * POST — create a new blast: campaign_comms_drafts shell (platform='sms')
  *        + sms_lists row. Audience is optional — omit it to draft the
  *        message first and attach a list later via POST .../audience.
+ *        `relay_id` marks the blast a LAUNCH TEXT for that relay, which
+ *        is what makes the relay's own number a legal sender here (and
+ *        only here) — see lib/sms/relay-launch.ts.
  *
  * Mirrors /api/campaigns/[id]/email-lists plus the fire/sms populate
  * logic. RLS (can_write_to_campaign) applies through the user client.
@@ -20,7 +23,7 @@ import {
   resolveAudienceWorkerIds,
   type SmsApiAudience,
 } from '@/lib/sms/populate-sms-list'
-import { inboxUnsafeSenderMessage } from '@/lib/sms/sender-purpose'
+import { relayAwareSenderMessage } from '@/lib/sms/sender-purpose'
 import { dedicatedNumberRequiredForNumberId } from '@/lib/sms/sender-inbound-server'
 
 export async function GET(
@@ -67,6 +70,12 @@ interface CreateBlastBody {
    * sent progressively via the p2p-send route, never the cron.
    */
   mode?: 'blast' | 'p2p'
+  /**
+   * Marks the blast a launch text for that relay: it invites members
+   * to text the relay number, and the relay's number becomes a legal
+   * sender for this list alone.
+   */
+  relay_id?: number
   /** Omit to create a draft and attach a list later. */
   audience?: SmsApiAudience
 }
@@ -111,11 +120,44 @@ export async function POST(
       )
     }
 
+    // Launch text: the relay must exist, still be usable, and be
+    // reachable from this campaign — a campaign writer must not be able
+    // to hang a list off another campaign's relay and inherit its
+    // number as a sender.
+    let relayId: number | null = null
+    if (body.relay_id != null) {
+      if (!Number.isInteger(body.relay_id)) {
+        return NextResponse.json({ error: 'Invalid relay id' }, { status: 400 })
+      }
+      const { data: relay, error: relayErr } = await supabase
+        .from('sms_relays')
+        .select('relay_id, campaign_id, status')
+        .eq('relay_id', body.relay_id)
+        .maybeSingle()
+      if (relayErr) throw relayErr
+      if (!relay) {
+        return NextResponse.json({ error: 'Relay not found' }, { status: 400 })
+      }
+      if (relay.status === 'ended') {
+        return NextResponse.json(
+          { error: 'This relay has ended — it can no longer take a launch text' },
+          { status: 400 },
+        )
+      }
+      if (relay.campaign_id != null && relay.campaign_id !== cid) {
+        return NextResponse.json(
+          { error: 'That relay belongs to another campaign' },
+          { status: 400 },
+        )
+      }
+      relayId = relay.relay_id as number
+    }
+
     if (body.sender_number_id != null) {
-      const unsafe = await inboxUnsafeSenderMessage(
-        supabase,
-        body.sender_number_id,
-      )
+      const unsafe = await relayAwareSenderMessage(supabase, {
+        senderNumberId: body.sender_number_id,
+        listRelayId: relayId,
+      })
       if (unsafe) {
         return NextResponse.json({ error: unsafe }, { status: 409 })
       }
@@ -183,6 +225,8 @@ export async function POST(
         // blast creation keeps working if this code ships before the
         // 20260812140000 migration applies (column default is 'blast').
         ...(mode === 'p2p' ? { mode } : {}),
+        // Same idiom for the launch-text link (20260904120000).
+        ...(relayId != null ? { relay_id: relayId } : {}),
         source_filters: audience
           ? audienceSourceFilters(audience)
           : { source: 'deferred' },

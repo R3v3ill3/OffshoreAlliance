@@ -140,6 +140,19 @@ export function SmsHubPage() {
     [router, searchParams],
   )
 
+  /** From a launch text's row menu — the relay opens in the same page. */
+  const openRelay = useCallback(
+    (relayId: number) => {
+      const ref: SmsActionRef = { kind: 'relay', id: relayId }
+      setOpen({ ref, standalone: false })
+      const params = new URLSearchParams(searchParams.toString())
+      params.set('open', encodeSmsActionRef(ref))
+      params.delete('standalone')
+      router.replace(`/sms?${params.toString()}`, { scroll: false })
+    },
+    [router, searchParams],
+  )
+
   const duplicateRow = useCallback(
     (row: SmsActivityRow) => {
       const sourceScope: SmsActionScope =
@@ -244,6 +257,7 @@ export function SmsHubPage() {
           canWrite={!!canWrite}
           onOpen={openRow}
           onDuplicate={duplicateRow}
+          onOpenRelay={openRelay}
           scopeControl={
             <Select
               value={scopeSelectValue}

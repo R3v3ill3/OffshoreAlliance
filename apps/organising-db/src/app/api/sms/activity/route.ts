@@ -10,6 +10,9 @@
  * rows, which belong to every campaign). Episode campaigns (the
  * hidden per-send campaigns behind standalone actions) are surfaced
  * as "Standalone" rather than by their internal name.
+ *
+ * Blast rows carry `relay_id`/`relay_name` when the blast is a launch
+ * text, so the table can say what it is and offer the relay.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
@@ -47,6 +50,9 @@ export interface SmsActivityRow {
   question_count?: number
   /** Relays only. */
   pending_moderation_count?: number
+  /** Blasts only: set when the blast is a launch text for a relay. */
+  relay_id?: number | null
+  relay_name?: string | null
 }
 
 export interface SmsActivityResponse {
@@ -84,7 +90,7 @@ export async function GET(req: NextRequest) {
     let listQuery = supabase
       .from('sms_lists')
       .select(
-        'list_id, campaign_id, name, status, mode, created_at, updated_at, sender_number_id, total_items, sent_items, delivered_items',
+        'list_id, campaign_id, name, status, mode, relay_id, created_at, updated_at, sender_number_id, total_items, sent_items, delivered_items',
       )
       .order('created_at', { ascending: false })
       .limit(LIMIT)
@@ -121,6 +127,7 @@ export async function GET(req: NextRequest) {
       name: string | null
       status: string
       mode: string | null
+      relay_id: number | null
       created_at: string
       updated_at: string
       sender_number_id: number | null
@@ -168,6 +175,14 @@ export async function GET(req: NextRequest) {
     ]
     const relayIds = relayRows.map((r) => r.relay_id)
     const surveyIds = surveyRows.map((s) => s.survey_id)
+    // Launch texts name their relay on the row. The relay may sit
+    // outside this scope (an org-wide relay with a campaign blast), so
+    // this is its own batched read rather than a lookup in relayRows.
+    const launchRelayIds = [
+      ...new Set(
+        listRows.map((l) => l.relay_id).filter((v): v is number => v != null),
+      ),
+    ]
 
     const [
       { data: campaigns, error: cErr },
@@ -176,6 +191,7 @@ export async function GET(req: NextRequest) {
       { data: pending },
       { data: qs },
       { data: sess },
+      { data: launchRelays },
     ] = await Promise.all([
       campaignIds.length > 0
         ? supabase
@@ -214,6 +230,12 @@ export async function GET(req: NextRequest) {
             .select('survey_id, state')
             .in('survey_id', surveyIds)
         : Promise.resolve({ data: [] as Array<{ survey_id: number; state: string }> }),
+      launchRelayIds.length > 0
+        ? supabase
+            .from('sms_relays')
+            .select('relay_id, name')
+            .in('relay_id', launchRelayIds)
+        : Promise.resolve({ data: [] as Array<{ relay_id: number; name: string | null }> }),
     ])
     if (cErr) throw cErr
     if (nErr) throw nErr
@@ -229,6 +251,13 @@ export async function GET(req: NextRequest) {
       c.total += 1
       if (t.is_active) c.active += 1
       targetCounts.set(t.relay_id, c)
+    }
+    const launchRelayName = new Map<number, string | null>()
+    for (const r of (launchRelays ?? []) as Array<{
+      relay_id: number
+      name: string | null
+    }>) {
+      launchRelayName.set(r.relay_id, r.name)
     }
     const pendingCounts = new Map<number, number>()
     for (const p of (pending ?? []) as Array<{ relay_id: number }>) {
@@ -287,6 +316,9 @@ export async function GET(req: NextRequest) {
         updated_at: l.updated_at,
         audience_count: l.total_items ?? 0,
         progress_count: (l.sent_items ?? 0) + (l.delivered_items ?? 0),
+        relay_id: l.relay_id,
+        relay_name:
+          l.relay_id != null ? (launchRelayName.get(l.relay_id) ?? null) : null,
         ...describeCampaign(l.campaign_id, false),
         ...describeNumber(l.sender_number_id),
       }

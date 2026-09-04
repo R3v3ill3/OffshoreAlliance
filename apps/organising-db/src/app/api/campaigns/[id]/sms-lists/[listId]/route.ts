@@ -10,12 +10,16 @@
  *         cannot be swapped past the queue action's compliance check
  *         via pause → edit → resume. (The dispatcher re-validates the
  *         body as a second belt.)
+ *
+ *         `relay_id` is deliberately NOT editable: it is what licenses
+ *         a relay number as this list's sender, so letting it change
+ *         here would let an ordinary blast claim one after the fact.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { errorResponse } from '@/lib/api/error-response'
 import { isValidTimeZone } from '@/lib/sms/blackout'
-import { inboxUnsafeSenderMessage } from '@/lib/sms/sender-purpose'
+import { relayAwareSenderMessage } from '@/lib/sms/sender-purpose'
 import { dedicatedNumberRequiredForNumberId } from '@/lib/sms/sender-inbound-server'
 
 async function loadList(
@@ -36,6 +40,8 @@ async function loadList(
     draft_id: number | null
     status: string
     mode: string
+    /** Set when this blast is a launch text (20260904120000). */
+    relay_id: number | null
     blackout_override: boolean
   }
 }
@@ -190,10 +196,14 @@ export async function PATCH(
     }
     if (body.sender_number_id !== undefined) {
       if (body.sender_number_id != null) {
-        const unsafe = await inboxUnsafeSenderMessage(
-          supabase,
-          body.sender_number_id,
-        )
+        // The list's EXISTING relay link decides whether a relay number
+        // is legal here — relay_id is not editable through this route,
+        // so a blast can never be turned into a launch text to borrow a
+        // relay's number after the fact.
+        const unsafe = await relayAwareSenderMessage(supabase, {
+          senderNumberId: body.sender_number_id,
+          listRelayId: list.relay_id,
+        })
         if (unsafe) {
           return NextResponse.json({ error: unsafe }, { status: 409 })
         }

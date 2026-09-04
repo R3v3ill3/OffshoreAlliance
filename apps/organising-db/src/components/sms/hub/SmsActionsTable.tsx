@@ -5,11 +5,15 @@
  * are chips (kind, status bucket) plus a scope selector the parent
  * owns (it lives in the URL), so a link can land on "standalone,
  * live" or "campaign 12, finished".
+ *
+ * A blast that is a launch text says so under its name and offers its
+ * relay in the row menu — the two are one piece of work.
  */
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { formatDistanceToNowStrict } from 'date-fns'
 import {
+  ArrowRightLeft,
   Copy,
   ExternalLink,
   Loader2,
@@ -92,6 +96,7 @@ export function SmsActionsTable({
   canWrite = false,
   onOpen,
   onDuplicate,
+  onOpenRelay,
   scopeControl,
   emptyHint,
 }: {
@@ -100,6 +105,8 @@ export function SmsActionsTable({
   canWrite?: boolean
   onOpen: (row: SmsActivityRow) => void
   onDuplicate: (row: SmsActivityRow) => void
+  /** Open the relay a launch text belongs to (the parent owns the sheet). */
+  onOpenRelay?: (relayId: number) => void
   /** Scope selector rendered in the filter row (owned by the parent). */
   scopeControl?: React.ReactNode
   emptyHint?: React.ReactNode
@@ -223,8 +230,10 @@ export function SmsActionsTable({
                         <meta.icon className={cn('h-4 w-4 shrink-0', meta.tone)} aria-hidden />
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">{row.name}</p>
-                          <p className="text-[11px] text-muted-foreground">
-                            {meta.label}
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            {row.relay_name
+                              ? `Launch text for ${row.relay_name}`
+                              : meta.label}
                             {row.is_test ? ' · test' : ''}
                           </p>
                         </div>
@@ -296,6 +305,14 @@ export function SmsActionsTable({
                             <DropdownMenuItem onSelect={() => onDuplicate(row)}>
                               <Copy className="mr-2 h-3.5 w-3.5" />
                               Duplicate…
+                            </DropdownMenuItem>
+                          )}
+                          {row.relay_id != null && onOpenRelay && (
+                            <DropdownMenuItem
+                              onSelect={() => onOpenRelay(row.relay_id as number)}
+                            >
+                              <ArrowRightLeft className="mr-2 h-3.5 w-3.5" />
+                              Open relay
                             </DropdownMenuItem>
                           )}
                           {campaignHref && (

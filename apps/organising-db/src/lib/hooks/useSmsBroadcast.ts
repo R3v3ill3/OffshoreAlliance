@@ -139,6 +139,8 @@ export interface CreateSmsBlastInput {
   scheduled_for?: string | null
   /** 'blast' (default) or 'p2p' (chat-board working list). */
   mode?: 'blast' | 'p2p'
+  /** Marks the blast a launch text for that relay (relay-launch.ts). */
+  relay_id?: number
   /** Omit to create a draft and attach a list later. */
   audience?:
     | { type: 'worker_list'; worker_list_id: number }

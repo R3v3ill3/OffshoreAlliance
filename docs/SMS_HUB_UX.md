@@ -11,7 +11,7 @@ campaign's own slice of the same data.
 | Route | Section | What it is for |
 | --- | --- | --- |
 | `/sms` | Actions | Snapshot, "start something", and the unified table of every blast, chat board, survey and relay. |
-| `/sms/new` | Create | Kind → scope → editor. `?kind=`, `?scope=`, `?duplicate=` preset it. |
+| `/sms/new` | Create | Kind → scope → editor. `?kind=`, `?scope=`, `?duplicate=` preset it; `?kind=blast&launch_relay=<id>` opens a relay's launch text. |
 | `/sms/inbox` | Inbox | The existing three-pane inbox, now wearing the hub header. |
 | `/sms/numbers` | Numbers | Which platform number is doing what, with admin reassignment inline. |
 | `/campaigns/sms-tools` | — | Redirects to `/sms`, carrying `?standalone=1` / `?campaign_id=` across as `?scope=`. |
@@ -42,6 +42,21 @@ hidden episode it creates first and discards if the sheet is closed
 unsaved). No bounce to the campaign page; the organiser lands back on
 the hub with the new action's detail sheet open. Chat boards open their
 workspace instead, as they do everywhere.
+
+**A relay's launch text is part of setting the relay up.** The relay
+sheet's last step asks whether to send one and who from (an organiser
+number, or the relay number itself with the warning that every reply is
+then forwarded to the target). It never builds the blast: it hands back
+a launch intent and the wizard opens the ordinary blast sheet, seeded
+with the relay number rendered into the body — one code path for the
+blast, wherever the relay was created. `?kind=blast&launch_relay=<id>`
+is the same sheet reached directly, from the relay detail's *Send launch
+text* or from the campaign Relays tab; it locks the kind to blast, takes
+the scope from the relay (its campaign, or an episode for an org-wide
+one) and asks the sender question at the top of the sheet. The blast
+carries `sms_lists.relay_id`, which is what lets it send from the relay
+number, gates queueing on the relay being active, and lets the table
+label it *Launch text for &lt;relay&gt;* with an **Open relay** action.
 
 **Open and duplicate from the row.** Blasts, surveys and relays open in
 the same detail sheets the campaign tabs use (`?open=<kind:campaign:id>`

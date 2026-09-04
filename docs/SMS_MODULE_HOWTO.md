@@ -105,6 +105,40 @@ Relays forward member texts from a dedicated number to external targets
 for the external party. Created paused; activate explicitly. Optional
 moderation queue; pause or end at any time; full message log retained.
 
+**Launch text.** Nobody can use a relay they do not know the number of,
+so the last step of the create wizard offers a **launch text**: a blast
+inviting members to text the relay. Switch it on and you land straight
+in the blast sheet with the message seeded (a campaign-neutral template
+with the relay number and a tap-to-text link already filled in — replace
+the square-bracket placeholders; the sheet warns while any are left) and
+the audience picker ready. The relay detail lists every launch text and
+opens each one; "Send launch text" on a relay that has none starts the
+same flow (`/sms/new?kind=blast&launch_relay=<id>`), and the hub table
+labels the blast "Launch text for &lt;relay&gt;" with an **Open relay**
+row action.
+
+You choose who it comes from:
+
+- **A different number (recommended)** — an organiser number. Replies
+  land in the Inbox as usual, and members text the relay themselves from
+  the number in the message.
+- **The relay number itself** — then *every* reply is treated as a
+  message to the target and forwarded automatically, including "who is
+  this?" and "thanks". STOP still opts the member out. Choose it only
+  when you want that; the sheet offers to turn the moderation queue on
+  at the same time. Sends from the relay number deliberately create no
+  Inbox thread (the relay leg owns those replies), though the send log
+  is written as usual.
+
+A launch text cannot be queued while its relay is still paused — members
+who took up the invitation would just get "Message received — forwarding
+is currently paused" and never be forwarded. When the relay is paused
+and the launch text is a draft, the relay detail shows one button,
+**Activate relay and queue launch text**, that does both in the right
+order. Save campaign-specific launch texts to the SMS template library
+(Comms → templates, platform `sms`) so the next one starts from your own
+wording rather than the default.
+
 ## Sandbox testing (before go-live)
 
 - **Mock provider** (Administration → Mobile Message SMS → provider

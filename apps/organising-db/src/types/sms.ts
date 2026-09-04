@@ -88,6 +88,13 @@ export interface SmsListRow {
   status: SmsListStatus;
   source_filters: Record<string, unknown> | null;
   sender_number_id: number | null;
+  /**
+   * When set, this blast is a LAUNCH TEXT for that relay: it invites
+   * members to text the relay number. A relay may have several
+   * (launch, reminder). The relay's own number is a permitted sender
+   * only for lists carrying its relay_id (see lib/sms/relay-launch.ts).
+   */
+  relay_id?: number | null;
   timezone: string;
   blackout_override: boolean;
   blackout_override_reason: string | null;

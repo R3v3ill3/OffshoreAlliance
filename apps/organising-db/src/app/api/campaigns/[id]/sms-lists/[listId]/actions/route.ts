@@ -6,7 +6,10 @@
  *          Mobile Message does not append opt-out text), sender number
  *          required, then pending → queued with send_before stamped
  *          per the blackout window (brief §7.2). The dispatch cron
- *          does the actual sending.
+ *          does the actual sending. A LAUNCH TEXT (relay_id set) has
+ *          one extra gate: its relay must already be active, or every
+ *          member who takes up the invitation gets the paused reply
+ *          and is never forwarded.
  * pause  — queued/sending → paused (dispatcher skips paused lists).
  * resume — paused → queued.
  * cancel — any non-terminal status → cancelled; queued/pending items
@@ -17,7 +20,11 @@ import { createClient } from '@/lib/supabase/server'
 import { errorResponse } from '@/lib/api/error-response'
 import { validateSmsBody } from '@/lib/sms/compliance'
 import { computeSendBefore } from '@/lib/sms/blackout'
-import { inboxUnsafePurposeError } from '@/lib/sms/sender-purpose'
+import {
+  isPermittedRelaySender,
+  relayLaunchQueueBlocker,
+} from '@/lib/sms/relay-launch'
+import { INBOX_UNSAFE_SENDER_MESSAGE } from '@/lib/sms/sender-purpose'
 
 export async function POST(
   req: NextRequest,
@@ -92,9 +99,40 @@ export async function POST(
             { status: 400 },
           )
         }
-        const unsafe = inboxUnsafePurposeError(sender.purpose as string | null)
-        if (unsafe) {
-          return NextResponse.json({ error: unsafe }, { status: 409 })
+        // A launch text may send from its own relay's number — and
+        // only from that one. Load the relay once: the same row
+        // answers both the sender question and the activation gate.
+        const relayId = (list.relay_id as number | null) ?? null
+        let relay: { number_id: number; status: string } | null = null
+        if (relayId != null) {
+          const { data, error: relayErr } = await supabase
+            .from('sms_relays')
+            .select('number_id, status')
+            .eq('relay_id', relayId)
+            .maybeSingle()
+          if (relayErr) throw relayErr
+          relay = data as { number_id: number; status: string } | null
+        }
+        if (
+          !isPermittedRelaySender({
+            senderNumberId: list.sender_number_id as number,
+            senderPurpose: sender.purpose as string | null,
+            listRelayId: relayId,
+            relayNumberId: relay?.number_id ?? null,
+          })
+        ) {
+          return NextResponse.json(
+            { error: INBOX_UNSAFE_SENDER_MESSAGE },
+            { status: 409 },
+          )
+        }
+        if (relayId != null) {
+          const gate = relayLaunchQueueBlocker(
+            (relay?.status as 'active' | 'paused' | 'ended' | undefined) ?? null,
+          )
+          if (gate) {
+            return NextResponse.json({ error: gate }, { status: 409 })
+          }
         }
         if (!list.draft_id) {
           return NextResponse.json(

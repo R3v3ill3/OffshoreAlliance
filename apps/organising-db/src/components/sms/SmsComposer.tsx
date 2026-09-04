@@ -16,6 +16,9 @@
  *     assigned number,
  *   - blackout override toggle with a required, recorded reason,
  *   - optional schedule datetime,
+ *   - relay launch texts: `allowRelayNumberId` keeps the advertised
+ *     relay number selectable and swaps the "reserved" line for the
+ *     relay-number warning (lib/sms/relay-launch.ts),
  *   - "tap-to-text" link helper (brief §6 complementary pattern):
  *     inserts an sms:+61…?body=… link so contact genuinely
  *     originates from the member's own phone and number — e.g.
@@ -53,8 +56,11 @@ import { toDisplay, toE164 } from '@/lib/phone/normalise-phone'
 import {
   filterInboxSafeSenders,
   INBOX_UNSAFE_SENDER_MESSAGE,
-  isInboxUnsafePurpose,
 } from '@/lib/sms/sender-purpose'
+import {
+  isPermittedRelaySender,
+  RELAY_NUMBER_SENDER_WARNING,
+} from '@/lib/sms/relay-launch'
 import { inboundUnsafeClientMessage } from '@/lib/sms/sender-inbound'
 
 export interface SmsComposerValue {
@@ -78,6 +84,18 @@ interface SmsComposerProps {
    * warning on the board instead of a queue-time hard block).
    */
   variant?: 'blast' | 'p2p'
+  /**
+   * Launch texts only: the relay number this blast advertises. It stays
+   * selectable and carries RELAY_NUMBER_SENDER_WARNING instead of the
+   * "reserved for surveys or relays" line — the one case where sending
+   * from a relay number is the point (lib/sms/relay-launch.ts).
+   */
+  allowRelayNumberId?: number
+  /**
+   * Lets the parent append at the cursor (the launch sheet's "insert
+   * the number and tap-to-text link").
+   */
+  insertRef?: React.MutableRefObject<((text: string) => void) | null>
 }
 
 const TIMEZONES = [
@@ -107,6 +125,8 @@ export function SmsComposer({
   onChange,
   disabled,
   variant = 'blast',
+  allowRelayNumberId,
+  insertRef,
 }: SmsComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { data: senders, isLoading: sendersLoading } = useSmsSenders()
@@ -127,19 +147,45 @@ export function SmsComposer({
   const selectedSender = (senders ?? []).find(
     (s) => s.number_id === value.sender_number_id,
   )
-  const senderIsUnsafe = isInboxUnsafePurpose(selectedSender?.purpose)
+  // One predicate for the whole feature: `allowRelayNumberId` is the
+  // client-side stand-in for the list's relay_id, so the composer, the
+  // blockers and the three routes all agree on which relay number is
+  // legal here.
+  const senderPermitted = isPermittedRelaySender({
+    senderNumberId: selectedSender?.number_id,
+    senderPurpose: selectedSender?.purpose,
+    listRelayId: allowRelayNumberId ?? null,
+    relayNumberId: allowRelayNumberId ?? null,
+  })
+  const senderIsUnsafe = !!selectedSender && !senderPermitted
+  const senderIsRelayNumber =
+    !!selectedSender &&
+    allowRelayNumberId != null &&
+    selectedSender.number_id === allowRelayNumberId
   const senderInboundError =
     variant === 'p2p' ? inboundUnsafeClientMessage(selectedSender) : null
+  const relaySender = useMemo(
+    () =>
+      allowRelayNumberId != null
+        ? (senders ?? []).find((s) => s.number_id === allowRelayNumberId)
+        : undefined,
+    [senders, allowRelayNumberId],
+  )
   const selectableSenders = useMemo(() => {
-    if (
-      selectedSender &&
-      senderIsUnsafe &&
-      !inboxSafeSenders.some((s) => s.number_id === selectedSender.number_id)
-    ) {
-      return [selectedSender, ...inboxSafeSenders]
-    }
-    return inboxSafeSenders
-  }, [inboxSafeSenders, selectedSender, senderIsUnsafe])
+    const extra = [relaySender, selectedSender].filter(
+      (s): s is SmsSenderOption =>
+        !!s && !inboxSafeSenders.some((x) => x.number_id === s.number_id),
+    )
+    // The relay number is never in the inbox-safe list; keep it (and any
+    // already-selected reserved number) pickable so the choice made in
+    // the relay sheet survives into the composer.
+    const seen = new Set<number>()
+    return [...extra, ...inboxSafeSenders].filter((s) => {
+      if (seen.has(s.number_id)) return false
+      seen.add(s.number_id)
+      return true
+    })
+  }, [inboxSafeSenders, selectedSender, relaySender])
 
   // Default the sender to the signed-in organiser's number once loaded.
   const defaultedRef = useRef(false)
@@ -186,6 +232,16 @@ export function SmsComposer({
       el.setSelectionRange(start + insert.length, start + insert.length)
     })
   }
+
+  // Re-published every render: insertAtCursor closes over the current
+  // body, so a stale copy would overwrite the organiser's edits.
+  useEffect(() => {
+    if (!insertRef) return
+    insertRef.current = insertAtCursor
+    return () => {
+      insertRef.current = null
+    }
+  })
 
   const insertToken = (token: string) => insertAtCursor(`{{${token}}}`)
 
@@ -407,12 +463,17 @@ export function SmsComposer({
               ))}
             </SelectContent>
           </Select>
-          {senderIsUnsafe && (
+          {senderIsRelayNumber ? (
+            <p className="flex items-start gap-1 text-xs text-amber-800">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              {RELAY_NUMBER_SENDER_WARNING}
+            </p>
+          ) : senderIsUnsafe ? (
             <p className="flex items-start gap-1 text-xs text-amber-800">
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
               {INBOX_UNSAFE_SENDER_MESSAGE}
             </p>
-          )}
+          ) : null}
           {senderInboundError && (
             <p className="flex items-start gap-1 text-xs text-destructive">
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
@@ -598,7 +659,7 @@ export function smsComposerBlockers(
     provider_type?: string | null
     phone_e164?: string
   }>,
-  opts?: { requireInbound?: boolean },
+  opts?: { requireInbound?: boolean; allowRelayNumberId?: number },
 ): string[] {
   const blockers: string[] = []
   if (!value.body.trim()) blockers.push('Message body is empty.')
@@ -606,7 +667,16 @@ export function smsComposerBlockers(
   if (value.sender_number_id == null) blockers.push('Choose a sender number.')
   else if (senders) {
     const sender = senders.find((s) => s.number_id === value.sender_number_id)
-    if (isInboxUnsafePurpose(sender?.purpose)) {
+    if (
+      !isPermittedRelaySender({
+        senderNumberId: sender?.number_id,
+        senderPurpose: sender?.purpose,
+        // As in the component above: the caller only supplies this for
+        // a launch text, so its presence stands in for the relay link.
+        listRelayId: opts?.allowRelayNumberId ?? null,
+        relayNumberId: opts?.allowRelayNumberId ?? null,
+      })
+    ) {
       blockers.push(INBOX_UNSAFE_SENDER_MESSAGE)
     }
     if (opts?.requireInbound) {

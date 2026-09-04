@@ -2,7 +2,9 @@
  * Relay detail + settings (Phase 6).
  *
  * GET   — relay + number + targets + message log (latest 200, both
- *         directions) + pending-moderation queue.
+ *         directions) + pending-moderation queue + the relay's launch
+ *         texts (blast sms_lists carrying its relay_id), so the detail
+ *         sheet's Launch text card costs no extra round trip.
  * PATCH — name / prefix_template / suffix_template /
  *         moderation_required / quiet_hours_respected /
  *         bridge_replies / confirmation_template / timezone.
@@ -49,25 +51,34 @@ export async function GET(
       return NextResponse.json({ error: 'Relay not found' }, { status: 404 })
     }
 
-    const [{ data: number }, { data: targets }, { data: messages }] =
-      await Promise.all([
-        supabase
-          .from('sms_numbers')
-          .select('number_id, phone_e164, label, purpose, status')
-          .eq('number_id', relay.number_id)
-          .maybeSingle(),
-        supabase
-          .from('sms_relay_targets')
-          .select('*')
-          .eq('relay_id', relayId)
-          .order('target_id', { ascending: true }),
-        supabase
-          .from('sms_relay_messages')
-          .select('*')
-          .eq('relay_id', relayId)
-          .order('created_at', { ascending: false })
-          .limit(MESSAGE_LOG_LIMIT),
-      ])
+    const [
+      { data: number },
+      { data: targets },
+      { data: messages },
+      { data: launchLists },
+    ] = await Promise.all([
+      supabase
+        .from('sms_numbers')
+        .select('number_id, phone_e164, label, purpose, status')
+        .eq('number_id', relay.number_id)
+        .maybeSingle(),
+      supabase
+        .from('sms_relay_targets')
+        .select('*')
+        .eq('relay_id', relayId)
+        .order('target_id', { ascending: true }),
+      supabase
+        .from('sms_relay_messages')
+        .select('*')
+        .eq('relay_id', relayId)
+        .order('created_at', { ascending: false })
+        .limit(MESSAGE_LOG_LIMIT),
+      supabase
+        .from('sms_lists')
+        .select('list_id, campaign_id, name, status, total_items, sent_items, mode')
+        .eq('relay_id', relayId)
+        .order('created_at', { ascending: false }),
+    ])
 
     // Worker names for the log (best effort).
     const workerIds = [
@@ -104,6 +115,11 @@ export async function GET(
       })),
       pending: (messages ?? []).filter(
         (m) => m.moderation_status === 'pending',
+      ),
+      // Blast mode only — a p2p board can never be a launch text, and
+      // the card's actions (queue) do not apply to one.
+      launch_lists: (launchLists ?? []).filter(
+        (l) => ((l.mode as string | null) ?? 'blast') !== 'p2p',
       ),
     })
   } catch (error) {

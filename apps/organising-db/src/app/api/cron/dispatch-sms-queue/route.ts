@@ -27,7 +27,10 @@
  *   5. Write per-item results: success → sent (+provider_message_id),
  *      blocked (provider-side unsubscribe) → blocked + worker opt-out
  *      mirror, error → failed.
- *   6. Recount list counters (count queries — never row fetches, which
+ *   6. Mirror successful sends into inbox conversations — except a
+ *      launch text sent from its own relay's number, whose replies are
+ *      member messages to the relay target (relay-launch.ts).
+ *   7. Recount list counters (count queries — never row fetches, which
  *      cap at 1000); complete the list when drained.
  *
  * Authentication: Vercel cron `Authorization: Bearer <CRON_SECRET>`
@@ -40,6 +43,7 @@ import type { OutboundSms, SendResult } from '@/lib/sms/provider'
 import { isWithinSendWindow, computeSendBefore, DEFAULT_SMS_TIMEZONE } from '@/lib/sms/blackout'
 import { countSegments } from '@/lib/sms/segments'
 import { validateSmsBody } from '@/lib/sms/compliance'
+import { shouldMirrorBlastConversations } from '@/lib/sms/relay-launch'
 import {
   resolveScriptVariables,
   TEMPLATE_TOKEN_RE,
@@ -66,6 +70,8 @@ interface ListRow {
   status: string
   /** 'blast' | 'p2p' (20260812140000); absent pre-migration. */
   mode?: string
+  /** Launch text for that relay (20260904120000); absent pre-migration. */
+  relay_id?: number | null
   sender_number_id: number | null
   timezone: string | null
   blackout_override: boolean
@@ -469,6 +475,19 @@ export async function GET(request: Request) {
       // without the '+').
       const senderDigits = (sender.phone_e164 as string).replace(/^\+/, '')
 
+      // Launch texts: the relay's own number, read once per list
+      // alongside the sender, decides whether the conversation mirror
+      // below applies at all.
+      let relayNumberId: number | null = null
+      if (list.relay_id != null) {
+        const { data: relay } = await supabase
+          .from('sms_relays')
+          .select('number_id')
+          .eq('relay_id', list.relay_id)
+          .maybeSingle()
+        relayNumberId = (relay?.number_id as number | null) ?? null
+      }
+
       if (list.status === 'queued') {
         await supabase
           .from('sms_lists')
@@ -713,7 +732,19 @@ export async function GET(request: Request) {
               segments: logRows[i].segments ?? null,
             })
           })
-          if (list.sender_number_id) {
+          // A launch text sent FROM the relay number is not inbox
+          // traffic: every reply to it is a member message to the relay
+          // target, handled by the webhook's relay leg, so a mirrored
+          // thread would be an inbox conversation nobody answers.
+          // sms_send_log is written either way — the send happened.
+          if (
+            list.sender_number_id &&
+            shouldMirrorBlastConversations({
+              listRelayId: list.relay_id,
+              senderNumberId: list.sender_number_id,
+              relayNumberId,
+            })
+          ) {
             await mirrorBlastConversations(supabase, {
               ourNumberId: list.sender_number_id,
               campaignId: list.campaign_id,

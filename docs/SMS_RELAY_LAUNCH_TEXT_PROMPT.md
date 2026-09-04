@@ -149,8 +149,8 @@ relay-purpose number stays blocked.
 
 **Seeding.** A pure module `lib/sms/relay-launch.ts` holds the default
 template, a `{{relay_number}}` token renderer, the body-mentions-number check
-and the sender decision, all unit-tested. The default template is the copy in
-§2.4 below with `{{relay_number}}` where the organiser wrote `[NUMBER]`.
+and the sender decision, all unit-tested. The default template is the
+campaign-neutral copy in §2.4 below.
 
 **Dispatch.** When `list.relay_id` is set and the sender is that relay's
 number, skip `mirrorBlastConversations`. `sms_send_log` still records every
@@ -324,8 +324,44 @@ under the select instead of the "reserved for surveys or relays" line) is enough
 
 ### 2.4 Default launch template
 
-`DEFAULT_RELAY_LAUNCH_TEMPLATE` is exactly this text, with `{{relay_number}}`
-and `{{relay_sms_link}}` in place of the organiser's `[NUMBER]`:
+`DEFAULT_RELAY_LAUNCH_TEMPLATE` must be **campaign-neutral**: no employer,
+person, site or issue named. It only has to show the organiser the shape of a
+good launch text, so that they replace the specifics rather than the structure.
+Ship exactly this:
+
+```
+Hey {{first_name}}. [One or two lines on what has happened and why it matters.]
+Text {{relay_number}} — it goes straight to [who] with your name and site on the end. Keep it polite, keep it short, make it your own. A few starters:
+
+* "[Starter 1]"
+* "[Starter 2]"
+* "[Starter 3]"
+
+Text {{relay_number}} now.
+Offshore Alliance
+```
+
+Rules for the seed:
+
+- `{{first_name}}` is the blast composer's own merge field and resolves at
+  dispatch. `{{relay_number}}` and `{{relay_sms_link}}` resolve at seed time
+  (see below). Nothing else in the template is a token.
+- Square-bracket text is a **placeholder the organiser must replace**. Because
+  the composer already treats `[…]` as literal text, add a soft check in the
+  blast sheet when `initial.relay` is present: if the body still contains a
+  `[…]` placeholder from the seed, show an amber warning "This still has
+  placeholder text in square brackets" (warn, not block, since members'
+  starters may legitimately use brackets, as in the example below).
+- Keep "Offshore Alliance" on the last line so `validateSmsBody` reports the
+  organisation name present.
+- The composer's existing template picker (`comms_template_library`, platform
+  `sms`) must remain available in the launch sheet, and a picked template also
+  goes through `renderRelayLaunchBody` so `{{relay_number}}` and
+  `{{relay_sms_link}}` resolve. Recommend in the HOWTO that campaign-specific
+  launch texts be saved there.
+
+For the test file only, use this filled-in example as a fixture to show the
+intended end state (it is real campaign copy and must not ship as a default):
 
 ```
 Hey {{first_name}}. Downer copped a flogging on their dud EA. Mark Wakelin is too shy to tell us exactly how bad.
@@ -340,14 +376,6 @@ Text {{relay_number}} — it goes straight to Mark with your name and site on th
 Text {{relay_number}} now. Let's see if Mark can count.
 Offshore Alliance
 ```
-
-This is an **example**, not campaign-neutral copy. Ship it as the default
-seed so the organiser can see the shape, but make it trivially replaceable:
-the composer's existing template picker (`comms_template_library`,
-platform `sms`) must remain available in the launch sheet, and a picked
-template also goes through `renderRelayLaunchBody` so `{{relay_number}}`
-resolves. Note that the square-bracket `[name]` / `[site]` are literal
-starters the member fills in themselves; leave them alone.
 
 Do **not** add `relay_number` to `ALL_TEMPLATE_VARIABLES`: it is resolved at
 seed time, because a relay's number is fixed for its life (`number_id NOT NULL`,

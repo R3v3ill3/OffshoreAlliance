@@ -15585,6 +15585,7 @@ export type Database = {
           list_id: number
           mode: string
           name: string
+          relay_id: number | null
           scheduled_for: string | null
           selected_assessment_ids: number[]
           sender_number_id: number | null
@@ -15609,6 +15610,7 @@ export type Database = {
           list_id?: number
           mode?: string
           name: string
+          relay_id?: number | null
           scheduled_for?: string | null
           selected_assessment_ids?: number[]
           sender_number_id?: number | null
@@ -15633,6 +15635,7 @@ export type Database = {
           list_id?: number
           mode?: string
           name?: string
+          relay_id?: number | null
           scheduled_for?: string | null
           selected_assessment_ids?: number[]
           sender_number_id?: number | null
@@ -15804,6 +15807,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "campaign_comms_drafts"
             referencedColumns: ["draft_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_relay_id_fkey"
+            columns: ["relay_id"]
+            isOneToOne: false
+            referencedRelation: "sms_relays"
+            referencedColumns: ["relay_id"]
           },
           {
             foreignKeyName: "sms_lists_sender_number_id_fkey"

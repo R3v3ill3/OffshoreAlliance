@@ -146,6 +146,7 @@ export async function markEmailBounced(
     .eq('worker_id', workerId)
   if (error) {
     console.error('[send-log] markEmailBounced workers update error:', error.message)
+    throw error
   }
   await tagWorkerBounced(workerId)
   // reason param is accepted for future logging; bounce_reason is set on

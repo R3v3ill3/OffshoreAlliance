@@ -11,6 +11,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Menu, LogOut, RefreshCcw, Loader2 } from "lucide-react";
 import { navItems, adminItems, allNavHrefs } from "./sidebar";
 import { isNavItemActive } from "@/lib/nav/active-nav";
+import { useEmailInboxUnreadCount } from "@/lib/hooks/useEmailInbox";
 
 export function MobileNav() {
   const [open, setOpen] = useState(false);
@@ -25,6 +26,7 @@ export function MobileNav() {
     connectionRecoveryInProgress,
     isAdmin,
   } = useAuth();
+  const { data: emailUnreadCount = 0 } = useEmailInboxUnreadCount(!!user);
 
   const handleHardRefresh = async () => {
     setRecoveryFeedback("Checking database connection...");
@@ -90,6 +92,14 @@ export function MobileNav() {
                 >
                   <item.icon className="h-4 w-4 shrink-0" />
                   <span>{item.label}</span>
+                  {item.href === "/email/inbox" && emailUnreadCount > 0 && (
+                    <span
+                      className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground"
+                      aria-label={`${emailUnreadCount} unread email conversations`}
+                    >
+                      {emailUnreadCount > 99 ? "99+" : emailUnreadCount}
+                    </span>
+                  )}
                 </Link>
               );
             })}

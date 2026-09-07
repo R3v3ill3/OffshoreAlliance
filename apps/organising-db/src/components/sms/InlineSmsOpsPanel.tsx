@@ -86,6 +86,7 @@ import {
   type SmsComposerValue,
 } from '@/components/sms/SmsComposer'
 import { ShowArchivedToggle, SmsArchivedBanner, SmsArchiveDeleteControls } from '@/components/sms/SmsArchiveDeleteControls'
+import { SmsOrgNameWarningDialog } from '@/components/sms/SmsOrgNameWarningDialog'
 import { useAuth } from '@/lib/supabase/auth-context'
 import { validateSmsBody } from '@/lib/sms/compliance'
 import type {

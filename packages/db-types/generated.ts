@@ -8306,9 +8306,6 @@ export type Database = {
           source: string
           status: string
           updated_at: string
-          source_sms_list_id: number | null
-          source_sms_survey_id: number | null
-          source_sms_gone_at: string | null
         }
         Insert: {
           campaign_id: number
@@ -8329,9 +8326,6 @@ export type Database = {
           source?: string
           status?: string
           updated_at?: string
-          source_sms_list_id?: number | null
-          source_sms_survey_id?: number | null
-          source_sms_gone_at?: string | null
         }
         Update: {
           campaign_id?: number
@@ -8352,9 +8346,6 @@ export type Database = {
           source?: string
           status?: string
           updated_at?: string
-          source_sms_list_id?: number | null
-          source_sms_survey_id?: number | null
-          source_sms_gone_at?: string | null
         }
         Relationships: [
           {
@@ -8468,20 +8459,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vw_sms_chat_session_report"
             referencedColumns: ["list_id"]
-          },
-          {
-            foreignKeyName: "campaign_worker_lists_source_sms_list_id_fkey"
-            columns: ["source_sms_list_id"]
-            isOneToOne: false
-            referencedRelation: "sms_lists"
-            referencedColumns: ["list_id"]
-          },
-          {
-            foreignKeyName: "campaign_worker_lists_source_sms_survey_id_fkey"
-            columns: ["source_sms_survey_id"]
-            isOneToOne: false
-            referencedRelation: "sms_surveys"
-            referencedColumns: ["survey_id"]
           },
           {
             foreignKeyName: "campaign_worker_lists_leader_organiser_id_fkey"
@@ -8893,7 +8870,6 @@ export type Database = {
           total_worker_estimate: number | null
           updated_at: string
           wizard_bargaining_triage: string | null
-          archived_at: string | null
         }
         Insert: {
           bargaining_commenced_at?: string | null
@@ -8920,7 +8896,6 @@ export type Database = {
           total_worker_estimate?: number | null
           updated_at?: string
           wizard_bargaining_triage?: string | null
-          archived_at?: string | null
         }
         Update: {
           bargaining_commenced_at?: string | null
@@ -8947,7 +8922,6 @@ export type Database = {
           total_worker_estimate?: number | null
           updated_at?: string
           wizard_bargaining_triage?: string | null
-          archived_at?: string | null
         }
         Relationships: [
           {
@@ -9372,6 +9346,117 @@ export type Database = {
           },
         ]
       }
+      email_canned_replies: {
+        Row: {
+          body: string
+          campaign_id: number | null
+          created_at: string
+          created_by: string | null
+          is_active: boolean
+          reply_id: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          campaign_id?: number | null
+          created_at?: string
+          created_by?: string | null
+          is_active?: boolean
+          reply_id?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          campaign_id?: number | null
+          created_at?: string
+          created_by?: string | null
+          is_active?: boolean
+          reply_id?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "email_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "email_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "email_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_bargaining_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "email_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "email_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "email_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "email_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "email_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "email_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "email_canned_replies_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
+          },
+        ]
+      }
       email_click_tokens: {
         Row: {
           created_at: string
@@ -9404,18 +9489,95 @@ export type Database = {
           },
         ]
       }
+      email_conversation_events: {
+        Row: {
+          actor_user_id: string | null
+          conversation_id: number
+          created_at: string
+          detail: Json
+          event_id: number
+          event_type: string
+        }
+        Insert: {
+          actor_user_id?: string | null
+          conversation_id: number
+          created_at?: string
+          detail?: Json
+          event_id?: number
+          event_type: string
+        }
+        Update: {
+          actor_user_id?: string | null
+          conversation_id?: number
+          created_at?: string
+          detail?: Json
+          event_id?: number
+          event_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_conversation_events_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "email_conversations"
+            referencedColumns: ["conversation_id"]
+          },
+        ]
+      }
+      email_conversation_notes: {
+        Row: {
+          author_user_id: string | null
+          body: string
+          conversation_id: number
+          created_at: string
+          note_id: number
+        }
+        Insert: {
+          author_user_id?: string | null
+          body: string
+          conversation_id: number
+          created_at?: string
+          note_id?: number
+        }
+        Update: {
+          author_user_id?: string | null
+          body?: string
+          conversation_id?: number
+          created_at?: string
+          note_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_conversation_notes_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "email_conversations"
+            referencedColumns: ["conversation_id"]
+          },
+        ]
+      }
       email_conversations: {
         Row: {
           assignee_user_id: string | null
           campaign_id: number | null
+          claim_user_id: string | null
+          claimed_until: string | null
+          closed_at: string | null
+          closed_by_user_id: string | null
           conversation_id: number
           created_at: string
           email_address: string
+          graph_conversation_id: string | null
           last_inbound_at: string | null
           last_message_at: string | null
+          last_message_preview: string | null
           last_outbound_at: string | null
+          last_rfc_message_id: string | null
+          original_subject: string | null
+          rfc_references: string | null
           state: string
           subject: string | null
+          subject_normalized: string | null
           unread_count: number
           updated_at: string
           worker_id: number | null
@@ -9423,14 +9585,24 @@ export type Database = {
         Insert: {
           assignee_user_id?: string | null
           campaign_id?: number | null
+          claim_user_id?: string | null
+          claimed_until?: string | null
+          closed_at?: string | null
+          closed_by_user_id?: string | null
           conversation_id?: number
           created_at?: string
           email_address: string
+          graph_conversation_id?: string | null
           last_inbound_at?: string | null
           last_message_at?: string | null
+          last_message_preview?: string | null
           last_outbound_at?: string | null
+          last_rfc_message_id?: string | null
+          original_subject?: string | null
+          rfc_references?: string | null
           state?: string
           subject?: string | null
+          subject_normalized?: string | null
           unread_count?: number
           updated_at?: string
           worker_id?: number | null
@@ -9438,14 +9610,24 @@ export type Database = {
         Update: {
           assignee_user_id?: string | null
           campaign_id?: number | null
+          claim_user_id?: string | null
+          claimed_until?: string | null
+          closed_at?: string | null
+          closed_by_user_id?: string | null
           conversation_id?: number
           created_at?: string
           email_address?: string
+          graph_conversation_id?: string | null
           last_inbound_at?: string | null
           last_message_at?: string | null
+          last_message_preview?: string | null
           last_outbound_at?: string | null
+          last_rfc_message_id?: string | null
+          original_subject?: string | null
+          rfc_references?: string | null
           state?: string
           subject?: string | null
+          subject_normalized?: string | null
           unread_count?: number
           updated_at?: string
           worker_id?: number | null
@@ -9707,33 +9889,52 @@ export type Database = {
       }
       email_delivery_events: {
         Row: {
+          email_message_id: number | null
           event_id: number
           event_type: string
           occurred_at: string
           payload: Json | null
+          processed_at: string | null
+          processing_error: string | null
+          processing_started_at: string | null
           provider_event_id: string
           provider_message_id: string | null
           send_id: number | null
         }
         Insert: {
+          email_message_id?: number | null
           event_id?: number
           event_type: string
           occurred_at?: string
           payload?: Json | null
+          processed_at?: string | null
+          processing_error?: string | null
+          processing_started_at?: string | null
           provider_event_id: string
           provider_message_id?: string | null
           send_id?: number | null
         }
         Update: {
+          email_message_id?: number | null
           event_id?: number
           event_type?: string
           occurred_at?: string
           payload?: Json | null
+          processed_at?: string | null
+          processing_error?: string | null
+          processing_started_at?: string | null
           provider_event_id?: string
           provider_message_id?: string | null
           send_id?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "email_delivery_events_email_message_id_fkey"
+            columns: ["email_message_id"]
+            isOneToOne: false
+            referencedRelation: "email_messages"
+            referencedColumns: ["message_id"]
+          },
           {
             foreignKeyName: "email_delivery_events_send_id_fkey"
             columns: ["send_id"]
@@ -9750,6 +9951,7 @@ export type Database = {
           occurred_at: string
           payload: Json | null
           send_id: number
+          source_message_id: string | null
         }
         Insert: {
           event_id?: number
@@ -9757,6 +9959,7 @@ export type Database = {
           occurred_at?: string
           payload?: Json | null
           send_id: number
+          source_message_id?: string | null
         }
         Update: {
           event_id?: number
@@ -9764,6 +9967,7 @@ export type Database = {
           occurred_at?: string
           payload?: Json | null
           send_id?: number
+          source_message_id?: string | null
         }
         Relationships: [
           {
@@ -10094,6 +10298,59 @@ export type Database = {
           },
         ]
       }
+      email_message_attachments: {
+        Row: {
+          attachment_id: number
+          byte_size: number | null
+          content_id: string | null
+          content_type: string | null
+          conversation_id: number
+          created_at: string
+          created_by_user_id: string | null
+          filename: string
+          is_inline: boolean
+          message_id: number
+          storage_bucket: string
+          storage_path: string
+        }
+        Insert: {
+          attachment_id?: number
+          byte_size?: number | null
+          content_id?: string | null
+          content_type?: string | null
+          conversation_id: number
+          created_at?: string
+          created_by_user_id?: string | null
+          filename: string
+          is_inline?: boolean
+          message_id: number
+          storage_bucket?: string
+          storage_path: string
+        }
+        Update: {
+          attachment_id?: number
+          byte_size?: number | null
+          content_id?: string | null
+          content_type?: string | null
+          conversation_id?: number
+          created_at?: string
+          created_by_user_id?: string | null
+          filename?: string
+          is_inline?: boolean
+          message_id?: number
+          storage_bucket?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_email_attachment_message_conversation"
+            columns: ["message_id", "conversation_id"]
+            isOneToOne: false
+            referencedRelation: "email_messages"
+            referencedColumns: ["message_id", "conversation_id"]
+          },
+        ]
+      }
       email_messages: {
         Row: {
           attachments: Json | null
@@ -10101,12 +10358,19 @@ export type Database = {
           body_text: string | null
           conversation_id: number
           created_at: string
+          delivered_at: string | null
           direction: string
           error: string | null
           from_email: string | null
+          graph_message_id: string | null
           in_reply_to: string | null
           message_id: number
           provider_message_id: string | null
+          reply_workflow_error: string | null
+          reply_workflow_processed_at: string | null
+          reply_workflow_processing_started_at: string | null
+          rfc_message_id: string | null
+          rfc_references: string | null
           send_id: number | null
           sender_user_id: string | null
           status: string
@@ -10119,12 +10383,19 @@ export type Database = {
           body_text?: string | null
           conversation_id: number
           created_at?: string
+          delivered_at?: string | null
           direction: string
           error?: string | null
           from_email?: string | null
+          graph_message_id?: string | null
           in_reply_to?: string | null
           message_id?: number
           provider_message_id?: string | null
+          reply_workflow_error?: string | null
+          reply_workflow_processed_at?: string | null
+          reply_workflow_processing_started_at?: string | null
+          rfc_message_id?: string | null
+          rfc_references?: string | null
           send_id?: number | null
           sender_user_id?: string | null
           status?: string
@@ -10137,12 +10408,19 @@ export type Database = {
           body_text?: string | null
           conversation_id?: number
           created_at?: string
+          delivered_at?: string | null
           direction?: string
           error?: string | null
           from_email?: string | null
+          graph_message_id?: string | null
           in_reply_to?: string | null
           message_id?: number
           provider_message_id?: string | null
+          reply_workflow_error?: string | null
+          reply_workflow_processed_at?: string | null
+          reply_workflow_processing_started_at?: string | null
+          rfc_message_id?: string | null
+          rfc_references?: string | null
           send_id?: number | null
           sender_user_id?: string | null
           status?: string
@@ -15621,7 +15899,6 @@ export type Database = {
           timezone: string
           total_items: number
           updated_at: string
-          archived_at: string | null
         }
         Insert: {
           assessment_campaign_id?: number | null
@@ -15647,7 +15924,6 @@ export type Database = {
           timezone?: string
           total_items?: number
           updated_at?: string
-          archived_at?: string | null
         }
         Update: {
           assessment_campaign_id?: number | null
@@ -15673,7 +15949,6 @@ export type Database = {
           timezone?: string
           total_items?: number
           updated_at?: string
-          archived_at?: string | null
         }
         Relationships: [
           {
@@ -16156,7 +16431,6 @@ export type Database = {
           suffix_template: string | null
           timezone: string
           updated_at: string
-          archived_at: string | null
         }
         Insert: {
           bridge_replies?: boolean
@@ -16174,7 +16448,6 @@ export type Database = {
           suffix_template?: string | null
           timezone?: string
           updated_at?: string
-          archived_at?: string | null
         }
         Update: {
           bridge_replies?: boolean
@@ -16192,7 +16465,6 @@ export type Database = {
           suffix_template?: string | null
           timezone?: string
           updated_at?: string
-          archived_at?: string | null
         }
         Relationships: [
           {
@@ -19250,6 +19522,7 @@ export type Database = {
           campaign_id: number | null
           created_at: string
           created_by: string | null
+          email_message_id: number | null
           flag_for_follow_up: boolean
           note_id: number
           note_text: string
@@ -19259,6 +19532,7 @@ export type Database = {
           campaign_id?: number | null
           created_at?: string
           created_by?: string | null
+          email_message_id?: number | null
           flag_for_follow_up?: boolean
           note_id?: number
           note_text: string
@@ -19268,6 +19542,7 @@ export type Database = {
           campaign_id?: number | null
           created_at?: string
           created_by?: string | null
+          email_message_id?: number | null
           flag_for_follow_up?: boolean
           note_id?: number
           note_text?: string
@@ -19350,6 +19625,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "workload_dashboard_summary"
             referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "worker_notes_email_message_id_fkey"
+            columns: ["email_message_id"]
+            isOneToOne: false
+            referencedRelation: "email_messages"
+            referencedColumns: ["message_id"]
           },
           {
             foreignKeyName: "worker_notes_worker_id_fkey"
@@ -24775,7 +25057,6 @@ export type Database = {
           skipped_count: number | null
           timezone: string | null
           total_items: number | null
-          archived_at: string | null
         }
         Relationships: [
           {
@@ -26038,6 +26319,10 @@ export type Database = {
       cleanup_old_rate_limit_usage: { Args: never; Returns: number }
       clear_all_ai_cache: { Args: never; Returns: number }
       clear_expired_ai_cache: { Args: never; Returns: number }
+      complete_email_reply_workflow: {
+        Args: { p_message_id: number; p_occurred_at?: string }
+        Returns: boolean
+      }
       confirm_upcoming_project_match: {
         Args: { payload: Json }
         Returns: {
@@ -26257,6 +26542,7 @@ export type Database = {
         }
         Returns: number
       }
+      normalise_email_subject: { Args: { p_subject: string }; Returns: string }
       normalise_phone_au: { Args: { p: string }; Returns: string }
       record_assessment_event: {
         Args: {

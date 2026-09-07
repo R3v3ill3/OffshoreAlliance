@@ -65,6 +65,7 @@ import {
   useRenameSmsEpisode,
   useSmsEpisodes,
 } from '@/lib/hooks/useSmsEpisodes'
+import { ShowArchivedToggle } from '@/components/sms/SmsArchiveDeleteControls'
 
 const EMPTY_COMPOSER: SmsComposerValue = {
   body: '',
@@ -88,11 +89,14 @@ export function SmsP2pPanel({
     campaignId != null && String(campaignId) !== '' ? String(campaignId) : ''
   const searchParams = useSearchParams()
   const router = useRouter()
+  const [showArchived, setShowArchived] = useState(false)
   const { data: lists, isLoading: listsLoading } = useSmsLists(
     standaloneMode ? null : id,
+    { includeArchived: showArchived },
   )
   const { data: episodes, isLoading: episodesLoading } = useSmsEpisodes(
     standaloneMode,
+    { includeArchived: showArchived },
   )
   const createEpisode = useCreateSmsEpisode()
   const deleteEpisode = useDeleteSmsEpisode()
@@ -179,10 +183,13 @@ export function SmsP2pPanel({
               : 'Load a working list, then message people a handful at a time. Replies land in the Inbox as 1:1 threads.'}
           </p>
         </div>
-        <Button onClick={() => void startNewChat()}>
-          <MessagesSquare className="mr-2 h-4 w-4" />
-          New chat board
-        </Button>
+        <div className="flex flex-col items-end gap-2">
+          <Button onClick={() => void startNewChat()}>
+            <MessagesSquare className="mr-2 h-4 w-4" />
+            New chat board
+          </Button>
+          <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
+        </div>
       </div>
 
       {isLoading ? (
@@ -221,16 +228,22 @@ export function SmsP2pPanel({
                       <p className="truncate text-sm font-medium">
                         {row.list_name}
                       </p>
-                      <Badge
-                        variant="secondary"
-                        className={
-                          row.list_status === 'draft'
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-slate-100 text-slate-500'
-                        }
-                      >
-                        {row.list_status === 'draft' ? 'active' : 'closed'}
-                      </Badge>
+                      {row.archived_at ? (
+                        <Badge variant="secondary" className="bg-slate-200 text-slate-600">
+                          archived
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="secondary"
+                          className={
+                            row.list_status === 'draft'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-slate-100 text-slate-500'
+                          }
+                        >
+                          {row.list_status === 'draft' ? 'active' : 'closed'}
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {Number(row.sent_count) + Number(row.delivered_count)}/

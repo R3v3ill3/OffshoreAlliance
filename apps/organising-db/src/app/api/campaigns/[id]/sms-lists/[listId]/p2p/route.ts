@@ -51,6 +51,7 @@ interface ListRow {
   created_at: string
   selected_assessment_ids: number[] | null
   assessment_campaign_id: number | null
+  archived_at: string | null
 }
 
 /**
@@ -73,7 +74,7 @@ async function loadP2pList(
   const { data: list, error } = await supabase
     .from('sms_lists')
     .select(
-      'list_id, campaign_id, name, status, mode, draft_id, sender_number_id, timezone, created_at, selected_assessment_ids, assessment_campaign_id',
+      'list_id, campaign_id, name, status, mode, draft_id, sender_number_id, timezone, created_at, selected_assessment_ids, assessment_campaign_id, archived_at',
     )
     .eq('list_id', lid)
     .maybeSingle()
@@ -316,6 +317,7 @@ export async function GET(
         selected_assessment_ids: list.selected_assessment_ids ?? [],
         assessment_campaign_id: list.assessment_campaign_id,
         campaign_is_sms_episode: campaignIsEpisode,
+        archived_at: list.archived_at,
         pinned_assessments: pinnedAssessments,
       },
       draft,

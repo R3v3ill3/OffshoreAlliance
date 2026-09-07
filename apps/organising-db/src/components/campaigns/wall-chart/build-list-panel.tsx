@@ -454,6 +454,16 @@ export function BuildListPanel({
           </div>
         )}
 
+        {list?.source_sms_gone_at ? (
+          <div className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-700">
+            SMS source deleted — this cohort is kept; the parent blast or survey is gone.
+          </div>
+        ) : list?.source_sms_archived_at ? (
+          <div className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-700">
+            SMS source archived
+          </div>
+        ) : null}
+
         <DropZone
           canWrite={canWrite}
           hasItems={items.length > 0}
@@ -766,6 +776,15 @@ function ListPicker({
                     Fired
                   </span>
                 )}
+                {l.source_sms_gone_at ? (
+                  <span className="rounded bg-slate-200 px-1 text-[9px] font-semibold uppercase text-slate-600">
+                    SMS gone
+                  </span>
+                ) : l.source_sms_archived_at ? (
+                  <span className="rounded bg-slate-200 px-1 text-[9px] font-semibold uppercase text-slate-600">
+                    SMS archived
+                  </span>
+                ) : null}
               </span>
               <span className="text-[10px] text-muted-foreground">
                 {l.default_purpose ?? "no purpose"} ·{" "}

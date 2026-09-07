@@ -25,6 +25,7 @@
  * The §E5 realtime work would replace the poll with no UI change.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Info, Loader2, Pencil, RefreshCw, UserPlus, XCircle } from 'lucide-react'
@@ -67,6 +68,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { p2pBoardProgress } from '@/lib/sms/p2p'
+import { SmsArchivedBanner, SmsArchiveDeleteControls } from '@/components/sms/SmsArchiveDeleteControls'
 
 /** Faster than the board sheet's 10s — see the header comment. */
 const WORKSPACE_POLL_MS = 5_000
@@ -85,6 +87,7 @@ export function SmsChatWorkspace({
   canWrite = true,
   standaloneMode = false,
 }: SmsChatWorkspaceProps) {
+  const router = useRouter()
   const queryClient = useQueryClient()
   const { data: board, isLoading, isFetching, refetch } = useSmsP2pBoard(
     campaignId,
@@ -224,6 +227,7 @@ export function SmsChatWorkspace({
   }
 
   const boardClosed = board.list.status !== 'draft'
+  const boardArchived = !!board.list.archived_at
   const memberPane = detail ? (
     <SmsMemberPane
       detail={detail}
@@ -336,7 +340,29 @@ export function SmsChatWorkspace({
             Close board
           </Button>
         )}
+        {canWrite && (
+          <SmsArchiveDeleteControls
+            kind="chat"
+            id={listId}
+            campaignId={Number(campaignId)}
+            canWrite={canWrite}
+            compact
+            onGone={() =>
+              router.push(
+                standaloneMode
+                  ? '/sms'
+                  : `/campaigns/${campaignId}?tab=outreach&sub=sms&sms_view=chats`,
+              )
+            }
+          />
+        )}
       </div>
+
+      {boardArchived && (
+        <div className="border-b px-3 py-2">
+          <SmsArchivedBanner archivedAt={board.list.archived_at} />
+        </div>
+      )}
 
       {boardClosed && (
         <p className="border-b bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">

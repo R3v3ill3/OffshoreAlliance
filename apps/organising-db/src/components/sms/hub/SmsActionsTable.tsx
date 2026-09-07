@@ -12,14 +12,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { formatDistanceToNowStrict } from 'date-fns'
-import {
-  ArrowRightLeft,
-  Copy,
-  ExternalLink,
-  Loader2,
-  MoreHorizontal,
-  Search,
-} from 'lucide-react'
+import { Archive, ArchiveRestore, ArrowRightLeft, Copy, ExternalLink, Loader2, MoreHorizontal, Search, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -53,6 +46,7 @@ import {
 } from '@/lib/sms/hub-actions'
 import type { SmsActivityRow } from '@/lib/hooks/useSmsHub'
 import { SMS_ACTION_KIND_META } from './SmsActionKindPicker'
+import { ShowArchivedToggle, SmsActionOpsLauncher } from '@/components/sms/SmsArchiveDeleteControls'
 
 export const STATUS_TONE: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-700',
@@ -65,6 +59,7 @@ export const STATUS_TONE: Record<string, string> = {
   closed: 'bg-slate-100 text-slate-500',
   ended: 'bg-slate-100 text-slate-500',
   cancelled: 'bg-rose-100 text-rose-800',
+  archived: 'bg-slate-200 text-slate-600',
 }
 
 export function rowToRef(row: SmsActivityRow): SmsActionRef {
@@ -99,6 +94,9 @@ export function SmsActionsTable({
   onOpenRelay,
   scopeControl,
   emptyHint,
+  showArchived = false,
+  onShowArchivedChange,
+  archivedTotal = 0,
 }: {
   rows: SmsActivityRow[]
   isLoading?: boolean
@@ -110,27 +108,42 @@ export function SmsActionsTable({
   /** Scope selector rendered in the filter row (owned by the parent). */
   scopeControl?: React.ReactNode
   emptyHint?: React.ReactNode
+  showArchived?: boolean
+  onShowArchivedChange?: (next: boolean) => void
+  archivedTotal?: number
 }) {
   const [search, setSearch] = useState('')
   const [kind, setKind] = useState<SmsActionKind | 'all'>('all')
   const [group, setGroup] = useState<SmsActionStatusGroup | 'all'>('all')
+  const [ops, setOps] = useState<{
+    row: SmsActivityRow
+    intent: 'archive' | 'unarchive' | 'delete'
+  } | null>(null)
 
   const counts = useMemo(() => {
     const byKind: Record<string, number> = { all: rows.length }
     const byGroup: Record<string, number> = { all: rows.length }
     for (const r of rows) {
       byKind[r.kind] = (byKind[r.kind] ?? 0) + 1
-      const g = smsActionStatusGroup(r.kind, r.status)
+      const g = smsActionStatusGroup(r.kind, r.status, r.archived_at)
       byGroup[g] = (byGroup[g] ?? 0) + 1
     }
+    if (!showArchived) {
+      byGroup.archived = archivedTotal
+      byGroup.all = rows.length
+    }
     return { byKind, byGroup }
-  }, [rows])
+  }, [rows, showArchived, archivedTotal])
 
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase()
     return rows
       .filter((r) => kind === 'all' || r.kind === kind)
-      .filter((r) => group === 'all' || smsActionStatusGroup(r.kind, r.status) === group)
+      .filter(
+        (r) =>
+          group === 'all' ||
+          smsActionStatusGroup(r.kind, r.status, r.archived_at) === group,
+      )
       .filter(
         (r) =>
           !term ||
@@ -156,6 +169,16 @@ export function SmsActionsTable({
           />
         </div>
         {scopeControl}
+        {onShowArchivedChange && (
+          <ShowArchivedToggle
+            checked={showArchived}
+            onCheckedChange={(next) => {
+              onShowArchivedChange(next)
+              if (!next && group === 'archived') setGroup('all')
+            }}
+            archivedCount={archivedTotal}
+          />
+        )}
         {isLoading && (
           <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
         )}
@@ -178,14 +201,20 @@ export function SmsActionsTable({
         <ChipRow
           label="Status"
           value={group}
-          onChange={(v) => setGroup(v as SmsActionStatusGroup | 'all')}
+          onChange={(v) => {
+            const next = v as SmsActionStatusGroup | 'all'
+            if (next === 'archived' && !showArchived) onShowArchivedChange?.(true)
+            setGroup(next)
+          }}
           options={[
             { value: 'all', label: 'Any', count: counts.byGroup.all ?? 0 },
-            ...(['live', 'pending', 'finished'] as SmsActionStatusGroup[]).map((g) => ({
-              value: g,
-              label: SMS_STATUS_GROUP_LABEL[g],
-              count: counts.byGroup[g] ?? 0,
-            })),
+            ...(['live', 'pending', 'finished', 'archived'] as SmsActionStatusGroup[]).map(
+              (g) => ({
+                value: g,
+                label: SMS_STATUS_GROUP_LABEL[g],
+                count: counts.byGroup[g] ?? 0,
+              }),
+            ),
           ]}
         />
       </div>
@@ -213,7 +242,7 @@ export function SmsActionsTable({
             <TableBody>
               {visible.map((row) => {
                 const meta = SMS_ACTION_KIND_META[row.kind]
-                const status = smsActionStatusLabel(row.kind, row.status)
+                const status = smsActionStatusLabel(row.kind, row.status, row.archived_at)
                 const ref = rowToRef(row)
                 const campaignHref =
                   row.scope === 'campaign'
@@ -315,6 +344,33 @@ export function SmsActionsTable({
                               Open relay
                             </DropdownMenuItem>
                           )}
+                          {canWrite && (
+                            <>
+                              <DropdownMenuSeparator />
+                              {row.archived_at ? (
+                                <DropdownMenuItem
+                                  onSelect={() => setOps({ row, intent: 'unarchive' })}
+                                >
+                                  <ArchiveRestore className="mr-2 h-3.5 w-3.5" />
+                                  Un-archive
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  onSelect={() => setOps({ row, intent: 'archive' })}
+                                >
+                                  <Archive className="mr-2 h-3.5 w-3.5" />
+                                  Archive
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onSelect={() => setOps({ row, intent: 'delete' })}
+                              >
+                                <Trash2 className="mr-2 h-3.5 w-3.5" />
+                                Delete
+                              </DropdownMenuItem>
+                            </>
+                          )}
                           {campaignHref && (
                             <>
                               <DropdownMenuSeparator />
@@ -335,6 +391,15 @@ export function SmsActionsTable({
             </TableBody>
           </Table>
         </div>
+      )}
+      {ops && (
+        <SmsActionOpsLauncher
+          kind={ops.row.kind}
+          id={ops.row.id}
+          campaignId={ops.row.campaign_id}
+          intent={ops.intent}
+          onClose={() => setOps(null)}
+        />
       )}
     </div>
   )

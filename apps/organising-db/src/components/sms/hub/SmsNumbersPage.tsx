@@ -302,7 +302,7 @@ function ActionChips({
             key={`${a.kind}:${a.id}`}
             type="button"
             className="inline-flex max-w-56 items-center gap-1 rounded-full border bg-background px-2 py-0.5 text-[11px] hover:bg-muted"
-            title={`${meta.label} · ${smsActionStatusLabel(a.kind, a.status)}${a.campaign_name ? ` · ${a.campaign_name}` : a.scope === 'standalone' ? ' · standalone' : a.scope === 'org' ? ' · org-wide' : ''}`}
+            title={`${meta.label} · ${smsActionStatusLabel(a.kind, a.status, a.archived_at)}${a.campaign_name ? ` · ${a.campaign_name}` : a.scope === 'standalone' ? ' · standalone' : a.scope === 'org' ? ' · org-wide' : ''}`}
             onClick={(e) => {
               e.stopPropagation()
               router.push(actionRefHref(a))
@@ -369,7 +369,7 @@ function NumberDetail({
           <ul className="divide-y rounded-md border bg-background">
             {history.map((a) => {
               const meta = SMS_ACTION_KIND_META[a.kind]
-              const status = smsActionStatusLabel(a.kind, a.status)
+              const status = smsActionStatusLabel(a.kind, a.status, a.archived_at)
               return (
                 <li key={`${a.kind}:${a.id}`}>
                   <Link

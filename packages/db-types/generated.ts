@@ -8306,6 +8306,9 @@ export type Database = {
           source: string
           status: string
           updated_at: string
+          source_sms_list_id: number | null
+          source_sms_survey_id: number | null
+          source_sms_gone_at: string | null
         }
         Insert: {
           campaign_id: number
@@ -8326,6 +8329,9 @@ export type Database = {
           source?: string
           status?: string
           updated_at?: string
+          source_sms_list_id?: number | null
+          source_sms_survey_id?: number | null
+          source_sms_gone_at?: string | null
         }
         Update: {
           campaign_id?: number
@@ -8346,6 +8352,9 @@ export type Database = {
           source?: string
           status?: string
           updated_at?: string
+          source_sms_list_id?: number | null
+          source_sms_survey_id?: number | null
+          source_sms_gone_at?: string | null
         }
         Relationships: [
           {
@@ -8459,6 +8468,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vw_sms_chat_session_report"
             referencedColumns: ["list_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_lists_source_sms_list_id_fkey"
+            columns: ["source_sms_list_id"]
+            isOneToOne: false
+            referencedRelation: "sms_lists"
+            referencedColumns: ["list_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_lists_source_sms_survey_id_fkey"
+            columns: ["source_sms_survey_id"]
+            isOneToOne: false
+            referencedRelation: "sms_surveys"
+            referencedColumns: ["survey_id"]
           },
           {
             foreignKeyName: "campaign_worker_lists_leader_organiser_id_fkey"
@@ -8870,6 +8893,7 @@ export type Database = {
           total_worker_estimate: number | null
           updated_at: string
           wizard_bargaining_triage: string | null
+          archived_at: string | null
         }
         Insert: {
           bargaining_commenced_at?: string | null
@@ -8896,6 +8920,7 @@ export type Database = {
           total_worker_estimate?: number | null
           updated_at?: string
           wizard_bargaining_triage?: string | null
+          archived_at?: string | null
         }
         Update: {
           bargaining_commenced_at?: string | null
@@ -8922,6 +8947,7 @@ export type Database = {
           total_worker_estimate?: number | null
           updated_at?: string
           wizard_bargaining_triage?: string | null
+          archived_at?: string | null
         }
         Relationships: [
           {
@@ -15595,6 +15621,7 @@ export type Database = {
           timezone: string
           total_items: number
           updated_at: string
+          archived_at: string | null
         }
         Insert: {
           assessment_campaign_id?: number | null
@@ -15620,6 +15647,7 @@ export type Database = {
           timezone?: string
           total_items?: number
           updated_at?: string
+          archived_at?: string | null
         }
         Update: {
           assessment_campaign_id?: number | null
@@ -15645,6 +15673,7 @@ export type Database = {
           timezone?: string
           total_items?: number
           updated_at?: string
+          archived_at?: string | null
         }
         Relationships: [
           {
@@ -16127,6 +16156,7 @@ export type Database = {
           suffix_template: string | null
           timezone: string
           updated_at: string
+          archived_at: string | null
         }
         Insert: {
           bridge_replies?: boolean
@@ -16144,6 +16174,7 @@ export type Database = {
           suffix_template?: string | null
           timezone?: string
           updated_at?: string
+          archived_at?: string | null
         }
         Update: {
           bridge_replies?: boolean
@@ -16161,6 +16192,7 @@ export type Database = {
           suffix_template?: string | null
           timezone?: string
           updated_at?: string
+          archived_at?: string | null
         }
         Relationships: [
           {
@@ -24743,6 +24775,7 @@ export type Database = {
           skipped_count: number | null
           timezone: string | null
           total_items: number | null
+          archived_at: string | null
         }
         Relationships: [
           {

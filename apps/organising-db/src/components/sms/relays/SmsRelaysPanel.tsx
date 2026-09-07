@@ -85,6 +85,8 @@ import {
   relayLaunchSenderNumberId,
 } from '@/components/sms/relays/RelayLaunchSenderChoice'
 import { ListDetailSheet } from '@/components/sms/InlineSmsOpsPanel'
+import { ShowArchivedToggle, SmsArchivedBanner, SmsArchiveDeleteControls } from '@/components/sms/SmsArchiveDeleteControls'
+import { useAuth } from '@/lib/supabase/auth-context'
 import { useSmsListAction, useSmsSenders } from '@/lib/hooks/useSmsBroadcast'
 import {
   useAddSmsRelayTarget,
@@ -137,7 +139,10 @@ interface SmsRelaysPanelProps {
 
 export function SmsRelaysPanel({ campaignId }: SmsRelaysPanelProps) {
   const router = useRouter()
-  const { data: relays, isLoading } = useSmsRelays(campaignId ?? undefined)
+  const [showArchived, setShowArchived] = useState(false)
+  const { data: relays, isLoading } = useSmsRelays(campaignId ?? undefined, {
+    includeArchived: showArchived,
+  })
   const [newOpen, setNewOpen] = useState(false)
   const [detailRelayId, setDetailRelayId] = useState<number | null>(null)
 
@@ -152,10 +157,13 @@ export function SmsRelaysPanel({ campaignId }: SmsRelaysPanelProps) {
             ever sees the other&apos;s number.
           </p>
         </div>
-        <Button onClick={() => setNewOpen(true)}>
-          <Plus className="h-4 w-4 mr-1" />
-          New relay
-        </Button>
+        <div className="flex flex-col items-end gap-2">
+          <Button onClick={() => setNewOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            New relay
+          </Button>
+          <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
+        </div>
       </div>
 
       {isLoading ? (
@@ -238,9 +246,15 @@ function RelayCard({
         <button type="button" className="w-full text-left" onClick={onOpen}>
           <div className="flex items-center gap-2 mb-1">
             <p className="text-sm font-medium truncate">{relay.name}</p>
-            <Badge className={STATUS_COLORS[relay.status] || ''} variant="secondary">
-              {relay.status}
-            </Badge>
+            {relay.archived_at ? (
+              <Badge variant="secondary" className="bg-slate-200 text-slate-600">
+                archived
+              </Badge>
+            ) : (
+              <Badge className={STATUS_COLORS[relay.status] || ''} variant="secondary">
+                {relay.status}
+              </Badge>
+            )}
             {relay.campaign_id == null && (
               <Badge variant="secondary">org-wide</Badge>
             )}
@@ -879,14 +893,24 @@ export function RelayDetailSheet({
             </div>
           </>
         ) : (
-          <RelayDetail detail={detail} />
+          <RelayDetail
+            detail={detail}
+            onGone={() => onOpenChange(false)}
+          />
         )}
       </SheetContent>
     </Sheet>
   )
 }
 
-function RelayDetail({ detail }: { detail: SmsRelayDetail }) {
+function RelayDetail({
+  detail,
+  onGone,
+}: {
+  detail: SmsRelayDetail
+  onGone?: () => void
+}) {
+  const { canWrite } = useAuth()
   const { relay, number, targets, messages, pending } = detail
   const launchLists = detail.launch_lists ?? []
   const action = useSmsRelayAction(relay.relay_id)
@@ -929,9 +953,15 @@ function RelayDetail({ detail }: { detail: SmsRelayDetail }) {
       <SheetHeader>
         <SheetTitle className="flex items-center gap-2">
           {relay.name}
-          <Badge className={STATUS_COLORS[relay.status] || ''} variant="secondary">
-            {relay.status}
-          </Badge>
+          {relay.archived_at ? (
+            <Badge variant="secondary" className="bg-slate-200 text-slate-600">
+              archived
+            </Badge>
+          ) : (
+            <Badge className={STATUS_COLORS[relay.status] || ''} variant="secondary">
+              {relay.status}
+            </Badge>
+          )}
         </SheetTitle>
         <SheetDescription>
           {number ? `Relay number ${toDisplay(number.phone_e164)}` : 'No number'}
@@ -943,6 +973,15 @@ function RelayDetail({ detail }: { detail: SmsRelayDetail }) {
         </SheetDescription>
       </SheetHeader>
       <div className="mt-4 space-y-5 pb-8">
+        <SmsArchivedBanner archivedAt={relay.archived_at} />
+        <SmsArchiveDeleteControls
+          kind="relay"
+          id={relay.relay_id}
+          campaignId={relay.campaign_id}
+          canWrite={!!canWrite}
+          compact
+          onGone={onGone}
+        />
         {/* Lifecycle controls */}
         {relay.status !== 'ended' && (
           <div className="flex gap-2">

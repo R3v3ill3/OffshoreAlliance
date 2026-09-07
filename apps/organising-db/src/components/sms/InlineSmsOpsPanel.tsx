@@ -85,7 +85,8 @@ import {
   smsComposerBlockers,
   type SmsComposerValue,
 } from '@/components/sms/SmsComposer'
-import { SmsOrgNameWarningDialog } from '@/components/sms/SmsOrgNameWarningDialog'
+import { ShowArchivedToggle, SmsArchivedBanner, SmsArchiveDeleteControls } from '@/components/sms/SmsArchiveDeleteControls'
+import { useAuth } from '@/lib/supabase/auth-context'
 import { validateSmsBody } from '@/lib/sms/compliance'
 import type {
   VwSmsAssessmentReportRow,
@@ -177,11 +178,14 @@ export function InlineSmsOpsPanel({
       ? String(campaignId)
       : null
   const searchParams = useSearchParams()
+  const [showArchived, setShowArchived] = useState(false)
   const { data: lists, isLoading: listsLoading } = useSmsLists(
     standaloneMode ? null : id,
+    { includeArchived: showArchived },
   )
   const { data: episodes, isLoading: episodesLoading } = useSmsEpisodes(
     standaloneMode,
+    { includeArchived: showArchived },
   )
   const createEpisode = useCreateSmsEpisode()
   const deleteEpisode = useDeleteSmsEpisode()
@@ -348,6 +352,7 @@ export function InlineSmsOpsPanel({
           <MessageSquare className="h-5 w-5 mr-2" />
           New SMS blast
         </Button>
+        <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
       </div>
 
       <div>
@@ -750,10 +755,14 @@ function BlastCard({
             <div className="flex items-center gap-2 mb-1">
               <p className="text-sm font-medium truncate">{list.list_name}</p>
               <Badge
-                className={STATUS_COLORS[list.list_status] || ''}
+                className={
+                  list.archived_at
+                    ? 'bg-slate-200 text-slate-600'
+                    : STATUS_COLORS[list.list_status] || ''
+                }
                 variant="secondary"
               >
-                {list.list_status}
+                {list.archived_at ? 'archived' : list.list_status}
               </Badge>
               {list.blackout_override && (
                 <Badge variant="secondary" className="bg-amber-100 text-amber-800">
@@ -1235,9 +1244,14 @@ export function ListDetailSheet({
             campaignId={campaignId}
             detail={detail}
             standaloneMode={standaloneMode}
+            onGone={() => onOpenChange(false)}
           />
         ) : (
-          <SentDetail campaignId={campaignId} detail={detail} />
+          <SentDetail
+            campaignId={campaignId}
+            detail={detail}
+            onGone={() => onOpenChange(false)}
+          />
         )}
       </SheetContent>
     </Sheet>
@@ -1248,11 +1262,14 @@ function DraftDetail({
   campaignId,
   detail,
   standaloneMode = false,
+  onGone,
 }: {
   campaignId: string
   detail: SmsListDetail
   standaloneMode?: boolean
+  onGone?: () => void
 }) {
+  const { canWrite } = useAuth()
   const update = useUpdateSmsBlast(campaignId)
   const action = useSmsListAction(campaignId)
   const attach = useAttachSmsAudience(campaignId)
@@ -1338,6 +1355,15 @@ function DraftDetail({
         </SheetDescription>
       </SheetHeader>
       <div className="mt-4 space-y-4 pb-8">
+        <SmsArchivedBanner archivedAt={detail.list.archived_at} />
+        <SmsArchiveDeleteControls
+          kind="blast"
+          id={detail.list.list_id}
+          campaignId={Number(campaignId)}
+          canWrite={!!canWrite}
+          compact
+          onGone={onGone}
+        />
         {launchRelayId != null && launchRelay.data?.number && (
           <LaunchTextNotice
             relayName={launchRelay.data.relay.name}
@@ -1466,10 +1492,13 @@ function DraftDetail({
 function SentDetail({
   campaignId,
   detail,
+  onGone,
 }: {
   campaignId: string
   detail: SmsListDetail
+  onGone?: () => void
 }) {
+  const { canWrite } = useAuth()
   const counts = useMemo(() => {
     const c: Record<string, number> = {}
     for (const it of detail.items) c[it.status] = (c[it.status] ?? 0) + 1
@@ -1497,6 +1526,15 @@ function SentDetail({
         </SheetDescription>
       </SheetHeader>
       <div className="mt-4 space-y-4 pb-8">
+        <SmsArchivedBanner archivedAt={detail.list.archived_at} />
+        <SmsArchiveDeleteControls
+          kind="blast"
+          id={detail.list.list_id}
+          campaignId={Number(campaignId)}
+          canWrite={!!canWrite}
+          compact
+          onGone={onGone}
+        />
         {detail.draft?.body && (
           <div className="rounded-md border bg-muted/30 p-3 text-sm whitespace-pre-wrap">
             {detail.draft.body}

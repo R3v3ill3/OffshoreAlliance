@@ -11,6 +11,8 @@
  * either campaign-linked or org-wide (campaign_id NULL).
  */
 
+import type { SmsLifecycleAction } from '@/lib/sms/archive-policy'
+
 export type SmsActionKind = 'blast' | 'chat' | 'survey' | 'relay'
 
 export const SMS_ACTION_KINDS: SmsActionKind[] = ['blast', 'chat', 'survey', 'relay']
@@ -65,18 +67,21 @@ export function scopeToParam(scope: SmsActionScope): string {
  * running (drafts, paused sends, a relay created paused); `finished`
  * is done and read-only.
  */
-export type SmsActionStatusGroup = 'live' | 'pending' | 'finished'
+export type SmsActionStatusGroup = 'live' | 'pending' | 'finished' | 'archived'
 
 export const SMS_STATUS_GROUP_LABEL: Record<SmsActionStatusGroup, string> = {
   live: 'Live',
   pending: 'Drafts & paused',
   finished: 'Finished',
+  archived: 'Archived',
 }
 
 export function smsActionStatusGroup(
   kind: SmsActionKind,
   status: string,
+  archivedAt?: string | null,
 ): SmsActionStatusGroup {
+  if (archivedAt) return 'archived'
   switch (kind) {
     case 'blast':
       if (status === 'queued' || status === 'sending') return 'live'
@@ -98,7 +103,12 @@ export function smsActionStatusGroup(
 }
 
 /** Organiser-facing status word — chat boards do not say "draft". */
-export function smsActionStatusLabel(kind: SmsActionKind, status: string): string {
+export function smsActionStatusLabel(
+  kind: SmsActionKind,
+  status: string,
+  archivedAt?: string | null,
+): string {
+  if (archivedAt) return 'archived'
   if (kind === 'chat') return status === 'draft' ? 'active' : 'closed'
   return status
 }
@@ -139,6 +149,16 @@ export function smsActionHref(ref: SmsActionRef, opts?: { standalone?: boolean }
   const params = new URLSearchParams({ open: encodeSmsActionRef(ref) })
   if (opts?.standalone) params.set('standalone', '1')
   return `/sms?${params.toString()}`
+}
+
+export function smsLifecycleHref(
+  action: SmsLifecycleAction,
+  ref: SmsActionRef,
+): string {
+  if (action === 'open_board' && ref.kind === 'chat') {
+    return `/campaigns/${ref.campaignId}/sms/chat/${ref.id}`
+  }
+  return smsActionHref(ref)
 }
 
 /** Wizard URL to start a new action, optionally seeded from an existing one. */

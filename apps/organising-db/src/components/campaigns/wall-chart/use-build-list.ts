@@ -24,6 +24,11 @@ export type BuildListSummary = {
   fired_sms_list_id: number | null;
   fired_email_list_id: number | null;
   fired_at: string | null;
+  source_sms_list_id?: number | null;
+  source_sms_survey_id?: number | null;
+  source_sms_gone_at?: string | null;
+  /** Parent blast/survey archived_at, when the source row still exists. */
+  source_sms_archived_at?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

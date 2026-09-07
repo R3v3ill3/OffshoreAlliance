@@ -28,6 +28,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { isNavItemActive } from "@/lib/nav/active-nav";
+import { useEmailInboxUnreadCount } from "@/lib/hooks/useEmailInbox";
 
 export const navItems = [
   { href: "/campaigns", label: "Campaigns", icon: Megaphone },
@@ -64,6 +65,7 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [signOutInProgress, setSignOutInProgress] = useState(false);
   const [recoveryFeedback, setRecoveryFeedback] = useState<string | null>(null);
+  const { data: emailUnreadCount = 0 } = useEmailInboxUnreadCount(!!user);
 
   const handleSignOut = async () => {
     if (signOutInProgress) return;
@@ -117,7 +119,7 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                "relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 isActive
                   ? "bg-sidebar-accent text-sidebar-accent-foreground"
                   : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
@@ -125,6 +127,17 @@ export function Sidebar() {
             >
               <item.icon className="h-4 w-4 shrink-0" />
               {!collapsed && <span>{item.label}</span>}
+              {item.href === "/email/inbox" && emailUnreadCount > 0 && (
+                <span
+                  className={cn(
+                    "ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground",
+                    collapsed && "absolute right-1 top-1 h-4 min-w-4 px-1"
+                  )}
+                  aria-label={`${emailUnreadCount} unread email conversations`}
+                >
+                  {emailUnreadCount > 99 ? "99+" : emailUnreadCount}
+                </span>
+              )}
             </Link>
           );
         })}

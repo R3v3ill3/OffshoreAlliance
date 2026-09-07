@@ -8,7 +8,8 @@
  * `?reconsent=1` to grant it).
  *
  * Mirrors `save-to-outlook/route.ts` in structure but:
- *   - Calls `sendMessage` instead of `createDraft`.
+ *   - Creates then immediately sends a draft so Graph returns the message and
+ *     conversation ids required for reply reconciliation.
  *   - send_method on email_send_log is `outlook_send_*` (vs `outlook_*`).
  *   - oauth_send_batches.mode is the same string ('personalised' | 'bcc'),
  *     so callers / dashboards can join across both routes.
@@ -34,7 +35,7 @@ import {
   touchLastUsed,
 } from '@/lib/integrations/microsoft-connection'
 import {
-  sendMessage,
+  createAndSendMessage,
   hasSendScope,
   type GraphRecipient,
 } from '@/lib/integrations/microsoft-graph'
@@ -82,6 +83,8 @@ interface WorkerRow {
   first_name: string | null
   last_name: string | null
   email: string | null
+  email_status: string | null
+  email_opt_out: boolean
   occupation: string | null
   employer_name: string | null
   worksite_name: string | null
@@ -106,6 +109,22 @@ export async function POST(
     return NextResponse.json(
       { success: false, error: 'Bad route params' },
       { status: 400 },
+    )
+  }
+  const { data: canWrite, error: permissionError } = await supabase.rpc(
+    'can_write_to_campaign',
+    { p_campaign_id: campaignId },
+  )
+  if (permissionError) {
+    return NextResponse.json(
+      { success: false, error: 'Could not verify campaign permissions' },
+      { status: 500 },
+    )
+  }
+  if (!canWrite) {
+    return NextResponse.json(
+      { success: false, error: 'You do not have permission to send for this campaign' },
+      { status: 403 },
     )
   }
 
@@ -150,7 +169,7 @@ export async function POST(
   const { data: workersRaw, error: workersErr } = await supabase
     .from('workers')
     .select(
-      'worker_id, first_name, last_name, email, email_status, occupation, employers(employer_name), worksites(worksite_name)',
+      'worker_id, first_name, last_name, email, email_status, email_opt_out, occupation, employers(employer_name), worksites(worksite_name)',
     )
     .in('worker_id', body.worker_ids)
   if (workersErr) {
@@ -174,6 +193,8 @@ export async function POST(
         first_name: (row.first_name as string | null) ?? null,
         last_name: (row.last_name as string | null) ?? null,
         email: (row.email as string | null) ?? null,
+        email_status: (row.email_status as string | null) ?? null,
+        email_opt_out: Boolean(row.email_opt_out),
         occupation: (row.occupation as string | null) ?? null,
         employer_name: Array.isArray(emp)
           ? emp[0]?.employer_name ?? null
@@ -181,14 +202,14 @@ export async function POST(
         worksite_name: Array.isArray(ws)
           ? ws[0]?.worksite_name ?? null
           : ws?.worksite_name ?? null,
-        email_status: (row.email_status as string | null) ?? null,
-      } as WorkerRow & { email_status: string | null }
+      } as WorkerRow
     })
     .filter(
       (w) =>
         !!w.email &&
         w.email.trim() !== '' &&
-        (w as { email_status?: string | null }).email_status !== 'invalid',
+        w.email_status !== 'invalid' &&
+        !w.email_opt_out,
     )
 
   if (workers.length === 0) {
@@ -196,7 +217,7 @@ export async function POST(
       {
         success: false,
         error:
-          'No recipients with valid email addresses (bounced addresses are excluded — fix or remove them and retry).',
+          'No eligible recipients (invalid addresses and workers who opted out are excluded).',
       },
       { status: 400 },
     )
@@ -285,17 +306,18 @@ export async function POST(
           externalMessageId: null,
           userId: user.id,
         })
+        if (sendId == null) {
+          throw new Error('Could not create the email send audit row')
+        }
 
         let finalBodyHtml = bodyResolvedBase
-        if (sendId) {
-          const rewritten = await rewriteLinks(bodyResolvedBase, sendId).catch(
-            () => null,
-          )
-          if (rewritten) finalBodyHtml = rewritten.html
-        }
+        const rewritten = await rewriteLinks(bodyResolvedBase, sendId).catch(
+          () => null,
+        )
+        if (rewritten) finalBodyHtml = rewritten.html
         finalBodyHtml = appendOASignature(finalBodyHtml)
 
-        await sendMessage(tokenResult.accessToken, {
+        const graphMessage = await createAndSendMessage(tokenResult.accessToken, {
           subject: subjectResolved,
           bodyHtml: finalBodyHtml,
           toRecipients: [
@@ -309,10 +331,20 @@ export async function POST(
               },
             },
           ],
-          saveToSentItems: true,
         })
+        const admin = createAdminClient()
+        const { error: sendLogUpdateError } = await admin
+          .from('email_send_log')
+          .update({
+            conversation_id: graphMessage.conversationId ?? null,
+            external_message_id: graphMessage.id,
+          })
+          .eq('send_id', sendId)
+        if (sendLogUpdateError) throw sendLogUpdateError
         sentCount += 1
-        void tagWorkerEmailed(worker.worker_id)
+        await tagWorkerEmailed(worker.worker_id).catch((tagError) => {
+          console.error('[send-via-outlook] failed to tag worker as emailed:', tagError)
+        })
       } catch (err) {
         errors.push({
           worker_id: worker.worker_id,
@@ -371,9 +403,12 @@ export async function POST(
             userId: user.id,
           })
         : null
+      if (firstWorker && firstSendId == null) {
+        throw new Error('Could not create the first BCC send audit row')
+      }
 
       let finalBodyHtml = bodyHtmlBase
-      if (firstSendId) {
+      if (firstSendId != null) {
         const rewritten = await rewriteLinks(bodyHtmlBase, firstSendId).catch(
           () => null,
         )
@@ -381,29 +416,53 @@ export async function POST(
       }
       finalBodyHtml = appendOASignature(finalBodyHtml)
 
-      await sendMessage(tokenResult.accessToken, {
+      const graphMessage = await createAndSendMessage(tokenResult.accessToken, {
         subject: subjectResolved,
         bodyHtml: finalBodyHtml,
         bccRecipients: bccList,
-        saveToSentItems: true,
       })
       sentCount = workers.length
 
-      // Log the rest of the BCC recipients.
-      for (let i = 1; i < workers.length; i++) {
-        const w = workers[i]
-        void recordEmailSend({
-          draftId,
-          campaignId,
-          workerId: w.worker_id,
-          recipientEmail: w.email!,
-          sendMethod: 'outlook_send_bcc',
-          conversationId: null,
-          externalMessageId: null,
-          userId: user.id,
-        }).then(() => tagWorkerEmailed(w.worker_id))
+      if (firstSendId != null) {
+        const admin = createAdminClient()
+        await admin
+          .from('email_send_log')
+          .update({
+            conversation_id: graphMessage.conversationId ?? null,
+            external_message_id: graphMessage.id,
+          })
+          .eq('send_id', firstSendId)
       }
-      if (firstWorker) void tagWorkerEmailed(firstWorker.worker_id)
+
+      // Persist every recipient before returning so reconciliation and audit
+      // rows cannot be lost when the serverless invocation is suspended.
+      await Promise.all(
+        workers.slice(1).map(async (worker) => {
+          const sendId = await recordEmailSend({
+            draftId,
+            campaignId,
+            workerId: worker.worker_id,
+            recipientEmail: worker.email!,
+            sendMethod: 'outlook_send_bcc',
+            conversationId: graphMessage.conversationId ?? null,
+            externalMessageId: graphMessage.id,
+            userId: user.id,
+          })
+          if (sendId == null) {
+            throw new Error(
+              `Could not create the send audit row for worker ${worker.worker_id}`,
+            )
+          }
+          await tagWorkerEmailed(worker.worker_id).catch((tagError) => {
+            console.error('[send-via-outlook] failed to tag worker as emailed:', tagError)
+          })
+        }),
+      )
+      if (firstWorker) {
+        await tagWorkerEmailed(firstWorker.worker_id).catch((tagError) => {
+          console.error('[send-via-outlook] failed to tag worker as emailed:', tagError)
+        })
+      }
     } catch (err) {
       errors.push({
         error: err instanceof Error ? err.message : String(err),

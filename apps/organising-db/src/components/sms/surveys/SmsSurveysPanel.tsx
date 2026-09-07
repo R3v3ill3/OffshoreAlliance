@@ -60,7 +60,6 @@ import {
   FileText,
   Rocket,
   Scale,
-  Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils/cn'
@@ -68,6 +67,7 @@ import { BALLOT_COMPLIANCE_BANNER } from '@/lib/sms/survey-validation'
 import { validateSmsBody } from '@/lib/sms/compliance'
 import { surveySenderPurposeWarning } from '@/lib/sms/sender-purpose'
 import { SmsOrgNameWarningDialog } from '@/components/sms/SmsOrgNameWarningDialog'
+import { ShowArchivedToggle, SmsArchivedBanner, SmsArchiveDeleteControls } from '@/components/sms/SmsArchiveDeleteControls'
 import type { IntegrityFinding } from '@/lib/sms/survey-integrity'
 import type {
   SmsBallotDetail,
@@ -77,7 +77,6 @@ import type {
 } from '@/types/sms'
 import {
   useCreateSmsSurvey,
-  useDeleteSmsSurvey,
   useSmsSurveyAction,
   useSmsSurveyCatalogue,
   useSmsSurveyDetail,
@@ -150,8 +149,6 @@ export function SmsSurveysPanel({
 }: SmsSurveysPanelProps) {
   const id = campaignId != null && String(campaignId) !== '' ? String(campaignId) : ''
   const searchParams = useSearchParams()
-  const { data: campaignSurveys, isLoading: campaignLoading } = useSmsSurveys(id)
-  const { data: episodes, isLoading: episodesLoading } = useSmsEpisodes(standaloneMode)
   const createEpisode = useCreateSmsEpisode()
   const deleteEpisode = useDeleteSmsEpisode()
   const renameEpisode = useRenameSmsEpisode()
@@ -162,6 +159,14 @@ export function SmsSurveysPanel({
   const [detailCampaignId, setDetailCampaignId] = useState<string | null>(null)
   const [sourceWorkerListId, setSourceWorkerListId] = useState<number | null>(null)
   const [listFilter, setListFilter] = useState<ListFilter>('all')
+  const [showArchived, setShowArchived] = useState(false)
+  const { data: campaignSurveys, isLoading: campaignLoading } = useSmsSurveys(id, {
+    includeArchived: showArchived,
+  })
+  const { data: episodes, isLoading: episodesLoading } = useSmsEpisodes(
+    standaloneMode,
+    { includeArchived: showArchived },
+  )
 
   const surveys = useMemo(() => {
     if (standaloneMode) {
@@ -175,6 +180,7 @@ export function SmsSurveysPanel({
           purpose: s.purpose,
           question_count: s.question_count,
           funnel: s.funnel,
+          archived_at: s.archived_at ?? null,
         })),
       )
     }
@@ -259,6 +265,7 @@ export function SmsSurveysPanel({
           <ClipboardList className="h-5 w-5 mr-2" />
           New survey
         </Button>
+        <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
       </div>
 
       <div>
@@ -392,6 +399,7 @@ type SurveyCardRow = {
   purpose: string
   question_count: number
   funnel: SmsSurveyListRow['funnel']
+  archived_at?: string | null
 }
 
 function SurveyCard({
@@ -412,9 +420,15 @@ function SurveyCard({
         <button type="button" className="w-full text-left" onClick={onOpen}>
           <div className="flex items-center gap-2 mb-1">
             <p className="text-sm font-medium truncate">{survey.title}</p>
-            <Badge className={STATUS_COLORS[survey.status] || ''} variant="secondary">
-              {survey.status}
-            </Badge>
+            {survey.archived_at ? (
+              <Badge variant="secondary" className="bg-slate-200 text-slate-600">
+                archived
+              </Badge>
+            ) : (
+              <Badge className={STATUS_COLORS[survey.status] || ''} variant="secondary">
+                {survey.status}
+              </Badge>
+            )}
             {survey.is_test && (
               <Badge variant="secondary" className="bg-violet-100 text-violet-800">
                 Test
@@ -1005,8 +1019,8 @@ function DraftDetail({
   onGone: () => void
   hideAssessments?: boolean
 }) {
+  const { canWrite } = useAuth()
   const action = useSmsSurveyAction(campaignId)
-  const del = useDeleteSmsSurvey(campaignId)
   const queryClient = useQueryClient()
   const [submitting, setSubmitting] = useState(false)
   const [preview, setPreview] = useState<SurveyLaunchPreview | null>(null)
@@ -1021,7 +1035,7 @@ function DraftDetail({
       : { mode: 'campaign' }
   const [audienceValue, setAudienceValue] = useState<AudienceValue>(defaultValue)
 
-  const busy = action.isPending || del.isPending || submitting
+  const busy = action.isPending || submitting
   const isTest = detail.survey.is_test ?? true
   const senderWarn = surveySenderPurposeWarning(preview?.sender_purpose)
 
@@ -1144,6 +1158,15 @@ function DraftDetail({
         </SheetDescription>
       </SheetHeader>
       <div className="mt-4 space-y-4 pb-8">
+        <SmsArchivedBanner archivedAt={detail.survey.archived_at} />
+        <SmsArchiveDeleteControls
+          kind="survey"
+          id={detail.survey.survey_id}
+          campaignId={Number(campaignId)}
+          canWrite={!!canWrite}
+          onGone={onGone}
+          compact
+        />
         {detail.survey.purpose === 'indicative_ballot' && (
           <BallotBanner note="Opening freezes the eligibility roll to the chosen audience — turnout reports against it, one vote per member." />
         )}
@@ -1320,25 +1343,6 @@ function DraftDetail({
                   }`}
             </Button>
           )}
-          <Button
-            variant="ghost"
-            className="text-muted-foreground hover:text-destructive"
-            disabled={busy}
-            onClick={() =>
-              del.mutate(
-                { surveyId: detail.survey.survey_id },
-                {
-                  onSuccess: () => {
-                    toast.success('Survey deleted')
-                    onGone()
-                  },
-                  onError: (err: Error) => toast.error(err.message),
-                },
-              )
-            }
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
         </div>
       </div>
       <SmsOrgNameWarningDialog
@@ -1388,9 +1392,8 @@ function FunnelDetail({
   onGone: () => void
   onPromoted?: (newSurveyId: number) => void
 }) {
-  const { isAdmin } = useAuth()
+  const { canWrite } = useAuth()
   const action = useSmsSurveyAction(campaignId)
-  const del = useDeleteSmsSurvey(campaignId)
   const funnel = detail.funnel
   const invited = funnel?.ever_invited_count ?? 0
   const isBallot = detail.survey.purpose === 'indicative_ballot'
@@ -1403,11 +1406,9 @@ function FunnelDetail({
 
   const [pauseOpen, setPauseOpen] = useState(false)
   const [pauseMode, setPauseMode] = useState<SmsSurveyPauseMode>('soft')
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  const [deleteConfirm, setDeleteConfirm] = useState('')
   const [reportOpen, setReportOpen] = useState(false)
 
-  const busy = action.isPending || del.isPending
+  const busy = action.isPending
 
   const statsByQuestion = new Map(
     detail.question_stats.map((s) => [s.question_id, s]),
@@ -1510,6 +1511,15 @@ function FunnelDetail({
         </SheetDescription>
       </SheetHeader>
       <div className="mt-4 space-y-4 pb-8">
+        <SmsArchivedBanner archivedAt={detail.survey.archived_at} />
+        <SmsArchiveDeleteControls
+          kind="survey"
+          id={detail.survey.survey_id}
+          campaignId={Number(campaignId)}
+          canWrite={!!canWrite}
+          onGone={onGone}
+          compact
+        />
         {isBallot && (
           <BallotBanner
             note={
@@ -1757,20 +1767,6 @@ function FunnelDetail({
                   Reset test data
                 </Button>
               )}
-              {isAdmin && (
-                <Button
-                  variant="ghost"
-                  className="text-muted-foreground hover:text-destructive"
-                  disabled={busy}
-                  onClick={() => {
-                    setDeleteConfirm('')
-                    setDeleteOpen(true)
-                  }}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
-                </Button>
-              )}
             </>
           )}
         </div>
@@ -1864,66 +1860,6 @@ function FunnelDetail({
                 <Pause className="h-4 w-4 mr-2" />
               )}
               Pause
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={deleteOpen}
-        onOpenChange={(next) => {
-          setDeleteOpen(next)
-          if (!next) setDeleteConfirm('')
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete closed survey</DialogTitle>
-            <DialogDescription>
-              Permanently destroys sessions, answers, and ballot audit rows.
-              Type DELETE to confirm.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-1.5">
-            <Label htmlFor="delete-confirm">Type DELETE</Label>
-            <Input
-              id="delete-confirm"
-              value={deleteConfirm}
-              onChange={(e) => setDeleteConfirm(e.target.value)}
-              placeholder="DELETE"
-              autoComplete="off"
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={deleteConfirm !== 'DELETE' || busy}
-              onClick={() =>
-                del.mutate(
-                  {
-                    surveyId: detail.survey.survey_id,
-                    confirm: 'DELETE',
-                  },
-                  {
-                    onSuccess: () => {
-                      setDeleteOpen(false)
-                      toast.success('Survey deleted')
-                      onGone()
-                    },
-                    onError: (err: Error) => toast.error(err.message),
-                  },
-                )
-              }
-            >
-              {del.isPending ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Trash2 className="h-4 w-4 mr-2" />
-              )}
-              Delete forever
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -83,6 +83,19 @@ export class SendGridProvider implements EmailProvider {
       ...(msg.headers && Object.keys(msg.headers).length > 0
         ? { headers: msg.headers }
         : {}),
+      ...(msg.attachments?.length
+        ? {
+            attachments: msg.attachments.map((attachment) => ({
+              content: attachment.content,
+              filename: attachment.filename,
+              ...(attachment.type ? { type: attachment.type } : {}),
+              disposition: attachment.disposition ?? "attachment",
+              ...(attachment.contentId
+                ? { content_id: attachment.contentId }
+                : {}),
+            })),
+          }
+        : {}),
       // Unsubscribe is ours (List-Unsubscribe headers + /u/[token]);
       // never let SendGrid's subscription tracking rewrite the footer.
       tracking_settings: {

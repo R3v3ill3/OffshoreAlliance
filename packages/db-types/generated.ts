@@ -8306,6 +8306,9 @@ export type Database = {
           source: string
           status: string
           updated_at: string
+          source_sms_list_id: number | null
+          source_sms_survey_id: number | null
+          source_sms_gone_at: string | null
         }
         Insert: {
           campaign_id: number
@@ -8326,6 +8329,9 @@ export type Database = {
           source?: string
           status?: string
           updated_at?: string
+          source_sms_list_id?: number | null
+          source_sms_survey_id?: number | null
+          source_sms_gone_at?: string | null
         }
         Update: {
           campaign_id?: number
@@ -8346,6 +8352,9 @@ export type Database = {
           source?: string
           status?: string
           updated_at?: string
+          source_sms_list_id?: number | null
+          source_sms_survey_id?: number | null
+          source_sms_gone_at?: string | null
         }
         Relationships: [
           {
@@ -8459,6 +8468,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vw_sms_chat_session_report"
             referencedColumns: ["list_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_lists_source_sms_list_id_fkey"
+            columns: ["source_sms_list_id"]
+            isOneToOne: false
+            referencedRelation: "sms_lists"
+            referencedColumns: ["list_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_lists_source_sms_survey_id_fkey"
+            columns: ["source_sms_survey_id"]
+            isOneToOne: false
+            referencedRelation: "sms_surveys"
+            referencedColumns: ["survey_id"]
           },
           {
             foreignKeyName: "campaign_worker_lists_leader_organiser_id_fkey"
@@ -8870,6 +8893,7 @@ export type Database = {
           total_worker_estimate: number | null
           updated_at: string
           wizard_bargaining_triage: string | null
+          archived_at: string | null
         }
         Insert: {
           bargaining_commenced_at?: string | null
@@ -8896,6 +8920,7 @@ export type Database = {
           total_worker_estimate?: number | null
           updated_at?: string
           wizard_bargaining_triage?: string | null
+          archived_at?: string | null
         }
         Update: {
           bargaining_commenced_at?: string | null
@@ -8922,6 +8947,7 @@ export type Database = {
           total_worker_estimate?: number | null
           updated_at?: string
           wizard_bargaining_triage?: string | null
+          archived_at?: string | null
         }
         Relationships: [
           {
@@ -15585,6 +15611,7 @@ export type Database = {
           list_id: number
           mode: string
           name: string
+          relay_id: number | null
           scheduled_for: string | null
           selected_assessment_ids: number[]
           sender_number_id: number | null
@@ -15594,6 +15621,7 @@ export type Database = {
           timezone: string
           total_items: number
           updated_at: string
+          archived_at: string | null
         }
         Insert: {
           assessment_campaign_id?: number | null
@@ -15609,6 +15637,7 @@ export type Database = {
           list_id?: number
           mode?: string
           name: string
+          relay_id?: number | null
           scheduled_for?: string | null
           selected_assessment_ids?: number[]
           sender_number_id?: number | null
@@ -15618,6 +15647,7 @@ export type Database = {
           timezone?: string
           total_items?: number
           updated_at?: string
+          archived_at?: string | null
         }
         Update: {
           assessment_campaign_id?: number | null
@@ -15633,6 +15663,7 @@ export type Database = {
           list_id?: number
           mode?: string
           name?: string
+          relay_id?: number | null
           scheduled_for?: string | null
           selected_assessment_ids?: number[]
           sender_number_id?: number | null
@@ -15642,6 +15673,7 @@ export type Database = {
           timezone?: string
           total_items?: number
           updated_at?: string
+          archived_at?: string | null
         }
         Relationships: [
           {
@@ -15804,6 +15836,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "campaign_comms_drafts"
             referencedColumns: ["draft_id"]
+          },
+          {
+            foreignKeyName: "sms_lists_relay_id_fkey"
+            columns: ["relay_id"]
+            isOneToOne: false
+            referencedRelation: "sms_relays"
+            referencedColumns: ["relay_id"]
           },
           {
             foreignKeyName: "sms_lists_sender_number_id_fkey"
@@ -16117,6 +16156,7 @@ export type Database = {
           suffix_template: string | null
           timezone: string
           updated_at: string
+          archived_at: string | null
         }
         Insert: {
           bridge_replies?: boolean
@@ -16134,6 +16174,7 @@ export type Database = {
           suffix_template?: string | null
           timezone?: string
           updated_at?: string
+          archived_at?: string | null
         }
         Update: {
           bridge_replies?: boolean
@@ -16151,6 +16192,7 @@ export type Database = {
           suffix_template?: string | null
           timezone?: string
           updated_at?: string
+          archived_at?: string | null
         }
         Relationships: [
           {
@@ -24733,6 +24775,7 @@ export type Database = {
           skipped_count: number | null
           timezone: string | null
           total_items: number | null
+          archived_at: string | null
         }
         Relationships: [
           {
@@ -26453,12 +26496,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -26482,11 +26525,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -26507,11 +26550,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -26532,11 +26575,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -26549,11 +26592,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

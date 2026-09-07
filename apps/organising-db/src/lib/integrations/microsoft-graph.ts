@@ -295,6 +295,31 @@ export async function sendMessage(
   }
 }
 
+/**
+ * Create a Graph draft and immediately send it. Unlike /me/sendMail,
+ * the create step returns message and conversation ids, allowing the
+ * mailbox poller to correlate replies with the in-app inbox.
+ */
+export async function createAndSendMessage(
+  accessToken: string,
+  input: CreateDraftInput,
+): Promise<GraphMessageResponse> {
+  const message = await createDraft(accessToken, input)
+  const res = await fetchApi(
+    `${MICROSOFT_GRAPH_BASE}/me/messages/${encodeURIComponent(message.id)}/send`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      requestId: false,
+    },
+  )
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Graph send draft failed (${res.status}): ${text}`)
+  }
+  return message
+}
+
 /** PKCE helpers — Node Web Crypto compatible. */
 export function generateCodeVerifier(): string {
   // RFC 7636: 43-128 chars, URL-safe.

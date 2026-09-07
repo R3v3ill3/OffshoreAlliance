@@ -33,7 +33,16 @@ export const dynamic = 'force-dynamic'
 
 const UNIQUE_VIOLATION = '23505'
 const RECENT_SEND_WINDOW_DAYS = 7
-const REPLY_CORRELATION_WINDOW_DAYS = 30
+
+function safeFilename(name: string): string {
+  return (
+    name
+      .normalize('NFKC')
+      .replace(/[^a-zA-Z0-9._ -]/g, '_')
+      .replace(/\s+/g, '_')
+      .slice(0, 180) || 'attachment'
+  )
+}
 
 function tokenMatches(presented: string, expected: string): boolean {
   if (!presented || !expected) return false
@@ -146,6 +155,7 @@ export async function POST(req: NextRequest) {
       headerValue(rawHeaders, 'Message-ID') ??
       headerValue(rawHeaders, 'Message-Id')
     const inReplyTo = headerValue(rawHeaders, 'In-Reply-To')
+    const references = headerValue(rawHeaders, 'References')
     const receivedAt = new Date().toISOString()
 
     // ── Worker match ─────────────────────────────────────────
@@ -161,15 +171,68 @@ export async function POST(req: NextRequest) {
       campaign_id: number
       created_at: string
     } | null = null
-    if (workerId != null) {
+    const threadIdentifiers = [
+      inReplyTo,
+      ...(references?.match(/<[^>]+>|[^\s]+/g) ?? []),
+    ]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.trim().slice(0, 300))
+      .filter((value, index, values) => values.indexOf(value) === index)
+      .slice(0, 20)
+
+    if (threadIdentifiers.length > 0) {
+      const [rfcMatches, providerMatches] = await Promise.all([
+        admin
+          .from('email_messages')
+          .select('send_id, rfc_message_id, provider_message_id')
+          .in('rfc_message_id', threadIdentifiers)
+          .not('send_id', 'is', null),
+        admin
+          .from('email_messages')
+          .select('send_id, rfc_message_id, provider_message_id')
+          .in('provider_message_id', threadIdentifiers)
+          .not('send_id', 'is', null),
+      ])
+      if (rfcMatches.error) throw rfcMatches.error
+      if (providerMatches.error) throw providerMatches.error
+      const matches = [...(rfcMatches.data ?? []), ...(providerMatches.data ?? [])]
+      const matchedMessage = matches.sort((a, b) => {
+        const aId = (a.rfc_message_id || a.provider_message_id) as string
+        const bId = (b.rfc_message_id || b.provider_message_id) as string
+        return threadIdentifiers.indexOf(aId) - threadIdentifiers.indexOf(bId)
+      })[0]
+      if (matchedMessage?.send_id != null) {
+        const { data: matchedSend, error: matchedSendError } = await admin
+          .from('email_send_log')
+          .select('send_id, campaign_id, created_at')
+          .eq('send_id', matchedMessage.send_id)
+          .maybeSingle()
+        if (matchedSendError) throw matchedSendError
+        if (matchedSend) {
+          correlatedSend = {
+            send_id: matchedSend.send_id as number,
+            campaign_id: matchedSend.campaign_id as number,
+            created_at: matchedSend.created_at as string,
+          }
+        }
+      }
+    }
+
+    if (workerId != null && correlatedSend == null) {
       const cutoff = new Date(
-        Date.now() - REPLY_CORRELATION_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+        Date.now() - RECENT_SEND_WINDOW_DAYS * 24 * 60 * 60 * 1000,
       ).toISOString()
       const { data: sends } = await admin
         .from('email_send_log')
         .select('send_id, campaign_id, created_at, replied_at, reply_count')
         .eq('worker_id', workerId)
-        .eq('send_method', 'sendgrid')
+        .in('send_method', [
+          'sendgrid',
+          'outlook_personalised',
+          'outlook_bcc',
+          'outlook_send_personalised',
+          'outlook_send_bcc',
+        ])
         .gte('created_at', cutoff)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -190,25 +253,23 @@ export async function POST(req: NextRequest) {
         Date.now() - RECENT_SEND_WINDOW_DAYS * 24 * 60 * 60 * 1000
     const campaignScope = withinRecentWindow ? correlatedSend!.campaign_id : null
 
-    // Prefer an existing open thread for the address: campaign scope
-    // first, else most recent.
-    const { data: openConvs } = await admin
+    // Reuse only the exact address + campaign scope. Falling back to another
+    // campaign's open thread contaminates both campaign history and ownership.
+    let existingConversationQuery = admin
       .from('email_conversations')
-      .select('conversation_id, campaign_id, last_message_at')
+      .select('conversation_id')
       .eq('email_address', fromEmail)
-      .neq('state', 'closed')
-    let conversationId: number | null = null
-    if (openConvs && openConvs.length > 0) {
-      const sorted = [...openConvs].sort((a, b) => {
-        const aScope = a.campaign_id === campaignScope ? 0 : 1
-        const bScope = b.campaign_id === campaignScope ? 0 : 1
-        if (aScope !== bScope) return aScope - bScope
-        const aT = a.last_message_at ? Date.parse(a.last_message_at as string) : 0
-        const bT = b.last_message_at ? Date.parse(b.last_message_at as string) : 0
-        return bT - aT
-      })
-      conversationId = sorted[0].conversation_id as number
-    } else {
+    existingConversationQuery =
+      campaignScope == null
+        ? existingConversationQuery.is('campaign_id', null)
+        : existingConversationQuery.eq('campaign_id', campaignScope)
+    const { data: existingConversation, error: existingConversationError } =
+      await existingConversationQuery.maybeSingle()
+    if (existingConversationError) throw existingConversationError
+
+    let conversationId: number | null =
+      (existingConversation?.conversation_id as number | undefined) ?? null
+    if (conversationId == null) {
       const { data: created, error: convErr } = await admin
         .from('email_conversations')
         .insert({
@@ -222,8 +283,7 @@ export async function POST(req: NextRequest) {
         .single()
       if (convErr) {
         if (convErr.code === UNIQUE_VIOLATION) {
-          // Race, or a closed thread occupying the key: attach — the
-          // touch RPC below flips closed → needs_response.
+          // A concurrent webhook created the exact scoped thread first.
           let q = admin
             .from('email_conversations')
             .select('conversation_id')
@@ -232,7 +292,8 @@ export async function POST(req: NextRequest) {
             campaignScope == null
               ? q.is('campaign_id', null)
               : q.eq('campaign_id', campaignScope)
-          const { data: existing } = await q.maybeSingle()
+          const { data: existing, error: raceLookupError } = await q.maybeSingle()
+          if (raceLookupError) throw raceLookupError
           conversationId =
             (existing?.conversation_id as number | undefined) ?? null
         } else {
@@ -245,6 +306,7 @@ export async function POST(req: NextRequest) {
 
     // ── Message append (idempotent on Message-ID) ────────────
     let messageIsNew = false
+    let insertedMessageId: number | null = null
     if (conversationId != null) {
       const messageRow = {
         conversation_id: conversationId,
@@ -255,6 +317,8 @@ export async function POST(req: NextRequest) {
         from_email: fromEmail,
         to_email: extractAddress(toRaw),
         provider_message_id: messageId ? messageId.slice(0, 300) : null,
+        rfc_message_id: messageId ? messageId.slice(0, 300) : null,
+        rfc_references: references ? references.slice(0, 2000) : null,
         in_reply_to: inReplyTo ? inReplyTo.slice(0, 300) : null,
         send_id: correlatedSend?.send_id ?? null,
         attachments: attachmentInfo
@@ -281,54 +345,175 @@ export async function POST(req: NextRequest) {
           if (msgErr.code !== UNIQUE_VIOLATION) throw msgErr
         } else {
           messageIsNew = (msgIns?.length ?? 0) > 0
+          insertedMessageId =
+            (msgIns?.[0]?.message_id as number | undefined) ?? null
+        }
+        if (insertedMessageId == null) {
+          const { data: existingMessage, error: existingMessageError } = await admin
+            .from('email_messages')
+            .select('message_id')
+            .eq('provider_message_id', messageId.slice(0, 300))
+            .maybeSingle()
+          if (existingMessageError) throw existingMessageError
+          insertedMessageId =
+            (existingMessage?.message_id as number | undefined) ?? null
         }
       } else {
-        const { error: msgErr } = await admin
+        const { data: inserted, error: msgErr } = await admin
           .from('email_messages')
           .insert(messageRow)
+          .select('message_id')
+          .single()
         if (msgErr) throw msgErr
         messageIsNew = true
+        insertedMessageId = inserted.message_id as number
       }
 
-      if (messageIsNew) {
-        const { error: touchErr } = await admin.rpc(
-          'touch_email_conversation_inbound',
+      if (insertedMessageId != null && attachmentInfo) {
+        let parsedInfo: Record<
+          string,
           {
-            p_conversation_id: conversationId,
-            p_occurred_at: receivedAt,
-          },
-        )
-        if (touchErr) {
-          console.error('touch_email_conversation_inbound failed:', touchErr)
+            filename?: string
+            type?: string
+            disposition?: string
+            'content-id'?: string
+          }
+        > = {}
+        try {
+          parsedInfo = JSON.parse(attachmentInfo) as typeof parsedInfo
+        } catch {
+          parsedInfo = {}
+        }
+        for (const [fieldName, info] of Object.entries(parsedInfo)) {
+          const value = form.get(fieldName)
+          if (!(value instanceof File) || value.size === 0) continue
+          const originalFilename = info.filename || value.name || 'attachment'
+          const filename = safeFilename(originalFilename)
+          const storagePath = `${conversationId}/${insertedMessageId}/${safeFilename(fieldName)}_${filename}`
+          const bytes = Buffer.from(await value.arrayBuffer())
+          const { error: uploadError } = await admin.storage
+            .from('email-attachments')
+            .upload(storagePath, bytes, {
+              contentType: info.type || value.type || 'application/octet-stream',
+              upsert: true,
+            })
+          if (uploadError) {
+            throw uploadError
+          }
+          const { error: metadataError } = await admin
+            .from('email_message_attachments')
+            .upsert(
+              {
+                message_id: insertedMessageId,
+                conversation_id: conversationId,
+                storage_bucket: 'email-attachments',
+                storage_path: storagePath,
+                filename: originalFilename.slice(0, 255),
+                content_type: info.type || value.type || null,
+                byte_size: value.size,
+                content_id: info['content-id'] || null,
+                is_inline: info.disposition === 'inline',
+              },
+              {
+                onConflict: 'storage_bucket,storage_path',
+                ignoreDuplicates: true,
+              },
+            )
+          if (metadataError) {
+            await admin.storage.from('email-attachments').remove([storagePath])
+            throw metadataError
+          }
         }
       }
+
     }
 
-    // ── Reply stamps on the correlated send (new messages only) ──
-    if (correlatedSend && messageIsNew && workerId != null) {
-      const snippet = (text ?? '').trim().slice(0, 300) || null
-      const { data: sendRow } = await admin
-        .from('email_send_log')
-        .select('send_id, replied_at, reply_count')
-        .eq('send_id', correlatedSend.send_id)
-        .maybeSingle()
-      if (sendRow) {
-        await admin
-          .from('email_send_log')
-          .update({
-            reply_count: ((sendRow.reply_count as number) ?? 0) + 1,
-            ...(sendRow.replied_at
-              ? {}
-              : { replied_at: receivedAt, reply_snippet: snippet }),
-          })
-          .eq('send_id', correlatedSend.send_id)
-        await admin.from('email_engagement_events').insert({
-          send_id: correlatedSend.send_id,
-          event_type: 'replied',
-          occurred_at: receivedAt,
-          payload: { via: 'inbound_parse', message_id: messageId },
+    // Claim the per-message workflow so webhook retries and Graph polling can
+    // safely converge without duplicating unread counts, reply stamps or tags.
+    if (insertedMessageId != null && conversationId != null) {
+      const staleBefore = new Date(Date.now() - 10 * 60_000).toISOString()
+      const { data: claimed, error: claimError } = await admin
+        .from('email_messages')
+        .update({
+          reply_workflow_processing_started_at: new Date().toISOString(),
+          reply_workflow_error: null,
         })
-        void tagWorkerReplied(workerId)
+        .eq('message_id', insertedMessageId)
+        .is('reply_workflow_processed_at', null)
+        .or(
+          `reply_workflow_processing_started_at.is.null,reply_workflow_processing_started_at.lt.${staleBefore}`,
+        )
+        .select('message_id')
+      if (claimError) throw claimError
+
+      if ((claimed?.length ?? 0) > 0) {
+        try {
+          if (correlatedSend && workerId != null) {
+            const snippet = (text ?? '').trim().slice(0, 300) || null
+            const { data: sendRow, error: sendLookupError } = await admin
+              .from('email_send_log')
+              .select('send_id, replied_at, reply_count')
+              .eq('send_id', correlatedSend.send_id)
+              .maybeSingle()
+            if (sendLookupError) throw sendLookupError
+            if (sendRow) {
+              const sourceMessageId =
+                messageId?.slice(0, 300) ?? `inbound:${insertedMessageId}`
+              const { error: engagementError } = await admin
+                .from('email_engagement_events')
+                .insert({
+                  send_id: correlatedSend.send_id,
+                  event_type: 'replied',
+                  occurred_at: receivedAt,
+                  source_message_id: sourceMessageId,
+                  payload: { via: 'inbound_parse', message_id: messageId },
+                })
+              if (engagementError && engagementError.code !== UNIQUE_VIOLATION) {
+                throw engagementError
+              }
+              const { count: replyCount, error: countError } = await admin
+                .from('email_engagement_events')
+                .select('event_id', { count: 'exact', head: true })
+                .eq('send_id', correlatedSend.send_id)
+                .eq('event_type', 'replied')
+              if (countError) throw countError
+              const { error: sendUpdateError } = await admin
+                .from('email_send_log')
+                .update({
+                  reply_count: replyCount ?? 1,
+                  ...(sendRow.replied_at
+                    ? {}
+                    : { replied_at: receivedAt, reply_snippet: snippet }),
+                })
+                .eq('send_id', correlatedSend.send_id)
+              if (sendUpdateError) throw sendUpdateError
+              await tagWorkerReplied(workerId)
+            }
+          }
+
+          const { error: completeError } = await admin.rpc(
+            'complete_email_reply_workflow',
+            {
+              p_message_id: insertedMessageId,
+              p_occurred_at: receivedAt,
+            },
+          )
+          if (completeError) throw completeError
+        } catch (workflowError) {
+          await admin
+            .from('email_messages')
+            .update({
+              reply_workflow_processing_started_at: null,
+              reply_workflow_error: (
+                workflowError instanceof Error
+                  ? workflowError.message
+                  : String(workflowError)
+              ).slice(0, 2000),
+            })
+            .eq('message_id', insertedMessageId)
+            .is('reply_workflow_processed_at', null)
+          throw workflowError
+        }
       }
     }
 

@@ -371,6 +371,7 @@ export async function GET(request: Request) {
     .from('sms_lists')
     .select('*')
     .in('status', ['queued', 'sending'])
+    .is('archived_at', null)
     .or(`scheduled_for.is.null,scheduled_for.lte.${now.toISOString()}`)
     .order('created_at', { ascending: true })
   if (listErr) {

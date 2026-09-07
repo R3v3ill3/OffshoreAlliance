@@ -6,12 +6,19 @@
  */
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ExternalLink, Mail, Loader2, AlertTriangle } from 'lucide-react'
+import {
+  ExternalLink,
+  Mail,
+  Loader2,
+  AlertTriangle,
+  MessageSquareText,
+} from 'lucide-react'
 import { format } from 'date-fns'
 import { ConversationThreadDialog } from './ConversationThreadDialog'
 
@@ -36,6 +43,16 @@ interface EmailSendRow {
   } | null
 }
 
+interface InboxConversationRow {
+  conversation_id: number
+  campaign_id: number | null
+  subject: string | null
+  state: string
+  unread_count: number
+  last_message_at: string | null
+  campaign: { name: string } | null
+}
+
 function MethodBadge({ method }: { method: string }) {
   const labels: Record<string, string> = {
     outlook_personalised: 'Outlook (personalised)',
@@ -43,6 +60,10 @@ function MethodBadge({ method }: { method: string }) {
     action_network: 'Action Network',
     mailto: 'Mail client',
     eml: '.eml download',
+    sendgrid: 'Platform email',
+    outlook_direct: 'Outlook (direct)',
+    outlook_send_personalised: 'Outlook (personalised)',
+    outlook_send_bcc: 'Outlook (BCC)',
   }
   return (
     <span className="text-[10px] text-muted-foreground">
@@ -84,6 +105,24 @@ export function EmailHistorySection({ workerId }: Props) {
     enabled: !!workerId,
   })
 
+  const { data: inboxConversations = [], isLoading: inboxLoading } = useQuery({
+    queryKey: ['worker-email-inbox-history', workerId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('email_conversations')
+        .select(
+          `conversation_id, campaign_id, subject, state, unread_count,
+           last_message_at, campaign:campaigns(name)`,
+        )
+        .eq('worker_id', workerId)
+        .order('last_message_at', { ascending: false, nullsFirst: false })
+        .limit(50)
+      if (error) throw error
+      return (data ?? []) as unknown as InboxConversationRow[]
+    },
+    enabled: !!workerId,
+  })
+
   const openThread = (send: EmailSendRow) => {
     if (!send.conversation_id) return
     setThreadSendId(send.send_id)
@@ -100,16 +139,68 @@ export function EmailHistorySection({ workerId }: Props) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isLoading || inboxLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
-          ) : sends.length === 0 ? (
+          ) : sends.length === 0 && inboxConversations.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">
               No emails recorded for this worker yet.
             </p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-4">
+              {inboxConversations.length > 0 && (
+                <section className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                    <MessageSquareText className="h-3.5 w-3.5" />
+                    Inbox conversations
+                  </div>
+                  {inboxConversations.map((conversation) => {
+                    const href =
+                      conversation.campaign_id != null
+                        ? `/campaigns/${conversation.campaign_id}?tab=outreach&sub=comms&email_view=inbox&conversation=${conversation.conversation_id}`
+                        : `/email/inbox?conversation=${conversation.conversation_id}`
+                    return (
+                      <Link
+                        key={conversation.conversation_id}
+                        href={href}
+                        className="block rounded-md border p-3 text-sm hover:bg-muted/40"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">
+                              {conversation.subject || '(no subject)'}
+                            </p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {conversation.campaign?.name || 'Organisation-wide'}
+                              {conversation.last_message_at
+                                ? ` · ${format(
+                                    new Date(conversation.last_message_at),
+                                    'dd MMM yyyy',
+                                  )}`
+                                : ''}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            {conversation.unread_count > 0 && (
+                              <Badge>{conversation.unread_count}</Badge>
+                            )}
+                            <Badge variant="outline" className="text-[10px]">
+                              {conversation.state.replaceAll('_', ' ')}
+                            </Badge>
+                          </div>
+                        </div>
+                      </Link>
+                    )
+                  })}
+                </section>
+              )}
+              {sends.length > 0 && (
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                  <Mail className="h-3.5 w-3.5" />
+                  Campaign send log
+                </div>
+              )}
               {sends.map((send) => {
                 const campaignName =
                   (send.draft?.campaign as { name?: string } | null)?.name ??

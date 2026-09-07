@@ -22,14 +22,20 @@ async function toError(res: Response, fallback: string): Promise<Error> {
 export const SMS_ACTIVITY_QUERY_KEY = ['sms-activity'] as const
 
 /** Every action across every campaign, with a live poll while any is in flight. */
-export function useSmsActivity(campaignId?: number | null) {
+export function useSmsActivity(
+  campaignId?: number | null,
+  opts?: { archived?: 'exclude' | 'include' | 'only' },
+) {
   const scoped = campaignId != null
+  const archived = opts?.archived ?? 'exclude'
   return useQuery({
-    queryKey: [...SMS_ACTIVITY_QUERY_KEY, scoped ? campaignId : 'all'],
+    queryKey: [...SMS_ACTIVITY_QUERY_KEY, scoped ? campaignId : 'all', archived],
     queryFn: async () => {
-      const res = await fetchApi(
-        `/api/sms/activity${scoped ? `?campaign_id=${campaignId}` : ''}`,
-      )
+      const params = new URLSearchParams()
+      if (scoped) params.set('campaign_id', String(campaignId))
+      if (archived !== 'exclude') params.set('archived', archived === 'only' ? 'only' : '1')
+      const qs = params.toString()
+      const res = await fetchApi(`/api/sms/activity${qs ? `?${qs}` : ''}`)
       if (!res.ok) throw await toError(res, 'Failed to load SMS activity')
       return res.json() as Promise<SmsActivityResponse>
     },

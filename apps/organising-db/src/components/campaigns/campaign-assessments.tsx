@@ -231,7 +231,7 @@ export function CampaignAssessmentsSection({
   } = useQuery({
     queryKey: ["activity-delete-impact", pendingDeleteId],
     queryFn: async () => {
-      const [ratingsRes, listsRes] = await Promise.all([
+      const [ratingsRes, listsRes, surveysRes, smsListsRes] = await Promise.all([
         supabase
           .from("campaign_activity_ratings")
           .select("rating_id", { count: "exact", head: true })
@@ -240,12 +240,24 @@ export function CampaignAssessmentsSection({
           .from("campaign_task_lists")
           .select("task_list_id", { count: "exact", head: true })
           .eq("activity_id", pendingDeleteId!),
+        supabase
+          .from("sms_surveys")
+          .select("survey_id", { count: "exact", head: true })
+          .eq("activity_id", pendingDeleteId!),
+        supabase
+          .from("sms_lists")
+          .select("list_id", { count: "exact", head: true })
+          .contains("selected_assessment_ids", [pendingDeleteId!]),
       ]);
       if (ratingsRes.error) throw ratingsRes.error;
       if (listsRes.error) throw listsRes.error;
+      if (surveysRes.error) throw surveysRes.error;
+      if (smsListsRes.error) throw smsListsRes.error;
       return {
         ratingCount: ratingsRes.count ?? 0,
         taskListCount: listsRes.count ?? 0,
+        smsSurveyCount: surveysRes.count ?? 0,
+        smsListCount: smsListsRes.count ?? 0,
       };
     },
     enabled: pendingDeleteId != null,
@@ -1116,7 +1128,7 @@ export function CampaignAssessmentsSection({
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-sm text-muted-foreground">
                 {deleteImpactLoading ? (
-                  <p>Checking linked ratings and task lists…</p>
+                  <p>Checking linked ratings, task lists and SMS…</p>
                 ) : deleteImpactError ? (
                   <>
                     <p>
@@ -1127,7 +1139,7 @@ export function CampaignAssessmentsSection({
                     </p>
                     <p>
                       Could not load linked data. Removing still deletes any ratings and task lists
-                      tied to this activity.
+                      tied to this activity. Linked SMS actions are not deleted.
                     </p>
                   </>
                 ) : (
@@ -1159,9 +1171,39 @@ export function CampaignAssessmentsSection({
                         be removed.
                       </p>
                     )}
+                    {((deleteImpact?.smsSurveyCount ?? 0) > 0 ||
+                      (deleteImpact?.smsListCount ?? 0) > 0) && (
+                      <p>
+                        {(deleteImpact?.smsSurveyCount ?? 0) > 0 && (
+                          <>
+                            <span className="font-medium text-foreground">
+                              {deleteImpact?.smsSurveyCount}
+                            </span>{" "}
+                            SMS survey
+                            {deleteImpact?.smsSurveyCount === 1 ? "" : "s"}
+                          </>
+                        )}
+                        {(deleteImpact?.smsSurveyCount ?? 0) > 0 &&
+                          (deleteImpact?.smsListCount ?? 0) > 0 &&
+                          " and "}
+                        {(deleteImpact?.smsListCount ?? 0) > 0 && (
+                          <>
+                            <span className="font-medium text-foreground">
+                              {deleteImpact?.smsListCount}
+                            </span>{" "}
+                            SMS chat/blast
+                            {deleteImpact?.smsListCount === 1 ? "" : "s"}
+                          </>
+                        )}{" "}
+                        stay. They will no longer write to this assessment. Transcripts and SMS
+                        answers remain; wall-chart ratings for this assessment are deleted.
+                      </p>
+                    )}
                     {(deleteImpact?.ratingCount ?? 0) === 0 &&
-                      (deleteImpact?.taskListCount ?? 0) === 0 && (
-                        <p>No ratings or task lists are linked to this activity.</p>
+                      (deleteImpact?.taskListCount ?? 0) === 0 &&
+                      (deleteImpact?.smsSurveyCount ?? 0) === 0 &&
+                      (deleteImpact?.smsListCount ?? 0) === 0 && (
+                        <p>No ratings, task lists or SMS actions are linked to this activity.</p>
                       )}
                   </>
                 )}

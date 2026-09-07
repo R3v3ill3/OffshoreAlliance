@@ -31,6 +31,8 @@ import { decideRelayTarget } from '@/lib/sms/relay-target-guard'
 import { loadOwnNumberUsage } from '@/lib/sms/relay-runtime'
 import { toE164 } from '@/lib/phone/normalise-phone'
 import type { SmsRelayRow } from '@/types/sms'
+import { parseArchivedParam } from '@/lib/sms/archive-policy'
+import { applyArchivedFilter } from '@/lib/sms/archive-ops'
 
 export async function GET(req: NextRequest) {
   try {
@@ -42,11 +44,15 @@ export async function GET(req: NextRequest) {
 
     const campaignRaw = req.nextUrl.searchParams.get('campaign_id')
     const campaignId = campaignRaw ? parseInt(campaignRaw, 10) : null
+    const archived = parseArchivedParam(req.nextUrl.searchParams.get('archived'))
 
-    let query = supabase
-      .from('sms_relays')
-      .select('*')
-      .order('created_at', { ascending: false })
+    let query = applyArchivedFilter(
+      supabase
+        .from('sms_relays')
+        .select('*')
+        .order('created_at', { ascending: false }),
+      archived,
+    )
     if (campaignId != null && Number.isFinite(campaignId)) {
       query = query.or(`campaign_id.eq.${campaignId},campaign_id.is.null`)
     }

@@ -19,13 +19,15 @@ import type {
   VwSmsCampaignSummaryRowWithMode,
   VwSmsSurveyFunnelRow,
 } from '@/types/sms'
+import { parseArchivedParam } from '@/lib/sms/archive-policy'
+import { applyArchivedFilter } from '@/lib/sms/archive-ops'
 
 const createSchema = z.object({
   name: z.string().trim().max(200).optional(),
   kind: z.enum(['blast', 'survey', 'chat']).optional(),
 })
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const supabase = await createClient()
     const {
@@ -33,28 +35,40 @@ export async function GET() {
     } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { data: episodes, error } = await supabase
+    const archived = parseArchivedParam(req.nextUrl.searchParams.get('archived'))
+
+    let episodeQuery = supabase
       .from('campaigns')
       .select('campaign_id, name, created_at, created_by')
       .eq('is_sms_episode', true)
       .order('created_at', { ascending: false })
       .limit(200)
+    if (archived === 'exclude') episodeQuery = episodeQuery.is('archived_at', null)
+    else if (archived === 'only') episodeQuery = episodeQuery.not('archived_at', 'is', null)
+
+    const { data: episodes, error } = await episodeQuery
     if (error) throw error
     const rows = episodes ?? []
     if (rows.length === 0) return NextResponse.json([])
 
     const ids = rows.map((e) => e.campaign_id)
     const [{ data: lists }, { data: surveys }] = await Promise.all([
-      supabase
-        .from('vw_sms_campaign_summary')
-        .select('*')
-        .in('campaign_id', ids)
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('sms_surveys')
-        .select('*')
-        .in('campaign_id', ids)
-        .order('created_at', { ascending: false }),
+      applyArchivedFilter(
+        supabase
+          .from('vw_sms_campaign_summary')
+          .select('*')
+          .in('campaign_id', ids)
+          .order('created_at', { ascending: false }),
+        archived,
+      ),
+      applyArchivedFilter(
+        supabase
+          .from('sms_surveys')
+          .select('*')
+          .in('campaign_id', ids)
+          .order('created_at', { ascending: false }),
+        archived,
+      ),
     ])
 
     const surveyRows = (surveys ?? []) as SmsSurveyRow[]
@@ -98,6 +112,7 @@ export async function GET() {
         question_count: number
         funnel: VwSmsSurveyFunnelRow | null
         created_at: string
+        archived_at: string | null
       }>
     >()
     for (const s of surveyRows) {
@@ -113,6 +128,7 @@ export async function GET() {
         question_count: questionCounts.get(s.survey_id) ?? 0,
         funnel: funnelBySurvey.get(s.survey_id) ?? null,
         created_at: safe.created_at,
+        archived_at: safe.archived_at,
       })
       surveysByCampaign.set(s.campaign_id, bucket)
     }

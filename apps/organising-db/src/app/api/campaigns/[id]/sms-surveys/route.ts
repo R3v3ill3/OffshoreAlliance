@@ -26,9 +26,11 @@ import {
 import { insertSurveyQuestions } from '@/lib/sms/survey-authoring'
 import { dedicatedNumberRequiredForNumberId } from '@/lib/sms/sender-inbound-server'
 import type { SmsSurveyRow, VwSmsSurveyFunnelRow } from '@/types/sms'
+import { parseArchivedParam } from '@/lib/sms/archive-policy'
+import { applyArchivedFilter } from '@/lib/sms/archive-ops'
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
@@ -44,11 +46,15 @@ export async function GET(
     } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { data: surveys, error } = await supabase
-      .from('sms_surveys')
-      .select('*')
-      .eq('campaign_id', cid)
-      .order('created_at', { ascending: false })
+    const archived = parseArchivedParam(req.nextUrl.searchParams.get('archived'))
+    const { data: surveys, error } = await applyArchivedFilter(
+      supabase
+        .from('sms_surveys')
+        .select('*')
+        .eq('campaign_id', cid)
+        .order('created_at', { ascending: false }),
+      archived,
+    )
     if (error) throw error
     const rows = (surveys ?? []) as SmsSurveyRow[]
     if (rows.length === 0) return NextResponse.json([])

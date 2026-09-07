@@ -31,6 +31,14 @@ export interface OutboundEmail {
   customArgs?: Record<string, string>;
   /** Extra SMTP headers (List-Unsubscribe etc.). */
   headers?: Record<string, string>;
+  /** Provider-ready attachment payloads (base64 encoded). */
+  attachments?: Array<{
+    content: string;
+    filename: string;
+    type?: string;
+    disposition?: "attachment" | "inline";
+    contentId?: string;
+  }>;
 }
 
 export type EmailSendResultStatus = "success" | "error";

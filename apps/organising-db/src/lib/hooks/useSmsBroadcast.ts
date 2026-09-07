@@ -69,11 +69,22 @@ const ACTIVE_ITEM_STATUSES = new Set(['pending', 'queued', 'sending'])
 /** Poll cadence while a blast is mid-dispatch. */
 const SMS_ACTIVE_POLL_MS = 10_000
 
-export function useSmsLists(campaignId: number | string | null | undefined) {
+function archivedQuery(includeArchived: boolean): string {
+  return includeArchived ? 'archived=1' : ''
+}
+
+export function useSmsLists(
+  campaignId: number | string | null | undefined,
+  opts?: { includeArchived?: boolean },
+) {
+  const includeArchived = !!opts?.includeArchived
   return useQuery({
-    queryKey: ['sms-lists', String(campaignId ?? '')],
+    queryKey: ['sms-lists', String(campaignId ?? ''), includeArchived ? 'archived' : 'active'],
     queryFn: async () => {
-      const res = await fetchApi(`/api/campaigns/${campaignId}/sms-lists`)
+      const qs = archivedQuery(includeArchived)
+      const res = await fetchApi(
+        `/api/campaigns/${campaignId}/sms-lists${qs ? `?${qs}` : ''}`,
+      )
       if (!res.ok) throw await toError(res, 'Failed to fetch SMS lists')
       return res.json() as Promise<VwSmsCampaignSummaryRowWithMode[]>
     },

@@ -27,7 +27,7 @@ import type {
 } from '@/types/sms'
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
@@ -42,6 +42,8 @@ export async function GET(
       data: { user },
     } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const excludeArchived = req.nextUrl.searchParams.get('exclude_archived') === '1'
 
     const [
       { data: rollup, error: rollupErr },
@@ -76,7 +78,21 @@ export async function GET(
     if (assessmentsErr) throw assessmentsErr
 
     const senderRows = (senders ?? []) as VwSmsSenderStatsRow[]
-    const chatRows = (chats ?? []) as VwSmsChatSessionReportRow[]
+    let chatRows = (chats ?? []) as VwSmsChatSessionReportRow[]
+    if (excludeArchived && chatRows.length > 0) {
+      const { data: archivedLists, error: archivedErr } = await supabase
+        .from('sms_lists')
+        .select('list_id')
+        .eq('campaign_id', cid)
+        .not('archived_at', 'is', null)
+      if (archivedErr) throw archivedErr
+      const archivedIds = new Set(
+        ((archivedLists ?? []) as Array<{ list_id: number }>).map((r) => r.list_id),
+      )
+      if (archivedIds.size > 0) {
+        chatRows = chatRows.filter((c) => !archivedIds.has(c.list_id))
+      }
+    }
     const names: Record<string, string> = {}
     // Chat sessions resolve names from the same lookup: §F asks for
     // per-organiser throughput, and the session's creator is who ran it.

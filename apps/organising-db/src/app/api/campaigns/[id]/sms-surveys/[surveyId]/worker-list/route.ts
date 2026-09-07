@@ -126,6 +126,7 @@ export async function POST(
         status: 'draft',
         source: 'sms_survey_cohort',
         created_by: user.id,
+        source_sms_survey_id: sid,
       })
       .select('list_id, name')
       .single()

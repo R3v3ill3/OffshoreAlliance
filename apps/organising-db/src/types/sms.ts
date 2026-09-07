@@ -106,6 +106,8 @@ export interface SmsListRow {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  /** Hygiene archive. NULL = in the default SMS Tools / campaign list. */
+  archived_at?: string | null;
 }
 
 export interface SmsListItemRow {
@@ -570,6 +572,8 @@ export interface SmsRelayRow {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  /** Hygiene archive. Set only after status = ended. */
+  archived_at?: string | null;
 }
 
 export interface SmsRelayTargetRow {
@@ -714,6 +718,7 @@ export interface VwSmsCampaignSummaryRow {
   opted_out_count: number;
   blocked_count: number;
   delivery_rate_pct: number;
+  archived_at?: string | null;
 }
 
 // ─── P2P chat boards (20260812140000) ───────────────────────────────
@@ -803,6 +808,7 @@ export interface SmsP2pBoardPayload {
     assessment_campaign_id: number | null;
     /** True when campaign_id is a hidden is_sms_episode campaign. */
     campaign_is_sms_episode: boolean;
+    archived_at?: string | null;
     /**
      * Pinned assessments in pin order, with the metadata the rail needs
      * to name a chip's assessment and honour renamed levels in hover

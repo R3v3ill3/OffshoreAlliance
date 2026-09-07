@@ -12,7 +12,7 @@
  * is typed against generated Database types, which do not carry the
  * Phase 12 views until the next `pnpm gen:types`.
  */
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { errorResponse } from '@/lib/api/error-response'
 import type {
@@ -28,13 +28,15 @@ export interface SmsOrgReportCampaignRow {
   assessments_total: number
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const supabase = await createClient()
     const {
       data: { user },
     } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const excludeArchived = req.nextUrl.searchParams.get('exclude_archived') === '1'
 
     const [
       { data: rollups, error: rollupErr },
@@ -67,16 +69,22 @@ export async function GET() {
 
     const { data: campaigns, error: campaignErr } = await supabase
       .from('campaigns')
-      .select('campaign_id, name')
+      .select('campaign_id, name, is_sms_episode, archived_at')
       .in('campaign_id', campaignIds)
     if (campaignErr) throw campaignErr
 
     const names = new Map<number, string>()
+    const hiddenArchived = new Set<number>()
     for (const c of (campaigns ?? []) as Array<{
       campaign_id: number
       name: string | null
+      is_sms_episode: boolean | null
+      archived_at: string | null
     }>) {
       names.set(c.campaign_id, c.name ?? `Campaign ${c.campaign_id}`)
+      if (excludeArchived && c.is_sms_episode && c.archived_at) {
+        hiddenArchived.add(c.campaign_id)
+      }
     }
 
     const emptyRollup = (campaignId: number): VwSmsCampaignRollupRow => ({
@@ -99,7 +107,7 @@ export async function GET() {
     const rows: SmsOrgReportCampaignRow[] = campaignIds
       // Campaigns the caller cannot see are filtered out by RLS on the
       // campaigns select, so drop any id that did not come back.
-      .filter((id) => names.has(id))
+      .filter((id) => names.has(id) && !hiddenArchived.has(id))
       .map((id) => {
         const mine = assessmentRows.filter((a) => a.campaign_id === id)
         return {

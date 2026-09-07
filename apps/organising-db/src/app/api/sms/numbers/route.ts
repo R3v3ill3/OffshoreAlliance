@@ -34,6 +34,7 @@ export interface SmsNumberActionRef {
   status: string
   group: SmsActionStatusGroup
   updated_at: string
+  archived_at?: string | null
 }
 
 export interface SmsNumberAllocationRow {
@@ -132,19 +133,19 @@ export async function GET() {
     ] = await Promise.all([
       supabase
         .from('sms_lists')
-        .select('list_id, campaign_id, name, status, mode, sender_number_id, updated_at')
+        .select('list_id, campaign_id, name, status, mode, sender_number_id, updated_at, archived_at')
         .in('sender_number_id', numberIds)
         .order('updated_at', { ascending: false })
         .limit(1000),
       supabase
         .from('sms_surveys')
-        .select('survey_id, campaign_id, title, status, sender_number_id, updated_at')
+        .select('survey_id, campaign_id, title, status, sender_number_id, updated_at, archived_at')
         .in('sender_number_id', numberIds)
         .order('updated_at', { ascending: false })
         .limit(1000),
       supabase
         .from('sms_relays')
-        .select('relay_id, campaign_id, name, status, number_id, updated_at')
+        .select('relay_id, campaign_id, name, status, number_id, updated_at, archived_at')
         .in('number_id', numberIds)
         .order('updated_at', { ascending: false })
         .limit(1000),
@@ -182,6 +183,7 @@ export async function GET() {
       mode: string | null
       sender_number_id: number | null
       updated_at: string
+      archived_at: string | null
     }>
     const surveyRows = (surveys ?? []) as Array<{
       survey_id: number
@@ -190,6 +192,7 @@ export async function GET() {
       status: string
       sender_number_id: number | null
       updated_at: string
+      archived_at: string | null
     }>
     const relayRows = (relays ?? []) as Array<{
       relay_id: number
@@ -198,6 +201,7 @@ export async function GET() {
       status: string
       number_id: number
       updated_at: string
+      archived_at: string | null
     }>
 
     const campaignIds = [
@@ -246,8 +250,9 @@ export async function GET() {
         id: l.list_id,
         name: l.name?.trim() || `Untitled ${kind}`,
         status: l.status,
-        group: smsActionStatusGroup(kind, l.status),
+        group: smsActionStatusGroup(kind, l.status, l.archived_at),
         updated_at: l.updated_at,
+        archived_at: l.archived_at,
         ...describeCampaign(l.campaign_id, false),
       })
     }
@@ -257,8 +262,9 @@ export async function GET() {
         id: s.survey_id,
         name: s.title?.trim() || 'Untitled survey',
         status: s.status,
-        group: smsActionStatusGroup('survey', s.status),
+        group: smsActionStatusGroup('survey', s.status, s.archived_at),
         updated_at: s.updated_at,
+        archived_at: s.archived_at,
         ...describeCampaign(s.campaign_id, false),
       })
     }
@@ -268,8 +274,9 @@ export async function GET() {
         id: r.relay_id,
         name: r.name?.trim() || 'Untitled relay',
         status: r.status,
-        group: smsActionStatusGroup('relay', r.status),
+        group: smsActionStatusGroup('relay', r.status, r.archived_at),
         updated_at: r.updated_at,
+        archived_at: r.archived_at,
         ...describeCampaign(r.campaign_id, true),
       })
     }
@@ -301,7 +308,9 @@ export async function GET() {
         supports_inbound: supportsInbound,
         live: actions.filter((a) => a.group === 'live'),
         pending: actions.filter((a) => a.group === 'pending'),
-        finished: actions.filter((a) => a.group === 'finished').slice(0, ACTIONS_PER_NUMBER),
+        finished: actions
+          .filter((a) => a.group === 'finished' || a.group === 'archived')
+          .slice(0, ACTIONS_PER_NUMBER),
         action_count: actions.length,
         conversations: conversationsByNumber.get(n.number_id) ?? { open: 0, total: 0 },
       }

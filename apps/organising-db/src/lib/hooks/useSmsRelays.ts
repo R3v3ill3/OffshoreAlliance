@@ -60,12 +60,23 @@ async function toError(res: Response, fallback: string): Promise<Error> {
   return new Error(err.error || fallback)
 }
 
-export function useSmsRelays(campaignId?: number | string) {
+export function useSmsRelays(
+  campaignId?: number | string,
+  opts?: { includeArchived?: boolean },
+) {
+  const includeArchived = !!opts?.includeArchived
   return useQuery({
-    queryKey: ['sms-relays', campaignId != null ? String(campaignId) : 'all'],
+    queryKey: [
+      'sms-relays',
+      campaignId != null ? String(campaignId) : 'all',
+      includeArchived ? 'archived' : 'active',
+    ],
     queryFn: async () => {
-      const qs = campaignId != null ? `?campaign_id=${campaignId}` : ''
-      const res = await fetchApi(`/api/sms/relays${qs}`)
+      const params = new URLSearchParams()
+      if (campaignId != null) params.set('campaign_id', String(campaignId))
+      if (includeArchived) params.set('archived', '1')
+      const qs = params.toString()
+      const res = await fetchApi(`/api/sms/relays${qs ? `?${qs}` : ''}`)
       if (!res.ok) throw await toError(res, 'Failed to fetch relays')
       return res.json() as Promise<SmsRelayListRow[]>
     },

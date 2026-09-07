@@ -122,6 +122,7 @@ export async function loadSurveyBundle(
     .maybeSingle();
   if (error) throw error;
   if (!survey) return null;
+  if ((survey as SmsSurveyRow).archived_at) return null;
   const questions =
     surveyVersion != null
       ? await loadQuestionsForVersion(db, surveyId, surveyVersion)

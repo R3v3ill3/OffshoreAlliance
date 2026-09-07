@@ -24,6 +24,9 @@ export async function GET(
          leader_worker_id, leader_organiser_id, source,
          fired_call_list_id, fired_draft_id, fired_task_list_id,
          fired_sms_list_id, fired_email_list_id, fired_at,
+         source_sms_list_id, source_sms_survey_id, source_sms_gone_at,
+         source_sms_list:sms_lists!campaign_worker_lists_source_sms_list_id_fkey(archived_at),
+         source_sms_survey:sms_surveys!campaign_worker_lists_source_sms_survey_id_fkey(archived_at),
          created_by, created_at, updated_at,
          items_count:campaign_worker_list_items(count)`
       )
@@ -35,7 +38,20 @@ export async function GET(
     const { data, error } = await q
     if (error) throw error
 
-    return NextResponse.json(data ?? [])
+    const rows = (data ?? []).map((row) => {
+      const r = row as typeof row & {
+        source_sms_list?: { archived_at: string | null } | null
+        source_sms_survey?: { archived_at: string | null } | null
+      }
+      const { source_sms_list, source_sms_survey, ...rest } = r
+      return {
+        ...rest,
+        source_sms_archived_at:
+          source_sms_list?.archived_at ?? source_sms_survey?.archived_at ?? null,
+      }
+    })
+
+    return NextResponse.json(rows)
   } catch (error) {
     console.error('GET worker-lists error:', error)
     return NextResponse.json({ error: 'Failed to fetch worker lists' }, { status: 500 })

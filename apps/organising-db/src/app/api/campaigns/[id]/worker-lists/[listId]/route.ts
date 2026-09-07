@@ -46,6 +46,9 @@ export async function GET(
            leader_worker_id, leader_organiser_id, source,
            fired_call_list_id, fired_draft_id, fired_task_list_id,
            fired_sms_list_id, fired_email_list_id, fired_at,
+           source_sms_list_id, source_sms_survey_id, source_sms_gone_at,
+           source_sms_list:sms_lists!campaign_worker_lists_source_sms_list_id_fkey(archived_at),
+           source_sms_survey:sms_surveys!campaign_worker_lists_source_sms_survey_id_fkey(archived_at),
            created_by, created_at, updated_at,
            leader_worker:workers!campaign_worker_lists_leader_worker_id_fkey(
              worker_id, first_name, last_name
@@ -70,7 +73,10 @@ export async function GET(
     ])
 
     if (listRes.error) throw listRes.error
-    const list = listRes.data
+    const list = listRes.data as typeof listRes.data & {
+      source_sms_list?: { archived_at: string | null } | null
+      source_sms_survey?: { archived_at: string | null } | null
+    }
     if (!list || list.campaign_id !== cid) {
       return NextResponse.json({ error: 'List not found' }, { status: 404 })
     }
@@ -91,8 +97,11 @@ export async function GET(
       )
     }
 
+    const { source_sms_list, source_sms_survey, ...listRest } = list
     return NextResponse.json({
-      ...list,
+      ...listRest,
+      source_sms_archived_at:
+        source_sms_list?.archived_at ?? source_sms_survey?.archived_at ?? null,
       items: (items ?? []).map((i) => ({
         ...i,
         cumulative_rating: ratingByWorker.get(i.worker_id) ?? null,

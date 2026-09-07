@@ -18,6 +18,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { errorResponse } from '@/lib/api/error-response'
 import type { SmsActionKind } from '@/lib/sms/hub-actions'
+import { parseArchivedParam } from '@/lib/sms/archive-policy'
+import { applyArchivedFilter } from '@/lib/sms/archive-ops'
 
 /** Newest first, capped per kind — the hub is an overview, not an archive. */
 const LIMIT = 200
@@ -53,6 +55,7 @@ export interface SmsActivityRow {
   /** Blasts only: set when the blast is a launch text for a relay. */
   relay_id?: number | null
   relay_name?: string | null
+  archived_at?: string | null
 }
 
 export interface SmsActivityResponse {
@@ -61,6 +64,8 @@ export interface SmsActivityResponse {
   surveys: SmsActivityRow[]
   relays: SmsActivityRow[]
   scoped: boolean
+  /** Count of archived rows hidden from the default list. */
+  archived_total: number
 }
 
 interface CampaignRow {
@@ -86,26 +91,36 @@ export async function GET(req: NextRequest) {
     const raw = req.nextUrl.searchParams.get('campaign_id')
     const campaignId = raw ? parseInt(raw, 10) : null
     const scoped = campaignId != null && Number.isFinite(campaignId)
+    const archived = parseArchivedParam(req.nextUrl.searchParams.get('archived'))
 
-    let listQuery = supabase
-      .from('sms_lists')
-      .select(
-        'list_id, campaign_id, name, status, mode, relay_id, created_at, updated_at, sender_number_id, total_items, sent_items, delivered_items',
-      )
-      .order('created_at', { ascending: false })
-      .limit(LIMIT)
-    let surveyQuery = supabase
-      .from('sms_surveys')
-      .select(
-        'survey_id, campaign_id, title, status, is_test, created_at, updated_at, sender_number_id',
-      )
-      .order('created_at', { ascending: false })
-      .limit(LIMIT)
-    let relayQuery = supabase
-      .from('sms_relays')
-      .select('relay_id, campaign_id, name, status, number_id, created_at, updated_at')
-      .order('created_at', { ascending: false })
-      .limit(LIMIT)
+    let listQuery = applyArchivedFilter(
+      supabase
+        .from('sms_lists')
+        .select(
+          'list_id, campaign_id, name, status, mode, relay_id, created_at, updated_at, sender_number_id, total_items, sent_items, delivered_items, archived_at',
+        )
+        .order('created_at', { ascending: false })
+        .limit(LIMIT),
+      archived,
+    )
+    let surveyQuery = applyArchivedFilter(
+      supabase
+        .from('sms_surveys')
+        .select(
+          'survey_id, campaign_id, title, status, is_test, created_at, updated_at, sender_number_id, archived_at',
+        )
+        .order('created_at', { ascending: false })
+        .limit(LIMIT),
+      archived,
+    )
+    let relayQuery = applyArchivedFilter(
+      supabase
+        .from('sms_relays')
+        .select('relay_id, campaign_id, name, status, number_id, created_at, updated_at, archived_at')
+        .order('created_at', { ascending: false })
+        .limit(LIMIT),
+      archived,
+    )
     if (scoped) {
       listQuery = listQuery.eq('campaign_id', campaignId as number)
       surveyQuery = surveyQuery.eq('campaign_id', campaignId as number)
@@ -134,6 +149,7 @@ export async function GET(req: NextRequest) {
       total_items: number | null
       sent_items: number | null
       delivered_items: number | null
+      archived_at: string | null
     }>
     const surveyRows = (surveys ?? []) as Array<{
       survey_id: number
@@ -144,6 +160,7 @@ export async function GET(req: NextRequest) {
       created_at: string
       updated_at: string
       sender_number_id: number | null
+      archived_at: string | null
     }>
     const relayRows = (relays ?? []) as Array<{
       relay_id: number
@@ -153,6 +170,7 @@ export async function GET(req: NextRequest) {
       number_id: number
       created_at: string
       updated_at: string
+      archived_at: string | null
     }>
 
     // Campaign names and sender numbers in one read each rather than a
@@ -192,6 +210,7 @@ export async function GET(req: NextRequest) {
       { data: qs },
       { data: sess },
       { data: launchRelays },
+      archivedTotal,
     ] = await Promise.all([
       campaignIds.length > 0
         ? supabase
@@ -236,6 +255,7 @@ export async function GET(req: NextRequest) {
             .select('relay_id, name')
             .in('relay_id', launchRelayIds)
         : Promise.resolve({ data: [] as Array<{ relay_id: number; name: string | null }> }),
+      countArchived(supabase, scoped ? (campaignId as number) : null),
     ])
     if (cErr) throw cErr
     if (nErr) throw nErr
@@ -319,6 +339,7 @@ export async function GET(req: NextRequest) {
         relay_id: l.relay_id,
         relay_name:
           l.relay_id != null ? (launchRelayName.get(l.relay_id) ?? null) : null,
+        archived_at: l.archived_at,
         ...describeCampaign(l.campaign_id, false),
         ...describeNumber(l.sender_number_id),
       }
@@ -337,6 +358,7 @@ export async function GET(req: NextRequest) {
       progress_count: completedCount.get(s.survey_id) ?? 0,
       is_test: !!s.is_test,
       question_count: questionCount.get(s.survey_id) ?? 0,
+      archived_at: s.archived_at,
       ...describeCampaign(s.campaign_id, false),
       ...describeNumber(s.sender_number_id),
     }))
@@ -351,6 +373,7 @@ export async function GET(req: NextRequest) {
       audience_count: targetCounts.get(r.relay_id)?.total ?? 0,
       progress_count: targetCounts.get(r.relay_id)?.active ?? 0,
       pending_moderation_count: pendingCounts.get(r.relay_id) ?? 0,
+      archived_at: r.archived_at,
       ...describeCampaign(r.campaign_id, true),
       ...describeNumber(r.number_id),
     }))
@@ -361,10 +384,39 @@ export async function GET(req: NextRequest) {
       surveys: surveyActivity,
       relays: relayActivity,
       scoped,
+      archived_total: archivedTotal,
     }
     return NextResponse.json(payload)
   } catch (error) {
     console.error('GET sms activity error:', error)
     return errorResponse('Failed to load SMS activity', error)
   }
+}
+
+async function countArchived(
+  supabase: Awaited<ReturnType<typeof import('@/lib/supabase/server').createClient>>,
+  campaignId: number | null,
+): Promise<number> {
+  let lists = supabase
+    .from('sms_lists')
+    .select('list_id', { count: 'exact', head: true })
+    .not('archived_at', 'is', null)
+  let surveys = supabase
+    .from('sms_surveys')
+    .select('survey_id', { count: 'exact', head: true })
+    .not('archived_at', 'is', null)
+  let relays = supabase
+    .from('sms_relays')
+    .select('relay_id', { count: 'exact', head: true })
+    .not('archived_at', 'is', null)
+  if (campaignId != null) {
+    lists = lists.eq('campaign_id', campaignId)
+    surveys = surveys.eq('campaign_id', campaignId)
+    relays = relays.or(`campaign_id.eq.${campaignId},campaign_id.is.null`)
+  }
+  const [l, s, r] = await Promise.all([lists, surveys, relays])
+  if (l.error) throw l.error
+  if (s.error) throw s.error
+  if (r.error) throw r.error
+  return (l.count ?? 0) + (s.count ?? 0) + (r.count ?? 0)
 }

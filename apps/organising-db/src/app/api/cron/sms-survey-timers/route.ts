@@ -149,6 +149,7 @@ export async function GET(request: Request) {
     .from('sms_surveys')
     .select('*')
     .eq('status', 'open')
+    .is('archived_at', null)
     .order('survey_id', { ascending: true })
   if (surveyErr) {
     return NextResponse.json({ error: surveyErr.message }, { status: 500 })

@@ -11,6 +11,7 @@ import {
   smsActionStatusGroup,
   smsActionStatusLabel,
   smsCreateHref,
+  smsLifecycleHref,
 } from '../hub-actions'
 
 describe('action refs', () => {
@@ -88,6 +89,13 @@ describe('status groups', () => {
     expect(smsActionStatusGroup('relay', 'paused')).toBe('pending')
     expect(smsActionStatusGroup('relay', 'ended')).toBe('finished')
   })
+
+  it('treats archived_at as an Archived bucket regardless of status', () => {
+    expect(smsActionStatusGroup('blast', 'sent', '2026-01-01T00:00:00Z')).toBe('archived')
+    expect(smsActionStatusGroup('survey', 'closed', '2026-01-01T00:00:00Z')).toBe('archived')
+    expect(smsActionStatusLabel('blast', 'sent', '2026-01-01T00:00:00Z')).toBe('archived')
+    expect(smsActionStatusLabel('chat', 'draft', '2026-01-01T00:00:00Z')).toBe('archived')
+  })
 })
 
 describe('hrefs', () => {
@@ -98,6 +106,9 @@ describe('hrefs', () => {
     ).toBe('/sms?open=survey%3A3%3A4&standalone=1')
     expect(smsActionHref({ kind: 'relay', id: 9 })).toBe('/sms?open=relay%3A9')
     expect(smsActionHref({ kind: 'chat', campaignId: 3, id: 4 })).toBe('/campaigns/3/sms/chat/4')
+    expect(
+      smsLifecycleHref('open_board', { kind: 'chat', campaignId: 3, id: 4 }),
+    ).toBe('/campaigns/3/sms/chat/4')
   })
 
   it('builds the create wizard URL', () => {

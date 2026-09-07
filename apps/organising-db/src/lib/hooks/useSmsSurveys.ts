@@ -83,11 +83,16 @@ async function toError(res: Response, fallback: string): Promise<Error> {
   return error
 }
 
-export function useSmsSurveys(campaignId: number | string) {
+export function useSmsSurveys(
+  campaignId: number | string,
+  opts?: { includeArchived?: boolean },
+) {
+  const includeArchived = !!opts?.includeArchived
   return useQuery({
-    queryKey: ['sms-surveys', String(campaignId)],
+    queryKey: ['sms-surveys', String(campaignId), includeArchived ? 'archived' : 'active'],
     queryFn: async () => {
-      const res = await fetchApi(`/api/campaigns/${campaignId}/sms-surveys`)
+      const qs = includeArchived ? '?archived=1' : ''
+      const res = await fetchApi(`/api/campaigns/${campaignId}/sms-surveys${qs}`)
       if (!res.ok) throw await toError(res, 'Failed to fetch SMS surveys')
       return res.json() as Promise<SmsSurveyListRow[]>
     },

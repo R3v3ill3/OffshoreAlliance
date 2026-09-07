@@ -56,7 +56,10 @@ export function SmsHubPage() {
   const { canWrite } = useAuth()
 
   const scope = useMemo(() => parseScopeParam(searchParams.get('scope')), [searchParams])
-  const { data, isLoading } = useSmsActivity()
+  const [showArchived, setShowArchived] = useState(false)
+  const { data, isLoading } = useSmsActivity(undefined, {
+    archived: showArchived ? 'include' : 'exclude',
+  })
   const { data: campaigns = [], isLoading: campaignsLoading } = useSmsHubCampaigns()
   const { data: numbers } = useSmsNumbers()
 
@@ -86,7 +89,8 @@ export function SmsHubPage() {
     let finished = 0
     let review = 0
     for (const r of allRows) {
-      const g = smsActionStatusGroup(r.kind, r.status)
+      const g = smsActionStatusGroup(r.kind, r.status, r.archived_at)
+      if (g === 'archived') continue
       if (g === 'live') live += 1
       else if (g === 'pending') pending += 1
       else finished += 1
@@ -258,6 +262,9 @@ export function SmsHubPage() {
           onOpen={openRow}
           onDuplicate={duplicateRow}
           onOpenRelay={openRelay}
+          showArchived={showArchived}
+          onShowArchivedChange={setShowArchived}
+          archivedTotal={data?.archived_total ?? 0}
           scopeControl={
             <Select
               value={scopeSelectValue}

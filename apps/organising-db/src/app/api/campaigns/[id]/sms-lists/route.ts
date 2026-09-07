@@ -25,9 +25,11 @@ import {
 } from '@/lib/sms/populate-sms-list'
 import { relayAwareSenderMessage } from '@/lib/sms/sender-purpose'
 import { dedicatedNumberRequiredForNumberId } from '@/lib/sms/sender-inbound-server'
+import { parseArchivedParam } from '@/lib/sms/archive-policy'
+import { applyArchivedFilter } from '@/lib/sms/archive-ops'
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
@@ -43,11 +45,15 @@ export async function GET(
     } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { data, error } = await supabase
-      .from('vw_sms_campaign_summary')
-      .select('*')
-      .eq('campaign_id', cid)
-      .order('created_at', { ascending: false })
+    const archived = parseArchivedParam(req.nextUrl.searchParams.get('archived'))
+    const { data, error } = await applyArchivedFilter(
+      supabase
+        .from('vw_sms_campaign_summary')
+        .select('*')
+        .eq('campaign_id', cid)
+        .order('created_at', { ascending: false }),
+      archived,
+    )
     if (error) throw error
     return NextResponse.json(data ?? [])
   } catch (error) {

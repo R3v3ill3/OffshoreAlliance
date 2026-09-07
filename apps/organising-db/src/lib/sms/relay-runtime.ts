@@ -83,6 +83,7 @@ export async function findLiveRelayByNumberId(
     .select("*")
     .eq("number_id", numberId)
     .in("status", [...LIVE_RELAY_STATUSES])
+    .is("archived_at", null)
     .limit(1);
   if (error) throw error;
   const relay = (data?.[0] as SmsRelayRow | undefined) ?? null;
@@ -140,7 +141,8 @@ export async function loadOwnNumberUsage(db: Db): Promise<OwnNumberUsage[]> {
   const { data: relays, error: relayErr } = await db
     .from("sms_relays")
     .select("relay_id, name, number_id")
-    .in("status", [...LIVE_RELAY_STATUSES]);
+    .in("status", [...LIVE_RELAY_STATUSES])
+    .is("archived_at", null);
   if (relayErr) throw relayErr;
   const relayByNumber = new Map<number, { relay_id: number; name: string | null }>();
   for (const r of (relays ?? []) as Array<{
@@ -211,7 +213,8 @@ export async function loadLiveRelayPhones(db: Db): Promise<string[]> {
   const { data: relays, error } = await db
     .from("sms_relays")
     .select("number_id")
-    .in("status", [...LIVE_RELAY_STATUSES]);
+    .in("status", [...LIVE_RELAY_STATUSES])
+    .is("archived_at", null);
   if (error) throw error;
   const numberIds = [
     ...new Set((relays ?? []).map((r) => r.number_id as number)),

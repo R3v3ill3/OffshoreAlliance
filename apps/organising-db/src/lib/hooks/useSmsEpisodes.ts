@@ -17,6 +17,7 @@ export interface SmsEpisodeSurveyRow {
   question_count: number
   funnel: VwSmsSurveyFunnelRow | null
   created_at: string
+  archived_at?: string | null
 }
 
 export interface SmsEpisodeRow {
@@ -33,11 +34,13 @@ async function toError(res: Response, fallback: string): Promise<Error> {
   return new Error((err as { error?: string }).error || fallback)
 }
 
-export function useSmsEpisodes(enabled = true) {
+export function useSmsEpisodes(enabled = true, opts?: { includeArchived?: boolean }) {
+  const includeArchived = !!opts?.includeArchived
   return useQuery({
-    queryKey: ['sms-episodes'],
+    queryKey: ['sms-episodes', includeArchived ? 'archived' : 'active'],
     queryFn: async () => {
-      const res = await fetchApi('/api/sms/episodes')
+      const qs = includeArchived ? '?archived=1' : ''
+      const res = await fetchApi(`/api/sms/episodes${qs}`)
       if (!res.ok) throw await toError(res, 'Failed to fetch standalone SMS')
       return res.json() as Promise<SmsEpisodeRow[]>
     },

@@ -150,6 +150,7 @@ export async function POST(
         status: 'draft',
         source: 'sms_blast_cohort',
         created_by: user.id,
+        source_sms_list_id: lid,
       })
       .select('list_id, name')
       .single()

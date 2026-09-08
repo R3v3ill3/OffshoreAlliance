@@ -11,6 +11,8 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 - **Plan documents:** the plan and appendices were authored on branch `claude/organiser-ux-campaign-workflow-bi0uai` and were not on `develop`. WP0.1 merges them into its branch so later packages can cite them.
 - **Commands:** from `apps/organising-db`: `pnpm lint`, `pnpm test`, `pnpm build`. Root: `pnpm validate:migrations`.
 - **Branches:** `feat/oux-<wp-id>-<slug>` off `develop`; draft PR into `develop`; never `main`.
+- **Baseline (develop at 1b959b1, measured 2026-09-08):** `pnpm build` green; `pnpm test` 632 passing, 1 test file fails to load (`src/lib/sms/__tests__/rating-source-taxonomy.test.ts` reads a migration the baseline rebase moved to `migrations_legacy/`; a stale path, fixed in WP0.2); `pnpm lint` 143 errors / 151 warnings, all pre-existing. Per-package standard until the debt is cleared: every touched file lints clean on its changed lines and the total error count must not rise. Clearing the debt is a housekeeping task for the operator to authorise, not part of any work package.
+- **Local environment:** `apps/organising-db/.env.local` points at the **production** project. No agent may run the app locally (`pnpm dev`, `pnpm start`) or take screenshots until the operator supplies a dev-pointed environment; `pnpm build` alone is permitted (it does not query the database; every route is dynamic). Screenshot acceptance evidence is deferred until then and PRs stay draft.
 
 ## Ledger
 

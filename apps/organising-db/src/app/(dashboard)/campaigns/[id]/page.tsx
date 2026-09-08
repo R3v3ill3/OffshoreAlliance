@@ -140,6 +140,12 @@ interface ResultRow {
 
 const INITIAL_UNIVERSE_FORM = { name: "", description: "" };
 
+// Named universes are a vestigial labelling feature (no rule editor exists).
+// Hidden from the Who's in tab pending the module work; existing rows still
+// drive the Universe select on the Actions tab (see the `universes` prop on
+// CampaignActionsSection below). Flip to true to restore the card.
+const SHOW_NAMED_UNIVERSES: boolean = false;
+
 function formatDate(d: string | null) {
   if (!d) return "—";
   try {
@@ -606,7 +612,7 @@ export default function CampaignDetailPage() {
             <TabsList className="mb-4">
               <TabsTrigger value="wall-chart">Wall Chart / List</TabsTrigger>
               <TabsTrigger value="campaign-units">Campaign Units</TabsTrigger>
-              <TabsTrigger value="universe">Scope</TabsTrigger>
+              <TabsTrigger value="universe">Who&apos;s in</TabsTrigger>
               <TabsTrigger value="assessments">Assessments</TabsTrigger>
               <TabsTrigger value="data-fields">Data fields</TabsTrigger>
               <TabsTrigger value="activists">Activists &amp; WOCs</TabsTrigger>
@@ -616,6 +622,7 @@ export default function CampaignDetailPage() {
             <TabsContent value="universe" className="space-y-6">
               <CampaignUniverseSection campaignId={id} canWrite={!!canWrite} />
 
+              {SHOW_NAMED_UNIVERSES && (
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-4">
                   <div className="space-y-1 min-w-0">
@@ -717,6 +724,7 @@ export default function CampaignDetailPage() {
                   )}
                 </CardContent>
               </Card>
+              )}
             </TabsContent>
 
             <TabsContent value="assessments">

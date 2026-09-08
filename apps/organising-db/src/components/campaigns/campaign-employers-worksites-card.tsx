@@ -86,14 +86,14 @@ export function CampaignEmployersWorksitesCard({ campaignId }: { campaignId: str
         <div className="space-y-1 min-w-0">
           <CardTitle className="text-base">Employers & worksites</CardTitle>
           <CardDescription>
-            Scope of this campaign. Click a chip for full details, or manage scope to
+            Who&apos;s in this campaign. Click a chip for full details, or edit to
             add or remove.
           </CardDescription>
         </div>
         <Button asChild size="sm" variant="outline">
           <Link href={`/campaigns/${campaignId}?tab=workforce&sub=universe`}>
             <Settings className="h-3.5 w-3.5 mr-1" aria-hidden />
-            Manage scope
+            Edit who&apos;s in
           </Link>
         </Button>
       </CardHeader>

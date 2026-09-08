@@ -126,8 +126,9 @@ today's labels on purpose.
 ## Today's labels this script relies on
 
 If a future editor changes any of these in the product, this script has to
-change too. Sources are appendix D 3.2 (campaign tabs) and appendix D 1.5 (the
-campaigns page action strip).
+change too. Sources are appendix D 3.2 (campaign tabs), appendix D 1.5 (the
+campaigns page action strip), and the two component files cited directly for
+"Assign to unit" and "Unallocated".
 
 Paths are relative to `apps/organising-db/`.
 

@@ -188,7 +188,7 @@ The count line from the same run, which `tail -3` cuts off:
 143 errors / 151 warnings: identical to the baseline.
 
 ```
-$ git diff --stat feat/oux-wp0.1-decision-register..HEAD
+$ git diff --stat feat/oux-wp0.1-decision-register..c8639d2   # measured before fix round 1; see round-2 review note below
  docs/organiser-ux-review/PROGRESS.md               |   3 +-
  docs/organiser-ux-review/study/README.md           | 118 ++++++++++++++++
  docs/organiser-ux-review/study/card-sort.md        |  90 +++++++++++++
@@ -208,3 +208,9 @@ none
 ## 8. Reviewer findings
 
 _(reviewer)_
+
+## 8. Reviewer findings
+
+**Round 1 (2026-09-08, fresh reviewer): BLOCK.** Three blocking findings: tree-test find-tasks reused tree label words; "colour by" card was a recommended term, not one in use; login-submit click counting was ambiguous against the 2-click target. Eight advisories (stale verification block, missing bare unit/plan cards, task-1 layout rule, Wall chart/People child labels, abbreviated paths, orphaned section-8 metric, dev cleanup instruction, undeclared orchestrator deviation). All addressed in commit 0437536.
+
+**Round 2 (2026-09-08, fresh reviewer): APPROVE WITH ADVISORIES.** All three blocking findings verified closed; regression pass clean (SUS standard ten, three tasks match plan §7, every cited code line correct, URLs verbatim from appendix F, no non-docs file in the diff). Five advisories, applied by the orchestrator in the final commit: §7 diff-stat relabelled to the commit it was measured at (`c8639d2`; the block cannot be self-consistent at HEAD because this file's own line count is in the stat); task 10 reworded to drop "who"; task 10 marked mandatory; tree-test exclusion list widened to every tree label; moderator-script provenance sentence corrected.

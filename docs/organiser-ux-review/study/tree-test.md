@@ -47,9 +47,9 @@ Phrase every task as a goal. **No word from the tree may appear in a task**, or
 the participant is matching keywords rather than finding things. That rules out
 plan, list, assessment, organiser, who's in, group, unit, wall chart, activity,
 setup, insight, library, import, bargaining, section, data field, call, SMS,
-email and task.
+email, task, people, filters, bulk actions, basics, activists and WOCs.
 
-Read one at a time. Use 8 to 10 of these.
+Read one at a time. Use 8 to 10 of these; task 10 is mandatory.
 
 1. See how a shift is tracking.
 2. Change which employers and sites the campaign covers.
@@ -60,7 +60,7 @@ Read one at a time. Use 8 to 10 of these.
 7. Change the campaign's start date.
 8. See how we intend to win this campaign over the next year.
 9. Find a document about the agreement.
-10. Find every worker at one site who has no phone number recorded.
+10. Find every worker at one site with no phone number recorded. (Mandatory: this task is the Wall chart / People discriminator; never drop it.)
 
 Task 10 is the discriminator between **Wall chart** and **People**: it is the
 one goal that needs filtering and acting on a set of workers rather than

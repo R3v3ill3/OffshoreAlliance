@@ -34,10 +34,10 @@ function pickOne<T>(value: T | T[] | null | undefined): T | null {
 }
 
 /**
- * Read-only summary of the employers and worksites that scope a campaign,
- * surfaced on the Campaign Overview tab. Clicking a chip opens the existing
- * `/employers/[id]` or `/worksites/[id]` detail page. The "Manage scope"
- * action deep-links to the Workforce → Scope sub-tab where editing lives.
+ * Read-only summary of the employers and worksites a campaign covers,
+ * surfaced on the campaign Overview tab. Clicking a chip opens the existing
+ * `/employers/[id]` or `/worksites/[id]` detail page. The "Edit who's in"
+ * action deep-links to the Workforce → Who's in sub-tab where editing lives.
  */
 export function CampaignEmployersWorksitesCard({ campaignId }: { campaignId: string }) {
   const supabase = createClient();

@@ -450,10 +450,13 @@ Not questions, but flagged for the reviewer so nothing arrives as a surprise:
 1. **§2.8 — the sheet grid class.** The plan offered `grid-cols-6 w-full h-auto text-xs`
    with `grid-cols-3 sm:grid-cols-6 h-auto` as the documented fallback, to be settled by
    screenshot. Neither six-column form is supported by the layout, so the shipped class is
-   **`grid grid-cols-3 w-full h-auto text-xs`** — the fallback with its `sm:grid-cols-6`
+   **`grid grid-cols-3 w-full h-auto`** — the fallback with its `sm:grid-cols-6`
    half dropped. Measurement is in the implementer notes below. The `sm:grid-cols-6` half
    would have re-introduced the overflow at every width the sheet can actually reach,
-   because `SheetContent` is capped at `sm:max-w-xl`.
+   because `SheetContent` is capped at `sm:max-w-xl`. (The `text-xs` the plan suggested was
+   shipped in the first round and removed in fix round 1: it is dead, because `TabsTrigger`
+   in `src/components/ui/tabs.tsx` sets `text-sm` on every trigger and that class wins over
+   one inherited from the list.)
 
 2. **§2.4 — the `SHOW_NAMED_UNIVERSES` comment.** The plan's comment text cites
    `page.tsx:556` for the surviving `universes` prop. The shipped comment names
@@ -475,27 +478,47 @@ changed — confirmed by
 
 ### Implementer notes
 
-**Sheet grid class chosen: `grid grid-cols-3 w-full h-auto text-xs`** (two rows of three).
+**Sheet grid class chosen: `grid grid-cols-3 w-full h-auto`** (two rows of three).
 
-`TabsTrigger` is `whitespace-nowrap px-3` (`src/components/ui/tabs.tsx`), so a label cannot
-shrink or wrap — it overflows its cell. The sheet is `w-full sm:max-w-xl` with `p-6`
-(`campaign-worker-detail-provider.tsx`), so its content is at most ~528px. Rendered
-measurement of the six labels at `text-xs` in Geist, in px, label width then width needed
-including the trigger's 24px horizontal padding:
+`TabsTrigger` is `whitespace-nowrap px-3 text-sm` (`src/components/ui/tabs.tsx`), so a label
+cannot shrink or wrap — it overflows its cell — and it always renders at `text-sm`
+regardless of any text size set on the `TabsList` (a class on the trigger beats one inherited
+from its parent). The sheet is `w-full sm:max-w-xl` with `p-6`
+(`campaign-worker-detail-provider.tsx`), so its content is at most ~528px. Label widths in
+Geist at the `text-sm` the triggers actually render at, in px — text width, then width needed
+including the trigger's 24px horizontal padding. (The first-round table recorded these at
+`text-xs`; the real figures are ~17% wider, which strengthens rather than changes the
+conclusion.)
 
-| Label | Text | Needed |
+| Label | Text (text-sm) | Needed |
 |---|---|---|
-| Details | 40 | 64 |
-| Activity | 43 | 67 |
-| Data fields | 61 | 85 |
-| Units | 30 | 54 |
-| Relationships | 77 | **101** |
-| Development | 75 | **99** |
+| Details | 47 | 71 |
+| Activity | 50 | 74 |
+| Data fields | 71 | 95 |
+| Units | 35 | 59 |
+| Relationships | 90 | **114** |
+| Development | 88 | **112** |
 
 Available per cell: **87px at six columns** (528px sheet) — "Relationships" and "Development"
-both overflow. **173px at three columns**, and 106px at three columns in a 375px-wide phone
-sheet, so every label fits at both widths. `h-auto` releases `TabsList`'s fixed `h-9` so the
-second row is not clipped, which is the original bug.
+both overflow, and at `text-sm` so do "Data fields" (95px) and, at a 375px phone sheet, most
+of the rest. **173px at three columns**, and 106px at three columns in a 375px-wide phone
+sheet, so every label fits at both widths. The `grid-cols-3` conclusion therefore still
+holds — with more margin than the first-round measurement showed. `h-auto` releases
+`TabsList`'s fixed `h-9` so the second row is not clipped, which is the original bug.
+
+**`?view=wall-chart` persists after the build list is closed.** `setBuildListOpen`
+(`campaign-wall-chart.tsx` ~236) sets `view=wall-chart` when the panel opens (§2.2) and only
+deletes `buildList` when it closes, so the `view` param survives. This is deliberate: by the
+time an organiser has opened the build list they have expressed a wall-chart preference, and
+silently dropping the param would bounce a touch user back to the list on the next
+navigation. Clearing it would also make the close action differ from every other way the
+param is set, which never self-clears.
+
+**Test gap.** The Overview round-trip (`page.tsx`'s explicit `tab=overview` encodings in the
+redirect effect and `handleTabChange`) and the `setView` param persistence in
+`workforce-board.tsx` are component behaviour, not covered by vitest — this app has no
+component-test environment (§2.9) and adding one is out of scope (§3 item 11). Handed to
+WP0.2 as an e2e assertion.
 
 **Final `grep -rn "Unallocated\|No Unit\|Unassigned / No group" src`** (32 lines, all internal
 identifiers or code comments — no user-visible string remains):
@@ -561,6 +584,64 @@ Plus one commit for this document.
   (missing migration file), which WP0.2 fixes. Both new files pass:
   `campaign-tabs.test.ts` 13/13, `workforce-view.test.ts` 7/7.
 - `pnpm build` → `✓ Compiled successfully in 2.5min`, 125/125 static pages generated.
+
+### Fix round 1
+
+Reviewer findings applied after the first verification pass.
+
+**Blocking.**
+
+1. **The device flag never reached the layout** (`src/proxy.ts`). The proxy set `x-viewport`
+   as a *response* header, but `src/app/layout.tsx` reads it with `headers()`, which returns
+   the *request* headers — so `isMobile` was always `false` and the §2.7 touch default could
+   never fire. Fixed by computing the flag before `updateSession` and mutating
+   `request.headers`; `updateSession`'s existing `NextResponse.next({ request })` then
+   re-emits it as `x-middleware-override-headers`, which is what Next feeds into the server
+   render. Verified against the installed `next@16.1.6`: `request.headers.set()` on a
+   `NextRequest` succeeds (the same mutability `request.cookies.set` in
+   `src/lib/supabase/middleware.ts` already relies on) and the resulting
+   `NextResponse.next({ request })` carries `x-middleware-request-x-viewport`. `updateSession`
+   was therefore left untouched — no signature change. The response header is still set
+   (harmless; `grep -rn "x-viewport" src` shows the only two consumers are `proxy.ts` and
+   `layout.tsx`). The UA regex is extracted to a new pure module
+   `src/lib/device/detect-mobile.ts` with `src/lib/device/__tests__/detect-mobile.test.ts`
+   (iPhone, iPad, Android, desktop Chrome, empty/null/undefined); the proxy itself is not
+   unit-testable here.
+2. **Wizard post-settlement exit copy** (`campaign-wizard.tsx` ~1950, ~1960). "Go to the
+   campaign overview to review and track implementation" → "Go to the campaign to review and
+   track implementation"; button "Go to campaign overview" → "Go to campaign". Both fire
+   `router.push('/campaigns/${id}')`, which under §2.1 now lands on the wall chart.
+3. **`PostSettlementBanner.tsx:22`** — "Return to campaign overview" → "Return to campaign".
+   Same bare `/campaigns/${id}` href.
+
+   Sweep for others: `grep -rni "campaign overview" src/app src/components` returns seven more
+   hits, all **code comments**, not user-facing strings
+   (`phone/setup/order/page.tsx:84`, `FoundationalReadinessPanel.tsx:157`,
+   `campaign-employers-worksites-card.tsx:38`, `Phase2WizardLaunchCard.tsx:11`,
+   `SituationAnalysisCard.tsx:23, 43`). The only other rendered "…overview" label,
+   `bargaining/stage/[stageNumber]/page.tsx:546` "Back to bargaining overview", points at
+   `/campaigns/${id}/bargaining`, not a bare campaign URL, and is correct as written. Every
+   other bare-`/campaigns/${id}` label already reads "Back to campaign", "Open campaign",
+   "Skip for now — go to campaign" or the campaign name.
+
+**Advisory.**
+
+4. **`worker-detail-sheet.tsx` ~150** — dropped the dead `text-xs` from the `TabsList`
+   (`grid grid-cols-3 w-full h-auto` remains). `TabsTrigger` sets `text-sm`, which wins over
+   an inherited size, so the class never applied. §6 deviation 1 and the measurement table in
+   the implementer notes are corrected to `text-sm` (~17% wider than first recorded); the
+   `grid-cols-3` conclusion is unchanged and now has more margin.
+5. **Test gap recorded** — added to the implementer notes above: the Overview round-trip and
+   `setView` param persistence are component behaviour with no vitest coverage, handed to
+   WP0.2 as an e2e assertion.
+6. **`campaign-employers-worksites-card.tsx:38`** — file-header comment still described
+   "Manage scope" and the "Campaign Overview tab"; reworded to match the shipped "Edit who's
+   in" button and the "Who's in" sub-tab.
+7. **`campaigns/[id]/page.tsx` ~631** — gated Named universes card description "Campaign scope
+   (employers, worksites, workers) is managed above" → "Who&apos;s in (employers, worksites,
+   workers) is managed above".
+8. **`campaign-wall-chart.tsx` ~236** — no code change; the `view=wall-chart` param surviving
+   the build list's close is recorded as a deliberate choice in the implementer notes above.
 
 ## 7. Verification output
 

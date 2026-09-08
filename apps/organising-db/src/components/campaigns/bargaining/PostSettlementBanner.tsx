@@ -19,7 +19,7 @@ export function PostSettlementBanner({ campaignId, campaignName }: PostSettlemen
         </p>
         <Button asChild variant="link" size="sm" className="p-0 h-auto text-green-700 text-xs mt-2">
           <Link href={`/campaigns/${campaignId}`}>
-            Return to campaign overview
+            Return to campaign
           </Link>
         </Button>
       </div>

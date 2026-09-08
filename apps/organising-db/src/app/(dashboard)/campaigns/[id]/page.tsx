@@ -628,7 +628,7 @@ export default function CampaignDetailPage() {
                   <div className="space-y-1 min-w-0">
                     <CardTitle className="text-lg">Named universes (optional)</CardTitle>
                     <CardDescription>
-                      Labels for the Actions tab only. Campaign scope (employers, worksites, workers) is
+                      Labels for the Actions tab only. Who&apos;s in (employers, worksites, workers) is
                       managed above.
                     </CardDescription>
                   </div>

@@ -447,7 +447,120 @@ Not questions, but flagged for the reviewer so nothing arrives as a surprise:
 
 ## 6. Deviations from plan
 
-_(implementer keeps this list)_
+1. **§2.8 — the sheet grid class.** The plan offered `grid-cols-6 w-full h-auto text-xs`
+   with `grid-cols-3 sm:grid-cols-6 h-auto` as the documented fallback, to be settled by
+   screenshot. Neither six-column form is supported by the layout, so the shipped class is
+   **`grid grid-cols-3 w-full h-auto text-xs`** — the fallback with its `sm:grid-cols-6`
+   half dropped. Measurement is in the implementer notes below. The `sm:grid-cols-6` half
+   would have re-introduced the overflow at every width the sheet can actually reach,
+   because `SheetContent` is capped at `sm:max-w-xl`.
+
+2. **§2.4 — the `SHOW_NAMED_UNIVERSES` comment.** The plan's comment text cites
+   `page.tsx:556` for the surviving `universes` prop. The shipped comment names
+   `CampaignActionsSection` instead of the line number, so it does not rot as the file
+   moves. Same meaning; the flag, its `: boolean` annotation and its placement are as
+   planned.
+
+3. **§2.3 / §2.5 — comment wording.** Two code comments the plan asked to "update" were
+   reworded rather than transcribed verbatim (the `overflowAnchor` justification in
+   `campaign-wall-chart.tsx`, and the grouped-bucket comment in `workforce-list-view.tsx`).
+   Both say what the plan specified; no plan sentence prescribed the exact text.
+
+Nothing else departed. In particular: no URL identifier, select value, `unitMode` literal or
+`unallocated*` variable was renamed; `overflowAnchor: "none"` is still on both the wrapper and
+the build-list area; no `localStorage`; no dependency added; no component test added; no
+database touched; `public/help-videos/manifest.json` needed no edit (§2.10) and was not
+changed — confirmed by
+`grep -ciE "tab=|sub=|view=|Scope|Unallocated|No Unit" public/help-videos/manifest.json` → `0`.
+
+### Implementer notes
+
+**Sheet grid class chosen: `grid grid-cols-3 w-full h-auto text-xs`** (two rows of three).
+
+`TabsTrigger` is `whitespace-nowrap px-3` (`src/components/ui/tabs.tsx`), so a label cannot
+shrink or wrap — it overflows its cell. The sheet is `w-full sm:max-w-xl` with `p-6`
+(`campaign-worker-detail-provider.tsx`), so its content is at most ~528px. Rendered
+measurement of the six labels at `text-xs` in Geist, in px, label width then width needed
+including the trigger's 24px horizontal padding:
+
+| Label | Text | Needed |
+|---|---|---|
+| Details | 40 | 64 |
+| Activity | 43 | 67 |
+| Data fields | 61 | 85 |
+| Units | 30 | 54 |
+| Relationships | 77 | **101** |
+| Development | 75 | **99** |
+
+Available per cell: **87px at six columns** (528px sheet) — "Relationships" and "Development"
+both overflow. **173px at three columns**, and 106px at three columns in a 375px-wide phone
+sheet, so every label fits at both widths. `h-auto` releases `TabsList`'s fixed `h-9` so the
+second row is not clipped, which is the original bug.
+
+**Final `grep -rn "Unallocated\|No Unit\|Unassigned / No group" src`** (32 lines, all internal
+identifiers or code comments — no user-visible string remains):
+
+```
+    src/components/campaigns/campaign-worker-assignment-picker.tsx:121:  showUnallocatedElsewhereFilter = false,
+    src/components/campaigns/campaign-worker-assignment-picker.tsx:140:  showUnallocatedElsewhereFilter?: boolean;
+    src/components/campaigns/campaign-worker-assignment-picker.tsx:151:  const [showOnlyUnallocatedElsewhere, setShowOnlyUnallocatedElsewhere] = useState(false);
+    src/components/campaigns/campaign-worker-assignment-picker.tsx:278:      if (showOnlyUnallocatedElsewhere && worker.unit_count > 0) return false;
+    src/components/campaigns/campaign-worker-assignment-picker.tsx:300:    showOnlyUnallocatedElsewhere,
+    src/components/campaigns/campaign-worker-assignment-picker.tsx:411:          {showUnallocatedElsewhereFilter && (
+    src/components/campaigns/campaign-worker-assignment-picker.tsx:414:                checked={showOnlyUnallocatedElsewhere}
+    src/components/campaigns/campaign-worker-assignment-picker.tsx:415:                onCheckedChange={(checked) => setShowOnlyUnallocatedElsewhere(checked === true)}
+    src/components/campaigns/campaign-units-section.tsx:200:  // Selection for the Unallocated pseudo-unit.
+    src/components/campaigns/campaign-units-section.tsx:201:  const [unallocatedSelection, setUnallocatedSelection] = useState<Set<number>>(new Set());
+    src/components/campaigns/campaign-units-section.tsx:429:  // Workers in campaign but not assigned to any OU — shown in the Unallocated pseudo-unit.
+    src/components/campaigns/campaign-units-section.tsx:799:      // Only remove from source when source is a real unit (not coming from Unallocated).
+    src/components/campaigns/campaign-units-section.tsx:813:      setUnallocatedSelection(new Set());
+    src/components/campaigns/campaign-units-section.tsx:1772:          {/* Unallocated pseudo-unit — workers in campaign with no unit assignment */}
+    src/components/campaigns/campaign-units-section.tsx:1803:                      onClick={() => setUnallocatedSelection(new Set())}
+    src/components/campaigns/campaign-units-section.tsx:1823:                              setUnallocatedSelection(
+    src/components/campaigns/campaign-units-section.tsx:1827:                              setUnallocatedSelection(new Set());
+    src/components/campaigns/campaign-units-section.tsx:1848:                                setUnallocatedSelection((prev) => {
+    src/components/campaigns/campaign-units-section.tsx:2108:      {/* Reallocate workers to another same-type unit, or assign from Unallocated */}
+    src/components/campaigns/campaign-units-section.tsx:2111:        const isFromUnallocated = reallocateTarget.fromOuId === null;
+    src/components/campaigns/campaign-units-section.tsx:2112:        const sourceOu = !isFromUnallocated
+    src/components/campaigns/campaign-units-section.tsx:2120:            if (isFromUnallocated) return true;
+    src/components/campaigns/campaign-units-section.tsx:2144:                  {isFromUnallocated ? "Assign to unit" : "Reallocate to another unit"}
+    src/components/campaigns/campaign-units-section.tsx:2147:                  {isFromUnallocated ? (
+    src/components/campaigns/campaign-units-section.tsx:2173:                    {fromOuType && fromOuType !== "custom" && !isFromUnallocated
+    src/components/campaigns/campaign-units-section.tsx:2177:                    {fromOuType && fromOuType !== "custom" && !isFromUnallocated && (
+    src/components/campaigns/campaign-units-section.tsx:2223:                    ? (isFromUnallocated ? "Assigning…" : "Moving…")
+    src/components/campaigns/campaign-units-section.tsx:2224:                    : (isFromUnallocated ? "Assign" : "Reallocate")}
+    src/components/campaigns/wall-chart/create-organising-unit-dialog.tsx:312:  const hasUnallocatedSelections = draftAssignmentTargets.some(
+    src/components/campaigns/wall-chart/create-organising-unit-dialog.tsx:970:                    showUnallocatedElsewhereFilter
+    src/components/campaigns/wall-chart/create-organising-unit-dialog.tsx:1081:              disabled={isPending || hasUnallocatedSelections}
+    src/components/campaigns/wall-chart/create-organising-unit-dialog.tsx:1083:              title={hasUnallocatedSelections ? "Allocate selected workers before reviewing" : undefined}
+```
+
+**Commits** (7, oldest first):
+
+| SHA | Message |
+|---|---|
+| `8f4a45b` | feat(oux-wp0.3): campaign pages open on the wall chart |
+| `26da657` | fix(oux-wp0.3): make the build list force the wall chart view |
+| `39ec662` | feat(oux-wp0.3): put the wall chart tiles above the distribution charts |
+| `bf606bc` | feat(oux-wp0.3): rename "Scope" to "Who's in", hide Named universes |
+| `46e4825` | feat(oux-wp0.3): say "Unassigned" instead of "Unallocated" / "No Unit" |
+| `b0d87af` | fix(oux-wp0.3): correct the wizard step-2 button and the worker sheet tabs |
+| `b0c3298` | feat(oux-wp0.3): default the Workforce board to the list on touch devices |
+
+Plus one commit for this document.
+
+**Gate results** (from `apps/organising-db`):
+
+- `pnpm lint` → `✖ 294 problems (143 errors, 151 warnings)` — the pre-existing count from
+  `develop`, unchanged. `pnpm exec eslint` on each touched file reports zero findings on any
+  line this package edited; the only findings in touched files are pre-existing
+  (`step-campaign-units.tsx:1317,1528`, `worker-import-wizard.tsx:9,502,1571,2202`,
+  `worker-detail-sheet.tsx:241,1205`).
+- `pnpm test` → `Test Files 1 failed | 51 passed (52)`, `Tests 652 passed (652)`. The single
+  failure is the pre-existing `src/lib/sms/__tests__/rating-source-taxonomy.test.ts`
+  (missing migration file), which WP0.2 fixes. Both new files pass:
+  `campaign-tabs.test.ts` 13/13, `workforce-view.test.ts` 7/7.
+- `pnpm build` → `✓ Compiled successfully in 2.5min`, 125/125 static pages generated.
 
 ## 7. Verification output
 

@@ -205,9 +205,6 @@ $ git diff --name-only feat/oux-wp0.1-decision-register..HEAD | grep -v '^docs/'
 none
 ```
 
-## 8. Reviewer findings
-
-_(reviewer)_
 
 ## 8. Reviewer findings
 

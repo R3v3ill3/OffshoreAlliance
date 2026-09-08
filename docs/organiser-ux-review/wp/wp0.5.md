@@ -139,3 +139,12 @@ _(verifier pastes raw output)_
 ## 8. Reviewer findings
 
 _(reviewer)_
+
+### Verification (orchestrator, 2026-09-08)
+Docs-only package; no code changed, so lint/test/build are unaffected (baseline on `develop` recorded in PROGRESS.md standing notes).
+```
+$ git diff --name-only feat/oux-wp0.1-decision-register..HEAD | grep -v '^docs/'
+none
+$ git diff --stat feat/oux-wp0.1-decision-register..HEAD
+ 8 files changed, 763 insertions(+), 1 deletion(-)   (all under docs/organiser-ux-review/)
+```

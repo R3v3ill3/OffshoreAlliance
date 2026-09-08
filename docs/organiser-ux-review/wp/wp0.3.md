@@ -564,7 +564,280 @@ Plus one commit for this document.
 
 ## 7. Verification output
 
-_(verifier pastes raw output)_
+Verifier run 2026-09-08 at 7bfe6e6. Screenshot evidence deferred: no dev-pointed environment available (see PROGRESS.md standing notes).
+
+### `pnpm lint 2>&1 | tail -3`
+
+```
+  7 errors and 16 warnings potentially fixable with the `--fix` option.
+
+ ELIFECYCLE  Command failed with exit code 1.
+```
+
+Full summary line (captured separately, same run): `✖ 294 problems (143 errors, 151 warnings)` — matches the develop baseline exactly (294 problems / 143 errors / 151 warnings).
+
+### Per-file `pnpm exec eslint <path> 2>&1 | tail -4` for each file in `git diff --name-only feat/oux-wp0.1-decision-register..HEAD -- 'apps/organising-db/src/**'`
+
+```
+=== apps/organising-db/src/app/(dashboard)/campaigns/[id]/page.tsx ===
+
+=== apps/organising-db/src/app/(dashboard)/campaigns/[id]/plan/stage/[stageNumber]/page.tsx ===
+  479:80  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+✖ 11 problems (11 errors, 0 warnings)
+
+
+=== apps/organising-db/src/components/campaigns/add-workers-client.tsx ===
+
+=== apps/organising-db/src/components/campaigns/campaign-detail-header-bar.tsx ===
+
+=== apps/organising-db/src/components/campaigns/campaign-employers-worksites-card.tsx ===
+
+=== apps/organising-db/src/components/campaigns/campaign-units-section.tsx ===
+
+=== apps/organising-db/src/components/campaigns/campaign-universe-section.tsx ===
+
+=== apps/organising-db/src/components/campaigns/campaign-wall-chart.tsx ===
+
+=== apps/organising-db/src/components/campaigns/campaign-worker-assignment-picker.tsx ===
+
+=== apps/organising-db/src/components/campaigns/step-allocate-workers.tsx ===
+
+=== apps/organising-db/src/components/campaigns/step-campaign-units.tsx ===
+
+✖ 2 problems (1 error, 1 warning)
+  1 error and 0 warnings potentially fixable with the `--fix` option.
+
+
+=== apps/organising-db/src/components/campaigns/step-employers-worksites.tsx ===
+
+=== apps/organising-db/src/components/campaigns/wall-chart/create-organising-unit-dialog.tsx ===
+
+=== apps/organising-db/src/components/campaigns/wall-chart/worker-detail-sheet.tsx ===
+  1205:9  warning  The 'rows' logical expression could make the dependencies of useMemo Hook (at line 1215) change on every render. Move it inside the useMemo callback. Alternatively, wrap the initialization of 'rows' in its own useMemo() Hook  react-hooks/exhaustive-deps
+
+✖ 2 problems (0 errors, 2 warnings)
+
+
+=== apps/organising-db/src/components/campaigns/workforce/workforce-board.tsx ===
+
+=== apps/organising-db/src/components/campaigns/workforce/workforce-list-view.tsx ===
+
+=== apps/organising-db/src/components/import/worker-import-wizard.tsx ===
+
+✖ 4 problems (1 error, 3 warnings)
+  1 error and 0 warnings potentially fixable with the `--fix` option.
+
+
+=== apps/organising-db/src/lib/__tests__/campaign-tabs.test.ts ===
+
+=== apps/organising-db/src/lib/campaign-tabs.ts ===
+
+=== apps/organising-db/src/lib/campaign/__tests__/workforce-view.test.ts ===
+
+=== apps/organising-db/src/lib/campaign/workforce-view.ts ===
+```
+
+Full (untruncated) eslint output for the four files that reported findings, cross-referenced against `git diff -U0 feat/oux-wp0.1-decision-register..HEAD -- <file>` hunks:
+
+- **`.../[id]/plan/stage/[stageNumber]/page.tsx`** — findings at lines 190, 195, 427, 437, 438, 447, 448, 449, 461, 462, 479 (all `no-explicit-any`). Changed hunk: `@@ -538 +538 @@` (line 538 only). **Findings only on unchanged lines.**
+- **`step-campaign-units.tsx`** — findings at lines 1317 (`no-unused-vars`), 1528 (`prefer-const`). Changed hunks: `@@ -1089 +1089 @@`, `@@ -1166 +1166 @@`. **Findings only on unchanged lines.**
+- **`wall-chart/worker-detail-sheet.tsx`** — findings at lines 241 (`no-unused-vars`), 1205 (`react-hooks/exhaustive-deps`). Changed hunk: `@@ -145 +145,7 @@` (lines 145–151). **Findings only on unchanged lines.**
+- **`import/worker-import-wizard.tsx`** — findings at lines 9, 502, 2202 (`no-unused-vars`), 1571 (`prefer-const`). Changed hunks: `@@ -3284 +3284 @@`, `@@ -3443 +3443 @@`. **Findings only on unchanged lines.**
+
+All other 17 files: **no findings**.
+
+### `pnpm test 2>&1 | grep -E 'Test Files|Tests |FAIL|✓|✗' | head -40`
+
+```
+ ✓ src/lib/sms/__tests__/conversation-routing.test.ts (14 tests) 3ms
+ ✓ src/lib/sms/__tests__/archive-policy.test.ts (14 tests) 3ms
+ ✓ src/lib/sms/__tests__/survey-export.test.ts (20 tests) 5ms
+ ✓ src/lib/sms/__tests__/chat-rail-state.test.ts (18 tests) 3ms
+ ✓ src/lib/phone/__tests__/call-flow-state.test.ts (11 tests) 4ms
+ ✓ src/lib/sms/__tests__/relay-target-guard.test.ts (14 tests) 4ms
+ ✓ src/lib/sms/__tests__/relay-engine.test.ts (46 tests) 5ms
+ ✓ src/lib/sms/__tests__/p2p.test.ts (29 tests) 9ms
+ ✓ src/lib/sms/provider/__tests__/mobile-message-parse-webhook.test.ts (24 tests) 5ms
+ ✓ src/lib/sms/__tests__/ballot.test.ts (22 tests) 5ms
+ ✓ src/lib/sms/__tests__/relay-launch.test.ts (25 tests) 4ms
+ ✓ src/lib/sms/__tests__/survey-engine.test.ts (49 tests) 6ms
+ ✓ src/lib/sms/__tests__/survey-report.test.ts (13 tests) 12ms
+ ✓ src/lib/sms/__tests__/survey-document.test.ts (17 tests) 3ms
+ ✓ src/lib/sms/__tests__/survey-integrity.test.ts (9 tests) 3ms
+ ✓ src/lib/sms/__tests__/hub-actions.test.ts (15 tests) 3ms
+ ✓ src/lib/campaign-facts/__tests__/values.test.ts (14 tests) 3ms
+ ✓ src/lib/import/__tests__/worker-matching.test.ts (11 tests) 3ms
+ ✓ src/lib/sms/__tests__/audience-import.test.ts (16 tests) 4ms
+ ✓ src/lib/phone/__tests__/outcome-model.test.ts (16 tests) 3ms
+ ✓ src/lib/sms/__tests__/assessment-mapping.test.ts (11 tests) 2ms
+ ✓ src/lib/sms/__tests__/build-list-readiness.test.ts (16 tests) 4ms
+ ✓ src/lib/sms/__tests__/sms-reply-prompts.test.ts (10 tests) 5ms
+ ✓ src/lib/import/__tests__/participation-mapping.test.ts (11 tests) 5ms
+ ✓ src/lib/sms/__tests__/blackout.test.ts (15 tests) 17ms
+ ✓ src/lib/sms/__tests__/tapback.test.ts (9 tests) 4ms
+ ✓ src/lib/sms/__tests__/segments.test.ts (16 tests) 4ms
+ ✓ src/lib/sms/__tests__/sender-inbound.test.ts (15 tests) 3ms
+ ✓ src/lib/__tests__/campaign-tabs.test.ts (13 tests) 3ms
+ ✓ src/lib/sms/__tests__/pathway-targets.test.ts (9 tests) 2ms
+ ✓ src/lib/sms/__tests__/chat-assessment-target.test.ts (13 tests) 2ms
+ ✓ src/lib/sms/__tests__/reporting-cohorts.test.ts (7 tests) 2ms
+ ✓ src/lib/sms/__tests__/emoji.test.ts (10 tests) 5ms
+ ✓ src/lib/phone/__tests__/normalise-phone.test.ts (8 tests) 3ms
+ ✓ src/lib/campaign/__tests__/rating-display.test.ts (13 tests) 3ms
+ ✓ src/lib/workers/__tests__/duplicate-clusters.test.ts (6 tests) 3ms
+ ✓ src/lib/api/__tests__/csv.test.ts (7 tests) 4ms
+ ✓ src/lib/workers/__tests__/sync-campaign-universe.test.ts (7 tests) 4ms
+ ✓ src/lib/comms/__tests__/sanitise-email-html.test.ts (4 tests) 2ms
+ ✓ src/lib/sms/provider/__tests__/list-senders.test.ts (8 tests) 2ms
+```
+
+(`head -40` truncates before the end-of-run "Failed Suites" block and the `Test Files` / `Tests` summary lines, which print after all per-file results in this vitest reporter. Captured separately, same suite: `Test Files  1 failed | 51 passed (52)`, `Tests  652 passed (652)`. The single failure is the pre-existing `src/lib/sms/__tests__/rating-source-taxonomy.test.ts` — `ENOENT ... supabase/migrations/20260813120000_sms_source_taxonomy.sql`.)
+
+### `pnpm test -- campaign-tabs workforce-view 2>&1 | tail -15`
+
+```
+ ✓ src/lib/sms/provider/__tests__/list-senders.test.ts (8 tests) 3ms
+ ✓ src/lib/sms/__tests__/survey-validation.test.ts (5 tests) 2ms
+ ✓ src/lib/utils/__tests__/employer-match.test.ts (5 tests) 4ms
+ ✓ src/lib/sms/__tests__/compliance.test.ts (6 tests) 3ms
+ ✓ src/lib/campaign/__tests__/workforce-view.test.ts (7 tests) 2ms
+ ✓ src/lib/nav/__tests__/active-nav.test.ts (3 tests) 1ms
+ ✓ src/lib/sms/__tests__/fact-mapping.test.ts (4 tests) 2ms
+ ✓ src/lib/campaign/__tests__/assessment-form.test.ts (7 tests) 2ms
+ ✓ src/lib/comms/__tests__/sanitise-email-html.test.ts (4 tests) 2ms
+ ✓ src/lib/campaign/__tests__/campaign-detail-routes.test.ts (3 tests) 2ms
+ ✓ src/lib/workers/__tests__/worker-search-blob.test.ts (2 tests) 2ms
+ ✓ src/lib/sms/__tests__/populate-sms-list.test.ts (2 tests) 1ms
+ ✓ src/components/audience/__tests__/AudienceWashLists.test.ts (3 tests) 1ms
+
+ Test Files  1 failed | 51 passed (52)
+      Tests  652 passed (652)
+   Start at  19:06:45
+   Duration  2.15s (transform 1.45s, setup 0ms, collect 3.70s, tests 218ms, environment 6ms, prepare 8.17s)
+
+ ELIFECYCLE  Test failed. See above for more details.
+```
+
+(The `--` args do not filter by name for this project's `pnpm test` script — it ran the full suite, same result as above. `campaign-tabs.test.ts` (13/13) and `workforce-view.test.ts` (7/7) both pass within it.)
+
+### `pnpm build 2>&1 | tail -6`
+
+```
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+```
+
+(Captured separately, same build: `✓ Compiled successfully in 2.3min`, `✓ Generating static pages using 13 workers (125/125) in 8.9s`, exit code 0.)
+
+### `git diff --stat feat/oux-wp0.1-decision-register..HEAD`
+
+```
+ .../src/app/(dashboard)/campaigns/[id]/page.tsx    |  39 +-
+ .../[id]/plan/stage/[stageNumber]/page.tsx         |   2 +-
+ .../components/campaigns/add-workers-client.tsx    |   2 +-
+ .../campaigns/campaign-detail-header-bar.tsx       |   5 +-
+ .../campaign-employers-worksites-card.tsx          |   4 +-
+ .../campaigns/campaign-units-section.tsx           |   4 +-
+ .../campaigns/campaign-universe-section.tsx        |   5 +-
+ .../components/campaigns/campaign-wall-chart.tsx   |  40 +-
+ .../campaign-worker-assignment-picker.tsx          |   2 +-
+ .../components/campaigns/step-allocate-workers.tsx |   8 +-
+ .../components/campaigns/step-campaign-units.tsx   |   4 +-
+ .../campaigns/step-employers-worksites.tsx         |   2 +-
+ .../wall-chart/create-organising-unit-dialog.tsx   |   2 +-
+ .../campaigns/wall-chart/worker-detail-sheet.tsx   |   8 +-
+ .../campaigns/workforce/workforce-board.tsx        |  29 +-
+ .../campaigns/workforce/workforce-list-view.tsx    |   4 +-
+ .../src/components/import/worker-import-wizard.tsx |   4 +-
+ .../src/lib/__tests__/campaign-tabs.test.ts        | 113 ++++
+ apps/organising-db/src/lib/campaign-tabs.ts        |  17 +-
+ .../lib/campaign/__tests__/workforce-view.test.ts  |  42 ++
+ .../src/lib/campaign/workforce-view.ts             |  25 +
+ docs/organiser-ux-review/PROGRESS.md               |   2 +-
+ docs/organiser-ux-review/wp/wp0.3.md               | 571 +++++++++++++++++++++
+ 23 files changed, 858 insertions(+), 76 deletions(-)
+```
+
+### `git diff --name-only feat/oux-wp0.1-decision-register..HEAD | grep -v -E '^apps/organising-db/src/|^docs/organiser-ux-review/' || echo "no files outside src/ and docs/"`
+
+```
+no files outside src/ and docs/
+```
+
+### `grep -rn "Unallocated\|No Unit\|Unassigned / No group\|Continue to workers" apps/organising-db/src`
+
+```
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:200:  // Selection for the Unallocated pseudo-unit.
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:201:  const [unallocatedSelection, setUnallocatedSelection] = useState<Set<number>>(new Set());
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:429:  // Workers in campaign but not assigned to any OU — shown in the Unallocated pseudo-unit.
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:799:      // Only remove from source when source is a real unit (not coming from Unallocated).
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:813:      setUnallocatedSelection(new Set());
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:1772:          {/* Unallocated pseudo-unit — workers in campaign with no unit assignment */}
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:1803:                      onClick={() => setUnallocatedSelection(new Set())}
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:1823:                              setUnallocatedSelection(
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:1827:                              setUnallocatedSelection(new Set());
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:1848:                                setUnallocatedSelection((prev) => {
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:2108:      {/* Reallocate workers to another same-type unit, or assign from Unallocated */}
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:2111:        const isFromUnallocated = reallocateTarget.fromOuId === null;
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:2112:        const sourceOu = !isFromUnallocated
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:2120:            if (isFromUnallocated) return true;
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:2144:                  {isFromUnallocated ? "Assign to unit" : "Reallocate to another unit"}
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:2147:                  {isFromUnallocated ? (
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:2173:                    {fromOuType && fromOuType !== "custom" && !isFromUnallocated
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:2177:                    {fromOuType && fromOuType !== "custom" && !isFromUnallocated && (
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:2223:                    ? (isFromUnallocated ? "Assigning…" : "Moving…")
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx:2224:                    : (isFromUnallocated ? "Assign" : "Reallocate")}
+apps/organising-db/src/components/campaigns/campaign-worker-assignment-picker.tsx:121:  showUnallocatedElsewhereFilter = false,
+apps/organising-db/src/components/campaigns/campaign-worker-assignment-picker.tsx:140:  showUnallocatedElsewhereFilter?: boolean;
+apps/organising-db/src/components/campaigns/campaign-worker-assignment-picker.tsx:151:  const [showOnlyUnallocatedElsewhere, setShowOnlyUnallocatedElsewhere] = useState(false);
+apps/organising-db/src/components/campaigns/campaign-worker-assignment-picker.tsx:278:      if (showOnlyUnallocatedElsewhere && worker.unit_count > 0) return false;
+apps/organising-db/src/components/campaigns/campaign-worker-assignment-picker.tsx:300:    showOnlyUnallocatedElsewhere,
+apps/organising-db/src/components/campaigns/campaign-worker-assignment-picker.tsx:411:          {showUnallocatedElsewhereFilter && (
+apps/organising-db/src/components/campaigns/campaign-worker-assignment-picker.tsx:414:                checked={showOnlyUnallocatedElsewhere}
+apps/organising-db/src/components/campaigns/campaign-worker-assignment-picker.tsx:415:                onCheckedChange={(checked) => setShowOnlyUnallocatedElsewhere(checked === true)}
+apps/organising-db/src/components/campaigns/wall-chart/create-organising-unit-dialog.tsx:312:  const hasUnallocatedSelections = draftAssignmentTargets.some(
+apps/organising-db/src/components/campaigns/wall-chart/create-organising-unit-dialog.tsx:970:                    showUnallocatedElsewhereFilter
+apps/organising-db/src/components/campaigns/wall-chart/create-organising-unit-dialog.tsx:1081:              disabled={isPending || hasUnallocatedSelections}
+apps/organising-db/src/components/campaigns/wall-chart/create-organising-unit-dialog.tsx:1083:              title={hasUnallocatedSelections ? "Allocate selected workers before reviewing" : undefined}
+```
+
+All matches are internal identifiers (state variable/prop names, comments) — none are user-facing copy strings. No match for "No Unit", "Unassigned / No group", or "Continue to workers" text.
+
+### `grep -c "localStorage" <each changed file>`
+
+```
+apps/organising-db/src/app/(dashboard)/campaigns/[id]/page.tsx: 0
+apps/organising-db/src/app/(dashboard)/campaigns/[id]/plan/stage/[stageNumber]/page.tsx: 0
+apps/organising-db/src/components/campaigns/add-workers-client.tsx: 0
+apps/organising-db/src/components/campaigns/campaign-detail-header-bar.tsx: 0
+apps/organising-db/src/components/campaigns/campaign-employers-worksites-card.tsx: 0
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx: 0
+apps/organising-db/src/components/campaigns/campaign-universe-section.tsx: 0
+apps/organising-db/src/components/campaigns/campaign-wall-chart.tsx: 5
+apps/organising-db/src/components/campaigns/campaign-worker-assignment-picker.tsx: 0
+apps/organising-db/src/components/campaigns/step-allocate-workers.tsx: 0
+apps/organising-db/src/components/campaigns/step-campaign-units.tsx: 0
+apps/organising-db/src/components/campaigns/step-employers-worksites.tsx: 0
+apps/organising-db/src/components/campaigns/wall-chart/create-organising-unit-dialog.tsx: 0
+apps/organising-db/src/components/campaigns/wall-chart/worker-detail-sheet.tsx: 0
+apps/organising-db/src/components/campaigns/workforce/workforce-board.tsx: 0
+apps/organising-db/src/components/campaigns/workforce/workforce-list-view.tsx: 0
+apps/organising-db/src/components/import/worker-import-wizard.tsx: 0
+apps/organising-db/src/lib/__tests__/campaign-tabs.test.ts: 0
+apps/organising-db/src/lib/campaign-tabs.ts: 0
+apps/organising-db/src/lib/campaign/__tests__/workforce-view.test.ts: 0
+apps/organising-db/src/lib/campaign/workforce-view.ts: 0
+```
+
+Only `campaign-wall-chart.tsx` uses `localStorage` (5 occurrences, pre-existing). `git diff feat/oux-wp0.1-decision-register..HEAD -- apps/organising-db/src/components/campaigns/campaign-wall-chart.tsx | grep '^+.*localStorage'` → no output: **none added** by this branch.
+
+### `git diff feat/oux-wp0.1-decision-register..HEAD --stat -- supabase/ public/help-videos/manifest.json`
+
+```
+(no output)
+```
 
 ## 8. Reviewer findings
 

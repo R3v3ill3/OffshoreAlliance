@@ -11,6 +11,7 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 - **Plan documents:** the plan and appendices were authored on branch `claude/organiser-ux-campaign-workflow-bi0uai` and were not on `develop`. WP0.1 merges them into its branch so later packages can cite them.
 - **Commands:** from `apps/organising-db`: `pnpm lint`, `pnpm test`, `pnpm build`. Root: `pnpm validate:migrations`.
 - **Branches:** `feat/oux-<wp-id>-<slug>` off `develop`; draft PR into `develop`; never `main`.
+- **Baseline (develop at 1b959b1, measured 2026-09-08):** `pnpm build` green; `pnpm test` 632 passing, 1 test file fails to load (`src/lib/sms/__tests__/rating-source-taxonomy.test.ts` reads `supabase/migrations/20260813120000_sms_source_taxonomy.sql`, which the baseline rebase moved to `migrations_legacy/`; a stale path, fixed in WP0.2); `pnpm lint` 143 errors / 151 warnings, all pre-existing. Per-package standard until the debt is cleared: every touched file lints clean and the total error count must not rise. Clearing the debt is a housekeeping task for the operator to authorise, not part of any work package.
 
 ## Ledger
 

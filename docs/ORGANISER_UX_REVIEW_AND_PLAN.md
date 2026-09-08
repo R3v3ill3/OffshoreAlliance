@@ -546,3 +546,4 @@ All in `docs/organiser-ux-review/`:
 - **E. Prior design documents and the SOC Field Guide** (`appendix-E-prior-docs.md`): what was decided, what was proposed and dropped, and fifteen contradictions to resolve.
 - **F. Best-practice research** (`appendix-F-research.md`): sources and their application, with the fifteen principles used in section 4.
 - **G. Production data snapshot** (`appendix-G-production-data.md`): the aggregate queries and results used throughout.
+- **Implementation orchestration prompt** (`IMPLEMENTATION_ORCHESTRATION_PROMPT.md`): a ready-to-paste prompt for a Claude Code session to orchestrate the phased implementation, with work packages, model assignments, verification standards and a reviewer checklist.

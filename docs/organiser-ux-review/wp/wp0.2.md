@@ -602,13 +602,15 @@ Branch: `feat/oux-wp0.2-instrumentation-e2e`, stacked on the WP0.3 branch if WP0
 
 5. **`handleOuTypeChange` is declared after the `effectiveOuType` memo, not at `:89` next to the state.** It reads `effectiveOuType`, so it cannot precede it. Still above the component's first early return, so hook order is unconditional.
 
-6. **The `campaign_tab_opened` effect carries an `eslint-disable-next-line react-hooks/exhaustive-deps`.** §2.3's dependency array is `[campaignId, campaignIdValid, activeTab, activeSub]` and deliberately omits `rawTab`/`rawSub`/`resolved`, which is the whole point (keying on the *resolved* pair is what de-duplicates). The lint rule cannot know that, so the suppression is explicit and commented, matching the existing redirect effect four lines above which does the same thing for the same reason.
+6. ~~**The `campaign_tab_opened` effect carries an `eslint-disable-next-line react-hooks/exhaustive-deps`.** §2.3's dependency array is `[campaignId, campaignIdValid, activeTab, activeSub]` and deliberately omits `rawTab`/`rawSub`/`resolved`, which is the whole point (keying on the *resolved* pair is what de-duplicates). The lint rule cannot know that, so the suppression is explicit and commented, matching the existing redirect effect four lines above which does the same thing for the same reason.~~ **Superseded by fix round 1, finding 1**: keying on the resolved pair alone, combined with the `needsRedirect` early return, meant the event never fired at all. The effect now depends on the raw params too, de-duplicates with a ref, and the suppression is gone (the deps are complete and the rule is silent — verified by removing `campaignId` and watching it warn).
 
 7. **`applyToAllScopes` spreads the filter for the Unassigned scope too.** §2.5 asked for one shared helper replacing both `onApplyToAll` bodies. The two originals differed by one character: the Unassigned body stored `filter` by reference and the unit body stored `{ ...filter }`. The shared helper uses `{ ...filter }` for every scope. `WallChartFilterState` is flat and the `Set` fields are shared by both forms, so this is behaviour-identical; noting it because it is a real (if invisible) diff.
 
 8. **The plan's predicted test count is out of date.** §2.13 expects `Test Files 53 passed (53)`; the actual figure is **56 passed (56), 730 tests**, because WP0.3 added test files to this branch after the plan was written. The material claim — every file passes, including the repaired taxonomy test — holds.
 
-9. **`e2e:install` was kept as a script but never run.** §5 Q1 forbids a download; the script is only a discoverability aid for a future machine whose cache lacks `chromium-1194`. Nothing in this package invokes it.
+9. ~~**`e2e:install` was kept as a script but never run.** §5 Q1 forbids a download; the script is only a discoverability aid for a future machine whose cache lacks `chromium-1194`. Nothing in this package invokes it.~~ **Superseded by fix round 1, finding 8**: the script is removed. §5 Q1 forbids a browser download, so shipping a one-command path to `playwright install chromium` is a hazard, not a convenience. §2.8 and §2.13's `pnpm e2e:install` row are plan text and stand as written; the shipped `package.json` has `e2e` only, and a machine whose cache lacks `chromium-1194` should stop and report (Q1's own instruction) rather than download.
+
+10. **`tests/e2e/wall-chart.spec.ts` asserts an Overview round-trip beyond the flow-one steps in §2.9.** After the wall-chart assertions the spec clicks **Overview**, asserts `?tab=overview`, clicks **Workforce** then **Wall Chart / List**, and asserts `?sub=wall-chart` and the card title again (`wall-chart.spec.ts:61-69`). That is not in §2.9's step table; it is a WP0.3 hand-off, orchestrator-instructed, and it is the only automated coverage of the tab-URL contract — vitest cannot reach it, because the contract is between the tab list, `router.replace` and the resolved tab state in a rendered app. Fix round 1 leans on it: it is also what exercises the `campaign_tab_opened` de-duplication end to end (see finding 1 below).
 
 Not deviations, recorded because they were checked: no `data-testid` was added to production markup; no migration was added or edited; no database was contacted; `turbo.json` was not touched; the app was never started.
 
@@ -700,6 +702,66 @@ E2E_USER_PASSWORD=
 | `2ed7579` | `fix(oux-wp0.2): point the SMS taxonomy test at the baseline schema` |
 | `78ecd73` | `feat(oux-wp0.2): Playwright harness and canonical flow one` |
 | `077b02b` | `chore(oux-wp0.2): ignore Playwright run artefacts` |
+
+### Fix round 1
+
+Reviewer findings applied on `feat/oux-wp0.2-instrumentation-e2e`. Each was verified against the file before editing.
+
+**Blocking**
+
+1. **`campaign_tab_opened` never fired.** `src/app/(dashboard)/campaigns/[id]/page.tsx` — the effect was keyed on the *resolved* `(tab, sub)` and returned early while `needsRedirect(rawTab, rawSub, resolved)` was true, on the theory that "the redirect will re-run this". It cannot: the redirect rewrites the raw params to the values the resolver already produced, so the resolved pair is unchanged and an effect keyed on it does not re-run. The result was silence for a bare `/campaigns/{id}`, for every legacy `?tab=`, and for every cluster-tab click (`handleTabChange` deletes `sub`, which always forces a redirect) — i.e. for the deep-link case §2.3 was written to capture. Fixed by depending on the raw params as well, dropping the `needsRedirect` skip, and de-duplicating with a `useRef<string | null>` holding the last emitted key. The suppression is gone: the deps are complete, and `react-hooks/exhaustive-deps` (enabled at `warn`, confirmed by deleting `campaignId` from the array and watching it warn) reports nothing.
+   - New pure helper `tabOpenKey(campaignId, tab, sub)` in `src/lib/analytics/events.ts`, normalising `null`/`undefined` sub, with a test in `src/lib/analytics/__tests__/events.test.ts`. The **de-duplication itself is component logic and is not covered by vitest** — there is no React testing harness in this app for this page. It is covered by the e2e Overview round-trip (deviation 10, `tests/e2e/wall-chart.spec.ts:61-69`), which walks exactly the redirect-then-click sequence traced below.
+
+   **Hand trace** (bare `/campaigns/{id}`, campaign 12; `→` is a render):
+
+   | # | Trigger | `rawTab`/`rawSub` | resolved `(tab, sub)` | key | ref before | emit? |
+   |---|---|---|---|---|---|---|
+   | 1 | first paint | `null` / `null` | `workforce` / `wall-chart` | `12\|workforce\|wall-chart` | `null` | **yes** |
+   | 2 | redirect `router.replace(?tab=workforce&sub=wall-chart)` | `workforce` / `wall-chart` | `workforce` / `wall-chart` | same | same | no (ref hit) |
+   | 3 | click **Overview** (`handleTabChange` sets `tab`, deletes `sub`) | `overview` / `null` | `overview` / `null` | `12\|overview\|` | `12\|workforce\|wall-chart` | **yes** |
+   | 4 | click **Workforce** (sets `tab`, deletes `sub`) | `workforce` / `null` | `workforce` / `wall-chart` | `12\|workforce\|wall-chart` | `12\|overview\|` | **yes** |
+   | 5 | redirect adds `sub=wall-chart` | `workforce` / `wall-chart` | `workforce` / `wall-chart` | same | same | no (ref hit) |
+
+   Rows 1 and 4 are the two the old code emitted nothing for. Row 2 and row 5 are why the ref is needed once the `needsRedirect` skip is gone. Because the ref lives on the fiber, it also absorbs React StrictMode's dev double-invoke.
+
+2. **The taxonomy test's slices were unbounded.** `src/lib/sms/__tests__/rating-source-taxonomy.test.ts` sliced `migration.slice(indexOf(needle))` against the 33k-line baseline dump, so each `toContain` searched to end of file and passed on a value declared anywhere later. Fixed with a local `declaration(text, start, terminators)` helper: the CHECK is bounded by the next `CONSTRAINT` or `;`, `fn_sms_to_rating` is anchored on `CREATE OR REPLACE FUNCTION "public"."fn_sms_to_rating"` (the schema-qualified quoted name the dump actually writes — the old anchor `CREATE OR REPLACE FUNCTION` matched the *first* of ~500 functions in the file, `apply_call_outcome_side_effects` at `:96`) and bounded by the closing `$$;`, and the `v_source := CASE` branch by `END;`. The legacy-values test now asserts against the bounded CHECK rather than the whole file. A new `it("bounds each slice to the declaration it asserts on")` guards the guard.
+
+   **Failing-test proof.** In a scratch copy (backed up, mutated, restored; `git status` clean afterwards and the baseline byte-identical), `'sms_chat'::character varying, ` was deleted from line 7517 of `supabase/migrations/20260908050000_baseline_schema.sql`:
+
+   ```
+   × SMS rating source taxonomy > allows sms_chat in the campaign_activity_ratings source CHECK
+     → expected 'campaign_activity_ratings_source_chec…' to contain '\'sms_chat\''
+   Test Files  1 failed (1)
+        Tests  1 failed | 9 passed (10)
+   ```
+
+   The same mutation would **not** have failed the old assertion: `'sms_chat'` still occurs at `:7527` (the `COMMENT ON COLUMN` for `source`), `:16363` and `:16535` (views), all *after* the anchor, so the unbounded slice still contained it. Restored, the file passes `10 passed (10)`.
+
+**Advisory**
+
+5. `src/components/campaigns/wall-chart/inline-rating-popover.tsx:63-69` and `:217-223` — `onSaved?.()` is now wrapped in `try {} catch {}` in both popovers, so a throwing callback cannot skip `setOpen(false)` and leave the popover open. This is what the prop's JSDoc ("Additive; never gates the save") already claimed.
+
+7. `src/lib/analytics/__tests__/events.test.ts` — the `it("also holds for the surface property added by track()")` case asserted `FORBIDDEN.test("surface") === false`, which tests a regex literal against a string literal and nothing in `events.ts`. Removed; a comment in its place records why the block asserts only over real builder payloads.
+
+8. `apps/organising-db/package.json` — `e2e:install` removed (see deviation 9, rewritten).
+
+**Notes recorded rather than changed**
+
+- **Deviation 10** (added above) declares the Overview round-trip assertion in `tests/e2e/wall-chart.spec.ts`.
+- **The first-interaction flag is not cleared on sign-out.** `markFirstInteractionFired()` writes `oux:wallchart-first-interaction` to `sessionStorage` and nothing removes it, so a second sign-in in the same tab is not measured. Accepted as the stated semantics — "once per browser session", not "once per login". The `login_source` prop already separates a fresh `login_form` t0 from a `session_restored` one, and the §8 metric wants one number per sitting; adding a clear-on-sign-out would mean the analytics module reaching into the auth teardown path, which is a wider change than this package's remit. If WP1.x wants per-login measurement, the flag should be cleared where the Supabase `SIGNED_OUT` event is handled and this note retired.
+- **`apps/organising-db/.env.example` is untracked by repo policy.** The repo-root `.gitignore:25` rule `.env*` matches it, so it is not in any commit (deviation 2). The block appended locally is reproduced verbatim in the Implementer notes above, and the same variable names are documented in code at `apps/organising-db/tests/e2e/env.ts` (`E2E_USER_EMAIL`, `E2E_USER_PASSWORD`) and `apps/organising-db/playwright.config.ts` (`E2E_BASE_URL`), which are tracked.
+
+**Gates after fix round 1** (from `apps/organising-db`):
+
+| Gate | Result |
+|---|---|
+| `pnpm exec eslint` on the 5 touched source files | exit 0, no output |
+| `pnpm test` | `Test Files 56 passed (56)` / `Tests 732 passed (732)` |
+| `pnpm exec tsc --noEmit -p tsconfig.json` | exit 0 |
+| `pnpm build` | compiled successfully, route table printed |
+| `env -u E2E_USER_EMAIL -u E2E_USER_PASSWORD pnpm e2e` | exit 0, `2 skipped` |
+
+No browser was downloaded, no database was contacted, the app was never started, and `supabase/migrations/` is byte-identical to before the fix round.
 
 ## 7. Verification output
 

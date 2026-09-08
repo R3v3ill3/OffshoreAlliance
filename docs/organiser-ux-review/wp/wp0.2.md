@@ -592,7 +592,114 @@ Branch: `feat/oux-wp0.2-instrumentation-e2e`, stacked on the WP0.3 branch if WP0
 
 ## 6. Deviations from plan
 
-_(implementer keeps this list)_
+1. **`@playwright/test` pinned to `1.56.1`, not `1.56.0`.** §5 Q1 says pin to the release whose Chromium revision is already cached, and instructed me to check the mapping first. The mapping was read from `browsers.json` files already on disk, not guessed: `1.56.0-alpha-*` → `chromium-1191`, **`1.56.1` → `chromium-1194`**, `1.60.0` → `chromium-1223`, `1.61.1` → `chromium-1228`, `1.63.0` → `chromium-1243`. `1.56.0` final is not present on this machine in any form, so its revision could not be verified without a network fetch; `1.56.1` is the nearest release whose mapping is verifiable from disk. Both `1191` and `1194` are cached, so either would have worked. Nothing was downloaded — see the Implementer notes for the evidence.
+
+2. **`apps/organising-db/.env.example` was updated locally but is not in any commit.** The repo-root `.gitignore:25` rule `.env*` matches it and the file has never been tracked (`git ls-files` does not know it). Committing it would need `git add -f`, i.e. newly tracking a file the repo deliberately ignores — exactly the class of change that leaks a secret if anyone's local copy ever held one. The appended block is reproduced verbatim in the Implementer notes below so it is captured in a tracked file, and the same variables are documented in `tests/e2e/env.ts`. Plan §2.11's other two items (root `.gitignore`, no `turbo.json` change) are unaffected.
+
+3. **`.gitignore` also ignores `apps/organising-db/test-results/` and `playwright-report/`.** Not in the plan, but `playwright test` writes `test-results/.last-run.json` on every run, including the credential-free run the acceptance criterion requires. One extra commit, no behaviour change.
+
+4. **`wallchart_group_selected` uses the hoisted variant, not the state-updater variant.** §2.4 offered both and left the choice to the implementer with a comment. The track call sits above `setSelectedOuType`, using the `effectiveOuType` memo as `previous_ou_type`, so React StrictMode's dev double-invoke of the updater cannot emit the event twice. Commented in place.
+
+5. **`handleOuTypeChange` is declared after the `effectiveOuType` memo, not at `:89` next to the state.** It reads `effectiveOuType`, so it cannot precede it. Still above the component's first early return, so hook order is unconditional.
+
+6. **The `campaign_tab_opened` effect carries an `eslint-disable-next-line react-hooks/exhaustive-deps`.** §2.3's dependency array is `[campaignId, campaignIdValid, activeTab, activeSub]` and deliberately omits `rawTab`/`rawSub`/`resolved`, which is the whole point (keying on the *resolved* pair is what de-duplicates). The lint rule cannot know that, so the suppression is explicit and commented, matching the existing redirect effect four lines above which does the same thing for the same reason.
+
+7. **`applyToAllScopes` spreads the filter for the Unassigned scope too.** §2.5 asked for one shared helper replacing both `onApplyToAll` bodies. The two originals differed by one character: the Unassigned body stored `filter` by reference and the unit body stored `{ ...filter }`. The shared helper uses `{ ...filter }` for every scope. `WallChartFilterState` is flat and the `Set` fields are shared by both forms, so this is behaviour-identical; noting it because it is a real (if invisible) diff.
+
+8. **The plan's predicted test count is out of date.** §2.13 expects `Test Files 53 passed (53)`; the actual figure is **56 passed (56), 730 tests**, because WP0.3 added test files to this branch after the plan was written. The material claim — every file passes, including the repaired taxonomy test — holds.
+
+9. **`e2e:install` was kept as a script but never run.** §5 Q1 forbids a download; the script is only a discoverability aid for a future machine whose cache lacks `chromium-1194`. Nothing in this package invokes it.
+
+Not deviations, recorded because they were checked: no `data-testid` was added to production markup; no migration was added or edited; no database was contacted; `turbo.json` was not touched; the app was never started.
+
+### Implementer notes
+
+**Playwright pin and cached Chromium.**
+
+- Pinned: `"@playwright/test": "1.56.1"` (exact, no caret) in `apps/organising-db/package.json` devDependencies.
+- Maps to **`chromium-1194`**, read from `node_modules/.pnpm/playwright-core@1.56.1/node_modules/playwright-core/browsers.json`.
+- Already present: `~/Library/Caches/ms-playwright/chromium-1194/chrome-mac/Chromium.app/Contents/MacOS/Chromium` exists, and that is the exact path `playwright-core@1.56.1`'s registry expects on macOS (`lib/server/registry/index.js:81`).
+- Installed with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm add -D --filter organising-db @playwright/test@1.56.1`. `playwright` is not in the root `pnpm.onlyBuiltDependencies` allow-list, so its postinstall was blocked by pnpm as well.
+- `pnpm exec playwright install --dry-run chromium` reports every needed browser already resolved in the shared cache — `chromium-1194`, `chromium_headless_shell-1194`, `ffmpeg-1011` — so a real `install` would be a no-op:
+
+  ```
+  browser: chromium version 141.0.7390.37
+    Install location:    /Users/troyb/Library/Caches/ms-playwright/chromium-1194
+  browser: chromium-headless-shell version 141.0.7390.37
+    Install location:    /Users/troyb/Library/Caches/ms-playwright/chromium_headless_shell-1194
+  browser: ffmpeg
+    Install location:    /Users/troyb/Library/Caches/ms-playwright/ffmpeg-1011
+  ```
+
+**`pnpm e2e` output** (from `apps/organising-db`, with `E2E_USER_EMAIL` / `E2E_USER_PASSWORD` unset):
+
+```
+> organising-db@0.1.0 e2e /Volumes/DataDrive/cursor_repos/offshoreAlliance/OffshoreAlliance/apps/organising-db
+> playwright test
+
+Skipped: set E2E_USER_EMAIL and E2E_USER_PASSWORD (dev project dpnnmkhabysfdogllsyh only — never production) to run the signed-in e2e flows.
+
+Running 2 tests using 1 worker
+
+  -  1 [chromium] › tests/e2e/mobile-dialer.spec.ts:30:7 › Mobile dialer — happy path › volunteer can sign in, claim, dial, record outcome, advance
+  -  2 [chromium] › tests/e2e/wall-chart.spec.ts:23:7 › Wall chart — flow one › open a campaign from /campaigns and see the wall chart
+
+  2 skipped
+```
+
+Exit code 0. Both specs skipped, not failed; the message comes from `global-setup.ts`, which proves the config and the global setup loaded.
+
+**Event → call site** (paths relative to `apps/organising-db/`, line numbers as committed):
+
+| Event | Call site | Trigger |
+|---|---|---|
+| `campaign_tab_opened` | `src/app/(dashboard)/campaigns/[id]/page.tsx:254` | effect over the resolved `(tab, sub)`, guarded by `needsRedirect` |
+| `wallchart_group_selected` | `src/components/campaigns/WallChartAssessmentCharts.tsx:115` | `handleOuTypeChange`, wired to `OuTypeSelector` `onChange` at `:141` |
+| `wallchart_filter_applied` | `src/components/campaigns/campaign-wall-chart.tsx:972` | `setFilter` — every per-unit and Unassigned filter/sort change |
+| `wallchart_filter_applied` | `src/components/campaigns/campaign-wall-chart.tsx:989` | `applyToAllScopes`, called from both `onApplyToAll` bodies (`:1717`, `:2069`) |
+| `wallchart_first_interaction` | `src/components/campaigns/campaign-wall-chart.tsx:962` | `noteFirstInteraction`, the single once-per-tab emitter |
+| ↳ `interaction: "filter"` | `campaign-wall-chart.tsx:978`, `:995` | inside `setFilter` and `applyToAllScopes` |
+| ↳ `interaction: "tile_click"` | `campaign-wall-chart.tsx:1141` | first statement of the tile `onClick`, before the toggle-select branch |
+| ↳ `interaction: "drag"` | `campaign-wall-chart.tsx:1165` | first statement of `onDragStartRefs` |
+| ↳ `interaction: "rating"` | `campaign-wall-chart.tsx:1183` → `worker-tile.tsx` `onRatingSaved` → `inline-rating-popover.tsx:64` and `:213` | first line of both popovers' `onSuccess` |
+| login stamp `login_form` | `src/app/(auth)/login/page.tsx:77` | immediately before `router.push("/campaigns")` |
+| login stamp `session_restored` | `src/lib/supabase/auth-context.tsx:215` | `INITIAL_SESSION` branch, only when a user exists and no stamp does |
+
+**`.env.example` block** (appended locally; see deviation 2 for why it is not committed):
+
+```
+# PostHog (analytics). Both must be set or all capture no-ops.
+NEXT_PUBLIC_POSTHOG_KEY=
+NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
+
+# Playwright e2e. DEV PROJECT ONLY (dpnnmkhabysfdogllsyh) — never production.
+# With E2E_USER_* unset, the signed-in specs skip instead of failing.
+E2E_BASE_URL=http://localhost:3000
+E2E_USER_EMAIL=
+E2E_USER_PASSWORD=
+```
+
+**Gates** (all from `apps/organising-db`):
+
+| Gate | Result |
+|---|---|
+| `pnpm exec eslint <19 touched files>` | exit 0, no output |
+| `pnpm test` | `Test Files 56 passed (56)` / `Tests 730 passed (730)` |
+| `pnpm build` | `✓ Compiled successfully in 2.4min` |
+| `pnpm exec tsc --noEmit -p tsconfig.json` | exit 0, no output (Playwright types resolve) |
+| `pnpm e2e` (no credentials) | exit 0, `2 skipped` |
+
+**Still open, and not achievable here:** §2.14 (events visible in a dev PostHog project) needs the operator's dev key (Q3), and flow one cannot actually run until the operator supplies the `user`-role dev account (Q5) and a dev campaign with at least one member (Q2). Both are operator inputs recorded in the ledger, not code gaps. The negative check — no PostHog requests when the key is absent — is what the code guarantees structurally: `track()` returns before touching `posthog` whenever `isPostHogEnabled()` is false.
+
+**Commits on `feat/oux-wp0.2-instrumentation-e2e`:**
+
+| SHA | Message |
+|---|---|
+| `b1da117` | `feat(oux-wp0.2): typed organiser-UX analytics module and pure timing logic` |
+| `9b70c86` | `feat(oux-wp0.2): emit the four organiser-UX events at their call sites` |
+| `2ed7579` | `fix(oux-wp0.2): point the SMS taxonomy test at the baseline schema` |
+| `78ecd73` | `feat(oux-wp0.2): Playwright harness and canonical flow one` |
+| `077b02b` | `chore(oux-wp0.2): ignore Playwright run artefacts` |
 
 ## 7. Verification output
 

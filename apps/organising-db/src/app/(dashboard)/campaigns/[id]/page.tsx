@@ -81,6 +81,7 @@ import {
   resolveTabParams,
   needsRedirect,
 } from "@/lib/campaign-tabs";
+import { trackCampaignTabOpened } from "@/lib/analytics/events";
 
 interface CampaignDetail {
   campaign_id: number;
@@ -240,6 +241,21 @@ export default function CampaignDetailPage() {
   const id = params.id as string;
   const campaignId = Number(id);
   const campaignIdValid = Number.isFinite(campaignId);
+
+  // campaign_tab_opened (WP0.2). Instruments the *resolved* tab rather than the
+  // click, because most surfaces are reached by deep link
+  // (?tab=workforce&sub=wall-chart) and never touch handleTabChange. The
+  // needsRedirect guard means a legacy ?tab=workplan URL emits one event for
+  // the resolved pair, not two; router.replace does not remount, so the
+  // dependency array is what de-duplicates.
+  useEffect(() => {
+    if (!campaignIdValid) return;
+    if (needsRedirect(rawTab, rawSub, resolved)) return; // the redirect re-runs this
+    trackCampaignTabOpened({ campaign_id: campaignId, tab: activeTab, sub: activeSub ?? null });
+  // Keyed on the resolved pair only: re-firing on every searchParams identity
+  // change would double-count.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaignId, campaignIdValid, activeTab, activeSub]);
 
   const [universeDialogOpen, setUniverseDialogOpen] = useState(false);
   const [universeForm, setUniverseForm] = useState(INITIAL_UNIVERSE_FORM);

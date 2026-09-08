@@ -73,6 +73,11 @@ export type WorkerTileProps = {
   /** Phone / email icon → open worker sheet with that field focused (when canWrite). */
   onContactBadgeClick?: (workerId: number, field: WorkerTileContactField) => void;
   /**
+   * Optional: fired after a rating saved from this tile's popover succeeds.
+   * Additive telemetry hook (WP0.2); no existing caller changes behaviour.
+   */
+  onRatingSaved?: () => void;
+  /**
    * True when this worker is in the currently-active build list. Renders a
    * small green check overlay so users can see at a glance who has already
    * been added (and avoid re-adding them).
@@ -108,6 +113,7 @@ export function WorkerTile({
   onDragSessionStart,
   onDragEnd,
   onContactBadgeClick,
+  onRatingSaved,
   inBuildList,
   buildListMode,
   enabledListBadges,
@@ -282,6 +288,7 @@ export function WorkerTile({
       }}
       customLabels={assessment.ratingLabels}
       onOpenDetail={() => onClick?.(worker.worker_id, ouId ?? null, "open")}
+      onSaved={onRatingSaved}
     >
       {largeBadge}
     </InlineRatingPopover>
@@ -291,6 +298,7 @@ export function WorkerTile({
       workerId={worker.worker_id}
       workerName={displayName}
       onOpenDetail={() => onClick?.(worker.worker_id, ouId ?? null, "open")}
+      onSaved={onRatingSaved}
     >
       {largeBadge}
     </CumulativeRatingPopover>

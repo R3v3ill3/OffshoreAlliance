@@ -93,6 +93,7 @@ import {
 } from "./wall-chart/normalize-members";
 import {
   DEFAULT_FILTER_STATE,
+  activeFilterKeys,
   applyFilters,
   applySort,
   factSortOpts,
@@ -100,6 +101,17 @@ import {
   type RatingFilterAssessmentContext,
   type WallChartFilterState,
 } from "./wall-chart/filters";
+import {
+  trackWallchartFilterApplied,
+  trackWallchartFirstInteraction,
+  type Interaction,
+} from "@/lib/analytics/events";
+import {
+  firstInteractionPayload,
+  hasFiredFirstInteraction,
+  markFirstInteractionFired,
+  readLoginStamp,
+} from "@/lib/analytics/session-timing";
 import type {
   ActivityRating,
   AssessmentSelection,
@@ -928,12 +940,63 @@ export function CampaignWallChart({
   const UNASSIGNED_KEY = 0;
 
   const getFilter = (scope: number) => filterByScope.get(scope) ?? DEFAULT_FILTER_STATE();
+
+  /**
+   * wallchart_first_interaction (WP0.2) — fires at most once per browser tab,
+   * so the §8 "seconds from login to the wall chart" metric is one number per
+   * login rather than one per campaign opened in the same sitting. The whole
+   * once-per-session + timing decision lives in the pure
+   * `firstInteractionPayload`; a null payload means "do not fire".
+   */
+  const noteFirstInteraction = useCallback(
+    (interaction: Interaction) => {
+      const payload = firstInteractionPayload({
+        stamp: readLoginStamp(),
+        now: Date.now(),
+        campaignId: Number(campaignId),
+        interaction,
+        alreadyFired: hasFiredFirstInteraction(),
+      });
+      if (!payload) return;
+      markFirstInteractionFired();
+      trackWallchartFirstInteraction(payload);
+    },
+    [campaignId]
+  );
+
   const setFilter = (scope: number, next: WallChartFilterState) => {
+    // wallchart_filter_applied (WP0.2). One function covers both filter bars
+    // (Unassigned card and every unit card) and Sort, which WallChartFilterBar
+    // routes through the same onChange — hence sort_key on the event.
+    const keys = activeFilterKeys(next);
+    trackWallchartFilterApplied({
+      campaign_id: Number(campaignId),
+      scope: scope === UNASSIGNED_KEY ? "unassigned" : "unit",
+      filter_keys: keys,
+      sort_key: next.sort,
+    });
+    noteFirstInteraction("filter");
     setFilterByScope((prev) => {
       const copy = new Map(prev);
       copy.set(scope, next);
       return copy;
     });
+  };
+
+  /** "Apply to all units" — shared by the Unassigned and unit filter bars. */
+  const applyToAllScopes = (filter: WallChartFilterState) => {
+    const keys = activeFilterKeys(filter);
+    trackWallchartFilterApplied({
+      campaign_id: Number(campaignId),
+      scope: "all",
+      filter_keys: keys,
+      sort_key: filter.sort,
+    });
+    noteFirstInteraction("filter");
+    const next = new Map<number, WallChartFilterState>();
+    next.set(UNASSIGNED_KEY, { ...filter });
+    for (const ou of ous) next.set(ou.ou_id, { ...filter });
+    setFilterByScope(next);
   };
 
   // Labels for filter options, derived from the already-fetched worker data.
@@ -1073,6 +1136,9 @@ export function CampaignWallChart({
           listActivityRows={listActivityByWorker.get(workerId)}
           isSelected={selection.has(ouId, workerId)}
           onClick={(id, tileOuId, kind) => {
+            // Leading statement, before any branch, so a modifier-click counts
+            // too. Never alters this handler's control flow or return value.
+            noteFirstInteraction("tile_click");
             if (kind === "toggle-select") {
               selection.toggle(tileOuId, id);
               return;
@@ -1094,6 +1160,9 @@ export function CampaignWallChart({
           inBuildList={buildListOpen ? buildListWorkerIds.has(workerId) : undefined}
           buildListMode={buildListOpen || undefined}
           onDragStartRefs={(id, tileOuId) => {
+            // Drag *start* is the earliest honest signal: handleWorkerDrop can
+            // bail out after the organiser has already interacted.
+            noteFirstInteraction("drag");
             if (selection.has(tileOuId, id)) {
               return selection
                 .refs()
@@ -1111,6 +1180,7 @@ export function CampaignWallChart({
           }}
           onDragSessionStart={buildListOpen ? onBuildListWallDragStart : undefined}
           onDragEnd={buildListOpen ? onBuildListWallDragEnd : undefined}
+          onRatingSaved={() => noteFirstInteraction("rating")}
         />
       );
     },
@@ -1134,6 +1204,7 @@ export function CampaignWallChart({
       workerDetail,
       onBuildListWallDragStart,
       onBuildListWallDragEnd,
+      noteFirstInteraction,
     ]
   );
 
@@ -1643,12 +1714,7 @@ export function CampaignWallChart({
                     occupations={derivedOptions.occupations}
                     dataFields={dataFields}
                     assessmentOptions={assessmentFilterOptions}
-                    onApplyToAll={() => {
-                      const next = new Map<number, WallChartFilterState>();
-                      next.set(UNASSIGNED_KEY, filter);
-                      for (const ou of ous) next.set(ou.ou_id, { ...filter });
-                      setFilterByScope(next);
-                    }}
+                    onApplyToAll={() => applyToAllScopes(filter)}
                   />
                 </div>
               }
@@ -2000,12 +2066,7 @@ export function CampaignWallChart({
                             occupations={derivedOptions.occupations}
                             dataFields={dataFields}
                             assessmentOptions={assessmentFilterOptions}
-                            onApplyToAll={() => {
-                              const next = new Map<number, WallChartFilterState>();
-                              next.set(UNASSIGNED_KEY, { ...filter });
-                              for (const o of ous) next.set(o.ou_id, { ...filter });
-                              setFilterByScope(next);
-                            }}
+                            onApplyToAll={() => applyToAllScopes(filter)}
                           />
                           {canWrite && (
                             <DropdownMenu>

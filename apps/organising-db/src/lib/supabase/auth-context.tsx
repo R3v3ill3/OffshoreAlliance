@@ -21,6 +21,7 @@ import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
 import * as Sentry from "@sentry/nextjs";
 import posthog from "posthog-js";
 import { isPostHogEnabled } from "@/lib/posthog-config";
+import { readLoginStamp, stampLogin } from "@/lib/analytics/session-timing";
 import type { User } from "@supabase/supabase-js";
 import type { UserRole, UserProfile } from "@/types/database";
 
@@ -205,6 +206,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             redirectToLogin("session_expired");
           }
           setLoading(false);
+          // Fallback t0 for the "login → wall chart" metric (WP0.2) so a
+          // reload or a restored session is not silently unmeasured. Only when
+          // the login form has not already stamped this tab; TOKEN_REFRESHED
+          // and the recovery path below must never reset t0. The event carries
+          // login_source so these rows stay a separate cohort in PostHog.
+          if (initialUser && readLoginStamp() === null) {
+            stampLogin("session_restored");
+          }
           return;
         }
 

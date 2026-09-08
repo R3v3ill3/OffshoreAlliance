@@ -655,7 +655,7 @@ Exit code 0. Both specs skipped, not failed; the message comes from `global-setu
 
 | Event | Call site | Trigger |
 |---|---|---|
-| `campaign_tab_opened` | `src/app/(dashboard)/campaigns/[id]/page.tsx:254` | effect over the resolved `(tab, sub)`, guarded by `needsRedirect` |
+| `campaign_tab_opened` | `src/app/(dashboard)/campaigns/[id]/page.tsx:266` | effect over the raw and resolved `(tab, sub)`, de-duplicated by a ref keyed on `campaignId|tab|sub` (fix round 1; the earlier `needsRedirect` guard was removed because it suppressed every redirected URL) |
 | `wallchart_group_selected` | `src/components/campaigns/WallChartAssessmentCharts.tsx:115` | `handleOuTypeChange`, wired to `OuTypeSelector` `onChange` at `:141` |
 | `wallchart_filter_applied` | `src/components/campaigns/campaign-wall-chart.tsx:972` | `setFilter` — every per-unit and Unassigned filter/sort change |
 | `wallchart_filter_applied` | `src/components/campaigns/campaign-wall-chart.tsx:989` | `applyToAllScopes`, called from both `onApplyToAll` bodies (`:1717`, `:2069`) |
@@ -710,7 +710,7 @@ Reviewer findings applied on `feat/oux-wp0.2-instrumentation-e2e`. Each was veri
 **Blocking**
 
 1. **`campaign_tab_opened` never fired.** `src/app/(dashboard)/campaigns/[id]/page.tsx` — the effect was keyed on the *resolved* `(tab, sub)` and returned early while `needsRedirect(rawTab, rawSub, resolved)` was true, on the theory that "the redirect will re-run this". It cannot: the redirect rewrites the raw params to the values the resolver already produced, so the resolved pair is unchanged and an effect keyed on it does not re-run. The result was silence for a bare `/campaigns/{id}`, for every legacy `?tab=`, and for every cluster-tab click (`handleTabChange` deletes `sub`, which always forces a redirect) — i.e. for the deep-link case §2.3 was written to capture. Fixed by depending on the raw params as well, dropping the `needsRedirect` skip, and de-duplicating with a `useRef<string | null>` holding the last emitted key. The suppression is gone: the deps are complete, and `react-hooks/exhaustive-deps` (enabled at `warn`, confirmed by deleting `campaignId` from the array and watching it warn) reports nothing.
-   - New pure helper `tabOpenKey(campaignId, tab, sub)` in `src/lib/analytics/events.ts`, normalising `null`/`undefined` sub, with a test in `src/lib/analytics/__tests__/events.test.ts`. The **de-duplication itself is component logic and is not covered by vitest** — there is no React testing harness in this app for this page. It is covered by the e2e Overview round-trip (deviation 10, `tests/e2e/wall-chart.spec.ts:61-69`), which walks exactly the redirect-then-click sequence traced below.
+   - New pure helper `tabOpenKey(campaignId, tab, sub)` in `src/lib/analytics/events.ts`, normalising `null`/`undefined` sub, with a test in `src/lib/analytics/__tests__/events.test.ts`. The **de-duplication itself is component logic and is not covered by vitest** — there is no React testing harness in this app for this page. The e2e Overview round-trip (deviation 10, `tests/e2e/wall-chart.spec.ts:61-69`) walks the same redirect-then-click sequence but asserts only URLs and titles; it does not observe emits, so the de-dup rests on the hand trace below and on `tabOpenKey`'s tests.
 
    **Hand trace** (bare `/campaigns/{id}`, campaign 12; `→` is a render):
 
@@ -979,6 +979,9 @@ $ git status --short
 ```
 
 
+
 ## 8. Reviewer findings
 
-_(reviewer)_
+**Round 1 (2026-09-08, fresh reviewer): BLOCK.** Blocking: (1) the `campaign_tab_opened` effect keyed on the resolved tab and skipped on `needsRedirect`, so after the URL redirect its deps were unchanged and it never emitted for bare campaign URLs, legacy tabs, or any cluster-tab click; (2) the repointed taxonomy test sliced to end-of-file in the baseline dump, making three assertions vacuous. Advisories: `onSaved` placement before toast/close, a regex-only test assertion, the retained `e2e:install` script, undeclared Overview round-trip deviation, sign-out flag gap, untracked `.env.example`. Fixed in `648ec7a`, recorded in `923c901`.
+
+**Round 2 (2026-09-08, fresh reviewer): APPROVE WITH ADVISORIES.** Both blocking findings independently proven closed: own hand trace of six navigation cases (one emit each, none doubled, invalid ids never emit); the constraint slice bounded to 702 characters and the function slice to 1,077, with a 9-of-9 mutation matrix failing the bounded test where 8 of 9 would have passed the old one. Advisories applied by the orchestrator: the event table row and de-dup coverage wording corrected in §6; §7 now carries verifier run 2 at HEAD; stale popover line refs noted. Two pre-existing observations recorded for later phases: tab writes use `router.replace`, so back/forward between tabs never re-enters a tab in place (metric caveat for WP1.x); `Number.isFinite(Number(id))` accepts non-integer strings (low impact).

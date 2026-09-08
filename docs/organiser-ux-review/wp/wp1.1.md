@@ -755,7 +755,111 @@ Assumptions recorded without asking:
 
 ## 6. Deviations from plan
 
-_(implementer keeps this list)_
+1. **No cast on `supabase.rpc("get_workspace_defaults")`.** `createClient()`
+   (`src/lib/supabase/client.ts:134`) returns an *untyped* `SupabaseClient`, so the RPC call in
+   `src/lib/hooks/useWorkspaceDefaults.ts` typechecks today without the generated `Functions`
+   entry. There is therefore **no `// TODO(WP1.1 verifier)` cast to remove** — the comment in
+   the hook says so. `pnpm gen:types` is still required (it adds `workspace_prefs: Json` to the
+   `user_profiles` Row/Insert/Update and the `get_workspace_defaults` function entry) and
+   tsc/test/build must be re-run after it; nothing in the app code has to change.
+2. **`z.partialRecord` instead of `z.record`** (§2.3b) for `byWorkRole`. In zod 4, `z.record`
+   with an enum key is *exhaustive* — every work role would be required — so a document with
+   only an `organiser` entry failed to parse. `partialRecord` is the intended zod-4 form; the
+   §2.10 prefs-schema tests caught this on the first run.
+3. **Lenient readers ignore unknown *top-level* keys.** `.strict()` is applied only on the API
+   write path (as §2.3b states); `parseWorkspacePrefs`/`parseWorkspaceDefaults` use non-strict
+   variants after stripping unknown module ids and work-role keys, so a future key in a stored
+   document degrades gracefully instead of nulling it. Tested.
+4. **`setup` description says "who's in", not "universe".** The plan's "Contains" column reads
+   "universe, groups and units, organisers, basics"; the orchestrator's instruction to use plan
+   3.6 terminology in labels ("Who's in") was applied to this one helper-text string. Every other
+   description is the plan's Contains column verbatim.
+5. **Migration additions, documentation only:** a `COMMENT ON FUNCTION` for
+   `get_workspace_defaults()` and a header comment stating that no row is seeded. DDL, grants,
+   owner, `search_path` and the function body are exactly §2.2.
+6. **One extra file:** `src/components/administration/workspace-module-checklist.tsx`, the
+   registry-driven checklist shared by the per-user editor and the org-defaults card, so the
+   two never drift.
+7. **Per-user editor placeholder ticks** (§2.6a) are computed by calling the pure
+   `resolveWorkspace()` with the form's current permission role, work role and mode, against the
+   org defaults fetched (admin-side, React Query key `["admin-workspace-defaults"]`) from the
+   new GET route. The plan asked for "the resolved role default as placeholder ticks" without
+   saying how; reusing the resolver keeps one source of truth. A stored per-user
+   `allowShowEverything` (writable only via the API) is preserved on save rather than dropped.
+8. **Org-defaults card:** in Organiser mode the checklist is initialised from the stored list or
+   the registry's four defaults and `modules` is always written; rows at Full are written as
+   `{ mode: "full" }` per §2.6c. The R6 "no `modules` → registry default" fallback is therefore
+   reached only for hand-written documents (still tested, T3).
+9. **`isWorkRole()`** is exported from the registry alongside `isWorkspaceModuleId()`; the
+   resolver and the lenient reader both need it.
+10. **Provider with a null profile** (§2.12 R7) passes *both* `orgDefaults` and `userPrefs` as
+    `undefined`, so a live session whose profile fetch gave up resolves to `full`/`default`
+    even when the org has organiser defaults for `viewer` (the auth context's fallback role).
+
+### Implementer notes
+
+**Files (all under `apps/organising-db/` unless noted):**
+
+- `supabase/migrations/20260909100000_workspace_mode.sql` (repo root) — **the migration**.
+- `src/lib/workspace/modules.ts` — registry (§2.1) + `WORK_ROLE_VALUES`, `isWorkRole`.
+- `src/lib/workspace/prefs-schema.ts` — zod schemas + lenient readers (§2.3b).
+- `src/lib/workspace/resolve.ts` — `resolveWorkspace()`, `modulesForRole()` (§2.4).
+- `src/lib/workspace/use-workspace.tsx` — `WorkspaceProvider`, `useWorkspace()` (§2.5).
+- `src/lib/hooks/useWorkspaceDefaults.ts` — React Query over the RPC (§2.5).
+- `src/lib/workspace/__tests__/{resolve,modules,prefs-schema}.test.ts` (§2.10).
+- `src/components/providers.tsx` — provider mounted inside `AuthProvider`.
+- `src/types/organising-row-types.ts` — `UserProfile.workspace_prefs: unknown` (§2.7).
+- `src/app/api/admin/workspace-defaults/route.ts` — GET/PUT (§2.2).
+- `src/app/api/admin/update-user/route.ts` — `workspacePrefs` allow-list field (§2.6b).
+- `src/app/(dashboard)/administration/page.tsx` — Users editor section, Settings card mount.
+- `src/components/administration/workspace-defaults-card.tsx` (§2.6c).
+- `src/components/administration/workspace-module-checklist.tsx` (shared, deviation 6).
+
+Not touched, per §2.8/§3: `sidebar.tsx`, `mobile-nav.tsx`, `src/lib/campaign-tabs.ts`,
+`campaigns/[id]/page.tsx`, `/api/admin/settings`, `auth-context.tsx`, `handle_new_user()`,
+any RLS policy. Nothing consumes `useWorkspace()` yet.
+
+**Gates run by the implementer (from `apps/organising-db` unless noted):**
+
+- `pnpm exec eslint` on every touched file: zero findings on changed lines. `administration/page.tsx`
+  is at 0 errors / 2 warnings, both on pre-existing lines (2734, 2740).
+- `pnpm test`: 766 passed (766), including the 34 new workspace tests. A mutation pass
+  (disabling R1, R2, R3, R4, R5, R6 precedence, R8 default, R8 order, R9, R9 gate, and the
+  `role` source one at a time) failed at least one named test each time.
+- `pnpm exec tsc --noEmit -p tsconfig.json`: clean.
+- `pnpm build`: "Compiled successfully", 126/126 static pages generated, exit 0 (on the final
+  code; verifier re-runs after `gen:types`).
+- Whole-project `pnpm exec eslint .`: 294 problems (143 errors, 151 warnings) — identical to the
+  develop baseline in the PROGRESS standing note; the count did not rise.
+- Repo root `pnpm validate:migrations`: "Validated 4 Supabase migrations with unique 14-digit versions."
+
+**Verifier hand-off (dev only — `dpnnmkhabysfdogllsyh`; never `gteygwfgjvczanmrwgbr`):**
+
+```bash
+# repo root
+pnpm validate:migrations
+npx supabase link --project-ref dpnnmkhabysfdogllsyh
+env -u SUPABASE_DB_PASSWORD npx supabase migration list
+env -u SUPABASE_DB_PASSWORD npx supabase db push --dry-run     # expect only 20260909100000_workspace_mode.sql
+env -u SUPABASE_DB_PASSWORD npx supabase db push
+SUPABASE_PROJECT_REF=dpnnmkhabysfdogllsyh pnpm gen:types        # commit packages/db-types/generated.ts
+# there is no cast to remove (deviation 1); confirm the hook still typechecks
+cd apps/organising-db && pnpm exec tsc --noEmit -p tsconfig.json && pnpm test && pnpm build
+```
+
+Then run the §2.9 role-coverage probe SQL on dev (user-role uuid, then a viewer uuid, then as
+service role), and the §2.9 preview RPC check after an admin has saved a non-empty document via
+Administration → Settings → Workspace defaults. Also the §2.12 R5 check: invite a throwaway
+user on dev and confirm `workspace_prefs = '{}'`.
+
+**Commits (branch `feat/oux-wp1.1-workspace-mode`, not pushed):**
+
+- `e5997f9` feat(oux-wp1.1): module registry, prefs schemas and pure workspace resolver
+- `57f9da8` feat(oux-wp1.1): workspace_prefs column, get_workspace_defaults() reader, UserProfile type
+- `e2ca3e0` feat(oux-wp1.1): useWorkspace() hook, WorkspaceProvider and org-defaults query
+- `99e852f` feat(oux-wp1.1): admin workspace-defaults route and update-user allow-list
+- `11c1e83` feat(oux-wp1.1): admin workspace editors in Users and Settings
+- (this file) feat(oux-wp1.1): implementer notes and deviations
 
 ## 7. Verification output
 

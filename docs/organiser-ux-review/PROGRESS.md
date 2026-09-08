@@ -22,7 +22,7 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 | 0.2 | Instrumentation and test harness | not started | | | | | — |
 | 0.3 | Defaults, copy and layout quick wins | PR draft | `feat/oux-wp0.3-defaults-copy-layout` | [#24](https://github.com/R3v3ill3/OffshoreAlliance/pull/24) | lint at baseline (143/151), 657 tests pass + 1 pre-existing collection failure (WP0.2), build green; screenshots deferred (no dev env) | DataTable card view now fires on phones/iPads; needs visual check | — |
 | 0.4 | Data hygiene scripts | not started | | | | | 2 |
-| 0.5 | Usability baseline pack | not started | | | | | — |
+| 0.5 | Usability baseline pack | PR draft | `feat/oux-wp0.5-usability-baseline-pack` | [#23](https://github.com/R3v3ill3/OffshoreAlliance/pull/23) | docs only: lint unchanged | — | — |
 | 1.1 | Module registry and workspace mode | not started | | | | | 1 |
 | 1.2 | Navigation driven by modules | not started | | | | | |
 | 1.3 | My campaigns home | not started | | | | | |

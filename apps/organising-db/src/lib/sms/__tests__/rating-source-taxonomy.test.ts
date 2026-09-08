@@ -29,7 +29,10 @@ const repoRoot = resolve(appRoot, "../..");
 
 const read = (p: string) => readFileSync(resolve(repoRoot, p), "utf8");
 
-const MIGRATION = "supabase/migrations/20260813120000_sms_source_taxonomy.sql";
+// The taxonomy now lives in the baseline schema: the original
+// 20260813120000_sms_source_taxonomy.sql moved to supabase/migrations_legacy/
+// in the baseline repair, and the baseline is the live schema to assert against.
+const MIGRATION = "supabase/migrations/20260908050000_baseline_schema.sql";
 const ASSESSMENTS_ROUTE =
   "apps/organising-db/src/app/api/sms/conversations/[id]/assessments/route.ts";
 const SURVEY_RUNTIME = "apps/organising-db/src/lib/sms/survey-runtime.ts";

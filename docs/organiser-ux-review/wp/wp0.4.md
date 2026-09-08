@@ -118,7 +118,8 @@ scripts/data-hygiene/oux-wp0.4/
   02_rollback.sql
   03_resolve_duplicate_placements.sql    H1 + H3 duplicate campaign_worker_ou rows
   03_rollback.sql
-  90_verify_all.sql                      READ-ONLY: H1/H3/H5/H6/H7 verbatim + every invariant count
+  90_verify_all.sql                      READ-ONLY: H1/H3/H5/H6/H7 verbatim + every invariant count (application tables only)
+  91_verify_log.sql                      READ-ONLY: audit-log invariants (#3, #27, logged counts); only while the log exists (fix round 1)
   99_drop_hygiene_log.sql                DROP TABLE _oux_hygiene_log (see 2.3)
 ```
 
@@ -200,8 +201,11 @@ COMMIT;
 ```
 
 The change is one statement inside one transaction: the delete/update/insert and its audit rows commit together or not
-at all. In the Supabase SQL editor the whole file runs as one submission; in `psql` use
-`\set ON_ERROR_STOP on` and `\i`.
+at all. The three blocks are submitted **separately** (fix round 1, §12): the Supabase SQL editor returns only one
+result set per submission, so a pre-check pasted together with the change is never seen. Each script marks the three
+blocks with `BLOCK n of 3` / `END OF BLOCK n` delimiters; paste and run BLOCK 1, inspect it, then BLOCK 2, then BLOCK 3.
+Under interactive `psql` with `ON_ERROR_STOP` a failed CHANGE leaves the session in an aborted transaction that needs
+`ROLLBACK;` before anything else.
 
 ---
 
@@ -571,7 +575,14 @@ regenerated client-side: `recomputeOuAssignments` deletes every `assignment_sour
 reinserts from the rules (appendix C 3.4, `src/lib/campaign/recompute-ou-assignments.ts:158-362`), so a duplicate the
 script deletes would come back the next time someone opens the units section. Production has 194 rule rows and 2 rules
 (G.1, G.4), so the overlap may well be zero — but the pre-check must prove it rather than hope. If it is non-zero, the
-underlying rule needs fixing in phase 2 and those rows are excluded from this script.
+underlying rule needs fixing in phase 2 and those rows are excluded from this script. **Since fix round 1 (§12) the
+exclusion is enforced by the CHANGE statement itself**, not by the operator reading a comment: a `rule_partitions` CTE
+collects every `(campaign_id, dim_key, worker_id)` partition containing any rule-sourced row and `losers` skips them;
+the post-check `unresolved_rule_partitions` lists what was skipped (expected 0 rows on production, #18). The pre-check
+also reports the single numbers `rows_to_delete_total` / `rows_to_delete_rule_sourced` / `rows_in_rule_partitions_excluded`
+/ `rows_the_change_will_delete`, H7 before the change, and a WOC exposure probe (losers joined to active
+`woc_members`, `left_on IS NULL`, whose WOC scopes the unit being vacated — expected 0 rows; review if non-zero, not
+a stop).
 
 ### 5.3 Change
 
@@ -591,8 +602,15 @@ WITH keyed AS (
   SELECT k.*, row_number() OVER (PARTITION BY k.campaign_id, k.dim_key, k.worker_id
                                  ORDER BY k.is_primary DESC, k.created_at DESC, k.id DESC) AS rn
   FROM keyed k
+), rule_partitions AS (
+  -- every partition that contains ANY rule-sourced row is left alone (5.2): recomputeOuAssignments
+  -- would recreate a deleted rule row client-side; the rule itself is fixed in phase 2.
+  -- (campaign_id, dim_key, worker_id are all NOT NULL, so NOT IN over the row constructor is NULL-safe.)
+  SELECT DISTINCT campaign_id, dim_key, worker_id FROM keyed WHERE assignment_source = 'rule'
 ), losers AS (
-  SELECT * FROM ranked WHERE rn > 1
+  SELECT * FROM ranked
+  WHERE rn > 1
+    AND (campaign_id, dim_key, worker_id) NOT IN (SELECT campaign_id, dim_key, worker_id FROM rule_partitions)
 ), del AS (
   DELETE FROM public.campaign_worker_ou cwo
   USING losers l
@@ -645,16 +663,28 @@ SELECT cou.campaign_id, count(DISTINCT cwo.worker_id) AS members_in_a_unit
 FROM campaign_worker_ou cwo JOIN campaign_organising_units cou ON cou.ou_id = cwo.ou_id
 GROUP BY 1 ORDER BY 1;
 
--- INVARIANT: every logged worker still has a placement in the dimension they were de-duplicated in.
--- Expected: 0 rows.
+-- Partitions still duplicated because they contain a rule-sourced row (skipped by the CHANGE on purpose).
+-- Expected on production: 0 rows (#18). Non-zero goes to phase 2 (5.2).
+... unresolved_rule_partitions: GROUP BY (hazard, campaign_id, dim_key, worker_id)
+    HAVING count(*) > 1 AND count(*) FILTER (WHERE assignment_source = 'rule') > 0 ...
+
+-- INVARIANT (#27): every logged worker still has a placement in the DIMENSION they were de-duplicated in:
+-- H1 delete -> a surviving row in a unit of the same campaign with the same ou_group_id; H3 delete -> a surviving
+-- row in a standalone unit (ou_group_id IS NULL AND parent_ou_id IS NULL) of the same campaign and ou_type.
+-- Expected: 0 rows. (A row also surfaces if the unit it was deleted from has itself been deleted since.)
 SELECT l.log_id, l.before_row->>'worker_id' AS worker_id, l.note
 FROM public._oux_hygiene_log l
+LEFT JOIN public.campaign_organising_units d ON d.ou_id = (l.before_row->>'ou_id')::int
 WHERE l.script='03_resolve_duplicate_placements' AND l.rolled_back_at IS NULL
   AND NOT EXISTS (
-    SELECT 1 FROM campaign_worker_ou cwo JOIN campaign_organising_units cou ON cou.ou_id = cwo.ou_id
+    SELECT 1 FROM public.campaign_worker_ou cwo
+    JOIN public.campaign_organising_units s ON s.ou_id = cwo.ou_id
     WHERE cwo.worker_id = (l.before_row->>'worker_id')::int
-      AND cou.campaign_id = (SELECT campaign_id FROM campaign_organising_units
-                             WHERE ou_id = (l.before_row->>'ou_id')::int));
+      AND s.campaign_id = d.campaign_id
+      AND CASE WHEN d.ou_group_id IS NOT NULL
+               THEN s.ou_group_id = d.ou_group_id
+               ELSE s.ou_type = d.ou_type AND s.ou_group_id IS NULL AND s.parent_ou_id IS NULL
+          END);
 ```
 
 ### 5.5 Rollback (`03_rollback.sql`)
@@ -686,22 +716,29 @@ COMMIT;
 -- Expected after rollback: h1_pairs = 2, h3_pairs = 5, worker_ou count back to worker_ou_before
 ```
 
-**The re-insert passes both BEFORE triggers** (`baseline_schema.sql:22417, :22421`), and this is not luck:
+**The re-insert re-fires both BEFORE triggers** (`baseline_schema.sql:22417, :22421`), and for a database in the
+state 03 left it the argument is:
 
 - `check_no_worker_on_group_container()` (`:1083-1103`) rejects worker rows on a container. These rows existed, and
   G.2 confirms "No worker rows point at a container", so none of them targets one.
 - `check_worker_ou_group_exclusivity()` (`:1209-1248`) returns immediately when the target unit's `ou_group_id` IS
-  NULL — that covers every **H3** row. For **H1** rows the target unit has a group, but the retained keeper is in the
-  **same** group, and the trigger raises only for a *different* non-null `ou_group_id` of the same `ou_type`; as
-  appendix C 3.3 puts it, it "does **not** prevent multiple units within the same group". So the exact state that
-  existed before the delete is re-creatable.
+  NULL — that covers every **H3** row. For **H1** rows the target unit has a group, and the retained keeper is in the
+  **same** group; the trigger raises only for a *different* non-null `ou_group_id` of the same `ou_type` (appendix
+  C 3.3: it "does **not** prevent multiple units within the same group"), so the keeper never trips it.
+
+What that argument does **not** cover (fix round 1, §12): a *pre-existing legacy violation*. The trigger only checks
+rows as they are inserted or moved; a worker who was placed in two different groups of the same type before the
+trigger existed still holds both rows, and 03's H1 delete of one of them does not touch the other. Re-inserting the
+deleted row then trips the trigger even though nothing changed "since". So the rollback can be blocked by the state
+03 itself operated on, not only by later edits. `03_rollback.sql` therefore carries a third pre-check probe that
+replicates the trigger's predicate for every pending log row — same campaign, same `ou_type`, a different non-null
+`ou_group_id`, `ou_id <> the unit being restored` — expected 0 rows, so the operator knows before the change.
 
 Restoring the original `id` values is safe: they were already consumed from
 `campaign_worker_ou_id_seq`, so re-inserting them cannot collide with future inserts and the sequence needs no
 `setval`. **Caveat, stated in the README:** the rollback must run before anyone else changes the affected workers'
-placements. If someone has since put one of those workers into a different group of the same `ou_type`, the trigger
-will reject that one row and the transaction aborts with nothing restored; the log still holds every column needed to
-restore by hand.
+placements, and can also be blocked by a legacy violation as above. In either case the trigger rejects that one row
+and the transaction aborts with nothing restored; the log still holds every column needed to restore by hand.
 
 ---
 
@@ -766,17 +803,18 @@ in the script folder says, in this order:
 2. Connect as `postgres`: Supabase SQL editor for project `gteygwfgjvczanmrwgbr`, or
    `psql "postgresql://postgres:…@db.gteygwfgjvczanmrwgbr.supabase.co:5432/postgres" -v ON_ERROR_STOP=1`. RLS does not
    apply to this role, so the delete policies discussed in 3.5 do not obstruct the scripts themselves.
-3. Run `90_verify_all.sql` first and paste the output into `docs/organiser-ux-review/wp/wp0.4.md` §5 as the "before"
-   snapshot.
+3. Run `90_verify_all.sql` first and paste the output into `docs/organiser-ux-review/wp/wp0.4.md` §13 as the "before"
+   snapshot. (`91_verify_log.sql` cannot run before 00: the log table does not exist yet.)
 4. Run, in this order, pasting each script's pre-check and post-check output into the same file as you go:
    **`00_create_hygiene_log.sql` → `02_backfill_campaign_organisers.sql` → `03_resolve_duplicate_placements.sql` →
    `01_role_conversion.sql`** (see 3.6 for why 02 precedes 01, and 3.5 for why 01 may be deferred to a later sitting
    after WP1.6 reaches production).
-   Run one file at a time. If any pre-check disagrees with its expected value, stop and report before running the
-   change.
-5. Run `90_verify_all.sql` again and paste the "after" snapshot.
+   Run one file at a time, **three submissions per file** (BLOCK 1 PRE-CHECK → inspect → BLOCK 2 CHANGE → BLOCK 3
+   POST-CHECK; 2.4). If any pre-check disagrees with its expected value, stop and report before running the
+   change. After 01, the converted organisers sign out and back in (the client caches `role` at session load).
+5. Run `90_verify_all.sql` and `91_verify_log.sql` again and paste the "after" snapshot.
 6. If anything is wrong, run the matching `<nn>_rollback.sql` (in reverse order if more than one), then
-   `90_verify_all.sql` again.
+   `90_verify_all.sql` and `91_verify_log.sql` again.
 7. Tick the "Run WP0.4 scripts on production" row in `PROGRESS.md` → "Human tasks" and record the date.
 8. Leave `_oux_hygiene_log` in place; run `99_drop_hygiene_log.sql` only per the retention rule in 2.3.
 
@@ -790,7 +828,9 @@ WP0.4 adds no TypeScript: no pure function, no component, no API route. There is
 existing pattern (`src/lib/**/__tests__`) has no hook for a `.sql` file, and a fake in-memory Postgres would test the
 fake. **The pre-check and post-check queries in each script are the test**, and the acceptance criterion is stated in
 those terms by the work package itself ("their verification queries return the expected counts"). `90_verify_all.sql`
-is the whole suite in one read-only file, so the same assertions can be run before, after and at any later date.
+is the whole suite over application tables in one read-only file, so the same assertions can be run before, after and
+at any later date (before 00 and after 99 included); `91_verify_log.sql` holds the assertions that read
+`_oux_hygiene_log` (#3, #27 and the per-script logged counts) and runs only while that table exists.
 
 ### 8.2 Expected values
 
@@ -798,7 +838,7 @@ is the whole suite in one read-only file, so the same assertions can be run befo
 |---|---|---|---|---|
 | 1 | `user_profiles` with `role='admin' AND work_role='organiser'` before 01 | 01 pre-check | **7** | G.6 |
 | 2 | Same, after 01 | 01 post-check | **0** | — |
-| 3 | Log rows for `01_role_conversion` | 01 post-check | **7** | = #1 |
+| 3 | Log rows for `01_role_conversion` | 01 post-check, 91 | **7** | = #1 |
 | 4 | Accounts still `admin` after 01 | 01 post-check | **4** (2 `lead_organiser`, 1 `coordinator`, 1 `industrial_coordinator`) | G.6, decision 2 |
 | 5 | `user` + `organiser` accounts after 01 | 01 post-check | **8** (7 converted + 1 existing) | G.6 |
 | 6 | Same, after `01_rollback.sql` | rollback check | back to **7** admin/organiser | — |
@@ -807,13 +847,13 @@ is the whole suite in one read-only file, so the same assertions can be run befo
 | 9 | `campaign_organisers` rows after 02 | 02 post-check | **= #8** | — |
 | 10 | Campaigns still missing a roster row | 02 post-check | **0** | — |
 | 11 | Campaigns with >1 `campaign_role='lead'` | 02 post-check | **0 rows** | invariant |
-| 12 | Roster rows disagreeing with `campaigns.organiser_id` | 02 post-check | **0 rows** | invariant |
-| 13 | Campaigns per organiser after 02 | 02 post-check | 6 organisers: **7, 6, 4, 2, 1, 1** | G.6 |
+| 12 | Roster rows disagreeing with `campaigns.organiser_id` | 02 post-check, 90 | **0 rows** — valid immediately after 02 only (the roster UI legitimately adds members later) | invariant |
+| 13 | Campaigns per organiser after 02 | 02 post-check, 90 | 6 organisers: **7, 6, 4, 2, 1, 1** — valid immediately after 02 only | G.6 |
 | 14 | `campaign_organisers` after `02_rollback.sql` | rollback check | **0** | — |
 | 15 | H1 pairs before 03 | 03 pre-check | **2** | G.5 |
 | 16 | H3 pairs before 03 | 03 pre-check | **5** | G.5 |
 | 17 | Rows to delete | 03 pre-check | **7** if every pair has exactly two placements; recorded, not assumed (G.3 "Same-type dupes": 57→2, 64→3, 42→2 = 7) | G.3, G.5 |
-| 18 | Rows to delete with `assignment_source='rule'` | 03 pre-check | **0** — non-zero stops the run (5.2) | C 3.4 |
+| 18 | Rows to delete with `assignment_source='rule'` | 03 pre-check (`rows_to_delete_rule_sourced`), 03 post-check (`unresolved_rule_partitions`) | **0** — non-zero is reported; the CHANGE excludes those partitions by construction and the post-check lists them (5.2) | C 3.4 |
 | 19 | `campaign_worker_ou` before 03 | 03 pre-check | **1,614** | G.1 |
 | 20 | `campaign_worker_ou` after 03 | 03 post-check | **1,614 − #17** (1,607 if #17 = 7) | — |
 | 21 | H1 after 03 | 03 post-check | **0** | acceptance |
@@ -822,7 +862,7 @@ is the whole suite in one read-only file, so the same assertions can be run befo
 | 24 | H5 after 03 | 03 post-check | **0** (was 0; unchanged) | G.5 |
 | 25 | `campaign_worker_membership` before and after 03 | 03 pre/post | **2,670 both times** — the headline invariant | G.1 |
 | 26 | Members in ≥1 unit, per campaign, before and after 03 | 03 pre/post | identical lists; 57→**303**, 64→**267**, 42→**202** | G.3 |
-| 27 | Logged workers with no remaining placement in that campaign | 03 post-check | **0 rows** | invariant |
+| 27 | Logged workers with no remaining placement in the dimension they were de-duplicated in (same `ou_group_id` for H1; same `ou_type`, standalone, for H3) | 03 post-check, 91 | **0 rows** | invariant |
 | 28 | `campaign_worker_ou` after `03_rollback.sql` | rollback check | back to **1,614**, H1 = 2, H3 = 5 | — |
 | 29 | H6 (members with no unit) | 90_verify_all | **1,162** before and after — 03 must not change it | G.5, G.4 |
 
@@ -856,8 +896,9 @@ and, after the dev re-seed, by section 6.3 — with the raw output pasted into
 | `_oux_hygiene_log` is world-readable (it holds `user_id`s) | 00 revokes from `anon`/`authenticated` and enables RLS with no policies — required because `ALTER DEFAULT PRIVILEGES` grants ALL on new public tables (`baseline_schema.sql:33393-33396`) |
 | `_oux_hygiene_log` shows up as a new Supabase security advisory | RLS enabled (contrast the four RLS-disabled `_archive_*` tables in G.7) |
 | The log is dropped and a rollback is then needed | 99 is a separate file with a retention rule (2.3); the table comment repeats it; PITR is the backstop (7.1) |
-| 03 deletes a rule-generated row that `recomputeOuAssignments` immediately recreates | Pre-check #18 breaks the deletions down by `assignment_source` and the run stops if any are `'rule'` (5.2, appendix C 3.4) |
-| The rollback of 03 trips `check_worker_ou_group_exclusivity` | Argued impossible for an unchanged database (5.5) and the caveat for a changed one is documented; the log keeps every column for a manual restore |
+| 03 deletes a rule-generated row that `recomputeOuAssignments` immediately recreates | Pre-check #18 breaks the deletions down by `assignment_source`; the CHANGE's `rule_partitions` CTE excludes every partition containing a rule row regardless of what the operator read; the post-check lists any it skipped (5.2, appendix C 3.4) |
+| The rollback of 03 trips `check_worker_ou_group_exclusivity` | 03_rollback's third pre-check probe replicates the trigger's predicate for every pending row (expected 0), covering both later edits and pre-existing legacy violations (5.5); the log keeps every column for a manual restore |
+| The SQL editor shows only the last result set, so a pre-check pasted with its change is never seen | Every change/rollback script is split into three delimited blocks submitted separately; README and each header say so (2.4, fix round 1) |
 | Deleting placements changes reported coverage | Invariants #25, #26, #27, #29 assert membership, per-campaign "in a unit" and H6 are all unchanged |
 | 02 grants `campaign_role='lead'` more widely than intended | Only to the organiser already named in `campaigns.organiser_id`, who can already do all of it as `admin` today; invariants #11 and #12 assert one lead per campaign matching `campaigns.organiser_id` (4.1) |
 | Expected counts are hard-coded and reality differs | Every count is computed by a pre-check; the expected value lives in a comment; a mismatch stops the run |
@@ -927,9 +968,12 @@ existing `_archive_*` convention in that schema.
 All scripts implement sections 2-8 as written; the CHANGE statements are byte-for-byte the plan's. Departures, all
 additive and read-only unless stated:
 
-1. **Sequencing guard added to 01's pre-check.** Section 3.1 lists two pre-checks; the script adds a third,
-   `campaign_organisers_rows_present` (expected > 0), so an operator who runs 01 before 02 is stopped by the
-   pre-check rather than by memory of section 3.6. 01's post-check also adds `still_admin` (= 4), which is 8.2 #4.
+1. **Sequencing guard added to 01's pre-check.** Section 3.1 lists two pre-checks; the script adds a third, so an
+   operator who runs 01 before 02 is stopped by the pre-check rather than by memory of section 3.6. As first
+   written it was `count(*) FROM campaign_organisers > 0`; fix round 1 (below) replaced it with 02's post-check
+   #10, `still_missing` (expected 0: every non-standing, non-episode campaign with an `organiser_id` has its roster
+   row), which is the condition 3.6 actually needs rather than "the table is not empty". 01's post-check also adds
+   `still_admin` (= 4), which is 8.2 #4.
 2. **Pre-checks added to every rollback.** Sections 3.4, 4.5 and 5.5 give only the CHANGE and an after-count. Each
    `*_rollback.sql` now has the full 2.4 shape: a `pending_rollback` count; for 02 a "still exactly as inserted"
    count; for 03 two conflict probes (a logged `id` already present in `campaign_worker_ou`; a logged
@@ -941,11 +985,12 @@ additive and read-only unless stated:
    sequence default privileges (`baseline_schema.sql:33373-33376`) alongside the table ones (`:33393-33396`),
    since the `REVOKE ... ON SEQUENCE` is there for that reason. 99's pre-check computes `days_since_last_run`
    for retention condition 3.
-4. **90 evaluates the audit-log counts through a guard.** Section 7 step 3 runs 90 *before* 00, and 8.1 says it can
-   run "at any later date" (i.e. after 99). A plain `SELECT` on `_oux_hygiene_log` would then abort the file under
-   `ON_ERROR_STOP`, so section E of 90 evaluates #3, #27 and the 02/03 logged counts via
-   `to_regclass('public._oux_hygiene_log')` + `query_to_xml()` (STABLE, so the `CASE` stays lazy) and returns
-   NULL when the table is absent. The same counts appear as plain `SELECT`s in the 01/02/03 post-checks.
+4. **Audit-log counts split out of 90.** Section 7 step 3 runs 90 *before* 00, and 8.1 says it can run "at any
+   later date" (i.e. after 99). A plain `SELECT` on `_oux_hygiene_log` would then abort the file under
+   `ON_ERROR_STOP`. As first written, section E of 90 evaluated #3, #27 and the 02/03 logged counts through a
+   `to_regclass` + `query_to_xml()` guard; fix round 1 (below) replaced that with a separate `91_verify_log.sql` of
+   plain `SELECT`s, run only while the log table exists, so 90 is plain queries that work before 00 and after 99.
+   The same counts appear as plain `SELECT`s in the 01/02/03 post-checks.
 5. **H5 and H6 wrapping in 90.** "Wrapped in count(*)" is applied literally to H1, H3 and H7. H5 verbatim is already
    a `COUNT(*)`, so re-wrapping would always return 1; it is labelled, not wrapped. H6 verbatim returns one row
    per campaign, so `count(*)` alone would not yield the 1,162 of #29; it is wrapped as
@@ -1027,6 +1072,69 @@ No schema discrepancy was found (see the confirmation table below). One line-num
 - `b7c3c5e` feat(oux-wp0.4): script 03 resolve duplicate unit placements (H1, H3) with rollback
 - `2911e17` feat(oux-wp0.4): read-only verification suite 90_verify_all.sql
 - (this commit) feat(oux-wp0.4): record deviations, schema confirmation and validation in wp0.4.md section 12
+
+### Fix round 1
+
+Applied 2026-09-08 after the reviewer's findings on the `099b11f` rehearsal. The `_oux_hygiene_log` column list, the
+2.4 shape and the audit format are unchanged (the rehearsal proved them). Every item was verified against the file
+and the baseline before it was changed; no database was connected to.
+
+1. **(blocking) 03's rule-sourced stop is enforced in the statement.** The pre-check comment "if any row has
+   `assignment_source = 'rule'`, STOP" could not stop anything: the SQL editor shows only the last result set of a
+   submission, so a whole-file paste ran PRE-CHECK → CHANGE → POST-CHECK blind. The CHANGE now has a
+   `rule_partitions` CTE (`SELECT DISTINCT campaign_id, dim_key, worker_id FROM keyed WHERE assignment_source =
+   'rule'`) and `losers` is `rn > 1 AND (campaign_id, dim_key, worker_id) NOT IN rule_partitions` — the 5.2 rule
+   "those rows are excluded from this script", as a predicate. All three partition columns are NOT NULL, so the
+   row-constructor `NOT IN` is NULL-safe. The post-check adds `unresolved_rule_partitions` (partitions still
+   duplicated because they contain a rule row; expected 0 on production per #18; non-zero goes to phase 2). The
+   pre-check breakdown is kept.
+2. **(blocking) Three submissions per file.** Every change and rollback script (00, 01, 02, 03, 99 and the three
+   rollbacks) now carries `BLOCK 1 of 3` / `END OF BLOCK 1` / `BLOCK 2 of 3` / `END OF BLOCK 2` / `BLOCK 3 of 3`
+   delimiter lines around the unchanged PRE-CHECK / CHANGE / POST-CHECK markers, plus a "submit this block on its
+   own" line under each marker. The README section "How to submit a script" and each header's run instruction say:
+   BLOCK 1 as its own submission, inspect, BLOCK 2 as a second, BLOCK 3 as a third; the SQL editor returns one
+   result set per submission; under interactive `psql` with `ON_ERROR_STOP` a failed CHANGE leaves an aborted
+   transaction that needs `ROLLBACK;`. 2.4 and 7 updated to match.
+3. **01 sequencing guard** replaced by 02's post-check #10 `still_missing` (expected 0). Deviation 1 updated.
+4. **03 pre-check WOC exposure probe**: the rows the CHANGE will delete, joined to `campaign_wocs` in the same
+   campaign, `woc_members` with `left_on IS NULL` (column confirmed in the baseline, `woc_members` DDL) for that
+   worker, where the vacated unit is in `woc_scope_units` or is the legacy `campaign_wocs.scope_ou_id`. Expected 0
+   rows on production; "review if non-zero", not a stop.
+5. **03_rollback third probe** replicating `check_worker_ou_group_exclusivity` (`baseline_schema.sql:1209-1248`)
+   per pending log row: same campaign, same `ou_type`, a different non-null `ou_group_id`, `ou_id <>` the unit being
+   restored; expected 0 rows. README caveat and 5.5 now cover pre-existing legacy violations, not only placements
+   changed "since".
+6. **#27 tightened to the dimension** in 03's post-check and in 91: a surviving row in the same `ou_group_id` for an
+   H1 delete, or in a standalone unit (`ou_group_id IS NULL AND parent_ou_id IS NULL`) of the same `ou_type` for an
+   H3 delete, in the same campaign. `LEFT JOIN` on the vacated unit so a since-deleted unit surfaces rather than
+   hides. 5.4 and 8.2 #27 updated.
+7. **03 pre-check** gains the single-number `rows_to_delete_total` / `rows_to_delete_rule_sourced` query from 90
+   (extended with `rows_in_rule_partitions_excluded` / `rows_the_change_will_delete`) and H7 verbatim
+   (`h7_multi_primary_before`, expected 0).
+8. **90 section E moved to `91_verify_log.sql`** as plain `SELECT`s with a "run only while the log table exists"
+   header; 90 is now plain queries on application tables that work before 00 and after 99. README, 7, 8.1, 8.2 and
+   deviation 4 updated.
+9. **#12 / #13 labelled "valid immediately after 02 only"** in 02's post-check, in 90 and in 8.2, since the roster
+   UI legitimately adds `campaign_role='organiser'` members later.
+10. **README caveat**: `is_lead_organiser_for_campaign()` arm 2 (`baseline_schema.sql:3724-3732`) has no `role` /
+    `work_role` check and `user_profiles.organiser_id` is a plain FK with no unique index, so any future profile
+    linked to one of the backfilled organisers inherits lead for those campaigns — a pre-existing property, not
+    introduced by 02.
+11. **README caveat and 01 post-check note**: after 01 (and after `01_rollback`) the affected organisers sign out
+    and back in; the client caches `role` from `user_profiles` at session load
+    (`apps/organising-db/src/lib/supabase/auth-context.tsx`, `fetchProfile` → `isAdmin`) while `get_user_role()`
+    flips immediately.
+12. **99** computes `days_since_last_run` from `greatest(max(logged_at), max(rolled_back_at))`, so a rollback
+    restarts the 30-day clock; README retention rule says so.
+13. **01_rollback** documents the two-pending-rows-for-one-user case (only possible by hand insertion or an
+    interrupted rollback; `UPDATE ... FROM` stamps one row and `still_pending` surfaces the other) and adds a
+    per-`user_id` duplicate-log-row query (expected 0 rows).
+
+Validation repeated without a database: the `node -e` structural checks (one `BEGIN;`/`COMMIT;` per change and
+rollback file, none in 90/91; balanced parentheses; each rollback's `script`/`action` literals match its change
+file; the `_oux_hygiene_log` insert column list identical in 01/02/03 and present in 00's `CREATE TABLE`; every
+change/rollback file has the three BLOCK banners) and `pnpm validate:migrations` from the repo root. The plan text in
+5.3 was updated to the new `losers` CTE, so "byte-for-byte the plan's" still holds for the CHANGE statements.
 
 ## 13. Verification output
 

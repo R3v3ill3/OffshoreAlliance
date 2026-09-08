@@ -1,0 +1,122 @@
+# WP0.5 — Usability baseline pack (plan)
+
+## 1. Specification
+
+Work package, verbatim from `docs/organiser-ux-review/IMPLEMENTATION_ORCHESTRATION_PROMPT.md:118`:
+
+> **WP0.5 Usability baseline pack.** Standard implementer writes the moderator script for the three baseline tasks, the SUS form, and a results template under `docs/organiser-ux-review/study/`. The study itself is run by people. No dependencies.
+
+**Decisions consumed:** none. `docs/organiser-ux-review/DECISIONS.md` lists no decision blocking WP0.5 (the "Blocks" column names WP0.2/0.4/1.x/2.x/3.x only), and the orchestration prompt line 190 confirms WP0.5 is independent. The pack must not pre-empt decisions: it measures **today's UI**, so every task uses today's labels, and no phase-1+ vocabulary appears in the task wording.
+
+**Operator inputs required before a round can run** (`DECISIONS.md`, "Operator inputs" table): a dev-database account per participant on project `dpnnmkhabysfdogllsyh`; dev seeded with campaign data (the current dev seed has campaign data stripped — `docs/DEV_PROD_ENVIRONMENT.md`, "The DEV database was seeded…"). These are recorded as blanks in the pack, not resolved by this work package.
+
+**Source sections the content comes from:**
+- Three tasks and "record task success, time, errors and SUS": plan section 7, Phase 0 bullet 2 (`docs/ORGANISER_UX_REVIEW_AND_PLAN.md`).
+- Metrics table columns and the method paragraph (five-participant think-aloud, same three tasks each phase, SUS, card sort, tree test): plan section 8.
+- Card-sort vocabulary: plan section 3.6 terminology table, plus the six terms named in section 8 (universe, group, unit, crew, structure test, plan).
+- Citations: `docs/organiser-ux-review/appendix-F-research.md` section H — H.1 (five users; "the best results come from testing no more than 5 users"; first five find 85% of problems), H.3 (success rate; "User success is the bottom line of usability"; partial credit by defined levels), H.4 (slips vs mistakes), H.6 (card sort generates IA, tree test evaluates it; neutral labels), H.8 (Brooke SUS: ten items, 0–100, mean 68) and the "Top 15" item 15.
+- Task 1 start point: appendix D 2.1 (login form success → `router.push("/campaigns")`, `src/app/(auth)/login/page.tsx:73`; `src/app/page.tsx:4` redirects to `/campaigns`; no role branch) and 2.2 (what `/campaigns` shows; row click → `/campaigns/{id}?tab=workforce&sub=wall-chart`, `campaigns/page.tsx:424,445`).
+
+## 2. Plan
+
+Docs-only. **No code, no schema, no tests.** Six new files under a new directory `docs/organiser-ux-review/study/`. Each file is short enough to read on a phone while moderating: no file over ~2 screens of prose, tasks and criteria as bullets and small tables, no nested tables.
+
+### 2.1 `docs/organiser-ux-review/study/README.md` (new)
+Purpose: how to run one round.
+- Who: five organisers per round (cite appendix F H.1 with the NN/g URL). Same three tasks every phase (plan section 8 method paragraph).
+- When: baseline now (phase 0); re-run after phase 4 (plan section 7, Phase 4 bullet 3). Tree test of the four-tab labels **before** phase 1 is built; card sort of the vocabulary **before** phase 2 (plan section 8 method paragraph).
+- Session shape: 45 minutes — 5 welcome, 30 tasks, 5 SUS, 5 debrief. One moderator, one note-taker; think-aloud (appendix F H.5).
+- Consent line to read verbatim, covering: voluntary, stop any time, we are testing the software not you, notes and (optional) screen recording, no recording of the participant's face, results reported without names.
+- **Data safety (mandatory paragraph):** the round runs on the **dev preview** (Vercel Preview, Supabase dev `dpnnmkhabysfdogllsyh`) against seeded test data. **Never production** (`gteygwfgjvczanmrwgbr`) — participants create and modify real records during tasks 2 and 3, so a production session would write junk into live campaigns. The operator fills in, before the round: preview URL, participant login, the **named campaign** for task 1, the **named worker** and **named shift unit** for task 2, the **worksite** for task 3. In the scripts these appear as `[CAMPAIGN]`, `[WORKER]`, `[SHIFT UNIT]`, `[WORKSITE]`. Cross-reference `docs/DEV_PROD_ENVIRONMENT.md`.
+- What to record: point at `results-template.md`; note that clicks and seconds for task 1 start at the login form submit.
+- **Label note:** phase-0 wording uses today's labels; the phase-4 re-run swaps them for the new ones (Wall chart tab, Who's in, Group, Unit, Unassigned — plan section 3.6) while keeping the same three goals, so the numbers stay comparable.
+
+### 2.2 `docs/organiser-ux-review/study/moderator-script.md` (new)
+- Welcome + think-aloud instruction, verbatim ("say what you are looking for, what you expect, and what surprises you"; if they go quiet, prompt with "what are you thinking?" only).
+- **What the moderator may say:** "what would you do next?", "what did you expect to happen?", "is this what you expected?"; echoing the participant's own words. **May not say:** the name of any tab, button or menu; "try the X tab"; "you're nearly there"; anything that confirms or denies correctness before the task ends.
+- **Assist (definition, used by all three tasks):** any moderator utterance that names a UI element, points at the screen, or otherwise narrows the search. Count assists; a task with ≥1 assist can be at best **partial**. Errors are counted separately and classified slip vs mistake (appendix F H.4): a wrong click that the participant immediately corrects is a slip; a wrong destination they believe is right is a mistake.
+- **Success levels** (partial credit per appendix F H.3): **success** = met the criterion unaided; **partial** = met it after ≥1 assist, or by a route the moderator had to unblock; **fail** = abandoned, timed out, or wrong end state.
+- Task wording, exact, in today's labels (do **not** paraphrase into the new vocabulary):
+  - **Task 1 — "Open the wall chart for `[CAMPAIGN]`."** Start: the login form, empty, on the preview URL; the timer and click count start on **submit** of the login form (appendix D 2.1: submit → `/campaigns`; `/campaigns` row click → `?tab=workforce&sub=wall-chart`, appendix D 2.2). Stop: the wall chart for `[CAMPAIGN]` is visible on screen. **Success = wall chart visible.** Record clicks and seconds (the plan section 8 row "Clicks and seconds from login to the wall chart of a named campaign"; target after phase 3 is 2 clicks / under 10 s). Timeout 3 minutes.
+  - **Task 2 — "Put `[WORKER]` into the `[SHIFT UNIT]` shift."** Start: wherever task 1 ended. Stop: participant says they are done, or timeout 5 minutes. **Success = `[WORKER]` appears in `[SHIFT UNIT]`** (moderator verifies by reloading the unit — today under Workforce → **Campaign Units** (`src/app/(dashboard)/campaigns/[id]/page.tsx:615`) or via the wall chart's assignment path; today's neighbouring label for "no unit" is **Unallocated**, `campaign-units-section.tsx:1777`). Note which route they took.
+  - **Task 3 — "Create a new campaign for `[WORKSITE]`."** Start: wherever task 2 ended. Stop: participant says they are done, or timeout 8 minutes. **Success = a campaign row exists with `[WORKSITE]` in scope, and the participant is on that campaign's page.** Record which of the two dialog options they chose — **Campaign wizard** (`/campaigns/new`) or **Manual create** (`/campaigns/new/manual`), both behind the **Create campaign** button (`src/app/(dashboard)/campaigns/page.tsx:382`, dialog 310-355; appendix D 1.5) — and whether they land on the wall chart. Plan section 8 target: under 3 minutes, 90%.
+- Today's label references the script cites so a future editor knows what to change: Workforce tab (`campaigns/[id]/page.tsx:421`), **Wall Chart / List** sub-tab (614), **Campaign Units** (615), **Scope** (616), **Create campaign** (`campaigns/page.tsx:382`), **Assign to unit** (`workforce-bulk-toolbar.tsx:281`). Appendix D 3.2 is the single citation for the campaign tab labels.
+- Closing debrief: three questions (hardest moment; anything you expected and did not find; what you would change first).
+
+### 2.3 `docs/organiser-ux-review/study/sus-form.md` (new)
+- The standard ten Brooke statements, in order, unmodified apart from the system name, with the note that **the wording is Brooke's standard and must not be reworded** or the 0–100 comparison and the 68 benchmark stop meaning anything (appendix F H.8):
+  1. I think that I would like to use this system frequently. 2. I found the system unnecessarily complex. 3. I thought the system was easy to use. 4. I think that I would need the support of a technical person to be able to use this system. 5. I found the various functions in this system were well integrated. 6. I thought there was too much inconsistency in this system. 7. I would imagine that most people would learn to use this system very quickly. 8. I found the system very cumbersome to use. 9. I felt very confident using the system. 10. I needed to learn a lot of things before I could get going with this system.
+- Scale: 1 = Strongly disagree … 5 = Strongly agree, every item answered, no "N/A".
+- Scoring: odd items score (x − 1); even items score (5 − x); sum the ten; multiply by 2.5 → 0–100. State that **SUS is not a percentage** and that the average is 68 (appendix F H.8, MeasuringU). Cite Brooke's paper URL and the MeasuringU "10 things about SUS" URL as they appear in appendix F H.8.
+- One line: administered once per participant, at the end, before the debrief.
+
+### 2.4 `docs/organiser-ux-review/study/results-template.md` (new)
+- Per participant: ID (P1…P5), role in the union, `work_role`, number of campaigns they run, device and browser used, date, moderator, note-taker.
+- Per task, a small table: success / partial / fail, seconds, clicks (task 1 only), errors (count, each tagged slip or mistake), assists (count + what was said), verbatim quotes.
+- SUS: the ten item scores per participant, the computed 0–100 score, and the mean across participants.
+- A summary table whose rows are the plan section 8 metrics this study feeds, with a **Baseline (phase 0)** column to fill and the phase-3/4 target beside it, so it drops straight into section 8: clicks+seconds login→wall chart (target 2 clicks / <10 s); place a worker in the right unit (target 90% first-time, unaided); create a campaign and land on its chart (target 90%, <3 min); SUS (target >70 and +10 over baseline). Note that the four PostHog/data rows in section 8 come from WP0.2 and WP0.3, not from this study.
+- A short "issues found" list, one line each, with the task and participant IDs that hit it.
+
+### 2.5 `docs/organiser-ux-review/study/card-sort.md` (new)
+- Open sort, run with organisers before phase 2 (plan section 8 method paragraph). Instructions: group the cards however they make sense to you, name each group in your own words, leave anything meaningless in a "don't know" pile; no right answer; think aloud.
+- Cards are the **terms currently in use**, kept neutral (appendix F H.6: "Labels in a card sorting study must be neutral to prevent keyword matching") — so the recommended words are **not** signalled as answers. Drawn from plan section 3.6's "Terms in use" column plus the six terms named in section 8: universe, scope, campaign scope, target universe, named universe, workers in scope, organising unit, campaign unit, sub-unit, group, cohort, segment, crew, unallocated, no unit, unassigned, campaign plan, strategic plan, workplan, section plan, stage plan, structure test, wall chart, list view, colour by, standalone, episode, standing campaign, organiser record. Instruct the operator to run ~20–24 of these (trim, don't add) so the sort fits 15 minutes.
+- What to record: the groups, their names, and any card the participant could not place. What we are testing: whether "group" and "unit" match the organisers' own words (appendix F H.6, "Applies here").
+
+### 2.6 `docs/organiser-ux-review/study/tree-test.md` (new)
+- Run before phase 1 is built (plan section 8 method paragraph); text-only tree, no UI, no back-channel hints; record the path taken and whether they backtracked.
+- The tree is the four-tab campaign workspace from plan section 5.4: **Wall chart · People · Activity · Setup · More ▾**, with the second level as section 5.4 states it (Setup → Who's in, Groups & units, Organisers, Basics; More → Strategic plan, Bargaining, Section plans, Insights, Data fields, Activists & WOCs, Library, Imports; Activity → assessments, lists, calls, SMS, email, tasks).
+- 8–10 find-tasks phrased as goals with no label words in them, e.g.: see how a shift is tracking; change who is in the campaign; add a shift to the campaign; find who else is organising this campaign; send a text to a list of workers; see the assessments recorded last week; change the campaign's start date; open the campaign's strategic plan; find a document about the agreement; see how the campaign is going overall.
+- Record: first click, destination, correct/incorrect, seconds. Cite appendix F H.6 for card sort vs tree test.
+
+### 2.7 Also touched
+- `docs/organiser-ux-review/PROGRESS.md:64` — the row "Run the usability baseline study (WP0.5 pack) | Phase 0 | pending" stays `pending` (the study is human work); add one WP0.5 row for the pack itself, marked done, following the file's existing row format. No other file changes.
+
+### 2.8 Verification (exact commands)
+Docs-only package, so the acceptance check is that nothing in the app changed and a human reads the six files.
+- From `apps/organising-db`: `pnpm lint` — must still pass (proves no code was touched; there is no code in this package).
+- `git status --porcelain` — the only changes are the six new files under `docs/organiser-ux-review/study/` plus the `PROGRESS.md` row.
+- Reviewer check, recorded in the PR: (a) the three tasks in `moderator-script.md` are the three in plan section 7 Phase 0 bullet 2, in that order; (b) the ten SUS statements in `sus-form.md` are Brooke's standard ten in the standard order with the standard 1–5 scale and the ×2.5 scoring; (c) every task uses a label that exists in today's UI, checked against appendix D 3.2 and 1.5; (d) the data-safety paragraph names dev `dpnnmkhabysfdogllsyh` and forbids production.
+- **No tests.** `pnpm test` and `pnpm build` are unaffected; run `pnpm test` once only to confirm no regression if the reviewer wants belt and braces.
+
+### 2.9 Risks and the rules they could break
+- **Using the new vocabulary in the phase-0 task wording** would break the baseline (participants would be tested on labels that do not exist yet) and would make the phase-4 comparison meaningless. Mitigation: the label-provenance list in 2.2 and the reviewer check 2.8(c). This is the one place where the orchestrator rule "every user-facing string uses the plan's terminology" is deliberately not applied — the study documents are moderator instructions describing today's screens, not product strings; the README states the phase-4 swap explicitly.
+- **A session run against production** would write test campaigns and unit placements into live data. Mitigation: the data-safety paragraph is the first substantive section of the README and repeats at the top of the moderator script.
+- **Rewording SUS** ("this system" → product name in more than the noun, dropping an item, using a 1–7 scale) invalidates the 0–100 score and the 68 benchmark. Mitigation: the "do not reword" note and reviewer check 2.8(b).
+- Placeholder drift (operator forgets to fill `[WORKER]`): the README's pre-round checklist lists all five placeholders in one place.
+
+## 3. Out of scope
+
+- Running the study, recruiting participants, scheduling, obtaining consent, and recording or analysing any results. Filling in the placeholders and the summary table is operator work.
+- Any code, component, route, string, migration, feature flag or test. No `src/**` file is touched.
+- Seeding the dev database, creating test accounts, or standing up the preview — operator inputs listed in `DECISIONS.md`.
+- Building the tree test or card sort in a tool (Optimal Workshop, Maze). The pack is markdown the moderator can run on paper or in a spreadsheet; buying a tool is a separate decision.
+- The other section 8 metrics (campaigns with a group, memberships in a unit, PostHog return rate, support questions) — WP0.2, WP0.3 and appendix G supply those; the results template only points at them.
+- UMUX-Lite (appendix F H.8) as an in-app pulse — a phase-1+ product change, not a moderator document.
+- A 20–40 participant quantitative benchmark (appendix F H.2). Phase 0 is the five-participant qualitative round the plan asks for.
+
+## 4. Open questions
+
+None blocking. Assumptions taken, to be corrected by the operator if wrong:
+- Five participants are available and are organisers (not admins). If fewer than five, the round still runs and the README says to report n.
+- Sessions are moderated, possibly remote (appendix F H.5 allows both); the script is written to work either way and does not assume screen sharing beyond the moderator seeing the participant's screen.
+- The dev database will have campaign data by the time a round runs; if it does not, tasks 1 and 2 have nothing to point at, and the README says the round cannot start until the operator confirms a usable `[CAMPAIGN]` and `[WORKER]`.
+- The pack ships in the same PR/branch as the rest of phase 0 documentation work, on `feat/oux-wp0.1-decision-register`, with no branch switch.
+
+## 5. Orchestrator approval
+
+**Approved 2026-09-08** with two corrections to section 4's assumptions:
+- The package ships on its own branch `feat/oux-wp0.5-usability-baseline-pack` (one branch per work package), stacked on the WP0.1 branch until PR #22 merges; PR base is `develop`.
+- `PROGRESS.md` already has a WP0.5 ledger row; update its status, branch and PR columns rather than adding a row. Keep the human-task row "Run the usability baseline study" as pending.
+Everything else stands as written. Scope is the six files under `docs/organiser-ux-review/study/` plus the ledger row.
+
+## 6. Deviations from plan
+
+_(implementer keeps this list)_
+
+## 7. Verification output
+
+_(verifier pastes raw output)_
+
+## 8. Reviewer findings
+
+_(reviewer)_

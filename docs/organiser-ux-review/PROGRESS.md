@@ -16,7 +16,7 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 
 | WP | Title | Status | Branch | PR | Verification | Open risks | Decisions consumed |
 |---|---|---|---|---|---|---|---|
-| 0.1 | Decision register and branch setup | PR draft | `feat/oux-wp0.1-decision-register` | (see PR) | docs only | Decisions open | — |
+| 0.1 | Decision register and branch setup | PR draft | `feat/oux-wp0.1-decision-register` | [#22](https://github.com/R3v3ill3/OffshoreAlliance/pull/22) | docs only | Decisions open | — |
 | 0.2 | Instrumentation and test harness | not started | | | | | — |
 | 0.3 | Defaults, copy and layout quick wins | not started | | | | | — |
 | 0.4 | Data hygiene scripts | blocked (decision 2) | | | | | 2 |

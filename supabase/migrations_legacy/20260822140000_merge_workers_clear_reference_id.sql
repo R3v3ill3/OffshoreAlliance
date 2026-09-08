@@ -1,97 +1,6 @@
--- Merge duplicate worker records: remap every FK pointing at workers,
--- then delete the victim rows. Conflict rows on unique (campaign, worker)
--- style indexes are dropped so the survivor's row is kept.
-
-CREATE OR REPLACE FUNCTION remap_worker_id(p_from INT, p_to INT)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  r RECORD;
-  idx RECORD;
-  other_cols TEXT[];
-  join_pred TEXT;
-  col TEXT;
-  i INT;
-BEGIN
-  IF p_from IS NULL OR p_to IS NULL OR p_from = p_to THEN
-    RETURN;
-  END IF;
-
-  FOR r IN
-    SELECT n.nspname AS nsp, c.relname AS tbl, a.attname AS col
-    FROM pg_constraint con
-    JOIN pg_class c ON c.oid = con.conrelid
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    JOIN unnest(con.conkey) WITH ORDINALITY AS ck(attnum, ord) ON true
-    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ck.attnum
-    WHERE con.confrelid = 'public.workers'::regclass
-      AND con.contype = 'f'
-      AND n.nspname = 'public'
-  LOOP
-    FOR idx IN
-      SELECT array_agg(att.attname ORDER BY x.n) FILTER (WHERE x.attnum > 0) AS cols
-      FROM pg_index ix
-      JOIN pg_class t ON t.oid = ix.indrelid
-      JOIN pg_namespace nsp ON nsp.oid = t.relnamespace
-      JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS x(attnum, n) ON true
-      JOIN pg_attribute att ON att.attrelid = t.oid AND att.attnum = x.attnum
-      WHERE nsp.nspname = r.nsp
-        AND t.relname = r.tbl
-        AND ix.indisunique
-      GROUP BY ix.indexrelid
-      HAVING bool_or(att.attname = r.col)
-    LOOP
-      IF idx.cols IS NULL THEN
-        CONTINUE;
-      END IF;
-      other_cols := ARRAY(
-        SELECT c FROM unnest(idx.cols) AS c WHERE c <> r.col
-      );
-      IF coalesce(array_length(other_cols, 1), 0) = 0 THEN
-        -- Unique on worker_id alone: drop the duplicate only when the
-        -- survivor already has a row. Otherwise remap so victim-only
-        -- 1:1 data is kept.
-        EXECUTE format(
-          'DELETE FROM %I.%I WHERE %I = $1 AND EXISTS (SELECT 1 FROM %I.%I s WHERE s.%I = $2)',
-          r.nsp, r.tbl, r.col, r.nsp, r.tbl, r.col
-        ) USING p_from, p_to;
-      ELSE
-        join_pred := '';
-        i := 1;
-        FOREACH col IN ARRAY other_cols
-        LOOP
-          IF i > 1 THEN
-            join_pred := join_pred || ' AND ';
-          END IF;
-          join_pred := join_pred || format('v.%I IS NOT DISTINCT FROM s.%I', col, col);
-          i := i + 1;
-        END LOOP;
-        EXECUTE format(
-          'DELETE FROM %I.%I v USING %I.%I s WHERE v.%I = $1 AND s.%I = $2 AND %s',
-          r.nsp, r.tbl, r.nsp, r.tbl, r.col, r.col, join_pred
-        ) USING p_from, p_to;
-      END IF;
-    END LOOP;
-
-    EXECUTE format(
-      'UPDATE %I.%I SET %I = $2 WHERE %I = $1',
-      r.nsp, r.tbl, r.col, r.col
-    ) USING p_from, p_to;
-  END LOOP;
-
-  IF to_regclass('public.worker_campaign_fact_history') IS NOT NULL THEN
-    UPDATE worker_campaign_fact_history
-    SET worker_id = p_to
-    WHERE worker_id = p_from;
-  END IF;
-
-  DELETE FROM campaign_leader_worker_links
-  WHERE leader_worker_id = follower_worker_id;
-END;
-$$;
+-- Clear the duplicate's reference_id before copying it onto the kept
+-- worker. The previous both-not-null check left a unique violation when
+-- only the duplicate had a membership reference id.
 
 CREATE OR REPLACE FUNCTION merge_workers(
   p_survivor_id INT,
@@ -161,9 +70,7 @@ BEGIN
       CONTINUE;
     END IF;
 
-    IF v_to.reference_id IS NOT NULL AND v_from.reference_id IS NOT NULL THEN
-      UPDATE workers SET reference_id = NULL WHERE worker_id = v_victim;
-    END IF;
+    UPDATE workers SET reference_id = NULL WHERE worker_id = v_victim;
 
     UPDATE workers SET
       email = COALESCE(NULLIF(btrim(email), ''), NULLIF(btrim(v_from.email), '')),
@@ -219,11 +126,6 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION remap_worker_id(INT, INT) FROM PUBLIC;
-REVOKE ALL ON FUNCTION remap_worker_id(INT, INT) FROM anon, authenticated;
 REVOKE ALL ON FUNCTION merge_workers(INT, INT[], INT, UUID) FROM PUBLIC;
 REVOKE ALL ON FUNCTION merge_workers(INT, INT[], INT, UUID) FROM anon;
 GRANT EXECUTE ON FUNCTION merge_workers(INT, INT[], INT, UUID) TO authenticated;
-
-COMMENT ON FUNCTION merge_workers IS
-  'Collapse duplicate workers into a survivor: remap FKs, copy blank identity fields, delete victims.';

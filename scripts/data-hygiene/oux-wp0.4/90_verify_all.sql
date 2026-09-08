@@ -3,12 +3,16 @@
 -- Operator-run SQL. NOT a migration: never place under supabase/migrations/, never `supabase db push`.
 --
 -- RUN ORDER:  90 (before snapshot)  ->  00_create_hygiene_log  ->  02_backfill_campaign_organisers
---             ->  03_resolve_duplicate_placements  ->  01_role_conversion  ->  90 (after snapshot)
+--             ->  03_resolve_duplicate_placements  ->  01_role_conversion  ->  90 + 91 (after snapshot)
 -- HOLD:       01_role_conversion is HELD until WP1.6 is on production (wp0.4.md 3.5, 11). 02 must run before 01.
 --
--- This file changes nothing. Every query is labelled with its expected PRODUCTION value and the wp0.4.md 8.2
--- assertion number (#n). H1, H3, H5, H6, H7 are verbatim from appendix C 8.4 (appendix-C-data-model.md), wrapped
--- in count(*) where the verbatim query returns rows rather than a count.
+-- This file changes nothing and touches NO audit table: every query is a plain SELECT on application tables, so
+-- it runs identically before 00_create_hygiene_log and after 99_drop_hygiene_log. The audit-log invariants
+-- (#3, #27, logged counts) are in 91_verify_log.sql; run that one only while public._oux_hygiene_log exists.
+-- Every query is labelled with its expected PRODUCTION value and the wp0.4.md 8.2 assertion number (#n).
+-- H1, H3, H5, H6, H7 are verbatim from appendix C 8.4 (appendix-C-data-model.md), wrapped in count(*) where the
+-- verbatim query returns rows rather than a count. In the SQL editor each statement is one submission if you want
+-- to see every result (the editor shows only the last result set of a multi-statement submission).
 -- Paste the whole output into docs/organiser-ux-review/wp/wp0.4.md 13.
 -- Plan: docs/organiser-ux-review/wp/wp0.4.md 8
 -- ---------------------------------------------------------------------------------------------
@@ -107,12 +111,15 @@ FROM public.campaigns;
 SELECT campaign_id, count(*) AS leads FROM public.campaign_organisers
 WHERE campaign_role='lead' GROUP BY 1 HAVING count(*) > 1;
 
--- #12 INVARIANT: every roster row's organiser matches campaigns.organiser_id. Expected: 0 rows (before and after)
+-- #12 INVARIANT: every roster row's organiser matches campaigns.organiser_id. Expected: 0 rows before 02 and
+-- IMMEDIATELY AFTER 02 ONLY. The roster UI legitimately adds campaign_role='organiser' members later, and those
+-- rows differ from campaigns.organiser_id by design; non-zero in a later snapshot is not a failure.
 SELECT co.campaign_id FROM public.campaign_organisers co
 JOIN public.campaigns c USING (campaign_id)
 WHERE co.organiser_id IS DISTINCT FROM c.organiser_id;
 
--- #13 Campaigns per organiser. Expected after 02: 6 organisers with 7, 6, 4, 2, 1, 1; no rows before 02
+-- #13 Campaigns per organiser. Expected IMMEDIATELY AFTER 02 ONLY: 6 organisers with 7, 6, 4, 2, 1, 1; no rows
+-- before 02. Later snapshots include roster members added through the UI (same caveat as #12).
 SELECT organiser_id, count(*) AS campaigns FROM public.campaign_organisers GROUP BY 1 ORDER BY 2 DESC, 1;
 
 -- ============ D. Script 03 material (campaign_worker_ou / campaign_worker_membership) ============
@@ -167,42 +174,9 @@ SELECT cou.campaign_id, count(DISTINCT cwo.worker_id) AS members_in_a_unit
 FROM campaign_worker_ou cwo JOIN campaign_organising_units cou ON cou.ou_id = cwo.ou_id
 GROUP BY 1 ORDER BY 1;
 
--- ============ E. Audit-log invariants (#3, #27 and the logged counts) ============
--- public._oux_hygiene_log exists only between 00_create_hygiene_log and 99_drop_hygiene_log, and this file is
--- also run BEFORE 00 (the "before" snapshot) and may be run after 99. A plain SELECT on a missing table would
--- abort the whole file, so these counts are evaluated through query_to_xml() only when the table exists.
--- NULL = log table absent. The same counts appear as plain SELECTs in the 01/02/03 post-checks.
-SELECT
-  to_regclass('public._oux_hygiene_log') IS NOT NULL AS hygiene_log_exists,
-  -- #3 expected 7 after 01; 0 before 01 and after 01_rollback
-  CASE WHEN to_regclass('public._oux_hygiene_log') IS NULL THEN NULL ELSE
-    (xpath('/row/n/text()', query_to_xml($q$
-      SELECT count(*) AS n FROM public._oux_hygiene_log
-      WHERE script = '01_role_conversion' AND rolled_back_at IS NULL
-    $q$, false, true, '')))[1]::text::bigint END                     AS log_01_active_rows,
-  -- expected = #8 (21 or 20) after 02; 0 before 02 and after 02_rollback
-  CASE WHEN to_regclass('public._oux_hygiene_log') IS NULL THEN NULL ELSE
-    (xpath('/row/n/text()', query_to_xml($q$
-      SELECT count(*) AS n FROM public._oux_hygiene_log
-      WHERE script = '02_backfill_campaign_organisers' AND rolled_back_at IS NULL
-    $q$, false, true, '')))[1]::text::bigint END                     AS log_02_active_rows,
-  -- expected = #17 (7) after 03; 0 before 03 and after 03_rollback
-  CASE WHEN to_regclass('public._oux_hygiene_log') IS NULL THEN NULL ELSE
-    (xpath('/row/n/text()', query_to_xml($q$
-      SELECT count(*) AS n FROM public._oux_hygiene_log
-      WHERE script = '03_resolve_duplicate_placements' AND rolled_back_at IS NULL
-    $q$, false, true, '')))[1]::text::bigint END                     AS log_03_active_rows,
-  -- #27 INVARIANT: logged workers with no remaining placement in that campaign. Expected 0
-  CASE WHEN to_regclass('public._oux_hygiene_log') IS NULL THEN NULL ELSE
-    (xpath('/row/n/text()', query_to_xml($q$
-      SELECT count(*) AS n
-      FROM public._oux_hygiene_log l
-      WHERE l.script='03_resolve_duplicate_placements' AND l.rolled_back_at IS NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM campaign_worker_ou cwo JOIN campaign_organising_units cou ON cou.ou_id = cwo.ou_id
-          WHERE cwo.worker_id = (l.before_row->>'worker_id')::int
-            AND cou.campaign_id = (SELECT campaign_id FROM campaign_organising_units
-                                   WHERE ou_id = (l.before_row->>'ou_id')::int))
-    $q$, false, true, '')))[1]::text::bigint END                     AS log_03_workers_without_placement;
+-- ============ E. Audit-log invariants: moved to 91_verify_log.sql ============
+-- #3, #27 and the per-script logged counts read public._oux_hygiene_log, which exists only between 00 and 99.
+-- This file must run before 00 and after 99 without error, so those queries live in 91_verify_log.sql (plain
+-- SELECTs; run it only while the log table exists). The same counts appear in the 01/02/03 post-checks.
 
 -- End of 90_verify_all.sql (read-only; nothing to roll back)

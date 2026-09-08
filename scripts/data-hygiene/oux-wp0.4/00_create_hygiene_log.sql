@@ -6,17 +6,26 @@
 --             ->  01_role_conversion
 -- HOLD:       01_role_conversion is HELD until WP1.6 is on production (wp0.4.md 3.5, 11). 02 must run before 01.
 --
--- Run as postgres (Supabase SQL editor for the target project, or psql with ON_ERROR_STOP). One file at a time.
+-- Run as postgres (Supabase SQL editor for the target project, or interactive psql with ON_ERROR_STOP). One file at
+-- a time, in THREE SEPARATE SUBMISSIONS: BLOCK 1 PRE-CHECK -> inspect every result -> BLOCK 2 CHANGE -> BLOCK 3
+-- POST-CHECK. The SQL editor returns only ONE result set per submission (the last statement's), so a pre-check
+-- pasted together with the change is never seen. Under interactive psql a failed CHANGE leaves the session in an
+-- aborted transaction: run ROLLBACK; before anything else.
 -- Idempotent: safe to re-run (IF NOT EXISTS; REVOKE / ENABLE RLS are repeatable; no data is written).
 -- Plan: docs/organiser-ux-review/wp/wp0.4.md 2.3
 -- ---------------------------------------------------------------------------------------------
 
+-- ##########################################  BLOCK 1 of 3  ###########################################
 -- ============ PRE-CHECK (read-only; paste the output into wp/wp0.4.md) ============
+-- Submit this block ON ITS OWN (from here to END OF BLOCK 1). Inspect every result before submitting block 2.
 
 -- Expected on first run: NULL (table does not exist yet). On a re-run: 'public._oux_hygiene_log'.
 SELECT to_regclass('public._oux_hygiene_log') AS hygiene_log_exists_before;
+-- ########################################  END OF BLOCK 1  ###########################################
 
+-- ##########################################  BLOCK 2 of 3  ###########################################
 -- ============ CHANGE ============
+-- Submit this block ON ITS OWN (BEGIN; ... COMMIT;). Under psql, if it errors, run ROLLBACK; before anything else.
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS public._oux_hygiene_log (
@@ -48,8 +57,11 @@ REVOKE ALL ON SEQUENCE public._oux_hygiene_log_log_id_seq FROM anon, authenticat
 ALTER TABLE public._oux_hygiene_log ENABLE ROW LEVEL SECURITY;
 
 COMMIT;
+-- ########################################  END OF BLOCK 2  ###########################################
 
+-- ##########################################  BLOCK 3 of 3  ###########################################
 -- ============ POST-CHECK (read-only) ============
+-- Submit this block ON ITS OWN.
 
 -- Expected: 'public._oux_hygiene_log'
 SELECT to_regclass('public._oux_hygiene_log') AS hygiene_log_exists_after;

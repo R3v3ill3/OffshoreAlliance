@@ -8,7 +8,11 @@
 --             run before 01: its 'lead' roster rows are what keep the converted accounts' campaign-level write
 --             access via is_lead_organiser_for_campaign() arm 2 (wp0.4.md 3.6).
 --
--- Run as postgres (Supabase SQL editor for the target project, or psql with ON_ERROR_STOP). One file at a time.
+-- Run as postgres (Supabase SQL editor for the target project, or interactive psql with ON_ERROR_STOP). One file at
+-- a time, in THREE SEPARATE SUBMISSIONS: BLOCK 1 PRE-CHECK -> inspect every result -> BLOCK 2 CHANGE -> BLOCK 3
+-- POST-CHECK. The SQL editor returns only ONE result set per submission (the last statement's), so a pre-check
+-- pasted together with the change is never seen. Under interactive psql a failed CHANGE leaves the session in an
+-- aborted transaction: run ROLLBACK; before anything else.
 -- Requires: public._oux_hygiene_log (00_create_hygiene_log.sql).
 -- Idempotent: ON CONFLICT (campaign_id, organiser_id) DO NOTHING on the UNIQUE constraint
 --             campaign_organisers_campaign_id_organiser_id_key (baseline_schema.sql:19026); re-running inserts 0, logs 0.
@@ -17,7 +21,9 @@
 -- Plan: docs/organiser-ux-review/wp/wp0.4.md 4
 -- ---------------------------------------------------------------------------------------------
 
+-- ##########################################  BLOCK 1 of 3  ###########################################
 -- ============ PRE-CHECK (read-only; paste the output into wp/wp0.4.md) ============
+-- Submit this block ON ITS OWN (from here to END OF BLOCK 1). Inspect every result before submitting block 2.
 
 -- Diagnostic: how the 22 campaigns break down. Expected (G.1, G.3): total 22, sms_episodes 0, standing 1,
 -- with_organiser 21 (appendix G.6: 7+6+4+2+1+1, plus 1 unassigned).
@@ -54,8 +60,11 @@ LEFT JOIN public.organisers o ON o.organiser_id = c.organiser_id
 WHERE c.organiser_id IS NOT NULL AND o.organiser_id IS NULL;
 
 -- Stop if any pre-check disagrees with its expected value.
+-- ########################################  END OF BLOCK 1  ###########################################
 
+-- ##########################################  BLOCK 2 of 3  ###########################################
 -- ============ CHANGE ============
+-- Submit this block ON ITS OWN (BEGIN; ... COMMIT;). Under psql, if it errors, run ROLLBACK; before anything else.
 BEGIN;
 WITH ins AS (
   INSERT INTO public.campaign_organisers (campaign_id, organiser_id, campaign_role, reports_to_organiser_id)
@@ -76,8 +85,11 @@ SELECT '02_backfill_campaign_organisers', 'insert', 'public.campaign_organisers'
        'backfilled from campaigns.organiser_id'
 FROM ins;
 COMMIT;
+-- ########################################  END OF BLOCK 2  ###########################################
 
+-- ##########################################  BLOCK 3 of 3  ###########################################
 -- ============ POST-CHECK (read-only) ============
+-- Submit this block ON ITS OWN.
 
 -- Expected: 0
 SELECT count(*) AS still_missing
@@ -95,12 +107,15 @@ WHERE script='02_backfill_campaign_organisers' AND rolled_back_at IS NULL;
 SELECT campaign_id, count(*) FROM public.campaign_organisers
 WHERE campaign_role='lead' GROUP BY 1 HAVING count(*) > 1;
 
--- INVARIANT: every roster row's organiser matches campaigns.organiser_id. Expected: 0 rows.
+-- INVARIANT (8.2 #12): every roster row's organiser matches campaigns.organiser_id. Expected: 0 rows.
+-- VALID IMMEDIATELY AFTER 02 ONLY: the roster UI legitimately adds campaign_role='organiser' members later, and
+-- those rows are supposed to differ from campaigns.organiser_id. Non-zero at a later date is not a failure.
 SELECT co.campaign_id FROM public.campaign_organisers co
 JOIN public.campaigns c USING (campaign_id)
 WHERE co.organiser_id IS DISTINCT FROM c.organiser_id;
 
--- Distribution, for the WP1.3 "My campaigns" baseline. Expected: 6 organisers with 7,6,4,2,1,1 campaigns.
+-- Distribution (8.2 #13), for the WP1.3 "My campaigns" baseline. Expected: 6 organisers with 7,6,4,2,1,1 campaigns.
+-- VALID IMMEDIATELY AFTER 02 ONLY, for the same reason as #12.
 SELECT organiser_id, count(*) FROM public.campaign_organisers GROUP BY 1 ORDER BY 2 DESC;
 
 -- Rollback: run 02_rollback.sql

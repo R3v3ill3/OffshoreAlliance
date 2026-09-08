@@ -8,14 +8,21 @@
 -- WARNING: if 01_role_conversion has run, rolling back 02 removes the converted accounts' campaign-level access
 --          (wp0.4.md 3.6). Roll back 01 first.
 --
--- Run as postgres. Requires: public._oux_hygiene_log with the rows written by 02_backfill_campaign_organisers.sql.
+-- Run as postgres (Supabase SQL editor for the target project, or interactive psql with ON_ERROR_STOP). One file at
+-- a time, in THREE SEPARATE SUBMISSIONS: BLOCK 1 PRE-CHECK -> inspect every result -> BLOCK 2 CHANGE -> BLOCK 3
+-- POST-CHECK. The SQL editor returns only ONE result set per submission (the last statement's), so a pre-check
+-- pasted together with the change is never seen. Under interactive psql a failed CHANGE leaves the session in an
+-- aborted transaction: run ROLLBACK; before anything else.
+-- Requires: public._oux_hygiene_log with the rows written by 02_backfill_campaign_organisers.sql.
 -- Idempotent: only log rows with rolled_back_at IS NULL are applied, and they are stamped in the same transaction.
 -- Only rows still exactly as inserted (same campaign_id, organiser_id, campaign_role) are removed; a row edited
 -- since the backfill is left alone and stays visible in the post-check.
 -- Plan: docs/organiser-ux-review/wp/wp0.4.md 4.5
 -- ---------------------------------------------------------------------------------------------
 
+-- ##########################################  BLOCK 1 of 3  ###########################################
 -- ============ PRE-CHECK (read-only) ============
+-- Submit this block ON ITS OWN (from here to END OF BLOCK 1). Inspect every result before submitting block 2.
 
 -- Expected: the number of rows 02 inserted and has not yet rolled back (21 or 20 on production after one forward run).
 SELECT count(*) AS pending_rollback
@@ -33,8 +40,11 @@ JOIN public._oux_hygiene_log l
  AND co.campaign_id   = (l.after_row->>'campaign_id')::int
  AND co.organiser_id  = (l.after_row->>'organiser_id')::int
  AND co.campaign_role = (l.after_row->>'campaign_role');
+-- ########################################  END OF BLOCK 1  ###########################################
 
+-- ##########################################  BLOCK 2 of 3  ###########################################
 -- ============ CHANGE ============
+-- Submit this block ON ITS OWN (BEGIN; ... COMMIT;). Under psql, if it errors, run ROLLBACK; before anything else.
 BEGIN;
 WITH del AS (
   DELETE FROM public.campaign_organisers co
@@ -51,8 +61,11 @@ WITH del AS (
 )
 UPDATE public._oux_hygiene_log SET rolled_back_at = now() WHERE log_id IN (SELECT log_id FROM del);
 COMMIT;
+-- ########################################  END OF BLOCK 2  ###########################################
 
+-- ##########################################  BLOCK 3 of 3  ###########################################
 -- ============ POST-CHECK (read-only) ============
+-- Submit this block ON ITS OWN.
 
 -- Expected after rollback: 0
 SELECT count(*) AS campaign_organisers_after_rollback FROM public.campaign_organisers;

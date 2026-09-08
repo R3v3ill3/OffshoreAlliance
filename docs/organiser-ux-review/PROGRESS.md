@@ -19,11 +19,11 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 
 | WP | Title | Status | Branch | PR | Verification | Open risks | Decisions consumed |
 |---|---|---|---|---|---|---|---|
-| 0.1 | Decision register and branch setup | PR ready | `feat/oux-wp0.1-decision-register` | [#22](https://github.com/R3v3ill3/OffshoreAlliance/pull/22) | docs only | — | 1–10 recorded |
-| 0.2 | Instrumentation and test harness | PR draft | `feat/oux-wp0.2-instrumentation-e2e` | [#25](https://github.com/R3v3ill3/OffshoreAlliance/pull/25) | lint at baseline (143/151); 732 tests pass (taxonomy test repaired and re-bounded); tsc, build green; `pnpm e2e` skips cleanly without credentials on cached Chromium 1194 | Flow one PASSED on the dev preview 2026-09-08 with the `user` account; events not observed in PostHog (no dev project, deferred) | — |
-| 0.3 | Defaults, copy and layout quick wins | PR draft | `feat/oux-wp0.3-defaults-copy-layout` | [#24](https://github.com/R3v3ill3/OffshoreAlliance/pull/24) | lint at baseline (143/151), 657 tests pass + 1 pre-existing collection failure (WP0.2), build green; screenshots captured on the dev preview 2026-09-08 (wp0.3.md §7) | DataTable card view now fires on phones/iPads; needs visual check | — |
-| 0.4 | Data hygiene scripts | PR draft (handover to operator) | `feat/oux-wp0.4-data-hygiene` | [#26](https://github.com/R3v3ill3/OffshoreAlliance/pull/26) | Two full dev rehearsals (02: 5 inserted, 03: 2 deleted, 01: 5 converted; every rollback restored dev field-for-field; `pnpm validate:migrations` green); production-scale counts await the dev re-seed | Script 01 held until WP1.6 is on production; run order 00 → 02 → 03 → 01; three submissions per script | 2, 8 |
-| 0.5 | Usability baseline pack | not started | | | | | — |
+| 0.1 | Decision register and branch setup | merged | `feat/oux-wp0.1-decision-register` | [#22](https://github.com/R3v3ill3/OffshoreAlliance/pull/22) | docs only | — | 1–10 recorded |
+| 0.2 | Instrumentation and test harness | merged | `feat/oux-wp0.2-instrumentation-e2e` | [#25](https://github.com/R3v3ill3/OffshoreAlliance/pull/25) | lint at baseline (143/151); 732 tests pass (taxonomy test repaired and re-bounded); tsc, build green; `pnpm e2e` skips cleanly without credentials on cached Chromium 1194 | Flow one PASSED on the dev preview 2026-09-08 with the `user` account; events not observed in PostHog (no dev project, deferred) | — |
+| 0.3 | Defaults, copy and layout quick wins | merged | `feat/oux-wp0.3-defaults-copy-layout` | [#24](https://github.com/R3v3ill3/OffshoreAlliance/pull/24) | lint at baseline (143/151), 657 tests pass + 1 pre-existing collection failure (WP0.2), build green; screenshots captured on the dev preview 2026-09-08 (wp0.3.md §7) | DataTable card view now fires on phones/iPads; needs visual check | — |
+| 0.4 | Data hygiene scripts | merged; handed over to operator to run | `feat/oux-wp0.4-data-hygiene` | [#26](https://github.com/R3v3ill3/OffshoreAlliance/pull/26) | Two full dev rehearsals (02: 5 inserted, 03: 2 deleted, 01: 5 converted; every rollback restored dev field-for-field; `pnpm validate:migrations` green); production-scale counts await the dev re-seed | Script 01 held until WP1.6 is on production; run order 00 → 02 → 03 → 01; three submissions per script | 2, 8 |
+| 0.5 | Usability baseline pack | merged | `feat/oux-wp0.5-usability-baseline-pack` | [#23](https://github.com/R3v3ill3/OffshoreAlliance/pull/23) | docs only: lint unchanged | — | — |
 | 1.1 | Module registry and workspace mode | not started | | | | | 1 |
 | 1.2 | Navigation driven by modules | not started | | | | | |
 | 1.3 | My campaigns home | not started | | | | | |
@@ -55,7 +55,7 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 
 | Phase | Exit criteria | Evidence | Date |
 |---|---|---|---|
-| 0 | WP0.2–0.5 merged or handed over; baseline numbers recorded by the operator | | |
+| 0 | WP0.2–0.5 merged or handed over; baseline numbers recorded by the operator | PRs #22–#26 merged into develop 2026-09-08; flow one passed on the dev preview from a `user` account; WP0.3 screenshot-verified; WP0.4 rehearsed twice on dev and handed to the operator; usability baseline and PostHog visibility outstanding (human task / deferred) | 2026-09-08 (code complete; study pending) |
 | 1 | Organiser mode on for the pilot group; e2e flow one green from a `user` account; no missing-feature report unanswerable via More or "Show everything" | | |
 | 2 | e2e flows two and three green; share of memberships in a unit and median unit size reported from dev and production; no per-unit filter or view override remains | | |
 | 3 | e2e flows four and five green; one creation path; a standalone action linked end to end on dev | | |

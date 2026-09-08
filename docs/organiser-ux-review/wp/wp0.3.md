@@ -1004,3 +1004,17 @@ Forwarding `x-viewport` as a request header (fix round 1, `3a35524`) makes `useD
 **Round 1 (2026-09-08, fresh reviewer): BLOCK.** Blocking: (1) `src/proxy.ts` set `x-viewport` on the response while `layout.tsx` reads request headers, so `isMobile` was always false and the touch default could not fire; (2) two "campaign overview" strings in `campaign-wizard.tsx` and (3) one in `PostSettlementBanner.tsx` pointed at bare campaign URLs that now land on the chart. Advisories: dead `text-xs` on the sheet's TabsList and a measurement table at the wrong font size; a test gap for the Overview round-trip (component behaviour, handed to WP0.2); stale comments; the gated card's copy; the build-list close leaving `view=wall-chart`. Fixed in `3a35524` and `128fef9`.
 
 **Round 2 (2026-09-08, fresh reviewer): APPROVE WITH ADVISORIES.** All eight round-1 findings verified closed, including the header-forwarding mechanism checked against the installed `next@16.1.6` source and every route confirmed dynamic. Regression pass clean. Advisories: the DataTable mobile-card consequence (recorded above); the §7 stamp was two commits behind (verifier run 2 at `6948514` now covers HEAD); shifted line references in §6 (corrected).
+
+### Screenshot evidence (orchestrator, 2026-09-08)
+
+Captured against the Vercel Preview of the phase-0 tip branch (`feat/oux-wp0.4-data-hygiene`, which contains this package), dev project, signed in as the `user`-role organiser via the WP0.2 Playwright session; files under `evidence/wp0.3/`.
+
+| Item | Evidence |
+|---|---|
+| 1 Campaign pages open on the wall chart | `01-bare-campaign-url-lands-on-chart.png`: `/campaigns/1` resolves to Workforce › Wall Chart / List with the Wall chart layout. `02` (not stored) showed `?tab=overview` staying on Overview. Flow one (WP0.2) passed the same day, including the Overview round-trip. |
+| 3 Tiles above the assessment-distribution charts | `05-chart-bottom-charts-below-units.png`: the "Assessment distribution" card sits below the last unit's tiles. |
+| 4 "Who's in", Named universes hidden | `03-whos-in-tab.png`: sub-tab reads "Who's in"; the section shows Employers and Worksites only, no Named universes card. |
+| 5 "Unassigned" | `04-campaign-units-unassigned.png`: Campaign Units renders; the pseudo-unit does not appear because all 95 members of this campaign are placed (0 "Unallocated" strings on the page, confirmed by a text count of 0). The label change itself is proven by the grep in §7. |
+| 7 List layout default on touch | `07-mobile-default-list.png`: iPhone user agent, `/campaigns/1?tab=workforce` → List toggle selected, 95 records, no `?view=` written. |
+| 8 Worker sheet six tabs | `06-worker-sheet-six-tabs.png`: Details / Activity / Data fields on the first row, Units / Relationships / Development on the second, nothing clipped. |
+| Items 2 and 6 | Code-reading evidence in §7 and the reviewer record; no visual change beyond the label. |

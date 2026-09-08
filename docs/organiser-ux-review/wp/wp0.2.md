@@ -985,3 +985,21 @@ $ git status --short
 **Round 1 (2026-09-08, fresh reviewer): BLOCK.** Blocking: (1) the `campaign_tab_opened` effect keyed on the resolved tab and skipped on `needsRedirect`, so after the URL redirect its deps were unchanged and it never emitted for bare campaign URLs, legacy tabs, or any cluster-tab click; (2) the repointed taxonomy test sliced to end-of-file in the baseline dump, making three assertions vacuous. Advisories: `onSaved` placement before toast/close, a regex-only test assertion, the retained `e2e:install` script, undeclared Overview round-trip deviation, sign-out flag gap, untracked `.env.example`. Fixed in `648ec7a`, recorded in `923c901`.
 
 **Round 2 (2026-09-08, fresh reviewer): APPROVE WITH ADVISORIES.** Both blocking findings independently proven closed: own hand trace of six navigation cases (one emit each, none doubled, invalid ids never emit); the constraint slice bounded to 702 characters and the function slice to 1,077, with a 9-of-9 mutation matrix failing the bounded test where 8 of 9 would have passed the old one. Advisories applied by the orchestrator: the event table row and de-dup coverage wording corrected in §6; §7 now carries verifier run 2 at HEAD; stale popover line refs noted. Two pre-existing observations recorded for later phases: tab writes use `router.replace`, so back/forward between tabs never re-enters a tab in place (metric caveat for WP1.x); `Number.isFinite(Number(id))` accepts non-integer strings (low impact).
+
+### Flow one executed against the dev preview (orchestrator, 2026-09-08)
+
+Run from `apps/organising-db` with `E2E_BASE_URL` set to the Vercel Preview of `feat/oux-wp0.4-data-hygiene` (phase-0 tip, contains this package) and the operator-supplied `E2E_USER_*` variables sourced from the shell profile (never printed). Dev campaign 1 was reassigned to the e2e account beforehand (recorded in PROGRESS.md). First attempt failed because the organiser filter showed zero campaigns and the table's only row was the "No results found." placeholder; after the reassignment:
+
+```
+
+
+Running 2 tests using 1 worker
+
+  -  1 [chromium] › tests/e2e/mobile-dialer.spec.ts:30:7 › Mobile dialer — happy path › volunteer can sign in, claim, dial, record outcome, advance
+  ✓  2 [chromium] › tests/e2e/wall-chart.spec.ts:23:7 › Wall chart — flow one › open a campaign from /campaigns and see the wall chart (14.1s)
+
+  1 skipped
+  1 passed (19.9s)
+```
+
+The "events visible in a dev PostHog project" criterion remains deferred (no dev PostHog project).

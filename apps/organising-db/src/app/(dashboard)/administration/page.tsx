@@ -68,6 +68,11 @@ import { ReferenceDataWizard } from "@/components/import/reference-data-wizard";
 import { MembershipImportWizard } from "@/components/import/membership-import-wizard";
 import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 import { WorkerDimensionsTab } from "@/components/administration/worker-dimensions-tab";
+import { WorkspaceModuleChecklist } from "@/components/administration/workspace-module-checklist";
+import { WorkspaceDefaultsCard } from "@/components/administration/workspace-defaults-card";
+import type { WorkspaceModuleId } from "@/lib/workspace/modules";
+import { parseWorkspacePrefs, type WorkspacePrefs } from "@/lib/workspace/prefs-schema";
+import { resolveWorkspace, type WorkspaceMode } from "@/lib/workspace/resolve";
 
 const WorkloadTab = dynamic(() => import("@/components/administration/workload-tab").then((m) => ({ default: m.WorkloadTab })), { ssr: false });
 const OrganiserPatchesTab = dynamic(() => import("@/components/administration/organiser-patches-tab").then((m) => ({ default: m.OrganiserPatchesTab })), { ssr: false });
@@ -111,6 +116,12 @@ function UsersTab() {
   const [editPhone, setEditPhone] = useState("");
   const [editWorkRole, setEditWorkRole] = useState<WorkRole | "none">("none");
   const [editReportsTo, setEditReportsTo] = useState<string>("none");
+  // WP1.1 workspace override: "default" / null = follow the role default.
+  const [editWorkspaceMode, setEditWorkspaceMode] = useState<"default" | WorkspaceMode>("default");
+  const [editWorkspaceModules, setEditWorkspaceModules] = useState<WorkspaceModuleId[] | null>(null);
+  // Not editable here (org-level switch lives in Settings); preserved on save.
+  const [editWorkspaceAllowShowEverything, setEditWorkspaceAllowShowEverything] =
+    useState<boolean | undefined>(undefined);
   const [editError, setEditError] = useState<string | null>(null);
   const [setPasswordUserId, setSetPasswordUserId] = useState<string | null>(null);
   const [setPasswordUserName, setSetPasswordUserName] = useState("");
@@ -128,6 +139,18 @@ function UsersTab() {
       if (!res.ok) throw new Error(json.error ?? "Failed to load users");
       return json.users ?? [];
     },
+  });
+
+  // WP1.1: org-wide defaults, only to show the resolved role default as
+  // placeholder ticks in the per-user editor. Admin-only route.
+  const { data: orgWorkspaceDefaults } = useQuery<unknown>({
+    queryKey: ["admin-workspace-defaults"],
+    queryFn: async () => {
+      const res = await fetchApi("/api/admin/workspace-defaults");
+      if (!res.ok) return {};
+      return (await res.json()) as unknown;
+    },
+    staleTime: 60_000,
   });
 
   const deleteMutation = useAuthAwareMutation({
@@ -187,6 +210,7 @@ function UsersTab() {
       displayName,
       email,
       phone,
+      workspacePrefs,
     }: {
       userId: string;
       workRole: WorkRole | null;
@@ -195,6 +219,7 @@ function UsersTab() {
       displayName: string;
       email: string;
       phone: string | null;
+      workspacePrefs: WorkspacePrefs | null;
     }) => {
       setEditError(null);
       const res = await fetchApi("/api/admin/update-user", {
@@ -208,6 +233,7 @@ function UsersTab() {
           displayName,
           email,
           phone,
+          workspacePrefs,
         }),
       });
       const json = await res.json();
@@ -221,6 +247,26 @@ function UsersTab() {
       setEditError(err.message);
     },
   });
+
+  // WP1.1: what the edited user would resolve to with the current form
+  // values, via the same pure resolver the app uses. Drives the placeholder
+  // ticks and the outgoing workspacePrefs document.
+  const editWorkspaceResolved = resolveWorkspace({
+    role: editPermissionRole,
+    workRole: editWorkRole !== "none" ? editWorkRole : null,
+    orgDefaults: orgWorkspaceDefaults,
+    userPrefs: editWorkspaceMode === "default" ? {} : { mode: editWorkspaceMode },
+    sessionShowEverything: false,
+  });
+  const editWorkspaceEffectiveMode = editWorkspaceResolved.mode;
+  const editWorkspacePlaceholder = editWorkspaceResolved.enabledModules;
+  const editWorkspacePrefs: WorkspacePrefs = {
+    ...(editWorkspaceMode !== "default" ? { mode: editWorkspaceMode } : {}),
+    ...(editWorkspaceModules !== null ? { modules: editWorkspaceModules } : {}),
+    ...(editWorkspaceAllowShowEverything !== undefined
+      ? { allowShowEverything: editWorkspaceAllowShowEverything }
+      : {}),
+  };
 
   const userColumns: Column<UserRow>[] = [
     { key: "display_name", header: "Name" },
@@ -302,6 +348,10 @@ function UsersTab() {
               setEditPhone(row.phone ?? "");
               setEditWorkRole((row.work_role as WorkRole) ?? "none");
               setEditReportsTo(row.reports_to ?? "none");
+              const prefs = parseWorkspacePrefs(row.workspace_prefs);
+              setEditWorkspaceMode(prefs?.mode ?? "default");
+              setEditWorkspaceModules(prefs?.modules ?? null);
+              setEditWorkspaceAllowShowEverything(prefs?.allowShowEverything);
               setEditError(null);
             }}
           >
@@ -627,6 +677,58 @@ function UsersTab() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-3 rounded-md border p-3">
+              <div className="space-y-1.5">
+                <Label>Workspace mode</Label>
+                <Select
+                  value={editWorkspaceMode}
+                  onValueChange={(v) => setEditWorkspaceMode(v as "default" | WorkspaceMode)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Default for role</SelectItem>
+                    <SelectItem value="full">Full</SelectItem>
+                    <SelectItem value="organiser">Organiser</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <Label>Modules</Label>
+                  {editWorkspaceModules === null ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditWorkspaceModules([...editWorkspacePlaceholder])}
+                    >
+                      Set modules for this user
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditWorkspaceModules(null)}
+                    >
+                      Follow role default
+                    </Button>
+                  )}
+                </div>
+                <WorkspaceModuleChecklist
+                  idPrefix="edit-user-ws"
+                  value={editWorkspaceModules ?? [...editWorkspacePlaceholder]}
+                  onChange={setEditWorkspaceModules}
+                  disabled={editWorkspaceModules === null || editWorkspaceEffectiveMode === "full"}
+                  targetIsAdmin={editPermissionRole === "admin"}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Workspace mode changes what this person sees, not what they can do.
+              </p>
+            </div>
             {editError && (
               <p className="text-sm text-destructive">{editError}</p>
             )}
@@ -653,6 +755,7 @@ function UsersTab() {
                   displayName: editDisplayName.trim(),
                   email: editEmail.trim(),
                   phone: editPhone.trim() === "" ? null : editPhone.trim(),
+                  workspacePrefs: editWorkspacePrefs,
                 })
               }
               disabled={
@@ -1852,6 +1955,8 @@ function SettingsTab() {
             </div>
           </CardContent>
         </Card>
+
+        <WorkspaceDefaultsCard workRoles={WORK_ROLES} />
       </div>
 
       <Button onClick={handleSave} disabled={loading || saving}>

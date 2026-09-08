@@ -19,7 +19,7 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 | WP | Title | Status | Branch | PR | Verification | Open risks | Decisions consumed |
 |---|---|---|---|---|---|---|---|
 | 0.1 | Decision register and branch setup | PR ready | `feat/oux-wp0.1-decision-register` | [#22](https://github.com/R3v3ill3/OffshoreAlliance/pull/22) | docs only | — | 1–10 recorded |
-| 0.2 | Instrumentation and test harness | not started | | | | | — |
+| 0.2 | Instrumentation and test harness | implementing | `feat/oux-wp0.2-instrumentation-e2e` | | | | — |
 | 0.3 | Defaults, copy and layout quick wins | PR draft | `feat/oux-wp0.3-defaults-copy-layout` | [#24](https://github.com/R3v3ill3/OffshoreAlliance/pull/24) | lint at baseline (143/151), 657 tests pass + 1 pre-existing collection failure (WP0.2), build green; screenshots deferred (no dev env) | DataTable card view now fires on phones/iPads; needs visual check | — |
 | 0.4 | Data hygiene scripts | not started | | | | | 2 |
 | 0.5 | Usability baseline pack | not started | | | | | — |

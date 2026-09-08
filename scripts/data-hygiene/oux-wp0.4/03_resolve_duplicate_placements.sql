@@ -245,11 +245,11 @@ WITH keyed AS (
   WHERE cou.ou_group_id IS NOT NULL
      OR (cou.ou_group_id IS NULL AND cou.parent_ou_id IS NULL)
 )
-SELECT hazard, campaign_id, dim_key, worker_id,
+SELECT 'unresolved_rule_partitions' AS check_name, hazard, campaign_id, dim_key, worker_id,
        count(*)                                           AS placements,
        count(*) FILTER (WHERE assignment_source = 'rule') AS rule_rows
 FROM keyed
-GROUP BY 1,2,3,4
+GROUP BY 2,3,4,5
 HAVING count(*) > 1 AND count(*) FILTER (WHERE assignment_source = 'rule') > 0
 ORDER BY 1,2,3,4;
 

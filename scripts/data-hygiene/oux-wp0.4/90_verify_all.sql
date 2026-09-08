@@ -126,7 +126,8 @@ SELECT organiser_id, count(*) AS campaigns FROM public.campaign_organisers GROUP
 
 -- #17 rows 03 would delete, by hazard / campaign / assignment_source. Expected before 03: 7 in total if every
 -- pair has exactly two placements (G.3 "Same-type dupes": 57->2, 64->3, 42->2) -- recorded, not assumed;
--- after 03: no rows. #18: NO row may have assignment_source = 'rule' (non-zero stops the run; wp0.4.md 5.2).
+-- after 03: only rows in partitions that contain a rule-sourced row remain (03 skips those partitions on purpose;
+-- see its unresolved_rule_partitions post-check). #18: rule-sourced rows here are NOT a stop; they are excluded (wp0.4.md 5.2).
 WITH keyed AS (
   SELECT cwo.id, cwo.worker_id, cwo.is_primary, cwo.assignment_source, cwo.created_at,
          cou.campaign_id,
@@ -144,7 +145,7 @@ WITH keyed AS (
 SELECT hazard, campaign_id, assignment_source, count(*) AS rows_to_delete
 FROM ranked WHERE rn > 1 GROUP BY 1,2,3 ORDER BY 1,2,3;
 
--- #17 total / #18 rule-sourced total. Expected before 03: 7 / 0; after 03: 0 / 0
+-- #17 total / #18 rule-sourced total. Expected before 03: 7 / 0; after 03: (rows in rule partitions, expected 0) / (unchanged)
 WITH keyed AS (
   SELECT cwo.id, cwo.worker_id, cwo.is_primary, cwo.assignment_source, cwo.created_at,
          cou.campaign_id,

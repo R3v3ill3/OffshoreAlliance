@@ -75,6 +75,16 @@ WHERE l.script = '03_resolve_duplicate_placements' AND l.action = 'delete' AND l
   AND s.ou_type      = d.ou_type
 ORDER BY 1;
 
+-- Expected: 0 rows. The other BEFORE trigger, trg_check_no_worker_on_group_container, rejects a worker row on a
+-- unit that is now a group container. A vacated unit flagged is_group_container since 03 would abort the whole
+-- re-insert; resolve by hand (unflag, or restore that row elsewhere) before the CHANGE.
+SELECT l.log_id, l.before_row->>'worker_id' AS worker_id, d.ou_id AS restoring_into_ou_id, d.name
+FROM public._oux_hygiene_log l
+JOIN public.campaign_organising_units d ON d.ou_id = (l.before_row->>'ou_id')::int
+WHERE l.script = '03_resolve_duplicate_placements' AND l.action = 'delete' AND l.rolled_back_at IS NULL
+  AND d.is_group_container
+ORDER BY 1;
+
 -- Baseline. Expected: worker_ou_before - logged (1607 on production if 7 rows were deleted).
 SELECT count(*) AS worker_ou_now FROM public.campaign_worker_ou;
 -- ########################################  END OF BLOCK 1  ###########################################

@@ -68,10 +68,12 @@ SELECT count(*) AS still_pending
 FROM public._oux_hygiene_log
 WHERE script = '01_role_conversion' AND rolled_back_at IS NULL;
 
--- Expected: 0 rows (no user_id appears in more than one pending or just-stamped 01 log row; see the note above)
-SELECT row_pk->>'user_id' AS user_id, count(*) AS log_rows
+-- Expected: 0 rows (no user_id has more than one STILL-PENDING 01 log row; see the note above). Rows already
+-- stamped rolled_back_at are excluded so that a legitimate forward -> rollback -> forward -> rollback cycle
+-- does not show here.
+SELECT row_pk->>'user_id' AS user_id, count(*) AS pending_log_rows
 FROM public._oux_hygiene_log
-WHERE script = '01_role_conversion' AND action = 'update'
+WHERE script = '01_role_conversion' AND action = 'update' AND rolled_back_at IS NULL
 GROUP BY 1 HAVING count(*) > 1;
 
 -- Expected: byte-identical to the 01 pre-check distribution

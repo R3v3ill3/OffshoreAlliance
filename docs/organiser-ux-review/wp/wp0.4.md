@@ -1606,6 +1606,19 @@ Validated 3 Supabase migrations with unique 14-digit versions.
 | Errors | — | None |
 | Dev left as found | — | **Yes** |
 
+
+### Orchestrator edits after round-2 review (2026-09-08)
+
+Applied directly, then executed on dev `dpnnmkhabysfdogllsyh` with the audit table created by 00's CHANGE block and dropped again afterwards (dev confirmed back at 5 admin/organiser, 0 campaign_organisers, 113 placements, 111 memberships, no log objects):
+- `README.md`: the psql `\i <file>` path is withdrawn for change and rollback scripts (it would run all three blocks in one pass); paste per block only. `\i` allowed for 90 and 91.
+- `90_verify_all.sql`: #17/#18 comments aligned with 03 (rule-sourced rows are excluded, not a stop; rows in rule partitions remain after 03).
+- `01_rollback.sql`: duplicate-user query restricted to `rolled_back_at IS NULL` so a legitimate second forward/rollback cycle does not false-positive. Ran on dev: 0 rows.
+- `03_resolve_duplicate_placements.sql`: `unresolved_rule_partitions` output now carries a `check_name` column. Ran on dev: 0 rows.
+- `03_rollback.sql`: fourth pre-check probe for `trg_check_no_worker_on_group_container` (pending log rows whose vacated unit is now a container). Ran on dev: 0 rows.
+Structural checks re-run: one BEGIN/COMMIT per change and rollback file, none in 90/91, parentheses balanced in all ten files. Not applied (recorded as known limits): #27 reads the vacated unit's current dimension, so a unit re-grouped after 03 can false-positive; the WOC probe can list a worker twice if `woc_members` holds two open rows for one WOC.
+
 ## 14. Reviewer findings
 
-_(reviewer)_
+**Round 1 (2026-09-08, fresh Fable reviewer): BLOCK.** Blocking: the rule-sourced stop in 03 was only a comment and the documented run paths executed pre-check, change and post-check in one submission. Eleven advisories (weak 01 sequencing guard, WOC representation side-effect, missing legacy-violation probe in 03_rollback, #27 checked at campaign not dimension level, totals and H7 missing from 03's pre-check, 90's log guard, #12/#13 validity window, arm-2 privilege caveat, sign-out after 01, 99's date, 01_rollback duplicate handling). Fixed in `b77ce5f` and `68f9f9c`; rehearsed again on dev (`406e0ee`).
+
+**Round 2 (2026-09-08, fresh Fable reviewer): APPROVE WITH ADVISORIES.** All twelve round-1 items verified closed, including the NULL-safety of the `NOT IN` row constructor and the trigger-equivalence of 03_rollback's exclusivity probe. Eight advisories; five applied by the orchestrator (above), one satisfied by rehearsal 2, two recorded as known limits.

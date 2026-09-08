@@ -43,7 +43,9 @@ seen and the change runs regardless of what the pre-check would have said. Inste
 2. Paste BLOCK 2 (`BEGIN; ... COMMIT;`) and run it as a second submission.
 3. Paste BLOCK 3 and run it as a third submission (again per statement if you want every result).
 
-Under interactive `psql` (`psql "<connection string>" -v ON_ERROR_STOP=1`, then `\i <file>` or paste per block):
+Under interactive `psql` (`psql "<connection string>" -v ON_ERROR_STOP=1`), paste per block exactly as above. **Do not
+use `\i <file>`** for the change and rollback scripts: it runs all three blocks in one pass, so the CHANGE executes
+before you can read the pre-check. `\i` is fine for `90_verify_all.sql` and `91_verify_log.sql` only.
 if a statement inside BLOCK 2 fails, `ON_ERROR_STOP` stops the file but the session is left inside an **aborted
 transaction**; run `ROLLBACK;` before doing anything else, then investigate. Nothing was committed.
 

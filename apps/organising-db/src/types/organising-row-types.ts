@@ -839,6 +839,12 @@ export interface UserProfile {
   organiser_id: number | null;
   created_at: string;
   updated_at: string;
+  /**
+   * WP1.1 per-user workspace override (jsonb, `{}` by default). Typed
+   * `unknown` on purpose: read it through `parseWorkspacePrefs()` from
+   * `@/lib/workspace/prefs-schema`, never directly.
+   */
+  workspace_prefs: unknown;
 }
 
 export interface AgreementOrganiser {

@@ -23,9 +23,9 @@ Status key: **Open** · **Confirmed** (recommendation accepted as written) · **
 | Item | Needed by | Notes |
 |---|---|---|
 | A dev-database test account with role `user` (and ideally one `viewer`), credentials supplied out of band as `E2E_USER_EMAIL` / `E2E_USER_PASSWORD`; plus one dev campaign visible to that account with at least one member (100% Unassigned is fine) | WP0.2 (e2e flow one), WP1.6 (role coverage) | Dev project `dpnnmkhabysfdogllsyh` only. Never production. |
-| A dev PostHog project key and host (`NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`) for the preview environment, confirmed as a dev project | WP0.2 | Events must be visible somewhere the operator can check. |
-| A dev-pointed `.env` for the app (the checked-out `.env.local` targets production) | WP0.3 screenshots, every later e2e run | No agent runs the app locally until this exists. |
-| Dev re-seeded from a production snapshot (schema plus campaign data) before each schema package | WP2.1, WP0.4 rehearsal | `docs/DEV_PROD_ENVIRONMENT.md` says the current dev seed has campaign data stripped; the migration rehearsal needs the real structure (appendix G counts). |
+| A dev PostHog project key and host (`NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`) for the preview environment, confirmed as a dev project | WP0.2 | **2026-09-08: not set up for dev.** Capture no-ops without a key; the "events visible in a dev PostHog project" criterion is deferred until the operator creates one. Not blocking. |
+| A dev-pointed environment for the app | WP0.3 screenshots, every later e2e run | **2026-09-08: resolved by Vercel.** Every `feat/oux-*` branch gets a Vercel preview deployment backed by the dev project; agents use the branch preview URL as `E2E_BASE_URL` and never run the app locally (the local `.env.local` still targets production). |
+| Dev re-seeded from a production snapshot (schema plus campaign data) before each schema package | WP2.1 (WP0.4 no longer) | **2026-09-08: operator accepts dev-data-only rehearsal for WP0.4**; production is still in testing, so the production run is the first full-scale pass and its pre-checks are the gate. Still wanted before WP2.1. |
 | The pilot group for organiser mode | Phase 1 exit | Named by the operator. |
 
 ## Answers
@@ -45,3 +45,5 @@ Answered by the operator in the orchestration session on **2026-09-08**.
 - **Decision 10 — Confirmed.** Actions hub, one container mechanism, one-way Link to campaign with "New campaign from this action".
 
 **Operator inputs** (test accounts, PostHog key, dev re-seed, pilot group) will be supplied by the operator as each package needs them.
+
+**Test accounts (2026-09-08).** The operator supplies two dev accounts (one `admin` / lead organiser, one `user` / organiser) directly through `E2E_USER_EMAIL` / `E2E_USER_PASSWORD` in the environment where `pnpm e2e` runs. Credentials are never written into the repository, plan files or agent prompts, and no agent types them into a form; the harness reads them from the environment. Interface testing happens on the dev previews first; production is used later for full-scale testing.

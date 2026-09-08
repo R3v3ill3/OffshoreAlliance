@@ -5,6 +5,7 @@ import {
   buildWallchartFilterAppliedProps,
   buildWallchartFirstInteractionProps,
   buildWallchartGroupSelectedProps,
+  tabOpenKey,
 } from "../events";
 
 describe("buildCampaignTabOpenedProps", () => {
@@ -23,6 +24,28 @@ describe("buildCampaignTabOpenedProps", () => {
     expect(
       buildCampaignTabOpenedProps({ campaign_id: 12, tab: "overview", sub: undefined }).sub
     ).toBeNull();
+  });
+});
+
+describe("tabOpenKey", () => {
+  it("distinguishes campaign, tab and sub", () => {
+    expect(tabOpenKey(12, "workforce", "wall-chart")).toBe("12|workforce|wall-chart");
+    expect(tabOpenKey(12, "workforce", "wall-chart")).not.toBe(
+      tabOpenKey(13, "workforce", "wall-chart")
+    );
+    expect(tabOpenKey(12, "workforce", "wall-chart")).not.toBe(
+      tabOpenKey(12, "overview", "wall-chart")
+    );
+    expect(tabOpenKey(12, "workforce", "wall-chart")).not.toBe(
+      tabOpenKey(12, "workforce", "list")
+    );
+  });
+
+  it("treats a null and an undefined sub as the same key", () => {
+    // The campaign page reads ?sub= as `string | null` but the resolver can
+    // hand back `undefined`; both mean "no sub", so both must de-duplicate.
+    expect(tabOpenKey(12, "overview", null)).toBe(tabOpenKey(12, "overview", undefined));
+    expect(tabOpenKey(12, "overview", null)).not.toBe(tabOpenKey(12, "overview", "wall-chart"));
   });
 });
 
@@ -153,7 +176,8 @@ describe("privacy rule: no personal-data property keys", () => {
     expect(offending).toEqual([]);
   });
 
-  it("also holds for the surface property added by track()", () => {
-    expect(FORBIDDEN.test("surface")).toBe(false);
-  });
+  // The `surface` property that track() adds is a literal in events.ts, not a
+  // builder output. Asserting FORBIDDEN.test("surface") here would only test
+  // the regex literal against another literal, so it is deliberately absent:
+  // every assertion in this block runs over a real builder payload.
 });

@@ -60,8 +60,13 @@ export function InlineRatingPopover({
   const save = useSaveActivityRating({
     campaignId,
     onSuccess: () => {
-      // First, so a toast failure cannot swallow it.
-      onSaved?.();
+      // First, so a toast failure cannot swallow it; and guarded, so a throwing
+      // callback cannot leave the popover open ("never gates the save").
+      try {
+        onSaved?.();
+      } catch {
+        /* an additive notification must never break the save path */
+      }
       toast.success(`Rating saved for ${workerName}`);
       setOpen(false);
       setNotes("");
@@ -209,8 +214,13 @@ export function CumulativeRatingPopover({
   const save = useSaveActivityRating({
     campaignId,
     onSuccess: () => {
-      // First, so a toast failure cannot swallow it.
-      onSaved?.();
+      // First, so a toast failure cannot swallow it; and guarded, so a throwing
+      // callback cannot leave the popover open ("never gates the save").
+      try {
+        onSaved?.();
+      } catch {
+        /* an additive notification must never break the save path */
+      }
       toast.success(`Rating saved for ${workerName}`);
       setOpen(false);
     },

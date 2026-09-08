@@ -101,6 +101,25 @@ export function trackCampaignTabOpened(p: {
   track("campaign_tab_opened", buildCampaignTabOpenedProps(p));
 }
 
+/**
+ * The de-duplication key for one resolved tab open.
+ *
+ * `campaign_tab_opened` is emitted from an effect keyed on the *raw* URL params
+ * (`?tab=`/`?sub=`), so it re-runs after the campaign page's legacy redirect
+ * rewrites the URL. The redirect does not change the *resolved* pair, so the
+ * pre- and post-redirect renders produce the same key here and the caller can
+ * emit exactly once by comparing against the last key it emitted.
+ *
+ * `sub` is normalised so `null` and `undefined` cannot key differently.
+ */
+export function tabOpenKey(
+  campaignId: number,
+  tab: string,
+  sub: string | null | undefined
+): string {
+  return `${campaignId}|${tab}|${sub ?? ""}`;
+}
+
 // ---------------------------------------------------------------------------
 // wallchart_group_selected
 // ---------------------------------------------------------------------------

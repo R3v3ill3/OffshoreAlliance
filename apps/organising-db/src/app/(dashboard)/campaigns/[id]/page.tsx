@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
@@ -81,7 +81,7 @@ import {
   resolveTabParams,
   needsRedirect,
 } from "@/lib/campaign-tabs";
-import { trackCampaignTabOpened } from "@/lib/analytics/events";
+import { tabOpenKey, trackCampaignTabOpened } from "@/lib/analytics/events";
 
 interface CampaignDetail {
   campaign_id: number;
@@ -244,18 +244,27 @@ export default function CampaignDetailPage() {
 
   // campaign_tab_opened (WP0.2). Instruments the *resolved* tab rather than the
   // click, because most surfaces are reached by deep link
-  // (?tab=workforce&sub=wall-chart) and never touch handleTabChange. The
-  // needsRedirect guard means a legacy ?tab=workplan URL emits one event for
-  // the resolved pair, not two; router.replace does not remount, so the
-  // dependency array is what de-duplicates.
+  // (?tab=workforce&sub=wall-chart) and never touch handleTabChange.
+  //
+  // The effect depends on the RAW params as well as the resolved pair, so it
+  // re-runs after the legacy redirect above rewrites the URL. The redirect
+  // never changes the resolved pair, which is why an earlier version that
+  // skipped while needsRedirect(...) was true emitted nothing at all for a bare
+  // /campaigns/{id}, for any legacy ?tab=, or for any cluster-tab click (which
+  // deletes ?sub= and therefore always redirects): the "re-run after the
+  // redirect" it was waiting for could never happen.
+  //
+  // De-duplication is the ref, not the dependency array: the pre- and
+  // post-redirect renders build the same tabOpenKey, so exactly one event is
+  // emitted per resolved (campaign, tab, sub).
+  const lastTabOpenKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!campaignIdValid) return;
-    if (needsRedirect(rawTab, rawSub, resolved)) return; // the redirect re-runs this
+    const key = tabOpenKey(campaignId, activeTab, activeSub);
+    if (lastTabOpenKeyRef.current === key) return;
+    lastTabOpenKeyRef.current = key;
     trackCampaignTabOpened({ campaign_id: campaignId, tab: activeTab, sub: activeSub ?? null });
-  // Keyed on the resolved pair only: re-firing on every searchParams identity
-  // change would double-count.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [campaignId, campaignIdValid, activeTab, activeSub]);
+  }, [campaignId, campaignIdValid, rawTab, rawSub, activeTab, activeSub]);
 
   const [universeDialogOpen, setUniverseDialogOpen] = useState(false);
   const [universeForm, setUniverseForm] = useState(INITIAL_UNIVERSE_FORM);

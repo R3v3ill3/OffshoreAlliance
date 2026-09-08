@@ -1327,8 +1327,9 @@ export function CampaignWallChart({
           with the unit &quot;View&quot; control. Cells show c = cumulative and L = last activity.
           <span className="text-foreground/90">
             {" "}
-            Campaign-level unmapped slots are unnamed gaps from the worker estimate (up to 40
-            displayed); unassigned are named members not placed in an organising unit yet.
+            Campaign-level unmapped slots are unnamed gaps from the worker estimate (up to 24
+            cells shown per unit, then a &quot;+N more&quot; note); unassigned are named members
+            not placed in an organising unit yet.
           </span>{" "}
           Click a name to edit (staff only).
         </p>
@@ -1507,20 +1508,11 @@ export function CampaignWallChart({
 
         {/* overflow-anchor: none prevents the browser from picking these
             elements as scroll anchors. When the sticky summary above
-            collapses, its flow height shrinks and content here would
-            otherwise become the anchor — the browser would then adjust
-            scrollY to keep it visually stable, which felt like the page
-            "jumping back to the top of this section". */}
+            collapses, its flow height shrinks and content here (the units
+            container is now the first candidate) would otherwise become the
+            anchor — the browser would then adjust scrollY to keep it visually
+            stable, which felt like the page "jumping back to the top". */}
         <div style={{ overflowAnchor: "none" }}>
-        <WallChartAssessmentCharts
-          campaignId={campaignId}
-          activeAssessmentId={
-            campaignAssessmentDefault.kind === "assessment"
-              ? campaignAssessmentDefault.activityId
-              : null
-          }
-        />
-
         <div
           className={
             buildListOpen
@@ -2333,6 +2325,20 @@ export function CampaignWallChart({
             }}
           />
         )}
+        </div>
+
+        {/* Tiles first: the assessment-distribution charts sit below the unit
+            cards so an organiser sees the wall before the summary charts.
+            The card collapses itself, so below-the-fold costs nothing. */}
+        <div className="mt-4">
+          <WallChartAssessmentCharts
+            campaignId={campaignId}
+            activeAssessmentId={
+              campaignAssessmentDefault.kind === "assessment"
+                ? campaignAssessmentDefault.activityId
+                : null
+            }
+          />
         </div>
         </div>
 

@@ -578,7 +578,7 @@ Plus one commit for this document.
   `develop`, unchanged. `pnpm exec eslint` on each touched file reports zero findings on any
   line this package edited; the only findings in touched files are pre-existing
   (`step-campaign-units.tsx:1317,1528`, `worker-import-wizard.tsx:9,502,1571,2202`,
-  `worker-detail-sheet.tsx:241,1205`).
+  `worker-detail-sheet.tsx:243,1207` after fix round 1; formerly :241,1205).
 - `pnpm test` → `Test Files 1 failed | 51 passed (52)`, `Tests 652 passed (652)`. The single
   failure is the pre-existing `src/lib/sms/__tests__/rating-source-taxonomy.test.ts`
   (missing migration file), which WP0.2 fixes. Both new files pass:
@@ -994,6 +994,13 @@ bf606bc feat(oux-wp0.3): rename "Scope" to "Who's in", hide Named universes
 adde96a docs(oux): WP0.3 plan, approved
 ```
 
+
+### Accepted consequence recorded after round-2 review
+
+Forwarding `x-viewport` as a request header (fix round 1, `3a35524`) makes `useDevice().isMobile` true for the first time anywhere in the app. Besides the Workforce board default, `src/components/data-tables/data-table.tsx:69,188` gates its "Mobile Card View" on the same flag, so every DataTable (workers, employers, agreements, …) now renders as cards on phones and iPads. This was the app's intended behaviour (appendix D section 10 item 9 lists DataTable card mode as a mobile primitive) but had never fired in production. Accepted by the orchestrator as a consequence of delivering item 7; it needs a visual check on a phone and an iPad once a dev-pointed environment exists, and it is called out in the PR description.
+
 ## 8. Reviewer findings
 
-_(reviewer)_
+**Round 1 (2026-09-08, fresh reviewer): BLOCK.** Blocking: (1) `src/proxy.ts` set `x-viewport` on the response while `layout.tsx` reads request headers, so `isMobile` was always false and the touch default could not fire; (2) two "campaign overview" strings in `campaign-wizard.tsx` and (3) one in `PostSettlementBanner.tsx` pointed at bare campaign URLs that now land on the chart. Advisories: dead `text-xs` on the sheet's TabsList and a measurement table at the wrong font size; a test gap for the Overview round-trip (component behaviour, handed to WP0.2); stale comments; the gated card's copy; the build-list close leaving `view=wall-chart`. Fixed in `3a35524` and `128fef9`.
+
+**Round 2 (2026-09-08, fresh reviewer): APPROVE WITH ADVISORIES.** All eight round-1 findings verified closed, including the header-forwarding mechanism checked against the installed `next@16.1.6` source and every route confirmed dynamic. Regression pass clean. Advisories: the DataTable mobile-card consequence (recorded above); the §7 stamp was two commits behind (verifier run 2 at `6948514` now covers HEAD); shifted line references in §6 (corrected).

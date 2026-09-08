@@ -229,7 +229,9 @@ export function CampaignWallChart({
       const value = typeof next === "function" ? next(current) : next;
       if (value) {
         params.set("buildList", "1");
-        params.delete("view");
+        // The build-list panel is only mounted in the wall chart, and an absent
+        // ?view= means "device default" (list on touch), so state it explicitly.
+        params.set("view", "wall-chart");
       } else {
         params.delete("buildList");
       }

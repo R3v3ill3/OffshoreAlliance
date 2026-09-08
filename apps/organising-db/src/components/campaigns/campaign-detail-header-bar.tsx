@@ -92,7 +92,9 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
       params.set("buildList", "1");
       params.set("tab", "workforce");
       params.set("sub", "wall-chart");
-      params.delete("view");
+      // The build-list panel is only mounted in the wall chart, and an absent
+      // ?view= means "device default" (list on touch), so state it explicitly.
+      params.set("view", "wall-chart");
     }
     const qs = params.toString();
     const mainCampaignPath = `/campaigns/${campaignId}`;
@@ -241,6 +243,7 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
             className="shrink-0"
             onClick={() => router.push("/campaigns")}
             title="Back to campaigns"
+            aria-label="Back to campaigns"
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>

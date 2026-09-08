@@ -703,7 +703,148 @@ E2E_USER_PASSWORD=
 
 ## 7. Verification output
 
-_(verifier pastes raw output)_
+Verifier run 2026-09-08 at 5856996. Flow one not executed: no credentials (operator input); events not observed in PostHog: no dev key (operator input).
+
+### 1. `pnpm lint` (develop baseline: "294 problems (143 errors, 151 warnings)")
+
+```
+$ pnpm lint 2>&1 | tail -6
+  24:7  warning  'KNOWN_ACRONYMS' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+✖ 294 problems (143 errors, 151 warnings)
+  7 errors and 16 warnings potentially fixable with the `--fix` option.
+
+ ELIFECYCLE  Command failed with exit code 1.
+```
+
+### 2. `pnpm test`
+
+```
+$ pnpm test 2>&1 | /usr/bin/grep -E 'Test Files|Tests |FAIL'
+ Test Files  56 passed (56)
+      Tests  730 passed (730)
+```
+
+### 3. `pnpm exec tsc --noEmit -p tsconfig.json`
+
+```
+$ pnpm exec tsc --noEmit -p tsconfig.json; echo "tsc exit $?"
+tsc exit 0
+```
+
+### 4. `pnpm build`
+
+```
+$ pnpm build 2>&1 | tail -6
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+```
+
+### 5. `pnpm e2e` (no credentials)
+
+```
+$ env -u E2E_USER_EMAIL -u E2E_USER_PASSWORD pnpm e2e 2>&1 | tail -15; echo "e2e exit $?"
+
+> organising-db@0.1.0 e2e /Volumes/DataDrive/cursor_repos/offshoreAlliance/OffshoreAlliance/apps/organising-db
+> playwright test
+
+Skipped: set E2E_USER_EMAIL and E2E_USER_PASSWORD (dev project dpnnmkhabysfdogllsyh only — never production) to run the signed-in e2e flows.
+
+Running 2 tests using 1 worker
+
+  -  1 [chromium] › tests/e2e/mobile-dialer.spec.ts:30:7 › Mobile dialer — happy path › volunteer can sign in, claim, dial, record outcome, advance
+  -  2 [chromium] › tests/e2e/wall-chart.spec.ts:23:7 › Wall chart — flow one › open a campaign from /campaigns and see the wall chart
+
+  2 skipped
+e2e exit 0
+```
+
+No browser download was attempted.
+
+### 6. Diff scope vs `feat/oux-wp0.3-defaults-copy-layout`
+
+```
+$ git diff --stat feat/oux-wp0.3-defaults-copy-layout..HEAD
+ .gitignore                                         |   7 +
+ apps/organising-db/package.json                    |   5 +-
+ apps/organising-db/playwright.config.ts            |  34 +
+ apps/organising-db/src/app/(auth)/login/page.tsx   |   5 +
+ .../src/app/(dashboard)/campaigns/[id]/page.tsx    |  16 +
+ .../campaigns/WallChartAssessmentCharts.tsx        |  29 +-
+ .../components/campaigns/campaign-wall-chart.tsx   |  85 ++-
+ .../campaigns/wall-chart/__tests__/filters.test.ts | 121 ++++
+ .../src/components/campaigns/wall-chart/filters.ts |  34 +
+ .../campaigns/wall-chart/inline-rating-popover.tsx |  10 +
+ .../campaigns/wall-chart/worker-tile.tsx           |   8 +
+ .../src/lib/analytics/__tests__/events.test.ts     | 159 +++++
+ .../lib/analytics/__tests__/session-timing.test.ts | 147 +++++
+ apps/organising-db/src/lib/analytics/events.ts     | 214 +++++++
+ .../src/lib/analytics/session-timing.ts            | 124 ++++
+ .../sms/__tests__/rating-source-taxonomy.test.ts   |   5 +-
+ .../src/lib/supabase/auth-context.tsx              |   9 +
+ apps/organising-db/tests/e2e/env.ts                |  14 +
+ apps/organising-db/tests/e2e/global-setup.ts       |  54 ++
+ apps/organising-db/tests/e2e/mobile-dialer.spec.ts |  10 +-
+ apps/organising-db/tests/e2e/wall-chart.spec.ts    |  71 +++
+ docs/organiser-ux-review/PROGRESS.md               |   2 +-
+ docs/organiser-ux-review/wp/wp0.2.md               | 710 +++++++++++++++++++++
+ pnpm-lock.yaml                                     |  49 +-
+ 24 files changed, 1892 insertions(+), 30 deletions(-)
+```
+
+```
+$ git diff --name-only feat/oux-wp0.3-defaults-copy-layout..HEAD | /usr/bin/grep -v -E '^apps/organising-db/(src|tests)/|^docs/organiser-ux-review/|^apps/organising-db/(package.json|playwright.config.ts)$|^pnpm-lock.yaml$|^\.gitignore$' || echo "no unexpected files"
+no unexpected files
+```
+
+```
+$ git log --oneline feat/oux-wp0.3-defaults-copy-layout..HEAD
+5856996 docs(oux-wp0.2): record deviations and implementer notes
+077b02b chore(oux-wp0.2): ignore Playwright run artefacts
+78ecd73 feat(oux-wp0.2): Playwright harness and canonical flow one
+2ed7579 fix(oux-wp0.2): point the SMS taxonomy test at the baseline schema
+9b70c86 feat(oux-wp0.2): emit the four organiser-UX events at their call sites
+b1da117 feat(oux-wp0.2): typed organiser-UX analytics module and pure timing logic
+c61c3b4 docs(oux): WP0.2 plan, approved
+```
+
+### 7. Privacy grep on `apps/organising-db/src/lib/analytics/*.ts`
+
+```
+$ /usr/bin/grep -rn -i -E 'name|email|phone|address|note' apps/organising-db/src/lib/analytics/*.ts
+apps/organising-db/src/lib/analytics/events.ts:4: * One event-name union, one `track()`, and one typed wrapper per event, so the
+apps/organising-db/src/lib/analytics/events.ts:7: * The shape deliberately mirrors `src/lib/phone/telemetry.ts` so there is one
+apps/organising-db/src/lib/analytics/events.ts:15: * No event property may carry a worker's name, phone number, email address,
+apps/organising-db/src/lib/analytics/events.ts:16: * address, notes, or any free text a worker or organiser typed. Every property
+apps/organising-db/src/lib/analytics/events.ts:20: * filter *key names* ("occupations") and a count, never the selected occupation
+apps/organising-db/src/lib/analytics/events.ts:40: * Allowed property value shapes. Widened from `phone/telemetry.ts` by
+apps/organising-db/src/lib/analytics/events.ts:41: * `string[]` only, for `filter_keys` (a list of closed-union key names).
+apps/organising-db/src/lib/analytics/events.ts:155:  /** Closed-union dimension names only — never the selected ids. */
+apps/organising-db/src/lib/analytics/session-timing.ts:5: * named campaign". That needs a t0 recorded at sign-in and a once-per-session
+```
+
+### 8. New `localStorage` usage in `src`
+
+```
+$ git diff feat/oux-wp0.3-defaults-copy-layout..HEAD -- apps/organising-db/src | /usr/bin/grep -n '^+.*localStorage' || echo "no localStorage added"
+1095:+ * localStorage". Both keys here are written to `sessionStorage`, not
+1096:+ * `localStorage`, and neither is view state: one is a per-tab timing stamp and
+```
+
+### 9. `pnpm-lock.yaml` playwright entries
+
+```
+$ /usr/bin/grep -n "playwright" pnpm-lock.yaml | head -8
+13:        version: 10.47.0(@opentelemetry/context-async-hooks@2.6.1(@opentelemetry/api@1.9.1))(@opentelemetry/core@2.6.1(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.6.1(@opentelemetry/api@1.9.1))(next@16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(@playwright/test@1.56.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)(webpack@5.105.4)
+172:        version: 16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(@playwright/test@1.56.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+222:      '@playwright/test':
+1570:  '@playwright/test@1.56.1':
+4536:      '@playwright/test': ^1.51.1
+4544:      '@playwright/test':
+4720:  playwright-core@1.56.1:
+4725:  playwright@1.56.1:
+```
 
 ## 8. Reviewer findings
 

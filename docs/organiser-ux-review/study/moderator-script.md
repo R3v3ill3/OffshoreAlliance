@@ -81,11 +81,17 @@ today's labels on purpose.
 > Open the wall chart for `[CAMPAIGN]`.
 
 - **Start:** the login form, empty, on the preview URL. The timer and the
-  click count start when the participant submits the login form. (Submit goes
-  to `/campaigns`; a row click there goes to
-  `?tab=workforce&sub=wall-chart`. Appendix D 2.1 and 2.2.)
+  click count start when the participant submits the login form, and **the
+  submit itself is click 1**. (Submit goes to `/campaigns`; a row click there,
+  click 2, goes to `?tab=workforce&sub=wall-chart`. Appendix D 2.1 and 2.2.)
+  So today's shortest route is **2 clicks**, which is the number plan
+  section 7 and the phase-3 target in `results-template.md` refer to. Do not
+  record 1.
 - **Stop:** the wall chart for `[CAMPAIGN]` is visible on screen.
-- **Success:** wall chart visible.
+- **Success:** wall chart visible. The **Wall Chart / List** sub-tab has two
+  layouts and either one counts: if the participant lands on the list layout of
+  that sub-tab for `[CAMPAIGN]`, that is a success. Write down which layout was
+  showing when they stopped.
 - **Record:** clicks and seconds, as well as the usual scores. Plan section 8
   target after phase 3 is 2 clicks and under 10 seconds.
 - **Timeout:** 3 minutes.
@@ -123,16 +129,18 @@ If a future editor changes any of these in the product, this script has to
 change too. Sources are appendix D 3.2 (campaign tabs) and appendix D 1.5 (the
 campaigns page action strip).
 
+Paths are relative to `apps/organising-db/`.
+
 | Label | Where |
 |---|---|
-| Workforce | campaign page top-level tab (`campaigns/[id]/page.tsx:421`) |
-| Wall Chart / List | Workforce sub-tab (`campaigns/[id]/page.tsx:614`) |
-| Campaign Units | Workforce sub-tab (`campaigns/[id]/page.tsx:615`) |
-| Scope | Workforce sub-tab (`campaigns/[id]/page.tsx:616`) |
-| Create campaign | campaigns page action strip (`campaigns/page.tsx:382`) |
-| Campaign wizard / Manual create | the two options in that dialog (`campaigns/page.tsx:310-355`) |
-| Assign to unit | bulk toolbar (`workforce/workforce-bulk-toolbar.tsx:281`) |
-| Unallocated | pseudo-unit for workers with no unit (`campaign-units-section.tsx:1777`) |
+| Workforce | campaign page top-level tab (`src/app/(dashboard)/campaigns/[id]/page.tsx:421`) |
+| Wall Chart / List | Workforce sub-tab (`src/app/(dashboard)/campaigns/[id]/page.tsx:614`) |
+| Campaign Units | Workforce sub-tab (`src/app/(dashboard)/campaigns/[id]/page.tsx:615`) |
+| Scope | Workforce sub-tab (`src/app/(dashboard)/campaigns/[id]/page.tsx:616`) |
+| Create campaign | campaigns page action strip (`src/app/(dashboard)/campaigns/page.tsx:382`) |
+| Campaign wizard / Manual create | the two options in that dialog (`src/app/(dashboard)/campaigns/page.tsx:310-355`) |
+| Assign to unit | bulk toolbar (`src/components/campaigns/workforce/workforce-bulk-toolbar.tsx:281`) |
+| Unallocated | pseudo-unit for workers with no unit (`src/components/campaigns/campaign-units-section.tsx:1777`) |
 
 ## Debrief
 
@@ -145,3 +153,11 @@ the participant's own words.
 
 Then thank them and confirm nothing they did will affect real campaigns,
 because the session ran on dev.
+
+## After the session
+
+Write down the exact name of the campaign the participant created in task 3.
+At the end of the round these campaigns are deleted from dev (or the list is
+handed to whoever can delete them) so they do not clutter the campaigns list
+and make the next round's `[CAMPAIGN]` ambiguous. See `README.md`, "Clean up
+after the round".

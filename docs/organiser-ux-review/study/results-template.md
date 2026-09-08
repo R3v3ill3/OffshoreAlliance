@@ -38,7 +38,8 @@ Then fill the summary at the bottom.
 |---|---|
 | Result | success / partial / fail |
 | Seconds (from login submit) | |
-| Clicks (from login submit) | |
+| Clicks (login submit counts as click 1) | |
+| Layout showing when they stopped | wall chart / list |
 | Errors (count) | |
 | Errors, each tagged slip or mistake | |
 | Assists (count) | |
@@ -115,10 +116,15 @@ These rows drop straight into plan section 8. Fill the baseline column.
 | Task success: create a campaign and land on its chart | | 90%, under 3 minutes |
 | System Usability Scale (organisers) | | above 70, and a 10-point gain over baseline |
 
-The other rows in plan section 8 do not come from this study. Campaigns with a
-group, memberships in a unit, median unit size and the PostHog return rate come
-from WP0.2 and WP0.3 and appendix G. Support questions are collected from the
-team. Do not try to fill them in here.
+The other rows in plan section 8 do not come from this study. Do not try to
+fill them in here:
+
+- Campaigns with a group, memberships in a unit, median unit size, and the
+  PostHog return rate: WP0.2, WP0.3 and appendix G.
+- **Clicks and seconds from login to a standalone SMS or email composer:**
+  WP0.2 instrumentation, not this study. No task in the moderator script asks
+  for it.
+- Support questions: collected from the team.
 
 ## Issues found
 

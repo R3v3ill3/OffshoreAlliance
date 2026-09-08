@@ -59,13 +59,13 @@ Purpose: how to run one round.
 
 ### 2.5 `docs/organiser-ux-review/study/card-sort.md` (new)
 - Open sort, run with organisers before phase 2 (plan section 8 method paragraph). Instructions: group the cards however they make sense to you, name each group in your own words, leave anything meaningless in a "don't know" pile; no right answer; think aloud.
-- Cards are the **terms currently in use**, kept neutral (appendix F H.6: "Labels in a card sorting study must be neutral to prevent keyword matching") — so the recommended words are **not** signalled as answers. Drawn from plan section 3.6's "Terms in use" column plus the six terms named in section 8: universe, scope, campaign scope, target universe, named universe, workers in scope, organising unit, campaign unit, sub-unit, group, cohort, segment, crew, unallocated, no unit, unassigned, campaign plan, strategic plan, workplan, section plan, stage plan, structure test, wall chart, list view, colour by, standalone, episode, standing campaign, organiser record. Instruct the operator to run ~20–24 of these (trim, don't add) so the sort fits 15 minutes.
+- Cards are the **terms currently in use**, kept neutral (appendix F H.6: "Labels in a card sorting study must be neutral to prevent keyword matching") — so the recommended words are **not** signalled as answers. Drawn from plan section 3.6's "Terms in use" column plus the six terms named in section 8: universe, scope, campaign scope, target universe, named universe, workers in scope, organising unit, campaign unit, unit, sub-unit, group, cohort, segment, crew, unallocated, no unit, unassigned, plan, campaign plan, strategic plan, workplan, section plan, stage plan, structure test, wall chart, list view, standalone, episode, standing campaign, organiser record. 30 cards. Instruct the operator to run ~20–24 of these (trim, don't add) so the sort fits 15 minutes, keeping the six section-8 terms in every trimmed set. **"colour by" is not a card** — it is a recommended label from section 5.6, not a term in use, and no such string exists in the product.
 - What to record: the groups, their names, and any card the participant could not place. What we are testing: whether "group" and "unit" match the organisers' own words (appendix F H.6, "Applies here").
 
 ### 2.6 `docs/organiser-ux-review/study/tree-test.md` (new)
 - Run before phase 1 is built (plan section 8 method paragraph); text-only tree, no UI, no back-channel hints; record the path taken and whether they backtracked.
-- The tree is the four-tab campaign workspace from plan section 5.4: **Wall chart · People · Activity · Setup · More ▾**, with the second level as section 5.4 states it (Setup → Who's in, Groups & units, Organisers, Basics; More → Strategic plan, Bargaining, Section plans, Insights, Data fields, Activists & WOCs, Library, Imports; Activity → assessments, lists, calls, SMS, email, tasks).
-- 8–10 find-tasks phrased as goals with no label words in them, e.g.: see how a shift is tracking; change who is in the campaign; add a shift to the campaign; find who else is organising this campaign; send a text to a list of workers; see the assessments recorded last week; change the campaign's start date; open the campaign's strategic plan; find a document about the agreement; see how the campaign is going overall.
+- The tree is the four-tab campaign workspace from plan section 5.4: **Wall chart · People · Activity · Setup · More ▾**, with the second level as section 5.4 states it (Setup → Who's in, Groups & units, Organisers, Basics; More → Strategic plan, Bargaining, Section plans, Insights, Data fields, Activists & WOCs, Library, Imports; Activity → assessments, lists, calls, SMS, email, tasks). Every second-level cell must be a **showable label**, not a description of the tab: Wall chart → Wall chart, List; People → List, Filters, Bulk actions (section 5.4 lists exactly these). The deliberate "List" collision between Wall chart and People is what the tree test is there to expose.
+- 10 find-tasks phrased as goals, with **no word from the tree in any task** (that rules out plan, list, assessment, organiser, who's in, group, unit, wall chart, activity, setup, insight, library, import, bargaining, section, data field, call, SMS, email, task): see how a shift is tracking; change which employers and sites the campaign covers; add a shift to the campaign; find out which colleagues are working on this campaign; send a text message to a set of workers; see what was recorded about individual workers last week; change the campaign's start date; see how we intend to win this campaign over the next year; find a document about the agreement; find every worker at one site who has no phone number recorded. The last of these is the Wall chart / People discriminator; it takes the slot of "see how the campaign is going overall", which duplicated task 1's phrasing.
 - Record: first click, destination, correct/incorrect, seconds. Cite appendix F H.6 for card sort vs tree test.
 
 ### 2.7 Also touched
@@ -119,32 +119,92 @@ Everything else stands as written. Scope is the six files under `docs/organiser-
   row "Run the usability baseline study (WP0.5 pack)" is unchanged and still
   `pending`.
 - **File path correction.** Section 2.2 cites `workforce-bulk-toolbar.tsx:281`
-  for "Assign to unit". The file is at
-  `src/components/campaigns/workforce/workforce-bulk-toolbar.tsx:281`, one
-  directory deeper than the plan implies. The script cites the real path. All
-  other cited labels and line numbers were checked against the source and are
-  correct as written.
+  for "Assign to unit" and `campaign-units-section.tsx:1777` for "Unallocated".
+  Both are bare filenames. The real paths, relative to `apps/organising-db/`,
+  are `src/components/campaigns/workforce/workforce-bulk-toolbar.tsx:281` and
+  `src/components/campaigns/campaign-units-section.tsx:1777`; the script's
+  label table now cites those in full, and the other four rows in that table
+  are given as `src/app/(dashboard)/campaigns/...` for the same reason. All
+  cited labels and line numbers were checked against the source and are correct
+  as written.
 - **Placeholder table has six rows, not five.** Section 2.9 calls for "all five
   placeholders in one place". The README's pre-round table lists the four
   bracketed placeholders (`[CAMPAIGN]`, `[WORKER]`, `[SHIFT UNIT]`,
   `[WORKSITE]`) plus the preview URL and the participant login, which section
   2.1 also requires the operator to fill in. Six rows, one table.
+- **PROGRESS.md standing-note paragraph** recording the `develop` baseline was
+  added by the orchestrator on this branch (commit `c8639d2`); orchestrator
+  housekeeping, not part of the pack.
 
 Everything else is as planned. No `src/**` file was touched.
 
+### Fix round 1 (reviewer findings 1–11)
+
+- Five tree-test find-tasks contained a tree label word (strategic plan, who is
+  in, assessments, list, organising). Rewritten as goals; the rule "no word
+  from the tree in any task" is now stated in both `tree-test.md` and section
+  2.6, with the excluded words listed.
+- The "colour by" card is removed (a section 5.6 recommendation, not a term in
+  use; no such string in `apps/organising-db/src`). Bare **unit** and bare
+  **plan** added, because plan section 8 names them. 30 cards.
+- Login-form submit is stated as click 1 in `README.md` and
+  `moderator-script.md`, so today's route records 2 clicks and matches plan
+  section 7 and the phase-3 target in `results-template.md`.
+- `Wall chart` and `People` now have showable child labels, and a tenth
+  find-task discriminates between them.
+- Task 1 succeeds on either layout of the Wall Chart / List sub-tab; the
+  moderator records which layout was showing.
+- "Clicks and seconds from login to a standalone SMS or email composer" added
+  to the results template's "not from this study" list (WP0.2 instrumentation).
+- Both scripts tell the operator to delete the task-3 campaigns from dev after
+  each round.
+
 ## 7. Verification output
 
-_(verifier pastes raw output)_
+Docs-only package. The evidence that it is docs-only is that the lint error
+count is unchanged from the `develop` baseline and that no non-docs file
+appears in the diff. Measured 2026-09-08 at `c8639d2`, immediately before the
+fix-round-1 commit; the fix round touched the same eight docs files and no
+others.
+
+`develop` baseline for comparison, from `PROGRESS.md` standing notes: `pnpm
+lint` 143 errors / 151 warnings, all pre-existing. `pnpm lint` exits non-zero on
+`develop` for that reason, so a non-zero exit here is expected and is not a
+regression.
+
+```
+$ cd apps/organising-db && pnpm lint 2>&1 | tail -3
+  7 errors and 16 warnings potentially fixable with the `--fix` option.
+
+ ELIFECYCLE  Command failed with exit code 1.
+```
+
+The count line from the same run, which `tail -3` cuts off:
+
+```
+✖ 294 problems (143 errors, 151 warnings)
+```
+
+143 errors / 151 warnings: identical to the baseline.
+
+```
+$ git diff --stat feat/oux-wp0.1-decision-register..HEAD
+ docs/organiser-ux-review/PROGRESS.md               |   3 +-
+ docs/organiser-ux-review/study/README.md           | 118 ++++++++++++++++
+ docs/organiser-ux-review/study/card-sort.md        |  90 +++++++++++++
+ docs/organiser-ux-review/study/moderator-script.md | 147 ++++++++++++++++++++
+ docs/organiser-ux-review/study/results-template.md | 131 ++++++++++++++++++
+ docs/organiser-ux-review/study/sus-form.md         |  60 +++++++++
+ docs/organiser-ux-review/study/tree-test.md        |  75 +++++++++++
+ docs/organiser-ux-review/wp/wp0.5.md               | 150 +++++++++++++++++++++
+ 8 files changed, 773 insertions(+), 1 deletion(-)
+```
+
+```
+$ git diff --name-only feat/oux-wp0.1-decision-register..HEAD | grep -v '^docs/' || echo none
+none
+```
 
 ## 8. Reviewer findings
 
 _(reviewer)_
-
-### Verification (orchestrator, 2026-09-08)
-Docs-only package; no code changed, so lint/test/build are unaffected (baseline on `develop` recorded in PROGRESS.md standing notes).
-```
-$ git diff --name-only feat/oux-wp0.1-decision-register..HEAD | grep -v '^docs/'
-none
-$ git diff --stat feat/oux-wp0.1-decision-register..HEAD
- 8 files changed, 763 insertions(+), 1 deletion(-)   (all under docs/organiser-ux-review/)
-```

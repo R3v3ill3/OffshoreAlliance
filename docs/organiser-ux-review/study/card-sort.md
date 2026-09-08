@@ -38,7 +38,10 @@ put the recommended words in a favoured position, participants will match on
 the keyword rather than tell us what they think.
 
 Drawn from plan section 3.6 ("Terms in use") plus the six terms named in plan
-section 8.
+section 8 (universe, group, unit, crew, structure test, plan). Those six are in
+the deck as plain cards, shuffled in with the rest and not marked in any way —
+that is how we find out whether organisers reach for them unprompted. Neutral
+means unmarked, not absent.
 
 - universe
 - scope
@@ -48,6 +51,7 @@ section 8.
 - workers in scope
 - organising unit
 - campaign unit
+- unit
 - sub-unit
 - group
 - cohort
@@ -56,6 +60,7 @@ section 8.
 - unallocated
 - no unit
 - unassigned
+- plan
 - campaign plan
 - strategic plan
 - workplan
@@ -64,16 +69,16 @@ section 8.
 - structure test
 - wall chart
 - list view
-- colour by
 - standalone
 - episode
 - standing campaign
 - organiser record
 
-That is 29 cards. Run about 20 to 24 of them so the sort fits 15 minutes.
+That is 30 cards. Run about 20 to 24 of them so the sort fits 15 minutes.
 **Trim the list, do not add to it.** Adding a card breaks the comparison with
-other participants, and adding a recommended word turns the sort into a leading
-question.
+other participants. When you trim, keep **universe, group, unit, crew,
+structure test** and **plan** — those six are the ones plan section 8 is
+asking about — and cut from the near-synonyms instead.
 
 Print one word per card. Do not number them and do not print them in this
 order.

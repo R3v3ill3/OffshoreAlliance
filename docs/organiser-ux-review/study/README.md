@@ -46,6 +46,14 @@ The dev seed has had campaign data stripped in the past
 confirmed a usable `[CAMPAIGN]`, `[WORKER]` and `[SHIFT UNIT]` on dev. Without
 them, tasks 1 and 2 have nothing to point at.
 
+### Clean up after the round
+
+Task 3 leaves one new campaign per participant on dev, all named after
+`[WORKSITE]`. After every round, delete them (or write down the exact names and
+hand the list to whoever can delete them). Left in place they clutter the
+campaigns list and make the next round's `[CAMPAIGN]` ambiguous, which changes
+the click count for task 1. Do not delete the seeded `[CAMPAIGN]` itself.
+
 ## Who takes part
 
 Five organisers per round. NN/g: "The best results come from testing no more
@@ -106,6 +114,13 @@ Use `results-template.md`. One sheet per participant.
 
 For task 1, the timer and the click count start when the participant submits
 the login form. They do not start when the browser opens.
+
+**The login submit is click 1.** Count it. Today's shortest route is submit
+(click 1) followed by one click on the campaign's row in the list (click 2),
+which lands on the wall chart: **2 clicks**. That is why plan section 7 says
+"two clicks from login" and why the phase-3 target in `results-template.md` is
+2 clicks. If you do not count the submit you will record 1 and the baseline
+will not compare with the target.
 
 ## Label note
 

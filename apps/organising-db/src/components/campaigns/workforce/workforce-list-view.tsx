@@ -597,7 +597,7 @@ export function WorkforceListView({
     filter.factFilters.length;
 
   // For grouped view: bucket filtered rows by their employer group (ou_group_id
-  // of their primary unit, or "—" for ungrouped/unassigned).
+  // of their primary unit, or "—" when the worker is not in any group).
   const groupedRows = useMemo(() => {
     if (!groupedView) return null;
     const buckets = new Map<string, { label: string; ouId: number | null; rows: Row[] }>();
@@ -614,7 +614,7 @@ export function WorkforceListView({
       if (!buckets.has(key)) {
         const containerOu = containerOuId != null ? ouById.get(containerOuId) ?? null : null;
         buckets.set(key, {
-          label: containerOu ? ouDisplayName(containerOu) : "Unassigned / No group",
+          label: containerOu ? ouDisplayName(containerOu) : "Not in any group",
           ouId: containerOuId,
           rows: [],
         });

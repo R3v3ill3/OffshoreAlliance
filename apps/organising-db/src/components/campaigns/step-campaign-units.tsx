@@ -1086,7 +1086,7 @@ export function StepCampaignUnits({
                     {totalWorkerEstimate}
                     {unallocatedRemainder != null && (
                       <>
-                        {" · "}Unallocated remainder:{" "}
+                        {" · "}Unassigned remainder:{" "}
                         <strong>{unallocatedRemainder}</strong>
                       </>
                     )}
@@ -1163,7 +1163,7 @@ export function StepCampaignUnits({
           {totalWorkerEstimate != null && dimensions.length <= 1 && (
             <div className="flex items-center gap-2 rounded-md border-2 border-dashed border-muted-foreground/20 bg-muted/30 p-3">
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium">Unallocated</p>
+                <p className="text-sm font-medium">Unassigned</p>
                 <p className="text-xs text-muted-foreground">
                   Workers on this campaign not placed into a specific unit show
                   up here automatically.

@@ -414,7 +414,7 @@ export function CampaignWorkerAssignmentPicker({
                 checked={showOnlyUnallocatedElsewhere}
                 onCheckedChange={(checked) => setShowOnlyUnallocatedElsewhere(checked === true)}
               />
-              Unallocated elsewhere
+              Unassigned elsewhere
             </label>
           )}
           {showPrimaryCheckbox && (

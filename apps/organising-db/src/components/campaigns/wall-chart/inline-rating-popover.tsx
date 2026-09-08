@@ -31,6 +31,8 @@ export type InlineRatingPopoverProps = {
   disabled?: boolean;
   /** Optional callback to open worker details */
   onOpenDetail?: () => void;
+  /** Optional: fired after a rating save succeeds. Additive; never gates the save. */
+  onSaved?: () => void;
   /** Per-level label overrides for the 1–5 scale. Keys "1"–"5". */
   customLabels?: Record<string, string> | null;
   /** The clickable anchor (typically a rating number chip inside a WorkerTile). */
@@ -47,6 +49,7 @@ export function InlineRatingPopover({
   initial,
   disabled,
   onOpenDetail,
+  onSaved,
   customLabels,
   children,
 }: InlineRatingPopoverProps) {
@@ -57,6 +60,13 @@ export function InlineRatingPopover({
   const save = useSaveActivityRating({
     campaignId,
     onSuccess: () => {
+      // First, so a toast failure cannot swallow it; and guarded, so a throwing
+      // callback cannot leave the popover open ("never gates the save").
+      try {
+        onSaved?.();
+      } catch {
+        /* an additive notification must never break the save path */
+      }
       toast.success(`Rating saved for ${workerName}`);
       setOpen(false);
       setNotes("");
@@ -176,6 +186,8 @@ export type CumulativeRatingPopoverProps = {
   workerId: number;
   workerName: string;
   onOpenDetail?: () => void;
+  /** Optional: fired after a rating save succeeds. Additive; never gates the save. */
+  onSaved?: () => void;
   /** The clickable trigger (the large rating badge on the tile). */
   children: ReactNode;
 };
@@ -185,6 +197,7 @@ export function CumulativeRatingPopover({
   workerId,
   workerName,
   onOpenDetail,
+  onSaved,
   children,
 }: CumulativeRatingPopoverProps) {
   const [open, setOpen] = useState(false);
@@ -201,6 +214,13 @@ export function CumulativeRatingPopover({
   const save = useSaveActivityRating({
     campaignId,
     onSuccess: () => {
+      // First, so a toast failure cannot swallow it; and guarded, so a throwing
+      // callback cannot leave the popover open ("never gates the save").
+      try {
+        onSaved?.();
+      } catch {
+        /* an additive notification must never break the save path */
+      }
       toast.success(`Rating saved for ${workerName}`);
       setOpen(false);
     },

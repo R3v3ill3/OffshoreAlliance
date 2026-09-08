@@ -22,8 +22,9 @@ Status key: **Open** · **Confirmed** (recommendation accepted as written) · **
 
 | Item | Needed by | Notes |
 |---|---|---|
-| A dev-database test account with role `user` (and ideally one `viewer`), credentials supplied out of band | WP0.2 (e2e), WP1.6 (role coverage) | Dev project `dpnnmkhabysfdogllsyh` only. Never production. |
-| A dev PostHog project key for the preview environment | WP0.2 | Events must be visible somewhere the operator can check. |
+| A dev-database test account with role `user` (and ideally one `viewer`), credentials supplied out of band as `E2E_USER_EMAIL` / `E2E_USER_PASSWORD`; plus one dev campaign visible to that account with at least one member (100% Unassigned is fine) | WP0.2 (e2e flow one), WP1.6 (role coverage) | Dev project `dpnnmkhabysfdogllsyh` only. Never production. |
+| A dev PostHog project key and host (`NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`) for the preview environment, confirmed as a dev project | WP0.2 | Events must be visible somewhere the operator can check. |
+| A dev-pointed `.env` for the app (the checked-out `.env.local` targets production) | WP0.3 screenshots, every later e2e run | No agent runs the app locally until this exists. |
 | Dev re-seeded from a production snapshot (schema plus campaign data) before each schema package | WP2.1, WP0.4 rehearsal | `docs/DEV_PROD_ENVIRONMENT.md` says the current dev seed has campaign data stripped; the migration rehearsal needs the real structure (appendix G counts). |
 | The pilot group for organiser mode | Phase 1 exit | Named by the operator. |
 

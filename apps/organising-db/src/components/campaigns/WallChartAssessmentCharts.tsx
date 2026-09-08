@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAssessmentDistributions } from "@/lib/hooks/useAssessmentDistributions";
+import { trackWallchartGroupSelected } from "@/lib/analytics/events";
 import { OuTypeSelector } from "./assessment-charts/OuTypeSelector";
 import { AssessmentStackedBarChart } from "./assessment-charts/AssessmentStackedBarChart";
 import {
@@ -99,6 +100,30 @@ export function WallChartAssessmentCharts({
     return defaultOuType(displayActivityIds);
   }, [selectedOuType, displayActivityIds, defaultOuType]);
 
+  // wallchart_group_selected (WP0.2). The "Group units by" selector is the only
+  // group-selection control in the product today (the wall chart's own ou_type
+  // bands are a render grouping, not an interactive control), so the event
+  // carries `control` — WP2.x can re-point it at a real group selector without
+  // renaming the event or breaking this phase-0 baseline series.
+  //
+  // The track call is hoisted above setSelectedOuType rather than run inside
+  // the updater, so React's StrictMode double-invoke in dev cannot emit it
+  // twice; `effectiveOuType` is exactly the value the selector is showing now,
+  // which is the honest `previous_ou_type`.
+  const handleOuTypeChange = useCallback(
+    (next: string | null) => {
+      trackWallchartGroupSelected({
+        campaign_id: Number(campaignId),
+        ou_type: next,
+        previous_ou_type: effectiveOuType ?? null,
+        group_count: ouGroups.length,
+        control: "assessment_charts_ou_type",
+      });
+      setSelectedOuType(next);
+    },
+    [campaignId, effectiveOuType, ouGroups.length]
+  );
+
   if (!isLoading && assessmentOptions.length === 0) return null;
 
   const optionsToShow = assessmentOptions.filter((o) =>
@@ -113,7 +138,7 @@ export function WallChartAssessmentCharts({
           <OuTypeSelector
             groups={ouGroups}
             value={effectiveOuType}
-            onChange={setSelectedOuType}
+            onChange={handleOuTypeChange}
           />
           <Button
             type="button"

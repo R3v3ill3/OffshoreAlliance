@@ -16,19 +16,19 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 
 | WP | Title | Status | Branch | PR | Verification | Open risks | Decisions consumed |
 |---|---|---|---|---|---|---|---|
-| 0.1 | Decision register and branch setup | PR draft | `feat/oux-wp0.1-decision-register` | [#22](https://github.com/R3v3ill3/OffshoreAlliance/pull/22) | docs only | Decisions open | — |
+| 0.1 | Decision register and branch setup | PR ready | `feat/oux-wp0.1-decision-register` | [#22](https://github.com/R3v3ill3/OffshoreAlliance/pull/22) | docs only | — | 1–10 recorded |
 | 0.2 | Instrumentation and test harness | not started | | | | | — |
 | 0.3 | Defaults, copy and layout quick wins | not started | | | | | — |
-| 0.4 | Data hygiene scripts | blocked (decision 2) | | | | | 2 |
+| 0.4 | Data hygiene scripts | not started | | | | | 2 |
 | 0.5 | Usability baseline pack | not started | | | | | — |
-| 1.1 | Module registry and workspace mode | blocked (decision 1) | | | | | 1 |
+| 1.1 | Module registry and workspace mode | not started | | | | | 1 |
 | 1.2 | Navigation driven by modules | not started | | | | | |
 | 1.3 | My campaigns home | not started | | | | | |
 | 1.4 | Campaign workspace | not started | | | | | |
 | 1.5 | Actions hub | not started | | | | | |
-| 1.6 | Auth and RLS alignment | blocked (decisions 2, 8) | | | | | 2, 8 |
+| 1.6 | Auth and RLS alignment | not started | | | | | 2, 8 |
 | 1.7 | Guides and hints | not started | | | | | 9 |
-| 2.1 | Schema and migration | blocked (decisions 3, 4, 5) | | | | | 3, 4, 5 |
+| 2.1 | Schema and migration | not started | | | | | 3, 4, 5 |
 | 2.2 | Structure API | not started | | | | | |
 | 2.3 | Wall chart decomposition | not started | | | | | |
 | 2.4 | Group selector and per-group Unassigned | not started | | | | | |
@@ -37,11 +37,11 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 | 2.7 | Groups and units editor | not started | | | | | |
 | 2.8 | Consumers, retirements and flag removal | not started | | | | | |
 | 2.9 | Guides (series B and C) | not started | | | | | 9 |
-| 3.1 | Three-screen create flow | blocked (decisions 6, 7) | | | | | 6, 7 |
+| 3.1 | Three-screen create flow | not started | | | | | 6, 7 |
 | 3.2 | Setup checklist drawer | not started | | | | | |
 | 3.3 | Strategic plan module | not started | | | | | |
-| 3.4 | Retire creation paths | not started | | | | | 7 |
-| 3.5 | Action containers | blocked (decision 10) | | | | | 10 |
+| 3.4 | Demote creation paths (decision 7) | not started | | | | | 7 |
+| 3.5 | Action containers | not started | | | | | 10 |
 | 3.6 | Link to campaign | not started | | | | | 10 |
 | 3.7 | Guides (A4, A5) | not started | | | | | 9 |
 | 4.1 | Touch and mobile | not started | | | | | |

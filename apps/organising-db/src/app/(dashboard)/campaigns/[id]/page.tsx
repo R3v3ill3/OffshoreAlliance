@@ -175,7 +175,7 @@ export default function CampaignDetailPage() {
     (VALID_TABS as readonly string[]).includes(rawTab ?? "")
       ? rawTab
       : rawTab
-        ? null // unknown tab value → fall back to overview
+        ? null // unknown tab value → fall back to the campaign default
         : null,
     rawSub
   );
@@ -187,16 +187,14 @@ export default function CampaignDetailPage() {
   useEffect(() => {
     if (needsRedirect(rawTab, rawSub, resolved)) {
       const params = new URLSearchParams(searchParams.toString());
-      if (resolved.tab === "overview") {
-        params.delete("tab");
-        params.delete("sub");
+      // Every tab — Overview included — is written explicitly. An absent ?tab=
+      // now resolves to the campaign default (Workforce › Wall chart), so
+      // Overview must not be encoded as the param-free state.
+      params.set("tab", resolved.tab);
+      if (resolved.sub) {
+        params.set("sub", resolved.sub);
       } else {
-        params.set("tab", resolved.tab);
-        if (resolved.sub) {
-          params.set("sub", resolved.sub);
-        } else {
-          params.delete("sub");
-        }
+        params.delete("sub");
       }
       const qs = params.toString();
       router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
@@ -208,14 +206,9 @@ export default function CampaignDetailPage() {
   const handleTabChange = useCallback(
     (next: string) => {
       const params = new URLSearchParams(searchParams.toString());
-      if (next === "overview") {
-        params.delete("tab");
-        params.delete("sub");
-      } else {
-        params.set("tab", next);
-        // Clear sub so the cluster default kicks in on next render.
-        params.delete("sub");
-      }
+      params.set("tab", next);
+      // Clear sub so the cluster default kicks in on next render.
+      params.delete("sub");
       const qs = params.toString();
       router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
     },

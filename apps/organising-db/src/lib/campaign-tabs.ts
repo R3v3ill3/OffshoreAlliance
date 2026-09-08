@@ -7,6 +7,10 @@
  *   - REDIRECT_MAP: maps every legacy ?tab= value to a new {tab, sub} pair so
  *     old bookmarked URLs are automatically rewritten to the clustered structure.
  *   - resolveTabParams: apply the redirect map and return a normalised {tab, sub}.
+ *
+ * A campaign URL that carries no (or an unknown) ?tab= opens on
+ * Workforce › Wall chart — see DEFAULT_CAMPAIGN_TAB / DEFAULT_CAMPAIGN_SUB.
+ * Overview is still reachable, but only as an explicit ?tab=overview.
  */
 
 /** The full set of top-level tab identifiers (current + future cluster names). */
@@ -96,13 +100,20 @@ export const REDIRECT_MAP: Record<string, { tab: string; sub: string }> = {
   results: { tab: "outcomes", sub: "results" },
 };
 
+/** The tab a campaign opens on when the URL carries no (or an unknown) ?tab=. */
+export const DEFAULT_CAMPAIGN_TAB = "workforce";
+/** The sub-tab that pairs with DEFAULT_CAMPAIGN_TAB. Must match DEFAULT_SUB. */
+export const DEFAULT_CAMPAIGN_SUB = "wall-chart";
+
 /**
  * resolveTabParams
  *
  * Given the raw ?tab= and ?sub= values from the URL, returns the canonical
  * {tab, sub} pair after:
- *   1. Applying REDIRECT_MAP for legacy tab values.
- *   2. Falling back to the default sub-tab for known cluster tabs when ?sub= is absent.
+ *   1. Falling back to the campaign default (Workforce › Wall chart) when
+ *      ?tab= is absent or unknown. An explicit ?sub= is still honoured.
+ *   2. Applying REDIRECT_MAP for legacy tab values.
+ *   3. Falling back to the default sub-tab for known cluster tabs when ?sub= is absent.
  *
  * Returns null for `sub` when the resolved tab has no sub-tabs.
  */
@@ -111,7 +122,7 @@ export function resolveTabParams(
   sub: string | null
 ): ResolvedTabParams {
   if (!tab) {
-    return { tab: "overview", sub: null };
+    return { tab: DEFAULT_CAMPAIGN_TAB, sub: sub ?? DEFAULT_CAMPAIGN_SUB };
   }
 
   // Apply legacy redirect if applicable.

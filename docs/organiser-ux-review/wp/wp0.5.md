@@ -111,7 +111,26 @@ Everything else stands as written. Scope is the six files under `docs/organiser-
 
 ## 6. Deviations from plan
 
-_(implementer keeps this list)_
+- **Ledger row.** Section 2.7 says to add a WP0.5 row; the orchestrator
+  approval (section 5) says to update the existing one. Followed the approval:
+  the existing row 0.5 now reads `in review`, branch
+  `feat/oux-wp0.5-usability-baseline-pack`, verification "docs only: lint
+  unchanged". The PR column is left blank for the orchestrator. The human-task
+  row "Run the usability baseline study (WP0.5 pack)" is unchanged and still
+  `pending`.
+- **File path correction.** Section 2.2 cites `workforce-bulk-toolbar.tsx:281`
+  for "Assign to unit". The file is at
+  `src/components/campaigns/workforce/workforce-bulk-toolbar.tsx:281`, one
+  directory deeper than the plan implies. The script cites the real path. All
+  other cited labels and line numbers were checked against the source and are
+  correct as written.
+- **Placeholder table has six rows, not five.** Section 2.9 calls for "all five
+  placeholders in one place". The README's pre-round table lists the four
+  bracketed placeholders (`[CAMPAIGN]`, `[WORKER]`, `[SHIFT UNIT]`,
+  `[WORKSITE]`) plus the preview URL and the participant login, which section
+  2.1 also requires the operator to fill in. Six rows, one table.
+
+Everything else is as planned. No `src/**` file was touched.
 
 ## 7. Verification output
 

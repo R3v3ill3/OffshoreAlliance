@@ -20,7 +20,7 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 | 0.2 | Instrumentation and test harness | not started | | | | | — |
 | 0.3 | Defaults, copy and layout quick wins | not started | | | | | — |
 | 0.4 | Data hygiene scripts | not started | | | | | 2 |
-| 0.5 | Usability baseline pack | not started | | | | | — |
+| 0.5 | Usability baseline pack | in review | `feat/oux-wp0.5-usability-baseline-pack` | | docs only: lint unchanged | — | — |
 | 1.1 | Module registry and workspace mode | not started | | | | | 1 |
 | 1.2 | Navigation driven by modules | not started | | | | | |
 | 1.3 | My campaigns home | not started | | | | | |

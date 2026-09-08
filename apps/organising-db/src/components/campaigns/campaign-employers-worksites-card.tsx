@@ -34,10 +34,10 @@ function pickOne<T>(value: T | T[] | null | undefined): T | null {
 }
 
 /**
- * Read-only summary of the employers and worksites that scope a campaign,
- * surfaced on the Campaign Overview tab. Clicking a chip opens the existing
- * `/employers/[id]` or `/worksites/[id]` detail page. The "Manage scope"
- * action deep-links to the Workforce → Scope sub-tab where editing lives.
+ * Read-only summary of the employers and worksites a campaign covers,
+ * surfaced on the campaign Overview tab. Clicking a chip opens the existing
+ * `/employers/[id]` or `/worksites/[id]` detail page. The "Edit who's in"
+ * action deep-links to the Workforce → Who's in sub-tab where editing lives.
  */
 export function CampaignEmployersWorksitesCard({ campaignId }: { campaignId: string }) {
   const supabase = createClient();
@@ -86,14 +86,14 @@ export function CampaignEmployersWorksitesCard({ campaignId }: { campaignId: str
         <div className="space-y-1 min-w-0">
           <CardTitle className="text-base">Employers & worksites</CardTitle>
           <CardDescription>
-            Scope of this campaign. Click a chip for full details, or manage scope to
+            Who&apos;s in this campaign. Click a chip for full details, or edit to
             add or remove.
           </CardDescription>
         </div>
         <Button asChild size="sm" variant="outline">
           <Link href={`/campaigns/${campaignId}?tab=workforce&sub=universe`}>
             <Settings className="h-3.5 w-3.5 mr-1" aria-hidden />
-            Manage scope
+            Edit who&apos;s in
           </Link>
         </Button>
       </CardHeader>

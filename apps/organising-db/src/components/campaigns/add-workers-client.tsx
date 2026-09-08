@@ -290,7 +290,7 @@ export function AddWorkersClient({ campaignId, campaignName }: AddWorkersClientP
   })();
 
   const targetSummary = (() => {
-    if (unitMode === "unallocated") return "no unit (unallocated)";
+    if (unitMode === "unallocated") return "unassigned (no unit)";
     if (unitMode === "existing") {
       const ou = campaignOus.find((o) => String(o.ou_id) === existingOuId);
       return ou ? `existing unit "${ou.name}"` : "existing unit";

@@ -1947,7 +1947,7 @@ export function CampaignWizard() {
                     <CardTitle>Campaign created</CardTitle>
                     <CardDescription>
                       This campaign is in post-settlement / implementation. Go to the
-                      campaign overview to review and track implementation.
+                      campaign to review and track implementation.
                     </CardDescription>
                   </div>
                 </div>
@@ -1957,7 +1957,7 @@ export function CampaignWizard() {
                   className="w-full sm:w-auto"
                   onClick={() => router.push(`/campaigns/${campaignId}`)}
                 >
-                  Go to campaign overview
+                  Go to campaign
                 </Button>
               </CardContent>
             </Card>

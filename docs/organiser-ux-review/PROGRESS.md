@@ -11,7 +11,8 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 - **Plan documents:** the plan and appendices were authored on branch `claude/organiser-ux-campaign-workflow-bi0uai` and were not on `develop`. WP0.1 merges them into its branch so later packages can cite them.
 - **Commands:** from `apps/organising-db`: `pnpm lint`, `pnpm test`, `pnpm build`. Root: `pnpm validate:migrations`.
 - **Branches:** `feat/oux-<wp-id>-<slug>` off `develop`; draft PR into `develop`; never `main`.
-- **Baseline (develop at 1b959b1, measured 2026-09-08):** `pnpm build` green; `pnpm test` 632 passing, 1 test file fails to load (`src/lib/sms/__tests__/rating-source-taxonomy.test.ts` reads `supabase/migrations/20260813120000_sms_source_taxonomy.sql`, which the baseline rebase moved to `migrations_legacy/`; a stale path, fixed in WP0.2); `pnpm lint` 143 errors / 151 warnings, all pre-existing. Per-package standard until the debt is cleared: every touched file lints clean and the total error count must not rise. Clearing the debt is a housekeeping task for the operator to authorise, not part of any work package.
+- **Baseline (develop at 1b959b1, measured 2026-09-08):** `pnpm build` green; `pnpm test` 632 passing, 1 test file fails to load (`src/lib/sms/__tests__/rating-source-taxonomy.test.ts` reads a migration the baseline rebase moved to `migrations_legacy/`; a stale path, fixed in WP0.2); `pnpm lint` 143 errors / 151 warnings, all pre-existing. Per-package standard until the debt is cleared: every touched file lints clean on its changed lines and the total error count must not rise. Clearing the debt is a housekeeping task for the operator to authorise, not part of any work package.
+- **Local environment:** `apps/organising-db/.env.local` points at the **production** project. No agent may run the app locally (`pnpm dev`, `pnpm start`) or take screenshots until the operator supplies a dev-pointed environment; `pnpm build` alone is permitted (it does not query the database; every route is dynamic). Screenshot acceptance evidence is deferred until then and PRs stay draft.
 
 ## Ledger
 
@@ -19,7 +20,7 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 |---|---|---|---|---|---|---|---|
 | 0.1 | Decision register and branch setup | PR ready | `feat/oux-wp0.1-decision-register` | [#22](https://github.com/R3v3ill3/OffshoreAlliance/pull/22) | docs only | — | 1–10 recorded |
 | 0.2 | Instrumentation and test harness | not started | | | | | — |
-| 0.3 | Defaults, copy and layout quick wins | not started | | | | | — |
+| 0.3 | Defaults, copy and layout quick wins | PR draft | `feat/oux-wp0.3-defaults-copy-layout` | [#24](https://github.com/R3v3ill3/OffshoreAlliance/pull/24) | lint at baseline (143/151), 657 tests pass + 1 pre-existing collection failure (WP0.2), build green; screenshots deferred (no dev env) | DataTable card view now fires on phones/iPads; needs visual check | — |
 | 0.4 | Data hygiene scripts | not started | | | | | 2 |
 | 0.5 | Usability baseline pack | PR draft | `feat/oux-wp0.5-usability-baseline-pack` | [#23](https://github.com/R3v3ill3/OffshoreAlliance/pull/23) | docs only: lint unchanged | — | — |
 | 1.1 | Module registry and workspace mode | not started | | | | | 1 |

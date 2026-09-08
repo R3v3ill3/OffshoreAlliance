@@ -375,9 +375,8 @@ export function CampaignUniverseSection({
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground max-w-3xl">
-        Campaign scope: the employers and worksites this campaign covers. These rarely change.
-        Workers, organising units, and ratings now live on the Wall Chart / List and Campaign Units
-        sub-tabs.
+        Who&apos;s in: the employers and worksites this campaign covers. These rarely change.
+        Workers, units and ratings live on the Wall Chart / List and Campaign Units sub-tabs.
       </p>
 
       {/* Employers */}

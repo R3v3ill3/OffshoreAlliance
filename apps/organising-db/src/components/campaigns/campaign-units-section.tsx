@@ -1774,7 +1774,7 @@ export function CampaignUnitsSection({
             <div className="rounded-md border border-dashed p-3 space-y-2">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
-                  <p className="font-medium text-muted-foreground">Unallocated</p>
+                  <p className="font-medium text-muted-foreground">Unassigned</p>
                   <p className="text-xs text-muted-foreground">
                     {unallocatedMembers.length} worker{unallocatedMembers.length !== 1 ? "s" : ""} not in any unit
                   </p>
@@ -1827,7 +1827,7 @@ export function CampaignUnitsSection({
                               setUnallocatedSelection(new Set());
                             }
                           }}
-                          aria-label="Select all unallocated workers"
+                          aria-label="Select all unassigned workers"
                         />
                       </th>
                     )}

@@ -140,6 +140,12 @@ interface ResultRow {
 
 const INITIAL_UNIVERSE_FORM = { name: "", description: "" };
 
+// Named universes are a vestigial labelling feature (no rule editor exists).
+// Hidden from the Who's in tab pending the module work; existing rows still
+// drive the Universe select on the Actions tab (see the `universes` prop on
+// CampaignActionsSection below). Flip to true to restore the card.
+const SHOW_NAMED_UNIVERSES: boolean = false;
+
 function formatDate(d: string | null) {
   if (!d) return "—";
   try {
@@ -175,7 +181,7 @@ export default function CampaignDetailPage() {
     (VALID_TABS as readonly string[]).includes(rawTab ?? "")
       ? rawTab
       : rawTab
-        ? null // unknown tab value → fall back to overview
+        ? null // unknown tab value → fall back to the campaign default
         : null,
     rawSub
   );
@@ -187,16 +193,14 @@ export default function CampaignDetailPage() {
   useEffect(() => {
     if (needsRedirect(rawTab, rawSub, resolved)) {
       const params = new URLSearchParams(searchParams.toString());
-      if (resolved.tab === "overview") {
-        params.delete("tab");
-        params.delete("sub");
+      // Every tab — Overview included — is written explicitly. An absent ?tab=
+      // now resolves to the campaign default (Workforce › Wall chart), so
+      // Overview must not be encoded as the param-free state.
+      params.set("tab", resolved.tab);
+      if (resolved.sub) {
+        params.set("sub", resolved.sub);
       } else {
-        params.set("tab", resolved.tab);
-        if (resolved.sub) {
-          params.set("sub", resolved.sub);
-        } else {
-          params.delete("sub");
-        }
+        params.delete("sub");
       }
       const qs = params.toString();
       router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
@@ -208,14 +212,9 @@ export default function CampaignDetailPage() {
   const handleTabChange = useCallback(
     (next: string) => {
       const params = new URLSearchParams(searchParams.toString());
-      if (next === "overview") {
-        params.delete("tab");
-        params.delete("sub");
-      } else {
-        params.set("tab", next);
-        // Clear sub so the cluster default kicks in on next render.
-        params.delete("sub");
-      }
+      params.set("tab", next);
+      // Clear sub so the cluster default kicks in on next render.
+      params.delete("sub");
       const qs = params.toString();
       router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
     },
@@ -613,7 +612,7 @@ export default function CampaignDetailPage() {
             <TabsList className="mb-4">
               <TabsTrigger value="wall-chart">Wall Chart / List</TabsTrigger>
               <TabsTrigger value="campaign-units">Campaign Units</TabsTrigger>
-              <TabsTrigger value="universe">Scope</TabsTrigger>
+              <TabsTrigger value="universe">Who&apos;s in</TabsTrigger>
               <TabsTrigger value="assessments">Assessments</TabsTrigger>
               <TabsTrigger value="data-fields">Data fields</TabsTrigger>
               <TabsTrigger value="activists">Activists &amp; WOCs</TabsTrigger>
@@ -623,12 +622,13 @@ export default function CampaignDetailPage() {
             <TabsContent value="universe" className="space-y-6">
               <CampaignUniverseSection campaignId={id} canWrite={!!canWrite} />
 
+              {SHOW_NAMED_UNIVERSES && (
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-4">
                   <div className="space-y-1 min-w-0">
                     <CardTitle className="text-lg">Named universes (optional)</CardTitle>
                     <CardDescription>
-                      Labels for the Actions tab only. Campaign scope (employers, worksites, workers) is
+                      Labels for the Actions tab only. Who&apos;s in (employers, worksites, workers) is
                       managed above.
                     </CardDescription>
                   </div>
@@ -724,6 +724,7 @@ export default function CampaignDetailPage() {
                   )}
                 </CardContent>
               </Card>
+              )}
             </TabsContent>
 
             <TabsContent value="assessments">

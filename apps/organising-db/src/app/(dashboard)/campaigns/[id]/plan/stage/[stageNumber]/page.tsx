@@ -535,7 +535,7 @@ export default function StageplanPage({ params }: PageProps) {
                     </Button>
                   ) : (
                     <Button asChild variant="secondary" className="w-full sm:w-auto">
-                      <Link href={`/campaigns/${campaignId}`}>Back to campaign overview</Link>
+                      <Link href={`/campaigns/${campaignId}`}>Back to campaign</Link>
                     </Button>
                   )}
                 </div>

@@ -3281,7 +3281,7 @@ export function WorkerImportWizard({
                   {resolution.confirmed ? (
                     <Badge variant="default" className="gap-1">
                       <CheckCircle2 className="h-3 w-3" />
-                      {resolution.ouName ?? "No Unit"}
+                      {resolution.ouName ?? "Unassigned"}
                     </Badge>
                   ) : (
                     <Badge variant="outline">Needs Review</Badge>
@@ -3440,7 +3440,7 @@ export function WorkerImportWizard({
                     ) : (
                       <X className="h-3 w-3" />
                     )}
-                    No Unit
+                    Unassigned
                   </Button>
                   {createOuFor !== resolution.rawValue && (
                     <Button

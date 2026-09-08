@@ -65,7 +65,7 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 | Task | Raised by | Status |
 |---|---|---|
 | Run the usability baseline study (WP0.5 pack) | Phase 0 | pending |
-| Run WP0.4 scripts on production | WP0.4 | pending |
+| Run WP0.4 scripts on production (00 → 02 → 03; 01 held until WP1.6 is live) | WP0.4 | pending on production. **Run on dev by the operator 2026-09-08:** 02 inserted 5, 03 deleted 2, 01 converted 4 (the e2e account was already `user`); audit log intact, nothing rolled back. Dev now has the post-hygiene shape, so the four converted dev accounts hit the admin-only delete policies until WP1.6 lands. |
 | Re-record OVERVIEW clip | WP1.7 | pending |
 | Re-record B1–B3, C1–C3 | WP2.9 | pending |
 | Re-record A4, A5 | WP3.7 | pending |

@@ -1382,6 +1382,230 @@ Validated 3 Supabase migrations with unique 14-digit versions.
 | Errors | — | None |
 | Dev left as found | — | **Yes** |
 
+### Rehearsal 2 (after fix round 1) at 68f9f9c
+
+Verifier rehearsal on dev `dpnnmkhabysfdogllsyh`, 2026-09-08, second rehearsal against the fix-round-1 scripts
+(b77ce5f: 03 excludes any partition containing a rule-sourced row and adds `unresolved_rule_partitions` plus a WOC
+probe and a tightened #27; 01's guard is `still_missing`; 90 no longer depends on the log; `91_verify_log.sql` is
+new; `03_rollback` has a third probe). Every read-only query and every PRE-CHECK/CHANGE/POST-CHECK block was sent
+as its own `execute_sql` call against project `dpnnmkhabysfdogllsyh` only; `gteygwfgjvczanmrwgbr` was never
+targeted.
+
+**Starting-state check** (run first, as instructed): `user_profiles` distribution `admin/organiser 5`,
+`admin/lead_organiser 2`, `admin/coordinator 1`, `admin/industrial_coordinator 1` (9 rows, no `user` rows);
+`campaigns` 5, all with `organiser_id`; `campaign_organisers` 0; `campaign_worker_ou` 113;
+`campaign_worker_membership` 111; `_oux_hygiene_log` absent. Matched the documented starting state exactly; the
+rehearsal proceeded.
+
+#### 90, before
+
+H1 `0`, H3 `2`, H5 `0`, H6 `0`/`0`, H7 `0`. `admin_organisers` `5`, `admins_total` `9`, `user_organisers` `0`,
+distribution `admin/coordinator 1`, `admin/industrial_coordinator 1`, `admin/lead_organiser 2`, `admin/organiser 5`.
+`campaign_organisers_rows` `0`, `campaigns_needing_roster_row` `5`, campaign breakdown `5, 0, 0, 5, 0`. 02
+invariants (`leads_gt1_per_campaign`, `roster_disagrees_with_campaign_organiser`) both `[]`;
+`campaigns_per_organiser` `[]` (table empty). 03 rows-to-delete breakdown: `H3, campaign 3, manual, 2` — no
+`rule`-sourced rows. `worker_ou_rows` `113`, `membership_rows` `111`, `members_in_a_unit` campaign 1 → 95,
+campaign 3 → 16. Identical to rehearsal 1's "before" snapshot field for field.
+
+#### 00, `00_create_hygiene_log.sql` (+ re-run)
+
+PRE-CHECK: `hygiene_log_exists_before` `null`. CHANGE ran clean, no error. POST-CHECK:
+`hygiene_log_exists_after` `_oux_hygiene_log`, `rls_enabled` `true`, `authenticated_can_select` `false`,
+`anon_can_select` `false`, `authenticated_can_use_seq` `false`, `anon_can_use_seq` `false`, `policies_on_log` `0`,
+`log_rows` `0`. Re-run of the CHANGE block: no error (idempotent — `CREATE TABLE IF NOT EXISTS` no-opped).
+
+#### 02, `02_backfill_campaign_organisers.sql` (+ re-run) — sent as three separate blocks
+
+PRE-CHECK: `campaign_breakdown` `5, 0, 0, 5, 0`; `expected_inserts` `5`; `campaign_organisers_before` `0`;
+`leads_disagreeing` `[]`; `missing_organiser_fk` `[]`. CHANGE ran clean inside one `BEGIN…COMMIT`, no error.
+POST-CHECK: `still_missing` `0`; `campaign_organisers_after` `5`; `logged` `5`; `leads_gt1` `[]`;
+`roster_disagrees` `[]`; `campaigns_per_organiser` organiser 4 → 3, organiser 5 → 1, organiser 12 → 1.
+**Idempotency re-run**: CHANGE block re-submitted; `campaign_organisers_after_rerun` `5`, `logged_after_rerun` `5`
+— 0 new rows.
+
+`91_verify_log.sql` after 02: `hygiene_log_exists` `_oux_hygiene_log`; `per_script`
+`02_backfill_campaign_organisers 5 active / 0 rolled back`; `log_01_active_rows` `0`; `log_02_active_rows` `5`;
+`log_03_active_rows` `0`; `log_03_workers_without_placement_count` `0`.
+
+#### 03, `03_resolve_duplicate_placements.sql` (+ re-run) — sent as three separate blocks
+
+**PRE-CHECK, every value recorded:**
+
+| Query | Result |
+|---|---|
+| `h1_pairs` | `0` |
+| `h3_pairs` | `2` |
+| `h7_multi_primary_before` | `0` |
+| `rows_to_delete_breakdown` | `H3, campaign 3, manual, 2` |
+| `rows_to_delete_total` | `2` |
+| `rows_to_delete_rule_sourced` | `0` |
+| `rows_in_rule_partitions_excluded` | `0` |
+| `rows_the_change_will_delete` | `2` |
+| WOC exposure probe | `[]` (0 rows) |
+| `membership_before` | `111` |
+| `worker_ou_before` | `113` |
+| `members_in_a_unit` | campaign 1 → 95, campaign 3 → 16 |
+
+No `rule`-sourced rows and no partitions excluded, so the CHANGE deletes all 2 rows (matches
+`rows_the_change_will_delete = rows_to_delete_total`).
+
+CHANGE ran clean inside one `BEGIN…COMMIT` (delete + audit-log insert from the same CTE), no error.
+
+**POST-CHECK, including the new `unresolved_rule_partitions` check and the tightened #27:**
+
+| Query | Result |
+|---|---|
+| `h1_pairs_after` | `0` |
+| `h3_pairs_after` | `0` |
+| `h7_multi_primary_after` | `0` |
+| `h5_after` | `0` |
+| `unresolved_rule_partitions` | `[]` (0 rows) |
+| `membership_after` | `111` (unchanged) |
+| `worker_ou_after` | `111` (= 113 − 2) |
+| `logged` | `2` |
+| `members_in_a_unit_after` | campaign 1 → 95, campaign 3 → 16 (unchanged) |
+| Invariant #27 (tightened) — logged workers without a placement in their dimension | `[]` (0 rows) |
+
+**Idempotency re-run**: CHANGE block re-submitted; `worker_ou_after_rerun` `111`, `logged_after_rerun` `2` — 0 new
+deletes, 0 new log rows.
+
+`91_verify_log.sql` after 03: `per_script` `02 … 5/0`, `03_resolve_duplicate_placements 2 active / 0 rolled back`;
+`log_01_active_rows` `0`; `log_02_active_rows` `5`; `log_03_active_rows` `2`;
+`log_03_workers_without_placement_count` `0`.
+
+#### 01, `01_role_conversion.sql` (+ re-run) — sent as three separate blocks
+
+PRE-CHECK: `admin_organisers_to_convert` `5`; distribution matches the "before" snapshot; **guard
+`still_missing` = `0`** (confirms 02 ran first, as required — the guard changed from a hard-coded expectation to
+`still_missing` in this fix round and it read 0 as intended). CHANGE ran clean inside one `BEGIN…COMMIT`, no
+error. POST-CHECK: `remaining_admin_organisers` `0`; `converted` `5`; distribution after `admin/coordinator 1`,
+`admin/industrial_coordinator 1`, `admin/lead_organiser 2`, `user/organiser 5`; `still_admin` `4`.
+**Idempotency re-run**: CHANGE block re-submitted; `remaining_admin_organisers_rerun` `0`, `converted_rerun` `5` —
+0 new rows.
+
+#### 90, after
+
+H1/H3/H5/H7 `0`/`0`/`0`/`0`. `admin_organisers` `0`, `admins_total` `4`, `user_organisers` `5`, distribution
+`admin/coordinator 1`, `admin/industrial_coordinator 1`, `admin/lead_organiser 2`, `user/organiser 5`.
+`campaign_organisers_rows` `5`, `campaigns_needing_roster_row` `0`, campaign breakdown unchanged `5, 0, 0, 5, 0`.
+`campaigns_per_organiser` organiser 4 → 3, organiser 5 → 1, organiser 12 → 1. `worker_ou_rows` `111`,
+`membership_rows` `111`, `members_in_a_unit` unchanged. Matches rehearsal 1's "after" snapshot field for field.
+
+`91_verify_log.sql` after the full forward run: `per_script` `01_role_conversion 5/0`,
+`02_backfill_campaign_organisers 5/0`, `03_resolve_duplicate_placements 2/0`; `log_01_active_rows` `5`;
+`log_02_active_rows` `5`; `log_03_active_rows` `2`; `log_03_workers_without_placement_count` `0`.
+
+#### Rollbacks, reverse order (`01_rollback` → `03_rollback` → `02_rollback`)
+
+**`01_rollback.sql`** — three blocks: PRE-CHECK `pending_rollback` `5`, `admin_organisers_now` `0`. CHANGE ran
+clean, no error. POST-CHECK: `admin_organisers_after_rollback` `5`, `still_pending` `0`, `duplicate_user_ids` `[]`,
+distribution byte-identical to the pre-conversion distribution.
+
+**`03_rollback.sql`** — three blocks, all three probes recorded before the change:
+
+| Probe | Result |
+|---|---|
+| `pending_rollback` | `2` |
+| Probe 1 — logged id already present in `campaign_worker_ou` | `[]` (0 rows) |
+| Probe 2 — logged `(ou_id, worker_id)` pair already present under another id | `[]` (0 rows) |
+| Probe 3 — exclusivity-trigger conflict (new third probe) | `[]` (0 rows) |
+| `worker_ou_now` | `111` |
+
+All three probes clear, so the CHANGE was safe to run. CHANGE ran clean (re-insert passed both BEFORE triggers on
+`campaign_worker_ou`), no error. POST-CHECK: `h1_pairs_after_rollback` `0`, `h3_pairs_after_rollback` `2`,
+`worker_ou_after_rollback` `113` (back to baseline), `still_pending` `0`, `membership_after_rollback` `111`.
+
+**`02_rollback.sql`** — three blocks: PRE-CHECK `pending_rollback` `5`, `backfilled_rows_still_as_inserted` `5`
+(all 5 rows still exactly as inserted). CHANGE ran clean, no error. POST-CHECK:
+`campaign_organisers_after_rollback` `0`; `still_pending_rows` `[]` (0 rows).
+
+**`90_verify_all.sql` re-run after all three rollbacks**, compared field by field against the "before" snapshot:
+
+| Query | After-rollback | Before | Match |
+|---|---|---|---|
+| H1 | `0` | `0` | yes |
+| H3 | `2` | `2` | yes |
+| H5 | `0` | `0` | yes |
+| H6 | `0`, `0` | `0`, `0` | yes |
+| H7 | `0` | `0` | yes |
+| Distribution | `admin/coordinator 1`, `admin/industrial_coordinator 1`, `admin/lead_organiser 2`, `admin/organiser 5` | same | yes |
+| `admin_organisers` / `admins_total` | `5` / `9` | `5` / `9` | yes |
+| `campaign_organisers_rows` | `0` | `0` | yes |
+| `campaigns_needing_roster_row` | `5` | `5` | yes |
+| `worker_ou_rows` | `113` | `113` | yes |
+| `membership_rows` | `111` | `111` | yes |
+| `members_in_a_unit` | campaign 1→95, campaign 3→16 | same | yes |
+
+Every field matched exactly.
+
+**`91_verify_log.sql` after all three rollbacks**: all active counts `0`; `per_script` rolled-back counts
+`01_role_conversion 0 active / 5 rolled back`, `02_backfill_campaign_organisers 0 active / 5 rolled back`,
+`03_resolve_duplicate_placements 0 active / 2 rolled back` — the required 5/5/2, i.e. active 0 / rolled-back 5, 2,
+5 across the three scripts as expected.
+
+#### 99, `99_drop_hygiene_log.sql`
+
+PRE-CHECK: `hygiene_log_exists_before` `_oux_hygiene_log`. Retention condition 3 (`days_since_last_run >= 30`) was
+**not** met — `last_logged_at` `2026-09-08T11:46:28Z`, `last_rolled_back_at` `2026-09-08T11:48:27Z`,
+`days_since_last_run` `0`, a same-day dev rehearsal, not the production run the retention rule governs.
+`discarded`: `01_role_conversion 0 active / 5 rolled back`, `02_backfill_campaign_organisers 0 active / 5 rolled
+back`, `03_resolve_duplicate_placements 0 active / 2 rolled back`. Proceeded with the drop per this task's
+explicit rehearsal instruction, the same deliberate rehearsal exception to the retention rule used in rehearsal 1
+(not a production action). CHANGE (`DROP TABLE IF EXISTS`) ran clean, no error. POST-CHECK:
+`hygiene_log_exists_after` `null`, `hygiene_log_seq_exists_after` `null`. Confirmation:
+`pg_class` row count for `_oux_hygiene_log` `0`, for `_oux_hygiene_log_log_id_seq` `0` — both table and sequence
+confirmed gone.
+
+#### Final state query
+
+| Table / group | Result | Starting value | Match |
+|---|---|---|---|
+| `user_profiles` distribution | `admin/coordinator 1`, `admin/industrial_coordinator 1`, `admin/lead_organiser 2`, `admin/organiser 5` (9 rows, no `user` rows) | same | yes |
+| `campaigns` / `with_organiser` | `5` / `5` | `5` / `5` | yes |
+| `campaign_organisers` | `0` | `0` | yes |
+| `campaign_worker_ou` | `113` | `113` | yes |
+| `campaign_worker_membership` | `111` | `111` | yes |
+| `_oux_hygiene_log` | absent (`to_regclass` `null`) | absent | yes |
+
+Byte-identical to the documented starting state on every table. Dev was left exactly as found.
+
+#### Errors encountered
+
+None. Every script (00, 02, 03, 01, and all three rollbacks, plus 99) ran without error on the first submission of
+its CHANGE block; every idempotency re-run (00, 02, 03, 01) produced 0 new rows as required. No `apply_migration`,
+psql, CLI or app path was used; every statement went through `execute_sql` against `dpnnmkhabysfdogllsyh` only.
+
+#### Repo commands
+
+`pnpm validate:migrations` (repo root):
+
+```
+> offshore-alliance-monorepo@ validate:migrations /Volumes/DataDrive/cursor_repos/offshoreAlliance/OffshoreAlliance
+> node scripts/validate-supabase-migrations.mjs
+
+Validated 3 Supabase migrations with unique 14-digit versions.
+```
+
+#### Summary table
+
+| Step | Script | Result |
+|---|---|---|
+| 1 | `90_verify_all.sql` (before) | Clean; h1=0, h3=2, h5=0, h6=0/0, h7=0; hygiene log absent; identical to rehearsal 1 |
+| 2 | `00_create_hygiene_log.sql` (+ re-run) | Created; idempotent; RLS on, no policies, `authenticated`/`anon` cannot SELECT |
+| 3 | `02_backfill_campaign_organisers.sql` (+ re-run) | 5 inserted / 5 logged; all invariants pass; idempotent (0/0) |
+| 4 | `91_verify_log.sql` (after 02) | `log_02_active_rows`=5, others 0, as expected |
+| 5 | `03_resolve_duplicate_placements.sql` (+ re-run) | 2 deleted / 2 logged (H3, campaign 3, `manual`); `rows_in_rule_partitions_excluded`=0, `unresolved_rule_partitions`=[]; tightened #27 = 0 rows; idempotent (0/0) |
+| 6 | `91_verify_log.sql` (after 03) | `log_02`=5, `log_03`=2, `log_01`=0, as expected |
+| 7 | `01_role_conversion.sql` (+ re-run) | Guard `still_missing`=0 (confirms 02 ran first); 5 converted / 5 logged; 4 remain admin; idempotent (0/0) |
+| 8 | `90_verify_all.sql` (after) | Reflects 02+03+01 applied; all invariants pass; identical to rehearsal 1 |
+| 9 | `91_verify_log.sql` (after full run) | 5/5/2 active, 0 rolled back, as expected |
+| 10 | Rollbacks: 01 → 03 → 02 | All clean; 03_rollback's three probes (incl. new exclusivity probe) all 0 rows before the change; `90_verify_all.sql` after rollback matches "before" field by field |
+| 11 | `91_verify_log.sql` (after rollbacks) | All active 0; rolled-back 5/5/2 across the three scripts |
+| 12 | `99_drop_hygiene_log.sql` | Dropped (retention condition 3 not met — same-day rehearsal exception, noted); table and sequence confirmed absent |
+| 13 | Final state query | Byte-identical to the documented starting state on every table |
+| Errors | — | None |
+| Dev left as found | — | **Yes** |
+
 ## 14. Reviewer findings
 
 _(reviewer)_

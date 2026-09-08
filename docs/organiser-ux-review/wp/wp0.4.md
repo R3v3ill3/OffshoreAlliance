@@ -924,7 +924,109 @@ existing `_archive_*` convention in that schema.
 
 ## 12. Deviations from plan
 
-_(implementer keeps this list)_
+All scripts implement sections 2-8 as written; the CHANGE statements are byte-for-byte the plan's. Departures, all
+additive and read-only unless stated:
+
+1. **Sequencing guard added to 01's pre-check.** Section 3.1 lists two pre-checks; the script adds a third,
+   `campaign_organisers_rows_present` (expected > 0), so an operator who runs 01 before 02 is stopped by the
+   pre-check rather than by memory of section 3.6. 01's post-check also adds `still_admin` (= 4), which is 8.2 #4.
+2. **Pre-checks added to every rollback.** Sections 3.4, 4.5 and 5.5 give only the CHANGE and an after-count. Each
+   `*_rollback.sql` now has the full 2.4 shape: a `pending_rollback` count; for 02 a "still exactly as inserted"
+   count; for 03 two conflict probes (a logged `id` already present in `campaign_worker_ou`; a logged
+   `(ou_id, worker_id)` already present under another id), each expected 0 rows, because either would make the
+   re-insert skip or abort.
+3. **00 and 99 are wrapped in `BEGIN`/`COMMIT` and carry PRE-/POST-CHECK sections.** Section 2.3 shows bare DDL.
+   The post-check of 00 asserts `relrowsecurity = t`, `has_table_privilege` = f for `anon`/`authenticated` and
+   `has_sequence_privilege` = f (the 6.2 item 1 checks, moved into the file). 00's comment also cites the
+   sequence default privileges (`baseline_schema.sql:33373-33376`) alongside the table ones (`:33393-33396`),
+   since the `REVOKE ... ON SEQUENCE` is there for that reason. 99's pre-check computes `days_since_last_run`
+   for retention condition 3.
+4. **90 evaluates the audit-log counts through a guard.** Section 7 step 3 runs 90 *before* 00, and 8.1 says it can
+   run "at any later date" (i.e. after 99). A plain `SELECT` on `_oux_hygiene_log` would then abort the file under
+   `ON_ERROR_STOP`, so section E of 90 evaluates #3, #27 and the 02/03 logged counts via
+   `to_regclass('public._oux_hygiene_log')` + `query_to_xml()` (STABLE, so the `CASE` stays lazy) and returns
+   NULL when the table is absent. The same counts appear as plain `SELECT`s in the 01/02/03 post-checks.
+5. **H5 and H6 wrapping in 90.** "Wrapped in count(*)" is applied literally to H1, H3 and H7. H5 verbatim is already
+   a `COUNT(*)`, so re-wrapping would always return 1; it is labelled, not wrapped. H6 verbatim returns one row
+   per campaign, so `count(*)` alone would not yield the 1,162 of #29; it is wrapped as
+   `count(*) AS h6_campaigns_with_unallocated, sum(count) AS h6_members_with_no_unit`, with the verbatim text
+   unchanged inside the subquery.
+6. **H1/H3 text.** 03's pre-/post-checks use the wrappers exactly as section 5.2 prints them (which drops the
+   appendix's `COUNT(*) AS units` output column); 90 carries the appendix 8.4 text verbatim, alias included.
+   Same predicate, same partition, same counts.
+7. **No production identifier in the folder.** Section 7 step 2 prints the production host in the `psql` example;
+   the README writes `<production postgres connection string>` instead, so nothing under `scripts/data-hygiene/`
+   can be pointed at production by copy-paste. The dev ref is likewise not repeated (the plan's section 6 has it).
+8. **Idempotency wording for 99.** `DROP TABLE IF EXISTS` is idempotent, but 99's pre-checks read the table and
+   error if it is already gone; the header says so rather than claiming a clean re-run.
+
+No schema discrepancy was found (see the confirmation table below). One line-number drift only:
+`campaign_organisers_pkey` is the two-line statement at `:19031-19032` (plan cites `:19031`).
+
+### Implementer notes
+
+**Schema confirmed against `supabase/migrations/20260908050000_baseline_schema.sql` before writing:**
+
+| Object the SQL relies on | Baseline lines | Confirmed |
+|---|---|---|
+| `user_profiles` (`user_id uuid`, `role varchar(10)` CHECK `admin/user/viewer`, `work_role varchar(30)` CHECK incl. `organiser`, `updated_at`) | `:9887-9900` | yes |
+| `trg_user_profiles_updated_at` BEFORE UPDATE | `:22641` | yes |
+| `campaign_organisers` (`id`, `campaign_id`, `organiser_id`, `campaign_role` DEFAULT `organiser` CHECK incl. `lead`, `reports_to_organiser_id`, `added_at`) | `:9470-9480` | yes |
+| UNIQUE `(campaign_id, organiser_id)` = `campaign_organisers_campaign_id_organiser_id_key` (02's `ON CONFLICT` target) | `:19026-19027` | yes |
+| `campaign_worker_ou` (`id`, `ou_id`, `worker_id`, `is_primary`, `created_at`, `assignment_source` CHECK `manual/rule`, `assigned_rule_id`) | `:9636-9645` | yes |
+| `campaign_worker_ou` PK `(id)` (03_rollback's `ON CONFLICT` target), UNIQUE `(ou_id, worker_id)`, `id` default `nextval` | `:19167`, `:19162`, `:18106` | yes |
+| `campaign_organising_units` (`ou_id`, `campaign_id`, `ou_type`, `parent_ou_id`, `is_group_container`, `ou_group_id`) | table DDL | yes |
+| `campaign_worker_membership` (`membership_id`, `campaign_id`, `worker_id`), UNIQUE `(campaign_id, worker_id)` | `:7698-7704`, `:19152` | yes |
+| `campaigns.organiser_id`, `is_standing`, `is_sms_episode` | `:9651-9683` | yes |
+| `organisers` PK `(organiser_id)` (02 FK probe) | `:19507` | yes |
+| `trg_check_no_worker_on_group_container`, `trg_check_worker_ou_group_exclusivity` BEFORE INSERT OR UPDATE OF `ou_id`; bodies return early on `ou_group_id IS NULL` and raise only for a *different* non-null group of the same type | `:22417`, `:22421`, `:1083-1103`, `:1209-1248` | yes -- 5.5's argument holds |
+| `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON TABLES TO anon/authenticated` (and `ON SEQUENCES`) | `:33393-33396` (`:33373-33376`) | yes -- 00's REVOKEs are required |
+
+**Validation performed (no database was connected to, anywhere):**
+
+- `psql` 17.6 is installed but was not used to connect. `pg_format`, `pgsanity`, `pglast` and `sqlparse` are not
+  installed; no offline parser was added.
+- Careful manual read of every file against the plan and the baseline DDL above.
+- `node -e` structural check over all nine `.sql` files (comments and string literals stripped first):
+  every change/rollback file contains exactly one `BEGIN;` and one `COMMIT;` in that order, 90 contains none;
+  parentheses balance in every file; every file's header carries the run order (`00 -> 02 -> 03 -> 01`) and the
+  hold on 01 and the not-a-migration line; every change file has PRE-CHECK / CHANGE / POST-CHECK; no UUID, no `@`,
+  no `<id column> = <number>` predicate and no project ref anywhere; each rollback references the exact
+  `script` and `action` literals its change file writes (`01_role_conversion`/`update`,
+  `02_backfill_campaign_organisers`/`insert`, `03_resolve_duplicate_placements`/`delete`) and 90 references all
+  three; the `_oux_hygiene_log` insert column list is the single string
+  `script, action, table_name, row_pk, before_row, after_row, note` in 01, 02 and 03, and every one of those
+  columns exists in 00's `CREATE TABLE`. Result: all checks passed.
+- `pnpm validate:migrations` from the repo root:
+  `Validated 3 Supabase migrations with unique 14-digit versions.` (exit 0) -- unaffected, as 2.1 predicts.
+- `pnpm lint` / `pnpm test` from `apps/organising-db` (8.3): test green (56 files, 732 tests passed); lint exits 1 with "✖ 294 problems (143 errors, 151 warnings)" -- every flagged path is an existing `apps/organising-db` source file, none of which this branch touches (the branch adds only files under `scripts/data-hygiene/` and this document), so the failure is pre-existing on `develop` and not introduced here. `pnpm build` was not run (no TypeScript changed; the instruction was not to start the app).
+- Not possible here: executing any script. The dev rehearsal (6.2) and the count evidence (6.3) are the verifier's.
+
+**Files (line counts):**
+
+```
+      76 oux-wp0.4/00_create_hygiene_log.sql
+      77 oux-wp0.4/01_role_conversion.sql
+      58 oux-wp0.4/01_rollback.sql
+     106 oux-wp0.4/02_backfill_campaign_organisers.sql
+      62 oux-wp0.4/02_rollback.sql
+     166 oux-wp0.4/03_resolve_duplicate_placements.sql
+      93 oux-wp0.4/03_rollback.sql
+     208 oux-wp0.4/90_verify_all.sql
+      56 oux-wp0.4/99_drop_hygiene_log.sql
+      81 oux-wp0.4/README.md
+       2 README.md
+     985 total
+```
+
+**Commits on `feat/oux-wp0.4-data-hygiene`:**
+
+- `9d6349d` feat(oux-wp0.4): add data-hygiene folder, README and audit-log create/drop scripts
+- `4d1eff0` feat(oux-wp0.4): script 01 role conversion (admin+organiser -> user) with rollback
+- `716c990` feat(oux-wp0.4): script 02 backfill campaign_organisers from campaigns.organiser_id with rollback
+- `b7c3c5e` feat(oux-wp0.4): script 03 resolve duplicate unit placements (H1, H3) with rollback
+- `2911e17` feat(oux-wp0.4): read-only verification suite 90_verify_all.sql
+- (this commit) feat(oux-wp0.4): record deviations, schema confirmation and validation in wp0.4.md section 12
 
 ## 13. Verification output
 

@@ -11,6 +11,7 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 - **Plan documents:** the plan and appendices were authored on branch `claude/organiser-ux-campaign-workflow-bi0uai` and were not on `develop`. WP0.1 merges them into its branch so later packages can cite them.
 - **Commands:** from `apps/organising-db`: `pnpm lint`, `pnpm test`, `pnpm build`. Root: `pnpm validate:migrations`.
 - **Branches:** `feat/oux-<wp-id>-<slug>` off `develop`; draft PR into `develop`; never `main`.
+- **Baseline (develop at 1b959b1, measured 2026-09-08):** `pnpm build` green; `pnpm test` 632 passing, 1 test file fails to load (`src/lib/sms/__tests__/rating-source-taxonomy.test.ts` reads `supabase/migrations/20260813120000_sms_source_taxonomy.sql`, which the baseline rebase moved to `migrations_legacy/`; a stale path, fixed in WP0.2); `pnpm lint` 143 errors / 151 warnings, all pre-existing. Per-package standard until the debt is cleared: every touched file lints clean and the total error count must not rise. Clearing the debt is a housekeeping task for the operator to authorise, not part of any work package.
 
 ## Ledger
 
@@ -20,7 +21,7 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 | 0.2 | Instrumentation and test harness | not started | | | | | — |
 | 0.3 | Defaults, copy and layout quick wins | not started | | | | | — |
 | 0.4 | Data hygiene scripts | not started | | | | | 2 |
-| 0.5 | Usability baseline pack | not started | | | | | — |
+| 0.5 | Usability baseline pack | PR draft | `feat/oux-wp0.5-usability-baseline-pack` | [#23](https://github.com/R3v3ill3/OffshoreAlliance/pull/23) | docs only: lint unchanged | — | — |
 | 1.1 | Module registry and workspace mode | not started | | | | | 1 |
 | 1.2 | Navigation driven by modules | not started | | | | | |
 | 1.3 | My campaigns home | not started | | | | | |

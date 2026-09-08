@@ -908,6 +908,77 @@ $ /usr/bin/grep -n "playwright" pnpm-lock.yaml | head -8
 4725:  playwright@1.56.1:
 ```
 
+### Verifier run 2 (after fix round 1) at 923c901
+
+```
+$ pnpm lint 2>&1 | tail -3
+✖ 294 problems (143 errors, 151 warnings)
+  7 errors and 16 warnings potentially fixable with the `--fix` option.
+
+ ELIFECYCLE  Command failed with exit code 1.
+```
+
+```
+$ pnpm test 2>&1 | /usr/bin/grep -E 'Test Files|Tests |FAIL'
+ Test Files  56 passed (56)
+      Tests  732 passed (732)
+```
+
+```
+$ pnpm exec tsc --noEmit -p tsconfig.json; echo "tsc exit $?"
+tsc exit 0
+```
+
+```
+$ pnpm build 2>&1 | tail -6
+├ ƒ /workers
+├ ƒ /workers/[id]
+├ ƒ /workload
+├ ƒ /worksites
+└ ƒ /worksites/[id]
+
+
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+```
+
+```
+$ env -u E2E_USER_EMAIL -u E2E_USER_PASSWORD pnpm e2e 2>&1 | tail -8; echo "e2e exit $?"
+Skipped: set E2E_USER_EMAIL and E2E_USER_PASSWORD (dev project dpnnmkhabysfdogllsyh only — never production) to run the signed-in e2e flows.
+
+Running 2 tests using 1 worker
+
+  -  1 [chromium] › tests/e2e/mobile-dialer.spec.ts:30:7 › Mobile dialer — happy path › volunteer can sign in, claim, dial, record outcome, advance
+  -  2 [chromium] › tests/e2e/wall-chart.spec.ts:23:7 › Wall chart — flow one › open a campaign from /campaigns and see the wall chart
+
+  2 skipped
+e2e exit 0
+```
+
+```
+$ git diff --stat dce0691..HEAD
+ apps/organising-db/package.json                    |  3 +-
+ .../src/app/(dashboard)/campaigns/[id]/page.tsx    | 31 ++++++----
+ .../campaigns/wall-chart/inline-rating-popover.tsx | 18 ++++--
+ .../src/lib/analytics/__tests__/events.test.ts     | 30 +++++++++-
+ apps/organising-db/src/lib/analytics/events.ts     | 19 +++++++
+ .../sms/__tests__/rating-source-taxonomy.test.ts   | 64 ++++++++++++++++++---
+ docs/organiser-ux-review/wp/wp0.2.md               | 66 +++++++++++++++++++++-
+ 7 files changed, 201 insertions(+), 30 deletions(-)
+```
+
+```
+$ git log --oneline dce0691..HEAD
+923c901 fix(oux-wp0.2): record fix round 1 in the work package
+648ec7a fix(oux-wp0.2): make campaign_tab_opened fire and bound the taxonomy slices
+```
+
+```
+$ git status --short
+```
+
+
 ## 8. Reviewer findings
 
 _(reviewer)_

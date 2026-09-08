@@ -920,6 +920,80 @@ Only `campaign-wall-chart.tsx` uses `localStorage` (5 occurrences, pre-existing)
 (no output)
 ```
 
+### Verifier run 2 (after fix round 1) at 128fef9
+
+**1. `pnpm lint 2>&1 | tail -3` (from `apps/organising-db`)**
+
+```
+✖ 294 problems (143 errors, 151 warnings)
+  7 errors and 16 warnings potentially fixable with the `--fix` option.
+
+ ELIFECYCLE  Command failed with exit code 1.
+```
+
+Matches the documented baseline exactly (294 problems / 143 errors / 151 warnings).
+
+**2. `pnpm test 2>&1 | grep -E 'Test Files|Tests |FAIL'` (from `apps/organising-db`)**
+
+```
+ FAIL  src/lib/sms/__tests__/rating-source-taxonomy.test.ts [ src/lib/sms/__tests__/rating-source-taxonomy.test.ts ]
+ Test Files  1 failed | 52 passed (53)
+      Tests  657 passed (657)
+```
+
+The one failing file errors at collection time (`Error: ENOENT: no such file or directory, open '.../supabase/migrations/20260813120000_sms_source_taxonomy.sql'`), not on a test assertion — it contributes 0 tests. All 657 executed tests pass. This file/migration is unrelated to WP0.3's diff (see stat below) and pre-existing.
+
+**3. `pnpm build 2>&1 | tail -6` (from `apps/organising-db`)**
+
+```
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+```
+
+Build completed successfully (route summary printed, no error output).
+
+**4. From repo root**
+
+`git diff --stat 36d1454..HEAD`
+
+```
+ .../src/app/(dashboard)/campaigns/[id]/page.tsx    |   2 +-
+ .../campaigns/bargaining/PostSettlementBanner.tsx  |   2 +-
+ .../campaign-employers-worksites-card.tsx          |   8 +-
+ .../src/components/campaigns/campaign-wizard.tsx   |   4 +-
+ .../campaigns/wall-chart/worker-detail-sheet.tsx   |  12 ++-
+ .../src/lib/device/__tests__/detect-mobile.test.ts |  35 ++++++
+ apps/organising-db/src/lib/device/detect-mobile.ts |  17 +++
+ apps/organising-db/src/proxy.ts                    |  18 +++-
+ docs/organiser-ux-review/wp/wp0.3.md               | 117 +++++++++++++++++----
+ 9 files changed, 180 insertions(+), 35 deletions(-)
+```
+
+`git diff --name-only feat/oux-wp0.1-decision-register..HEAD | grep -v -E '^apps/organising-db/src/|^docs/organiser-ux-review/'`
+
+```
+no files outside src/ and docs/
+```
+
+**5. `git log --oneline feat/oux-wp0.1-decision-register..HEAD`**
+
+```
+128fef9 fix(oux-wp0.3): drop stale "campaign overview" copy and dead text-xs
+3a35524 fix(oux-wp0.3): forward the device flag as a request header
+36d1454 docs(oux): WP0.3 verification output
+7bfe6e6 docs(oux-wp0.3): record deviations and implementer notes
+b0c3298 feat(oux-wp0.3): default the Workforce board to the list on touch devices
+b0d87af fix(oux-wp0.3): correct the wizard step-2 button and the worker sheet tabs
+46e4825 feat(oux-wp0.3): say "Unassigned" instead of "Unallocated" / "No Unit"
+bf606bc feat(oux-wp0.3): rename "Scope" to "Who's in", hide Named universes
+39ec662 feat(oux-wp0.3): put the wall chart tiles above the distribution charts
+26da657 fix(oux-wp0.3): make the build list force the wall chart view
+8f4a45b feat(oux-wp0.3): campaign pages open on the wall chart
+86cc4a4 docs(oux): fix ledger row columns
+adde96a docs(oux): WP0.3 plan, approved
+```
+
 ## 8. Reviewer findings
 
 _(reviewer)_

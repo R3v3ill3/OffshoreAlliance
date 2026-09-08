@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider, QueryCache, focusManager } from "@tan
 import { useState, useEffect, useRef, Suspense, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { AuthProvider } from "@/lib/supabase/auth-context";
+import { WorkspaceProvider } from "@/lib/workspace/use-workspace";
 import { DeviceProvider } from "@/contexts/device-context";
 import { resetClient, refreshSessionViaServer, getKnownExpiryMs } from "@/lib/supabase/client";
 import { forceLogoutToLogin, isLikelyAuthError } from "@/lib/supabase/session-recovery";
@@ -477,7 +478,9 @@ export function Providers({ children, isMobile }: { children: ReactNode; isMobil
         <Suspense fallback={null}>
           <PostHogPageView />
         </Suspense>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <WorkspaceProvider>{children}</WorkspaceProvider>
+        </AuthProvider>
       </QueryClientProvider>
     </DeviceProvider>
   );

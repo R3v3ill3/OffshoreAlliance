@@ -142,7 +142,13 @@ export function WorkerDetailSheet({
 }: WorkerDetailSheetProps) {
   return (
     <Tabs defaultValue="details" className="mt-2">
-      <TabsList className="grid grid-cols-5 w-full">
+      {/* Six triggers in a three-column grid: two tidy rows. The sheet is at
+          most sm:max-w-xl (~528px of content), which leaves 87px per cell at
+          six columns — too narrow for "Relationships" (101px) or "Development"
+          (99px), which cannot shrink because TabsTrigger is whitespace-nowrap.
+          Three columns give 173px (106px at a 375px-wide phone sheet). h-auto
+          releases TabsList's fixed h-9 so the second row is not clipped. */}
+      <TabsList className="grid grid-cols-3 w-full h-auto text-xs">
         <TabsTrigger value="details">Details</TabsTrigger>
         <TabsTrigger value="ratings">Activity</TabsTrigger>
         <TabsTrigger value="facts">Data fields</TabsTrigger>

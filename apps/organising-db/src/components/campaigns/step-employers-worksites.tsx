@@ -967,7 +967,7 @@ export function StepEmployersWorksites({
             disabled={isPending || !canContinue}
             className={showBackButton ? undefined : "ml-auto"}
           >
-            {isPending ? "Saving…" : (continueLabel ?? "Continue to workers")}
+            {isPending ? "Saving…" : (continueLabel ?? "Continue to agreements")}
           </Button>
         </div>
       </CardContent>

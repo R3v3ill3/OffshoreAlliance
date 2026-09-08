@@ -48,20 +48,53 @@ The app reads exactly three Supabase variables (`apps/organising-db/src/lib/supa
 
 ---
 
-## Migration workflow (manual)
+## Migration workflow
 
-1. Add a new migration file under `supabase/migrations/`.
-2. Apply to DEV and test on the develop preview:
+The migration ledgers were rebased on 2026-09-08. DEV, PROD, and the repository
+now share the same three canonical baseline versions:
+
+- `20260908050000_baseline_schema.sql`
+- `20260908050100_baseline_reference_data.sql`
+- `20260908050200_baseline_platform_config.sql`
+
+The files in `supabase/migrations_legacy/` are audit-only and must never be
+replayed.
+
+For every schema change:
+
+1. Create exactly one new file under `supabase/migrations/` named
+   `YYYYMMDDHHMMSS_snake_case_description.sql`. Do not create a different file
+   or version for each environment.
+2. Validate migration names and versions:
    ```bash
-   supabase link --project-ref dpnnmkhabysfdogllsyh
-   supabase db push
+   pnpm validate:migrations
    ```
-3. Merge `develop` -> `main` (and keep prod fixes flowing back into `develop`).
-4. Apply the same migrations to PROD:
+3. Link DEV, verify history alignment, dry-run, then apply:
    ```bash
-   supabase link --project-ref gteygwfgjvczanmrwgbr
-   supabase db push
+   npx supabase link --project-ref dpnnmkhabysfdogllsyh
+   env -u SUPABASE_DB_PASSWORD npx supabase migration list
+   env -u SUPABASE_DB_PASSWORD npx supabase db push --dry-run
+   env -u SUPABASE_DB_PASSWORD npx supabase db push
    ```
+4. Test the DEV deployment and preview application.
+5. Promote the same committed migration file through the normal
+   `develop` -> `main` flow.
+6. Link PROD, verify the same history, dry-run, then apply:
+   ```bash
+   npx supabase link --project-ref gteygwfgjvczanmrwgbr
+   env -u SUPABASE_DB_PASSWORD npx supabase migration list
+   env -u SUPABASE_DB_PASSWORD npx supabase db push --dry-run
+   env -u SUPABASE_DB_PASSWORD npx supabase db push
+   ```
+7. Regenerate types from PROD:
+   ```bash
+   SUPABASE_PROJECT_REF=gteygwfgjvczanmrwgbr pnpm gen:types
+   ```
+
+Do not use independent `apply_migration` calls for normal deployments. They
+generate environment-specific ledger versions and recreate the mismatch that
+the baseline repaired. `supabase migration repair` is a recovery-only command;
+take a fresh ledger backup before using it.
 
 Generate TypeScript types from either project:
 ```bash
@@ -71,15 +104,13 @@ SUPABASE_PROJECT_REF=gteygwfgjvczanmrwgbr pnpm gen:types   # prod (default)
 
 ---
 
-## Re-seeding DEV from PROD later
+## Re-seeding DEV later
 
-Re-run the clone (full schema + base data, campaign data stripped, logins copied):
-the procedure is dump `--schema-only` + dump `--data-only` from prod, load into dev
-with `session_replication_role = replica`, then truncate the campaign/activity/plan/
-assessment/call/email-activity tables. Reset sequences afterward
-(`setval` to `max(id)`), and restore framework rows that share a nullable
-`campaign_id` (e.g. global `call_objections`, the 4 global `gate_definitions`,
-`soc_stage_content`).
+The canonical migrations now replay successfully from an empty PostgreSQL 17
+database and include deterministic reference data. Use them for a fresh DEV
+schema. If DEV also needs a copy of selected PROD business data or auth users,
+perform that as a separately reviewed data-clone operation; do not add those
+rows or credentials to the migration baseline.
 
 ---
 

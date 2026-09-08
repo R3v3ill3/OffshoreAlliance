@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       _archive_call_attempt_outcomes_20260613: {
@@ -8304,6 +8279,9 @@ export type Database = {
           list_id: number
           name: string
           source: string
+          source_sms_gone_at: string | null
+          source_sms_list_id: number | null
+          source_sms_survey_id: number | null
           status: string
           updated_at: string
         }
@@ -8324,6 +8302,9 @@ export type Database = {
           list_id?: number
           name: string
           source?: string
+          source_sms_gone_at?: string | null
+          source_sms_list_id?: number | null
+          source_sms_survey_id?: number | null
           status?: string
           updated_at?: string
         }
@@ -8344,6 +8325,9 @@ export type Database = {
           list_id?: number
           name?: string
           source?: string
+          source_sms_gone_at?: string | null
+          source_sms_list_id?: number | null
+          source_sms_survey_id?: number | null
           status?: string
           updated_at?: string
         }
@@ -8487,6 +8471,48 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "workers_view"
             referencedColumns: ["worker_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_lists_source_sms_list_id_fkey"
+            columns: ["source_sms_list_id"]
+            isOneToOne: false
+            referencedRelation: "sms_lists"
+            referencedColumns: ["list_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_lists_source_sms_list_id_fkey"
+            columns: ["source_sms_list_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_summary"
+            referencedColumns: ["list_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_lists_source_sms_list_id_fkey"
+            columns: ["source_sms_list_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_chat_session_report"
+            referencedColumns: ["list_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_lists_source_sms_survey_id_fkey"
+            columns: ["source_sms_survey_id"]
+            isOneToOne: false
+            referencedRelation: "sms_surveys"
+            referencedColumns: ["survey_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_lists_source_sms_survey_id_fkey"
+            columns: ["source_sms_survey_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_ballot_tally"
+            referencedColumns: ["survey_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_lists_source_sms_survey_id_fkey"
+            columns: ["source_sms_survey_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_survey_funnel"
+            referencedColumns: ["survey_id"]
           },
         ]
       }
@@ -8846,6 +8872,7 @@ export type Database = {
       }
       campaigns: {
         Row: {
+          archived_at: string | null
           bargaining_commenced_at: string | null
           campaign_id: number
           campaign_scope: string | null
@@ -8872,6 +8899,7 @@ export type Database = {
           wizard_bargaining_triage: string | null
         }
         Insert: {
+          archived_at?: string | null
           bargaining_commenced_at?: string | null
           campaign_id?: number
           campaign_scope?: string | null
@@ -8898,6 +8926,7 @@ export type Database = {
           wizard_bargaining_triage?: string | null
         }
         Update: {
+          archived_at?: string | null
           bargaining_commenced_at?: string | null
           campaign_id?: number
           campaign_scope?: string | null
@@ -15876,6 +15905,7 @@ export type Database = {
       }
       sms_lists: {
         Row: {
+          archived_at: string | null
           assessment_campaign_id: number | null
           blackout_override: boolean
           blackout_override_reason: string | null
@@ -15901,6 +15931,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          archived_at?: string | null
           assessment_campaign_id?: number | null
           blackout_override?: boolean
           blackout_override_reason?: string | null
@@ -15926,6 +15957,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          archived_at?: string | null
           assessment_campaign_id?: number | null
           blackout_override?: boolean
           blackout_override_reason?: string | null
@@ -16416,6 +16448,7 @@ export type Database = {
       }
       sms_relays: {
         Row: {
+          archived_at: string | null
           bridge_replies: boolean
           campaign_id: number | null
           confirmation_template: string | null
@@ -16433,6 +16466,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          archived_at?: string | null
           bridge_replies?: boolean
           campaign_id?: number | null
           confirmation_template?: string | null
@@ -16450,6 +16484,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          archived_at?: string | null
           bridge_replies?: boolean
           campaign_id?: number | null
           confirmation_template?: string | null
@@ -25031,6 +25066,7 @@ export type Database = {
       }
       vw_sms_campaign_summary: {
         Row: {
+          archived_at: string | null
           blackout_override: boolean | null
           blocked_count: number | null
           campaign_id: number | null
@@ -26892,9 +26928,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       campaign_phase_enum: [

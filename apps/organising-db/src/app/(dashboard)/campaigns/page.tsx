@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import dynamic from "next/dynamic";
-import { Plus, Wand2, ExternalLink, Trash2, Megaphone, FileStack, Mail, MessageSquare, Phone, Upload, Settings as SettingsIcon } from "lucide-react";
+import { Plus, Wand2, ExternalLink, Trash2, Megaphone, FileStack, LayoutList, Upload, Settings as SettingsIcon } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -381,17 +381,14 @@ export default function CampaignsPage() {
                 <Plus className="h-4 w-4 shrink-0" />
                 Create campaign
               </button>
-              <Link href="/campaigns/email-wizard" className={tabBarActionClassName}>
-                <Mail className="h-4 w-4 shrink-0" />
-                Email wizard
-              </Link>
-              <Link href="/campaigns/phone-wizard" className={tabBarActionClassName}>
-                <Phone className="h-4 w-4 shrink-0" />
-                Phone wizard
-              </Link>
-              <Link href="/sms" className={tabBarActionClassName}>
-                <MessageSquare className="h-4 w-4 shrink-0" />
-                SMS tools
+              {/* One link for every kind of outreach. The Email and
+                  Phone wizards and the SMS hub are all reachable from
+                  the Actions hub's Start something cards; their URLs
+                  still resolve, and the campaigns empty state still
+                  lists them. */}
+              <Link href="/actions" className={tabBarActionClassName}>
+                <LayoutList className="h-4 w-4 shrink-0" />
+                Actions
               </Link>
               <button
                 type="button"

@@ -931,7 +931,149 @@ constant (`src/lib/campaign/lead-role.ts`) that WP1.6 replaces.
 
 ## 6. Deviations from plan
 
-_(implementer keeps this list)_
+Implemented 2026-09-09 on `feat/oux-wp1.3-my-campaigns` (stacked on WP1.2 → WP1.6 → WP1.5 →
+WP1.1). Every departure from §2, with the reason:
+
+1. **No `src/lib/campaign/lead-role.ts` and no `lead-role.test.ts`** (§2.2, §2.10.1). Per §5
+   Q2 the team row uses WP1.6's shared constant: `useMyCampaigns` reads
+   `useAuth().isLeadOrganiser`, which `auth-context.tsx:421` derives from `LEAD_WORK_ROLES` in
+   `src/lib/auth/work-role-flags.ts` (`lead_organiser`, `coordinator`,
+   `industrial_coordinator`). Nothing is duplicated; the six-value coverage already lives in
+   `src/lib/auth/__tests__/work-role-flags.test.ts`.
+2. **No edits to `sidebar.tsx`, `mobile-nav.tsx` or `header.tsx`** (§2.1.5, §2.11). WP1.2's
+   nav model already renders the My campaigns row in organiser mode and hides it in full mode;
+   the only nav change is `MY_CAMPAIGNS_HREF` in `src/lib/nav/nav-model.ts` flipping from
+   `"/campaigns"` to `"/my-campaigns"`. `pageTitles["/my-campaigns"] = "My campaigns"` was
+   already present at `header.tsx:25` — verified, not re-added. Consequences, exactly:
+   - `src/lib/nav/__tests__/__snapshots__/nav-model.test.ts.snap`: six lines changed, all
+     `"href": "/campaigns"` → `"/my-campaigns"` on the `my_campaigns` row of organiser-mode
+     cases 3, 4, 5, 6, 8 and 9. Nothing else in the snapshot moved; the full-mode cases 1, 2
+     and 7 are byte-identical.
+   - `nav-model-fixture.ts`: **unchanged** (it pins full mode only).
+   - `nav-reachability.test.ts`: `ALL_NAV_HREFS` expectation gains `/my-campaigns`; the
+     organiser default row's href becomes `/my-campaigns`; and the "only `/sms/inbox` needs
+     Show everything" assertions become `["/campaigns", "/sms/inbox"]` — see item 3.
+   - `tests/e2e/organiser-nav.spec.ts`: unchanged (it locates the row by name, not href).
+3. **"See all campaigns" is rendered on every render of `/my-campaigns`, not only in the
+   empty state** (§2.7 item 5). Flipping the href made `/campaigns` a full-mode row that
+   organiser mode no longer shows, which failed WP1.2's decision-7 reachability proof. The
+   page's header row now carries the link (plan 3.6 vocabulary) so the portfolio list is one
+   click from the My campaigns row, and the proof records `/campaigns` as the second documented
+   exception next to `/sms/inbox`, with both in-page paths asserted.
+4. **The "last activity" clock is react-query's `dataUpdatedAt`, not `Date.now()`** (§2.4.2
+   `now` argument). `eslint-plugin-react-hooks` in this repo flags `Date.now()` during render
+   (`react-hooks/purity`) and `setState` inside an effect (`react-hooks/set-state-in-effect`);
+   the moment the rows arrived is the honest "now" for their ages and needs neither.
+5. **`useCampaignLastActivity` is called with `mine` and `team` ids together** (§2.4.2 "for
+   every card"). §2.3.1 lists last activity on the team row, so both go in the one RPC call
+   (still one round trip; the function caps at 200 ids).
+6. **`useCampaignsAllStats([], { campaignIds: [] })` issues no query** and reports
+   `isLoading: false` (§2.3.1 did not say). A filtered call with nothing to filter on has
+   nothing to fetch. The unfiltered path is byte-identical to before, including its keys.
+7. **Migration SQL differs from the §2.4.1 listing in four ways**, all in
+   `supabase/migrations/20260910090000_campaign_last_activity.sql`: `SECURITY INVOKER` is
+   stated explicitly rather than left as the default; every table is schema-qualified
+   (`public.…`) even with `search_path` pinned; a `COMMENT ON FUNCTION` is added; and the
+   slice is `unnest((coalesce(p_campaign_ids, ARRAY[]::integer[]))[1:200])` — the listing's
+   `unnest(coalesce(…)[1:200])` is not valid PostgreSQL (a subscript on a function call needs
+   the extra parentheses).
+8. **Q2's `.or()` omits the `campaign_id.in.()` arm when the roster is empty** (§2.2).
+   PostgREST rejects an empty `in.()` list; a plain organiser with no roster rows still gets
+   the owner-column arm.
+9. **`pendingReviewHref` and `roleCheckHref` are exported from `needs-attention.ts`** (§2.5.2
+   had the strings inline) so the tests pin them by name.
+10. **`MyCampaign.teamOrganiserIds` exists on both groups** (`[]` for `mine`) rather than only
+    on `team` (§2.2.1), so the two arrays share one type.
+11. **Test A's `toHaveURL` uses a 30 s timeout** (§2.10.3 listing used the default). Same
+    reason as the WP0.2 spec's note about cold preview deployments; the 10 s budget assertion
+    is unchanged and still comes after the visibility assertions.
+12. The New campaign button and the shared dialog render only when `canWrite` (§2.6 gates the
+    button; the dialog is gated too so a viewer mounts nothing it cannot use).
+
+**Where every number on a card comes from** (§2.3, no new computation):
+
+| Card label | Value | Existing computation |
+|---|---|---|
+| People | `stats.namedWorkers` | `useCampaignsAllStats.ts` — `s.namedWorkers++` per `campaign_worker_membership` row |
+| In a unit | `stats.workersInAnyOu` | `useCampaignsAllStats.ts` — distinct `worker_id` in `campaign_worker_ou`, mapped through `campaign_organising_units.ou_id` |
+| Rated | `ratedCount(stats.ratings)` = `r1+r2+r3+r4` | `useCampaignsAllStats.ts` — buckets from `campaign_worker_rating_summary.cumulative_rating`; M2 tested |
+| Leaders | `stats.leadershipTotal` | `useCampaignsAllStats.ts` — `delegate`/`Activist`/`contact` role names plus `is_bargaining_rep`; the `/campaigns` "Leadership" stat |
+| Rating bar | `toRatingBarBuckets(stats.ratings)` over `ratingBarTotal(stats)` = `namedWorkers` | `CompactRatingsBar` (`unit-summary-metrics.tsx`), M1/M3 tested |
+| Last activity | `campaign_last_activity()` row, `formatLastActivity` | new read-only function (§2.4.1), F1–F4 tested |
+| Needs attention counts | `buildNeedsAttention` | rows from the same predicates as `pending-review-widget.tsx`, `ResumeBanner.tsx`, `EmailResumeBanner.tsx`, `useRoleCheckCount`; N1–N8 tested |
+
+### Implementer notes
+
+**Commits** (all `feat(oux-wp1.3):`):
+
+- `0322bf3` — migration + the five pure modules and their 48 vitest cases
+- `6a527bf` — `CreateCampaignDialog` and badge variants extracted; banners call `resume-links`
+- `2a8209b` — `/my-campaigns` page, hooks, components, landing gate, redirects, R6 invalidate
+- `8ef6689` — `MY_CAMPAIGNS_HREF` flip, nav test/snapshot updates, flow one rewritten
+
+**New files** (app paths relative to `apps/organising-db/`):
+
+- `supabase/migrations/20260910090000_campaign_last_activity.sql` — the migration
+- `src/lib/workspace/landing.ts`, `src/lib/workspace/__tests__/landing.test.ts`
+- `src/lib/campaign/my-campaigns.ts`, `my-campaign-metrics.ts`, `resume-links.ts`,
+  `needs-attention.ts` and their four `__tests__/*.test.ts`
+- `src/lib/hooks/useMyCampaigns.ts`
+- `src/components/campaigns/campaign-badge-variants.ts`, `create-campaign-dialog.tsx`
+- `src/components/campaigns/my/my-campaign-card.tsx`, `my-campaigns-grid.tsx`,
+  `my-campaign-team-row.tsx`, `needs-attention-list.tsx`
+- `src/app/(dashboard)/my-campaigns/page.tsx`
+
+**Changed files:** `src/app/page.tsx` (rewritten as the gate), `src/app/(auth)/login/page.tsx`,
+`src/app/auth/set-password/page.tsx`, `src/lib/supabase/middleware.ts`,
+`src/app/(dashboard)/campaigns/page.tsx` (dialog and badge maps only; the strip is untouched),
+`src/lib/hooks/useCampaignsAllStats.ts`, `src/lib/nav/nav-model.ts`,
+`src/lib/nav/__tests__/nav-reachability.test.ts`,
+`src/lib/nav/__tests__/__snapshots__/nav-model.test.ts.snap`,
+`src/components/campaigns/pending-review-tab.tsx`,
+`src/components/phone/orchestrator/ResumeBanner.tsx`,
+`src/components/email/orchestrator/EmailResumeBanner.tsx`, `tests/e2e/wall-chart.spec.ts`,
+`tests/e2e/global-setup.ts`.
+
+**Gates run from `apps/organising-db`** (2026-09-09, before the migration is applied anywhere):
+
+- `pnpm exec eslint <every touched file>` — 0 problems
+- `pnpm test` — 70 files, 932 tests passed (six nav snapshot lines updated, href only)
+- `pnpm exec tsc --noEmit -p tsconfig.json` — clean
+- `pnpm build` — compiled; `ƒ /my-campaigns` registered
+- `env -u E2E_USER_EMAIL -u E2E_USER_PASSWORD -u E2E_ADMIN_EMAIL -u E2E_ADMIN_PASSWORD pnpm e2e`
+  — 10 skipped, exit 0
+- repo root `pnpm validate:migrations` — "Validated 7 Supabase migrations"
+
+**Notes for the verifier and reviewer:**
+
+- The `.rpc("campaign_last_activity", …)` call in `useMyCampaigns.ts` typechecks because
+  `createClient()` returns an untyped `SupabaseClient` (same as `get_workspace_defaults` in
+  WP1.1). After `gen:types` the entry appears in `packages/db-types/generated.ts`; no cast to
+  remove.
+- The function reads seven tables, each with `FOR SELECT TO "authenticated" USING (true)` in
+  the baseline: `campaign_activity_ratings` (`:26949`), `campaign_activities` (`:26945`),
+  `call_attempts` (`:26681`), `call_list_items` (`:26689`), `call_lists` (`:26697`),
+  `sms_conversations` (`:26821`), `campaign_worker_lists` (`:26737`). EXECUTE is granted to
+  `authenticated` and `service_role` only; PUBLIC and `anon` are revoked.
+- Nothing in this package was run against a database. The migration is unapplied.
+
+**Verifier hand-off, in order:**
+
+1. `supabase link` / confirm the linked project is **dev** `dpnnmkhabysfdogllsyh` (never
+   `gteygwfgjvczanmrwgbr`).
+2. `supabase db push --dry-run` → expect only `20260910090000_campaign_last_activity.sql`;
+   then `supabase db push`.
+3. Repo root: `SUPABASE_PROJECT_REF=dpnnmkhabysfdogllsyh pnpm gen:types`; confirm
+   `campaign_last_activity` appears under `Functions` in `packages/db-types/generated.ts`.
+4. `apps/organising-db`: `pnpm exec tsc --noEmit -p tsconfig.json`, `pnpm test`, `pnpm build`.
+5. Credentialled e2e against this branch's Vercel preview: `E2E_BASE_URL=<preview>
+   E2E_USER_EMAIL=… E2E_USER_PASSWORD=… E2E_ADMIN_EMAIL=… E2E_ADMIN_PASSWORD=… pnpm e2e`.
+   The timed flow one is `wall-chart.spec.ts` "sign in and reach a wall chart in under ten
+   seconds"; it reports which of the three landing branches it took only by its URL, so note
+   the account's mode. Run it in both modes if the operator can flip the account (the
+   organiser-nav spec's admin PATCH is the write path).
+6. Prefs reset check: after the run, `GET /api/admin/users` must show the e2e user's
+   `workspace_prefs` as `{}` (the organiser-nav spec asserts this in its `finally`).
 
 ## 7. Verification output
 

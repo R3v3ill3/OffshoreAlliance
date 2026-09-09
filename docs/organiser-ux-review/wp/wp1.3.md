@@ -1077,7 +1077,251 @@ WP1.1). Every departure from §2, with the reason:
 
 ## 7. Verification output
 
-_(verifier pastes raw output)_
+Verifier run 2026-09-09 at a5f3197; migration applied to dev; preview https://offshore-alliance-42qbtrjx4-reveille-strategy.vercel.app
+
+### 1. project-ref and migration validation
+
+```
+$ cat supabase/.temp/project-ref
+dpnnmkhabysfdogllsyh
+
+$ pnpm validate:migrations
+> offshore-alliance-monorepo@ validate:migrations
+> node scripts/validate-supabase-migrations.mjs
+Validated 7 Supabase migrations with unique 14-digit versions.
+```
+
+Green. project-ref confirmed dev before any CLI command; 7 migrations validated.
+
+### 2. Migration list, dry-run, push
+
+```
+$ env -u SUPABASE_DB_PASSWORD npx --no-install supabase migration list
+   Local          | Remote         | Time (UTC)
+  ----------------|----------------|---------------------
+   20260908050000 | 20260908050000 | 2026-09-08 05:00:00
+   20260908050100 | 20260908050100 | 2026-09-08 05:01:00
+   20260908050200 | 20260908050200 | 2026-09-08 05:02:00
+   20260909100000 | 20260909100000 | 2026-09-09 10:00:00
+   20260909120000 | 20260909120000 | 2026-09-09 12:00:00
+   20260909130000 | 20260909130000 | 2026-09-09 13:00:00
+   20260910090000 |                | 2026-09-10 09:00:00
+
+$ env -u SUPABASE_DB_PASSWORD npx --no-install supabase db push --dry-run
+DRY RUN: migrations will *not* be pushed to the database.
+Would push these migrations:
+ • 20260910090000_campaign_last_activity.sql
+Finished supabase db push.
+
+$ env -u SUPABASE_DB_PASSWORD npx --no-install supabase db push
+Do you want to push these migrations to the remote database?
+ • 20260910090000_campaign_last_activity.sql
+Applying migration 20260910090000_campaign_last_activity.sql...
+Finished supabase db push.
+
+$ env -u SUPABASE_DB_PASSWORD npx --no-install supabase migration list
+   Local          | Remote         | Time (UTC)
+  ----------------|----------------|---------------------
+   20260908050000 | 20260908050000 | 2026-09-08 05:00:00
+   20260908050100 | 20260908050100 | 2026-09-08 05:01:00
+   20260908050200 | 20260908050200 | 2026-09-08 05:02:00
+   20260909100000 | 20260909100000 | 2026-09-09 10:00:00
+   20260909120000 | 20260909120000 | 2026-09-09 12:00:00
+   20260909130000 | 20260909130000 | 2026-09-09 13:00:00
+   20260910090000 | 20260910090000 | 2026-09-10 09:00:00
+```
+
+Green. Before the push: 6 applied remote, `20260910090000` local-only, as expected. Dry-run named exactly that one file. Push applied cleanly, no password prompt at any point. After the push: all 7 local versions show a matching remote version.
+
+### 3. Function shape, grants, and an invoker-role probe
+
+```sql
+select proname, prosecdef, provolatile from pg_proc where proname = 'campaign_last_activity';
+→ [{"proname":"campaign_last_activity","prosecdef":false,"provolatile":"s"}]
+```
+
+`prosecdef = false` (SECURITY INVOKER, not DEFINER), `provolatile = 's'` (STABLE) — both as expected.
+
+```sql
+select grantee, privilege_type from information_schema.routine_privileges where routine_name='campaign_last_activity';
+→ [{"grantee":"service_role","privilege_type":"EXECUTE"},
+   {"grantee":"authenticated","privilege_type":"EXECUTE"},
+   {"grantee":"postgres","privilege_type":"EXECUTE"}]
+```
+
+`authenticated` and `service_role` both hold EXECUTE (`postgres` is the owner); `anon` is absent, as expected.
+
+Rolled-back invoker-role probe, one call, `BEGIN … ROLLBACK`:
+
+```sql
+BEGIN;
+SET LOCAL ROLE authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"f7c048e2-ecfe-4e9c-8715-7f4c899f0d37","role":"authenticated"}';
+SELECT * FROM public.campaign_last_activity(ARRAY[1]);
+ROLLBACK;
+→ [{"campaign_id":1,"last_activity_at":"2026-06-05 06:52:57.550996+00","last_activity_kind":"rating"}]
+```
+
+Green. The function is callable as `authenticated` for campaign 1 and returns a real row (kind `rating`), consistent with the desktop screenshot's "Last activity: Rating 05 Jun 2026" in §9 below. Transaction rolled back — no state left behind.
+
+### 4. Type regeneration
+
+```
+$ SUPABASE_PROJECT_REF=dpnnmkhabysfdogllsyh pnpm gen:types
+> offshore-alliance-monorepo@ gen:types
+> supabase gen types typescript --project-id ${SUPABASE_PROJECT_REF:-gteygwfgjvczanmrwgbr} > packages/db-types/generated.ts
+
+$ git diff --stat packages/db-types/generated.ts
+ packages/db-types/generated.ts | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+$ git diff packages/db-types/generated.ts | grep -n "campaign_last_activity"
+9:+      campaign_last_activity: {
+```
+
+Green. `campaign_last_activity` appears under `Functions` in the regenerated types, an 8-line pure addition. Committed alone: **a5f3197** — "chore(oux-wp1.3): regenerate database types from dev".
+
+### 5. tsc, tests, lint, build (from `apps/organising-db`)
+
+```
+$ pnpm exec tsc --noEmit -p tsconfig.json; echo tsc $?
+tsc 0
+
+$ pnpm test 2>&1 | grep -E 'Test Files|Tests |FAIL'
+ Test Files  70 passed (70)
+      Tests  932 passed (932)
+
+$ pnpm lint 2>&1 | grep problems
+✖ 294 problems (143 errors, 151 warnings)
+
+$ pnpm build 2>&1 | tail
+├ ƒ /my-campaigns
+...
+ƒ Proxy (Middleware)
+ƒ  (Dynamic)  server-rendered on demand
+```
+
+Green on all four. tsc clean; 70 files / 932 tests passed (matches the implementer's gate numbers); lint at the exact baseline 294/143/151 (no new problems); build compiled cleanly with `ƒ /my-campaigns` registered as a route, no errors in the build log.
+
+### 6. Prefs before
+
+```sql
+select workspace_prefs from user_profiles where user_id = 'f7c048e2-ecfe-4e9c-8715-7f4c899f0d37';
+→ [{"workspace_prefs":{}}]
+```
+
+Green. `{}` as expected, before any e2e run.
+
+### 7. Preview deployment
+
+```
+$ gh api "repos/R3v3ill3/OffshoreAlliance/deployments?sha=ba0b490ef238952d9a5144e22ae9d5cfbe11bd62&per_page=3"
+→ one deployment, id 6347214371, environment "Preview"
+
+$ gh api "repos/R3v3ill3/OffshoreAlliance/deployments/6347214371/statuses"
+→ state "success", target_url "https://offshore-alliance-42qbtrjx4-reveille-strategy.vercel.app"
+```
+
+Green. The deployment for `ba0b490` was already built and marked `success` on first poll — no 15-minute wait needed. Preview URL: **https://offshore-alliance-42qbtrjx4-reveille-strategy.vercel.app**
+
+### 8. Credentialled e2e, full suite, both projects
+
+```
+$ cd apps/organising-db
+$ E2E_FOREIGN_CAMPAIGN_ID=3 E2E_BASE_URL=<preview> pnpm e2e
+Running 10 tests using 1 worker
+
+  ✓ 1 [chromium] actions-hub.spec.ts › open /actions, see the three start cards and the status buckets (7.2s)
+  ✓ 2 [chromium] actions-hub.spec.ts › /sms still works and lands on the hub with its params intact (3.5s)
+  - 3 [chromium] mobile-dialer.spec.ts › Mobile dialer — happy path (skipped, no volunteer creds)
+  ✓ 4 [chromium] organiser-nav.spec.ts › the ten rows, in order, with no organiser-mode furniture (3.4s)
+  ✓ 5 [chromium] organiser-nav.spec.ts › organiser mode shows four primary items, Organisation and Show everything (15.0s)
+  ✓ 6 [chromium] roles/unit-lifecycle-user.spec.ts › creates a campaign, then creates, renames and deletes a unit and the campaign (12.6s)
+  ✓ 7 [chromium] roles/unit-lifecycle-user.spec.ts › offers no write controls on a campaign the account cannot write to (4.4s)
+  ✘ 8 [chromium] wall-chart.spec.ts:61 › Wall chart — flow one, from the login submit › sign in and reach a wall chart in under ten seconds (30.6s)
+  ✓ 9 [chromium] wall-chart.spec.ts:103 › My campaigns › lists my campaigns and opens the wall chart (9.3s)
+  ✓ 10 [chromium-admin] roles/unit-lifecycle-admin.spec.ts › creates, renames and deletes a unit on any campaign (8.2s)
+
+  1) wall-chart.spec.ts:61 › sign in and reach a wall chart in under ten seconds
+     Test timeout of 30000ms exceeded.
+     Error: expect(page).toHaveURL(expected) failed
+     Expected pattern: /\/campaigns\/\d+(\?.*tab=workforce.*sub=wall-chart)?/
+     Received string:  "https://offshore-alliance-42qbtrjx4-reveille-strategy.vercel.app/campaigns"
+     Call log: - Expect "toHaveURL" with timeout 30000ms
+         29 × unexpected value "https://offshore-alliance-42qbtrjx4-reveille-strategy.vercel.app/campaigns"
+       at tests/e2e/wall-chart.spec.ts:89:24
+
+  1 failed, 1 skipped, 8 passed (2.0m)
+```
+
+**Red — test A ("flow one") fails, reproducibly.** The account resolved to full mode (`/campaigns`, not `/my-campaigns` or `/campaigns/{id}` — the operator has not flipped it to organiser mode for this run). The full-mode branch of the test asserts a campaign row is visible on `/campaigns` (it is — `error-context.md` shows one row, "testco1", with an `<a href="/campaigns/1?tab=workforce&sub=wall-chart">` link inside a `cursor:pointer` `<tr>`), clicks `rows.first()`, then waits up to 30 s for the URL to change. It never changes; the page stays at `/campaigns`. Re-ran the single test in isolation to rule out a fleet flake:
+
+```
+$ pnpm exec playwright test tests/e2e/wall-chart.spec.ts -g "sign in and reach a wall chart"
+✘ 1 [chromium] sign in and reach a wall chart in under ten seconds (30.1s)
+  Received string: ".../campaigns" (30 × unexpected value)
+```
+
+Same failure, same received URL, on a clean second run — not a flake. Test A's full-mode branch (`rows.first().click()` on the `<tr>`, `wall-chart.spec.ts:83`) does not navigate on this preview; the row is visibly clickable and contains a working `<a href>` per the DOM snapshot, but the click on the row element does not trigger the navigation the test expects. This is a regression relative to the acceptance criterion ("e2e flow one passes … in under ten seconds") and blocks that criterion; it is reported without further diagnosis or fix, per the verifier's scope.
+
+Test B ("My campaigns lists my campaigns and opens the wall chart") **passed** — the same "click the card's Open wall chart link, land on `/campaigns/{id}?...tab=workforce...sub=wall-chart`" round trip that test A's *organiser-mode* branches would exercise. Test C (the Overview round trip, appended to test B) also passed. The WP1.2 organiser round trip (`organiser-nav.spec.ts`, test 5) passed, including its own PATCH-based mode flip and reset. All other non-skipped specs passed (9 of 10; 1 skipped for missing volunteer creds, expected).
+
+Post-run checks:
+
+```sql
+select workspace_prefs from user_profiles where user_id = 'f7c048e2-ecfe-4e9c-8715-7f4c899f0d37';
+→ [{"workspace_prefs":{}}]
+
+select campaign_id, name from campaigns where name like 'WP1.6%';
+→ []
+```
+
+Both green: prefs are `{}` after the run (the organiser-nav spec's own reset held), and no leftover `WP1.6…` campaigns from the role-lifecycle specs' cleanup.
+
+### 9. Landing evidence
+
+A throwaway script (`apps/organising-db/test-results/wp1.3-landing-evidence.mjs`, git-ignored, not committed) drove the three landing scenarios using the storage states `global-setup` already wrote (`tests/e2e/.auth/user.json`, `tests/e2e/.auth/admin.json`) and the same admin `PATCH /api/admin/update-user` body the WP1.2 spec uses.
+
+```json
+{
+  "fullModeUrl": "https://offshore-alliance-42qbtrjx4-reveille-strategy.vercel.app/campaigns",
+  "setOrganiserModeOk": true,
+  "organiserModeLandingUrl": "https://offshore-alliance-42qbtrjx4-reveille-strategy.vercel.app/campaigns/1?tab=workforce&sub=wall-chart",
+  "desktopShotUrl": "https://offshore-alliance-42qbtrjx4-reveille-strategy.vercel.app/my-campaigns",
+  "mobileShotUrl": "https://offshore-alliance-42qbtrjx4-reveille-strategy.vercel.app/my-campaigns",
+  "resetOk": true,
+  "workspacePrefsAfterReset": {}
+}
+```
+
+- **(a) Full mode, `goto /`:** settled at `/campaigns`. Expected, matches landing.ts L1.
+- **(b) Organiser mode (after the admin PATCH), `goto /`:** settled at `/campaigns/1?tab=workforce&sub=wall-chart` — **not** `/my-campaigns`. Per the `?from=landing` rule (L4/§2.1.4): the e2e account owns exactly one dev campaign, so the neutral gate at `/` applied `shouldAutoOpenSingleCampaign` and sent it straight to the chart rather than to `/my-campaigns`. This is the documented behaviour for a single-campaign organiser, not a defect — it is the same branch test A's organiser-mode path (untested above, since the account was in full mode for the e2e run) would take.
+- `/my-campaigns` desktop screenshot (1280×800): saved to `/tmp/oux-plans/shots/wp1.3-my-campaigns.png`. Shows one card ("testco1", `bargaining` / `active` pills), the four numbers (95 People, 95 In a unit, 61 Rated, 10 Leaders), the rating-distribution bar, "Last activity: Rating 05 Jun 2026", an "Open wall chart" link, a "Needs attention" section ("5 leaders to check — testco1"), "See all campaigns", and a "New campaign" button. Matches the expected content exactly.
+- iPhone-13 emulation screenshot: saved to `/tmp/oux-plans/shots/wp1.3-my-campaigns-mobile.png` (1170×1992). Same card content, reflowed for mobile; nothing clipped or missing.
+- Prefs reset to `{}` via the admin API (script's own `resetOk: true`), confirmed independently by SQL:
+
+```sql
+select workspace_prefs from user_profiles where user_id = 'f7c048e2-ecfe-4e9c-8715-7f4c899f0d37';
+→ [{"workspace_prefs":{}}]
+```
+
+Green.
+
+### Summary table
+
+| Step | Result | Key values |
+|---|---|---|
+| 1. project-ref / validate:migrations | 🟢 green | dev ref confirmed; 7 migrations validated |
+| 2. migration list / dry-run / push | 🟢 green | 6→7 applied remote; dry-run named exactly `20260910090000_campaign_last_activity.sql` |
+| 3. function shape / grants / invoker probe | 🟢 green | `prosecdef=false`, `provolatile=s`; grants `authenticated`+`service_role` only; probe row for campaign 1, kind `rating` |
+| 4. type regeneration | 🟢 green | +8 lines, `campaign_last_activity` present; committed **a5f3197** |
+| 5. tsc / test / lint / build | 🟢 green | tsc 0; 70 files/932 tests passed; lint 294/143/151 (baseline); build ok, `/my-campaigns` registered |
+| 6. prefs before | 🟢 green | `{}` |
+| 7. preview deployment | 🟢 green | `success`, https://offshore-alliance-42qbtrjx4-reveille-strategy.vercel.app |
+| 8. e2e full suite | 🔴 **red** | 8 passed, 1 failed (test A, "flow one", full-mode branch — row click does not navigate; reproduced on a clean re-run), 1 skipped; test B/C, WP1.2 organiser round trip, and both role-coverage specs all passed; prefs and cleanup both verified after |
+| 9. landing evidence | 🟢 green | full mode → `/campaigns`; organiser mode (1 campaign) → `/campaigns/1?tab=workforce&sub=wall-chart` per `?from=landing`/L4; both screenshots captured with full expected content; prefs reset to `{}` and confirmed by SQL |
+
+**Commits this run:** `a5f3197` (types), and this documentation commit (below).
 
 ## 8. Reviewer findings
 

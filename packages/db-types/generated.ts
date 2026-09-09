@@ -18308,6 +18308,24 @@ export type Database = {
         }
         Relationships: []
       }
+      user_hint_dismissals: {
+        Row: {
+          dismissed_at: string
+          hint_id: string
+          user_id: string
+        }
+        Insert: {
+          dismissed_at?: string
+          hint_id: string
+          user_id: string
+        }
+        Update: {
+          dismissed_at?: string
+          hint_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_oauth_connections: {
         Row: {
           access_token_ct: string | null

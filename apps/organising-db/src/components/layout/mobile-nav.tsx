@@ -1,20 +1,29 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Menu, LogOut, RefreshCcw, Loader2 } from "lucide-react";
-import { navItems, adminItems, allNavHrefs } from "./sidebar";
-import { isNavItemActive } from "@/lib/nav/active-nav";
+import { Building2, ChevronDown, Eye, Menu, LogOut, RefreshCcw, Loader2 } from "lucide-react";
+import { allNavHrefs } from "./sidebar";
+import { NavRow } from "./nav-row";
+import { buildNavModel, isNavRowActive } from "@/lib/nav/nav-model";
+import { useWorkspace } from "@/lib/workspace/use-workspace";
 import { useEmailInboxUnreadCount } from "@/lib/hooks/useEmailInbox";
+
+const ROW_BASE =
+  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors";
+const ROW_ACTIVE = "bg-secondary text-secondary-foreground";
+const ROW_INACTIVE = "hover:bg-secondary/50 hover:text-secondary-foreground";
+const BADGE_CLASS =
+  "ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground";
 
 export function MobileNav() {
   const [open, setOpen] = useState(false);
+  const [orgOpen, setOrgOpen] = useState(false);
   const [signOutInProgress, setSignOutInProgress] = useState(false);
   const [recoveryFeedback, setRecoveryFeedback] = useState<string | null>(null);
   const pathname = usePathname();
@@ -27,6 +36,33 @@ export function MobileNav() {
     isAdmin,
   } = useAuth();
   const { data: emailUnreadCount = 0 } = useEmailInboxUnreadCount(!!user);
+  const workspace = useWorkspace();
+  const { mode, enabledModules, moduleState, canShowEverything, showEverything } =
+    workspace;
+
+  const model = useMemo(
+    () =>
+      buildNavModel({
+        mode,
+        enabledModules,
+        moduleState,
+        isAdmin,
+        canShowEverything,
+        showEverything,
+        unreadEmail: emailUnreadCount,
+      }),
+    [
+      mode,
+      enabledModules,
+      moduleState,
+      isAdmin,
+      canShowEverything,
+      showEverything,
+      emailUnreadCount,
+    ]
+  );
+
+  const organisationItems = model.organisation.items.filter((i) => i.state !== "hidden");
 
   const handleHardRefresh = async () => {
     setRecoveryFeedback("Checking database connection...");
@@ -73,65 +109,99 @@ export function MobileNav() {
             <span>Offshore Alliance</span>
           </SheetTitle>
         </SheetHeader>
-        
+
         <div className="flex-1 overflow-y-auto py-4">
           <nav className="grid gap-1 px-2">
-            {navItems.map((item) => {
-              const isActive = isNavItemActive(pathname, item.href, allNavHrefs);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setOpen(false)}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-secondary text-secondary-foreground"
-                      : "hover:bg-secondary/50 hover:text-secondary-foreground"
-                  )}
-                >
-                  <item.icon className="h-4 w-4 shrink-0" />
-                  <span>{item.label}</span>
-                  {item.href === "/email/inbox" && emailUnreadCount > 0 && (
-                    <span
-                      className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground"
-                      aria-label={`${emailUnreadCount} unread email conversations`}
-                    >
-                      {emailUnreadCount > 99 ? "99+" : emailUnreadCount}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
+            {model.primary.map((item) => (
+              <NavRow
+                key={item.id}
+                item={item}
+                isActive={isNavRowActive(pathname, item, allNavHrefs)}
+                baseClassName={ROW_BASE}
+                activeClassName={ROW_ACTIVE}
+                inactiveClassName={ROW_INACTIVE}
+                showLabel
+                badgeClassName={BADGE_CLASS}
+                onNavigate={() => setOpen(false)}
+              />
+            ))}
 
-            {isAdmin && (
+            {organisationItems.length > 0 && (
               <>
                 <Separator className="my-2" />
-                {adminItems.map((item) => {
-                  const isActive = isNavItemActive(pathname, item.href, allNavHrefs);
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setOpen(false)}
-                      className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                        isActive
-                          ? "bg-secondary text-secondary-foreground"
-                          : "hover:bg-secondary/50 hover:text-secondary-foreground"
-                      )}
-                    >
-                      <item.icon className="h-4 w-4 shrink-0" />
-                      <span>{item.label}</span>
-                    </Link>
-                  );
-                })}
+                {/* The disclosure must NOT close the sheet — it reveals rows inside it. */}
+                <button
+                  type="button"
+                  aria-expanded={orgOpen}
+                  aria-controls="mobile-nav-organisation"
+                  onClick={() => setOrgOpen((v) => !v)}
+                  className={cn("w-full", ROW_BASE, ROW_INACTIVE)}
+                >
+                  <Building2 className="h-4 w-4 shrink-0" />
+                  <span>Organisation</span>
+                  <ChevronDown
+                    className={cn(
+                      "ml-auto h-4 w-4 transition-transform",
+                      orgOpen && "rotate-180"
+                    )}
+                  />
+                </button>
+                {orgOpen && (
+                  <div id="mobile-nav-organisation" className="grid gap-1 pl-3">
+                    {organisationItems.map((item) => (
+                      <NavRow
+                        key={item.id}
+                        item={item}
+                        isActive={isNavRowActive(pathname, item, allNavHrefs)}
+                        baseClassName={ROW_BASE}
+                        activeClassName={ROW_ACTIVE}
+                        inactiveClassName={ROW_INACTIVE}
+                        showLabel
+                        badgeClassName={BADGE_CLASS}
+                        onNavigate={() => setOpen(false)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {model.admin.length > 0 && (
+              <>
+                <Separator className="my-2" />
+                {model.admin.map((item) => (
+                  <NavRow
+                    key={item.id}
+                    item={item}
+                    isActive={isNavRowActive(pathname, item, allNavHrefs)}
+                    baseClassName={ROW_BASE}
+                    activeClassName={ROW_ACTIVE}
+                    inactiveClassName={ROW_INACTIVE}
+                    showLabel
+                    badgeClassName={BADGE_CLASS}
+                    onNavigate={() => setOpen(false)}
+                  />
+                ))}
               </>
             )}
           </nav>
         </div>
 
         <div className="border-t p-4 bg-background">
+          {model.showEverythingControl !== "hidden" && (
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-2 mb-2"
+              aria-pressed={model.showEverythingControl === "active"}
+              onClick={() => {
+                setOpen(false);
+                workspace.setShowEverything(!showEverything);
+              }}
+            >
+              <Eye className="h-4 w-4 shrink-0" />
+              <span>Show everything</span>
+            </Button>
+          )}
           {user && (
             <div className="mb-2 px-2 text-sm font-medium truncate">
               {profile?.display_name || user.email}
@@ -148,7 +218,7 @@ export function MobileNav() {
             ) : (
               <RefreshCcw className="h-4 w-4 shrink-0" />
             )}
-            <span>Hard Refresh Connection</span>
+            <span>{model.footer.hardRefresh.label}</span>
           </Button>
           {recoveryFeedback && (
             <p className="mb-2 px-2 text-xs text-muted-foreground">{recoveryFeedback}</p>
@@ -167,7 +237,7 @@ export function MobileNav() {
             ) : (
               <LogOut className="h-4 w-4 shrink-0" />
             )}
-            <span>{signOutInProgress ? "Signing out..." : "Sign out"}</span>
+            <span>{signOutInProgress ? "Signing out..." : model.footer.signOut.label}</span>
           </Button>
         </div>
       </SheetContent>

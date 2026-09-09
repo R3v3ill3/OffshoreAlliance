@@ -20,8 +20,14 @@ const pageTitles: Record<string, string> = {
   "/agreements": "Agreements (EBAs)",
   "/work-scopes": "Work Scopes",
   "/campaigns": "Campaigns",
+  // WP1.3's route. Harmless before it exists; `basePath` only ever looks up
+  // a segment the router already resolved.
+  "/my-campaigns": "My campaigns",
+  "/upcoming-projects": "Upcoming Projects",
+  "/help": "Guides",
   "/templates": "Templates",
   "/email": "Email Inbox",
+  "/email-imports": "Email Imports",
   "/actions": "Actions",
   // `/sms` still resolves (it redirects to `/actions`) and `/sms/inbox`
   // and `/sms/numbers` are pages in their own right, so it keeps a title.

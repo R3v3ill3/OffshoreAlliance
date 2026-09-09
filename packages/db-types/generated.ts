@@ -26362,6 +26362,14 @@ export type Database = {
         Args: { p_options: Json }
         Returns: string[]
       }
+      campaign_last_activity: {
+        Args: { p_campaign_ids: number[] }
+        Returns: {
+          campaign_id: number
+          last_activity_at: string
+          last_activity_kind: string
+        }[]
+      }
       campaigns_i_can_write: {
         Args: { p_campaign_ids: number[] }
         Returns: number[]

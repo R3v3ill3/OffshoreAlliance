@@ -132,6 +132,8 @@ import { WallChartAssessmentCharts } from "./WallChartAssessmentCharts";
 import { BuildListPanel } from "./wall-chart/build-list-panel";
 import { useBuildList, type FiredTaskDraft } from "./wall-chart/use-build-list";
 import { WorkerSearch, type WorkerSearchItem } from "./wall-chart/worker-search";
+import { pickRatingHintAnchor } from "@/lib/hints/pick-rating-hint-anchor";
+import { useFirstUseHint } from "@/lib/hints/use-first-use-hint";
 
 
 function activityIdsForWallChartSelections(
@@ -865,6 +867,21 @@ export function CampaignWallChart({
     [parentExclusiveWorkersByOu, workersByOu]
   );
 
+  // WP1.7: the one tile the first-use rating hint anchors to (first in DOM
+  // order: Unassigned, then the units), and the per-user seen state.
+  const ratingHintAnchor = useMemo(
+    () =>
+      pickRatingHintAnchor({
+        unassignedWorkerIds,
+        units: visibleOus.map((o) => ({ ouId: o.ou_id, workerIds: visibleWorkersForOu(o.ou_id) })),
+      }),
+    [unassignedWorkerIds, visibleOus, visibleWorkersForOu]
+  );
+  const ratingHint = useFirstUseHint("wall_chart_rating", {
+    hasTiles: ratingHintAnchor !== null,
+    canWrite,
+  });
+
   const estimate = (campaign?.total_worker_estimate as number | null) ?? 0;
   const named = memberRows.length;
   const campaignGreySlots = Math.max(0, estimate - named);
@@ -1133,6 +1150,19 @@ export function CampaignWallChart({
           selection={effective}
           campaignId={campaignId}
           activityRating={activityRating}
+          // Both ids: a worker in several units renders as several tiles, and
+          // the hint must appear on exactly one of them. The anchor flag is
+          // independent of visibility so the badge wrapper stays mounted across
+          // the dismissal (fix round 1, finding 1).
+          ratingHintAnchor={
+            ratingHintAnchor?.workerId === workerId && ratingHintAnchor.ouId === ouId
+          }
+          showRatingHint={
+            ratingHint.visible &&
+            ratingHintAnchor?.workerId === workerId &&
+            ratingHintAnchor.ouId === ouId
+          }
+          onRatingHintDismiss={ratingHint.dismiss}
           enabledListBadges={enabledListBadges}
           listActivityRows={listActivityByWorker.get(workerId)}
           isSelected={selection.has(ouId, workerId)}
@@ -1206,6 +1236,8 @@ export function CampaignWallChart({
       onBuildListWallDragStart,
       onBuildListWallDragEnd,
       noteFirstInteraction,
+      ratingHint,
+      ratingHintAnchor,
     ]
   );
 

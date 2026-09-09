@@ -793,7 +793,76 @@ Fable-reviewer findings applied on `feat/oux-wp1.7-guides-hints` (Fable, 2026-09
 
 ## 7. Verification output
 
-_(verifier pastes raw output)_
+Verifier run 2 2026-09-10 at 0617a12; CHECK migration applied to dev; preview https://offshore-alliance-87n5xm5cc-reveille-strategy.vercel.app
+
+**1. Preflight.** `cat supabase/.temp/project-ref` → `dpnnmkhabysfdogllsyh`. Repo root `pnpm validate:migrations` → "Validated 9 Supabase migrations with unique 14-digit versions."
+
+**2. Migration push.** `env -u SUPABASE_DB_PASSWORD npx --no-install supabase migration list` (before): 8 rows with matching Local/Remote up to `20260911090000`; `20260911100000` local-only. `db push --dry-run` → "Would push these migrations: • 20260911100000_user_hint_dismissals_check.sql" (exactly one file, as expected). `db push` → "Applying migration 20260911100000_user_hint_dismissals_check.sql... Finished supabase db push." `migration list` (after): all 9 rows Local == Remote, including `20260911100000`.
+
+**3. Constraint / policy / grant snapshot (dev).**
+
+`select conname, pg_get_constraintdef(oid) from pg_constraint where conrelid='public.user_hint_dismissals'::regclass order by 1;`
+```
+user_hint_dismissals_hint_id_check | CHECK ((hint_id ~ '^[a-z][a-z0-9_]{0,63}$'::text))
+user_hint_dismissals_pkey          | PRIMARY KEY (user_id, hint_id)
+user_hint_dismissals_user_id_fkey  | FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
+```
+
+`select policyname, cmd, qual, with_check from pg_policies where tablename='user_hint_dismissals' order by cmd;`
+```
+Users can delete own hint dismissals | DELETE | (user_id = auth.uid()) | —
+Users can insert own hint dismissals | INSERT | —                       | (user_id = auth.uid())
+Users can view own hint dismissals   | SELECT | (user_id = auth.uid()) | —
+```
+
+`select grantee, privilege_type from information_schema.role_table_grants where table_name='user_hint_dismissals' order by 1,2;` → `authenticated` {DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE}, `postgres` {same set}, `service_role` {same set}. No `anon` row.
+
+**Rolled-back probe as e2e user `f7c048e2-ecfe-4e9c-8715-7f4c899f0d37`** (each sub-step its own `BEGIN … ROLLBACK` in one `execute_sql` call, since transactions do not persist across separate calls — confirmed empirically: an unqualified `BEGIN; …; INSERT …;` in one call, followed by a `SELECT` in the next call, showed zero rows):
+
+- Own-row insert (`INSERT … VALUES ('f7c048e2-…', 'wall_chart_rating') RETURNING …`): succeeded, returned the row. Rolled back.
+- Bad `hint_id` insert (`'Bad Id!'`): `ERROR: 23514: new row for relation "user_hint_dismissals" violates check constraint "user_hint_dismissals_hint_id_check"`. CHECK fired as expected.
+- Insert for another uuid (`00000000-0000-0000-0000-000000000001`): `ERROR: 42501: new row violates row-level security policy for table "user_hint_dismissals"`. RLS fired as expected.
+- Select after inserting own row in the same transaction: returned exactly 1 row (own uuid, `wall_chart_rating`) — RLS scopes SELECT to own rows. Rolled back.
+- Post-probe count for the e2e user: 0 (table clean, as expected — everything above was rolled back).
+
+**4. Types.** `SUPABASE_PROJECT_REF=dpnnmkhabysfdogllsyh pnpm gen:types` → ran clean. `git diff --stat packages/db-types/generated.ts` → empty (a CHECK constraint adds nothing to generated types). No types commit made.
+
+**5. Gates (apps/organising-db).**
+- `pnpm exec tsc --noEmit -p tsconfig.json; echo tsc $?` → `tsc 0`.
+- `pnpm test` → "Test Files 76 passed (76)", "Tests 1029 passed (1029)", no FAIL lines.
+- `pnpm lint` → "✖ 294 problems (143 errors, 151 warnings)" — matches baseline (294/143/151) exactly.
+- `pnpm build` → completed, full route manifest printed, no errors.
+
+**6. Pre-e2e state (e2e user).** `select * from public.user_hint_dismissals where user_id = 'f7c048e2-…'` → 0 rows (none to delete). `select workspace_prefs from public.user_profiles where user_id = 'f7c048e2-…'` → `{}`.
+
+**7. Preview.** Deployment for sha `0617a123d28dabc39fc79a488222948b4d4f341f` already existed (id `6356853934`), status `success`, "Deployment has completed". URL: `https://offshore-alliance-87n5xm5cc-reveille-strategy.vercel.app` (no polling loop needed — it was already green on first check).
+
+**8. Credentialled e2e, full suite, both projects.** `E2E_FOREIGN_CAMPAIGN_ID=3 E2E_BASE_URL=<preview> pnpm e2e` → **12 passed, 1 failed, 1 skipped** (`mobile-dialer.spec.ts` happy path — expected skip, no credentials configured for that role). Full pass list: actions-hub (2/2), organiser-campaign (2/2), organiser-nav (2/2), unit-lifecycle-user (2/2), wall-chart flow-one and My-campaigns (2/2), wall-chart badge-click hint test (**pass**), unit-lifecycle-admin (1/1).
+
+**Failure:** `tests/e2e/wall-chart.spec.ts:397` — "Wall chart — first-use rating hint › the rating hint shows once, then stays dismissed" (the **"Got it" path**) — **FAILED**, 30.2s timeout.
+```
+Error: locator.click: Test timeout of 30000ms exceeded.
+Call log:
+  - waiting for getByRole('button', { name: 'Got it' })
+    - locator resolved to <button type="button" ... class="... mt-2 h-11 min-w-11">Got it</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - element is outside of the viewport
+    - retrying click action
+    ... (48 retries at 500ms, same "element is outside of the viewport") ...
+  at tests/e2e/wall-chart.spec.ts:402:56
+    400 |     const { hint, badge, workerSheet } = await openWallChartWithHint(page);
+    401 |
+  > 402 |     await page.getByRole("button", { name: "Got it" }).click();
+```
+Page snapshot at failure time shows the "Got it" button present in the DOM inside `status [ref=e2380]` with the hint copy, but Playwright's auto-scroll-into-view could not bring it into the viewport before timing out (48 retries, all "element is outside of the viewport"). The badge-click hint test (`:428`, dismiss-by-opening-the-rating-control path) passed. This is a genuine failure of the "Got it" dismissal path on the WP1.7 preview, not a flake pattern (consistent "outside of viewport" on every retry) — reported without further diagnosis or fix, per verifier scope.
+
+**Post-run cleanup (e2e user).** `select * from public.user_hint_dismissals where user_id = 'f7c048e2-…'` → 0 rows. `workspace_prefs` → `{}`. `select name from public.campaigns where name ILIKE 'WP1.6%'` → 0 rows.
+
+**Summary:** DB/migration/policy/RLS/CHECK verification all green. Type generation clean (no diff). tsc/test/lint/build all green and at baseline. Preview green. E2E: 12/13 non-skipped specs passed; the WP1.7 "Got it" dismissal hint test failed on a viewport/scroll issue with the "Got it" button, while the companion badge-click hint test passed. This is a blocking finding for WP1.7 sign-off.
 
 ## 8. Reviewer findings
 

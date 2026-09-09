@@ -597,7 +597,75 @@ Only these need the operator; everything else has an assumption stated inline.
 
 ## 6. Deviations from plan
 
-_(implementer keeps this list)_
+1. **`ACTIONS_HUB_PATH` is imported from `@/lib/actions/hub-path`, not `@/lib/actions/hub-rows`.** §4.1's snippet names `hub-rows`, which only re-exports the constant from `hub-path` and itself pulls in `@/lib/sms/hub-actions`. `nav-model.ts` must stay pure (§4.0: "No React, no `next/*`, no lucide"), so it imports WP1.5's canonical one-line module directly. Same constant, same single source of truth, no extra module graph in the nav bundle.
+2. **The badge is flagged on the row definition (`badged: true`), not derived from `module === "inbox"`.** §4.1(b)'s rule would badge **two** rows in full mode — Email Inbox *and* SMS Inbox both carry `module: "inbox"` — and only email has an unread count (`useEmailInboxUnreadCount`; there is no SMS equivalent). The flag is internal to `nav-model.ts` and never reaches a `NavItem`; a test pins that exactly one row is badged in each mode. The clamp and the `aria-label` stayed in the renderer as planned.
+3. **`renderItem` became a component in its own file, `src/components/layout/nav-row.tsx`, not an export of `sidebar.tsx`.** §4.2 offered "extract it into `sidebar.tsx` and export, or duplicate the 20 lines". A third option is better than both: `mobile-nav.tsx` gets the row markup without importing the desktop sidebar module for it, and the two class sets are props exactly as planned. `sidebar.tsx` still exports `navItems` / `adminItems` / `allNavHrefs`, and `mobile-nav.tsx` still imports `allNavHrefs` from it.
+4. **The fixture is diffed against a second hand-written literal, not against the live `navItems` export.** §5.4 asked for an `it` that diffs the fixture against `sidebar.tsx`'s exports. `sidebar.tsx` is a client component that imports `next/navigation` and the Supabase auth context; importing it into a vitest `environment: node` suite is fragile, and since `navItems` is now a re-projection of `FULL_NAV_ITEMS` the comparison would have been code against itself. Instead `nav-model-fixture.ts` carries **two** literals — `TODAY_SIDEBAR_ROWS` (the pre-WP1.5 sidebar, byte for byte) and `FULL_MODE_FIXTURE` — and a test asserts the built full-mode model equals the second while the diff between the two is exactly row 7's `label` / `href` / `icon`. That is a stronger recorded-deviation proof than the planned one, and it is falsifiable.
+5. **`allNavHrefs` has 14 entries, not the "13 (+1)" of risk R2.** The `/sms` alias is an entry in its own right and `MY_CAMPAIGNS_HREF` currently dedupes against `/campaigns`. The test asserts the exact sorted list plus "no duplicates" and "every href any model can render is in it", which is what R2 was protecting; a bare length assertion would have to change with every future row anyway.
+6. **The Organisation section is preceded by a `<Separator/>`.** Not specified either way in §4.2. It only renders in organiser mode, so full mode is untouched, and it matches how the admin block is already set off.
+7. **`tests/e2e/env.ts` needed no edit.** §4.0 lists it as an edit adding `E2E_ADMIN_EMAIL` / `E2E_ADMIN_PASSWORD` / `hasE2EAdminCredentials`; WP1.6 already added all three, plus `ADMIN_STORAGE_STATE` in `playwright.config.ts`. The spec therefore reuses the admin storage state global setup writes instead of signing in through the form again (§5.5 step 1), which is fewer moving parts and types no credentials into a form.
+8. **`browser.newContext()` is given an explicit `baseURL`.** Playwright does not apply the config's `use` block to contexts created inside a test, so the relative `/api/admin/*` paths in §5.5 would not resolve without it.
+9. **`modules.ts` was not touched.** Q2 was ruled in §5 (`organisation_databases.offState` → `muted`) and WP1.1 had already made the change on this stack; the organiser snapshots show all five Organisation rows as `muted`, so no route is hidden from an organiser by default.
+10. **`pageTitles` gained 4 keys, not the 5 of §4.4.** `/actions` was already added by WP1.5 and was kept, as instructed.
+
+Not deviations, but worth naming: the WP1.5 fallback (§4.1 note b) was **not** used — WP1.5 is on this stack, so row 7 ships as Actions/`/actions`/`layout-list`. `MY_CAMPAIGNS_HREF` is `"/campaigns"` as approved. Everything in §6 "Out of scope" stayed out.
+
+## Implementer notes
+
+### Files
+
+New:
+
+- `apps/organising-db/src/lib/nav/nav-model.ts`
+- `apps/organising-db/src/lib/nav/nav-icons.ts`
+- `apps/organising-db/src/lib/nav/__tests__/nav-model.test.ts`
+- `apps/organising-db/src/lib/nav/__tests__/nav-model-fixture.ts`
+- `apps/organising-db/src/lib/nav/__tests__/nav-reachability.test.ts`
+- `apps/organising-db/src/lib/nav/__tests__/__snapshots__/nav-model.test.ts.snap` (generated, committed)
+- `apps/organising-db/src/components/layout/nav-row.tsx`
+- `apps/organising-db/tests/e2e/organiser-nav.spec.ts`
+
+Edited:
+
+- `apps/organising-db/src/components/layout/sidebar.tsx`
+- `apps/organising-db/src/components/layout/mobile-nav.tsx`
+- `apps/organising-db/src/components/layout/header.tsx`
+- `apps/organising-db/src/lib/nav/__tests__/active-nav.test.ts`
+
+No schema change, no migration, no type regeneration, no new dependency.
+
+### Module mapping
+
+Every sidebar row and every appendix D §1.6 page, as shipped:
+
+| Route | Where in the model | Module id | Organiser-default state |
+|---|---|---|---|
+| `/campaigns` (`MY_CAMPAIGNS_HREF`) | full row 1; organiser primary 1 ("My campaigns") | `wall_chart_people` | `on` (never gated) |
+| `/dashboard` | full row 2; Organisation | `insights` | `muted` |
+| `/overview` | full row 3; Organisation | `organisation_databases` | `muted` |
+| `/worksites` | full row 4; Organisation | `organisation_databases` | `muted` |
+| `/upcoming-projects` | full row 5; Organisation | `organisation_databases` | `muted` |
+| `/email/inbox` | full row 6; organiser primary 3 ("Inbox", badged) | `inbox` | `on` (never gated) |
+| `/actions` (`/sms` redirects; `activeHrefs: ["/sms"]`) | full row 7; organiser primary 2 | `actions` | `on` (never gated) |
+| `/sms/inbox` | full row 8 only | `inbox` | reachable via Show everything, and via the Actions hub's Inbox pill |
+| `/reports` | full row 9; Organisation | `insights` | `muted` |
+| `/help` | full row 10; organiser primary 4 ("Guides") | *(none — always on)* | `on` |
+| `/email-imports` | admin row 1 | `administration` | admin-only; admins are always full mode |
+| `/email/wrappers` | admin row 2 | `administration` | admin-only |
+| `/administration` | admin row 3 | `administration` | admin-only |
+| `/workers`, `/employers`, `/agreements`, `/programs`, `/work-scopes` | not in the model — `/overview`'s 8 tabs | `organisation_databases` | — |
+| `/templates` | not in the model — the Campaigns tab bar | `actions` | — |
+| `/workload`, `/organiser-patches` | not in the model — Administration → System | `administration` | — |
+| `/sms/new`, `/sms/numbers` | not in the model — the hub pills / Start something cards; light the Actions row via `activeHrefs` | `actions` | — |
+| `/reports/*` (5 sub-pages) | not in the model — the Reports hub cards | `insights` | — |
+| `/campaigns/[id]/*` | not in the model — WP1.4 | per `campaign-tabs.ts` | — |
+
+### Commits
+
+- `19aad31` feat(oux-wp1.2): navigation as pure data — buildNavModel, icons, snapshots
+- `af65a94` feat(oux-wp1.2): sidebar, mobile nav and header consume the nav model
+- `698d1fe` feat(oux-wp1.2): e2e for both navs — full-mode regression and organiser round trip
+- (this document)
 
 ## 7. Verification output
 

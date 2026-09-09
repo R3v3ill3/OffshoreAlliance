@@ -750,7 +750,184 @@ Not run: a credentialled `pnpm e2e` against a branch preview — no preview URL 
 
 ## 7. Verification output
 
-_(verifier pastes raw output)_
+Verifier run 2026-09-09 at 5dba739; preview https://offshore-alliance-9rzy0ynwv-reveille-strategy.vercel.app
+
+### 1. Local checks (apps/organising-db)
+
+`pnpm test 2>&1 | grep -E 'Test Files|Tests |FAIL'`
+
+```
+ Test Files  61 passed (61)
+      Tests  818 passed (818)
+```
+
+`pnpm exec tsc --noEmit -p tsconfig.json; echo tsc $?`
+
+```
+tsc 0
+```
+
+`pnpm lint 2>&1 | grep -E 'problems'`
+
+```
+✖ 294 problems (143 errors, 151 warnings)
+```
+
+Matches the recorded baseline exactly (294 problems, 143 errors, 151 warnings).
+
+`pnpm build 2>&1 | tail -4`
+
+```
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+
+[exited with code 0]
+```
+
+Build succeeded (exit code 0).
+
+### 2. Repo-root diff / log checks
+
+`git diff --stat feat/oux-wp1.1-workspace-mode..HEAD | tail -1`
+
+```
+ 24 files changed, 3148 insertions(+), 578 deletions(-)
+```
+
+`git diff --name-only feat/oux-wp1.1-workspace-mode..HEAD | grep -E '^supabase/|^packages/db-types/|sidebar\.tsx|mobile-nav\.tsx' || echo "no schema, type or sidebar changes"`
+
+```
+no schema, type or sidebar changes
+```
+
+`git log --oneline feat/oux-wp1.1-workspace-mode..HEAD`
+
+```
+5dba739 docs(oux-wp1.5): deviations, coverage table and implementer notes
+9927796 feat(oux-wp1.5): e2e spec for the Actions hub
+6d05ee0 feat(oux-wp1.5): one Actions link on the campaigns strip, and Standalone
+75b0ddc feat(oux-wp1.5): the Actions hub at /actions
+361085f feat(oux-wp1.5): cross-campaign email and call activity reads
+9fffda4 feat(oux-wp1.5): pure hub row module, buckets and scope
+5ae5ef4 docs(oux): WP1.5 plan, approved
+```
+
+### 3. Branch preview URL
+
+`gh api "repos/R3v3ill3/OffshoreAlliance/deployments?ref=feat/oux-wp1.5-actions-hub&per_page=3"` returned `[]` on every poll across the full 15-minute window (15 attempts at 60 s intervals). A direct listing of the 10 most recent deployments (`gh api "repos/R3v3ill3/OffshoreAlliance/deployments?per_page=10"`) showed a deployment whose `ref`/`sha` field is the full HEAD commit SHA `5dba73976742ac2ede9456f94e241fd06f2fe749` (created `2026-09-09T03:12:07Z`), rather than the branch name — so the branch-name-filtered query never matched it. No PR is open for this branch (`gh pr list --head feat/oux-wp1.5-actions-hub` → `[]`), which is presumably why Vercel keyed the deployment to the raw SHA instead of the branch ref.
+
+`gh api repos/R3v3ill3/OffshoreAlliance/deployments/6341706840/statuses --jq '.[0] | "\(.state) \(.environment_url)"'`
+
+```
+success https://offshore-alliance-9rzy0ynwv-reveille-strategy.vercel.app
+```
+
+`curl -s -o /dev/null -w '%{http_code}\n' <url>/login`
+
+```
+200
+```
+
+### 4. Credentialled e2e against the preview
+
+`E2E_BASE_URL=<preview url> pnpm e2e 2>&1 | grep -v -i password | tail -40`
+
+```
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('columnheader', { name: 'Scope' })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByRole('columnheader', { name: 'Scope' })
+
+
+      43 |     // Asserted on the widest view (All owners, all buckets), because the table
+      44 |     // is replaced by an empty-state panel when a filter matches nothing.
+    > 45 |     await expect(page.getByRole("columnheader", { name: "Scope" })).toBeVisible();
+         |                                                                     ^
+      46 |
+      47 |     // The four status buckets, each with a count.
+      48 |     const buckets = page.getByRole("group", { name: "Status" });
+        at /Volumes/DataDrive/cursor_repos/offshoreAlliance/OffshoreAlliance/apps/organising-db/tests/e2e/actions-hub.spec.ts:45:69
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/actions-hub-Actions-hub-op-d856e-ards-and-the-status-buckets-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/actions-hub-Actions-hub-op-d856e-ards-and-the-status-buckets-chromium/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/actions-hub-Actions-hub-op-d856e-ards-and-the-status-buckets-chromium/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results/actions-hub-Actions-hub-op-d856e-ards-and-the-status-buckets-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [chromium] › tests/e2e/actions-hub.spec.ts:22:7 › Actions hub › open /actions, see the three start cards and the status buckets 
+  1 skipped
+  2 passed (37.4s)
+ ELIFECYCLE  Command failed with exit code 1.
+```
+
+Result: 2 passed, 1 failed, 1 skipped. The failure is in the actions-hub spec itself (`open /actions, see the three start cards and the status buckets`, tests/e2e/actions-hub.spec.ts:22), not in the wall-chart flow-one spec — the `Scope` columnheader was not found within the 5 s timeout. Full artifact paths (relative to `apps/organising-db/`):
+- `test-results/actions-hub-Actions-hub-op-d856e-ards-and-the-status-buckets-chromium/test-failed-1.png`
+- `test-results/actions-hub-Actions-hub-op-d856e-ards-and-the-status-buckets-chromium/error-context.md`
+- `test-results/actions-hub-Actions-hub-op-d856e-ards-and-the-status-buckets-chromium/trace.zip`
+
+This does not match the "campaigns list has no rows" failure mode described for flow one, so no guessing was applied — recorded verbatim per instructions.
+
+### 5. Redirect checks
+
+`curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' "<preview url>/sms?scope=standalone"`
+
+```
+307 https://offshore-alliance-9rzy0ynwv-reveille-strategy.vercel.app/login?scope=standalone
+```
+
+Unauthenticated curl request; redirected to `/login` (auth gate), not `/actions?scope=standalone` — expected since this request carries no session cookie, so the `/actions` redirect (if any) could not be observed by this check.
+
+`curl -s -o /dev/null -w '%{http_code}\n' "<preview url>/sms/inbox"`
+
+```
+307
+```
+
+200/307-to-login as expected, not a 404.
+
+### 6. Terminology grep
+
+`grep -rn -i "episode\|standing campaign\|org-wide" apps/organising-db/src/components/sms/hub apps/organising-db/src/app/(dashboard)/actions apps/organising-db/src/app/(dashboard)/sms 2>/dev/null | grep -v -E '^\S+:\s*//|/\*|\* ' | head -20`
+
+```
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:41:  useCreateSmsEpisode,
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:42:  useDeleteSmsEpisode,
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:43:  useRenameSmsEpisode,
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:44:} from '@/lib/hooks/useSmsEpisodes'
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:82:  episode: boolean
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:143:  const createEpisode = useCreateSmsEpisode()
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:144:  const deleteEpisode = useDeleteSmsEpisode()
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:145:  const renameEpisode = useRenameSmsEpisode()
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:180:        const ep = await createEpisode.mutateAsync({
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:184:        setActive({ campaignId: ep.campaign_id, episode: true })
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:186:        setActive({ campaignId: null, episode: false })
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:188:        setActive({ campaignId, episode: false })
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:195:  }, [kind, mode, campaignId, scopeReady, createEpisode, source.name])
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:209:          setActive({ campaignId: campaign, episode: false })
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:213:          const ep = await createEpisode.mutateAsync({
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:231:    [createEpisode],
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:266:      if (active?.episode && !saved && active.campaignId != null) {
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:267:        deleteEpisode.mutate(active.campaignId)
+apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:272:    [active, deleteEpisode],
+```
+
+All hits are `episode` as a code identifier (`useCreateSmsEpisode`, `deleteEpisode`, `active.episode`, etc.) inside `SmsCreateActionPage.tsx`; no "standing campaign" or "org-wide" hits, and no plain-English/UI-copy occurrences of "episode" surfaced in the first 20 matches. Raw output only — interpretation left to the reviewer.
 
 ## 8. Reviewer findings
 

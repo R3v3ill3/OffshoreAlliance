@@ -27,6 +27,10 @@ import { useCampaign } from "@/lib/hooks/usePlannerCampaigns";
 import { SMS_EPISODE_TOOLS_HREF } from "@/lib/campaign/visible-campaigns";
 import { isSmsChatWorkspaceRoute } from "@/lib/campaign/campaign-detail-routes";
 import { useAuth } from "@/lib/supabase/auth-context";
+import { useWorkspace } from "@/lib/workspace/use-workspace";
+import { CampaignSwitcher } from "@/components/campaigns/campaign-switcher";
+import { OrganiserCampaignActions } from "@/components/campaigns/organiser-campaign-actions";
+import { CreateTaskListDialog } from "@/components/campaigns/task-lists/create-task-list-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MobileNav } from "@/components/layout/mobile-nav";
@@ -74,6 +78,10 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { canWrite } = useAuth();
+  // WP1.4. Presentation only: `mode` never gates a control, it only chooses
+  // which arrangement of the same twelve actions is drawn.
+  const { mode } = useWorkspace();
+  const isOrganiserMode = mode === "organiser";
 
   const numericCampaignId = Number(campaignId);
   const campaignIdValid = Number.isFinite(numericCampaignId);
@@ -81,6 +89,7 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
   const [basicsSheetOpen, setBasicsSheetOpen] = useState(false);
   const [createAssessmentOpen, setCreateAssessmentOpen] = useState(false);
   const [importWorkersOpen, setImportWorkersOpen] = useState(false);
+  const [createTaskListOpen, setCreateTaskListOpen] = useState(false);
 
   const isBuildListOpen = searchParams.get("buildList") === "1";
   const handleToggleBuildList = useCallback(() => {
@@ -137,7 +146,19 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
     );
   }
 
-  const actionButtons = canWrite ? (
+  // canWrite === false ⇒ null in both modes, unchanged: a viewer in organiser
+  // mode sees the switcher, the name, the badges and the four tabs, and no
+  // write affordances.
+  const actionButtons = !canWrite ? null : isOrganiserMode ? (
+    <OrganiserCampaignActions
+      campaignId={campaignId}
+      isBuildListOpen={isBuildListOpen}
+      onToggleBuildList={handleToggleBuildList}
+      onImportWorkers={() => setImportWorkersOpen(true)}
+      onCreateAssessment={() => setCreateAssessmentOpen(true)}
+      onCreateTaskList={() => setCreateTaskListOpen(true)}
+    />
+  ) : (
     <div className="flex flex-wrap items-center justify-end gap-2">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -226,7 +247,7 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
-  ) : null;
+  );
 
   if (campaign?.is_sms_episode) {
     return null;
@@ -237,6 +258,13 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
       <header className="border-b bg-background px-4 md:px-6">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2 md:py-3">
           <MobileNav />
+          {/* Organiser mode only; full mode's header is byte-for-byte today's. */}
+          {isOrganiserMode && (
+            <CampaignSwitcher
+              campaignId={campaignId}
+              campaignName={campaign?.name ?? null}
+            />
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -329,6 +357,16 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
               queryClient.invalidateQueries({ queryKey: ["workers"] });
             }}
           />
+          {/* WP1.4: organiser mode's New action ▾ → Task list. Mounted here
+              with the other dialogs so there is exactly one of each in the
+              tree; the menu item only flips the state. */}
+          {isOrganiserMode && (
+            <CreateTaskListDialog
+              campaignId={campaignId}
+              open={createTaskListOpen}
+              onOpenChange={setCreateTaskListOpen}
+            />
+          )}
         </>
       )}
     </>

@@ -81,6 +81,7 @@ import { WallChartSelectionBar } from "./wall-chart/wall-chart-selection-bar";
 import { ClearRatingsDialog } from "./wall-chart/clear-ratings-dialog";
 import { useWallChartSelection } from "./wall-chart/use-wall-chart-selection";
 import { useMoveWorkersMutation } from "./wall-chart/move-worker-mutation";
+import { toast } from "sonner";
 import { LinkToLeaderDialog } from "./wall-chart/link-to-leader-dialog";
 import type { WorkerDragRef } from "./wall-chart/dnd";
 import { RelationshipOverlay } from "./wall-chart/relationship-overlay";
@@ -1350,6 +1351,12 @@ export function CampaignWallChart({
           onSuccess: () => {
             // Clear selection after successful bulk action.
             if (selection.size > 0) selection.clear();
+          },
+          // The mutation has no onError of its own and nothing reads .error, so
+          // a NoRowsAffectedError on the source delete (WP1.6) would otherwise
+          // be silent while the board refetches into the partial state.
+          onError: (err) => {
+            toast.error(err instanceof Error ? err.message : "Moving the worker failed.");
           },
         }
       );

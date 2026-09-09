@@ -214,12 +214,53 @@ export type SyncWorkersResult = {
   membershipsUpserted: number;
   ouAssignmentsUpserted: number;
   campaignsTouched: number;
+  /**
+   * Matching campaigns the actor cannot write to (WP1.6). Their enrolment is
+   * skipped rather than attempted, because the insert would fail RLS and
+   * take the whole enclosing mutation down with it.
+   */
+  campaignsSkippedNoAccess: number;
+};
+
+const EMPTY_SYNC_RESULT: SyncWorkersResult = {
+  membershipsUpserted: 0,
+  ouAssignmentsUpserted: 0,
+  campaignsTouched: 0,
+  campaignsSkippedNoAccess: 0,
 };
 
 /**
+ * Split the campaigns whose universe matches into the ones the actor may
+ * write to and a count of the ones they may not. Pure, so the split is unit
+ * testable; the writable set comes from the `campaigns_i_can_write` RPC.
+ */
+export function planUniverseSyncTargets<T extends { campaignId: number }>(
+  matching: T[],
+  writable: ReadonlySet<number>
+): { allowed: T[]; skippedNoAccess: number } {
+  const allowed = matching.filter((c) => writable.has(c.campaignId));
+  return { allowed, skippedNoAccess: matching.length - allowed.length };
+}
+
+async function loadWritableCampaignIds(supabase: Supa, campaignIds: number[]): Promise<Set<number>> {
+  if (campaignIds.length === 0) return new Set();
+  const { data, error } = await supabase.rpc("campaigns_i_can_write", {
+    p_campaign_ids: campaignIds,
+  });
+  if (error) throw new Error(error.message);
+  const rows: unknown[] = Array.isArray(data) ? data : [];
+  return new Set<number>(rows.map((n) => Number(n)));
+}
+
+/**
  * Given workers that already have (or just received) a global employer /
- * worksite, add them to every matching live campaign and place them in
- * matching employer/worksite units.
+ * worksite, add them to every matching live campaign the actor can write to
+ * and place them in matching employer/worksite units.
+ *
+ * WP1.6: matching campaigns the actor cannot write to are skipped and counted
+ * in `campaignsSkippedNoAccess`. Before WP1.6 those upserts were silent
+ * no-ops under the old policies; under campaign-scoped RLS they would raise
+ * 42501, so the filter is what keeps worker moves and imports working.
  */
 export async function syncWorkersToMatchingCampaigns(
   supabase: Supa,
@@ -227,22 +268,40 @@ export async function syncWorkersToMatchingCampaigns(
 ): Promise<SyncWorkersResult> {
   const uniqueIds = [...new Set(workerIds.filter((id) => Number.isFinite(id) && id > 0))];
   if (uniqueIds.length === 0) {
-    return { membershipsUpserted: 0, ouAssignmentsUpserted: 0, campaignsTouched: 0 };
+    return { ...EMPTY_SYNC_RESULT };
   }
 
   const workers = (await loadWorkerPlacements(supabase, uniqueIds)).filter(
     (w) => w.employerId != null || w.worksiteId != null
   );
   if (workers.length === 0) {
-    return { membershipsUpserted: 0, ouAssignmentsUpserted: 0, campaignsTouched: 0 };
+    return { ...EMPTY_SYNC_RESULT };
   }
 
   const campaigns = await loadActiveCampaignUniverses(supabase);
-  const matchingCampaigns = campaigns.filter((c) =>
+  const allMatchingCampaigns = campaigns.filter((c) =>
     workers.some((w) => workerMatchesCampaignUniverse(w, c))
   );
+  if (allMatchingCampaigns.length === 0) {
+    return { ...EMPTY_SYNC_RESULT };
+  }
+
+  const writable = await loadWritableCampaignIds(
+    supabase,
+    allMatchingCampaigns.map((c) => c.campaignId)
+  );
+  const { allowed: matchingCampaigns, skippedNoAccess } = planUniverseSyncTargets(
+    allMatchingCampaigns,
+    writable
+  );
+  if (skippedNoAccess > 0) {
+    console.error("[sync-campaign-universe] skipped campaigns the actor cannot write to", {
+      skipped: skippedNoAccess,
+      of: allMatchingCampaigns.length,
+    });
+  }
   if (matchingCampaigns.length === 0) {
-    return { membershipsUpserted: 0, ouAssignmentsUpserted: 0, campaignsTouched: 0 };
+    return { ...EMPTY_SYNC_RESULT, campaignsSkippedNoAccess: skippedNoAccess };
   }
 
   const membershipRows: { campaign_id: number; worker_id: number }[] = [];
@@ -282,6 +341,7 @@ export async function syncWorkersToMatchingCampaigns(
     membershipsUpserted,
     ouAssignmentsUpserted,
     campaignsTouched: matchingCampaigns.length,
+    campaignsSkippedNoAccess: skippedNoAccess,
   };
 }
 

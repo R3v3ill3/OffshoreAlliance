@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
+import { assertRowsAffected } from "@/lib/supabase/assert-rows-affected";
 import { formatWorkerLabel } from "@/lib/workers/format-worker-label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -716,11 +717,13 @@ export function CampaignUnitsSection({
     mutationFn: async (ruleId: number) => {
       const scoped = supabase as unknown as {
         from: (table: string) => {
-          delete: () => { eq: (col: string, value: unknown) => Promise<{ error: Error | null }> };
+          delete: (opts: { count: "exact" }) => {
+            eq: (col: string, value: unknown) => Promise<{ error: Error | null; count: number | null }>;
+          };
         };
       };
-      const { error } = await scoped.from("campaign_unit_rules").delete().eq("rule_id", ruleId);
-      if (error) throw error;
+      const res = await scoped.from("campaign_unit_rules").delete({ count: "exact" }).eq("rule_id", ruleId);
+      assertRowsAffected(res, 1, "Deleting the rule");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-unit-rules", campaignId] });
@@ -752,12 +755,12 @@ export function CampaignUnitsSection({
 
   const removeFromUnitMutation = useAuthAwareMutation({
     mutationFn: async ({ ouId, workerIds }: { ouId: number; workerIds: number[] }) => {
-      const { error } = await supabase
+      const res = await supabase
         .from("campaign_worker_ou" as never)
-        .delete()
+        .delete({ count: "exact" })
         .eq("ou_id", ouId)
         .in("worker_id", workerIds);
-      if (error) throw error;
+      assertRowsAffected(res, workerIds.length, "Removing the workers from the unit");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
@@ -798,23 +801,29 @@ export function CampaignUnitsSection({
 
       // Only remove from source when source is a real unit (not coming from Unallocated).
       if (fromOuId !== null) {
-        const { error: delErr } = await supabase
+        const delRes = await supabase
           .from("campaign_worker_ou" as never)
-          .delete()
+          .delete({ count: "exact" })
           .eq("ou_id", fromOuId)
           .in("worker_id", workerIds);
-        if (delErr) throw delErr;
+        assertRowsAffected(delRes, workerIds.length, "Moving the workers out of the old unit");
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
-      queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
       setUnitSelection(null);
       setUnallocatedSelection(new Set());
       setReallocateTarget(null);
       setReallocateSelectedOuId("");
     },
     onError: (e: Error) => window.alert(e.message || "Could not reallocate workers"),
+    // Invalidate on settle, not only on success: the upsert above may have
+    // landed before the source delete was filtered by RLS, leaving the workers
+    // in both units — the list must refetch to show that (WP2.2's
+    // transactional RPC removes the partial state itself).
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
+    },
   });
 
   const rulesByOu = useMemo(() => {

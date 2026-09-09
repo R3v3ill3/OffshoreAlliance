@@ -34,6 +34,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
+import { assertRowsAffected } from "@/lib/supabase/assert-rows-affected";
 import {
   getReassignmentTargetOus,
   ouTargetLabel,
@@ -152,12 +153,12 @@ export function DeleteOrganisingUnitDialog({
             }
           }
 
-          const { error: delErr } = await supabase
+          const delRes = await supabase
             .from("campaign_worker_ou")
-            .delete()
+            .delete({ count: "exact" })
             .eq("ou_id", ouId)
             .eq("worker_id", workerId);
-          if (delErr) throw delErr;
+          assertRowsAffected(delRes, 1, "Removing the worker from the unit");
         }
       }
 
@@ -165,28 +166,36 @@ export function DeleteOrganisingUnitDialog({
       // cascade away). Removing children before the parent also avoids the FK
       // ON DELETE SET NULL path that trips the group-consistency trigger.
       if (childOuIds.length > 0) {
-        const { error: childErr } = await supabase
+        const childRes = await supabase
           .from("campaign_organising_units")
-          .delete()
+          .delete({ count: "exact" })
           .in("ou_id", childOuIds);
-        if (childErr) throw childErr;
+        assertRowsAffected(childRes, childOuIds.length, "Deleting the units in the group");
       }
 
-      const { error: delOuErr } = await supabase
+      // RLS filters a forbidden delete to zero rows with a 2xx (WP1.6); the
+      // assertion turns that into the alert in onError instead of a silent no-op.
+      const delOuRes = await supabase
         .from("campaign_organising_units")
-        .delete()
+        .delete({ count: "exact" })
         .eq("ou_id", ouId);
-      if (delOuErr) throw delOuErr;
+      assertRowsAffected(delOuRes, 1, "Deleting the unit");
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignKey] });
-      queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignKey] });
-      queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignKey] });
-      queryClient.invalidateQueries({ queryKey: ["campaign-unit-rules", campaignKey] });
       onDeleted?.();
       onOpenChange(false);
     },
     onError: (e: Error) => window.alert(e.message || "Could not delete unit"),
+    // Invalidate on settle, not only on success: the steps above are not one
+    // transaction, so a throw part-way (a reassignment upserted, then the
+    // source delete filtered by RLS) must still refetch so the wall chart
+    // shows what the database actually holds rather than the pre-click state.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignKey] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignKey] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignKey] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-unit-rules", campaignKey] });
+    },
   });
 
   const buildReassignmentMap = (): Map<number, number | null> | null => {

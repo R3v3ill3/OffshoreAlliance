@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { resolveCampaignOrganiserId } from '@/lib/campaign/resolve-campaign-organiser'
+import { deriveWorkRoleFlags } from '@/lib/auth/work-role-flags'
 import { errorResponse } from '@/lib/api/error-response'
 
 /**
@@ -86,15 +87,19 @@ export async function POST(
       // Resolve picker -> organiser_id (creates an organisers row if needed).
       const { data: profile } = await supabase
         .from('user_profiles')
-        .select('role')
+        .select('role, work_role')
         .eq('user_id', user.id)
         .maybeSingle()
-      const isAdmin = profile?.role === 'admin'
+      // WP1.6 (decision 8): admins AND lead/coordinator work roles may mint an
+      // organiser record for a colleague. Same set as the auth context's
+      // isAdmin || isLeadOrganiser, via the shared helper.
+      const canLinkOtherOrganisers =
+        profile?.role === 'admin' || deriveWorkRoleFlags(profile).isLeadOrganiser
       try {
         leaderOrganiserId = await resolveCampaignOrganiserId(
           supabase,
           organiserPickerValue,
-          { currentUserId: user.id, isAdmin }
+          { currentUserId: user.id, canLinkOtherOrganisers }
         )
       } catch (err) {
         return NextResponse.json(

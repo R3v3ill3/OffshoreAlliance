@@ -28,6 +28,9 @@ function deleteErrorMessage(err: unknown): string {
   if (msg.includes("campaign_not_found")) {
     return "This campaign no longer exists.";
   }
+  if (msg.includes("campaign_is_standing")) {
+    return "The standing campaign cannot be deleted. It is the shared home for phone work that belongs to no specific campaign.";
+  }
   return msg;
 }
 

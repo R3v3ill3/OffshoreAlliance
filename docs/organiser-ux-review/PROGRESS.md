@@ -29,7 +29,7 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 | 1.3 | My campaigns home | not started | | | | | |
 | 1.4 | Campaign workspace | not started | | | | | |
 | 1.5 | Actions hub | PR draft | `feat/oux-wp1.5-actions-hub` | [#28](https://github.com/R3v3ill3/OffshoreAlliance/pull/28) | 828 tests, tsc, build green, lint at baseline; credentialled e2e on the branch preview: hub spec, `/sms` redirect and flow one pass | Sidebar still labels the hub "SMS Tools" until WP1.2; moderation count capped by PostgREST max-rows at very high relay volumes | 10 |
-| 1.6 | Auth and RLS alignment | not started | | | | | 2, 8 |
+| 1.6 | Auth and RLS alignment | PR draft | `feat/oux-wp1.6-auth-rls` | [#29](https://github.com/R3v3ill3/OffshoreAlliance/pull/29) | Migrations `20260909120000` and `20260909130000` on dev; 41-line role probe pack (user, viewer, self-escalation, service role); full e2e both projects green ×2 on preview; 852 tests, tsc, build, lint at baseline | Behaviour changes signed off (unit writes only on own campaigns; no auto-enrol into unwritable campaigns); production pre-flight must return zero rows before deploy and again before hygiene 01; auth start-up deadlock fixed here (scope addition) | 2, 8 |
 | 1.7 | Guides and hints | not started | | | | | 9 |
 | 2.1 | Schema and migration | not started | | | | | 3, 4, 5 |
 | 2.2 | Structure API | not started | | | | | |
@@ -78,7 +78,8 @@ _(dated notes when `workspace_mode` or `groups_v2` paths are deleted)_
 
 | Found in | Finding | Assigned to |
 |---|---|---|
-| WP1.1 review (2026-09-09) | `user_profiles` "update own profile" policy plus table-wide grants let an authenticated `user` set their own `role`, `work_role`, `organiser_id` or `reports_to` via PostgREST; `get_user_role()` trusts the column. Exists in production today. | WP1.6 (mandatory scope) |
+| WP1.1 review (2026-09-09) | `user_profiles` "update own profile" policy plus table-wide grants let an authenticated `user` set their own `role`, `work_role`, `organiser_id` or `reports_to` via PostgREST; `get_user_role()` trusts the column. Exists in production today. | **Closed in WP1.6** (BEFORE UPDATE guard on role, work_role, organiser_id, reports_to, user_id; probe-proven) |
 | WP1.4 planning (2026-09-09) | The SOC wizard is launched with `?cid=` from the campaign page and the phone wizard but reads only `campaign_id`, so it never pre-fills the campaign it was opened from. | Unassigned; small fix for WP1.4 or WP3.3 |
 | WP1.1 verification (2026-09-09) | `supabase/.temp/` (the CLI link target) is tracked in git, so a fresh clone is linked to production. | Operator housekeeping: gitignore `supabase/.temp/` |
 | WP0.3 review (2026-09-08) | Appendix D 3.2 counts 44 campaign-page surfaces; the SMS panel renders five views, so the inventory is 45. | Recorded in WP1.4's fixture |
+| WP1.6 fix round 2 (2026-09-09) | Pre-existing auth start-up deadlock: the `onAuthStateChange` callback awaited a PostgREST query while auth-js held its initialisation lock, so warm full-page loads of small pages hung until "Hard Refresh Connection". Reproduced 8/8 on the preview before the fix. | **Closed in WP1.6** (callback body deferred per Supabase guidance; 6/6 warm loads pass after) |

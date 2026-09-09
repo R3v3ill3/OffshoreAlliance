@@ -2,6 +2,7 @@
 
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { assertRowsAffected } from '@/lib/supabase/assert-rows-affected'
 import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
 import { toast } from 'sonner'
 
@@ -73,22 +74,40 @@ export function useRemoveWorkerFromCampaign({
         .select('ou_id')
         .eq('campaign_id', cidNum)
       const ouIds = (ouRows ?? []).map((r) => r.ou_id)
+      //    A worker may legitimately be in no unit, so expected is 0 here (the
+      //    helper only rethrows a transport error); the membership delete
+      //    below is the loud check.
+      let unitRowsRemoved = 0
       if (ouIds.length > 0) {
-        const { error: ouErr } = await supabase
+        const ouRes = await supabase
           .from('campaign_worker_ou')
-          .delete()
+          .delete({ count: 'exact' })
           .eq('worker_id', workerId)
           .in('ou_id', ouIds)
-        if (ouErr) throw ouErr
+        assertRowsAffected(ouRes, 0, 'Removing the worker from its units')
+        unitRowsRemoved = ouRes.count ?? 0
       }
 
-      // 3. Remove campaign membership.
-      const { error: memErr } = await supabase
+      // 3. Remove campaign membership. The row exists for every member, so
+      //    zero rows normally means RLS filtered the delete (WP1.6) — fail
+      //    loudly. Exception: when unit rows WERE just deleted, RLS cannot be
+      //    the cause (wp16_cwo_delete and wp16_cwm_delete carry the same role
+      //    floor and campaign scope), so a missing membership row is a
+      //    pre-existing inconsistency (unit rows without membership). The
+      //    unit rows are gone, which is what was asked for: treat it as
+      //    success and warn rather than tell the user they lack permission.
+      const memRes = await supabase
         .from('campaign_worker_membership')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('campaign_id', cidNum)
         .eq('worker_id', workerId)
-      if (memErr) throw memErr
+      if (unitRowsRemoved > 0 && !memRes.error && memRes.count === 0) {
+        console.warn(
+          `useRemoveWorkerFromCampaign: worker ${workerId} had ${unitRowsRemoved} unit row(s) on campaign ${cidNum} but no campaign_worker_membership row; unit rows removed, nothing else to delete.`
+        )
+      } else {
+        assertRowsAffected(memRes, 1, 'Removing the worker from the campaign')
+      }
 
       // 4. Optionally clear employer / worksite on the worker record.
       const workerUpdates: Record<string, unknown> = {}
@@ -138,7 +157,11 @@ export function useRemoveWorkerFromCampaign({
         })
       }
     },
-    onSuccess: (_data, variables) => {
+    // Invalidate on settle, not only on success: the steps above are several
+    // deletes without a transaction, so a NoRowsAffectedError part-way (unit
+    // rows gone, membership refused) must refetch to show the real state
+    // rather than keep the pre-removal picture.
+    onSettled: () => {
       const cidStr = String(campaignId)
       const cidNum = Number(campaignId)
       qc.invalidateQueries({ queryKey: ['campaign-members-full', cidStr] })
@@ -149,6 +172,8 @@ export function useRemoveWorkerFromCampaign({
       qc.invalidateQueries({ queryKey: ['campaign-rating-summary', cidStr] })
       qc.invalidateQueries({ queryKey: ['workers'] })
       qc.invalidateQueries({ queryKey: ['call-list-items'] })
+    },
+    onSuccess: (_data, variables) => {
       const name =
         variables.workerName ??
         defaultWorkerName ??

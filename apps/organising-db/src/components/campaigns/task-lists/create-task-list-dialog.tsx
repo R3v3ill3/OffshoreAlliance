@@ -270,7 +270,7 @@ export function CreateTaskListDialog({
 }: CreateTaskListDialogProps) {
   const supabase = createClient();
   const queryClient = useQueryClient();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isLeadOrganiser } = useAuth();
   const router = useRouter();
 
   // Set after a successful save — shows the success/link-generation step.
@@ -474,7 +474,7 @@ export function CreateTaskListDialog({
         leader_organiser_id = await resolveCampaignOrganiserId(
           supabase,
           state.leader_organiser_pick,
-          { currentUserId: user.id, isAdmin }
+          { currentUserId: user.id, canLinkOtherOrganisers: isAdmin || isLeadOrganiser }
         );
       }
 

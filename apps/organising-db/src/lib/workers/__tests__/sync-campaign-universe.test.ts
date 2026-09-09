@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   matchingOusForWorker,
+  planUniverseSyncTargets,
   workerMatchesCampaignUniverse,
   type CampaignUniverse,
   type OuPlacementTarget,
@@ -108,5 +109,37 @@ describe("matchingOusForWorker", () => {
 
   it("does not place an unplaced worker", () => {
     expect(matchingOusForWorker(unplaced, ous)).toEqual([]);
+  });
+});
+
+describe("planUniverseSyncTargets (WP1.6)", () => {
+  const matching = [programmedCampaign, rovSectorCampaign];
+
+  it("keeps every matching campaign when all are writable", () => {
+    const result = planUniverseSyncTargets(matching, new Set([10, 11]));
+    expect(result.allowed).toEqual(matching);
+    expect(result.skippedNoAccess).toBe(0);
+  });
+
+  it("drops and counts campaigns the actor cannot write to, preserving order", () => {
+    const result = planUniverseSyncTargets(matching, new Set([11]));
+    expect(result.allowed.map((c) => c.campaignId)).toEqual([11]);
+    expect(result.skippedNoAccess).toBe(1);
+  });
+
+  it("skips everything when nothing is writable (viewer, or RPC returned nothing)", () => {
+    const result = planUniverseSyncTargets(matching, new Set());
+    expect(result.allowed).toEqual([]);
+    expect(result.skippedNoAccess).toBe(2);
+  });
+
+  it("ignores writable ids that did not match", () => {
+    const result = planUniverseSyncTargets([programmedCampaign], new Set([10, 999]));
+    expect(result.allowed.map((c) => c.campaignId)).toEqual([10]);
+    expect(result.skippedNoAccess).toBe(0);
+  });
+
+  it("is a no-op on an empty match list", () => {
+    expect(planUniverseSyncTargets([], new Set([10]))).toEqual({ allowed: [], skippedNoAccess: 0 });
   });
 });

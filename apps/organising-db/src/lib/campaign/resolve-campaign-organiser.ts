@@ -35,12 +35,19 @@ export function staffOptionLabel(row: StaffProfileRow): string {
 
 /**
  * Turn a campaign organiser picker value into campaigns.organiser_id (FK).
- * Creates an organisers row + links user_profiles when needed (self or admin).
+ *
+ * When the target staff member has no organisers row yet, one is minted and
+ * linked through the `link_organiser_for_profile` RPC (WP1.6). The RPC is the
+ * authority — it allows self, admins and lead/coordinator work roles
+ * (decision 8) — and `canLinkOtherOrganisers` is only the client-side
+ * pre-check that gives a friendlier message. The client can no longer write
+ * `user_profiles.organiser_id` directly: the WP1.6 privileged-column guard
+ * rejects that for non-admins.
  */
 export async function resolveCampaignOrganiserId(
   supabase: SupabaseClient,
   pickerValue: string,
-  options: { currentUserId: string; isAdmin: boolean }
+  options: { currentUserId: string; canLinkOtherOrganisers: boolean }
 ): Promise<number | null> {
   if (!pickerValue || pickerValue === "__none__") return null;
 
@@ -77,28 +84,31 @@ export async function resolveCampaignOrganiserId(
     return target.organiser_id as number;
   }
 
-  if (targetUserId !== options.currentUserId && !options.isAdmin) {
+  if (targetUserId !== options.currentUserId && !options.canLinkOtherOrganisers) {
     throw new Error(
-      "This team member does not have an organiser record yet. Only an admin can assign them until they are linked under Administration, or they can be selected after linking."
+      "This team member does not have an organiser record yet. An admin or lead organiser can link them under Administration; after that anyone can select them."
     );
   }
 
-  const name = (target.display_name || "Staff").trim().slice(0, 100) || "Staff";
-  const { data: created, error: insErr } = await supabase
-    .from("organisers")
-    .insert({ organiser_name: name, is_active: true })
-    .select("organiser_id")
-    .single();
+  // SECURITY DEFINER RPC: creates the organisers row and links
+  // user_profiles.organiser_id in one step, under the database's own gate.
+  const { data: linked, error: linkErr } = await supabase.rpc("link_organiser_for_profile", {
+    p_user_id: targetUserId,
+  });
 
-  if (insErr) throw insErr;
+  if (linkErr) {
+    if (typeof linkErr.message === "string" && linkErr.message.includes("not_authorized")) {
+      throw new Error(
+        "This team member does not have an organiser record yet. An admin or lead organiser can link them under Administration; after that anyone can select them."
+      );
+    }
+    throw linkErr;
+  }
 
-  const oid = created.organiser_id as number;
-  const { error: upErr } = await supabase
-    .from("user_profiles")
-    .update({ organiser_id: oid })
-    .eq("user_id", targetUserId);
-
-  if (upErr) throw upErr;
+  const oid = Number(linked);
+  if (!Number.isFinite(oid)) {
+    throw new Error("Could not link an organiser record for this staff member.");
+  }
 
   return oid;
 }

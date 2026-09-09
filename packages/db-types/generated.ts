@@ -26362,6 +26362,10 @@ export type Database = {
         Args: { p_options: Json }
         Returns: string[]
       }
+      campaigns_i_can_write: {
+        Args: { p_campaign_ids: number[] }
+        Returns: number[]
+      }
       can_write_to_campaign: {
         Args: { p_campaign_id: number }
         Returns: boolean
@@ -26577,6 +26581,10 @@ export type Database = {
       is_lead_organiser_for_campaign: {
         Args: { p_campaign_id: number }
         Returns: boolean
+      }
+      link_organiser_for_profile: {
+        Args: { p_user_id: string }
+        Returns: number
       }
       log_rate_limit_request: {
         Args: {

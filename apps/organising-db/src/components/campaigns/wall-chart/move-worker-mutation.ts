@@ -3,6 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
+import { assertRowsAffected } from "@/lib/supabase/assert-rows-affected";
 import {
   stampEmployerWorksiteFromOu,
   syncWorkersToMatchingCampaigns,
@@ -80,13 +81,18 @@ export function useMoveWorkersMutation(campaignId: string | number) {
         if (ouErr) throw ouErr;
         const ouIds = (campOus ?? []).map((o) => o.ou_id as number);
         if (ouIds.length > 0) {
-          const { error: delErr, count } = await supabase
+          const delRes = await supabase
             .from("campaign_worker_ou")
             .delete({ count: "exact" })
             .in("worker_id", workerIds)
             .in("ou_id", ouIds);
-          if (delErr) throw delErr;
-          deleted = count ?? 0;
+          // Every worker dragged out of a real unit has at least that one row;
+          // a worker dragged from Unassigned has none, so it is not counted.
+          const expectedAtLeast = new Set(
+            vars.refs.filter((r) => r.fromOuId != null).map((r) => r.workerId)
+          ).size;
+          assertRowsAffected(delRes, expectedAtLeast, "Moving the workers to Unassigned");
+          deleted = delRes.count ?? 0;
         }
       } else {
         // Determine workers who aren't already at target (to skip + avoid unique conflict).
@@ -214,13 +220,13 @@ export function useMoveWorkersMutation(campaignId: string | number) {
               // Moving from parent → its own sub-unit: preserve parent membership.
               continue;
             }
-            const { error: delErr, count } = await supabase
+            const delRes = await supabase
               .from("campaign_worker_ou")
               .delete({ count: "exact" })
               .eq("worker_id", ref.workerId)
               .eq("ou_id", ref.fromOuId);
-            if (delErr) throw delErr;
-            deleted += count ?? 0;
+            assertRowsAffected(delRes, 1, "Moving the worker out of its unit");
+            deleted += delRes.count ?? 0;
           }
 
           // If we migrated a primary, clear any stale primary flags elsewhere for that worker.
@@ -298,7 +304,13 @@ export function useMoveWorkersMutation(campaignId: string | number) {
 
       return { inserted, deleted, skipped };
     },
-    onSuccess: () => {
+    // Invalidate on settle, not only on success. The insert-then-delete above
+    // is not one transaction: when the target insert lands and the source
+    // delete is then filtered by RLS (NoRowsAffectedError), the worker is in
+    // both units and the board must refetch to show that, not keep the
+    // optimistic pre-drag picture. WP2.2's transactional RPC removes the
+    // partial state itself; until then the refetch keeps the UI honest.
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["campaign-worker-ou", String(campaignId)] });
       qc.invalidateQueries({ queryKey: ["campaign-members-full", String(campaignId)] });
       qc.invalidateQueries({ queryKey: ["workers"] });

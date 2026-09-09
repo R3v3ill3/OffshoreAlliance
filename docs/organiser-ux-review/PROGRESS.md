@@ -24,7 +24,7 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 | 0.3 | Defaults, copy and layout quick wins | merged | `feat/oux-wp0.3-defaults-copy-layout` | [#24](https://github.com/R3v3ill3/OffshoreAlliance/pull/24) | lint at baseline (143/151), 657 tests pass + 1 pre-existing collection failure (WP0.2), build green; screenshots captured on the dev preview 2026-09-08 (wp0.3.md §7) | DataTable card view now fires on phones/iPads; needs visual check | — |
 | 0.4 | Data hygiene scripts | merged; handed over to operator to run | `feat/oux-wp0.4-data-hygiene` | [#26](https://github.com/R3v3ill3/OffshoreAlliance/pull/26) | Two full dev rehearsals (02: 5 inserted, 03: 2 deleted, 01: 5 converted; every rollback restored dev field-for-field; `pnpm validate:migrations` green); production-scale counts await the dev re-seed | Script 01 held until WP1.6 is on production; run order 00 → 02 → 03 → 01; three submissions per script | 2, 8 |
 | 0.5 | Usability baseline pack | merged | `feat/oux-wp0.5-usability-baseline-pack` | [#23](https://github.com/R3v3ill3/OffshoreAlliance/pull/23) | docs only: lint unchanged | — | — |
-| 1.1 | Module registry and workspace mode | not started | | | | | 1 |
+| 1.1 | Module registry and workspace mode | PR draft | `feat/oux-wp1.1-workspace-mode` | [#27](https://github.com/R3v3ill3/OffshoreAlliance/pull/27) | migration `20260909100000_workspace_mode.sql` applied to dev, types regenerated; 780 tests, tsc, build green, lint at baseline; role probe: `user` reads defaults, sees 0 app_settings rows | Two admin-editor advisories deferred; nothing consumes the hook yet (WP1.2/1.4) | 1 |
 | 1.2 | Navigation driven by modules | not started | | | | | |
 | 1.3 | My campaigns home | not started | | | | | |
 | 1.4 | Campaign workspace | not started | | | | | |
@@ -65,7 +65,7 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 | Task | Raised by | Status |
 |---|---|---|
 | Run the usability baseline study (WP0.5 pack) | Phase 0 | pending |
-| Run WP0.4 scripts on production | WP0.4 | pending |
+| Run WP0.4 scripts on production (00 → 02 → 03; 01 held until WP1.6 is live) | WP0.4 | pending on production. **Run on dev by the operator 2026-09-08:** 02 inserted 5, 03 deleted 2, 01 converted 4 (the e2e account was already `user`); audit log intact, nothing rolled back. Dev now has the post-hygiene shape, so the four converted dev accounts hit the admin-only delete policies until WP1.6 lands. |
 | Re-record OVERVIEW clip | WP1.7 | pending |
 | Re-record B1–B3, C1–C3 | WP2.9 | pending |
 | Re-record A4, A5 | WP3.7 | pending |
@@ -73,3 +73,12 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 ## Flag removals
 
 _(dated notes when `workspace_mode` or `groups_v2` paths are deleted)_
+
+## Incidental findings (not part of any work package until assigned)
+
+| Found in | Finding | Assigned to |
+|---|---|---|
+| WP1.1 review (2026-09-09) | `user_profiles` "update own profile" policy plus table-wide grants let an authenticated `user` set their own `role`, `work_role`, `organiser_id` or `reports_to` via PostgREST; `get_user_role()` trusts the column. Exists in production today. | WP1.6 (mandatory scope) |
+| WP1.4 planning (2026-09-09) | The SOC wizard is launched with `?cid=` from the campaign page and the phone wizard but reads only `campaign_id`, so it never pre-fills the campaign it was opened from. | Unassigned; small fix for WP1.4 or WP3.3 |
+| WP1.1 verification (2026-09-09) | `supabase/.temp/` (the CLI link target) is tracked in git, so a fresh clone is linked to production. | Operator housekeeping: gitignore `supabase/.temp/` |
+| WP0.3 review (2026-09-08) | Appendix D 3.2 counts 44 campaign-page surfaces; the SMS panel renders five views, so the inventory is 45. | Recorded in WP1.4's fixture |

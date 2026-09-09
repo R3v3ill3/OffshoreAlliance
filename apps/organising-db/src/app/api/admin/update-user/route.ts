@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { UserRole, WorkRole } from "@/types/database";
+import { workspacePrefsSchema, type WorkspacePrefs } from "@/lib/workspace/prefs-schema";
 
 const VALID_WORK_ROLES: WorkRole[] = [
   "coordinator",
@@ -45,6 +46,7 @@ export async function PATCH(request: NextRequest) {
       displayName,
       email,
       phone,
+      workspacePrefs,
     }: {
       userId?: string;
       workRole?: WorkRole | null;
@@ -53,6 +55,8 @@ export async function PATCH(request: NextRequest) {
       displayName?: string;
       email?: string;
       phone?: string | null;
+      // WP1.1: per-user workspace override. Untrusted until validated below.
+      workspacePrefs?: unknown;
     } = body;
 
     if (!userId) {
@@ -79,6 +83,22 @@ export async function PATCH(request: NextRequest) {
       if (!trimmed || !trimmed.includes("@")) {
         return NextResponse.json({ error: "Invalid email" }, { status: 400 });
       }
+    }
+
+    // WP1.1: validate against the module registry before anything is
+    // written with the service-role client. `null` clears the override
+    // (stored as `{}` so the column's NOT NULL holds); only the parsed
+    // value is ever written, never the raw body.
+    let parsedWorkspacePrefs: WorkspacePrefs | undefined;
+    if (workspacePrefs !== undefined) {
+      const parsed = workspacePrefsSchema.safeParse(workspacePrefs ?? {});
+      if (!parsed.success) {
+        return NextResponse.json(
+          { error: "Invalid workspacePrefs", issues: parsed.error.issues },
+          { status: 400 }
+        );
+      }
+      parsedWorkspacePrefs = parsed.data;
     }
 
     const adminClient = createAdminClient();
@@ -138,6 +158,7 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: "Invalid phone" }, { status: 400 });
       }
     }
+    if (parsedWorkspacePrefs !== undefined) updates.workspace_prefs = parsedWorkspacePrefs;
 
     const emailChanges =
       email !== undefined && email.trim() !== (authUser.email ?? "");

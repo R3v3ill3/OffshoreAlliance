@@ -1075,6 +1075,106 @@ WP1.1). Every departure from §2, with the reason:
 6. Prefs reset check: after the run, `GET /api/admin/users` must show the e2e user's
    `workspace_prefs` as `{}` (the organiser-nav spec asserts this in its `finally`).
 
+### Fix round 1
+
+Implemented 2026-09-09 on `feat/oux-wp1.3-my-campaigns` after the §7 verifier run (at 60de980;
+migration applied to dev, types regenerated). Items are the reviewer's numbering.
+
+**Blocking**
+
+1. **Landing gate decided before the profile arrived** (`src/app/page.tsx`,
+   `use-workspace.tsx`, `auth-context.tsx`). After the login form, `useAuth().loading` is
+   already false (INITIAL_SESSION on `/login` had no user and cleared it) and the SIGNED_IN
+   branch never re-armed it, so the gate could — and with a cached defaults query always did —
+   read `mode` while the profile was still in flight, when `resolveWorkspace()` returns `full`.
+   Two changes, both small: `auth-context.tsx` gains `profileLoading`, raised synchronously in
+   the SIGNED_IN / USER_UPDATED / PASSWORD_RECOVERY branch (a React state set, not a Supabase
+   call — the WP1.6 macrotask deferral is untouched) and cleared in a `finally` once the
+   deferred `fetchProfile` lands; `useWorkspace().loading` folds it in. The gate itself now
+   decides on `canDecideLanding()` (new pure L5 in `landing.ts`: not while anything loads, and
+   never for a signed-in user without a profile), keeping the 5 s failsafe to `/campaigns`. Four
+   L5 cases in `landing.test.ts` (loading → wait; user without profile → wait; profile → decide;
+   no user → decide).
+2. **Test A raced the page's own `?from=landing` hop** (`tests/e2e/wall-chart.spec.ts`). After
+   the first post-login wait the spec now waits for a URL without the `from` param before
+   branching on the pathname, so branch 1 is observable; its comment is reworded honestly (it is
+   My campaigns' L4 hop that opens the chart, not the gate).
+3. **Test A full-mode failure — diagnosis.** A throwaway script
+   (`apps/organising-db/test-results/wp1.3-rowclick-diag.mjs`, git-ignored) drove the preview
+   through four scenarios, inspecting the first `table tbody tr` at the moment it became visible:
+   whether a React `onClick` was attached, its `.overflow-x-auto` ancestor, the element under
+   its centre, and the URL trail after the click.
+
+   | Scenario | onClick attached | element at centre | after click |
+   |---|---|---|---|
+   | storage state, `goto /campaigns` (phase 0's path) | yes | ratings-bar span | `/campaigns/1?tab=workforce&sub=wall-chart` at 4.6 s |
+   | storage state, `goto /` (gate hop) | **no** | `img.object-contain` | stays `/campaigns` |
+   | form login, click as soon as visible (test A's path) | **no** | `img.object-contain` | stays `/campaigns` |
+   | form login, 3 s settle, then click | yes | ratings-bar span | `/campaigns/1?tab=…` at 1.7 s |
+
+   The row the failing click hit is the **DataTable's loading row** (`data-table.tsx:290`, a
+   `TableRow` holding the `EurekaLoadingSpinner` image), not the dashboard's per-campaign row
+   that phase 0 clicked. Arriving from the gate is a soft navigation, so `/campaigns` renders
+   while its campaigns query is still in flight: the dashboard (`!isLoading && user`) is not
+   mounted yet and the DataTable renders its spinner row — a visible `tbody tr` with no handler.
+   Phase 0's full reload never met it because the page arrived with auth still loading. So:
+   not hydration, not `isMobile` (Desktop Chrome, `<table>` confirmed), not a nested link or
+   a `stopPropagation` cell, and not the gate undoing a navigation (no `framenavigated` at all).
+   The product is not broken for a real user — the placeholder is transient and the row click
+   navigates once the list has loaded (scenario 4). **Spec fix only:** the full-mode branch now
+   locates `table tbody tr` that `has` an `a[href*="sub=wall-chart"]` — the dashboard row's
+   first cell carries that link and neither placeholder row can — and clicks the row as before.
+3b. **Mode oracle.** With the admin storage state present (`hasE2EAdminCredentials`), test A
+   reads the account's `role`, `work_role` and `workspace_prefs` from `GET /api/admin/users` and
+   the org defaults from `GET /api/admin/workspace-defaults`, resolves the mode with the
+   product's own `resolveWorkspace()` (pure, imported via the `@/` alias — Playwright honours
+   `tsconfig.json` paths), counts "my" campaigns through the REST config global setup captured
+   (`restClientFor` + `groupMyCampaigns`, the hook's own owner-or-roster rule, `is_sms_episode`
+   filtered as the hook does), and asserts: full → `/campaigns`; organiser with one → `/campaigns/<id>`;
+   organiser with several (or none) → `/my-campaigns`. If the REST config is missing the organiser
+   case accepts either organiser branch; without the admin state the oracle is skipped. The read
+   happens before `t0`, so it is outside the 10 s budget.
+
+**Advisory**
+
+4. `my-campaigns/page.tsx` — the last-activity RPC now receives `mine` plus at most
+   `MAX_TEAM_ROWS` (12) team ids, the rows the team row can render.
+5. `needs-attention-list.tsx` — the probe calls `useRoleCheckCount(id, { retry: 1 })`; the hook
+   gained an optional `{ retry }` and `RoleCheckTab`'s own query is unchanged.
+6. One path constant: `landing.ts` owns `MY_CAMPAIGNS_PATH` (pure — a type import only) and
+   `nav-model.ts` re-exports it as `MY_CAMPAIGNS_HREF`, so the nav suites are untouched and
+   `nav-model.ts` stays free of React and `next/*`.
+7. "Your account is not linked to an organiser record yet…" on `/my-campaigns` is reused
+   verbatim from `campaigns/page.tsx:354` (the same unlinked-profile case). Left as is.
+
+**Gates** (from `apps/organising-db`, 2026-09-09):
+
+- `pnpm exec eslint <the ten touched files>` — exit 0, no findings
+- `pnpm test` — 70 files, 936 tests passed (932 + the four L5 cases)
+- `pnpm exec tsc --noEmit -p tsconfig.json` — clean
+- `pnpm build` — compiled (`✓ Compiled successfully in 2.2min`), 130 static pages, `ƒ /my-campaigns` registered, exit 0
+- `env -u E2E_USER_EMAIL -u E2E_USER_PASSWORD -u E2E_ADMIN_EMAIL -u E2E_ADMIN_PASSWORD pnpm e2e`
+  — 10 skipped, exit 0
+- `E2E_BASE_URL=https://offshore-alliance-42qbtrjx4-reveille-strategy.vercel.app pnpm e2e
+  tests/e2e/wall-chart.spec.ts`, twice, credentials from the shell profile:
+  - run 1: test A 14.6 s, test B 20.7 s — `2 passed (50.1s)`
+  - run 2: test A 12.0 s, test B 10.2 s — `2 passed (1.4m)`
+
+  (Test durations include the oracle read and Playwright's own waits; the in-test 10 s budget
+  assertion from the submit passed in both.)
+
+**What the runs prove.** The preview is built at `ba0b490`, so it carries none of this round's
+product code. Both runs therefore prove items 2, 3 and 3b — the spec fixes — against the
+account in **full mode** (the oracle resolved `full` and required `/campaigns`; the fixed locator
+found the dashboard row and the click navigated). They do **not** exercise item 1's gate change:
+in full mode the premature decision and the correct one land on the same `/campaigns`. Item 1 is
+covered by the L5 unit cases and by tsc/build; the organiser-mode landing after a form login is
+for the next preview (built from this round) — the §6 hand-off step 5 note about flipping the
+account applies, and after the flip the oracle will require `/campaigns/<id>` for this
+one-campaign account.
+
+**Commits:** `8a617cf` (the code, all items above) and this documentation commit.
+
 ## 7. Verification output
 
 Verifier run 2026-09-09 at a5f3197; migration applied to dev; preview https://offshore-alliance-42qbtrjx4-reveille-strategy.vercel.app

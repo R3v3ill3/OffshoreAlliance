@@ -1373,7 +1373,147 @@ Plan accepted in substance. Orchestrator answers to section 8: (1) admin credent
 
 ## 11. Deviations from plan
 
-_(implementer keeps this list)_
+Implementer (Fable), 2026-09-09. Everything in §2 is implemented as written except the items below.
+
+1. **Migration filename** — `20260909120000_wp1_6_campaign_write_policies.sql`, not the plan's
+   `20260909093000_…`. The plan was written before WP1.1's `20260909100000_workspace_mode.sql` existed;
+   `093000 < 100000` would have sorted the WP1.6 file *before* WP1.1's on a fresh environment (and `db push`
+   on dev would have applied an "older" version after a newer one). `120000` applies after it. Every
+   reference to the filename in §2.6 / §5 should be read as the `120000` file.
+2. **Profile guard forces an RPC for organiser linking** (§9 added scope interacting with §2.2).
+   `resolveCampaignOrganiserId` used to `INSERT organisers` then `UPDATE user_profiles SET organiser_id`
+   from the **user-scoped** client (`:86-101`). The new BEFORE UPDATE guard rejects that write for every
+   non-admin — including the *self* link that decision 8's note depends on (a `user` creating their first
+   campaign with themselves assigned has no organisers row yet). A guard that let a non-admin set their own
+   `organiser_id` from NULL would be an escalation (pointing at another organiser's id inherits every
+   organiser-keyed arm of `can_write_to_campaign`). So the migration adds
+   `link_organiser_for_profile(p_user_id uuid) RETURNS integer` — `SECURITY DEFINER`, owner `postgres`,
+   gate `auth.uid() IS NOT NULL AND role IN ('admin','user') AND (p_user_id = auth.uid() OR
+   is_coordinator_or_lead())`, idempotent (returns the existing id when already linked), `REVOKE … FROM
+   PUBLIC, anon`. The resolver calls it instead of the two client writes; `canLinkOtherOrganisers` stays as
+   the client-side pre-check for the friendly message and the RPC is the authority. Side effect that is a
+   strict improvement: a `user`-role lead organiser linking a colleague now *works* (before this the
+   `user_profiles` UPDATE was an RLS no-op for them and the resolver returned an unlinked id).
+3. **Guard design detail** — the trigger function is `SECURITY INVOKER` on purpose and gates on
+   `current_user IN ('authenticated','anon') AND NOT is_admin()`, because inside a `SECURITY DEFINER`
+   function owned by `postgres` (`link_organiser_for_profile`, `delete_campaign`) `current_user` is
+   `postgres`, and the service role runs as `service_role`. A `SECURITY DEFINER` trigger function would have
+   reported `postgres` for everyone and made the check vacuous. `user_id` is guarded alongside the four
+   columns the orchestrator listed (changing a PK to another account's uid is the same class of hole).
+   `display_name`, `phone`, `workspace_prefs` and `updated_at` stay self-editable. Rollback drops the
+   trigger, its function and the RPC.
+4. **Probe pack extended** beyond §2.7.5: a positive `user` section (insert a campaign, confirm
+   `created_by = auth.uid()`, insert/update/delete a unit on it, `delete_campaign()` succeeds), the
+   self-escalation section (role, work_role, organiser_id, reports_to each 42501; display_name/phone/
+   workspace_prefs still update; `link_organiser_for_profile(self)` works; `…(other)` is `not_authorized`
+   for a plain organiser), a `delete_campaign()` and direct standing-campaign delete probe in the negative
+   section, a `campaigns_i_can_write` emptiness probe for the viewer, and a final `service_role` section
+   proving the admin routes' client can still change `role`/`work_role`. The §6 pre-flight query is
+   embedded in the discovery step so the verifier gets it in the same run. Variables are passed with
+   `-v` (defaults let a discovery-only pass run without them); `\if :{?var}` requires psql 10+.
+5. **`move-worker-mutation.ts` "Move to Unassigned" expected count** is the number of distinct workers
+   among refs whose `fromOuId` is non-null, not `workerIds.length` as the plan's table says: a worker
+   dragged from Unassigned to Unassigned has no row to delete, and the plan's figure would have raised a
+   false `NoRowsAffectedError` there. The per-ref delete keeps the plan's `expected = 1` and is inside the
+   `mode === "move"` branch, so copy is unaffected.
+6. **`useRemoveWorkerFromCampaign`** — the plan said to "capture the count and use it below" for the
+   `campaign_worker_ou` delete. The only sensible use (warn when unit rows went but the membership did
+   not) is unreachable because the membership assertion throws first, so the count is not captured; the
+   call passes `expected = 0` (transport errors still rethrown) exactly as the plan's reasoning intends.
+7. **Dialler gate shape** — the dialler has no "No longer in campaign universe" *panel*; removal is one of
+   two call dispositions (`REMOVAL_CALL_DISPOSITIONS`). The gate hides those two disposition buttons
+   when `useCanWriteToCampaign(campaignId)` is false (kept while loading), which is the same intent.
+8. **`campaign_leader_worker_links` unlink call site** needed no extra gate: `WorkerRelationshipsTab`
+   already renders every remove control inside `canWrite &&`, and it receives the campaign page's now
+   campaign-scoped `canWrite`. `useDeleteLeaderLink` got the assertion and an `onError` toast as planned.
+9. **Admin spec fallback** — when `E2E_FOREIGN_CAMPAIGN_ID` is unset the admin spec uses the first row on
+   `/campaigns` rather than skipping, since "any campaign" is what it proves; with the id set it runs the
+   contrast case the plan specifies. It never deletes a campaign.
+10. **No new spec file for `planUniverseSyncTargets`** — its five cases were appended to the existing
+    `src/lib/workers/__tests__/sync-campaign-universe.test.ts` instead of a new file.
+11. **`packages/db-types/generated.ts` not regenerated here** (verifier's step, per the brief). No cast was
+    needed at any `.rpc("campaigns_i_can_write")` / `.rpc("link_organiser_for_profile")` call site:
+    `createClient()` in `src/lib/supabase/client.ts` returns an untyped `SupabaseClient`, the server
+    `createClient()` returns an ungeneric `createServerClient(...)`, and `sync-campaign-universe.ts` takes
+    `any`. `tsc --noEmit` passes without the regenerated types; regenerating adds the two function entries.
+12. **PROGRESS.md not edited** (brief). §5's "Changed" table row for it is for the verifier/orchestrator.
+
+### Implementer notes
+
+**Migration:** `supabase/migrations/20260909120000_wp1_6_campaign_write_policies.sql` — every dropped
+policy's baseline text is quoted in a comment directly above its `DROP` for diffing. `pnpm validate:migrations`
+→ `Validated 5 Supabase migrations with unique 14-digit versions.`
+
+**Files**
+
+New: `supabase/migrations/20260909120000_wp1_6_campaign_write_policies.sql`;
+`scripts/data-hygiene/oux-wp1.6/{README.md,90_rollback_wp1_6_policies.sql,95_role_probes.sql}`;
+`apps/organising-db/src/lib/auth/work-role-flags.ts` + `__tests__/work-role-flags.test.ts`;
+`apps/organising-db/src/lib/supabase/assert-rows-affected.ts` + `__tests__/assert-rows-affected.test.ts`;
+`apps/organising-db/src/lib/hooks/useCampaignWriteAccess.ts`;
+`apps/organising-db/tests/e2e/roles/{unit-lifecycle.ts,unit-lifecycle-user.spec.ts,unit-lifecycle-admin.spec.ts}`.
+
+Changed (all under `apps/organising-db/`): `src/lib/supabase/auth-context.tsx`,
+`src/lib/campaign/resolve-campaign-organiser.ts`, `src/components/campaigns/campaign-basics-edit-sheet.tsx`,
+`src/components/campaigns/task-lists/create-task-list-dialog.tsx`, `src/components/campaigns/campaign-settings.tsx`,
+`src/components/campaigns/campaign-wizard.tsx`, `src/app/(dashboard)/campaigns/new/manual/page.tsx`,
+`src/app/api/campaigns/[id]/worker-lists/[listId]/fire/task/route.ts`, `src/app/(dashboard)/campaigns/[id]/page.tsx`,
+`src/app/(dashboard)/campaigns/page.tsx`, `src/components/campaigns/wall-chart/delete-organising-unit-dialog.tsx`,
+`src/components/campaigns/wall-chart/move-worker-mutation.ts`, `src/lib/hooks/useRemoveWorkerFromCampaign.ts`,
+`src/components/campaigns/campaign-units-section.tsx`, `src/components/campaigns/wall-chart/use-leader-links.ts`,
+`src/components/phone/CallSessionPage.tsx`, `src/lib/workers/sync-campaign-universe.ts`,
+`src/lib/workers/__tests__/sync-campaign-universe.test.ts`, `playwright.config.ts`, `tests/e2e/env.ts`,
+`tests/e2e/global-setup.ts`.
+
+**Gates (2026-09-09, from `apps/organising-db` unless noted)**
+
+- `pnpm exec eslint <every touched file>` → 3 errors / 1 warning, **all pre-existing at HEAD** on lines not
+  touched (`delete-organising-unit-dialog.tsx:99` set-state-in-effect; `CallSessionPage.tsx:219`
+  set-state-in-effect and `:527` exhaustive-deps — the same findings at `:98`, `:204`, `:512` in the HEAD
+  versions via `git show HEAD:… | eslint --stdin`). Zero findings on changed lines.
+- `pnpm test` → 63 files, 852 tests passed (3 new/extended: work-role-flags 10, assert-rows-affected 7,
+  planUniverseSyncTargets 5).
+- `pnpm exec tsc --noEmit -p tsconfig.json` → exit 0.
+- `pnpm build` → exit 0.
+- `env -u E2E_USER_EMAIL -u E2E_USER_PASSWORD -u E2E_ADMIN_EMAIL -u E2E_ADMIN_PASSWORD pnpm e2e` → 7 skipped,
+  exit 0 (6 in `chromium`, 1 in `chromium-admin`; no spec runs twice).
+- repo root `pnpm validate:migrations` → exit 0.
+
+**Verifier hand-off (dev only — `dpnnmkhabysfdogllsyh`; never `gteygwfgjvczanmrwgbr`)**
+
+1. `cat supabase/.temp/project-ref` must print `dpnnmkhabysfdogllsyh`; if not,
+   `npx supabase link --project-ref dpnnmkhabysfdogllsyh`.
+2. `env -u SUPABASE_DB_PASSWORD npx supabase migration list` — expect the three baseline files and
+   `20260909100000` applied, `20260909120000` local-only.
+3. Run the §2.6 "before" snapshot (three queries; `pg_proc` list should also include
+   `link_organiser_for_profile`, `user_profiles_guard_privileged_columns`) and paste into §12.
+4. `npx supabase db push --dry-run` — must list exactly `20260909120000_wp1_6_campaign_write_policies.sql`.
+5. `npx supabase db push`.
+6. Pre-flight query (§6) on dev — expect zero rows.
+7. "After" `pg_policies` snapshot (same three queries) — expect 15 `wp16_*` rows with the §2.1 predicates,
+   the 5 SELECT rows untouched, `column_default = auth.uid()`, `campaigns_i_can_write` and
+   `link_organiser_for_profile` present, `delete_campaign` containing `is_campaign_creator`, and
+   `SELECT tgname FROM pg_trigger WHERE tgrelid = 'public.user_profiles'::regclass` including
+   `trg_user_profiles_guard_privileged_columns`.
+8. `SUPABASE_PROJECT_REF=dpnnmkhabysfdogllsyh pnpm gen:types` (repo root); `git diff --stat
+   packages/db-types/generated.ts` — expect the two new function entries (and nothing for `created_by`).
+9. From `apps/organising-db`: `pnpm exec tsc --noEmit -p tsconfig.json`, `pnpm test`, `pnpm build`.
+10. Credentialled e2e, both projects, against the branch preview:
+    `E2E_BASE_URL=<preview> E2E_FOREIGN_CAMPAIGN_ID=<from step 11's discovery> pnpm e2e` with
+    `E2E_USER_*` / `E2E_ADMIN_*` from the shell. Run step 11's discovery pass first to get the foreign id.
+11. `psql "$DEV_DB_URL" -v ON_ERROR_STOP=1 -v e2e_uid='<uid>' [-v foreign_campaign_id=… -v foreign_ou_id=…]
+    -f scripts/data-hygiene/oux-wp1.6/95_role_probes.sql` — expect PASS on every line; paste the output.
+    Optionally the R5 `EXPLAIN (ANALYZE, BUFFERS)` from the comment at the end of the file.
+12. Verify `/api/admin/update-user` still works as an admin (change a dev account's `work_role` and back) —
+    the service-role path is also covered by probe section 5.
+
+**Commits (branch `feat/oux-wp1.6-auth-rls`, stacked on WP1.5 → WP1.1)**
+
+- `17fc01a` feat(oux-wp1.6): campaign write policies, profile guard, rollback and role probes
+- `36f4600` feat(oux-wp1.6): isLeadOrganiser/isOrganiser in the auth context; organiser linking via RPC
+- `6e1328f` feat(oux-wp1.6): campaign-scoped write gates and loud deletes
+- `e8fe3ed` feat(oux-wp1.6): role-coverage e2e for user and admin, second Playwright project
+- (this file) feat(oux-wp1.6): deviations and implementer notes
 
 ## 12. Verification output
 

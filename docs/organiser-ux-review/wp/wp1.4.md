@@ -1603,6 +1603,123 @@ Prefs reset to `{}` by the script's `finally` block; confirmed by SQL immediatel
 | 6. prefs/campaigns after | `{}`; no leftover WP1.6 campaigns |
 | 7. visual evidence | all 6 screenshots captured; prefs reset and confirmed |
 
+### Verifier run 2 (after fix round 1) at c6b1624; preview https://offshore-alliance-m0baab8ek-reveille-strategy.vercel.app
+
+#### 1. `apps/organising-db` — tsc / test / lint / build
+
+```
+$ pnpm exec tsc --noEmit -p tsconfig.json; echo tsc $?
+tsc 0
+```
+
+```
+$ pnpm test 2>&1 | grep -E 'Test Files|Tests |FAIL'
+ Test Files  72 passed (72)
+      Tests  999 passed (999)
+```
+No `FAIL` lines.
+
+```
+$ pnpm lint 2>&1 | grep problems
+✖ 294 problems (143 errors, 151 warnings)
+```
+Matches the baseline (294/143/151) exactly.
+
+```
+$ pnpm build 2>&1 | tail -4
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+```
+Build completed clean; fuller tail confirmed no error lines, only the route summary.
+
+#### 2. Diff stat and log since baseline
+
+```
+$ git diff --stat 08fca8e..HEAD | tail -1
+ 13 files changed, 409 insertions(+), 126 deletions(-)
+
+$ git log --oneline 08fca8e..HEAD
+c6b1624 fix(oux-wp1.4): §6 fix round 1 — honest counts and two more deviations
+38994d6 fix(oux-wp1.4): reviewer round 1 — e2e locator, and nine advisories
+```
+
+#### 3. Prefs before
+
+```sql
+select workspace_prefs from user_profiles where user_id = 'f7c048e2-ecfe-4e9c-8715-7f4c899f0d37'
+```
+`{"workspace_prefs": {}}` — as expected; no reset needed.
+
+#### 4. Preview deployment
+
+`gh api "repos/R3v3ill3/OffshoreAlliance/deployments?sha=c6b1624dbd111b73c011335f5b526cdb834aa89a&per_page=3"` returned one deployment (id `6349503988`) on the first poll — no waiting required.
+
+`gh api "repos/R3v3ill3/OffshoreAlliance/deployments/6349503988/statuses"` → `state: "success"`, `environment_url: "https://offshore-alliance-m0baab8ek-reveille-strategy.vercel.app"`.
+
+#### 5. Credentialled e2e — full suite, both projects
+
+```
+$ E2E_FOREIGN_CAMPAIGN_ID=3 E2E_BASE_URL=<preview> pnpm e2e
+
+Running 12 tests using 1 worker
+
+  ✓   1 [chromium] actions-hub.spec.ts:22:7 › open /actions, see the three start cards and the status buckets (6.7s)
+  ✓   2 [chromium] actions-hub.spec.ts:62:7 › /sms still works and lands on the hub with its params intact (5.0s)
+  -   3 [chromium] mobile-dialer.spec.ts:30:7 › volunteer can sign in, claim, dial, record outcome, advance (skipped)
+  ✓   4 [chromium] organiser-campaign.spec.ts:54:7 › the eight tabs, in order, with no organiser-mode furniture (2.7s)
+  ✓   5 [chromium] organiser-campaign.spec.ts:88:7 › four tabs plus More, deep links, the switcher and every header action (32.9s)
+  ✓   6 [chromium] organiser-nav.spec.ts:52:7 › the ten rows, in order, with no organiser-mode furniture (1.6s)
+  ✓   7 [chromium] organiser-nav.spec.ts:68:7 › organiser mode shows four primary items, Organisation and Show everything (11.1s)
+  ✓   8 [chromium] roles/unit-lifecycle-user.spec.ts:92:7 › creates a campaign, then creates, renames and deletes a unit and the campaign (10.3s)
+  ✓   9 [chromium] roles/unit-lifecycle-user.spec.ts:137:7 › offers no write controls on a campaign the account cannot write to (4.1s)
+  ✓  10 [chromium] wall-chart.spec.ts:162:7 › sign in and reach a wall chart in under ten seconds (9.4s)
+  ✓  11 [chromium] wall-chart.spec.ts:244:7 › lists my campaigns and opens the wall chart (8.9s)
+  ✓  12 [chromium-admin] roles/unit-lifecycle-admin.spec.ts:76:7 › creates, renames and deletes a unit on any campaign (6.7s)
+
+  1 skipped
+  11 passed (2.1m)
+```
+
+Every non-skipped spec passed, including the previously-failing organiser-mode round trip (Test 5, `organiser-campaign.spec.ts:88`), now at 32.9s. The `mobile-dialer` spec skipped, unrelated to this package.
+
+Prefs after:
+
+```sql
+select workspace_prefs from user_profiles where user_id = 'f7c048e2-ecfe-4e9c-8715-7f4c899f0d37'
+```
+`{"workspace_prefs": {}}` — as expected.
+
+```sql
+select campaign_id, name from campaigns where name like 'WP1.6%'
+```
+`[]` — no leftover rows, as expected.
+
+#### 6. Visual evidence
+
+Throwaway script `apps/organising-db/test-results/wp1.4-visual-verify-run2.spec.ts` (gitignored, not committed), run as a Playwright spec loading `tests/e2e/.auth/user.json` (and `.auth/admin.json` for the admin mode-switch calls) at 1280×800 against the preview URL.
+
+| Screenshot | Path | Observed |
+|---|---|---|
+| Organiser mode, campaign page | `/tmp/oux-plans/shots/wp1.4-organiser-campaign-v2.png` | Campaign name "testco1" appears exactly once, as the plain-label switcher heading (the account owns exactly one campaign, so the switcher collapses to a `<h1>` label, per §2.6's collapsed branch) — no duplicate name block. Back arrow, pencil, `bargaining`/`active` badges, dates, **New action**, **Build list**, **⋯**; tab bar reads Wall chart / People / Activity / Setup / More. |
+| Switcher shortcut | `/tmp/oux-plans/shots/wp1.4-switcher-v2.png` | `g` then `c` pressed; page unchanged, byte-identical to the campaign-page shot — consistent with the single-campaign plain-label branch (no popover, no listener registered), matching run 1's finding. The script checked for `button[aria-haspopup="listbox"]` first and found none, so "My campaigns"/"All campaigns" rows were not asserted or expected. |
+| More menu | `/tmp/oux-plans/shots/wp1.4-organiser-more-v2.png` | Opens over the four tabs; live item **Role check** (bold, enabled); muted items (Overview, Strategy, Workplan, Pending review, Section Plans, Data fields, Activists & WOCs, Foundational Readiness, …) each captioned "Ask an admin to enable". |
+| Re-run wizard, full mode | `/tmp/oux-plans/shots/wp1.4-rerun-wizard-header.png` | `/campaigns/new?cid=1&edit=1` renders "Edit campaign — Step 1 of 9 — Basics & scope" under the unchanged campaign header (testco1, pencil, bargaining/active badges, dates, Build ▾, Create Phone Call, Create Email, Create SMS, Actions ▾). No redirect away from the URL. |
+
+Prefs reset to `{}` by the script's `finally` block; confirmed by SQL immediately after (see above).
+
+#### Step summary, run 2
+
+| Step | Result |
+|---|---|
+| 1. tsc / test / lint / build | green — tsc 0; 72 files / 999 tests passed, no FAIL; lint 294/143/151 (baseline); build clean |
+| 2. diff stat / log | 13 files, +409/-126; 2 commits since 08fca8e |
+| 3. prefs before | `{}` |
+| 4. preview deployment | ready on first poll — `success`, https://offshore-alliance-m0baab8ek-reveille-strategy.vercel.app |
+| 5. e2e full suite | 11 passed, 1 skipped (unrelated), **0 failed** — the previously-failing organiser round trip now passes (32.9s) |
+| 6. prefs/campaigns after | `{}`; no leftover WP1.6 campaigns |
+| 7. visual evidence | all 4 screenshots captured; prefs reset and confirmed |
+
 ## 8. Reviewer findings
 
 _(reviewer)_

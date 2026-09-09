@@ -43,7 +43,7 @@ import { smsActionHref, smsActionStatusLabel } from '@/lib/sms/hub-actions'
 import type { SmsNumberActionRef, SmsNumberAllocationRow } from '@/app/api/sms/numbers/route'
 import { SmsHubHeader } from './SmsHubNav'
 import { SMS_ACTION_KIND_META } from './SmsActionKindPicker'
-import { STATUS_TONE } from './SmsActionsTable'
+import { STATUS_TONE } from '@/components/actions/hub/ActionsTable'
 
 const PURPOSES = ['organiser', 'relay', 'survey', 'spare'] as const
 
@@ -382,11 +382,9 @@ function NumberDetail({
                       {status}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
-                      {a.scope === 'standalone'
+                      {a.scope === 'standalone' || a.scope === 'org'
                         ? 'Standalone'
-                        : a.scope === 'org'
-                          ? 'Org-wide'
-                          : (a.campaign_name ?? 'Campaign')}
+                        : (a.campaign_name ?? 'Campaign')}
                     </span>
                     <span className="text-[11px] text-muted-foreground">
                       {formatDistanceToNowStrict(new Date(a.updated_at), { addSuffix: true })}

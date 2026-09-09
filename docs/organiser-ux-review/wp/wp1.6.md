@@ -1524,6 +1524,109 @@ Changed (all under `apps/organising-db/`): `src/lib/supabase/auth-context.tsx`,
 - `e8fe3ed` feat(oux-wp1.6): role-coverage e2e for user and admin, second Playwright project
 - (this file) feat(oux-wp1.6): deviations and implementer notes
 
+### Fix round 1 (2026-09-09, implementer Fable, commit `724163f`)
+
+Applies the §13 reviewer findings. `20260909120000` is applied to dev and was not edited; the one schema
+change is a new file. Every finding was checked against the file before the change.
+
+**E2E helper failure (§12.11) — diagnosis.** `renameUnit()` failed at the same point for both roles in every
+run because `UNITS_URL` in `tests/e2e/roles/unit-lifecycle.ts` navigated to `?tab=workforce&sub=units`, and
+there is no such sub-tab: the Units tab's `TabsTrigger` value in `src/app/(dashboard)/campaigns/[id]/page.tsx`
+is `campaign-units`. `resolveTabParams` (`src/lib/campaign-tabs.ts`) honours any explicit `?sub=` without
+validating it (`{ tab, sub: sub ?? defaultSub }`) and `needsRedirect()` therefore had nothing to rewrite, so
+the page rendered `<Tabs value="units">` — the tab bar with no matching `TabsContent`, i.e. no sub-tab body
+at all. `CampaignUnitsSection` never mounted, and the `div.rounded-md.border` / `p.font-medium` row the helper
+waited 30s for could not exist. Not a stale React Query cache (`page.goto` is a full document load), not
+naming (the create dialog only `trim()`s, and the wall-chart card assertion on the same name passed
+immediately before), not pagination. Fix: `sub=campaign-units`, plus an `aria-selected="true"` assertion on
+the "Campaign Units" tab so a future id change fails with a message instead of a 30s timeout. The selectors
+after that (`p.font-medium` name, `title="Edit unit"` button, "Edit organising unit" dialog, "Save changes")
+match `campaign-units-section.tsx` `:1224`, `:1326`, `:1905`, `:2002`.
+
+**`wall-chart.spec.ts` flake.** Two different symptoms, both consistent with preview timing at the 5s
+default `expect` timeout, not a WP1.6 regression: attempt 4's `toHaveURL` waits for a `router.push` whose URL
+only commits when the campaign page's RSC payload arrives (cold preview function); attempt 1's content wait
+covers the wall chart's members/OU queries after mount. Those two specific waits are now 30s with comments
+citing the attempts; no global retries. The `.first().or(...)` locator (strict-mode double match, seen in the
+sibling user spec in attempt 2 and identical here) is replaced by one CSS selector then `.first()` in both files.
+
+**Per-finding changes**
+
+1. **Pre-flight predicate (blocking).** `up.role = 'user'` and `(up.work_role IS NULL OR up.work_role NOT IN
+   (...))` in §6, `95_role_probes.sql` section 0, and the new `00_preflight_organiser_write_access.sql`.
+2. **Production scripts (blocking).** `00_preflight_organiser_write_access.sql` and
+   `01_postflight_write_coverage.sql` — read-only, no impersonation, no `SET ROLE`, one SELECT each, expected
+   "zero rows" stated in 00. README gains "Production run sheet": 00 (zero rows) → deploy WP1.6 (develop →
+   main; operator `db push` to production) → 01 → 00 again (zero rows) → WP0.4 script 01 → spot-check one
+   converted account signs out/in and deletes a unit on their own campaign. 95 is marked DEV ONLY in the
+   table, in its header and in the run sheet.
+3. **Standing guard.** `supabase/migrations/20260909130000_wp1_6_delete_campaign_standing_guard.sql`:
+   `CREATE OR REPLACE delete_campaign` identical to the 120000 body except an `is_standing` check raising
+   `campaign_is_standing`, placed after the `auth.uid() IS NULL` check and before the role gate (unconditional,
+   admins included; an unauthenticated caller still learns nothing). `SECURITY DEFINER` and `SET search_path
+   TO 'public'` kept; prior body quoted in the header. `91_rollback_standing_guard_only.sql` restores the
+   120000 body; 90's step 3 notes it supersedes both. Probes: the creator flips their own campaign to
+   standing (plain UPDATE under `wp16_campaigns_update`, `n = 1` asserted) and `delete_campaign()` must raise
+   `campaign_is_standing`; the flip is undone before the success probe; a second probe calls it on the real
+   standing campaign (SKIP when none exists). `campaign-delete-dialog.tsx` maps the new error to a sentence.
+4. **95 additions.** New section 3b: as postgres inside the transaction, remember and NULL the impersonated
+   profile's `organiser_id`; as the user, `link_organiser_for_profile(self)` — PASS requires a new organiser id
+   distinct from the previous one, an `organisers` row with a name, and the profile now pointing at it (the
+   INSERT + UPDATE under the definer). `other_oid IS NULL` now prints SKIP instead of the false FAIL (NULL →
+   NULL is not DISTINCT, the guard never fires). The lead/coordinator case branches on
+   `is_coordinator_or_lead()`: allowed prints `NOTE … by design (decision 8)`, so the README reads "PASS on
+   every line except the annotated lead/coordinator case".
+5. **`onSettled` invalidation** in `move-worker-mutation.ts`, `campaign-units-section.tsx`
+   `reallocateToUnitMutation` and `delete-organising-unit-dialog.tsx` (the invalidations moved from `onSuccess`
+   to `onSettled`; `onSuccess` keeps only the callbacks/state resets). Interim risk stated for the record: these
+   flows are insert-then-delete without a transaction, so an RLS-filtered delete after a landed insert leaves
+   the worker in two units. The refetch now shows that state instead of the pre-drag picture; **WP2.2's
+   transactional RPC removes the partial state itself** and is the real fix.
+6. **`NoRowsAffectedError` message** — `"<action>: nothing changed. You may not have permission to change this
+   campaign, or the data changed since you loaded it. Refresh and try again."` The action prefix is kept so the
+   alert still says what was attempted; the unit test's assertions follow the new text.
+7. **Campaigns list delete control, documented, no code change.** `src/app/(dashboard)/campaigns/page.tsx`
+   renders the delete button only when `writableCampaignIds?.has(row.campaign_id)`; while the
+   `campaigns_i_can_write` query is loading, or if it errors (e.g. the RPC is absent after a rollback), `data`
+   is `undefined` and the control is hidden. Deliberate: hide rather than break, per §3.2 — a delete that would
+   be filtered to zero rows is never offered, and the worst case is a control that appears a moment late.
+9. **User spec foreign-campaign row.** The vacuous `if (count > 0)` is gone: the spec reads the campaign name
+   from `header h1` (`campaign-detail-header-bar.tsx:260`) on the wall chart, fills the `/campaigns` search box
+   with it exactly as `deleteCampaign()` does, asserts the row `toHaveCount(1)`, then asserts no `Delete …`
+   button in it. Admin spec pushes a `fallback` annotation when `E2E_FOREIGN_CAMPAIGN_ID` is unset.
+10. `"Deleting the sub-units"` → `"Deleting the units in the group"`.
+11. **Corrected rationale for the profile guard (120000 `:394-396` cannot be edited).** The admin UI does
+    not update `role`/`work_role`/`reports_to` through the user-scoped client: `/api/admin/update-user` and
+    `invite-user` use `createAdminClient()` (service role), which is outside the guard entirely. The reason
+    the guard is an invoker-scoped trigger rather than column-level `REVOKE`s is that the trigger can tell the
+    caller roles apart (`authenticated`/`anon` vs `service_role` vs `postgres` inside a `SECURITY DEFINER`
+    body), so the RLS admin arm of "Users can update own profile" stays usable for an admin session while a
+    plain authenticated session is refused; column-level `REVOKE UPDATE` would have removed that admin arm too.
+    Same text in the new migration's header.
+12. **`useRemoveWorkerFromCampaign`** — choice: treat as success with a `console.warn`. The unit-row count is
+    now captured; when it is `> 0` and the membership delete returns `count === 0` without a transport error,
+    RLS cannot be the cause (`wp16_cwo_delete` and `wp16_cwm_delete` carry the same role floor and campaign
+    scope), so it is a pre-existing inconsistency; the unit rows are gone, which is what was asked for. Every
+    other zero-row membership delete still raises the permission message.
+
+**Gates (fix round 1, from `apps/organising-db` unless noted)**
+
+- `pnpm exec eslint <11 touched files>` → 2 errors, **both pre-existing at HEAD on lines not touched**:
+  `delete-organising-unit-dialog.tsx:99` (already recorded above) and `campaign-delete-dialog.tsx:53`
+  set-state-in-effect (`:50` in the HEAD version via `git show HEAD:… | eslint --stdin`). Zero findings on
+  changed lines.
+- `pnpm test` → 63 files, 852 tests passed.
+- `pnpm exec tsc --noEmit -p tsconfig.json` → exit 0.
+- `pnpm build` → exit 0.
+- `env -u E2E_USER_EMAIL -u E2E_USER_PASSWORD -u E2E_ADMIN_EMAIL -u E2E_ADMIN_PASSWORD pnpm e2e` → 7 skipped,
+  exit 0.
+- repo root `pnpm validate:migrations` → `Validated 6 Supabase migrations with unique 14-digit versions.`
+
+**For the verifier.** `db push --dry-run` on dev must list exactly `20260909130000_…`; re-run 95 (expect the
+three new PASS lines: flipped-standing, standing campaign, mint path — and the count of lines changes from 38);
+re-run the credentialled e2e — `unit-lifecycle-user.spec.ts:37` and `unit-lifecycle-admin.spec.ts:25` are
+expected to pass the rename step now. No type regeneration is needed (`delete_campaign`'s signature is unchanged).
+
 ## 12. Verification output
 
 Verifier run 2026-09-09 at 9ed0164; migration applied to dev dpnnmkhabysfdogllsyh; preview https://offshore-alliance-rl90168d8-reveille-strategy.vercel.app.

@@ -16,6 +16,7 @@ import {
   hasE2EAdminCredentials,
   hasE2ECredentials,
 } from "./env";
+import { WALL_CHART_RATING_HINT_ID, insertHintDismissal } from "./hint-dismissals";
 import { restClientFor, sessionFromStorageState, type RestClient } from "./roles/campaign-cleanup";
 
 /**
@@ -290,9 +291,11 @@ test.describe("My campaigns", () => {
  * The copy is the literal sentence from the registry, so the spec and the
  * product cannot drift. The dismissal row is reset through the same signed-in
  * session via `restClientFor` (which refuses the production project outright)
- * both before and after each test, using the owner-only DELETE policy the
- * WP1.7 migration adds. Without a REST client the tests skip rather than run
- * without a reset: a spec that cannot clean up must not run twice.
+ * before each test, using the owner-only DELETE policy the WP1.7 migration
+ * adds, and re-inserted after it — this is the only spec that may leave the
+ * hint armed, and it must not (tests/e2e/hint-dismissals.ts). Without a REST
+ * client the tests skip rather than run without a reset: a spec that cannot
+ * clean up must not run twice.
  *
  * Precondition the operator must know: the dev e2e account's campaign must
  * have at least one worker tile AND the account must have write access, or
@@ -310,7 +313,7 @@ test.describe("My campaigns", () => {
 test.describe("Wall chart — first-use rating hint", () => {
   test.skip(!hasE2ECredentials, NO_CREDENTIALS_MESSAGE);
 
-  const HINT_ID = "wall_chart_rating";
+  const HINT_ID = WALL_CHART_RATING_HINT_ID;
   const HINT_COPY = HINT_BY_ID[HINT_ID].copy;
   const dismissalPath = (userId: string) =>
     `/rest/v1/user_hint_dismissals?hint_id=eq.${HINT_ID}&user_id=eq.${userId}&select=hint_id`;
@@ -331,9 +334,15 @@ test.describe("Wall chart — first-use rating hint", () => {
     ).toContain(reset.status);
   });
 
+  // The suite-wide invariant (tests/e2e/hint-dismissals.ts): the e2e user is
+  // always "hint dismissed" EXCEPT inside this spec. So put the row back
+  // rather than deleting it — leaving it absent arms the hint for whatever
+  // runs next, including the earlier specs of the NEXT run, which predate
+  // WP1.7 and break on the callout's scroll-into-view and popover layer.
+  // `beforeEach` above deletes it again, so this costs the spec nothing.
   test.afterEach(async () => {
     if (!rest) return;
-    await rest.delete(dismissalPath(rest.session.userId));
+    await insertHintDismissal(rest, HINT_ID);
   });
 
   /** Opens the e2e account's first campaign on the wall chart and waits for the hint. */

@@ -173,9 +173,15 @@ export async function restoreUserPrefs(
   previous: unknown
 ): Promise<void> {
   const parsed = parseWorkspacePrefs(previous);
-  if (parsed === null && previous !== undefined && JSON.stringify(previous) !== "{}") {
+  // The lenient reader also strips unknown keys from an otherwise valid
+  // document, so compare what will be written with what was recorded rather
+  // than only checking for a null result.
+  const unchanged =
+    JSON.stringify(parsed) === JSON.stringify(previous) ||
+    (parsed === null && (previous === undefined || JSON.stringify(previous) === "{}"));
+  if (!unchanged) {
     note(
-      `the recorded workspace_prefs ${JSON.stringify(previous)} is not a document the admin API accepts; restoring the override as cleared instead`
+      `the recorded workspace_prefs ${JSON.stringify(previous)} is not a document the admin API accepts as-is; restoring ${JSON.stringify(parsed)} instead`
     );
   }
   await setUserPrefs(admin, userId, parsed);

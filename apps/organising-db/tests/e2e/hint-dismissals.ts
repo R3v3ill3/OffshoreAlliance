@@ -54,19 +54,31 @@ export async function insertHintDismissal(
  * Global-setup seed: mark the e2e user as having dismissed `hintId`.
  *
  * Silent no-op when there is no session or no REST config (a credential-less
- * run, where every signed-in spec skips anyway); throws only where
- * `restClientFor` does — a session belonging to the production project.
+ * run, where every signed-in spec skips anyway). Throws where `restClientFor`
+ * does — a session belonging to the production project — and that check runs
+ * before the network call so it is never swallowed. A seed that does not
+ * land is reported loudly rather than letting the run continue into the
+ * order-dependent failures the seed exists to prevent.
  */
 export async function seedHintDismissal(hintId: HintId): Promise<void> {
   const api = await playwrightRequest.newContext();
   try {
     const client = restClientFor(api, sessionFromStorageState(STORAGE_STATE));
     if (!client) return;
-    const res = await insertHintDismissal(client, hintId);
-    const ok = res.status >= 200 && res.status < 300;
-    console.log(
-      `[hints] seed dismissal "${hintId}" for the e2e user: ${ok ? `HTTP ${res.status}` : `FAILED HTTP ${res.status} ${JSON.stringify(res.body)}`}`
-    );
+    let res: { status: number; body: unknown };
+    try {
+      res = await insertHintDismissal(client, hintId);
+    } catch (error) {
+      throw new Error(
+        `[hints] seeding dismissal "${hintId}" for the e2e user failed before a response: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error(
+        `[hints] seeding dismissal "${hintId}" for the e2e user failed: HTTP ${res.status} ${JSON.stringify(res.body)}`
+      );
+    }
+    console.log(`[hints] seed dismissal "${hintId}" for the e2e user: HTTP ${res.status}`);
   } finally {
     await api.dispose();
   }

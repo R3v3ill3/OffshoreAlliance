@@ -9,6 +9,7 @@ import { Plus, Wand2, ExternalLink, Trash2, Megaphone, FileStack, LayoutList, Up
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
+import { useCampaignWriteAccess } from "@/lib/hooks/useCampaignWriteAccess";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -160,6 +161,12 @@ export default function CampaignsPage() {
     enabled: !!user,
   });
 
+  // WP1.6: the delete control is offered only on campaigns this account can
+  // write to (one RPC for the whole list). The RPC is the authority; the
+  // dialog's not_authorized message stays as the backstop.
+  const campaignIdsForAccess = useMemo(() => campaigns.map((c) => c.campaign_id), [campaigns]);
+  const { data: writableCampaignIds } = useCampaignWriteAccess(campaignIdsForAccess);
+
   const { data: organisers = [] } = useQuery({
     queryKey: ["campaign-organiser-filter-options"],
     queryFn: async () => {
@@ -276,24 +283,25 @@ export default function CampaignsPage() {
         header: "Actions",
         sortable: false,
         className: "w-14 text-right",
-        render: (row) => (
-          <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-destructive"
-              aria-label={`Delete ${row.name}`}
-              onClick={() => setDeleteTarget({ campaign_id: row.campaign_id, name: row.name })}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        ),
+        render: (row) =>
+          writableCampaignIds?.has(row.campaign_id) ? (
+            <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                aria-label={`Delete ${row.name}`}
+                onClick={() => setDeleteTarget({ campaign_id: row.campaign_id, name: row.name })}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : null,
       });
     }
     return base;
-  }, [canWrite]);
+  }, [canWrite, writableCampaignIds]);
 
   return (
     <div className="space-y-6">

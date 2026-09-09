@@ -9,6 +9,7 @@ import { Plus, Upload } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
+import { useCanWriteToCampaign } from "@/lib/hooks/useCampaignWriteAccess";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -235,12 +236,18 @@ export default function CampaignDetailPage() {
     },
     [pathname, router, searchParams]
   );
-  const { user, canWrite } = useAuth();
+  const { user, canWrite: canWriteGlobal } = useAuth();
   const supabase = createClient();
   const queryClient = useQueryClient();
   const id = params.id as string;
   const campaignId = Number(id);
   const campaignIdValid = Number.isFinite(campaignId);
+  // WP1.6: every section on this page takes canWrite from here, so one
+  // campaign-scoped value gates every create/edit/delete control at once.
+  // The database is the authority (campaigns_i_can_write); while the RPC is
+  // in flight keep the global role flag so nothing flickers away.
+  const { canWriteCampaign, isLoading: writeAccessLoading } = useCanWriteToCampaign(campaignId);
+  const canWrite = writeAccessLoading ? canWriteGlobal : canWriteCampaign;
 
   // campaign_tab_opened (WP0.2). Instruments the *resolved* tab rather than the
   // click, because most surfaces are reached by deep link

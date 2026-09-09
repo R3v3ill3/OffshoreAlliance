@@ -2,6 +2,7 @@
 
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { assertRowsAffected } from '@/lib/supabase/assert-rows-affected'
 import { useAuthAwareMutation } from '@/lib/hooks/useAuthAwareMutation'
 import { toast } from 'sonner'
 
@@ -73,22 +74,26 @@ export function useRemoveWorkerFromCampaign({
         .select('ou_id')
         .eq('campaign_id', cidNum)
       const ouIds = (ouRows ?? []).map((r) => r.ou_id)
+      //    A worker may legitimately be in no unit, so expected is 0 here (the
+      //    helper only rethrows a transport error); the membership delete
+      //    below is the loud check.
       if (ouIds.length > 0) {
-        const { error: ouErr } = await supabase
+        const ouRes = await supabase
           .from('campaign_worker_ou')
-          .delete()
+          .delete({ count: 'exact' })
           .eq('worker_id', workerId)
           .in('ou_id', ouIds)
-        if (ouErr) throw ouErr
+        assertRowsAffected(ouRes, 0, 'Removing the worker from its units')
       }
 
-      // 3. Remove campaign membership.
-      const { error: memErr } = await supabase
+      // 3. Remove campaign membership. The row always exists for a member, so
+      //    zero rows means RLS filtered the delete (WP1.6) — fail loudly.
+      const memRes = await supabase
         .from('campaign_worker_membership')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('campaign_id', cidNum)
         .eq('worker_id', workerId)
-      if (memErr) throw memErr
+      assertRowsAffected(memRes, 1, 'Removing the worker from the campaign')
 
       // 4. Optionally clear employer / worksite on the worker record.
       const workerUpdates: Record<string, unknown> = {}

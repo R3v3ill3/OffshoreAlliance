@@ -1,8 +1,10 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
+import { assertRowsAffected } from "@/lib/supabase/assert-rows-affected";
 
 export type LeaderLink = {
   link_id: number;
@@ -211,14 +213,17 @@ export function useDeleteLeaderLink() {
   const qc = useQueryClient();
   return useAuthAwareMutation({
     mutationFn: async (linkId: number) => {
-      const { error } = await supabase
+      const res = await supabase
         .from("campaign_leader_worker_links")
-        .delete()
+        .delete({ count: "exact" })
         .eq("link_id", linkId);
-      if (error) throw error;
+      assertRowsAffected(res, 1, "Unlinking the leader");
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["leader-links"] });
+    },
+    onError: (e: Error) => {
+      toast.error(e.message || "Could not unlink the leader");
     },
   });
 }

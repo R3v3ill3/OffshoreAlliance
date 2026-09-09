@@ -610,6 +610,91 @@ Only these need the operator; everything else has an assumption stated inline.
 
 Not deviations, but worth naming: the WP1.5 fallback (§4.1 note b) was **not** used — WP1.5 is on this stack, so row 7 ships as Actions/`/actions`/`layout-list`. `MY_CAMPAIGNS_HREF` is `"/campaigns"` as approved. Everything in §6 "Out of scope" stayed out.
 
+### Fix round 1 (reviewer findings, commit `d00cdbf`)
+
+**Finding 1 (blocking) — the reachability proof was a tautology, and here is the proof that it is not one any more.**
+
+The old `it('every full-mode href a non-admin can see is reachable in organiser mode')` computed `unreachable` against `present ∪ afterShowEverything`. `afterShowEverything` is the model built with `sessionShowEverything: true`, and `resolveWorkspace` answers a session expansion with `mode: "full"` (`resolve.ts:91-93`) — so that half of the union **is** the full-mode model. `fullHrefs ⊆ afterShowEverything` by construction, `unreachable` was always `[]`, and `expect(unreachable).toEqual([])` could not fail however organiser mode was shaped. It is now four assertions that can:
+
+- `the default organiser sees exactly these rows, in this order` — a hand-written `toEqual` literal of the organiser model (label / href / state for `primary`, `organisation.items` and `admin`, in order), the organiser-mode sibling of `FULL_MODE_FIXTURE`. `vitest -u` cannot rewrite a `toEqual`.
+- `nothing in the Organisation section is hidden from a default organiser` — `expect(hidden).toEqual([])`. This is the orchestrator's WP1.2 ruling (§5, Q2) expressed as a test: only the permission-shaped modules (`imports`, `administration`) are `hidden`, so an organiser is never silently denied a row here.
+- `only /sms/inbox needs Show everything or the hub pill` — `unreachable` is now computed from the organiser model's `on` + `muted` rows **only**; Show everything is deliberately excluded from the reachable set and asserted separately underneath. The expectation is the single documented exception, `["/sms/inbox"]`, not `[]`, so both directions bite: hiding a row fails it, and quietly *adding* a route that organiser mode cannot reach fails it too.
+- `with allowShowEverything: false the same one route has only the hub pill` (finding 8) — the "no out" configuration now has its own case, naming the route reachable only by URL or the Actions hub's Inbox pill: `/sms/inbox`, and nothing else. It also asserts `showEverythingControl === "hidden"` and that the four primary rows survive, which is risk R5 measured rather than argued.
+
+Both `/sms/inbox` assertions are backed by a check that `ACTIONS_HUB_PATH` is itself reachable in organiser mode, so "via the hub pill" names a path that is provably one click away rather than a hope. (The pill list lives in `SmsHubNav.tsx`, a `"use client"` component the `environment: node` suite deliberately does not import.)
+
+**Bite proof.** With `organisation_databases.offState` flipped from `"muted"` to `"hidden"` in a scratch copy of `src/lib/workspace/modules.ts` — the exact regression the old test was supposed to catch:
+
+```
+$ pnpm exec vitest run src/lib/nav/__tests__/nav-reachability.test.ts
+ ❯ src/lib/nav/__tests__/nav-reachability.test.ts (14 tests | 4 failed) 9ms
+   × reachability — decision 7 > the default organiser sees exactly these rows, in this order
+     → expected { primary: [ … ] } to deeply equal { primary: [ … ] }
+        - "state": "muted"   + "state": "hidden"   (Worksites, Upcoming Projects, Overview)
+   × reachability — decision 7 > nothing in the Organisation section is hidden from a default organiser
+     → expected [ { id: 'worksites', …(5) }, …(2) ] to deeply equal []
+   × reachability — decision 7 > only /sms/inbox needs Show everything or the hub pill
+     → expected [ '/overview', '/worksites', …(2) ] to deeply equal [ '/sms/inbox' ]
+   × reachability — decision 7 > with allowShowEverything: false the same one route has only the hub pill
+     → expected [ '/overview', '/worksites', …(2) ] to deeply equal [ '/sms/inbox' ]
+```
+
+and, under the *same* scratch flip, the version this replaces (restored from `HEAD` into the suite as a throwaway file):
+
+```
+$ pnpm exec vitest run src/lib/nav/__tests__/zz-old-reachability.test.ts
+ ✓ src/lib/nav/__tests__/zz-old-reachability.test.ts (11 tests) 4ms
+      Tests  11 passed (11)
+```
+
+Three routes disappearing from an organiser's sidebar, and the old proof of "no creation path is retired" passed. `modules.ts` was restored immediately (`git diff` on it is empty at `d00cdbf`) and the throwaway file deleted.
+
+**Advisory findings.**
+
+| # | Change |
+|---|---|
+| 2 | `tests/e2e/organiser-nav.spec.ts` — the Inbox link matches `{ name: /^Inbox/ }`. The unread badge is rendered inside the link with its own `aria-label` (`nav-row.tsx:53-60`), so the link's accessible name is "Inbox *n* unread email conversations" whenever the account has unread mail and `{ name: "Inbox", exact: true }` would have failed on a mailbox with post in it. The `^` anchor keeps it distinct from "SMS Inbox". |
+| 3 | `sidebar.tsx` — `aria-label="Organisation"` on the disclosure and `aria-label="Show everything"` on the toggle. Both drop their label `<span>` at `collapsed` (`w-16`), so both were anonymous to a screen reader at that width; the mobile sheet always shows its labels and needed nothing. |
+| 5 | `sidebar.tsx` / `mobile-nav.tsx` — `useState(!model.organisation.collapsed)` instead of `useState(false)`. The model already carries "collapsed by default" (`nav-model.ts:332`); the components now read it rather than restating it. The `useState` call moved below the `useMemo` in both files — hook order is stable, only the initial value changed. |
+| 6 | `nav-model.ts` — `enabledModules` removed from `BuildNavModelInput`, and from both call sites and both suites. It was never read: `moduleState` is the whole hidden/muted rule and the file's own header comment forbids re-deriving state from the set, so carrying the set was an invitation to do exactly that. |
+| 7 | `resolve.ts` gains the pure `moduleStateFor(enabledModules, id)` and the `ModuleState` type (re-exported from `use-workspace.tsx`, which now calls it in both the provider and the outside-the-provider default). `nav-model.test.ts` and `nav-reachability.test.ts` call it instead of each keeping their own `enabled.has(id) ? "on" : getModule(id).offState`. One exception, left deliberately: `an off row's state is the registry's offState and nothing else` still spells the expression out — substituting the helper there would make *that* test a tautology, which is the mistake this round is fixing. |
+| 11 | `mobile-nav.tsx` imports `ALL_NAV_HREFS` from `@/lib/nav/nav-model` rather than `allNavHrefs` from `./sidebar`. `sidebar.tsx` keeps the re-export for backwards compatibility (§4.2). |
+| 12 | `hub-path.ts` — the comment told readers to import the constant from `hub-rows`. `hub-path` is the source of truth and `hub-rows` pulls in `@/lib/sms/hub-actions`, so the comment now says to import it here and names why `nav-model.ts` does (deviation §6.1). |
+| 13 | `tests/e2e/organiser-nav.spec.ts` — the `finally` reset asserts `expect(reset.ok()).toBe(true)` and then reads the value back: `GET /api/admin/users` selects `*` from `user_profiles` (`api/admin/users/route.ts:30-32`), so the spec asserts `workspace_prefs` is `{}` afterwards. A silently failed reset was the un-alarmed half of risk R8. |
+
+**Recorded, no change.**
+
+- **9 — muted rows carry `tabIndex={-1}`** (`nav-row.tsx:69`). Per plan §4.2, which specifies `aria-disabled="true"`, `tabIndex={-1}`, a native `title` and an `sr-only` copy of the reason. Taking a muted row *out* of the tab order is the point: it is not actionable, and the explanation still reaches a screen reader through the `sr-only` span in the row's own text. Revisiting it would be revisiting the plan, not fixing an implementation defect.
+- **10 — full mode flashes while the profile loads.** `WorkspaceProvider` resolves with `userPrefs: undefined` until `AuthProvider.fetchProfile` returns, and `resolveWorkspace` answers "no prefs" with `full` (`resolve.ts:74`). So an organiser sees the ten-row sidebar for one render before it settles to four. This is inherited from WP1.1's deliberate fail-open (`use-workspace.tsx:71-72`: a live session whose profile never arrives must read as full, never as an empty shell), it is `loading`-shaped rather than nav-shaped, and fixing it means suppressing or skeletoning the nav on `ws.loading` — a shell change WP1.2 does not own. Named here so the flash is a known cost, not a surprise. (It is also what the verifier's first screenshot attempt caught, §7.7.)
+- **4 — the header title for the email inbox.** The finding assumed a `pageTitles["/email/inbox"]` key; there is none. `header.tsx:62` keys on `basePath = "/" + pathname.split("/")[1]`, so the single key is `"/email": "Email Inbox"` and it serves **both** `/email/inbox` and `/email/wrappers`. Changing it to "Inbox" would retitle the Email Wrappers admin page to "Inbox" — a worse defect than the one being fixed. `"Email Inbox"` is also the full-mode sidebar label (`nav-model.ts:137`) and is asserted in `nav-model-fixture.ts:29,52,70` and `organiser-nav.spec.ts:42`, so it is not free to move either. Left as is. Splitting `/email` into per-page titles is the same per-page pass as §6 item 4 (duplicate `<h1>`s).
+
+### Fix round 1 gates
+
+Run from `apps/organising-db` at `d00cdbf`.
+
+```
+$ pnpm exec eslint <the 9 touched files>
+$ echo "eslint $?"
+eslint 0
+
+$ pnpm exec tsc --noEmit -p tsconfig.json; echo "tsc $?"
+tsc 0
+
+$ pnpm test 2>&1 | grep -E 'Test Files|Tests |FAIL'
+ Test Files  65 passed (65)
+      Tests  884 passed (884)
+
+$ pnpm build > /tmp/build.log 2>&1; echo "build exit $?"
+build exit 0
+✓ Compiled successfully in 99s
+
+$ env -u E2E_USER_EMAIL -u E2E_USER_PASSWORD -u E2E_ADMIN_EMAIL -u E2E_ADMIN_PASSWORD pnpm e2e
+  9 skipped
+e2e exit 0
+```
+
+881 → 884 tests: the reachability suite gained the four new cases and lost one (the tautology). **No snapshot was updated** — `__snapshots__/nav-model.test.ts.snap` is byte-identical at `d00cdbf`, which is the check that this round changed no behaviour in either mode: only `BuildNavModelInput`'s shape, two `aria-label`s, two `useState` initialisers and the tests moved.
+
 ## Implementer notes
 
 ### Files

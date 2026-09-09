@@ -2002,6 +2002,258 @@ Preview: `https://offshore-alliance-rl90168d8-reveille-strategy.vercel.app`
 Commits: `9ed0164` (types), `2af8210` (deviations/implementer notes, pre-existing) — full stack
 `17fc01a 36f4600 6e1328f e8fe3ed 2af8210 9ed0164`.
 
+### Verifier run 2 (after fix round 1) at 562d3c4; preview https://offshore-alliance-ahwhwpnjd-reveille-strategy.vercel.app
+
+#### R2.1 Pre-push state
+
+```
+$ cat supabase/.temp/project-ref
+dpnnmkhabysfdogllsyh
+
+$ pnpm validate:migrations
+Validated 6 Supabase migrations with unique 14-digit versions.
+```
+
+#### R2.2 Migration rehearsal
+
+```
+$ env -u SUPABASE_DB_PASSWORD npx --no-install supabase db push --dry-run
+DRY RUN: migrations will *not* be pushed to the database.
+Would push these migrations:
+ • 20260909130000_wp1_6_delete_campaign_standing_guard.sql
+Finished supabase db push.
+```
+Exactly the one expected file — the fix-round-1 standing-guard migration. No password prompt.
+
+```
+$ env -u SUPABASE_DB_PASSWORD npx --no-install supabase db push
+Applying migration 20260909130000_wp1_6_delete_campaign_standing_guard.sql...
+Finished supabase db push.
+```
+No password prompt.
+
+```
+$ env -u SUPABASE_DB_PASSWORD npx --no-install supabase migration list
+   Local          | Remote         | Time (UTC)
+  ----------------|----------------|---------------------
+   20260908050000 | 20260908050000 | 2026-09-08 05:00:00
+   20260908050100 | 20260908050100 | 2026-09-08 05:01:00
+   20260908050200 | 20260908050200 | 2026-09-08 05:02:00
+   20260909100000 | 20260909100000 | 2026-09-09 10:00:00
+   20260909120000 | 20260909120000 | 2026-09-09 12:00:00
+   20260909130000 | 20260909130000 | 2026-09-09 13:00:00
+```
+6/6 applied remote. **Pass.**
+
+#### R2.3 `delete_campaign()` and helper functions (dev)
+
+`select prosrc from pg_proc where proname='delete_campaign'` — body contains the standing-campaign guard,
+placed after the `auth.uid() IS NULL` check and before the role gate, quoted verbatim:
+
+```sql
+IF EXISTS (
+  SELECT 1 FROM campaigns
+  WHERE campaign_id = p_campaign_id AND is_standing = true
+) THEN
+  RAISE EXCEPTION 'campaign_is_standing';
+END IF;
+```
+
+followed unchanged by the `IF NOT (is_admin() OR is_lead_organiser_for_campaign() OR is_campaign_creator())`
+gate from `120000`. `select proname from pg_proc where proname in ('campaigns_i_can_write',
+'link_organiser_for_profile')` returned both names. **Pass.**
+
+#### R2.4 Pre-flight / post-flight (production run-sheet scripts)
+
+`00_preflight_organiser_write_access.sql` — **zero rows.** Pass.
+
+`01_postflight_write_coverage.sql` — 9 rows:
+
+| display_name | role | work_role | campaigns_on_roster | campaigns_created |
+|---|---|---|---|---|
+| Jason | admin | lead_organiser | 0 | 0 |
+| Rosco | admin | coordinator | 0 | 0 |
+| Troy Burton | admin | lead_organiser | 2 | 0 |
+| Zach | admin | industrial_coordinator | 0 | 0 |
+| Daini | user | organiser | 0 | 0 |
+| Damian | user | organiser | 1 | 0 |
+| Jarred Payne | user | organiser | 1 | 0 |
+| Maddie | user | organiser | 0 | 0 |
+| troy reveille | user | organiser | 4 | 4 |
+
+#### R2.5 Role probes (`95_role_probes.sql`, section by section)
+
+Run via `mcp__…__execute_sql` against dev, one call per file section, each its own `BEGIN … ROLLBACK`
+re-establishing the impersonation (`request.jwt.claims`) and any GUCs that section needs at the top of its
+own transaction; `RAISE NOTICE`/`WARNING` lines were captured into a `CREATE TEMP TABLE` + final `SELECT`
+per call (the MCP tool does not surface `RAISE`), same technique as run 1. `e2e_uid =
+f7c048e2-ecfe-4e9c-8715-7f4c899f0d37` (troy reveille, `role=user`, `work_role=organiser`,
+`organiser_id=10`) — unchanged from run 1. `foreign_campaign_id = 3` ("Acme Energy EBA 2026 — DEMO",
+`organiser_id=4`, no `campaign_organisers` row for organiser 10, `created_by` NULL, `sample_ou_id = 8`,
+`writable = false`) — same fixture as run 1, re-confirmed by a fresh discovery query this run.
+
+Section 0 (discovery + the §6/R1 pre-flight duplicate): profile confirmed as above; the pre-flight
+duplicate returned zero rows, matching R2.4.
+
+**Section 1 (negative case, foreign campaign) — 10/10 PASS.**
+**Section 2 (positive case + standing guard) — 9 lines, 8 PASS / 1 FAIL:**
+```
+PASS user/insert campaigns: created_by = auth.uid()
+PASS user/can_write_to_campaign(own campaign)
+PASS user/campaigns_i_can_write(own campaign)
+PASS user/insert campaign_organising_units on own campaign
+PASS user/update campaign_organising_units on own campaign: 1 row(s)
+PASS user/delete campaign_organising_units on own campaign: 1 row(s)
+PASS user/delete_campaign(own campaign flipped to standing): campaign_is_standing
+FAIL user/delete_campaign(standing campaign): unexpected not_authorized
+PASS user/delete_campaign(own campaign)
+```
+Cause of the one FAIL: dev has **zero** rows with `is_standing = true` right now (confirmed separately,
+`select campaign_id from campaigns where is_standing = true` → 0 rows). The probe's
+`SELECT campaign_id … WHERE is_standing = true ORDER BY campaign_id LIMIT 1` therefore passes `NULL` into
+`delete_campaign()`; the standing check (`campaign_id = p_campaign_id AND is_standing = true`) is false for
+a NULL id, so execution falls through to the role gate, which raises `not_authorized` before the function
+ever reaches its `campaign_not_found` branch. The probe file's own comment anticipates a `campaign_not_found`
+SKIP for "no standing campaign on this database," not this `not_authorized` path — an edge case in the
+probe's expectation when the id is NULL, not a WP1.6 regression: the flipped-standing probe immediately above
+it (which uses a real, non-NULL campaign_id) passed exactly as designed.
+
+**Section 3 (self-escalation) — 7/7 PASS.**
+**Section 3b (`link_organiser_for_profile` mint path) — 1/1 PASS:**
+`user/link_organiser_for_profile(self) mint path -> new organiser 13 "troy reveille" (was 10; profile now 13)`.
+**Section 4 (viewer) — 13/13 PASS.**
+**Section 5 (service_role) — 1/1 PASS.**
+
+**Total: 41 lines — 40 PASS, 1 FAIL (environmental: no standing campaign exists on dev at test time), 0 SKIP,
+0 NOTE** (the impersonated account's `work_role` is `organiser`, not lead/coordinator, so the annotated
+lead/coordinator branch did not fire this run). Line count matches fix round 1's prediction of 38 + 3 new = 41.
+All probes ran inside per-call `BEGIN … ROLLBACK`, so nothing here persisted (independently confirmed in R2.9,
+which also covers the separate e2e-script residue).
+
+#### R2.6 App-level gates (`apps/organising-db`)
+
+```
+$ pnpm exec tsc --noEmit -p tsconfig.json; echo tsc $?
+tsc 0
+
+$ pnpm test 2>&1 | grep -E 'Test Files|Tests |FAIL'
+ Test Files  63 passed (63)
+      Tests  852 passed (852)
+
+$ pnpm lint 2>&1 | grep problems
+✖ 294 problems (143 errors, 151 warnings)
+
+$ pnpm build 2>&1 | tail -4
+(clean production build, exit 0; route manifest printed, ends with the middleware/proxy lines)
+```
+All four unchanged from the implementer's and run 1's recorded baseline. **Pass.**
+
+#### R2.7 Preview deployment
+
+```
+$ gh api "repos/R3v3ill3/OffshoreAlliance/deployments?sha=562d3c4823cb2825f2829f12dc755027cbe2088d&per_page=3"
+```
+Found immediately (no polling needed): id `6344028552`, `environment=Preview`,
+`created_at=2026-09-09T06:36:19Z`.
+
+```
+$ gh api "repos/R3v3ill3/OffshoreAlliance/deployments/6344028552/statuses"
+```
+`state=success`, `environment_url=https://offshore-alliance-ahwhwpnjd-reveille-strategy.vercel.app`. **Pass.**
+
+#### R2.8 Credentialled e2e (both projects, against the preview)
+
+`E2E_FOREIGN_CAMPAIGN_ID=3` (same fixture as R2.5/run 1). `E2E_USER_*` / `E2E_ADMIN_*` read from the shell
+profile; never printed.
+
+**Attempt 1 — `pnpm e2e`, full suite.** 3 failed, 1 skipped, 3 passed: `unit-lifecycle-user.spec.ts:37`,
+`unit-lifecycle-user.spec.ts:80` and `wall-chart.spec.ts:23` failed; both `actions-hub.spec.ts` cases and
+`unit-lifecycle-admin.spec.ts:25` passed; `mobile-dialer.spec.ts` skipped (unrelated, pre-existing).
+
+**Attempt 2 — `pnpm e2e`, full suite again.** 4 failed, 1 skipped, 2 passed:
+- `actions-hub.spec.ts:62` — failed this time: `Actions` `h1` inside `main` not visible within 5s after the
+  `/sms?scope=standalone` redirect.
+- `unit-lifecycle-user.spec.ts:37` — failed at the **delete** step, not the rename step fix round 1 diagnosed
+  and fixed: `"The delete control must be offered on a campaign this account created (campaigns_i_can_write)."`
+  — button `Delete WP1.6 role check 1788936809835` not found within 30s.
+- `unit-lifecycle-user.spec.ts:80` — failed: `locator.fill` on the campaign search box after the
+  page/context/browser was closed mid-test (30s test timeout exceeded).
+- `wall-chart.spec.ts:23` — failed: clicking a campaign row never navigated to the wall-chart URL
+  (`toHaveURL` timeout, stayed on `/campaigns`).
+- `actions-hub.spec.ts:22` and `unit-lifecycle-admin.spec.ts:25` passed.
+
+**Attempt 3 — `pnpm e2e tests/e2e/roles` alone (role-spec rerun per instruction, since attempt 2's role
+specs failed).** All 3 role-spec tests failed:
+- `unit-lifecycle-user.spec.ts:37` — same delete-step failure as attempt 2 (`Delete WP1.6 role check
+  1788936980297` button not found within 30s).
+- `unit-lifecycle-user.spec.ts:80` — same closed-context failure as attempt 2.
+- `unit-lifecycle-admin.spec.ts:25` — failed differently this time: `Test timeout of 180000ms exceeded`
+  waiting for the "New unit" button to become clickable (`roles/unit-lifecycle.ts:63`).
+
+Screenshot paths (from attempt 3, the last run; earlier attempts' screenshots for the same spec names were
+overwritten by Playwright's `test-results/` reuse):
+- `apps/organising-db/test-results/roles-unit-lifecycle-user--48198-tes-a-unit-and-the-campaign-chromium/test-failed-1.png`
+- `apps/organising-db/test-results/roles-unit-lifecycle-user--05499-the-account-cannot-write-to-chromium/test-failed-1.png`
+- `apps/organising-db/test-results/roles-unit-lifecycle-admin-00052-etes-a-unit-on-any-campaign-chromium-admin/test-failed-1.png`
+- (attempt 2 only, overwritten by nothing since these spec names did not rerun in attempt 3)
+  `apps/organising-db/test-results/wall-chart-Wall-chart-—-fl-4cc2a-igns-and-see-the-wall-chart-chromium/test-failed-1.png`
+  and `apps/organising-db/test-results/actions-hub-Actions-hub-sm-09eba--hub-with-its-params-intact-chromium/test-failed-1.png`
+
+**Against fix round 1's expectation.** Fix round 1's "For the verifier" note expected
+`unit-lifecycle-user.spec.ts:37` and `unit-lifecycle-admin.spec.ts:25` to pass the rename step now (the
+diagnosed and fixed defect). In these three attempts the rename step was not where the failure recurred:
+`unit-lifecycle-user.spec.ts:37` got past create *and* rename in both attempts that reached it, then failed
+at the delete-button-visibility assertion; `unit-lifecycle-admin.spec.ts:25` passed twice (attempts 1 and 2,
+full-suite runs) and failed once (attempt 3, solo run) at an earlier step ("New unit" click, 180s timeout).
+Recorded verbatim without further diagnosis, per this task's "report without interpretation" instruction —
+the pattern (same spec, different failure points across otherwise-identical attempts against the same
+preview and dev database) is inconsistent with a deterministic RLS regression but is not diagnosed further
+here.
+
+#### R2.9 Post-e2e cleanup check (dev)
+
+```sql
+select campaign_id, name, created_by from campaigns
+where created_by = 'f7c048e2-ecfe-4e9c-8715-7f4c899f0d37' or name ilike '%e2e%'
+order by 1;
+```
+
+| campaign_id | name | created_by |
+|---|---|---|
+| 11 | WP1.6 role check 1788933435049 | f7c048e2-ecfe-4e9c-8715-7f4c899f0d37 |
+| 12 | WP1.6 role check 1788933751864 | f7c048e2-ecfe-4e9c-8715-7f4c899f0d37 |
+| 13 | WP1.6 role check 1788933877058 | f7c048e2-ecfe-4e9c-8715-7f4c899f0d37 |
+| 14 | WP1.6 role check 1788934076963 | f7c048e2-ecfe-4e9c-8715-7f4c899f0d37 |
+| 17 | WP1.6 role check 1788936638437 | f7c048e2-ecfe-4e9c-8715-7f4c899f0d37 |
+| 18 | WP1.6 role check 1788936809835 | f7c048e2-ecfe-4e9c-8715-7f4c899f0d37 |
+| 19 | WP1.6 role check 1788936980297 | f7c048e2-ecfe-4e9c-8715-7f4c899f0d37 |
+
+Campaigns 11–14 pre-date this verifier session (`created_at` 2026-09-09 05:57–06:08Z, before this run
+started) — residue from an earlier pass, not created by this session. Campaigns 17–19 were created by this
+session's three `unit-lifecycle-user.spec.ts:37` attempts; `18` and `19`'s names match attempt 2's and
+attempt 3's failing-locator names exactly (`…1788936809835`, `…1788936980297`). Campaign ids 15 and 16 do
+not exist (`select … where campaign_id in (15,16)` → 0 rows), consistent with attempt 1's run of the same
+spec completing its create-through-delete cycle successfully (its own id was not captured in this run's
+logs). **Left behind: 7 campaigns total — 4 pre-existing, 3 created by this session's e2e attempts — none
+cleaned up**, because every attempt that failed at or before the delete-button assertion never reached the
+spec's own delete step, which is its only cleanup path.
+
+#### R2.10 Summary table
+
+| Step | Result | Key values |
+|---|---|---|
+| 1. project-ref / validate:migrations | green | `dpnnmkhabysfdogllsyh`; 6 migrations validated |
+| 2. db push (dry-run, real, list) | green | exactly `20260909130000_…`; applied; 6/6 in migration list; no password prompt |
+| 3. `delete_campaign()` / helper functions | green | standing guard quoted and confirmed pre-role-gate; `campaigns_i_can_write` and `link_organiser_for_profile` present |
+| 4. pre-flight / post-flight | green | pre-flight 0 rows; post-flight 9 rows recorded |
+| 5. role probes (`95_role_probes.sql`) | **mostly green** | 41 lines: 40 PASS, 1 FAIL (environmental — no standing campaign on dev, NULL-id edge case in the probe, not a WP1.6 regression), 0 SKIP, 0 NOTE |
+| 6. tsc / test / lint / build | green | tsc 0; 63 files / 852 tests; 294 problems (143/151, baseline unchanged); build clean |
+| 7. preview deployment | green | found immediately; `state=success` |
+| 8. credentialled e2e | **red** | role specs unstable across 3 attempts: `unit-lifecycle-user.spec.ts:37` failed every attempt it reached (2 of 3, at the delete-button assertion, not the rename step fix round 1 fixed); `unit-lifecycle-user.spec.ts:80` failed every attempt (closed-context error); `unit-lifecycle-admin.spec.ts:25` passed twice, failed once (different point each time); `actions-hub.spec.ts` and `wall-chart.spec.ts` (out of package scope) also flaked in attempt 2 |
+| 9. post-e2e cleanup | **red** | 7 campaigns left on dev (4 pre-existing, 3 from this session); none cleaned up |
+
+Preview: `https://offshore-alliance-ahwhwpnjd-reveille-strategy.vercel.app`
+
 ## 13. Reviewer findings
 
 _(reviewer)_

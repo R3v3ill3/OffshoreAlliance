@@ -40,7 +40,11 @@ export interface WorkspaceContextValue {
   /** `"on"` when enabled; otherwise the module's registry `offState`. */
   moduleState: (id: WorkspaceModuleId) => ModuleState;
   source: WorkspaceSource;
-  /** Auth or org defaults still loading; the resolver already returns full meanwhile. */
+  /**
+   * Auth, a post-sign-in profile re-fetch, or org defaults still loading; the
+   * resolver already returns full meanwhile, so nothing that routes on `mode`
+   * (the landing gate) may act while this is true.
+   */
   loading: boolean;
 }
 
@@ -62,7 +66,7 @@ const DEFAULT_VALUE: WorkspaceContextValue = {
 const WorkspaceContext = createContext<WorkspaceContextValue>(DEFAULT_VALUE);
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const { role, profile, loading: authLoading } = useAuth();
+  const { role, profile, loading: authLoading, profileLoading } = useAuth();
   const defaultsQuery = useWorkspaceDefaults();
   const [showEverything, setShowEverything] = useState(false);
 
@@ -70,7 +74,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const workRole = profile?.work_role ?? null;
   const userPrefs = profile?.workspace_prefs;
   const hasProfile = profile != null;
-  const loading = authLoading || defaultsQuery.isLoading;
+  const loading = authLoading || profileLoading || defaultsQuery.isLoading;
 
   const value = useMemo<WorkspaceContextValue>(() => {
     // A live session with no profile (fetchProfile gave up) must read as

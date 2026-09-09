@@ -83,57 +83,91 @@ export function formatPct(numerator: number, denominator: number | null): string
  * Batch-fetches stats for ALL campaigns at once and returns a Map keyed by
  * campaign_id. Pass `planIds` (a flat list of all plan_ids from all campaigns'
  * stage plans) so the P2W step queries are scoped correctly.
+ *
+ * WP1.3: `opts.campaignIds` narrows the three campaign-scoped queries to
+ * those ids and suffixes their query keys. When it is undefined the filters
+ * AND the keys are exactly what they were, so `/campaigns` is unchanged and
+ * shares no cache entry with My campaigns.
  */
-export function useCampaignsAllStats(planIds: number[]): {
+export function useCampaignsAllStats(
+  planIds: number[],
+  opts?: { campaignIds?: readonly number[] }
+): {
   statsMap: Map<number, CampaignAggStats>
   isLoading: boolean
 } {
   const supabase = createClient()
   const { p2wByPlanId, isLoading: p2wLoading } = useP2wCompletionByPlanIds(planIds)
 
+  const campaignIds = opts?.campaignIds
+  // Same idiom as `allOuIds.join` below and useP2wCompletionByPlanIds.
+  const campaignIdsKey =
+    campaignIds == null ? null : [...campaignIds].sort((a, b) => a - b).join(',')
+  const scopedKey = (base: string) =>
+    campaignIdsKey == null ? [base] : [base, campaignIdsKey]
+  // A filtered call with no ids has nothing to fetch; an unfiltered call is
+  // today's behaviour.
+  const scopedEnabled = campaignIds == null || campaignIds.length > 0
+  // Typed loosely, like `excludeSmsEpisodes`, so the PostgREST builder is not
+  // instantiated recursively (TS2589).
+  function scope<T>(q: T): T {
+    if (campaignIds == null) return q
+    return (q as { in: (column: string, values: readonly number[]) => T }).in(
+      'campaign_id',
+      campaignIds
+    )
+  }
+
   // --- Membership + worker details ---
   const { data: members = [], isLoading: membersLoading } = useQuery({
-    queryKey: ['all-campaign-members'],
+    queryKey: scopedKey('all-campaign-members'),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('campaign_worker_membership')
-        .select(
-          `campaign_id, worker_id,
-           worker:workers(
-             worker_id, phone, email, is_bargaining_rep,
-             member_role_type:member_role_types(role_name),
-             union_membership_type:union_membership_types(type_name)
-           )`
-        )
+      const { data, error } = await scope(
+        supabase
+          .from('campaign_worker_membership')
+          .select(
+            `campaign_id, worker_id,
+             worker:workers(
+               worker_id, phone, email, is_bargaining_rep,
+               member_role_type:member_role_types(role_name),
+               union_membership_type:union_membership_types(type_name)
+             )`
+          )
+      )
       if (error) throw error
       return data ?? []
     },
+    enabled: scopedEnabled,
     staleTime: 60_000,
   })
 
   // --- Ratings ---
   const { data: ratings = [], isLoading: ratingsLoading } = useQuery({
-    queryKey: ['all-campaign-ratings'],
+    queryKey: scopedKey('all-campaign-ratings'),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('campaign_worker_rating_summary')
-        .select('campaign_id, worker_id, cumulative_rating, has_supportive_activity_rating')
+      const { data, error } = await scope(
+        supabase
+          .from('campaign_worker_rating_summary')
+          .select('campaign_id, worker_id, cumulative_rating, has_supportive_activity_rating')
+      )
       if (error) throw error
       return data ?? []
     },
+    enabled: scopedEnabled,
     staleTime: 60_000,
   })
 
   // --- Organising units ---
   const { data: ous = [], isLoading: ousLoading } = useQuery({
-    queryKey: ['all-campaign-ous'],
+    queryKey: scopedKey('all-campaign-ous'),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('campaign_organising_units')
-        .select('campaign_id, ou_id')
+      const { data, error } = await scope(
+        supabase.from('campaign_organising_units').select('campaign_id, ou_id')
+      )
       if (error) throw error
       return data ?? []
     },
+    enabled: scopedEnabled,
     staleTime: 60_000,
   })
 

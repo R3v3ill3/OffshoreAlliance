@@ -59,9 +59,10 @@ async function signIn(email: string, password: string, storagePath: string): Pro
     await page.locator("#email").fill(email);
     await page.locator("#password").fill(password);
     await page.getByRole("button", { name: /sign in/i }).click();
-    // login/page.tsx pushes /campaigns on success; middleware also bounces a
-    // signed-in /login there.
-    await page.waitForURL(/\/campaigns(\?|$)/, { timeout: 30_000 });
+    // login/page.tsx pushes `/` on success and the landing gate there
+    // (WP1.3) replaces to /campaigns (full mode), /my-campaigns?from=landing
+    // (organiser mode) or /campaigns/{id}?… (organiser mode, one campaign).
+    await page.waitForURL(/\/(my-campaigns|campaigns)(\/|\?|$)/, { timeout: 30_000 });
 
     await context.storageState({ path: storagePath });
   } finally {

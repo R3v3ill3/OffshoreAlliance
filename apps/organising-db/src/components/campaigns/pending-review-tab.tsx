@@ -25,6 +25,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
+import { MY_CAMPAIGNS_PENDING_REVIEW_KEY } from "@/lib/hooks/useMyCampaigns";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { fetchApi } from "@/lib/api/fetch-api";
 import { Button } from "@/components/ui/button";
@@ -202,6 +203,8 @@ export function PendingReviewTab({
     queryClient.invalidateQueries({
       queryKey: ["campaign-prospective", cidStr],
     });
+    // WP1.3: the My campaigns Needs-attention count for this queue.
+    queryClient.invalidateQueries({ queryKey: MY_CAMPAIGNS_PENDING_REVIEW_KEY });
   }
 
   /* ---------- empty / loading states ---------- */

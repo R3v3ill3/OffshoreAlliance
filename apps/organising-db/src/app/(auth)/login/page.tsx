@@ -75,7 +75,9 @@ function LoginForm() {
       // view state: nothing in the UI reads it, and it is per-tab
       // sessionStorage, so losing it degrades a metric and nothing else.
       stampLogin("login_form");
-      router.push("/campaigns");
+      // WP1.3: the neutral landing gate at `/` decides between /campaigns
+      // (full mode) and /my-campaigns (organiser mode) once the profile loads.
+      router.push("/");
       router.refresh();
     } catch (err) {
       // Still jammed after a reset + retry — the holding op self-clears once its

@@ -30,7 +30,7 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 | 1.4 | Campaign workspace | PR draft | `feat/oux-wp1.4-campaign-workspace` | [#32](https://github.com/R3v3ill3/OffshoreAlliance/pull/32) | 1006 tests incl. the 45-surface census and header-action map; full e2e suite green ×1 on the final preview incl. the organiser round trip; screenshots in evidence/wp1.4 | On the default module set only Role check is live in More (others muted, reachable by deep link or Show everything); full-mode users now see the campaign header above the four wizards (intended) | 1, 7 |
 | 1.5 | Actions hub | PR draft | `feat/oux-wp1.5-actions-hub` | [#28](https://github.com/R3v3ill3/OffshoreAlliance/pull/28) | 828 tests, tsc, build green, lint at baseline; credentialled e2e on the branch preview: hub spec, `/sms` redirect and flow one pass | Sidebar still labels the hub "SMS Tools" until WP1.2; moderation count capped by PostgREST max-rows at very high relay volumes | 10 |
 | 1.6 | Auth and RLS alignment | PR draft | `feat/oux-wp1.6-auth-rls` | [#29](https://github.com/R3v3ill3/OffshoreAlliance/pull/29) | Migrations `20260909120000` and `20260909130000` on dev; 41-line role probe pack (user, viewer, self-escalation, service role); full e2e both projects green ×2 on preview; 852 tests, tsc, build, lint at baseline | Behaviour changes signed off (unit writes only on own campaigns; no auto-enrol into unwritable campaigns); production pre-flight must return zero rows before deploy and again before hygiene 01; auth start-up deadlock fixed here (scope addition) | 2, 8 |
-| 1.7 | Guides and hints | implementing | `feat/oux-wp1.7-guides-hints` | | | | 9 |
+| 1.7 | Guides and hints | PR draft | `feat/oux-wp1.7-guides-hints` | (pending) | migrations `20260911090000` (owner-only dismissals) and `20260911100000` (CHECK) on dev; 1029 tests; both hint specs pass on the final preview with product-scroll evidence; screenshots in evidence/wp1.7 | Intermittent: WP1.4's organiser-campaign spec can fail when the hint is visible and the New action menu is open (hidden accessibility tree); passes alone. Fix rounds exhausted; needs a small operator-authorised third round (pre-seed the dismissal in that spec; check layer stacking) | 9 |
 | 2.1 | Schema and migration | not started | | | | | 3, 4, 5 |
 | 2.2 | Structure API | not started | | | | | |
 | 2.3 | Wall chart decomposition | not started | | | | | |
@@ -66,8 +66,8 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 |---|---|---|
 | Run the usability baseline study (WP0.5 pack) | Phase 0 | pending |
 | Run WP0.4 scripts on production (00 → 02 → 03; 01 held until WP1.6 is live) | WP0.4 | pending on production. **Run on dev by the operator 2026-09-08:** 02 inserted 5, 03 deleted 2, 01 converted 4 (the e2e account was already `user`); audit log intact, nothing rolled back. Dev now has the post-hygiene shape, so the four converted dev accounts hit the admin-only delete policies until WP1.6 lands. |
-| Re-record OVERVIEW clip | WP1.7 | pending |
-| Re-record B1–B3, C1–C3 | WP2.9 | pending |
+| Re-record OVERVIEW clip (what changed on screen: campaigns open on the wall chart; My campaigns home and the four-tab organiser workspace in organiser mode; the first-use rating hint on first open; "Who's in" and "Unassigned" labels). Pipeline: docs/HOW_TO_VIDEOS_HANDOFF.md; note the publish step overwrites the manifest, whose route additions are pinned by a test | WP1.7 | pending |
+| Re-record B1–B3, C1–C3 (C1/C2/B3 were candidates after WP0.3; deferred here by the orchestrator per plan §7) | WP2.9 | pending |
 | Re-record A4, A5 | WP3.7 | pending |
 
 ## Flag removals

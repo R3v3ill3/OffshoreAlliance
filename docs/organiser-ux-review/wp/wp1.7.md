@@ -902,6 +902,52 @@ Page snapshot at failure time shows the "Got it" button present in the DOM insid
 
 **Screenshots.** Taken against the same preview with a throwaway Playwright script (not committed; `apps/organising-db/test-results/` is gitignored), loading `tests/e2e/.auth/user.json`, dismissal row deleted first: `/tmp/oux-plans/shots/wp1.7-rating-hint.png` (1280×800, `/campaigns/1?tab=workforce&sub=wall-chart`, hint visible and fully in view over the "Green Hat" tile — no scroll/viewport problem at this viewport/scroll position); `/tmp/oux-plans/shots/wp1.7-rating-hint-mobile.png` (iPhone 13 emulation, switched to the Wall chart toggle — the tile grid collapses to one column at that width and visually resembles a list, confirmed distinct from the actual List tab by a side-by-side capture; hint visible, not clipped); `/tmp/oux-plans/shots/wp1.7-rating-hint-dismissed.png` (desktop, after clicking "Got it" and reloading — hint absent, `workspace_prefs`/dismissal row cleaned up after). Note: this script's own "Got it" click succeeded immediately (no viewport issue), unlike the e2e spec's failure above — the discrepancy is reported as-is, not explained further.
 
+
+### Orchestrator e2e run after fix round 2 (2026-09-10) against preview https://offshore-alliance-c6r25pv99-reveille-strategy.vercel.app
+
+```
+  -   3 [chromium] › tests/e2e/mobile-dialer.spec.ts:30:7 › Mobile dialer — happy path › volunteer can sign in, claim, dial, record outcome, advance
+  ✓   4 [chromium] › tests/e2e/organiser-campaign.spec.ts:66:7 › Campaign workspace — full mode is today's page › the eight tabs, in order, with no organiser-mode furniture (2.6s)
+  ✘   5 [chromium] › tests/e2e/organiser-campaign.spec.ts:160:7 › Campaign workspace — the organiser-mode round trip › four tabs plus More, deep links, the switcher and every header action (41.0s)
+  ✓   6 [chromium] › tests/e2e/organiser-nav.spec.ts:52:7 › Sidebar — full mode is today's sidebar › the ten rows, in order, with no organiser-mode furniture (2.4s)
+  ✓   7 [chromium] › tests/e2e/organiser-nav.spec.ts:68:7 › Sidebar — the organiser-mode round trip › organiser mode shows four primary items, Organisation and Show everything (15.1s)
+  ✓   8 [chromium] › tests/e2e/roles/unit-lifecycle-user.spec.ts:92:7 › WP1.6 role coverage — user › creates a campaign, then creates, renames and deletes a unit and the campaign (11.3s)
+  ✓   9 [chromium] › tests/e2e/roles/unit-lifecycle-user.spec.ts:137:7 › WP1.6 role coverage — user › offers no write controls on a campaign the account cannot write to (4.2s)
+  ✓  10 [chromium] › tests/e2e/wall-chart.spec.ts:163:7 › Wall chart — flow one, from the login submit › sign in and reach a wall chart in under ten seconds (10.6s)
+  ✓  11 [chromium] › tests/e2e/wall-chart.spec.ts:245:7 › My campaigns › lists my campaigns and opens the wall chart (10.1s)
+[hint] anchor clear before the spec scrolled: yes
+  ✓  12 [chromium] › tests/e2e/wall-chart.spec.ts:464:7 › Wall chart — first-use rating hint › the rating hint shows once, then stays dismissed (6.3s)
+[hint] anchor clear before the spec scrolled: yes
+  ✓  13 [chromium] › tests/e2e/wall-chart.spec.ts:499:7 › Wall chart — first-use rating hint › the hinted badge opens its rating control on the first click (5.5s)
+  ✓  14 [chromium-admin] › tests/e2e/roles/unit-lifecycle-admin.spec.ts:76:7 › WP1.6 role coverage — admin › creates, renames and deletes a unit on any campaign (6.6s)
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoHaveAttribute[2m([22m[32mexpected[39m[2m)[22m failed
+    test-results/organiser-campaign-Campaig-32631-her-and-every-header-action-chromium/test-failed-1.png
+  1 failed
+  1 skipped
+  12 passed (2.9m)
+ ELIFECYCLE  Command failed with exit code 1.
+```
+
+Both hint tests pass with `[hint] anchor clear before the spec scrolled: yes`, which is the proof that the product brings the hinted tile into view. The one failure is WP1.4's organiser-campaign spec at its Build list step: the failure screenshot shows the New action menu still open while the hint is visible, so the menu's modal layer hid the header buttons from the accessibility tree. Rerun alone against the same preview:
+
+```
+  ✓  1 [chromium] › tests/e2e/organiser-campaign.spec.ts:66:7 › Campaign workspace — full mode is today's page › the eight tabs, in order, with no organiser-mode furniture (4.1s)
+  ✓  2 [chromium] › tests/e2e/organiser-campaign.spec.ts:160:7 › Campaign workspace — the organiser-mode round trip › four tabs plus More, deep links, the switcher and every header action (22.7s)
+  2 passed (39.6s)
+```
+
+Assessment: a test-order interaction (the hint now appears during a spec that predates it, because the hint spec resets the dismissal row) and possibly a layer-stacking wrinkle between the hint popover and the New action dropdown when the spec closes the menu. Not deterministic. Fix rounds for this package are exhausted; handed to the operator (see PROGRESS.md).
+
+Round-2 advisories recorded as known limits: (B) while the hint is visible, Radix's dismissable layer still marks the document Escape keydown as default-prevented even when the hint does not act on it; (C) focus return fires after the exit animation, so opening the rating control inside that window can pull focus back to the badge; (E) the CHECK migration has no idempotency guard, matching the repo's other ALTER migrations.
+
+Screenshots under `evidence/wp1.7/`: the hint callout on a tile, on an iPhone viewport, and the chart after dismissal.
+
 ## 8. Reviewer findings
 
-_(reviewer)_
+**Round 1 (2026-09-10, fresh Fable reviewer): BLOCK.** Two functional defects invisible to the tests: dismissing the hint re-mounted the rating control so the first click on the hinted badge never opened it; and clicks on the hint bubbled through the portal into the tile, opening the worker sheet. Eight advisories (document-wide Escape, keyboard reachability claim, no hint on the touch default List layout, a roll-up anchor edge case, unbounded `hint_id`, a comment on write failure, session-refresh double-trigger, copy that pointed at a dash for unrated workers). Migration, RLS, manifest diff, tests and scope confirmed. Fixed in `3cf59a8` (stable anchor tree, isolated events, focus return, a CHECK constraint in a new migration, corrected copy) with an e2e that clicks the hinted badge.
+
+**Round 2 (2026-09-10, fresh Fable reviewer): APPROVE WITH ADVISORIES.** Both blockers verified closed against the installed Radix primitives. The verifier's run then showed the "Got it" test failing because the hinted tile sat below the fold and the sticky summary's collapse shifts the layout under it. Fixed in `d178a8e` (final round): the product brings the hinted tile into view and re-centres after the shift; the spec scrolls explicitly and settles its negatives; a late successful write re-applies the cache entry.
+
+**Round 3 (2026-09-10, fresh Fable reviewer, confirmation): APPROVE WITH ADVISORIES.** Scroll effect proven bounded, once per mount, reduced-motion aware, not fighting the user beyond its short window; spec and cache changes sound; no new PII. Advisories recorded: no scroll-margin for the stuck bar on very short viewports; the product scroll is evidenced by a log line rather than asserted.
+
+**Verification:** both migrations on dev with an RLS and CHECK probe; 1029 tests, tsc, build; lint at the develop baseline; on the final preview both hint tests pass with the product-scroll evidence; one intermittent interaction with WP1.4's spec recorded above.

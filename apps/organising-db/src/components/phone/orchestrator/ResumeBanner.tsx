@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Phone, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { PhoneCallAction } from '@/types/phone-call-action'
+import { phoneResumeHref } from '@/lib/campaign/resume-links'
 
 interface Props {
   campaignId: number | string
@@ -72,49 +73,17 @@ export function ResumeBanner({ campaignId }: Props) {
 
   function handleResume() {
     if (!inProgressAction) return
-    const { action_id, entry_branch, script_id, list_ids } = inProgressAction
-    const lid = Array.isArray(list_ids) ? list_ids[0] : undefined
-
-    switch (entry_branch) {
-      case 'script_first': {
-        const url = script_id
-          ? `/campaigns/phone-wizard?campaign_id=${campaignId}&action_id=${action_id}&script_id=${script_id}`
-          : `/campaigns/phone-wizard?campaign_id=${campaignId}&action_id=${action_id}`
-        router.push(url)
-        return
-      }
-      case 'list_first':
-        router.push(
-          `/campaigns/${campaignId}/phone/lists/new?action_id=${action_id}`,
-        )
-        return
-      case 'assessment_first':
-        router.push(
-          `/campaigns/${campaignId}/phone/assessment-setup?action_id=${action_id}`,
-        )
-        return
-      case 'assessment_list_first':
-        router.push(
-          `/campaigns/${campaignId}/phone/lists/new?action_id=${action_id}&pathway=assessment_only`,
-        )
-        return
-      case 'build_list':
-        // Wall-chart Build List Fire: the call list is already created
-        // and linked. Resume by dropping the user back on the list
-        // management page so they can attach a script + start dialling.
-        if (lid != null) {
-          router.push(
-            `/campaigns/${campaignId}/phone/lists/${lid}?action_id=${action_id}`,
-          )
-          return
-        }
-        router.push(`/campaigns/${campaignId}/phone`)
-        return
-      default:
-        // Future-proofing: unknown branch values fall through to the
-        // Phone Ops tab so the user at least sees their session listed.
-        router.push(`/campaigns/${campaignId}/phone`)
-    }
+    // The branch switch lives in `phoneResumeHref` (WP1.3) so this banner and
+    // the My campaigns Needs-attention list emit identical URLs.
+    router.push(
+      phoneResumeHref({
+        campaign_id: Number(campaignId),
+        action_id: inProgressAction.action_id,
+        entry_branch: inProgressAction.entry_branch,
+        script_id: inProgressAction.script_id,
+        list_ids: inProgressAction.list_ids,
+      }),
+    )
   }
 
   return (

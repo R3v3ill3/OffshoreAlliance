@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Mail, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { EmailEntryBranch } from '@/types/email-action'
+import { emailResumeHref } from '@/lib/campaign/resume-links'
 
 interface Props {
   campaignId: number | string
@@ -93,40 +94,16 @@ export function EmailResumeBanner({ campaignId }: Props) {
 
   function handleResume() {
     if (!inProgressDraft) return
-    const { draft_id, entry_branch, email_list_id } = inProgressDraft
-
-    switch (entry_branch) {
-      case 'ai_first':
-      case 'paste_first':
-        // Setup-first: draft was created but body may still be empty.
-        // Drop the user back into the wizard.
-        router.push(
-          `/campaigns/${campaignId}/email/wizard?draft_id=${draft_id}&entry_branch=${entry_branch}`,
-        )
-        return
-      case 'ai_list_first':
-      case 'paste_list_first':
-        // List-first: if the list isn't built yet, send back to lists/new.
-        if (email_list_id == null) {
-          router.push(
-            `/campaigns/${campaignId}/email/lists/new?draft_id=${draft_id}&entry_branch=${entry_branch}`,
-          )
-          return
-        }
-        router.push(
-          `/campaigns/${campaignId}/email/wizard?draft_id=${draft_id}&entry_branch=${entry_branch}`,
-        )
-        return
-      case 'build_list':
-        // Build-list fire: the email_list is already attached. Drop the
-        // user straight into the wizard — pathway picker was removed.
-        router.push(
-          `/campaigns/${campaignId}/email/wizard?draft_id=${draft_id}&entry_branch=build_list`,
-        )
-        return
-      default:
-        router.push(`/campaigns/${campaignId}`)
-    }
+    // The branch switch lives in `emailResumeHref` (WP1.3) so this banner and
+    // the My campaigns Needs-attention list emit identical URLs.
+    router.push(
+      emailResumeHref({
+        campaign_id: Number(campaignId),
+        draft_id: inProgressDraft.draft_id,
+        entry_branch: inProgressDraft.entry_branch,
+        email_list_id: inProgressDraft.email_list_id,
+      }),
+    )
   }
 
   return (

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import dynamic from "next/dynamic";
-import { Plus, Wand2, ExternalLink, Trash2, Megaphone, FileStack, LayoutList, Upload, Settings as SettingsIcon } from "lucide-react";
+import { Plus, ExternalLink, Trash2, Megaphone, FileStack, LayoutList, Upload } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -13,13 +13,6 @@ import { useCampaignWriteAccess } from "@/lib/hooks/useCampaignWriteAccess";
 import { DataTable, type Column } from "@/components/data-tables/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { CampaignType, CampaignStatus } from "@/types/database";
 import {
@@ -27,6 +20,8 @@ import {
   type CampaignDeleteTarget,
 } from "@/components/campaigns/campaign-delete-dialog";
 import { CampaignsDashboard } from "@/components/campaigns/CampaignsDashboard";
+import { CreateCampaignDialog } from "@/components/campaigns/create-campaign-dialog";
+import { STATUS_VARIANT, TYPE_VARIANT } from "@/components/campaigns/campaign-badge-variants";
 import { excludeSmsEpisodes } from "@/lib/campaign/visible-campaigns";
 import { ACTIONS_HUB_PATH } from "@/lib/actions/hub-path";
 
@@ -94,20 +89,6 @@ function PlanStatusBadge({ stagePlans }: { stagePlans: StagePlanSummary[] }) {
   }
   return <span className="text-xs text-muted-foreground">Draft plan</span>;
 }
-
-const STATUS_VARIANT: Record<CampaignStatus, "secondary" | "success" | "info" | "warning"> = {
-  planning: "secondary",
-  active: "success",
-  completed: "info",
-  suspended: "warning",
-};
-
-const TYPE_VARIANT: Record<CampaignType, "default" | "info" | "warning" | "secondary"> = {
-  bargaining: "info",
-  organising: "default",
-  mobilisation: "warning",
-  political: "secondary",
-};
 
 function formatDate(d: string | null) {
   if (!d) return "—";
@@ -315,54 +296,8 @@ export default function CampaignsPage() {
         />
       )}
 
-      {/* Campaign creation selector dialog */}
-      <Dialog open={createSelectorOpen} onOpenChange={setCreateSelectorOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Create a new campaign</DialogTitle>
-            <DialogDescription>
-              Choose how you&apos;d like to set up the campaign.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3 py-2">
-            <button
-              type="button"
-              onClick={() => { setCreateSelectorOpen(false); router.push("/campaigns/new"); }}
-              className="flex items-start gap-4 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <div className="mt-0.5 shrink-0 rounded-md bg-primary/10 p-2 text-primary">
-                <Wand2 className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="font-semibold leading-tight">Campaign wizard</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Guided step-by-step setup. Walk through employers, worksites,
-                  agreements, worker estimates, units, ambitions, and hand off to
-                  the planner — all in one flow.
-                </p>
-              </div>
-            </button>
-            <button
-              type="button"
-              onClick={() => { setCreateSelectorOpen(false); router.push("/campaigns/new/manual"); }}
-              className="flex items-start gap-4 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <div className="mt-0.5 shrink-0 rounded-md bg-muted p-2 text-muted-foreground">
-                <SettingsIcon className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="font-semibold leading-tight">Manual create</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Enter just the campaign name, type, and status to create the
-                  record instantly, then configure every section — employers,
-                  agreements, units, ambitions — from one settings page at your
-                  own pace. Best for power users who already know what they want.
-                </p>
-              </div>
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Campaign creation selector dialog — shared with My campaigns (WP1.3). */}
+      <CreateCampaignDialog open={createSelectorOpen} onOpenChange={setCreateSelectorOpen} />
 
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Campaigns</h1>

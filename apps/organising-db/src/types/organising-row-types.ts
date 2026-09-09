@@ -847,6 +847,18 @@ export interface UserProfile {
   workspace_prefs: unknown;
 }
 
+/**
+ * WP1.7 — one row per first-use hint this user has dismissed
+ * (public.user_hint_dismissals, owner-only RLS). `hint_id` is a
+ * `HintId` from `@/lib/hints/registry`; typed `string` here because the
+ * column is deliberately un-enumerated in SQL.
+ */
+export interface UserHintDismissal {
+  user_id: string;
+  hint_id: string;
+  dismissed_at: string;
+}
+
 export interface AgreementOrganiser {
   id: number;
   agreement_id: number;

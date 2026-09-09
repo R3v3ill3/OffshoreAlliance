@@ -336,6 +336,7 @@ export function WorkerTile({
     <div
       className="relative h-full"
       data-worker-id={worker.worker_id}
+      data-worker-name={displayName}
       data-ou-id={ouId ?? ""}
       draggable={canWrite && !!onDragStartRefs}
       onDragStart={handleDragStart}

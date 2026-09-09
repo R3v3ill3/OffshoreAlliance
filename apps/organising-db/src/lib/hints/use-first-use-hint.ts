@@ -37,11 +37,19 @@ export const HINT_DISMISSALS_QUERY_KEY = "hint-dismissals" as const;
  * callout disappears on the click, not on the round trip — and because the
  * optimistic entry lives in the query cache rather than in this hook's
  * state, it survives leaving and re-entering the wall chart (every instance
- * of the hook reads the same cache entry). A failed write is logged and the
- * cached entry is kept: a hint that fails to persist must never block the
- * chart or come back mid-session; it will simply reappear next session, when
- * the cache is cold and the query reads the table again. Outside a session
- * the hook issues no query and reports `visible: false`.
+ * of the hook reads the same cache entry).
+ *
+ * `staleTime: Infinity` does not make the cache entry permanent: the app
+ * calls a bare `queryClient.invalidateQueries()` after session recovery
+ * (`providers.tsx`, `session-recovery.ts`), which refetches every active
+ * query and replaces this list with whatever the table holds. If the write
+ * had not landed by then, the optimistic entry is gone and the hint shows
+ * again. So `onSuccess` re-applies the entry — a late but successful write
+ * wins over a refetch that raced it. A FAILED write is logged and the cached
+ * entry kept, but that entry only lasts until the next background
+ * invalidation; the hint can then come back in the same session, and will
+ * in the next one regardless. Outside a session the hook issues no query and
+ * reports `visible: false`.
  *
  * `createClient()` returns an untyped `SupabaseClient`, so
  * `.from("user_hint_dismissals")` compiles before the generated types carry
@@ -71,6 +79,12 @@ export function useFirstUseHint(id: HintId, opts: UseFirstUseHintOptions): First
     },
   });
 
+  const addToCache = useCallback(() => {
+    queryClient.setQueryData<string[]>(queryKey, (prev) =>
+      prev && prev.includes(id) ? prev : [...(prev ?? []), id]
+    );
+  }, [id, queryClient, queryKey]);
+
   const write = useAuthAwareMutation({
     mutationFn: async () => {
       if (userId === null) return;
@@ -81,6 +95,9 @@ export function useFirstUseHint(id: HintId, opts: UseFirstUseHintOptions): First
         .upsert({ user_id: userId, hint_id: id }, { onConflict: "user_id,hint_id", ignoreDuplicates: true });
       if (error) throw error;
     },
+    // The row now exists, so if a background refetch replaced the cached list
+    // while the write was in flight, put the entry back.
+    onSuccess: addToCache,
     onError: (e: Error) => {
       console.warn(`[hints] could not record dismissal of ${id}: ${e.message}`);
     },
@@ -89,11 +106,9 @@ export function useFirstUseHint(id: HintId, opts: UseFirstUseHintOptions): First
 
   const dismiss = useCallback(() => {
     if (userId === null) return;
-    queryClient.setQueryData<string[]>(queryKey, (prev) =>
-      prev && prev.includes(id) ? prev : [...(prev ?? []), id]
-    );
+    addToCache();
     mutate(undefined);
-  }, [id, mutate, queryClient, queryKey, userId]);
+  }, [addToCache, mutate, userId]);
 
   // The cached list already carries this session's optimistic dismissal, so
   // the predicate's separate `dismissedThisSession` input is not needed here.

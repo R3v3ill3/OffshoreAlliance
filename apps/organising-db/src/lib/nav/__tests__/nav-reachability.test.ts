@@ -115,7 +115,8 @@ describe("reachability — decision 7", () => {
   // label, href, order or state this fails and someone has to say why.
   const ORGANISER_DEFAULT_ROWS = {
     primary: [
-      { label: "My campaigns", href: "/campaigns", state: "on" },
+      // WP1.3: the route exists, so the row points at it.
+      { label: "My campaigns", href: "/my-campaigns", state: "on" },
       { label: "Actions", href: "/actions", state: "on" },
       { label: "Inbox", href: "/email/inbox", state: "on" },
       { label: "Guides", href: "/help", state: "on" },
@@ -151,7 +152,7 @@ describe("reachability — decision 7", () => {
     expect(hidden).toEqual([]);
   });
 
-  it("only /sms/inbox needs Show everything or the hub pill", () => {
+  it("only /campaigns and /sms/inbox need Show everything or an in-page link", () => {
     // Reachable *without leaving organiser mode*: the rows the sidebar
     // actually renders — `on` (a live link) or `muted` (visible, explained,
     // and one admin flag from being live). "Show everything" is deliberately
@@ -167,27 +168,37 @@ describe("reachability — decision 7", () => {
 
     const unreachable = [...fullHrefs].filter((h) => !reachableInOrganiserMode.has(h));
 
-    // The single documented exception. `/sms/inbox` is not a nav row in
-    // organiser mode because the one Inbox entry carries the email unread
-    // badge (there is no SMS count endpoint). It stays reachable two ways:
-    // "Show everything", and the Actions hub's own Inbox pill — both asserted
-    // below, so this exception can never become "and nothing gets you there".
-    expect(unreachable).toEqual(["/sms/inbox"]);
+    // The two documented exceptions.
+    //  * `/campaigns` (WP1.3): the My campaigns row pointed here until the
+    //    `/my-campaigns` route existed. The portfolio list is now one click
+    //    from that row — the page's "See all campaigns" link renders in its
+    //    header row on every render — and one "Show everything" click.
+    //  * `/sms/inbox`: not a nav row in organiser mode because the one Inbox
+    //    entry carries the email unread badge (there is no SMS count
+    //    endpoint). Reachable by "Show everything" and the Actions hub's own
+    //    Inbox pill.
+    // Both are asserted below, so neither can become "and nothing gets you
+    // there".
+    expect(unreachable).toEqual(["/campaigns", "/sms/inbox"]);
 
     const afterShowEverything = new Set(
       [...expanded.primary, ...expanded.admin].map((i) => i.href)
     );
+    expect(afterShowEverything.has("/campaigns")).toBe(true);
     expect(afterShowEverything.has("/sms/inbox")).toBe(true);
-    // The hub pill: `SmsHubNav.tsx` renders Actions / Inbox (/sms/inbox) /
-    // Numbers on every hub page, so the second route is one click from the
-    // Actions row — which organiser mode always shows.
+    // The in-page links: My campaigns (`app/(dashboard)/my-campaigns/page.tsx`)
+    // links "See all campaigns" → /campaigns; `SmsHubNav.tsx` renders
+    // Actions / Inbox (/sms/inbox) / Numbers on every hub page. Both parent
+    // rows are primary in organiser mode.
+    expect(reachableInOrganiserMode.has(MY_CAMPAIGNS_HREF)).toBe(true);
     expect(reachableInOrganiserMode.has(ACTIONS_HUB_PATH)).toBe(true);
   });
 
-  it("with allowShowEverything: false the same one route has only the hub pill", () => {
+  it("with allowShowEverything: false the same two routes have only their in-page links", () => {
     // The "no out" configuration. Show everything renders no button at all,
-    // so the escape hatch is the Actions hub's Inbox pill and the URL —
-    // named here rather than left to be discovered in the field.
+    // so the escape hatches are the My campaigns "See all campaigns" link,
+    // the Actions hub's Inbox pill and the URL — named here rather than left
+    // to be discovered in the field.
     const noOut = modelFor(
       {
         role: "user",
@@ -203,12 +214,13 @@ describe("reachability — decision 7", () => {
         .filter((i) => i.state !== "hidden")
         .map((i) => i.href)
     );
-    const onlyByUrlOrHubPill = [...fullHrefs].filter((h) => !reachable.has(h));
+    const onlyByUrlOrInPageLink = [...fullHrefs].filter((h) => !reachable.has(h));
 
-    expect(onlyByUrlOrHubPill).toEqual(["/sms/inbox"]);
-    // …and the page carrying the Inbox pill (`SmsHubNav.tsx`) is still a
-    // primary row, so the one exception keeps a two-click path even with no
-    // "Show everything" button at all.
+    expect(onlyByUrlOrInPageLink).toEqual(["/campaigns", "/sms/inbox"]);
+    // …and the pages carrying those links (My campaigns, `SmsHubNav.tsx`)
+    // are still primary rows, so each exception keeps a two-click path even
+    // with no "Show everything" button at all.
+    expect(reachable.has(MY_CAMPAIGNS_HREF)).toBe(true);
     expect(reachable.has(ACTIONS_HUB_PATH)).toBe(true);
     // The four primary items survive the no-out configuration: the worst case
     // is still a usable workspace, never an empty shell (risk R5).
@@ -268,6 +280,7 @@ describe("allNavHrefs", () => {
         "/email/inbox",
         "/email/wrappers",
         "/help",
+        "/my-campaigns",
         "/overview",
         "/reports",
         "/sms",

@@ -77,10 +77,10 @@ export interface BuildNavModelInput {
 export const MUTED_REASON = "Ask an admin to enable";
 
 /**
- * WP1.3 flips this to "/my-campaigns". Shipping that route now would give
- * organisers a 404 for the whole window between the two merges.
+ * WP1.3's My campaigns page. Kept as one constant (it was "/campaigns" until
+ * the route existed) so the nav suites and `landing.ts` name the same path.
  */
-export const MY_CAMPAIGNS_HREF = "/campaigns";
+export const MY_CAMPAIGNS_HREF = "/my-campaigns";
 
 /** A row before its state is known. `badged` is internal; it never reaches a NavItem. */
 type NavItemDef = Omit<NavItem, "state" | "mutedReason" | "badge"> & {

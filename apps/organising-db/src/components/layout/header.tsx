@@ -1,11 +1,10 @@
 "use client";
 
 import { Suspense } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { CampaignDetailHeaderBar } from "@/components/campaigns/campaign-detail-header-bar";
 import {
-  getCampaignIdFromPath,
-  isCampaignDetailRoute,
+  campaignIdForChrome,
   isStagePlanningRoute,
 } from "@/lib/campaign/campaign-detail-routes";
 import { MobileNav } from "./mobile-nav";
@@ -52,20 +51,34 @@ export function Header() {
     );
   }
 
-  const campaignId = getCampaignIdFromPath(pathname);
-  if (isCampaignDetailRoute(pathname) && campaignId) {
-    return (
-      <Suspense
-        fallback={
-          <header className="flex h-16 items-center border-b bg-background px-4 md:px-6">
-            <MobileNav />
-            <div className="ml-3 h-6 w-48 animate-pulse rounded bg-muted" />
-          </header>
-        }
-      >
-        <CampaignDetailHeaderBar campaignId={campaignId} />
-      </Suspense>
-    );
+  // WP1.4: which header to draw now depends on ?cid= / ?campaign_id= as well
+  // as the path, so the decision moves inside the Suspense boundary this file
+  // already had. `useSearchParams()` in the shell itself would opt the whole
+  // app out of static rendering at build time; in a Suspense child it does
+  // not.
+  return (
+    <Suspense fallback={<HeaderFallback />}>
+      <HeaderBody pathname={pathname} />
+    </Suspense>
+  );
+}
+
+function HeaderFallback() {
+  return (
+    <header className="flex h-16 items-center border-b bg-background px-4 md:px-6">
+      <MobileNav />
+      <div className="ml-3 h-6 w-48 animate-pulse rounded bg-muted" />
+    </header>
+  );
+}
+
+/** The only component in this file that reads the query string. */
+function HeaderBody({ pathname }: { pathname: string }) {
+  const searchParams = useSearchParams();
+
+  const campaignId = campaignIdForChrome(pathname, searchParams);
+  if (campaignId) {
+    return <CampaignDetailHeaderBar campaignId={campaignId} />;
   }
 
   const basePath = "/" + (pathname.split("/")[1] || "");

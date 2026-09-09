@@ -349,7 +349,9 @@ export default function CampaignPlanPage({ params }: PageProps) {
 
       <CampaignRevisionHistory campaignId={campaignId} />
 
-      <Card>
+      {/* id: the anchor the organiser-mode Setup tab's Organisers card links to
+          (WP1.4). No visual change. */}
+      <Card id="campaign-team">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <div className="flex items-center gap-2">
             <Users className="h-4 w-4 text-slate-500" />

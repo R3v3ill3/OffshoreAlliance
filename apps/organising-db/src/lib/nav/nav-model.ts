@@ -84,6 +84,13 @@ export const MUTED_REASON = "Ask an admin to enable";
  */
 export const MY_CAMPAIGNS_HREF = MY_CAMPAIGNS_PATH;
 
+/**
+ * The full campaign list — every campaign the account may see, not just
+ * mine. The `campaigns` row and WP1.4's campaign switcher share the one
+ * constant so "All campaigns" cannot come to mean two different pages.
+ */
+export const ALL_CAMPAIGNS_HREF = "/campaigns";
+
 /** A row before its state is known. `badged` is internal; it never reaches a NavItem. */
 type NavItemDef = Omit<NavItem, "state" | "mutedReason" | "badge"> & {
   /** Carries the email unread count. Only `/email/inbox` has a count to carry. */
@@ -99,7 +106,7 @@ const DEFS = {
   campaigns: {
     id: "campaigns",
     label: "Campaigns",
-    href: "/campaigns",
+    href: ALL_CAMPAIGNS_HREF,
     icon: "megaphone",
     module: "wall_chart_people",
   },

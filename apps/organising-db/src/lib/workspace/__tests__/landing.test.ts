@@ -4,6 +4,7 @@ import {
   LANDING_PARAM,
   LANDING_PARAM_VALUE,
   MY_CAMPAIGNS_PATH,
+  canDecideLanding,
   campaignChartHref,
   landingPathFor,
   shouldAutoOpenSingleCampaign,
@@ -40,5 +41,24 @@ describe("shouldAutoOpenSingleCampaign", () => {
   it("L4 never fires for zero or several campaigns", () => {
     expect(shouldAutoOpenSingleCampaign({ fromLanding: true, campaignIds: [] })).toBeNull();
     expect(shouldAutoOpenSingleCampaign({ fromLanding: true, campaignIds: [1, 2] })).toBeNull();
+  });
+});
+
+describe("canDecideLanding", () => {
+  it("L5 waits while auth, the profile or the org defaults are loading", () => {
+    expect(canDecideLanding({ loading: true, hasUser: true, hasProfile: true })).toBe(false);
+    expect(canDecideLanding({ loading: true, hasUser: false, hasProfile: false })).toBe(false);
+  });
+
+  it("L5 waits for a signed-in user whose profile has not arrived (the post-login gap)", () => {
+    expect(canDecideLanding({ loading: false, hasUser: true, hasProfile: false })).toBe(false);
+  });
+
+  it("L5 decides once the profile is here", () => {
+    expect(canDecideLanding({ loading: false, hasUser: true, hasProfile: true })).toBe(true);
+  });
+
+  it("L5 decides for no user at all — there is no profile to wait for", () => {
+    expect(canDecideLanding({ loading: false, hasUser: false, hasProfile: false })).toBe(true);
   });
 });

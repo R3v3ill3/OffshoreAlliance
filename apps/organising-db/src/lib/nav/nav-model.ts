@@ -22,6 +22,7 @@
 // away in organiser mode — proved by `__tests__/nav-reachability.test.ts`.
 
 import { ACTIONS_HUB_PATH } from "@/lib/actions/hub-path";
+import { MY_CAMPAIGNS_PATH } from "@/lib/workspace/landing";
 import type { WorkspaceModuleId } from "@/lib/workspace/modules";
 import type { ModuleState, WorkspaceMode } from "@/lib/workspace/resolve";
 import { isNavItemActive } from "./active-nav";
@@ -77,10 +78,11 @@ export interface BuildNavModelInput {
 export const MUTED_REASON = "Ask an admin to enable";
 
 /**
- * WP1.3's My campaigns page. Kept as one constant (it was "/campaigns" until
- * the route existed) so the nav suites and `landing.ts` name the same path.
+ * WP1.3's My campaigns page — `landing.ts` owns the path (it is pure: a type
+ * import only), re-exported under the name the nav suites use so the row and
+ * the landing rule cannot drift.
  */
-export const MY_CAMPAIGNS_HREF = "/my-campaigns";
+export const MY_CAMPAIGNS_HREF = MY_CAMPAIGNS_PATH;
 
 /** A row before its state is known. `badged` is internal; it never reaches a NavItem. */
 type NavItemDef = Omit<NavItem, "state" | "mutedReason" | "badge"> & {

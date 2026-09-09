@@ -33,6 +33,14 @@ interface AuthContextType {
   profile: UserProfile | null;
   role: UserRole;
   loading: boolean;
+  /**
+   * True from a SIGNED_IN / USER_UPDATED / PASSWORD_RECOVERY event until the
+   * profile it re-fetches has landed (WP1.3 fix round 1). `loading` covers
+   * only the INITIAL_SESSION path, and after the login form it is already
+   * false — so without this flag the landing gate at `/` decides on a
+   * missing profile. Folded into `useWorkspace().loading`.
+   */
+  profileLoading: boolean;
   signOut: () => Promise<void>;
   hardRefreshConnection: () => Promise<SessionRecoveryResult>;
   connectionRecoveryInProgress: boolean;
@@ -55,6 +63,7 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   role: "viewer",
   loading: true,
+  profileLoading: false,
   signOut: async () => {},
   hardRefreshConnection: async () => ({
     ok: false,
@@ -75,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false);
   const [connectionRecoveryInProgress, setConnectionRecoveryInProgress] = useState(false);
   const supabase = createClient();
   const queryClient = useQueryClient();
@@ -305,23 +315,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // await other client calls inside the callback — defer them.
         const sessionUser = session?.user ?? null;
         setKnownExpiry(session?.expires_at);
+        // Raised synchronously (a React state set, not a Supabase call, so it
+        // is safe inside the callback) so the profile gap is visible to the
+        // landing gate before the deferred fetch below even starts.
+        if (sessionUser) setProfileLoading(true);
         setTimeout(() => {
           void (async () => {
-            setUser(sessionUser);
-            if (sessionUser) {
-              setProfile((prev) => {
-                if (prev?.user_id === sessionUser.id) return prev;
-                return null;
-              });
-              const profileData = await fetchProfile(sessionUser.id);
-              setProfile(profileData);
-            } else {
-              setProfile(null);
-              // INITIAL_SESSION is handled earlier (and returns); any other event
-              // reaching here with no user means the session is gone — go to login.
-              redirectToLogin("session_expired");
+            try {
+              setUser(sessionUser);
+              if (sessionUser) {
+                setProfile((prev) => {
+                  if (prev?.user_id === sessionUser.id) return prev;
+                  return null;
+                });
+                const profileData = await fetchProfile(sessionUser.id);
+                setProfile(profileData);
+              } else {
+                setProfile(null);
+                // INITIAL_SESSION is handled earlier (and returns); any other event
+                // reaching here with no user means the session is gone — go to login.
+                redirectToLogin("session_expired");
+              }
+              setLoading(false);
+            } finally {
+              setProfileLoading(false);
             }
-            setLoading(false);
           })();
         }, 0);
       }
@@ -411,6 +429,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile,
         role,
         loading,
+        profileLoading,
         signOut,
         hardRefreshConnection,
         connectionRecoveryInProgress,

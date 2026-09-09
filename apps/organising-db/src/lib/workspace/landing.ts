@@ -11,6 +11,10 @@
 
 import type { WorkspaceMode } from "./resolve";
 
+// Kept pure (a type import only) on purpose: `nav-model.ts` imports
+// MY_CAMPAIGNS_PATH from here for its My campaigns row, and that module must
+// stay free of React and `next/*`.
+
 export const MY_CAMPAIGNS_PATH = "/my-campaigns";
 /** Full mode is byte-for-byte unchanged: today's post-login destination. */
 export const FULL_MODE_LANDING_PATH = "/campaigns";
@@ -42,4 +46,22 @@ export function shouldAutoOpenSingleCampaign(input: {
   if (!input.fromLanding) return null;
   if (input.campaignIds.length !== 1) return null;
   return input.campaignIds[0];
+}
+
+/**
+ * L5 — whether the gate at `/` may decide yet. `resolveWorkspace()` returns
+ * `full` while its inputs are absent, so deciding on `loading` alone would
+ * send an organiser to `/campaigns` whenever the profile is still in flight —
+ * after the login form, auth `loading` is already false (INITIAL_SESSION on
+ * `/login` had no user) and only the profile fetch is pending. The rule: not
+ * while anything is loading, and never for a signed-in user whose profile has
+ * not arrived. A profile-less session waits for the gate's failsafe instead.
+ */
+export function canDecideLanding(input: {
+  loading: boolean;
+  hasUser: boolean;
+  hasProfile: boolean;
+}): boolean {
+  if (input.loading) return false;
+  return input.hasProfile || !input.hasUser;
 }

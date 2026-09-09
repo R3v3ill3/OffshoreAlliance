@@ -66,7 +66,9 @@ function RoleCheckProbeItem({
   campaignId: number;
   onCount: (campaignId: number, count: number) => void;
 }) {
-  const { data } = useRoleCheckCount(campaignId);
+  // One retry, not the client default: a hint nobody waits on must not
+  // re-run a five-query endpoint three times on a bad connection.
+  const { data } = useRoleCheckCount(campaignId, { retry: 1 });
   useEffect(() => {
     if (data != null) onCount(campaignId, data);
   }, [campaignId, data, onCount]);

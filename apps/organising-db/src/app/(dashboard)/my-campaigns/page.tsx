@@ -20,7 +20,7 @@ import { Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CreateCampaignDialog } from "@/components/campaigns/create-campaign-dialog";
 import { MyCampaignsGrid } from "@/components/campaigns/my/my-campaigns-grid";
-import { MyCampaignTeamRow } from "@/components/campaigns/my/my-campaign-team-row";
+import { MAX_TEAM_ROWS, MyCampaignTeamRow } from "@/components/campaigns/my/my-campaign-team-row";
 import { NeedsAttentionList, RoleCheckProbe } from "@/components/campaigns/my/needs-attention-list";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { useCampaignsAllStats } from "@/lib/hooks/useCampaignsAllStats";
@@ -48,15 +48,17 @@ function MyCampaignsPage() {
     useMyCampaigns();
 
   const mineIds = useMemo(() => mine.map((c) => c.campaign_id), [mine]);
-  const allIds = useMemo(
-    () => [...mineIds, ...team.map((c) => c.campaign_id)],
+  // Last activity is shown on my cards and on the team rows that render —
+  // the team row caps itself at MAX_TEAM_ROWS, so the RPC asks for no more.
+  const lastActivityIds = useMemo(
+    () => [...mineIds, ...team.slice(0, MAX_TEAM_ROWS).map((c) => c.campaign_id)],
     [mineIds, team]
   );
 
   // Four batched queries, scoped to my cards only (§2.3.1). `/campaigns`'s
   // unfiltered keys are untouched.
   const { statsMap, isLoading: statsLoading } = useCampaignsAllStats([], { campaignIds: mineIds });
-  const lastActivity = useCampaignLastActivity(allIds);
+  const lastActivity = useCampaignLastActivity(lastActivityIds);
   // One clock for every "Last activity" line: the moment the rows arrived
   // (0 until then, when every line is a skeleton or "No activity yet" anyway).
   const now = lastActivity.dataUpdatedAt;

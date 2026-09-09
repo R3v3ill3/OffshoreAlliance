@@ -72,12 +72,18 @@ async function fetchRoleCheck(campaignId: number): Promise<RoleCheckResponse> {
   return (await res.json()) as RoleCheckResponse;
 }
 
-export function useRoleCheckCount(campaignId: number) {
+/**
+ * `retry` is for callers that only want a hint (the My campaigns probes):
+ * the endpoint runs five sequential queries, so the QueryClient's default
+ * retries are too dear for a number nothing waits on.
+ */
+export function useRoleCheckCount(campaignId: number, options?: { retry?: number }) {
   return useQuery({
     queryKey: queryKey(campaignId),
     queryFn: () => fetchRoleCheck(campaignId),
     staleTime: 30_000,
     select: (data) => data.rows.length,
+    ...(options?.retry != null ? { retry: options.retry } : {}),
   });
 }
 

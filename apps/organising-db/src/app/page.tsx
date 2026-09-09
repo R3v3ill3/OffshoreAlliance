@@ -7,8 +7,12 @@
 // so the post-login hop lands here — outside the (dashboard) group, with no
 // sidebar or header that could be the wrong page — and `router.replace`s to
 // `/campaigns` (full mode, unchanged) or `/my-campaigns?from=landing`
-// (organiser mode) as soon as `useWorkspace().loading` is false. Middleware
-// already sends a signed-out visitor for `/` to `/login`.
+// (organiser mode) once `canDecideLanding` (landing.ts L5) says the mode is
+// real: nothing loading, and the signed-in user's profile present. The
+// resolver returns `full` while its inputs are absent, so deciding on
+// `useWorkspace().loading` alone sent an organiser to `/campaigns` whenever
+// the gate mounted before the post-login profile fetch landed (fix round 1).
+// Middleware already sends a signed-out visitor for `/` to `/login`.
 //
 // Failsafe: if the profile never resolves, 5 s later the gate falls back to
 // today's `/campaigns` rather than a stuck spinner.
@@ -16,21 +20,32 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { useAuth } from "@/lib/supabase/auth-context";
 import { useWorkspace } from "@/lib/workspace/use-workspace";
-import { FULL_MODE_LANDING_PATH, landingPathFor } from "@/lib/workspace/landing";
+import {
+  FULL_MODE_LANDING_PATH,
+  canDecideLanding,
+  landingPathFor,
+} from "@/lib/workspace/landing";
 
 const LANDING_FAILSAFE_MS = 5_000;
 
 export default function LandingGate() {
   const router = useRouter();
   const { mode, loading } = useWorkspace();
+  const { user, profile } = useAuth();
   const decided = useRef(false);
+  const ready = canDecideLanding({
+    loading,
+    hasUser: user != null,
+    hasProfile: profile != null,
+  });
 
   useEffect(() => {
-    if (loading || decided.current) return;
+    if (!ready || decided.current) return;
     decided.current = true;
     router.replace(landingPathFor({ mode }));
-  }, [loading, mode, router]);
+  }, [ready, mode, router]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

@@ -295,6 +295,17 @@ function UsersTab() {
   });
   const editWorkspaceEffectiveMode = editWorkspaceResolved.mode;
   const editWorkspacePlaceholder = editWorkspaceResolved.enabledModules;
+  // What "Default for role" would actually resolve to for this user — the
+  // same resolver, with no user override. Worth naming in the option label:
+  // with nothing stored org-wide the default is full mode (resolve.ts R1),
+  // which the bare wording never said.
+  const editWorkspaceRoleDefaultMode = resolveWorkspace({
+    role: editPermissionRole,
+    workRole: editWorkRole !== "none" ? editWorkRole : null,
+    orgDefaults: orgWorkspaceDefaults,
+    userPrefs: {},
+    sessionShowEverything: false,
+  }).mode;
   const editWorkspaceCurrent: WorkspaceFormState = {
     mode: editWorkspaceMode,
     modules: editWorkspaceModules,
@@ -641,14 +652,23 @@ function UsersTab() {
           }
         }}
       >
-        <DialogContent>
-          <DialogHeader>
+        {/*
+          The workspace section makes this the tallest dialog in the app, so it
+          is the one that has to scroll: the shared DialogContent is a
+          `grid` with no height cap, which pushed the footer off a 720px-high
+          laptop viewport and made Save unreachable. Only this dialog is
+          changed — a flex column with a capped height, the header and footer
+          pinned, and the fields in between as the single scroll region.
+        */}
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-2xl">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Edit User — {editUser?.display_name}</DialogTitle>
             <DialogDescription>
               Update permission, contact details, work role, and reporting line.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          {/* -mx-6/px-6 puts the scrollbar on the dialog edge, not inside the padding. */}
+          <div className="-mx-6 min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-2">
             <div className="space-y-1.5">
               <Label>Permission level</Label>
               <Select
@@ -745,7 +765,14 @@ function UsersTab() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="default">Default for role</SelectItem>
+                    <SelectItem value="default">
+                      Default for role
+                      {orgWorkspaceDefaultsReady
+                        ? ` — currently ${
+                            editWorkspaceRoleDefaultMode === "full" ? "Full" : "Organiser"
+                          }`
+                        : ""}
+                    </SelectItem>
                     <SelectItem value="full">Full</SelectItem>
                     <SelectItem value="organiser">Organiser</SelectItem>
                   </SelectContent>
@@ -820,13 +847,15 @@ function UsersTab() {
               </div>
               <p className="text-xs text-muted-foreground">
                 Workspace mode changes what this person sees, not what they can do.
+                The role-wide defaults behind &ldquo;Default for role&rdquo; are set in
+                Administration → Settings.
               </p>
             </div>
             {editError && (
               <p className="text-sm text-destructive">{editError}</p>
             )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button
               variant="outline"
               onClick={() => setEditUser(null)}

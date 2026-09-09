@@ -38,13 +38,18 @@ export function WorkspaceModuleChecklist({
   };
 
   return (
-    <ul className="space-y-2">
+    // Thirteen full-width rows made the per-user dialog taller than a laptop
+    // viewport, so the list flows into two columns from `sm` up and the rows
+    // are tighter. CSS columns rather than a grid: the descriptions are very
+    // uneven, and grid would pad every row out to the tallest of its pair.
+    // Every module still renders and no label changed.
+    <ul className="sm:columns-2 sm:gap-x-6">
       {MODULES.map((m) => {
         const adminLocked = m.adminOnly && !targetIsAdmin;
         const rowDisabled = disabled || adminLocked;
         const elementId = `${idPrefix}-${m.id}`;
         return (
-          <li key={m.id} className="flex items-start gap-2">
+          <li key={m.id} className="mb-2 flex break-inside-avoid items-start gap-2">
             <Checkbox
               id={elementId}
               checked={selected.has(m.id) && !adminLocked}
@@ -64,7 +69,14 @@ export function WorkspaceModuleChecklist({
                   </span>
                 )}
               </span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">{m.description}</span>
+              {/* Clamped, with the full text on hover: two of the descriptions
+                  run to four lines and dominate the height of the list. */}
+              <span
+                className="mt-0.5 line-clamp-2 text-xs leading-tight text-muted-foreground"
+                title={m.description}
+              >
+                {m.description}
+              </span>
             </label>
           </li>
         );

@@ -1517,7 +1517,378 @@ Changed (all under `apps/organising-db/`): `src/lib/supabase/auth-context.tsx`,
 
 ## 12. Verification output
 
-_(verifier pastes raw output)_
+Verifier run 2026-09-09 at 9ed0164; migration applied to dev dpnnmkhabysfdogllsyh; preview https://offshore-alliance-rl90168d8-reveille-strategy.vercel.app.
+
+### 12.1 Pre-push state
+
+```
+$ cat supabase/.temp/project-ref
+dpnnmkhabysfdogllsyh
+
+$ pnpm validate:migrations
+Validated 5 Supabase migrations with unique 14-digit versions.
+
+$ env -u SUPABASE_DB_PASSWORD npx --no-install supabase migration list
+   Local          | Remote         | Time (UTC)
+  ----------------|----------------|---------------------
+   20260908050000 | 20260908050000 | 2026-09-08 05:00:00
+   20260908050100 | 20260908050100 | 2026-09-08 05:01:00
+   20260908050200 | 20260908050200 | 2026-09-08 05:02:00
+   20260909100000 | 20260909100000 | 2026-09-09 10:00:00
+   20260909120000 |                | 2026-09-09 12:00:00
+```
+4 applied remote, `20260909120000` local-only — matches expectation.
+
+### 12.2 "Before" snapshot (dev)
+
+`pg_policies` for the six tables (5 write-policy tables + `user_profiles`): 15 generation-1 write
+policies (5×DELETE `get_user_role() = 'admin'`, 5×INSERT and 5×UPDATE
+`get_user_role() = ANY(ARRAY['admin','user'])`) plus 5 `USING (true)` SELECT rows, plus the three
+pre-existing `user_profiles` policies (`Admin can insert profiles`, `Authenticated users can read
+user_profiles`, `Users can read own profile`, `Users can update own profile` — the last with
+`qual`/`with_check` = `(user_id = auth.uid()) OR (get_user_role() = 'admin')`, i.e. no column guard yet).
+
+`campaigns.created_by` column_default: `null`.
+
+### 12.3 Pre-flight query (§6, R1) — before push
+
+Zero rows. **Pass** — no organiser would lose write access; script 02 backfill already covers dev.
+
+### 12.4 Migration rehearsal
+
+```
+$ env -u SUPABASE_DB_PASSWORD npx --no-install supabase db push --dry-run
+DRY RUN: migrations will *not* be pushed to the database.
+Would push these migrations:
+ • 20260909120000_wp1_6_campaign_write_policies.sql
+Finished supabase db push.
+```
+Exactly the one expected file.
+
+```
+$ env -u SUPABASE_DB_PASSWORD npx --no-install supabase db push
+Applying migration 20260909120000_wp1_6_campaign_write_policies.sql...
+NOTICE (00000): trigger "trg_user_profiles_guard_privileged_columns" for relation "public.user_profiles" does not exist, skipping
+Finished supabase db push.
+```
+The NOTICE is the migration's own `DROP TRIGGER IF EXISTS` guard firing on a first apply — expected, not
+an error.
+
+```
+$ env -u SUPABASE_DB_PASSWORD npx --no-install supabase migration list
+   Local          | Remote         | Time (UTC)
+  ----------------|----------------|---------------------
+   20260908050000 | 20260908050000 | 2026-09-08 05:00:00
+   20260908050100 | 20260908050100 | 2026-09-08 05:01:00
+   20260908050200 | 20260908050200 | 2026-09-08 05:02:00
+   20260909100000 | 20260909100000 | 2026-09-09 10:00:00
+   20260909120000 | 20260909120000 | 2026-09-09 12:00:00
+```
+All five applied.
+
+### 12.5 Pre-flight query — after push
+
+Re-ran (same query, dev unchanged in the meantime): zero rows. **Pass.**
+
+### 12.6 "After" snapshot (dev)
+
+`pg_policies`, `campaigns` write surface — 15 `wp16_*` rows, each with the role-floor-AND-scope shape:
+
+- `campaigns`: `wp16_campaigns_insert` (`get_user_role() = ANY(ARRAY['admin','user'])`),
+  `wp16_campaigns_update` (role floor AND `can_write_to_campaign(campaign_id)` on both USING/WITH CHECK),
+  `wp16_campaigns_delete` (`is_admin() OR (is_standing = false AND role floor AND
+  can_write_to_campaign(campaign_id))`).
+- `campaign_organising_units`, `campaign_worker_membership`, `campaign_leader_worker_links`: each has
+  `wp16_{cou,cwm,clwl}_{insert,update,delete}` with `role floor AND can_write_to_campaign(campaign_id)`.
+- `campaign_worker_ou`: `wp16_cwo_{insert,update,delete}` with `role floor AND EXISTS (SELECT 1 FROM
+  campaign_organising_units cou WHERE cou.ou_id = campaign_worker_ou.ou_id AND
+  can_write_to_campaign(cou.campaign_id))`.
+- All five `"Authenticated users can read …"` SELECT policies (`USING (true)`) untouched.
+- `user_profiles`: the three pre-existing policies untouched (`Users can update own profile` still reads
+  `(user_id = auth.uid()) OR (get_user_role() = 'admin')` — the column-level guard is enforced by the new
+  trigger, not by this policy, per the implementer's deviation note 3).
+
+`campaigns.created_by` column_default: `auth.uid()`. **Pass.**
+
+`pg_proc` — `campaigns_i_can_write` (`prosecdef = true`), `delete_campaign` (`prosecdef = true`,
+`SECURITY DEFINER`), `link_organiser_for_profile` (`prosecdef = true`) all present.
+`delete_campaign`'s body contains `public.is_campaign_creator(p_campaign_id)` as a third OR arm alongside
+`is_admin()` and `is_lead_organiser_for_campaign(p_campaign_id)`, with the comment explaining why it does
+not use `can_write_to_campaign` (the standing-campaign arm).
+
+`pg_trigger` on `user_profiles` (excluding internal): `trg_user_profiles_guard_privileged_columns`,
+`trg_user_profiles_updated_at`. Both present.
+
+### 12.7 Role probes (`scripts/data-hygiene/oux-wp1.6/95_role_probes.sql`)
+
+Run via `mcp__…__execute_sql` against dev inside one `BEGIN … ROLLBACK` (the MCP tool does not surface
+`RAISE NOTICE`/`WARNING`, so the probe body was mechanically rewritten to write each PASS/FAIL line into a
+`CREATE TEMP TABLE` instead of `RAISE`, with a final `SELECT … ORDER BY seq` before the `ROLLBACK`; the
+underlying assertions are unchanged from the committed file). `e2e_uid` was discovered by querying
+`user_profiles` for `organiser_id = 10` (the id the WP0.4/WP0.2 hygiene run set for the e2e account per
+PROGRESS): `f7c048e2-ecfe-4e9c-8715-7f4c899f0d37`, `display_name = "troy reveille"`, `role = "user"`,
+`work_role = "organiser"` — the exact shape decision 8's note targets. `foreign_campaign_id = 3`
+("Acme Energy EBA 2026 — DEMO", `writable = false`, `sample_ou_id = 8`) and `foreign_campaign_id = 1`
+("testco1", `writable = true`) were read from the discovery query, i.e. `E2E_FOREIGN_CAMPAIGN_ID=3` for
+the e2e negative case and the admin spec.
+
+Raw output, in order (all 38 lines PASS, none WARNING/FAIL):
+
+```
+ 1 PASS user/insert campaign_organising_units on foreign campaign: 42501
+ 2 PASS user/update campaign_organising_units on foreign campaign: 0 row(s)
+ 3 PASS user/update campaigns on foreign campaign: 0 row(s)
+ 4 PASS user/delete campaign_worker_ou on foreign campaign: 0 row(s)
+ 5 PASS user/delete campaign_worker_membership on foreign campaign: 0 row(s)
+ 6 PASS user/delete campaign_leader_worker_links on foreign campaign: 0 row(s)
+ 7 PASS user/delete campaign_organising_units on foreign campaign: 0 row(s)
+ 8 PASS user/delete campaigns (direct, foreign campaign): 0 row(s)
+ 9 PASS user/delete_campaign() on foreign campaign: not_authorized
+10 PASS user/delete standing campaign (direct): 0 row(s)
+11 PASS user/insert campaigns: created_by = auth.uid()
+12 PASS user/can_write_to_campaign(own campaign)
+13 PASS user/campaigns_i_can_write(own campaign)
+14 PASS user/insert campaign_organising_units on own campaign
+15 PASS user/update campaign_organising_units on own campaign: 1 row(s)
+16 PASS user/delete campaign_organising_units on own campaign: 1 row(s)
+17 PASS user/delete_campaign(own campaign)
+18 PASS user/self-escalate role=admin: 42501
+19 PASS user/self-escalate work_role=lead_organiser: 42501
+20 PASS user/self-escalate organiser_id: 42501
+21 PASS user/self-escalate reports_to: 42501
+22 PASS user/update own display_name/phone/workspace_prefs: 1 row(s)
+23 PASS user/link_organiser_for_profile(self) -> 10 (profile now 10)
+24 PASS user/link_organiser_for_profile(other): not_authorized
+25 PASS viewer/get_user_role() = viewer
+26 PASS viewer/insert campaign_organising_units: 42501
+27 PASS viewer/insert campaigns: 42501
+28 PASS viewer/update campaigns: 0 row(s)
+29 PASS viewer/update campaign_organising_units: 0 row(s)
+30 PASS viewer/delete campaign_worker_ou: 0 row(s)
+31 PASS viewer/delete campaign_worker_membership: 0 row(s)
+32 PASS viewer/delete campaign_leader_worker_links: 0 row(s)
+33 PASS viewer/delete campaign_organising_units: 0 row(s)
+34 PASS viewer/delete campaigns: 0 row(s)
+35 PASS viewer/campaigns_i_can_write(all) is empty
+36 PASS viewer/self-escalate role=admin: 42501
+37 PASS viewer/link_organiser_for_profile(self): not_authorized
+38 PASS service_role/update role+work_role: 1 row(s)
+```
+
+Post-rollback check confirmed the transaction left no residue: `user_profiles` row for
+`f7c048e2-ecfe-4e9c-8715-7f4c899f0d37` still reads `role='user', work_role='organiser',
+organiser_id=10`, and `select count(*) from campaigns where name like 'wp16%'` = 0.
+
+**R5 (per-row cost).** Dev's largest single-campaign `campaign_worker_ou` set is campaign 1 at 95 rows
+(not the full 100 the plan asked for; dev has no campaign with ≥100). `EXPLAIN (ANALYZE, BUFFERS)` for a
+95-row delete as `authenticated` (rolled back):
+
+```
+Delete on campaign_worker_ou  (actual time=22.762..22.763 rows=0 loops=1)
+  Buffers: shared hit=1581 dirtied=1
+  ->  Nested Loop  (actual time=20.915..22.499 rows=95 loops=1)
+        Filter: (get_user_role() = ANY ('{admin,user}') AND …)
+        SubPlan 2 -> Seq Scan on campaign_organising_units cou
+              Filter: can_write_to_campaign(campaign_id)
+Planning Time: 2.065 ms
+Execution Time: 22.849 ms
+```
+22.8ms for 95 rows — no regression concern at dev/production scale (R5's own comparison point is
+production's ~673-row `campaign_worker_membership`, i.e. the same order of magnitude).
+
+### 12.8 Type regeneration
+
+```
+$ SUPABASE_PROJECT_REF=dpnnmkhabysfdogllsyh pnpm gen:types
+$ git diff --stat packages/db-types/generated.ts
+ packages/db-types/generated.ts | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+```
+Diff contains exactly the two new function entries and nothing else:
+```
++      campaigns_i_can_write: {
++        Args: { p_campaign_ids: number[] }
++        Returns: number[]
++      }
++      link_organiser_for_profile: {
++        Args: { p_user_id: string }
++        Returns: number
++      }
+```
+No change near `created_by` — confirms the plan's prediction that the DEFAULT does not affect generated
+types. Committed alone as `9ed0164 chore(oux-wp1.6): regenerate database types from dev`.
+
+### 12.9 App-level gates (from `apps/organising-db`)
+
+```
+$ pnpm exec tsc --noEmit -p tsconfig.json; echo tsc $?
+tsc 0
+
+$ pnpm test 2>&1 | grep -E 'Test Files|Tests |FAIL'
+ Test Files  63 passed (63)
+      Tests  852 passed (852)
+
+$ pnpm lint 2>&1 | grep problems
+✖ 294 problems (143 errors, 151 warnings)
+
+$ pnpm build 2>&1 | tail -4
+(clean production build, no errors; route manifest printed, ends with
+"ƒ Proxy (Middleware)" / "ƒ  (Dynamic)  server-rendered on demand")
+```
+All four match the implementer's recorded baseline exactly (294/143/151 unchanged, 63/852 tests green,
+tsc and build both exit 0).
+
+### 12.10 Preview deployment
+
+```
+$ git rev-parse 2af8210
+2af8210c574d8eacf3f553d9a31302932015ecb9
+
+$ gh api "repos/R3v3ill3/OffshoreAlliance/deployments?sha=2af8210c574d8eacf3f553d9a31302932015ecb9&per_page=3"
+```
+One deployment found immediately (no polling needed): id `6343335761`, `environment=Preview`,
+`created_at=2026-09-09T05:39:57Z`.
+
+```
+$ gh api "repos/R3v3ill3/OffshoreAlliance/deployments/6343335761/statuses"
+```
+`state=success`, `environment_url=https://offshore-alliance-rl90168d8-reveille-strategy.vercel.app`.
+
+**Timing note.** The preview build (created 05:39:57Z) predates this verifier's `db push` (run later in
+this same session, before the 05:56Z type-regen). This does not affect RLS correctness — policies are
+evaluated by Postgres against the live database at request time, not baked into the Next.js build — and
+the credentialled e2e below ran after the migration was live, against this same preview URL, confirming
+the policies took effect for real HTTP requests.
+
+### 12.11 Credentialled e2e (both projects, against the preview)
+
+`E2E_FOREIGN_CAMPAIGN_ID=3` (from §12.7's discovery). `E2E_USER_*` / `E2E_ADMIN_*` read from the shell
+profile; never printed.
+
+Four attempts were made because the first three showed instability against the preview (browser crash,
+global-setup login timeout, a strict-mode locator double-match) that looked environmental rather than
+policy-related; the pattern across all runs is recorded below rather than only the last one, per "record
+failures verbatim."
+
+**Attempt 1 — full suite (`pnpm e2e`).** 4 failed, 1 skipped, 2 passed:
+- `unit-lifecycle-user.spec.ts:37` (create/rename/delete own campaign) — failed at the rename step.
+- `unit-lifecycle-user.spec.ts:80` (negative case, foreign campaign) — failed: `page.goto` to
+  `/campaigns/3?...` exceeded the 30s timeout (`waitForResponse` on the write-access RPC did not
+  resolve in time).
+- `wall-chart.spec.ts:23` (pre-existing spec, not part of WP1.6) — failed: no worker tile / Unassigned
+  card became visible within 5s on the campaign the spec opens.
+- `unit-lifecycle-admin.spec.ts:25` — failed: `Test timeout of 180000ms exceeded` clicking "New unit"
+  (element detached from DOM, retried, still timed out).
+- 2 passed (`actions-hub.spec.ts` cases), 1 skipped (`mobile-dialer.spec.ts`, an unrelated pre-existing
+  spec skipped for its own reasons, not WP1.6).
+
+**Attempt 2 — `unit-lifecycle-user.spec.ts` only, `--retries=1`.** Both tests failed on the first try and
+again on retry, with different symptoms each time:
+- Test 1, try 1: `page.goto: Page crashed` navigating to `/campaigns/new/manual`. Try 2 (retry): reached
+  the rename step and failed the same way as attempt 1 (`element(s) not found` for the just-created unit's
+  row, `roles/unit-lifecycle.ts:90`).
+- Test 2, try 1: failed with `strict mode violation` — the locator
+  `locator('[data-worker-id]').first().or(locator('[data-ou-id="unassigned"]'))` resolved to **two**
+  elements (an Unassigned card and a worker tile) instead of one, because `.first()` binds before `.or()`
+  in this construction. This is a spec-locator defect, not an RLS symptom: the foreign campaign correctly
+  has both a worker tile and an Unassigned card visible, the assertion just cannot express "at least one of
+  either." Try 2 (retry): `Target page, context or browser has been closed` before the assertion ran.
+
+**Attempt 3 — full suite again.** Global setup itself failed: `page.goto` to `/login` exceeded 30s
+(`global-setup.ts:38`). Zero tests ran. A direct `curl` to the same `/login` URL immediately afterward
+returned `http_code=200` in 0.57s, so the app was not down; this looks like resource contention from
+repeated Chromium launches in the verifier's sandbox rather than a preview outage.
+
+**Attempt 4 — full suite, `--workers=1`.** 3 failed, 1 skipped, 3 passed:
+```
+✓ actions-hub.spec.ts:22 (6.7s)
+✓ actions-hub.spec.ts:62 (3.1s)
+- mobile-dialer.spec.ts:30 (skipped, unrelated)
+✘ unit-lifecycle-user.spec.ts:37 (37.3s) — same rename-step failure as attempts 1–2
+✓ unit-lifecycle-user.spec.ts:80 (4.4s) — PASSED this time: negative case confirmed, no write
+  controls rendered for the e2e `user` account on campaign 3
+✘ wall-chart.spec.ts:23 (9.8s) — different failure this time: page never navigated to
+  `/campaigns/<id>?...tab=workforce...sub=wall-chart` after clicking a row (`toHaveURL` timeout, URL
+  stayed on `/campaigns`)
+✘ unit-lifecycle-admin.spec.ts:25 (37.0s) — same rename-step failure as `unit-lifecycle-user.spec.ts:37`
+```
+
+**Pattern across all four attempts.** `unit-lifecycle-user.spec.ts:37` and `unit-lifecycle-admin.spec.ts:25`
+failed at the identical point every time they got far enough to reach it: `renameUnit()`
+(`tests/e2e/roles/unit-lifecycle.ts:90`) times out waiting for the row of the unit just created in the
+same test to reappear on the Units tab (`div.rounded-md.border` containing a `p.font-medium` with the new
+unit's name). This is reproducible and not obviously an artefact of preview instability, since the create
+step immediately before it (and the delete step immediately after, when reached) succeeded. It is
+recorded here without further diagnosis, per this task's "report without interpretation" instruction — a
+finding for the reviewer/implementer to triage, not a change made by the verifier.
+
+`unit-lifecycle-user.spec.ts:80` (the RLS-relevant negative case) **passed** on the one attempt that
+reached a stable run (attempt 4), and the SQL probes in §12.7 already independently prove the same and
+stronger claims (role floor, campaign scope, self-escalation, standing-campaign guard) with 38/38 PASS.
+`wall-chart.spec.ts` is a pre-existing spec outside this package's scope; its two different failure modes
+across attempts 1 and 4 look like preview-side flakiness rather than a WP1.6 regression, but are recorded
+as observed.
+
+Screenshot paths (from the last run, attempt 4; earlier attempts' screenshots were overwritten by
+Playwright's `test-results/` reuse):
+- `apps/organising-db/test-results/roles-unit-lifecycle-user--48198-tes-a-unit-and-the-campaign-chromium/test-failed-1.png`
+- `apps/organising-db/test-results/wall-chart-Wall-chart-—-fl-4cc2a-igns-and-see-the-wall-chart-chromium/test-failed-1.png`
+- `apps/organising-db/test-results/roles-unit-lifecycle-admin-00052-etes-a-unit-on-any-campaign-chromium-admin/test-failed-1.png`
+
+### 12.12 Admin `update-user` route / service-role exemption
+
+Trigger function body (`user_profiles_guard_privileged_columns`), read from `pg_proc`:
+
+```sql
+BEGIN
+  IF NEW.user_id      IS DISTINCT FROM OLD.user_id
+  OR NEW.role         IS DISTINCT FROM OLD.role
+  OR NEW.work_role    IS DISTINCT FROM OLD.work_role
+  OR NEW.organiser_id IS DISTINCT FROM OLD.organiser_id
+  OR NEW.reports_to   IS DISTINCT FROM OLD.reports_to
+  THEN
+    IF current_user IN ('authenticated', 'anon') AND NOT public.is_admin() THEN
+      RAISE EXCEPTION
+        'Only an admin can change role, work_role, organiser_id or reports_to on a user profile'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+```
+
+The gate is `current_user IN ('authenticated', 'anon') AND NOT public.is_admin()`. `service_role` is
+neither `authenticated` nor `anon`, so the guard is a no-op for it regardless of `is_admin()` — exactly
+what §11 deviation 3 describes (a `SECURITY INVOKER` trigger checking the literal Postgres role, not the
+JWT claim, because `SECURITY DEFINER` callers would otherwise see `current_user = 'postgres'`).
+
+`src/app/api/admin/update-user/route.ts` confirms the code path: it calls
+`createAdminClient()` (`src/lib/supabase/admin.ts`, the service-role client) at line 104 and performs the
+profile update through it, not through the user-scoped `createClient()` used earlier in the same route for
+reads. Probe §12.7 line 38 (`service_role/update role+work_role: 1 row(s)` — PASS) independently confirms
+this in the database: a direct `UPDATE user_profiles SET role='user', work_role='lead_organiser'` as
+`service_role` succeeded where the identical statement as `authenticated` (probe section 3) raised 42501.
+
+### 12.13 Summary table
+
+| Step | Result | Key values |
+|---|---|---|
+| 1. project-ref / validate:migrations | green | `dpnnmkhabysfdogllsyh`; 5 migrations validated |
+| 2. migration list (pre) | green | 4 applied remote, `20260909120000` local-only |
+| 3. "before" snapshot | green | 15 gen-1 policies + 5 SELECT; `created_by` default NULL |
+| 4. pre-flight (R1) | green | 0 rows |
+| 5. db push (dry-run, real, list) | green | exactly one file; applied; 5/5 in migration list |
+| 6. "after" snapshot + pg_proc + triggers | green | 15 `wp16_*` policies; `created_by` default `auth.uid()`; `campaigns_i_can_write`, `link_organiser_for_profile`, `delete_campaign` (with `is_campaign_creator`) present; both triggers present |
+| 7. role probes | green | 38/38 PASS (user negative/positive, self-escalation, viewer, service_role); rollback verified clean; R5 22.8ms/95 rows |
+| 8. type regen | green | 2 new function entries only, diff-stat +8/-0 |
+| 9. tsc / test / lint / build | green | tsc 0; 63 files / 852 tests; 294 problems (143/151, baseline unchanged); build clean |
+| 10. preview deployment | green | `environment_url` found immediately, `state=success` |
+| 11. credentialled e2e | **mixed/red** | RLS-relevant cases pass (SQL probes 38/38; UI negative case passed on a stable run); a reproducible non-RLS failure in the shared `renameUnit()` helper blocks the create→rename→delete happy path for both `user` and `admin` specs across every attempt; one pre-existing, out-of-scope spec (`wall-chart.spec.ts`) also flaked |
+| 12. admin route / service-role exemption | green | trigger gate quoted; route uses `createAdminClient()`; probe line 38 confirms in DB |
+
+Preview: `https://offshore-alliance-rl90168d8-reveille-strategy.vercel.app`
+Commits: `9ed0164` (types), `2af8210` (deviations/implementer notes, pre-existing) — full stack
+`17fc01a 36f4600 6e1328f e8fe3ed 2af8210 9ed0164`.
 
 ## 13. Reviewer findings
 

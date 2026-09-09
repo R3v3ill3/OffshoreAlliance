@@ -11,11 +11,18 @@
  * hidden per-send campaigns behind standalone actions) are surfaced
  * as "Standalone" rather than by their internal name.
  *
- * `?mine=1` narrows to the caller's own rows before the LIMIT applies,
- * so a busy org cannot push an organiser's own actions out of their
- * own view. Rows with no recorded owner are kept: the hub counts them
- * and offers "switch to All", which it cannot do for rows it never
- * received.
+ * `?owner=mine_or_unowned` narrows to the caller's own rows (plus the
+ * ownerless ones) before the LIMIT applies, so a busy org cannot push
+ * an organiser's own actions out of their own view. Rows with no
+ * recorded owner are kept: the hub counts them and offers "switch to
+ * All", which it cannot do for rows it never received. The parameter
+ * is named for what it does rather than "mine", because it returns
+ * more than the caller's own rows.
+ *
+ * `pending_moderation_total` is deliberately **not** narrowed by that
+ * filter: moderation is a duty over every relay in the org, whoever
+ * set it up, so the hub's "Awaiting review" tile must not change when
+ * the owner filter does. It is still computed under the caller's RLS.
  *
  * Blast rows carry `relay_id`/`relay_name` when the blast is a launch
  * text, so the table can say what it is and offer the relay.
@@ -26,9 +33,10 @@ import { errorResponse } from '@/lib/api/error-response'
 import type { SmsActionKind } from '@/lib/sms/hub-actions'
 import { parseArchivedParam } from '@/lib/sms/archive-policy'
 import { applyArchivedFilter } from '@/lib/sms/archive-ops'
+import { HUB_SOURCE_LIMIT } from '@/lib/actions/hub-rows'
 
 /** Newest first, capped per kind — the hub is an overview, not an archive. */
-const LIMIT = 200
+const LIMIT = HUB_SOURCE_LIMIT
 
 export type SmsActivityScope = 'campaign' | 'standalone' | 'org'
 
@@ -74,6 +82,13 @@ export interface SmsActivityResponse {
   scoped: boolean
   /** Count of archived rows hidden from the default list. */
   archived_total: number
+  /**
+   * Relay messages held for moderation across every non-archived relay
+   * the caller can read, whoever owns it — the owner filter does not
+   * apply to it. The hub's "Awaiting review" tile reads this rather
+   * than summing the rows it was sent, which are owner-filtered.
+   */
+  pending_moderation_total: number
 }
 
 interface CampaignRow {
@@ -100,7 +115,7 @@ export async function GET(req: NextRequest) {
     const campaignId = raw ? parseInt(raw, 10) : null
     const scoped = campaignId != null && Number.isFinite(campaignId)
     const archived = parseArchivedParam(req.nextUrl.searchParams.get('archived'))
-    const mine = req.nextUrl.searchParams.get('mine') === '1'
+    const mineOrUnowned = req.nextUrl.searchParams.get('owner') === 'mine_or_unowned'
     /** Own rows, plus the ownerless ones the hub announces rather than hides. */
     const ownerFilter = `created_by.eq.${user.id},created_by.is.null`
 
@@ -139,7 +154,7 @@ export async function GET(req: NextRequest) {
       surveyQuery = surveyQuery.eq('campaign_id', campaignId as number)
       relayQuery = relayQuery.or(`campaign_id.eq.${campaignId},campaign_id.is.null`)
     }
-    if (mine) {
+    if (mineOrUnowned) {
       // A second .or() is ANDed with the scope one, which is what is wanted.
       listQuery = listQuery.or(ownerFilter)
       surveyQuery = surveyQuery.or(ownerFilter)
@@ -233,6 +248,7 @@ export async function GET(req: NextRequest) {
       { data: sess },
       { data: launchRelays },
       archivedTotal,
+      pendingModerationTotal,
     ] = await Promise.all([
       campaignIds.length > 0
         ? supabase
@@ -277,7 +293,9 @@ export async function GET(req: NextRequest) {
             .select('relay_id, name')
             .in('relay_id', launchRelayIds)
         : Promise.resolve({ data: [] as Array<{ relay_id: number; name: string | null }> }),
-      countArchived(supabase, scoped ? (campaignId as number) : null, mine ? ownerFilter : null),
+      countArchived(supabase, scoped ? (campaignId as number) : null, mineOrUnowned ? ownerFilter : null),
+      // No owner predicate, on purpose: see the header comment.
+      countPendingModeration(supabase, scoped ? (campaignId as number) : null),
     ])
     if (cErr) throw cErr
     if (nErr) throw nErr
@@ -410,12 +428,46 @@ export async function GET(req: NextRequest) {
       relays: relayActivity,
       scoped,
       archived_total: archivedTotal,
+      pending_moderation_total: pendingModerationTotal,
     }
     return NextResponse.json(payload)
   } catch (error) {
     console.error('GET sms activity error:', error)
     return errorResponse('Failed to load SMS activity', error)
   }
+}
+
+/**
+ * Relay messages waiting on a moderator, over every relay in scope
+ * whoever created it — the "Awaiting review" tile's number.
+ *
+ * Two deliberate differences from the row list it sits above:
+ *   • no owner predicate. Moderation is a duty over all relays, so the
+ *     tile must read the same under Mine and under All.
+ *   • no LIMIT. It is a count, not a page.
+ * Archived relays are excluded: an archived relay is put away, and its
+ * queue is not a live duty. RLS still applies, so this is only ever
+ * the total the caller is allowed to see.
+ */
+async function countPendingModeration(
+  supabase: Awaited<ReturnType<typeof import('@/lib/supabase/server').createClient>>,
+  campaignId: number | null,
+): Promise<number> {
+  let relays = supabase.from('sms_relays').select('relay_id').is('archived_at', null)
+  if (campaignId != null) {
+    relays = relays.or(`campaign_id.eq.${campaignId},campaign_id.is.null`)
+  }
+  const { data, error } = await relays
+  if (error) throw error
+  const ids = ((data ?? []) as Array<{ relay_id: number }>).map((r) => r.relay_id)
+  if (ids.length === 0) return 0
+  const { count, error: mErr } = await supabase
+    .from('sms_relay_messages')
+    .select('relay_message_id', { count: 'exact', head: true })
+    .in('relay_id', ids)
+    .eq('moderation_status', 'pending')
+  if (mErr) throw mErr
+  return count ?? 0
 }
 
 async function countArchived(

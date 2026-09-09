@@ -24,10 +24,17 @@ import {
   type SmsActionKind,
   type SmsActionRef,
 } from '@/lib/sms/hub-actions'
-import type { SmsActivityRow } from '@/app/api/sms/activity/route'
+import type { SmsActivityResponse, SmsActivityRow } from '@/app/api/sms/activity/route'
 
 /** The hub's own route. One constant so `/sms` and `/actions` cannot disagree. */
 export { ACTIONS_HUB_PATH } from '@/lib/actions/hub-path'
+
+/**
+ * How many rows each activity route returns per source. One constant so
+ * the three routes and the hub's "showing the latest N" disclosure
+ * cannot disagree about where the list stops.
+ */
+export const HUB_SOURCE_LIMIT = 200
 
 export type HubActionKind =
   | 'sms_blast'
@@ -490,14 +497,23 @@ export function countUnknownOwnerRows(
 }
 
 /**
- * Relay messages held for moderation. Archived rows are skipped: an
- * archived relay is put away, and its queue is not a live duty.
+ * The "Awaiting review" tile's value: relay messages held for
+ * moderation across the whole org.
+ *
+ * It reads the route's `pending_moderation_total` rather than summing
+ * the rows, and that is the point. The rows are narrowed server-side
+ * by the owner filter, so summing them would make the tile say
+ * "awaiting *my* review" under Mine — but moderation is a duty over
+ * every relay, whoever set it up. The route computes this total over
+ * every non-archived relay the caller can read, under RLS, regardless
+ * of the owner filter, so the number does not move when the filter
+ * does. Archived relays are excluded there: an archived relay is put
+ * away, and its queue is not a live duty.
+ *
+ * Zero until the route has answered.
  */
-export function pendingModerationTotal(rows: HubActionRow[]): number {
-  let total = 0
-  for (const r of rows) {
-    if (r.bucket === 'archived') continue
-    total += r.pendingModerationCount
-  }
-  return total
+export function pendingModerationTotal(
+  sms: Pick<SmsActivityResponse, 'pending_moderation_total'> | null | undefined,
+): number {
+  return sms?.pending_moderation_total ?? 0
 }

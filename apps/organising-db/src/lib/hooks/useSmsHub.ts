@@ -5,7 +5,7 @@
  * the number allocation table. Both are read-only views assembled
  * server-side; mutations go through the existing per-kind hooks.
  */
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { fetchApi } from '@/lib/api/fetch-api'
 import type { SmsActivityResponse, SmsActivityRow } from '@/app/api/sms/activity/route'
 import type { SmsNumbersResponse } from '@/app/api/sms/numbers/route'
@@ -29,7 +29,9 @@ export function useSmsActivity(
   const scoped = campaignId != null
   const archived = opts?.archived ?? 'exclude'
   // Narrowing to the caller server-side keeps their own rows from being
-  // pushed past the route's LIMIT by everybody else's.
+  // pushed past the route's LIMIT by everybody else's. The route calls
+  // the parameter `owner=mine_or_unowned`, because it also returns the
+  // rows nobody owns.
   const mine = opts?.mine ?? false
   return useQuery({
     queryKey: [
@@ -42,12 +44,16 @@ export function useSmsActivity(
       const params = new URLSearchParams()
       if (scoped) params.set('campaign_id', String(campaignId))
       if (archived !== 'exclude') params.set('archived', archived === 'only' ? 'only' : '1')
-      if (mine) params.set('mine', '1')
+      if (mine) params.set('owner', 'mine_or_unowned')
       const qs = params.toString()
       const res = await fetchApi(`/api/sms/activity${qs ? `?${qs}` : ''}`)
       if (!res.ok) throw await toError(res, 'Failed to load SMS activity')
       return res.json() as Promise<SmsActivityResponse>
     },
+    // Mine and All are separate cache entries. Without this, flipping
+    // between them empties the table and the tiles for a beat; with it
+    // the previous answer stays on screen until the new one lands.
+    placeholderData: keepPreviousData,
     refetchInterval: (query) => {
       const data = query.state.data
       if (!data) return false

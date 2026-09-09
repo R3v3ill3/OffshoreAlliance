@@ -20,7 +20,7 @@ import {
   type HubActionRow,
 } from '@/lib/actions/hub-rows'
 import { smsActionStatusGroup, SMS_ACTION_KINDS } from '@/lib/sms/hub-actions'
-import type { SmsActivityRow } from '@/app/api/sms/activity/route'
+import type { SmsActivityResponse, SmsActivityRow } from '@/app/api/sms/activity/route'
 
 const CTX = { currentUserId: 'me' }
 
@@ -536,28 +536,70 @@ describe('countUnknownOwnerRows', () => {
 
 // ── 11. Awaiting review ──────────────────────────────────────────
 describe('pendingModerationTotal', () => {
-  it('adds up the moderation queues but skips archived rows', () => {
-    const rows = mergeHubRows(
-      {
-        sms: [
-          smsRow({ id: 1, kind: 'relay', status: 'active', pending_moderation_count: 3 }),
-          smsRow({ id: 2, kind: 'relay', status: 'paused', pending_moderation_count: 2 }),
-          smsRow({
-            id: 3,
-            kind: 'relay',
-            status: 'active',
-            pending_moderation_count: 9,
-            archived_at: '2026-01-05T00:00:00Z',
-          }),
-        ],
-      },
-      CTX,
-    )
-    expect(pendingModerationTotal(rows)).toBe(5)
+  /**
+   * The two payloads the route returns for the same org: one narrowed
+   * by `owner=mine_or_unowned`, one not. The relay rows differ — that
+   * is the whole point of the owner filter — but the org-wide
+   * moderation total the route computes does not.
+   */
+  function activityResponse(over: Partial<SmsActivityResponse>): SmsActivityResponse {
+    return {
+      blasts: [],
+      chats: [],
+      surveys: [],
+      relays: [],
+      scoped: false,
+      archived_total: 0,
+      pending_moderation_total: 0,
+      ...over,
+    }
+  }
+
+  const mineOnly = activityResponse({
+    relays: [smsRow({ id: 1, kind: 'relay', status: 'active', pending_moderation_count: 3 })],
+    pending_moderation_total: 12,
+  })
+  const everyone = activityResponse({
+    relays: [
+      smsRow({ id: 1, kind: 'relay', status: 'active', pending_moderation_count: 3 }),
+      smsRow({
+        id: 2,
+        kind: 'relay',
+        status: 'active',
+        created_by: 'someone-else',
+        pending_moderation_count: 9,
+      }),
+    ],
+    pending_moderation_total: 12,
   })
 
-  it('is zero for kinds that have no moderation queue', () => {
-    expect(pendingModerationTotal(mergeHubRows({ calls: [callRow()] }, CTX))).toBe(0)
+  it('does not move when the owner filter does', () => {
+    // Moderation is a duty over every relay, whoever set it up. The
+    // rows are narrowed server-side by the owner filter; the tile's
+    // number is not, because it is read from the payload rather than
+    // summed from the rows the caller happened to be sent.
+    expect(pendingModerationTotal(mineOnly)).toBe(12)
+    expect(pendingModerationTotal(everyone)).toBe(12)
+    expect(pendingModerationTotal(mineOnly)).toBe(pendingModerationTotal(everyone))
+  })
+
+  it('ignores the rows entirely', () => {
+    // Nine messages sit on the rows in hand; the org-wide total is 0,
+    // and the total is what the tile says.
+    expect(
+      pendingModerationTotal(
+        activityResponse({
+          relays: [
+            smsRow({ id: 3, kind: 'relay', status: 'active', pending_moderation_count: 9 }),
+          ],
+        }),
+      ),
+    ).toBe(0)
+  })
+
+  it('is zero before the route has answered', () => {
+    expect(pendingModerationTotal(undefined)).toBe(0)
+    expect(pendingModerationTotal(null)).toBe(0)
   })
 })
 

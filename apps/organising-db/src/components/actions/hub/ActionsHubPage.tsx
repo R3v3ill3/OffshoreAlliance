@@ -41,7 +41,6 @@ import {
   filterHubRows,
   isHubActionBucket,
   isHubActionKind,
-  pendingModerationTotal,
   smsKindForHubKind,
   type HubActionBucket,
   type HubActionKind,
@@ -95,6 +94,8 @@ export function ActionsHubPage() {
     refetchEmail,
     refetchCalls,
     archivedTotal,
+    pendingModerationTotal,
+    capped,
   } = useHubActionRows({ showArchived, mine })
 
   // Named channels, so a failure says which list is short rather than
@@ -165,6 +166,10 @@ export function ActionsHubPage() {
   // Live / drafts / finished follow the owner filter, so the tiles and
   // the table below them always describe the same set. Awaiting review
   // does not: moderation is a duty over every relay, whoever set it up.
+  // Its number comes from the route, computed org-wide over every
+  // non-archived relay whatever the owner filter asked for — summing
+  // the rows here would silently make it "awaiting *my* review", since
+  // the rows themselves are owner-filtered server-side.
   const snapshot = useMemo(() => {
     let live = 0
     let pending = 0
@@ -175,12 +180,17 @@ export function ActionsHubPage() {
       else if (r.bucket === 'drafts_paused') pending += 1
       else finished += 1
     }
-    // Archived relays are put away; their queue is not a live duty.
-    const review = pendingModerationTotal(allRows)
     const activeNumbers = (numbers?.numbers ?? []).filter((n) => n.status === 'active')
     const spare = activeNumbers.filter((n) => n.purpose === 'spare' && n.live.length === 0).length
-    return { live, pending, finished, review, numbers: activeNumbers.length, spare }
-  }, [mineRows, allRows, numbers])
+    return {
+      live,
+      pending,
+      finished,
+      review: pendingModerationTotal,
+      numbers: activeNumbers.length,
+      spare,
+    }
+  }, [mineRows, pendingModerationTotal, numbers])
 
   // ── URL helpers ───────────────────────────────────────────────
   const setParams = useCallback(
@@ -373,6 +383,7 @@ export function ActionsHubPage() {
           onShowArchivedChange={setShowArchived}
           archivedTotal={archivedTotal}
           unknownOwnerCount={unknownOwnerCount}
+          capped={capped}
           scopeControl={
             <Select
               value={scopeSelectValue}

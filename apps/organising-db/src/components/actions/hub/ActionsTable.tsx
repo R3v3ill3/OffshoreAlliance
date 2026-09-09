@@ -54,6 +54,7 @@ import { cn } from '@/lib/utils/cn'
 import { toDisplay } from '@/lib/phone/normalise-phone'
 import {
   scopeLabelFor,
+  HUB_SOURCE_LIMIT,
   HUB_ACTION_BUCKETS,
   HUB_ACTION_KINDS,
   HUB_BUCKET_LABEL,
@@ -127,6 +128,7 @@ export function ActionsTable({
   onShowArchivedChange,
   archivedTotal = 0,
   unknownOwnerCount = 0,
+  capped = false,
 }: {
   /** Already filtered and sorted by the parent. */
   rows: HubActionRow[]
@@ -162,6 +164,13 @@ export function ActionsTable({
   archivedTotal?: number
   /** Rows hidden by "Mine" because nobody is recorded as their owner. */
   unknownOwnerCount?: number
+  /**
+   * At least one source came back at its cap, so what is listed is not
+   * the whole history. Said whatever the filters then matched — an
+   * empty filtered view over a truncated read is exactly when an
+   * organiser most needs to know the list has an end.
+   */
+  capped?: boolean
 }) {
   const [ops, setOps] = useState<{
     row: HubActionRow
@@ -424,11 +433,15 @@ export function ActionsTable({
           </Table>
         </div>
       )}
-      {rows.length > 0 && (
-        // The routes cap each channel's read, so a very long history is
-        // not all here. Said out loud rather than left to be noticed.
+      {capped && (
+        // A channel came back at its cap, so a long history is not all
+        // here. Said out loud rather than left to be noticed — and said
+        // when the filtered view is empty too, because "nothing matches
+        // these filters" over a truncated read is the one time the
+        // sentence changes what the organiser should conclude.
         <p className="text-[11px] text-muted-foreground">
-          Showing the latest 200 actions per channel. Older ones stay where they live.
+          Showing the latest {HUB_SOURCE_LIMIT} actions per channel. Older ones stay where
+          they live.
         </p>
       )}
       {ops && ops.row.smsRef && (

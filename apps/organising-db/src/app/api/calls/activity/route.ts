@@ -11,10 +11,13 @@
  *
  * `?campaign_id=N` narrows to one campaign; the hub does not send it.
  *
- * `?mine=1` narrows to the caller's own rows before the LIMIT applies,
- * so a busy org cannot push an organiser's own lists out of their own
- * view. Rows with no recorded owner are kept: the hub counts them and
- * offers "switch to All", which it cannot do for rows it never got.
+ * `?owner=mine_or_unowned` narrows to the caller's own rows (plus the
+ * ownerless ones) before the LIMIT applies, so a busy org cannot push
+ * an organiser's own lists out of their own view. Rows with no
+ * recorded owner are kept: the hub counts them and offers "switch to
+ * All", which it cannot do for rows it never got. The parameter is
+ * named for what it does rather than "mine", because it returns more
+ * than the caller's own rows.
  *
  * Reads only, under the existing `call_lists` SELECT policy — the
  * per-campaign routes already return these rows to the same users.
@@ -22,10 +25,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { errorResponse } from '@/lib/api/error-response'
-import type { CallActivityRow, HubCampaignRef } from '@/lib/actions/hub-rows'
+import { HUB_SOURCE_LIMIT, type CallActivityRow, type HubCampaignRef } from '@/lib/actions/hub-rows'
 
 /** Newest first, capped — the hub is an overview, not an archive. */
-const LIMIT = 200
+const LIMIT = HUB_SOURCE_LIMIT
 
 export interface CallActivityResponse {
   lists: CallActivityRow[]
@@ -50,7 +53,7 @@ export async function GET(req: NextRequest) {
     const raw = req.nextUrl.searchParams.get('campaign_id')
     const campaignId = raw ? parseInt(raw, 10) : null
     const scoped = campaignId != null && Number.isFinite(campaignId)
-    const mine = req.nextUrl.searchParams.get('mine') === '1'
+    const mineOrUnowned = req.nextUrl.searchParams.get('owner') === 'mine_or_unowned'
 
     let listQuery = supabase
       .from('call_lists')
@@ -61,7 +64,7 @@ export async function GET(req: NextRequest) {
       .limit(LIMIT)
     if (scoped) listQuery = listQuery.eq('campaign_id', campaignId as number)
     // Own rows, plus the ownerless ones the hub announces rather than hides.
-    if (mine) listQuery = listQuery.or(`created_by.eq.${user.id},created_by.is.null`)
+    if (mineOrUnowned) listQuery = listQuery.or(`created_by.eq.${user.id},created_by.is.null`)
 
     const { data: lists, error: lErr } = await listQuery
     if (lErr) throw lErr

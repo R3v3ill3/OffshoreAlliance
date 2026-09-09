@@ -748,6 +748,36 @@ Not run: a credentialled `pnpm e2e` against a branch preview — no preview URL 
 | `9927796` | `feat(oux-wp1.5): e2e spec for the Actions hub` |
 | _(this file)_ | `docs(oux-wp1.5): deviations, coverage table and implementer notes` |
 
+### Fix round 1 (reviewer findings, 2026-09-09)
+
+Commit `10958b2` — `fix(oux-wp1.5): reviewer round 1 — SMS failures announced, honest counts`.
+
+| # | Finding | What changed |
+|---|---|---|
+| 1 (blocking) | `useHubActionRows` exposed `smsError` but only email and calls had an error strip, so an SMS-source failure read as an empty list | `ActionsHubPage.tsx` renders a third `ErrorStrip` (SMS, with its own `Retry`) and `useActionsHub.ts` now returns `refetchSms`. When any source failed, the empty-table hint names the failed channels ("Nothing could be listed: SMS actions and call lists could not be loaded. Retry above.") instead of "No actions yet. Start one." |
+| 2 | `pageTitles` had no `/actions` entry | `header.tsx` adds `"/actions": "Actions"`; `/sms` keeps its title (it still resolves, and `/sms/inbox` and `/sms/numbers` are pages under it) |
+| 3 | The Archived chip printed the server's org-wide `archived_total` while every other chip was filtered | Archived rows are only fetched once the toggle is on, so until then the count is unknowable: `counts` carries `archivedUnknown` and `ActionsTable` renders "…" on that chip. `ChipRow`'s `count` accepts `number \| string`. The `Show archived (N)` toggle still shows the server total, which is what that control is about. |
+| 4 | The 200-row cap could truncate "Mine" with other people's rows | All three activity routes accept `?mine=1` and filter on `created_by` server-side, before the `LIMIT`; the hooks pass it (and key their caches on it) whenever the owner filter is Mine. **Deviation:** the predicate is `created_by = auth.uid() OR created_by IS NULL`, not `created_by = auth.uid()` alone — dropping ownerless rows server-side would silently delete the "N older actions have no recorded owner. Switch to All." announcement, which is the rule the package runs on. Ownerless rows are still never counted as "mine" (`filterHubRows` decides that). The SMS route's `archived_total` takes the same predicate so the toggle and the list agree. The cap is disclosed under the table: "Showing the latest 200 actions per channel." |
+| 5 | `useSmsHubCampaigns` excluded episodes but not the standing container | New `excludeNonCampaignContainers()` in `visible-campaigns.ts` (episodes **and** `is_standing`), used by the hook — so the container is out of the Scope select and both campaign pickers. Its call lists are still reachable under Scope → Standalone. |
+| 6 | The `· test` suffix was lost on a launch text's subtitle | `shapeSmsRow` appends it outside the launch-text branch, as `SmsActionsTable.tsx:263-267` had it; two tests pin both branches |
+| 7 | "Awaiting review" counted archived relays | New pure `pendingModerationTotal(rows)` skips `bucket === 'archived'`, matching the old page's `continue`; tested |
+| 9 | Stale `/sms` literals | `SmsCreateActionPage.tsx` (Cancel, and the back link, whose label is now "Back to Actions"), `SmsChatWorkspace.tsx` (post-delete redirect) and `campaigns/page.tsx` all use `ACTIONS_HUB_PATH` |
+| 11 | Unused columns in the two new selects | `sent_items` dropped from `/api/email/activity`, `script_id` from `/api/calls/activity` |
+| 10 | Tests | `mergeHubRows(sources, ctx)` extracted from `useHubActionRows` and `countUnknownOwnerRows` from the page, both pure and tested (merge order across all three sources, a missing source treated as absent rather than thrown, per-kind ownership, the unknown-owner count under every other filter). `tests/e2e/actions-hub.spec.ts` now asserts the Scope column header **or** the empty-state hint, so it passes on any seed. |
+
+Incidental: `failedSources` is computed in a `useMemo`. Built as a plain mutable local it was read inside JSX, and the React Compiler then stopped treating `setOpen` as stable — three new `react-hooks/preserve-manual-memoization` errors in a file that had none. Memoising it restores the baseline exactly.
+
+Gates, from `apps/organising-db`:
+
+- `pnpm test` — **61 files, 827 tests passed** (818 + 9 new; no failures, no skips).
+- `pnpm exec tsc --noEmit -p tsconfig.json` — clean.
+- `pnpm exec eslint <15 touched files>` — one pre-existing warning (`SMS_ACTION_KIND_META` unused in `SmsCreateActionPage.tsx`, moved one line by an added import); zero findings on changed lines.
+- `pnpm exec eslint` (whole app) — **294 problems (143 errors, 151 warnings)**, identical to the recorded baseline.
+- `pnpm build` — exit 0; `/actions`, `/api/email/activity`, `/api/calls/activity` all present.
+- `env -u E2E_USER_EMAIL -u E2E_USER_PASSWORD pnpm e2e` — **4 skipped, exit 0**.
+
+Not re-run: a credentialled `pnpm e2e` against a branch preview (no preview URL or `E2E_USER_*` here). The e2e failure recorded in §7 — `getByRole("columnheader", { name: "Scope" })` not found — is addressed by finding 10's data-independent assertion, but that has not been proved against a preview from this environment.
+
 ## 7. Verification output
 
 Verifier run 2026-09-09 at 5dba739; preview https://offshore-alliance-9rzy0ynwv-reveille-strategy.vercel.app

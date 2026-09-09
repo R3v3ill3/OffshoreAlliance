@@ -11,8 +11,17 @@ import { expect, type Page } from "@playwright/test";
 
 export const WALL_CHART_URL = (campaignId: string | number) =>
   `/campaigns/${campaignId}?tab=workforce&sub=wall-chart`;
+/**
+ * The Units tab. The sub-tab id is "campaign-units" — the TabsTrigger value in
+ * src/app/(dashboard)/campaigns/[id]/page.tsx. resolveTabParams
+ * (src/lib/campaign-tabs.ts) honours any explicit ?sub= without validating it
+ * and needsRedirect() sees nothing to rewrite, so an unknown value such as the
+ * earlier "sub=units" left <Tabs value="units"> matching no TabsContent: the
+ * page rendered the tab bar and NO sub-tab body, and renameUnit() waited 30s
+ * for a row that could never exist (wp1.6.md §12.11, every attempt, both roles).
+ */
 export const UNITS_URL = (campaignId: string | number) =>
-  `/campaigns/${campaignId}?tab=workforce&sub=units`;
+  `/campaigns/${campaignId}?tab=workforce&sub=campaign-units`;
 
 /** The `campaigns_i_can_write` RPC the campaign page's canWrite waits on. */
 export const WRITE_ACCESS_RPC = /\/rest\/v1\/rpc\/campaigns_i_can_write/;
@@ -83,7 +92,17 @@ export async function renameUnit(
   fromName: string,
   toName: string
 ): Promise<void> {
+  // page.goto is a full document load, so the Units tab's React Query cache
+  // is fresh — no stale "campaign-ous" entry from the wall chart survives.
   await page.goto(UNITS_URL(campaignId));
+  // Fail here, with a clear message, if the sub-tab id ever changes again,
+  // rather than 30s later on the row locator.
+  await expect(
+    page.getByRole("tab", { name: "Campaign Units" }),
+    "UNITS_URL must select the Campaign Units sub-tab (TabsTrigger value 'campaign-units')."
+  ).toHaveAttribute("aria-selected", "true", { timeout: 30_000 });
+  // campaign-units-section.tsx renders each unit as <div class="rounded-md border …">
+  // with <p class="font-medium">{ou.name}</p> and a title="Edit unit" button.
   const row = page
     .locator("div.rounded-md.border", { has: page.locator("p.font-medium", { hasText: fromName }) })
     .first();

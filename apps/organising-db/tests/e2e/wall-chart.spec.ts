@@ -41,7 +41,13 @@ test.describe("Wall chart — flow one", () => {
 
     await rows.first().click();
 
-    await expect(page).toHaveURL(/\/campaigns\/\d+\?.*tab=workforce.*sub=wall-chart/);
+    // The row click is a router.push; the app router commits the new URL only
+    // once the campaign page's RSC payload has arrived, and on a cold preview
+    // deployment that exceeded the 5s default (wp1.6.md §12.11 attempt 4:
+    // "URL stayed on /campaigns"). Same 30s budget as the first navigation.
+    await expect(page).toHaveURL(/\/campaigns\/\d+\?.*tab=workforce.*sub=wall-chart/, {
+      timeout: 30_000,
+    });
 
     await expect(wallChartCardTitle).toBeVisible();
     await expect(page.getByRole("heading", { name: "Campaign summary" })).toBeVisible();
@@ -50,13 +56,16 @@ test.describe("Wall chart — flow one", () => {
       "true"
     );
 
+    // One CSS selector, then .first(): `.first().or(...)` binds .first() to the
+    // left operand only, so when both a tile and the Unassigned card exist the
+    // locator resolves to two elements and trips strict mode (§12.11 attempt 2
+    // saw exactly that in the sibling role spec). The wall chart's members and
+    // OU queries run after the page mounts, so give them the same 30s the
+    // navigation gets rather than the 5s default (§12.11 attempt 1).
     await expect(
-      page
-        .locator("[data-worker-id]")
-        .first()
-        .or(page.locator('[data-ou-id="unassigned"]')),
+      page.locator('[data-worker-id], [data-ou-id="unassigned"]').first(),
       "Expected at least one worker tile or the Unassigned card. A campaign with zero members renders neither (WP0.2 open question Q2)."
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 30_000 });
 
     // Overview round-trip (WP0.3 hand-off). Vitest cannot cover this: it is the
     // URL contract between the tab list and the resolved tab state.

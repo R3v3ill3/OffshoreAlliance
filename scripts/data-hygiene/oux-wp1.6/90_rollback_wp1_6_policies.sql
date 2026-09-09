@@ -53,6 +53,11 @@ CREATE POLICY "Admin/User can update campaign_worker_ou" ON "public"."campaign_w
 CREATE POLICY "Admin/User can update campaigns" ON "public"."campaigns" FOR UPDATE TO "authenticated" USING (("public"."get_user_role"() = ANY (ARRAY['admin'::"text", 'user'::"text"]))) WITH CHECK (("public"."get_user_role"() = ANY (ARRAY['admin'::"text", 'user'::"text"])));
 
 -- 3. Restore delete_campaign() to its baseline body (B:1768-1801) and comment (B:1807).
+--    This also reverses 20260909130000_wp1_6_delete_campaign_standing_guard.sql
+--    (fix round 1), which only replaced this function; CREATE OR REPLACE with
+--    the baseline body supersedes both WP1.6 versions. To drop ONLY the
+--    standing guard and keep the rest of WP1.6, run
+--    91_rollback_standing_guard_only.sql instead of this file.
 CREATE OR REPLACE FUNCTION "public"."delete_campaign"("p_campaign_id" integer) RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'

@@ -810,14 +810,20 @@ export function CampaignUnitsSection({
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
-      queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
       setUnitSelection(null);
       setUnallocatedSelection(new Set());
       setReallocateTarget(null);
       setReallocateSelectedOuId("");
     },
     onError: (e: Error) => window.alert(e.message || "Could not reallocate workers"),
+    // Invalidate on settle, not only on success: the upsert above may have
+    // landed before the source delete was filtered by RLS, leaving the workers
+    // in both units — the list must refetch to show that (WP2.2's
+    // transactional RPC removes the partial state itself).
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
+    },
   });
 
   const rulesByOu = useMemo(() => {

@@ -31,6 +31,11 @@ test.describe("WP1.6 role coverage — admin", () => {
 
     let campaignId = E2E_FOREIGN_CAMPAIGN_ID;
     if (!hasE2EForeignCampaign) {
+      test.info().annotations.push({
+        type: "fallback",
+        description:
+          "E2E_FOREIGN_CAMPAIGN_ID is unset: using the first row on /campaigns. This proves 'admin can write on a campaign' but not the contrast with the campaign the user account cannot write to.",
+      });
       await page.goto("/campaigns");
       const rows = page.locator("table tbody tr");
       await expect(

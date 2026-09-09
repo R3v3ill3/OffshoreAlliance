@@ -1265,15 +1265,21 @@ Every non-episode, non-standing campaign must have a route to write access for i
 
 ```sql
 -- Campaigns whose named organiser would LOSE write access. Expect zero rows.
+-- (Fix round 1: role = 'user' — only user-role accounts can lose anything; viewers have no
+-- write access before or after. work_role IS NULL is included: NOT IN (...) alone is NULL
+-- for those rows and silently drops exactly the accounts this query exists to find.)
 SELECT c.campaign_id, c.name, c.organiser_id, up.display_name, up.role, up.work_role
 FROM public.campaigns c
 JOIN public.organisers o     ON o.organiser_id = c.organiser_id
 JOIN public.user_profiles up ON up.organiser_id = o.organiser_id
 WHERE c.is_sms_episode = false
   AND c.is_standing = false
-  AND up.role <> 'admin'
+  AND up.role = 'user'
   AND c.created_by IS DISTINCT FROM up.user_id
-  AND up.work_role NOT IN ('lead_organiser', 'coordinator', 'industrial_coordinator')
+  AND (
+    up.work_role IS NULL
+    OR up.work_role NOT IN ('lead_organiser', 'coordinator', 'industrial_coordinator')
+  )
   AND NOT EXISTS (
     SELECT 1 FROM public.campaign_organisers co
     WHERE co.campaign_id = c.campaign_id AND co.organiser_id = o.organiser_id
@@ -1286,8 +1292,11 @@ ORDER BY c.campaign_id;
 ```
 
 Any row means WP0.4 script 02 has not covered that campaign. **Do not deploy until it returns zero.**
-Because 01 is held on production, `up.role <> 'admin'` will filter almost everything out there today;
-re-run it immediately **before** running 01, when it becomes the meaningful check.
+Because 01 is held on production, `up.role = 'user'` will filter almost everything out there today;
+re-run it immediately **before** running 01, when it becomes the meaningful check. The query is
+checked in as `scripts/data-hygiene/oux-wp1.6/00_preflight_organiser_write_access.sql` (read-only,
+safe on production) and the post-flight below as `01_postflight_write_coverage.sql`; the folder README
+carries the production run sheet.
 
 **Post-flight.** Per-account write coverage, so the operator can see the shape of the change:
 

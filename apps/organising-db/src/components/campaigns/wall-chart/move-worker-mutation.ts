@@ -304,7 +304,13 @@ export function useMoveWorkersMutation(campaignId: string | number) {
 
       return { inserted, deleted, skipped };
     },
-    onSuccess: () => {
+    // Invalidate on settle, not only on success. The insert-then-delete above
+    // is not one transaction: when the target insert lands and the source
+    // delete is then filtered by RLS (NoRowsAffectedError), the worker is in
+    // both units and the board must refetch to show that, not keep the
+    // optimistic pre-drag picture. WP2.2's transactional RPC removes the
+    // partial state itself; until then the refetch keeps the UI honest.
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["campaign-worker-ou", String(campaignId)] });
       qc.invalidateQueries({ queryKey: ["campaign-members-full", String(campaignId)] });
       qc.invalidateQueries({ queryKey: ["workers"] });

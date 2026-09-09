@@ -170,7 +170,7 @@ export function DeleteOrganisingUnitDialog({
           .from("campaign_organising_units")
           .delete({ count: "exact" })
           .in("ou_id", childOuIds);
-        assertRowsAffected(childRes, childOuIds.length, "Deleting the sub-units");
+        assertRowsAffected(childRes, childOuIds.length, "Deleting the units in the group");
       }
 
       // RLS filters a forbidden delete to zero rows with a 2xx (WP1.6); the
@@ -182,14 +182,20 @@ export function DeleteOrganisingUnitDialog({
       assertRowsAffected(delOuRes, 1, "Deleting the unit");
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignKey] });
-      queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignKey] });
-      queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignKey] });
-      queryClient.invalidateQueries({ queryKey: ["campaign-unit-rules", campaignKey] });
       onDeleted?.();
       onOpenChange(false);
     },
     onError: (e: Error) => window.alert(e.message || "Could not delete unit"),
+    // Invalidate on settle, not only on success: the steps above are not one
+    // transaction, so a throw part-way (a reassignment upserted, then the
+    // source delete filtered by RLS) must still refetch so the wall chart
+    // shows what the database actually holds rather than the pre-click state.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignKey] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignKey] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignKey] });
+      queryClient.invalidateQueries({ queryKey: ["campaign-unit-rules", campaignKey] });
+    },
   });
 
   const buildReassignmentMap = (): Map<number, number | null> | null => {

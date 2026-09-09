@@ -9,7 +9,15 @@
 -- First pass: run with only -v e2e_uid=... and read section 0's discovery
 -- output to pick a campaign whose `writable` is false and one of its ou_ids;
 -- then run again with all three variables. Expected output is PASS on every
--- probe line. Any "WARNING ... FAIL" is a failed acceptance criterion.
+-- probe line except the annotated lead/coordinator case in section 3 (which
+-- prints NOTE, not FAIL, when the impersonated account's work_role is
+-- lead/coordinator — the RPC allows that by design, decision 8). SKIP lines
+-- name a precondition the environment lacks. Any "WARNING ... FAIL" is a
+-- failed acceptance criterion.
+--
+-- The production pre-flight is NOT this file: it is
+-- 00_preflight_organiser_write_access.sql (read-only). This file impersonates
+-- and demotes an account and must never run outside dev.
 --
 -- Why RLS is probed with SET LOCAL ROLE authenticated: RLS is not enforced for
 -- the table owner or a superuser, so probing as postgres would prove nothing.
@@ -62,16 +70,22 @@ FROM public.campaigns c
 WHERE c.is_sms_episode = false
 ORDER BY c.campaign_id;
 
--- The pre-flight query from wp1.6.md §6 (R1). Expect zero rows.
+-- The pre-flight query from wp1.6.md §6 (R1), same text as
+-- 00_preflight_organiser_write_access.sql. Expect zero rows. role = 'user'
+-- because only user-role accounts can lose anything; work_role IS NULL is
+-- included because NOT IN (...) alone is NULL for those rows and drops them.
 SELECT c.campaign_id, c.name, c.organiser_id, up.display_name, up.role, up.work_role
 FROM public.campaigns c
 JOIN public.organisers o     ON o.organiser_id = c.organiser_id
 JOIN public.user_profiles up ON up.organiser_id = o.organiser_id
 WHERE c.is_sms_episode = false
   AND c.is_standing = false
-  AND up.role <> 'admin'
+  AND up.role = 'user'
   AND c.created_by IS DISTINCT FROM up.user_id
-  AND up.work_role NOT IN ('lead_organiser', 'coordinator', 'industrial_coordinator')
+  AND (
+    up.work_role IS NULL
+    OR up.work_role NOT IN ('lead_organiser', 'coordinator', 'industrial_coordinator')
+  )
   AND NOT EXISTS (
     SELECT 1 FROM public.campaign_organisers co
     WHERE co.campaign_id = c.campaign_id AND co.organiser_id = o.organiser_id
@@ -212,6 +226,45 @@ BEGIN
   RAISE NOTICE '% user/delete campaign_organising_units on own campaign: % row(s)',
                CASE WHEN n = 1 THEN 'PASS' ELSE 'FAIL' END, n;
 
+  -- Standing guard (fix round 1, 20260909130000): flip the creator's own
+  -- campaign to standing and delete_campaign() must refuse it even though
+  -- every authorisation arm (creator) is true. The flip is a plain UPDATE
+  -- under wp16_campaigns_update; the exception block only rolls back the
+  -- failed call, so the flip must be undone explicitly before the success
+  -- probe below. All of it is inside the outer ROLLBACK anyway.
+  UPDATE public.campaigns SET is_standing = true WHERE campaign_id = cid;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  IF n <> 1 THEN
+    RAISE WARNING 'FAIL user/flip own campaign to is_standing: % row(s) (probe below is vacuous)', n;
+  END IF;
+  BEGIN
+    PERFORM public.delete_campaign(cid);
+    RAISE WARNING 'FAIL user/delete_campaign(own campaign flipped to standing): did not raise';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM LIKE '%campaign_is_standing%' THEN
+      RAISE NOTICE 'PASS user/delete_campaign(own campaign flipped to standing): campaign_is_standing';
+    ELSE
+      RAISE WARNING 'FAIL user/delete_campaign(own campaign flipped to standing): unexpected %', SQLERRM;
+    END IF;
+  END;
+  UPDATE public.campaigns SET is_standing = false WHERE campaign_id = cid;
+
+  -- The organisation's real standing campaign: refused for everyone, before
+  -- the role gate, so the message is campaign_is_standing, not not_authorized.
+  BEGIN
+    PERFORM public.delete_campaign(
+      (SELECT campaign_id FROM public.campaigns WHERE is_standing = true ORDER BY campaign_id LIMIT 1));
+    RAISE WARNING 'FAIL user/delete_campaign(standing campaign): did not raise';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM LIKE '%campaign_is_standing%' THEN
+      RAISE NOTICE 'PASS user/delete_campaign(standing campaign): campaign_is_standing';
+    ELSIF SQLERRM LIKE '%campaign_not_found%' THEN
+      RAISE NOTICE 'SKIP user/delete_campaign(standing campaign): no standing campaign on this database';
+    ELSE
+      RAISE WARNING 'FAIL user/delete_campaign(standing campaign): unexpected %', SQLERRM;
+    END IF;
+  END;
+
   BEGIN
     PERFORM public.delete_campaign(cid);
     RAISE NOTICE '% user/delete_campaign(own campaign)',
@@ -254,13 +307,20 @@ BEGIN
   FROM public.organisers o
   WHERE o.organiser_id IS DISTINCT FROM (SELECT organiser_id FROM public.user_profiles WHERE user_id = auth.uid())
   ORDER BY o.organiser_id LIMIT 1;
-  BEGIN
-    UPDATE public.user_profiles SET organiser_id = other_oid WHERE user_id = auth.uid();
-    GET DIAGNOSTICS n = ROW_COUNT;
-    RAISE WARNING 'FAIL user/self-escalate organiser_id=% : % row(s)', other_oid, n;
-  EXCEPTION WHEN insufficient_privilege THEN
-    RAISE NOTICE 'PASS user/self-escalate organiser_id: 42501';
-  END;
+  -- With no other organisers row to point at, other_oid is NULL and the
+  -- UPDATE would be a no-op (NULL -> NULL is not DISTINCT, the guard never
+  -- fires, 1 row "updates") — a false FAIL. Skip rather than mis-report.
+  IF other_oid IS NULL THEN
+    RAISE NOTICE 'SKIP user/self-escalate organiser_id: no other organisers row exists on this database';
+  ELSE
+    BEGIN
+      UPDATE public.user_profiles SET organiser_id = other_oid WHERE user_id = auth.uid();
+      GET DIAGNOSTICS n = ROW_COUNT;
+      RAISE WARNING 'FAIL user/self-escalate organiser_id=% : % row(s)', other_oid, n;
+    EXCEPTION WHEN insufficient_privilege THEN
+      RAISE NOTICE 'PASS user/self-escalate organiser_id: 42501';
+    END;
+  END IF;
 
   BEGIN
     UPDATE public.user_profiles SET reports_to = NULL WHERE user_id = auth.uid() AND reports_to IS NOT NULL;
@@ -294,17 +354,74 @@ BEGIN
   END;
 
   -- A plain user (not lead/coordinator) may not mint one for a colleague.
-  -- Only meaningful when the impersonated account's work_role is 'organiser'.
+  -- ANNOTATED CASE: when the impersonated account's work_role is
+  -- lead_organiser / coordinator / industrial_coordinator the RPC allows this
+  -- BY DESIGN (decision 8 — leads link colleagues), so the expectation flips.
+  -- That branch prints NOTE, not FAIL; it is the one line the README's
+  -- "PASS on every line" excludes. The negative expectation only holds for
+  -- work_role = 'organiser' (or NULL), which is what decision 8's note targets.
+  IF public.is_coordinator_or_lead() THEN
+    BEGIN
+      PERFORM public.link_organiser_for_profile(
+        (SELECT user_id FROM public.user_profiles WHERE user_id <> auth.uid() ORDER BY user_id LIMIT 1));
+      RAISE NOTICE 'NOTE user/link_organiser_for_profile(other): allowed — impersonated account is lead/coordinator, by design (decision 8); not a failure';
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'FAIL user/link_organiser_for_profile(other) as lead/coordinator: unexpected %', SQLERRM;
+    END;
+  ELSE
+    BEGIN
+      PERFORM public.link_organiser_for_profile(
+        (SELECT user_id FROM public.user_profiles WHERE user_id <> auth.uid() ORDER BY user_id LIMIT 1));
+      RAISE WARNING 'FAIL user/link_organiser_for_profile(other): did not raise for a plain organiser';
+    EXCEPTION WHEN OTHERS THEN
+      IF SQLERRM LIKE '%not_authorized%' THEN
+        RAISE NOTICE 'PASS user/link_organiser_for_profile(other): not_authorized';
+      ELSE
+        RAISE WARNING 'FAIL user/link_organiser_for_profile(other): unexpected %', SQLERRM;
+      END IF;
+    END;
+  END IF;
+END
+$probe$;
+
+RESET ROLE;
+
+-- ---------------------------------------------------------------------------
+-- 3b. The mint path of link_organiser_for_profile (fix round 1, finding 4).
+--     Section 3 saw only the idempotent branch (the account is already
+--     linked). Here postgres clears the link inside the transaction, then the
+--     user calls the RPC on itself: the INSERT organisers + UPDATE
+--     user_profiles run under the definer, which is the one legitimate
+--     non-admin organiser_id write the guard trigger must let through.
+--     Rolled back with everything else.
+-- ---------------------------------------------------------------------------
+SELECT set_config('wp16.prev_oid',
+       coalesce((SELECT organiser_id::text FROM public.user_profiles WHERE user_id = :'e2e_uid'), ''),
+       true);
+UPDATE public.user_profiles SET organiser_id = NULL WHERE user_id = :'e2e_uid';
+
+SET LOCAL ROLE authenticated;
+
+DO $probe$
+DECLARE
+  minted int;
+  prev   text := nullif(current_setting('wp16.prev_oid', true), '');
+  oname  text;
+  now_id int;
+BEGIN
   BEGIN
-    PERFORM public.link_organiser_for_profile(
-      (SELECT user_id FROM public.user_profiles WHERE user_id <> auth.uid() ORDER BY user_id LIMIT 1));
-    RAISE WARNING 'FAIL user/link_organiser_for_profile(other): did not raise (expected unless work_role is lead/coordinator)';
+    minted := public.link_organiser_for_profile(auth.uid());
+    SELECT organiser_name INTO oname FROM public.organisers WHERE organiser_id = minted;
+    SELECT organiser_id INTO now_id FROM public.user_profiles WHERE user_id = auth.uid();
+    RAISE NOTICE '% user/link_organiser_for_profile(self) mint path -> new organiser % "%" (was %; profile now %)',
+                 CASE WHEN minted IS NOT NULL
+                       AND oname IS NOT NULL
+                       AND now_id = minted
+                       AND minted::text IS DISTINCT FROM prev
+                      THEN 'PASS' ELSE 'FAIL' END,
+                 minted, oname, coalesce(prev, 'NULL'), now_id;
   EXCEPTION WHEN OTHERS THEN
-    IF SQLERRM LIKE '%not_authorized%' THEN
-      RAISE NOTICE 'PASS user/link_organiser_for_profile(other): not_authorized';
-    ELSE
-      RAISE WARNING 'FAIL user/link_organiser_for_profile(other): unexpected %', SQLERRM;
-    END IF;
+    RAISE WARNING 'FAIL user/link_organiser_for_profile(self) mint path: %', SQLERRM;
   END;
 END
 $probe$;

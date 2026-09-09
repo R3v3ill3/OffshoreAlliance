@@ -39,9 +39,10 @@ describe("assertRowsAffected", () => {
     expect(err.expected).toBe(1);
     expect(err.actual).toBe(0);
     expect(err.message).toContain("Deleting the unit");
-    // The remedy names the people who can grant access.
-    expect(err.message).toMatch(/admin/);
-    expect(err.message).toMatch(/lead organiser/);
+    // The message covers both causes (RLS, and a concurrent change) and the remedy.
+    expect(err.message).toMatch(/may not have permission/);
+    expect(err.message).toMatch(/changed since you loaded it/);
+    expect(err.message).toMatch(/Refresh and try again/);
   });
 
   it("throws on a partial write (some rows filtered by RLS)", () => {

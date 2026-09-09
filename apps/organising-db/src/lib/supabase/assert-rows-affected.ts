@@ -5,14 +5,19 @@
  * runs its result through `assertRowsAffected` so the failure is loud (WP1.6).
  */
 
-/** Raised when a write succeeded at the transport level but changed no rows — almost always RLS. */
+/**
+ * Raised when a write succeeded at the transport level but changed fewer rows
+ * than expected. Two causes look identical from the client: RLS filtered the
+ * rows (no permission on this campaign), or the rows were changed or removed
+ * by someone else since the page loaded. The message names both.
+ */
 export class NoRowsAffectedError extends Error {
   readonly expected: number;
   readonly actual: number;
 
   constructor(action: string, expected: number, actual: number) {
     super(
-      `${action} changed no rows. You may not have permission to change this campaign — ask an admin or the campaign's lead organiser for access.`
+      `${action}: nothing changed. You may not have permission to change this campaign, or the data changed since you loaded it. Refresh and try again.`
     );
     this.name = "NoRowsAffectedError";
     this.expected = expected;

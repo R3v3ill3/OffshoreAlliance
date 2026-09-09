@@ -83,9 +83,19 @@ test.describe("WP1.6 role coverage — user", () => {
 
     await openWallChart(page, E2E_FOREIGN_CAMPAIGN_ID);
 
-    // The page must have real content, otherwise "hidden" is vacuous.
+    // campaign-detail-header-bar.tsx renders the campaign name as the <h1>
+    // inside its <header>; the /campaigns search box is filtered on it below.
+    const heading = page.locator("header h1").first();
+    await expect(heading).toBeVisible({ timeout: 30_000 });
+    const foreignCampaignName = (await heading.textContent())?.trim() ?? "";
+    expect(foreignCampaignName, "the campaign header must show the campaign name").not.toBe("");
+
+    // The page must have real content, otherwise "hidden" is vacuous. One CSS
+    // selector, then .first(): `.first().or(...)` binds .first() to the left
+    // operand only and trips strict mode when both a tile and the Unassigned
+    // card are present (wp1.6.md §12.11 attempt 2).
     await expect(
-      page.locator("[data-worker-id]").first().or(page.locator('[data-ou-id="unassigned"]')),
+      page.locator('[data-worker-id], [data-ou-id="unassigned"]').first(),
       "Expected at least one worker tile or the Unassigned card on the foreign campaign."
     ).toBeVisible({ timeout: 30_000 });
 
@@ -100,14 +110,20 @@ test.describe("WP1.6 role coverage — user", () => {
     }
 
     // And the list page offers no delete for it either (campaigns_i_can_write gate).
+    // Filter by name exactly as deleteCampaign() does: the DataTable paginates,
+    // so without the filter a row off the first page would make this check
+    // vacuous. The row must be present before its delete control is asserted absent.
     await page.goto("/campaigns");
     await page.waitForResponse(WRITE_ACCESS_RPC, { timeout: 30_000 }).catch(() => null);
+    await page.getByPlaceholder("Search campaigns…").fill(foreignCampaignName);
     const row = page.locator("table tbody tr").filter({
       has: page.locator(`a[href^="/campaigns/${E2E_FOREIGN_CAMPAIGN_ID}/plan"]`),
     });
-    if ((await row.count()) > 0) {
-      await expect(row.first().getByRole("button", { name: /^Delete / })).toHaveCount(0);
-    }
+    await expect(
+      row,
+      "The foreign campaign must appear in the filtered /campaigns list."
+    ).toHaveCount(1, { timeout: 30_000 });
+    await expect(row.getByRole("button", { name: /^Delete / })).toHaveCount(0);
 
     expect(alerts).toEqual([]);
   });

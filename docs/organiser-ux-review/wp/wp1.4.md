@@ -1813,3 +1813,24 @@ Prefs reset to `{}` by the script's `finally` block; confirmed by SQL immediatel
 ## 8. Reviewer findings
 
 _(reviewer)_
+
+### Orchestrator e2e run after fix round 2 (2026-09-09) against preview https://offshore-alliance-idnz1r456-reveille-strategy.vercel.app
+
+```
+  ✓   1 [chromium] › tests/e2e/actions-hub.spec.ts:22:7 › Actions hub › open /actions, see the three start cards and the status buckets (6.2s)
+  ✓   2 [chromium] › tests/e2e/actions-hub.spec.ts:62:7 › Actions hub › /sms still works and lands on the hub with its params intact (3.8s)
+  -   3 [chromium] › tests/e2e/mobile-dialer.spec.ts:30:7 › Mobile dialer — happy path › volunteer can sign in, claim, dial, record outcome, advance
+  ✓   4 [chromium] › tests/e2e/organiser-campaign.spec.ts:66:7 › Campaign workspace — full mode is today's page › the eight tabs, in order, with no organiser-mode furniture (2.7s)
+  ✓   5 [chromium] › tests/e2e/organiser-campaign.spec.ts:160:7 › Campaign workspace — the organiser-mode round trip › four tabs plus More, deep links, the switcher and every header action (24.9s)
+  ✓   6 [chromium] › tests/e2e/organiser-nav.spec.ts:52:7 › Sidebar — full mode is today's sidebar › the ten rows, in order, with no organiser-mode furniture (2.5s)
+  ✓   7 [chromium] › tests/e2e/organiser-nav.spec.ts:68:7 › Sidebar — the organiser-mode round trip › organiser mode shows four primary items, Organisation and Show everything (10.1s)
+  ✓   8 [chromium] › tests/e2e/roles/unit-lifecycle-user.spec.ts:92:7 › WP1.6 role coverage — user › creates a campaign, then creates, renames and deletes a unit and the campaign (11.3s)
+  ✓   9 [chromium] › tests/e2e/roles/unit-lifecycle-user.spec.ts:137:7 › WP1.6 role coverage — user › offers no write controls on a campaign the account cannot write to (3.6s)
+  ✓  10 [chromium] › tests/e2e/wall-chart.spec.ts:162:7 › Wall chart — flow one, from the login submit › sign in and reach a wall chart in under ten seconds (11.0s)
+  ✓  11 [chromium] › tests/e2e/wall-chart.spec.ts:244:7 › My campaigns › lists my campaigns and opens the wall chart (10.9s)
+  ✓  12 [chromium-admin] › tests/e2e/roles/unit-lifecycle-admin.spec.ts:76:7 › WP1.6 role coverage — admin › creates, renames and deletes a unit on any campaign (9.2s)
+  1 skipped
+  11 passed (2.0m)
+```
+
+Screenshots under `evidence/wp1.4/` (from verifier runs 1 and 2): the full-mode campaign page (today's header and eight tabs), the organiser-mode workspace after fix round 1 (name once, four tabs + More), the More menu (one live item, the rest muted with the reason), the pending-review deep link rendering under the More label, the SOC wizard and the Re-run wizard keeping the campaign header.

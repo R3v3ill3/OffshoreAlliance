@@ -69,7 +69,7 @@ will key off; they are never derived from labels.
 | `activists_wocs` | Activists & WOCs | `false` | `false` | `muted` |
 | `library` | Library | `false` | `false` | `muted` |
 | `imports` | Imports | `false` | `false` | `hidden` |
-| `organisation_databases` | Organisation databases | `false` | `false` | `hidden` |
+| `organisation_databases` | Organisation databases | `false` | `false` | `muted` |
 | `administration` | Administration | `false` | `true` | `hidden` |
 
 Terminology notes (plan 3.6, `:126`): the label is **"Strategic plan"**, not "Strategic
@@ -79,10 +79,15 @@ planning" — the id stays `strategic_plan` so the two never drift. "Guides" is 
 `offState` is the "hidden vs muted" rule as data, per `ORGANISER_UX_REVIEW_AND_PLAN.md:218`:
 "hidden … when the user could never use it (an organiser who is not allowed to import), and
 shown muted with 'Ask an admin to enable' when it is merely off for that campaign". Modules
-that are *permission-shaped* — `imports` (the plan's own example), `organisation_databases`,
-`administration` — are `hidden`. Modules that are *capability-shaped and attachable per
-campaign* — the other ten — are `muted`. WP1.2/1.4 consume `offState`; nothing in this package
-renders it.
+that are *permission-shaped* — `imports` (the plan's own example) and `administration` — are
+`hidden`. Modules that are *capability-shaped and attachable per campaign* — the other eleven,
+including `organisation_databases` — are `muted`. WP1.2/1.4 consume `offState`; nothing in this
+package renders it.
+
+> **Fix round 1 (orchestrator ruling from WP1.2's approval):**
+> `organisation_databases` moved from `hidden` to `muted`. Looking a worksite or employer up is
+> a capability every organiser has, so when the module is off it should say "Ask an admin to
+> enable", not vanish. `imports` and `administration` stay `hidden`.
 
 File contents:
 
@@ -613,7 +618,8 @@ testing-library is out of scope (§3).
 - `defaultForOrganiser === true` for exactly `wall_chart_people, actions, setup, inbox` (plan
   5.2's "the first four are on for organisers by default", `:220`).
 - `administration` is the only `adminOnly`.
-- `offState === "hidden"` for exactly `imports, organisation_databases, administration`.
+- `offState === "hidden"` for exactly `imports, administration` (fix round 1; the other eleven,
+  `organisation_databases` included, are `muted`).
 - Every module has a non-empty `label` and `description`; the `strategic_plan` label is
   `"Strategic plan"` (plan 3.6, guards against "Strategic planning" creeping back).
 
@@ -740,8 +746,9 @@ Assumptions recorded without asking:
   `organisation_databases`, …). They are internal; only the labels are user-facing, and those
   come from plan 3.6/5.2 verbatim.
 - The hidden/muted split (§2.1) follows the plan's single worked example (imports → hidden);
-  `organisation_databases` and `administration` join it as the other two permission-shaped
-  modules. Reviewable as data in one file if the operator disagrees.
+  `administration` joins it as the other permission-shaped module. (`organisation_databases`
+  was proposed as hidden too; the orchestrator ruled it `muted` in fix round 1.) Reviewable as
+  data in one file if the operator disagrees.
 - `allowShowEverything` defaults to `true` everywhere, per decision 1's "'Show everything'
   allowed for organisers"; it is settable to `false` per role and per user so a future policy
   change needs no migration.
@@ -860,6 +867,62 @@ user on dev and confirm `workspace_prefs = '{}'`.
 - `99e852f` feat(oux-wp1.1): admin workspace-defaults route and update-user allow-list
 - `11c1e83` feat(oux-wp1.1): admin workspace editors in Users and Settings
 - (this file) feat(oux-wp1.1): implementer notes and deviations
+
+### Fix round 1
+
+Reviewer findings 1, 2, 3, 4, 6, 8 plus the orchestrator's ruling (9), applied on
+`feat/oux-wp1.1-workspace-mode`. Findings 5 and 7 were not raised for this round. No schema
+change: the migration and `packages/db-types/generated.ts` are untouched.
+
+1. **A failed load can no longer overwrite the stored defaults**
+   (`src/components/administration/workspace-defaults-card.tsx`). The initial GET's failure now
+   sets its own `loadError` state, separate from save errors. While it is set, Save is disabled
+   and `handleSave` returns early, and the banner says to reload before saving — previously the
+   all-`full` seed in `rows` could be `PUT` over a document that had simply failed to load.
+2. **No pinned module list under full mode**
+   (`src/app/(dashboard)/administration/page.tsx`). "Set modules for this user" is only offered
+   when the effective mode is `organiser`; in full mode the row reads "Full mode shows every
+   module". The saved document omits `modules` entirely whenever the effective mode is `full`
+   (`editWorkspaceModulesToSave`), so switching a user to full clears a stale pinned list
+   instead of storing one that would reappear on a later switch back.
+3. **An empty `modules: []` never means "zero modules".** In `src/lib/workspace/resolve.ts` R6,
+   an empty array from either the user prefs or the role entry is treated as "not provided" and
+   falls through (user list → role list → the registry's four organiser defaults); a non-empty
+   list that prunes to nothing under R3 is still an explicit choice and stays empty. New test
+   `T17` in `src/lib/workspace/__tests__/resolve.test.ts` covers all three fall-throughs. Both
+   editors also refuse to save an empty organiser selection: the per-user dialog disables Save
+   with an inline hint, and the org-defaults card disables Save and names the offending rows.
+4. **A name-only edit no longer rewrites `workspace_prefs`.** The dialog snapshots the three
+   workspace fields as parsed on open (`editWorkspaceInitial`) and sends `workspacePrefs` only
+   when one of them moved; otherwise the key is `undefined` and `JSON.stringify` drops it, which
+   `/api/admin/update-user` already treats as "untouched".
+6. **One bad role entry no longer nulls the whole org document**
+   (`src/lib/workspace/prefs-schema.ts`). `parseWorkspaceDefaults` now parses each work-role
+   entry on its own and skips only the unusable ones, so a single malformed entry can no longer
+   drag every other work role back to `full`. `T14` keeps its result (a document whose *only*
+   entry is broken still resolves `full`/`default`) with a note on why; new `T14b` proves a good
+   entry beside a broken one still applies, and a new `prefs-schema.test.ts` case proves the
+   mixed document keeps its valid entries.
+8. **Copy** (`workspace-defaults-card.tsx`): the card description now states that a viewer with
+   no work role follows the Organiser row and a user with no work role is always Full — the R4
+   lookup rule, which was previously only in this plan.
+9. **`organisation_databases.offState` is `muted`** (`src/lib/workspace/modules.ts`), per the
+   orchestrator's ruling at WP1.2's approval; `imports` and `administration` stay `hidden`. The
+   §2.1 table, its surrounding prose, the §2.10 registry-test bullet and the §4 assumption are
+   updated, as is the hidden-set assertion in `modules.test.ts` (now `imports, administration`,
+   with 11 muted).
+
+**Gates re-run (from `apps/organising-db`):**
+
+- `pnpm exec eslint` on the eight touched files: 0 errors, 2 warnings — both pre-existing, in
+  `administration/page.tsx` (the `fetchStatus` dep and the unused `getLatencyColor`, now at
+  lines 2795/2801 after the insertions). Zero findings on changed lines.
+- `pnpm test`: 769 passed (769) — the 766 baseline plus `T14b`, `T17` and the new
+  `parseWorkspaceDefaults` mixed-document case.
+- `pnpm exec tsc --noEmit -p tsconfig.json`: exit 0.
+- `pnpm build`: "Compiled successfully in 111s", 126/126 static pages, exit 0.
+- Whole-project `pnpm exec eslint .`: 294 problems (143 errors, 151 warnings) — unchanged from
+  the develop baseline.
 
 ## 7. Verification output
 

@@ -1810,9 +1810,6 @@ Prefs reset to `{}` by the script's `finally` block; confirmed by SQL immediatel
 | 6. prefs/campaigns after | `{}`; no leftover WP1.6 campaigns |
 | 7. visual evidence | all 4 screenshots captured; prefs reset and confirmed |
 
-## 8. Reviewer findings
-
-_(reviewer)_
 
 ### Orchestrator e2e run after fix round 2 (2026-09-09) against preview https://offshore-alliance-idnz1r456-reveille-strategy.vercel.app
 
@@ -1834,3 +1831,13 @@ _(reviewer)_
 ```
 
 Screenshots under `evidence/wp1.4/` (from verifier runs 1 and 2): the full-mode campaign page (today's header and eight tabs), the organiser-mode workspace after fix round 1 (name once, four tabs + More), the More menu (one live item, the rest muted with the reason), the pending-review deep link rendering under the More label, the SOC wizard and the Re-run wizard keeping the campaign header.
+
+## 8. Reviewer findings
+
+**Round 1 (2026-09-09, fresh reviewer): APPROVE WITH ADVISORIES.** No blocker. Fourteen advisories: the More menu lists all surfaces but on the default module set only one is live (the rest are muted, reached by deep link or Show everything — now stated honestly in §6); the switcher chord fired behind open dialogs; "All campaigns" pointed at My campaigns; a stray SMS-episode redirect could fire on wizard routes now that the header mounts there; the name rendered twice in the organiser header; two accessibility gaps (muted More items without an announced reason; unnamed tab panels); a duplicated constant; lazy-loading for organiser-only components; an empty More trigger. The verifier's run found one spec locator collision ("Build list" vs the panel's close button). Fixed in `38994d6`, which also found the spec exceeding Playwright's 30 s budget and added `test.slow()`.
+
+**Round 2 (2026-09-09, fresh reviewer): APPROVE WITH ADVISORIES.** All round-1 items verified closed. Four further advisories taken in the final round (`517e842`): the mode reset moved into `afterEach` so it survives a timeout; organiser-mode panels named from the on-screen model (`panelLabelFor`, tests P1–P7); the lazy switcher given an `<h1>` fallback so the page never lacks a heading; the header's reading order restored (back arrow, heading, badges) and pinned by both e2e tests.
+
+**Round 3 (2026-09-09, fresh reviewer, confirmation): APPROVE WITH ADVISORIES.** All four verified closed; hydration and fallback-flash concerns traced and dismissed. Residual advisories recorded, not fixed: nested panels for Wall chart / People share an accessible name; the cluster-panel fallback label is the registry's (unreachable in practice); a leaked admin context per Playwright retry; one heading class not shared in the popover branch.
+
+**Verification:** full credentialled suite green on the final preview (11 of 11 non-skipped specs, including the organiser round trip, both nav specs, the WP1.6 role specs and flow one); 1006 tests, tsc, build; lint at the develop baseline; screenshots in `evidence/wp1.4/`; dev left with the e2e account in full mode and no residue.

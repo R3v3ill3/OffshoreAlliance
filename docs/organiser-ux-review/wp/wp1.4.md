@@ -1261,6 +1261,95 @@ Nothing was skipped. Advisory 10 asked for no change beyond the doc corrections 
    render is proven anywhere in the spec, at step 3 (`?tab=plan&sub=pending-review`, asserted by
    its empty-state text). Four rewrites, one render.
 
+### Fix round 2
+
+Reviewer round 2: four advisories (2, 3, 5, 6), no failing test. All four applied; each was
+checked against the file before it was touched, and all four claims held.
+
+**2 — the organiser-mode reset now runs from `test.afterEach`.** The reset was in a `finally`
+inside the test body, which is precisely what a Playwright timeout does not reach: on timeout the
+runner disposes the test's contexts and unwinds, so the one failure mode the reset exists for was
+the one it did not cover. The admin `BrowserContext` and the e2e user's id are now describe-scoped
+`let`s, filled by `test.beforeAll` and closed by `test.afterAll`; `test.afterEach` does the
+`PATCH … workspacePrefs: null` and then the `GET /api/admin/users` read-back, still asserted
+(`workspace_prefs must be exactly {}`), still not fire-and-forget. `test.slow()` is unchanged. The
+docblock's claim that "its `finally` ALWAYS clears the override" is replaced by the hook and by
+the reason it is a hook. `beforeAll` returns early without credentials, so the credential-less
+`pnpm e2e` still skips all twelve and exits 0.
+
+**3 — `panelName()` reads the model on screen, not the full-mode registry.** New pure export in
+`workspace-tabs.ts`:
+
+```ts
+export function panelLabelFor(
+  model: CampaignNavModel,
+  surface: { tab: string; sub: string | null },
+): string | null;
+```
+
+Four rules, in order: the **lit control** wins (which is what settles Wall chart vs People — one
+registry pair, two organiser tabs, split by `?view=`); a **cluster** panel (`sub: null`) answers
+with the lit *tab*, so the outer panel reads "Activity" and the inner one "Comms" rather than both
+saying "Comms"; otherwise the panel is named by the control `findSurface` finds it under, in
+`tabs`, in a tab's `subs` or in **More**; and a surface in none of those — a deep link to a hidden
+module, which still renders — falls back to the registry label, which is also what the More
+trigger shows. Full mode returns `null` and `page.tsx` spreads `{}`, so its markup is unchanged.
+The visible difference: an organiser's Units panel is now announced "Units", not "Campaign Units",
+and the workforce cluster is "Wall chart" / "People" / "Setup", not "Workforce".
+
+Seven new cases in `workspace-tabs.test.ts` (P1–P7): full mode names nothing; the Wall
+chart/People split, both directions; cluster vs sub-panel; Units over Campaign Units, active and
+inactive; a More surface named as More names it; a hidden-module deep link named anyway; and
+totality — every level-1 and level-2 fixture row plus every registry cluster gets a non-empty
+name, both on the default modules and with every module hidden. `labelForTab` and `labelForSurface`
+are no longer imported by `page.tsx`; they stay exported, used by the resolver and the tests.
+
+**5 — the lazy switcher no longer resolves to nothing.** Confirmed on the file: the round-1
+`next/dynamic` call had no `loading` option, so it rendered `null` until the chunk arrived, and
+since round 1 also deleted the static `<h1>` block in organiser mode the page had **no heading at
+all** during that window (a client-side navigation into a campaign; a full load server-renders the
+switcher). `next/dynamic`'s `loading` component takes no props and so cannot carry the campaign
+name, so `CampaignSwitcher` is now `React.lazy` inside a `<Suspense>` whose fallback does:
+`<h1 className={SWITCHER_HEADING_CLASS}>{campaign?.name ?? "Campaign"}</h1>` — the same string the
+real collapsed branch shows, including its "Campaign" placeholder for a name that has not loaded.
+The classes live in the new one-line module
+`src/components/campaigns/campaign-switcher-heading.ts`, imported by both the header bar and the
+switcher, so the fallback and the heading it stands in for cannot drift; importing it pulls in no
+Popover and no cmdk, so the switcher stays lazy and full mode still ships none of it. The other
+two lazy components (`OrganiserCampaignActions`, `CreateTaskListDialog`) are untouched and stay on
+`next/dynamic`: neither is a heading. Full mode renders no switcher in either arrangement, so its
+markup is unchanged — pinned by test 1 of the e2e, which passed on the current preview.
+
+**6 — the reading order is back arrow, heading, badges.** Confirmed: round 1 put the switcher
+*before* the back button, so organiser mode read "testco1, Back to campaigns, …" while full mode
+read "Back to campaigns, testco1, …". The switcher now sits between the back button and the
+badges block. Both e2e tests assert it, and no product markup was added to make them able to: a
+CSS selector list matches in document order, so `page.locator('header button[aria-label="Back to
+campaigns"], header h1').first()` is whichever of the two the DOM puts first, and the assertion is
+that it carries the back arrow's `aria-label`. Each test also asserts `header h1` has count 1,
+which is the round-1 "exactly one heading" claim pinned for the first time.
+
+**What the credentialled run on the current preview can and cannot prove.** Items 3, 5 and 6 are
+product changes and need the *next* preview; the preview named in §7 run 2 predates them. Run
+against it (`E2E_BASE_URL=https://offshore-alliance-m0baab8ek-reveille-strategy.vercel.app pnpm
+e2e tests/e2e/organiser-campaign.spec.ts`), test 1 passed — including the new order and
+single-`h1` assertions, which is the evidence that full mode's header is untouched — and test 2
+failed at the new step 1b exactly as the old build should:
+
+```
+Locator:  locator('header button[aria-label="Back to campaigns"], header h1').first()
+Expected: "Back to campaigns"
+Received: ""
+    7 × locator resolved to <h1 class="min-w-0 truncate…">testco1</h1>
+```
+
+That failure is the reviewer's finding 6 reproduced against the deployed build. It also proves
+item 2 on the only evidence available without a database read: the test aborted mid-body and the
+run reported **no `afterEach` error**, so the hook ran and both of its assertions — the reset's
+`ok()` and `workspace_prefs must be exactly {}` — passed. The cost is honest: because step 1b now
+fails on that preview, steps 2–6 of the round trip were not exercised this round, and the spec
+cannot be proven end-to-end again until the next preview is up.
+
 ### Incidental finding for the ledger
 
 `page.tsx` links to `/campaigns/soc-wizard?cid=${campaignId}` and `PhoneWizardSteps.tsx:1783` does
@@ -1273,7 +1362,7 @@ stays out of scope, as the approval directed.
 
 ### Files
 
-New (14):
+New (15, the last added in fix round 2):
 
 | Path | What |
 |---|---|
@@ -1282,6 +1371,7 @@ New (14):
 | `src/lib/hooks/useSwitcherCampaigns.ts` | the switcher's recency-sorted list, over `useMyCampaigns` + `campaign_last_activity` |
 | `src/components/campaigns/campaign-tab-bar.tsx` | the five slots: full-mode `TabsList`s, or the organiser bar + More + Setup cards |
 | `src/components/campaigns/campaign-switcher.tsx` | the popover, and the plain label for one campaign |
+| `src/components/campaigns/campaign-switcher-heading.ts` | the heading's classes, shared by the switcher and the header bar's Suspense fallback |
 | `src/components/campaigns/organiser-campaign-actions.tsx` | New action ▾ / Build list / ⋯ |
 | `src/components/campaigns/plan-tab-triggers.tsx` | the two count-badged Plan triggers, moved verbatim |
 | `src/components/campaigns/setup/campaign-setup-cards.tsx` | the Setup tab's five link cards |

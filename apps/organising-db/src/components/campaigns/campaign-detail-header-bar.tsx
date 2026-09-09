@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { CampaignBasicsEditSheet } from "@/components/campaigns/campaign-basics-edit-sheet";
+import { SWITCHER_HEADING_CLASS } from "@/components/campaigns/campaign-switcher-heading";
 import { CreateAssessmentDialog } from "@/components/campaigns/assessments/create-assessment-dialog";
 import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 import { CreatePhoneCallOrchestrator } from "@/components/phone/CreatePhoneCallOrchestrator";
@@ -50,8 +51,18 @@ import type { CampaignStatus, CampaignType } from "@/types/database";
 // full-mode user should not pay for their JavaScript. Because the branch
 // that renders them is `isOrganiserMode && …`, full mode never mounts the
 // lazy boundary at all and its markup is unchanged.
-const CampaignSwitcher = dynamic(
-  () => import("@/components/campaigns/campaign-switcher").then((m) => m.CampaignSwitcher)
+//
+// WP1.4 fix round 2. The switcher *is* organiser mode's <h1>, so it may
+// never resolve to nothing: `next/dynamic` renders `null` until the chunk
+// arrives (its `loading` component takes no props, so it cannot carry the
+// name), which left the page headingless on a client-side navigation.
+// React.lazy takes a Suspense fallback that does take props, so the
+// heading is present from the first paint. Kept lazy: full mode never
+// mounts the boundary, so it still ships none of this.
+const CampaignSwitcher = lazy(() =>
+  import("@/components/campaigns/campaign-switcher").then((m) => ({
+    default: m.CampaignSwitcher,
+  }))
 );
 const OrganiserCampaignActions = dynamic(() =>
   import("@/components/campaigns/organiser-campaign-actions").then(
@@ -285,13 +296,6 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
       <header className="border-b bg-background px-4 md:px-6">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2 md:py-3">
           <MobileNav />
-          {/* Organiser mode only; full mode's header is byte-for-byte today's. */}
-          {isOrganiserMode && (
-            <CampaignSwitcher
-              campaignId={campaignId}
-              campaignName={campaign?.name ?? null}
-            />
-          )}
           <Button
             variant="ghost"
             size="icon"
@@ -302,6 +306,24 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
+          {/*
+            Organiser mode only; full mode's header is byte-for-byte today's.
+            Fix round 2: this sits *after* the back arrow and *before* the
+            badges, so the reading order is the one full mode has had all
+            along — back, then the heading, then the pills.
+          */}
+          {isOrganiserMode && (
+            <Suspense
+              fallback={
+                <h1 className={SWITCHER_HEADING_CLASS}>{campaign?.name ?? "Campaign"}</h1>
+              }
+            >
+              <CampaignSwitcher
+                campaignId={campaignId}
+                campaignName={campaign?.name ?? null}
+              />
+            </Suspense>
+          )}
 
           <div className="min-w-0 flex-1">
             {isLoading || !campaign ? (

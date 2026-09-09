@@ -83,8 +83,7 @@ import { useDevice } from "@/contexts/device-context";
 import { useWorkspace } from "@/lib/workspace/use-workspace";
 import { resolveWorkforceView } from "@/lib/campaign/workforce-view";
 import {
-  labelForSurface,
-  labelForTab,
+  panelLabelFor,
   resolveVisibleTabs,
   type CampaignSurfaceRef,
 } from "@/lib/campaign/workspace-tabs";
@@ -354,12 +353,16 @@ export default function CampaignDetailPage() {
    * pointing at its trigger; in organiser mode no TabsTrigger is rendered
    * (CampaignTabBar draws a <nav> of plain buttons instead), so that
    * reference dangles and the live panel has no accessible name. Name it
-   * directly there. In full mode this spreads `{}` — the trigger still
-   * names the panel and the markup is byte-identical.
+   * directly there. In full mode `panelLabelFor` returns null and this
+   * spreads `{}` — the trigger still names the panel and the markup is
+   * byte-identical.
+   *
+   * Fix round 2: the name comes from the organiser model on screen — "Wall
+   * chart", "People", "Units" — not from the full-mode registry, whose
+   * "Workforce" and "Campaign Units" an organiser never sees.
    */
   const panelName = (tab: string, sub?: string) => {
-    if (navModel.mode !== "organiser") return {};
-    const label = sub == null ? labelForTab(tab) : labelForSurface(tab, sub);
+    const label = panelLabelFor(navModel, { tab, sub: sub ?? null });
     return label ? { "aria-label": label } : {};
   };
 

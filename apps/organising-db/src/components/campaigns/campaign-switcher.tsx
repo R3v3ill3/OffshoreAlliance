@@ -37,6 +37,7 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { SWITCHER_HEADING_CLASS } from "@/components/campaigns/campaign-switcher-heading";
 import { ALL_CAMPAIGNS_HREF, MY_CAMPAIGNS_HREF } from "@/lib/nav/nav-model";
 import {
   SWITCHER_CHORD_HINT,
@@ -93,9 +94,7 @@ export function CampaignSwitcher({ campaignId, campaignName }: CampaignSwitcherP
   // Both branches are an <h1> carrying the name, styled as the heading it
   // replaces, so the document keeps exactly one h1 either way.
   if (collapsed) {
-    return (
-      <h1 className="min-w-0 truncate text-base font-semibold md:text-lg">{label}</h1>
-    );
+    return <h1 className={SWITCHER_HEADING_CLASS}>{label}</h1>;
   }
 
   return (

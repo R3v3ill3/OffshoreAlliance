@@ -20,7 +20,9 @@ import {
   ORGANISER_TAB_LABELS,
   activeOrganiserTabId,
   findSurface,
+  labelForSurface,
   moduleForSurface,
+  panelLabelFor,
   resolveVisibleTabs,
   type CampaignNavModel,
   type ResolveVisibleTabsInput,
@@ -439,6 +441,86 @@ describe("activeOrganiserTabId — the People / Wall chart split", () => {
       expect(activeOrganiserTabId(c.active, c.view)).toBe(c.expected);
     });
   }
+});
+
+// ── P1–P5 — naming the tabpanels (fix round 2) ──────────────────────────
+
+describe("panelLabelFor — organiser panels are named from the model on screen", () => {
+  it("P1 — full mode names nothing: the TabsTrigger already does", () => {
+    const m = model({ mode: "full" });
+    for (const row of CAMPAIGN_SURFACES.filter((r) => r.level <= 2)) {
+      expect(panelLabelFor(m, surfaceOf(row)), row.id).toBeNull();
+    }
+    expect(panelLabelFor(m, { tab: "workforce", sub: null })).toBeNull();
+  });
+
+  it("P2 — the lit control names the panel, which splits Wall chart from People", () => {
+    const wall = model({ active: { tab: "workforce", sub: "wall-chart" } });
+    expect(panelLabelFor(wall, { tab: "workforce", sub: "wall-chart" })).toBe("Wall chart");
+    expect(panelLabelFor(wall, { tab: "workforce", sub: null })).toBe("Wall chart");
+
+    const list = model({
+      active: { tab: "workforce", sub: "wall-chart" },
+      activeView: "list",
+    });
+    expect(panelLabelFor(list, { tab: "workforce", sub: "wall-chart" })).toBe("People");
+    expect(panelLabelFor(list, { tab: "workforce", sub: null })).toBe("People");
+  });
+
+  it("P3 — a cluster answers with the lit tab, its sub-panel with the sub", () => {
+    const m = model({ active: { tab: "outreach", sub: "comms" } });
+    expect(panelLabelFor(m, { tab: "outreach", sub: null })).toBe(
+      ORGANISER_TAB_LABELS.activity
+    );
+    expect(panelLabelFor(m, { tab: "outreach", sub: "comms" })).toBe("Comms");
+  });
+
+  it("P4 — the organiser label wins over the registry's: Units, not Campaign Units", () => {
+    const m = model({ active: { tab: "workforce", sub: "campaign-units" } });
+    expect(labelForSurface("workforce", "campaign-units")).toBe("Campaign Units");
+    expect(panelLabelFor(m, { tab: "workforce", sub: "campaign-units" })).toBe("Units");
+    expect(panelLabelFor(m, { tab: "workforce", sub: null })).toBe(
+      ORGANISER_TAB_LABELS.setup
+    );
+    // …and it is the same label when that surface is not the active one.
+    const elsewhere = model({ active: { tab: "workforce", sub: "wall-chart" } });
+    expect(panelLabelFor(elsewhere, { tab: "workforce", sub: "campaign-units" })).toBe(
+      "Units"
+    );
+  });
+
+  it("P5 — a surface behind More is named as More names it", () => {
+    const m = model({ active: { tab: "plan", sub: "pending-review" } });
+    expect(m.activeTabId).toBeNull();
+    expect(m.activeMoreLabel).toBe("Pending review");
+    expect(panelLabelFor(m, { tab: "plan", sub: "pending-review" })).toBe("Pending review");
+    // The cluster keeps its own name, which is also the heading More files
+    // it under, so the trigger and the panel agree.
+    expect(panelLabelFor(m, { tab: "plan", sub: null })).toBe("Plan & Execution");
+  });
+
+  it("P6 — a deep link to a hidden module still names its panel", () => {
+    // Mode is presentation, never permission: the surface renders, is in no
+    // menu, and falls back to the registry label rather than going unnamed.
+    const m = model({
+      moduleState: () => "hidden",
+      active: { tab: "outcomes", sub: "results" },
+    });
+    expect(findSurface(m, { tab: "outcomes", sub: "results" })).toBeNull();
+    expect(panelLabelFor(m, { tab: "outcomes", sub: "results" })).toBe("Results");
+  });
+
+  it("P7 — total: every level-1 and level-2 panel gets a non-empty name", () => {
+    for (const m of [model(), model({ moduleState: () => "hidden" })]) {
+      const unnamed = CAMPAIGN_SURFACES.filter(
+        (r) => r.level <= 2 && !panelLabelFor(m, surfaceOf(r))
+      ).map((r) => r.id);
+      expect(unnamed).toEqual([]);
+      for (const tab of CAMPAIGN_TAB_REGISTRY) {
+        expect(panelLabelFor(m, { tab: tab.tab, sub: null }), tab.tab).toBeTruthy();
+      }
+    }
+  });
 });
 
 // ── the header: nothing removed ─────────────────────────────────────────

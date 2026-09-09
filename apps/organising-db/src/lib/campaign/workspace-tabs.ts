@@ -385,6 +385,85 @@ export function resolveVisibleTabs(input: ResolveVisibleTabsInput): CampaignNavM
   return { mode, tabs, more, activeTabId, activeSubId, activeMoreLabel };
 }
 
+// ── naming the tabpanels ────────────────────────────────────────────────
+
+/** The label a route's own control carries in the model it was found in. */
+function labelForRoute(model: CampaignNavModel, route: SurfaceRoute | null): string | null {
+  if (!route) return null;
+  const group = route.via === "more" ? model.more : model.tabs;
+  const owner = group.find((t) => t.id === route.tabId);
+  if (!owner) return null;
+  if (route.via === "tab") return owner.label;
+  if (route.subId == null) return owner.label;
+  return owner.subs.find((s) => s.id === route.subId)?.label ?? owner.label;
+}
+
+/**
+ * The label of the control that is currently lit, when it is the one that
+ * leads to `surface`. This is what settles Wall chart vs People: one
+ * registry pair, two organiser tabs, split by ?view=, so the panel on
+ * screen must be named after whichever tab is lit rather than after the
+ * pair. A `sub: null` reference asks about a cluster panel, which the lit
+ * control answers whenever the lit surface lives inside that cluster.
+ */
+function litLabel(
+  model: CampaignNavModel,
+  surface: { tab: string; sub: string | null }
+): string | null {
+  const owner = model.tabs.find((t) => t.id === model.activeTabId);
+  if (!owner) return null;
+  const target =
+    model.activeSubId == null
+      ? owner
+      : owner.subs.find((s) => s.id === model.activeSubId);
+  if (!target) return null;
+  const litSurface = normalise(target.href.tab, target.href.sub);
+  if (surface.sub == null) {
+    // A cluster answers with the lit *tab*, so the outer panel reads
+    // "Activity" and the inner one "Comms" rather than both saying "Comms".
+    return litSurface.tab === surface.tab ? owner.label : null;
+  }
+  const norm = normalise(surface.tab, surface.sub);
+  return pairKey(litSurface.tab, litSurface.sub) === pairKey(norm.tab, norm.sub)
+    ? target.label
+    : null;
+}
+
+/**
+ * WP1.4 fix round 2. The accessible name for a campaign `TabsContent`.
+ *
+ * Radix names a tabpanel with `aria-labelledby` pointing at its trigger;
+ * organiser mode renders a <nav> of plain buttons instead of TabsTriggers,
+ * so that reference dangles and the panel has to be named directly. The
+ * name must come from the model **on screen** — "Wall chart", "People",
+ * "Units" — not from the full-mode registry, whose labels ("Workforce",
+ * "Campaign Units") an organiser never sees.
+ *
+ * Returns `null` in full mode: the trigger names the panel there and the
+ * caller must add no attribute at all, keeping the markup byte-identical.
+ *
+ * `sub: null` asks about a cluster panel (the `<TabsContent value="plan">`
+ * that wraps the sub-panels), which is named by the lit organiser control
+ * inside it, else by the cluster's own registry label — which is also the
+ * heading More files it under, so the two agree.
+ */
+export function panelLabelFor(
+  model: CampaignNavModel,
+  surface: { tab: string; sub: string | null }
+): string | null {
+  if (model.mode !== "organiser") return null;
+
+  const lit = litLabel(model, surface);
+  if (lit) return lit;
+
+  if (surface.sub == null) return labelForTab(surface.tab);
+
+  return (
+    labelForRoute(model, findSurface(model, surface)) ??
+    labelForSurface(surface.tab, surface.sub)
+  );
+}
+
 // ── the reachability proof's instrument ─────────────────────────────────
 
 /** How a surface is reached in a given model. */

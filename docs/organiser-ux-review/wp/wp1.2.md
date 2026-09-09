@@ -599,7 +599,7 @@ Only these need the operator; everything else has an assumption stated inline.
 
 1. **`ACTIONS_HUB_PATH` is imported from `@/lib/actions/hub-path`, not `@/lib/actions/hub-rows`.** §4.1's snippet names `hub-rows`, which only re-exports the constant from `hub-path` and itself pulls in `@/lib/sms/hub-actions`. `nav-model.ts` must stay pure (§4.0: "No React, no `next/*`, no lucide"), so it imports WP1.5's canonical one-line module directly. Same constant, same single source of truth, no extra module graph in the nav bundle.
 2. **The badge is flagged on the row definition (`badged: true`), not derived from `module === "inbox"`.** §4.1(b)'s rule would badge **two** rows in full mode — Email Inbox *and* SMS Inbox both carry `module: "inbox"` — and only email has an unread count (`useEmailInboxUnreadCount`; there is no SMS equivalent). The flag is internal to `nav-model.ts` and never reaches a `NavItem`; a test pins that exactly one row is badged in each mode. The clamp and the `aria-label` stayed in the renderer as planned.
-3. **`renderItem` became a component in its own file, `src/components/layout/nav-row.tsx`, not an export of `sidebar.tsx`.** §4.2 offered "extract it into `sidebar.tsx` and export, or duplicate the 20 lines". A third option is better than both: `mobile-nav.tsx` gets the row markup without importing the desktop sidebar module for it, and the two class sets are props exactly as planned. `sidebar.tsx` still exports `navItems` / `adminItems` / `allNavHrefs`, and `mobile-nav.tsx` still imports `allNavHrefs` from it.
+3. **`renderItem` became a component in its own file, `src/components/layout/nav-row.tsx`, not an export of `sidebar.tsx`.** §4.2 offered "extract it into `sidebar.tsx` and export, or duplicate the 20 lines". A third option is better than both: `mobile-nav.tsx` gets the row markup without importing the desktop sidebar module for it, and the two class sets are props exactly as planned. `sidebar.tsx` still exports `navItems` / `adminItems`. (As shipped at merge it also re-exported `allNavHrefs` and `mobile-nav.tsx` imported it from there; fix round 1 advisory 11 moved that import to `ALL_NAV_HREFS`, and fix round 2 advisory 2 deleted the now-unused re-export.)
 4. **The fixture is diffed against a second hand-written literal, not against the live `navItems` export.** §5.4 asked for an `it` that diffs the fixture against `sidebar.tsx`'s exports. `sidebar.tsx` is a client component that imports `next/navigation` and the Supabase auth context; importing it into a vitest `environment: node` suite is fragile, and since `navItems` is now a re-projection of `FULL_NAV_ITEMS` the comparison would have been code against itself. Instead `nav-model-fixture.ts` carries **two** literals — `TODAY_SIDEBAR_ROWS` (the pre-WP1.5 sidebar, byte for byte) and `FULL_MODE_FIXTURE` — and a test asserts the built full-mode model equals the second while the diff between the two is exactly row 7's `label` / `href` / `icon`. That is a stronger recorded-deviation proof than the planned one, and it is falsifiable.
 5. **`allNavHrefs` has 14 entries, not the "13 (+1)" of risk R2.** The `/sms` alias is an entry in its own right and `MY_CAMPAIGNS_HREF` currently dedupes against `/campaigns`. The test asserts the exact sorted list plus "no duplicates" and "every href any model can render is in it", which is what R2 was protecting; a bare length assertion would have to change with every future row anyway.
 6. **The Organisation section is preceded by a `<Separator/>`.** Not specified either way in §4.2. It only renders in organiser mode, so full mode is untouched, and it matches how the admin block is already set off.
@@ -694,6 +694,79 @@ e2e exit 0
 ```
 
 881 → 884 tests: the reachability suite gained the four new cases and lost one (the tautology). **No snapshot was updated** — `__snapshots__/nav-model.test.ts.snap` is byte-identical at `d00cdbf`, which is the check that this round changed no behaviour in either mode: only `BuildNavModelInput`'s shape, two `aria-label`s, two `useState` initialisers and the tests moved.
+
+### Fix round 2 (verifier run 2, commit `2ed739a`)
+
+**Blocking — the Organisation disclosure rendered `aria-expanded="true"` on first paint (`organiser-nav.spec.ts:68`).**
+
+Round 1's advisory 5 was wrong, and this is why. It replaced `useState(false)` with `useState(!model.organisation.collapsed)` in both navs on the reasoning that "the model already carries 'collapsed by default'; the components now read it rather than restating it". That reasoning holds only if the component reads the *organiser* model. It does not:
+
+- A `useState` initialiser is evaluated **once**, on the first render, and is never consulted again. It is not a subscription to the value.
+- On that first render the workspace has not resolved yet. `WorkspaceProvider` passes `userPrefs: undefined` until `AuthProvider.fetchProfile` returns, and `resolveWorkspace` answers "no prefs" with `mode: "full"` (`resolve.ts:74`) — WP1.1's deliberate fail-open, already recorded as round 1's "recorded, no change" item 10.
+- Full mode's model is `organisation: { collapsed: false, items: [] }` (`nav-model.ts:326`). So `!model.organisation.collapsed` is `true`, `orgOpen` initialises **open**, and when the profile lands and the mode flips to organiser the initialiser is never re-run. The section renders expanded for the rest of the session.
+
+The section is invisible during the full-mode window (`items` is empty, so `organisationItems.length > 0` is false and nothing renders), which is exactly why this was invisible to the unit suite and to round 1's review: the wrong value is set while there is nothing on screen to show it, and only becomes visible after the value can no longer change. `buildNavModel`'s own snapshots were right the whole time — the organiser model says `collapsed: true` — so no test in `src/` could have caught it. Only the browser could, and it did.
+
+The fix, in `sidebar.tsx` and `mobile-nav.tsx`:
+
+```tsx
+const [orgOpen, setOrgOpen] = useState(false);
+const organisationCollapsed = model.organisation.collapsed;
+useEffect(() => {
+  setOrgOpen(!organisationCollapsed);
+}, [organisationCollapsed]);
+```
+
+`useState(false)` semantics restored — closed on every first paint — while the model stays authoritative through an effect that *does* revisit the question. The dependency is a boolean that only moves when the workspace mode does, so:
+
+- full → organiser (the profile arriving): `collapsed` goes `false → true`, the effect closes the section. This is the failing case.
+- organiser → full (a "Show everything" expansion): `collapsed` goes `true → false`, the effect opens it — and full mode renders no Organisation section, so nothing is shown; toggling back re-collapses it, which is the wanted behaviour and not an accident.
+- between mode changes: the dependency does not move, the effect does not re-run, and a user who opens the section keeps it open. It is a plain React toggle, as specified.
+
+No storage of any kind, in line with §6 item 10 and the standing rule.
+
+**Advisory findings.**
+
+| # | Change |
+|---|---|
+| 2 | `sidebar.tsx` — `ALL_NAV_HREFS` is used directly at all three `isNavRowActive` call sites and the `allNavHrefs` re-export is **deleted**. A repo-wide grep found no importer: `mobile-nav.tsx` already moved to `ALL_NAV_HREFS` in round 1 (advisory 11), and nothing else ever imported it. `navItems` / `adminItems` are kept — they are re-projections into lucide *components*, a genuinely different shape from anything `nav-model.ts` exports, and appendix D §10 item 2 names them as the extension point. |
+| 3 | `tests/e2e/organiser-nav.spec.ts` — the reset read-back now asserts the profile row exists and that `workspace_prefs` is exactly `{}`. `expect(prefsAfter ?? {}).toEqual({})` would have passed for a deleted user or a response shape that dropped the column, neither of which is "the override was cleared". |
+
+**Deviation from §4.2 recorded.** The plan said "keep `navItems`/`adminItems`/`allNavHrefs` exports"; `allNavHrefs` is now gone. It was a bare `export const allNavHrefs = ALL_NAV_HREFS;` — two names for one array, with the doc comment on the alias rather than on the definition. The comment lives on `ALL_NAV_HREFS` in `nav-model.ts:254-259`, where the array is actually built.
+
+### Fix round 2 gates
+
+Run from `apps/organising-db` at `2ed739a`.
+
+```
+$ pnpm exec eslint src/components/layout/sidebar.tsx src/components/layout/mobile-nav.tsx tests/e2e/organiser-nav.spec.ts
+$ echo "eslint $?"
+eslint 0
+
+$ pnpm exec tsc --noEmit -p tsconfig.json; echo "tsc $?"
+tsc 0
+
+$ pnpm test 2>&1 | grep -E 'Test Files|Tests |FAIL'
+ Test Files  65 passed (65)
+      Tests  884 passed (884)
+
+$ git diff --stat -- '**/nav-model.test.ts.snap'
+(empty)
+
+$ pnpm lint 2>&1 | grep problems
+✖ 294 problems (143 errors, 151 warnings)
+
+$ pnpm build; echo "build exit $?"
+build exit 0
+
+$ env -u E2E_USER_EMAIL -u E2E_USER_PASSWORD -u E2E_ADMIN_EMAIL -u E2E_ADMIN_PASSWORD pnpm e2e
+  9 skipped
+e2e exit 0
+```
+
+884 tests, unchanged from round 1: this round moved two `useState` initialisers, added two effects, renamed three call sites and tightened one e2e assertion. **No snapshot was updated** — `__snapshots__/nav-model.test.ts.snap` is byte-identical, which is the check that full mode is untouched. Lint matches the PROGRESS.md baseline exactly (294/143/151).
+
+The credentialled `organiser-nav.spec.ts` run against a rebuilt preview is the orchestrator's, not this round's; the failing assertion is `:128`, `aria-expanded === "false"` on first paint, followed by `:130` asserting the click still opens it.
 
 ## Implementer notes
 

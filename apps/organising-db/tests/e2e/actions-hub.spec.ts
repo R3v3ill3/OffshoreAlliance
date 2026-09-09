@@ -21,7 +21,7 @@ test.describe("Actions hub", () => {
 
   test("open /actions, see the three start cards and the status buckets", async ({ page }) => {
     await page.goto("/actions");
-    await expect(page.getByRole("heading", { name: "Actions", level: 1 })).toBeVisible();
+    await expect(page.getByRole("main").getByRole("heading", { name: "Actions", level: 1 })).toBeVisible();
 
     // Start something — one card per channel. The Email card's second link is
     // the legacy wizard, named honestly because its sends are never listed.
@@ -45,7 +45,7 @@ test.describe("Actions hub", () => {
     // the spec independent of whatever data the environment happens to hold.
     await expect(
       page
-        .getByRole("columnheader", { name: "Scope" })
+        .locator("table").getByText("Scope", { exact: true })
         .or(page.getByText(/No actions yet|Nothing matches these filters|could not be loaded/))
         .first()
     ).toBeVisible();
@@ -62,6 +62,6 @@ test.describe("Actions hub", () => {
   test("/sms still works and lands on the hub with its params intact", async ({ page }) => {
     await page.goto("/sms?scope=standalone");
     await expect(page).toHaveURL(/\/actions\?.*scope=standalone/);
-    await expect(page.getByRole("heading", { name: "Actions", level: 1 })).toBeVisible();
+    await expect(page.getByRole("main").getByRole("heading", { name: "Actions", level: 1 })).toBeVisible();
   });
 });

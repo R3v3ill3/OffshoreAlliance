@@ -962,3 +962,21 @@ All hits are `episode` as a code identifier (`useCreateSmsEpisode`, `deleteEpiso
 ## 8. Reviewer findings
 
 _(reviewer)_
+
+### Orchestrator e2e run after fix round 1 (2026-09-09) against preview https://offshore-alliance-i1m5sy6wk-reveille-strategy.vercel.app
+
+Two test-only locator fixes were needed: the new `/actions` page title made the header render a second "Actions" h1 (strict-mode ambiguity; locator scoped to `main`), and the table header cells expose the `cell` role, not `columnheader` (locator switched to the table text). No product code changed.
+
+```
+
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › tests/e2e/actions-hub.spec.ts:22:7 › Actions hub › open /actions, see the three start cards and the status buckets (5.8s)
+  ✓  2 [chromium] › tests/e2e/actions-hub.spec.ts:62:7 › Actions hub › /sms still works and lands on the hub with its params intact (3.6s)
+  -  3 [chromium] › tests/e2e/mobile-dialer.spec.ts:30:7 › Mobile dialer — happy path › volunteer can sign in, claim, dial, record outcome, advance
+  ✓  4 [chromium] › tests/e2e/wall-chart.spec.ts:23:7 › Wall chart — flow one › open a campaign from /campaigns and see the wall chart (10.5s)
+
+  1 skipped
+  3 passed (23.9s)
+```

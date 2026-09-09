@@ -1195,6 +1195,27 @@ $ git diff --stat ad67b6c..HEAD | tail -1
  9 files changed, 277 insertions(+), 34 deletions(-)
 ```
 
+### Verifier run 3 (orchestrator, after fix round 2) at fdbb9e8
+```
+$ pnpm test
+ Test Files  60 passed (60)
+      Tests  780 passed (780)
+$ pnpm exec tsc --noEmit -p tsconfig.json; echo tsc $?
+tsc 0
+$ pnpm lint | grep problems
+✖ 294 problems (143 errors, 151 warnings)
+$ pnpm build | tail -3
+
+ƒ  (Dynamic)  server-rendered on demand
+
+$ git log --oneline --stat 35a6761..HEAD -- supabase packages/db-types (expect empty)
+```
+
+
 ## 8. Reviewer findings
 
-_(reviewer)_
+**Round 1 (2026-09-09, fresh Fable reviewer): APPROVE WITH ADVISORIES.** Migration and definer function confirmed safe (literal key, no parameters, pinned search_path, narrow grants); nothing gates a write or data read on mode; no storage APIs; no consumers. Eight advisories on the admin editors and schemas, plus one finding outside the package: the baseline "update own profile" policy lets a `user` change their own `role` via PostgREST — handed to WP1.6 as mandatory scope. Advisories 1, 2, 3, 4, 6, 8 fixed in `95b9513`, with the WP1.2-approval ruling (`organisation_databases` → muted) applied in the same commit.
+
+**Round 2 (2026-09-09, fresh reviewer): APPROVE WITH ADVISORIES.** All round-1 items verified closed. New advisories: the per-user editor's org-defaults query swallowed failures and could drop a stored module list; a malformed stored document was indistinguishable from "nothing stored"; the empty-selection guard disabled the whole Save button. Fixed in `514e388` (final allowed fix round), with a pure `prefs-payload` module and tests.
+
+**Round 3 (2026-09-09, fresh reviewer, confirmation): APPROVE WITH ADVISORIES.** Round-2 items verified closed with branch-deletion spot checks; GET route change confirmed admin-only and PUT unchanged. Two residual advisories recorded, not fixed (fix rounds exhausted; both are admin-editor edge cases with no data loss): the Users dialog still folds a malformed org document into "absent" instead of surfacing it; the mode select stays enabled while defaults are loading. Both listed for a later admin-UI pass.

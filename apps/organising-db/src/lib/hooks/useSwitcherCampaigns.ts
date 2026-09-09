@@ -20,11 +20,13 @@
  * forbid for view state. True per-user "last opened" recency needs
  * `user_campaign_prefs`, which is WP2.1's.
  *
- * Cost: no query of its own, and the hook is only ever mounted in organiser
- * mode (the header renders the switcher nowhere else). Both underlying
- * queries are `staleTime: 60_000` and their React Query keys are shared with
- * /my-campaigns, so opening a campaign after visiting that page costs
- * nothing at all.
+ * Cost, stated accurately: this hook writes no query itself, but mounting it
+ * mounts two — `useMyCampaigns()` and `useCampaignLastActivity(ids)` — so on
+ * a cold cache opening a campaign in organiser mode costs the campaign list
+ * plus one RPC. Both are `staleTime: 60_000` and both React Query keys are
+ * shared with /my-campaigns, so arriving from that page costs nothing; and
+ * the hook is only ever mounted in organiser mode, because the header
+ * renders the switcher nowhere else.
  */
 
 import { useMemo } from "react";

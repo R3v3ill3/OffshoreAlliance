@@ -71,6 +71,21 @@ const CHROME_WIZARD_PATHS = new Set([
   "/campaigns/phone-wizard",
 ]);
 
+/**
+ * True for the four wizard paths above — the routes where this package
+ * newly mounts the campaign header. Callers that redirect need it: a
+ * redirect written for `/campaigns/[id]` would now fire mid-wizard, which
+ * is the one thing "wizards keep the campaign header" must not cause.
+ */
+export function isCampaignChromeWizardRoute(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return CHROME_WIZARD_PATHS.has(normalisePath(pathname));
+}
+
+function normalisePath(pathname: string): string {
+  return pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+}
+
 function readParam(
   search: URLSearchParams | string | null,
   key: string
@@ -115,8 +130,7 @@ export function campaignIdForChrome(
   const fromPath = getCampaignIdFromPath(pathname);
   if (fromPath) return fromPath;
 
-  const normalised = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
-  if (!CHROME_WIZARD_PATHS.has(normalised)) return null;
+  if (!isCampaignChromeWizardRoute(pathname)) return null;
 
   for (const key of CAMPAIGN_CHROME_PARAMS) {
     const id = parseCampaignId(readParam(search, key));

@@ -16,6 +16,8 @@ const ev = (over: Partial<ShortcutKeyEvent> = {}): ShortcutKeyEvent => ({
   shiftKey: false,
   targetTag: "BODY",
   targetEditable: false,
+  inDialog: false,
+  dialogOpen: false,
   ...over,
 });
 
@@ -89,6 +91,26 @@ describe("stepChord — g then c opens the campaign switcher", () => {
       pending: { key: "g", at: 1_100 },
       open: false,
     });
+  });
+
+  it("S8 — an open dialog owns the keyboard, from either signal", () => {
+    for (const signal of ["inDialog", "dialogOpen"] as const) {
+      // The chord never starts…
+      expect(stepChord(null, ev({ key: "g", [signal]: true }), 0), signal).toEqual({
+        pending: null,
+        open: false,
+      });
+      // …and never completes, even one already half-pressed.
+      expect(stepChord(PENDING, ev({ key: "c", [signal]: true }), 1_100), signal).toEqual({
+        pending: null,
+        open: false,
+      });
+    }
+  });
+
+  it("S8 — closing the dialog restores the chord", () => {
+    const first = stepChord(null, ev({ key: "g" }), 0);
+    expect(stepChord(first.pending, ev({ key: "c" }), 10).open).toBe(true);
   });
 
   it("is case-insensitive, so Shift+G then C still works", () => {

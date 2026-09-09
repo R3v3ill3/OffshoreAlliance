@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -25,12 +26,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useCampaign } from "@/lib/hooks/usePlannerCampaigns";
 import { SMS_EPISODE_TOOLS_HREF } from "@/lib/campaign/visible-campaigns";
-import { isSmsChatWorkspaceRoute } from "@/lib/campaign/campaign-detail-routes";
+import {
+  isCampaignChromeWizardRoute,
+  isSmsChatWorkspaceRoute,
+} from "@/lib/campaign/campaign-detail-routes";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { useWorkspace } from "@/lib/workspace/use-workspace";
-import { CampaignSwitcher } from "@/components/campaigns/campaign-switcher";
-import { OrganiserCampaignActions } from "@/components/campaigns/organiser-campaign-actions";
-import { CreateTaskListDialog } from "@/components/campaigns/task-lists/create-task-list-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MobileNav } from "@/components/layout/mobile-nav";
@@ -44,6 +45,24 @@ import { EmailResumeBanner } from "@/components/email/orchestrator/EmailResumeBa
 import { CreateSmsOrchestrator } from "@/components/sms/CreateSmsOrchestrator";
 import { SmsResumeBanner } from "@/components/sms/orchestrator/SmsResumeBanner";
 import type { CampaignStatus, CampaignType } from "@/types/database";
+
+// WP1.4 fix round 1. All three are rendered in organiser mode only, so a
+// full-mode user should not pay for their JavaScript. Because the branch
+// that renders them is `isOrganiserMode && …`, full mode never mounts the
+// lazy boundary at all and its markup is unchanged.
+const CampaignSwitcher = dynamic(
+  () => import("@/components/campaigns/campaign-switcher").then((m) => m.CampaignSwitcher)
+);
+const OrganiserCampaignActions = dynamic(() =>
+  import("@/components/campaigns/organiser-campaign-actions").then(
+    (m) => m.OrganiserCampaignActions
+  )
+);
+const CreateTaskListDialog = dynamic(() =>
+  import("@/components/campaigns/task-lists/create-task-list-dialog").then(
+    (m) => m.CreateTaskListDialog
+  )
+);
 
 const STATUS_VARIANT: Record<CampaignStatus, "secondary" | "success" | "info" | "warning"> = {
   planning: "secondary",
@@ -122,11 +141,19 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
   // organiser to the SMS hub. Its chat workspace is the one legitimate
   // place to be, so that route keeps a minimal header instead.
   const onChatWorkspace = isSmsChatWorkspaceRoute(pathname);
+  // WP1.4 fix round 1: this header now also mounts on the four wizard
+  // routes, where the effect had never run before. A wizard is a task in
+  // progress — bouncing out of it because ?cid= happens to name an episode
+  // campaign would destroy work. The redirect belongs to the campaign's own
+  // detail page and stays there; on a wizard route the header simply
+  // renders nothing (the `is_sms_episode` early return below).
+  const onChromeWizard = isCampaignChromeWizardRoute(pathname);
   useEffect(() => {
+    if (onChromeWizard) return;
     if (campaign?.is_sms_episode && !onChatWorkspace) {
       router.replace(SMS_EPISODE_TOOLS_HREF);
     }
-  }, [campaign, onChatWorkspace, router]);
+  }, [campaign, onChatWorkspace, onChromeWizard, router]);
 
   if (campaign?.is_sms_episode && onChatWorkspace) {
     return (
@@ -285,7 +312,13 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
             ) : (
               <>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <h1 className="truncate text-base font-semibold md:text-lg">{campaign.name}</h1>
+                  {/* WP1.4 fix round 1: the switcher trigger to the left
+                      already carries the campaign name, so organiser mode
+                      renders it once. Full mode has no switcher, so the
+                      heading is exactly today's markup. */}
+                  {!isOrganiserMode && (
+                    <h1 className="truncate text-base font-semibold md:text-lg">{campaign.name}</h1>
+                  )}
                   {canWrite && (
                     <Button
                       variant="ghost"

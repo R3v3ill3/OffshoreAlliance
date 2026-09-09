@@ -33,6 +33,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils/cn";
+// WP1.2's wording for a module that is merely switched off. Imported, not
+// re-declared: the sidebar and this bar must say the same sentence.
+import { MUTED_REASON } from "@/lib/nav/nav-model";
 import {
   PendingReviewTabTrigger,
   RoleCheckTabTrigger,
@@ -44,9 +47,6 @@ import {
   type CampaignSurfaceRef,
   type CampaignTabModel,
 } from "@/lib/campaign/workspace-tabs";
-
-/** WP1.2's wording for a module that is merely switched off. */
-const MUTED_REASON = "Ask an admin to enable";
 
 export type CampaignTabCluster = "top" | "plan" | "outcomes" | "workforce" | "outreach";
 
@@ -159,33 +159,38 @@ function OrganiserBar({
           </button>
         ))}
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-current={model.activeTabId === null ? "page" : undefined}
-              className={cn(
-                PILL,
-                "gap-1",
-                model.activeTabId === null ? PILL_ACTIVE : PILL_IDLE
-              )}
-            >
-              {ORGANISER_TAB_LABELS.more}
-              {model.activeMoreLabel && <span>· {model.activeMoreLabel}</span>}
-              <ChevronDown className="h-3.5 w-3.5" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="max-h-[70vh] w-64 overflow-y-auto">
-            {model.more.map((group, i) => (
-              <MoreGroup
-                key={group.id}
-                group={group}
-                first={i === 0}
-                onNavigate={onNavigate}
-              />
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* An empty menu is not a control. `more` is only ever empty when
+            every surface behind it is hidden for this role, in which case
+            the trigger would open nothing and say nothing. */}
+        {model.more.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-current={model.activeTabId === null ? "page" : undefined}
+                className={cn(
+                  PILL,
+                  "gap-1",
+                  model.activeTabId === null ? PILL_ACTIVE : PILL_IDLE
+                )}
+              >
+                {ORGANISER_TAB_LABELS.more}
+                {model.activeMoreLabel && <span>· {model.activeMoreLabel}</span>}
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="max-h-[70vh] w-64 overflow-y-auto">
+              {model.more.map((group, i) => (
+                <MoreGroup
+                  key={group.id}
+                  group={group}
+                  first={i === 0}
+                  onNavigate={onNavigate}
+                />
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </nav>
 
       {activeTab && activeTab.subs.length > 0 && (
@@ -278,10 +283,20 @@ function MoreItem({
   onNavigate: (ref: CampaignSurfaceRef) => void;
 }) {
   if (state === "muted") {
+    // Same three carriers as WP1.2's nav-row.tsx: the visible caption, a
+    // native `title` for a pointer user, and an `sr-only` copy so the
+    // reason reaches a screen reader as part of the item's name.
     return (
-      <DropdownMenuItem disabled className="flex-col items-start gap-0">
+      <DropdownMenuItem
+        disabled
+        className="flex-col items-start gap-0"
+        title={MUTED_REASON}
+      >
         <span>{label}</span>
-        <span className="text-xs text-muted-foreground">{MUTED_REASON}</span>
+        <span className="text-xs text-muted-foreground" aria-hidden="true">
+          {MUTED_REASON}
+        </span>
+        <span className="sr-only">{MUTED_REASON}</span>
       </DropdownMenuItem>
     );
   }

@@ -79,6 +79,12 @@ test.describe("Campaign workspace — the organiser-mode round trip", () => {
     `${NO_CREDENTIALS_MESSAGE} ${NO_ADMIN_CREDENTIALS_MESSAGE}`
   );
 
+  // Seven full page loads against a cold preview, plus two admin round
+  // trips, plus a `finally` that must always get to run. The default 30s was
+  // never enough — it only looked like it was because the run used to abort
+  // at the Build list assertion before reaching the last two steps.
+  test.slow();
+
   test("four tabs plus More, deep links, the switcher and every header action", async ({
     page,
     browser,
@@ -117,6 +123,9 @@ test.describe("Campaign workspace — the organiser-mode round trip", () => {
         await expect(nav.locator("button")).toHaveText(ORGANISER_TABS);
 
         // 2 — More lists the enabled modules and mutes the rest with a reason.
+        // Deliberately not `exact`: the trigger reads "More · <label>" when
+        // the active surface lives behind it (asserted at step 3). Scoped to
+        // the nav, so the header's "More campaign actions" cannot collide.
         const more = nav.getByRole("button", { name: "More" });
         await more.click();
         const menu = page.getByRole("menu");
@@ -181,7 +190,7 @@ test.describe("Campaign workspace — the organiser-mode round trip", () => {
         }
 
         // 6 — the header. New action ▾ holds the five creation paths.
-        await page.getByRole("button", { name: "New action" }).click();
+        await page.getByRole("button", { name: "New action", exact: true }).click();
         const newAction = page.getByRole("menu");
         await expect(newAction.getByRole("menuitem")).toHaveText([
           "Call list",
@@ -193,7 +202,11 @@ test.describe("Campaign workspace — the organiser-mode round trip", () => {
         await page.keyboard.press("Escape");
 
         // Build list is a top-level toggle over the existing ?buildList=1.
-        const buildList = page.getByRole("button", { name: "Build list" });
+        // `exact` matters: once the panel is open the wall chart renders its
+        // own icon-only `aria-label="Close build list panel"` button, whose
+        // name contains "build list", so the default substring match would
+        // resolve to two elements.
+        const buildList = page.getByRole("button", { name: "Build list", exact: true });
         await expect(buildList).toHaveAttribute("aria-pressed", "false");
         await buildList.click();
         await expect(page).toHaveURL(/buildList=1/);

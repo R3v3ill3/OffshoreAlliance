@@ -3,6 +3,7 @@ import {
   CAMPAIGN_CHROME_PARAMS,
   campaignIdForChrome,
   getCampaignIdFromPath,
+  isCampaignChromeWizardRoute,
   isCampaignDetailRoute,
 } from "../campaign-detail-routes";
 
@@ -79,5 +80,33 @@ describe("campaignIdForChrome — a wizard launched from a campaign keeps its he
   it("returns null for a null pathname and for unrelated routes", () => {
     expect(campaignIdForChrome(null, "cid=12")).toBeNull();
     expect(campaignIdForChrome("/workers", "cid=12")).toBeNull();
+  });
+});
+
+describe("isCampaignChromeWizardRoute — the routes the header newly mounts on", () => {
+  it("C7 — is true for exactly the four wizard paths, id or no id", () => {
+    for (const path of [
+      "/campaigns/new",
+      "/campaigns/soc-wizard",
+      "/campaigns/email-wizard",
+      "/campaigns/phone-wizard",
+      "/campaigns/new/",
+    ]) {
+      expect(isCampaignChromeWizardRoute(path), path).toBe(true);
+    }
+  });
+
+  it("C7 — is false for detail pages, the excluded routes and null", () => {
+    for (const path of [
+      null,
+      "/campaigns",
+      "/campaigns/12",
+      "/campaigns/12/plan",
+      "/campaigns/sms-tools",
+      "/campaigns/new/manual",
+      "/workers",
+    ]) {
+      expect(isCampaignChromeWizardRoute(path), String(path)).toBe(false);
+    }
   });
 });

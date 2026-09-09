@@ -83,6 +83,8 @@ import { useDevice } from "@/contexts/device-context";
 import { useWorkspace } from "@/lib/workspace/use-workspace";
 import { resolveWorkforceView } from "@/lib/campaign/workforce-view";
 import {
+  labelForSurface,
+  labelForTab,
   resolveVisibleTabs,
   type CampaignSurfaceRef,
 } from "@/lib/campaign/workspace-tabs";
@@ -347,6 +349,20 @@ export default function CampaignDetailPage() {
     [mode, moduleState, campaign?.current_phase, hasPlan, activeTab, activeSub, activeView]
   );
 
+  /**
+   * WP1.4 fix round 1. Radix names a tabpanel with `aria-labelledby`
+   * pointing at its trigger; in organiser mode no TabsTrigger is rendered
+   * (CampaignTabBar draws a <nav> of plain buttons instead), so that
+   * reference dangles and the live panel has no accessible name. Name it
+   * directly there. In full mode this spreads `{}` — the trigger still
+   * names the panel and the markup is byte-identical.
+   */
+  const panelName = (tab: string, sub?: string) => {
+    if (navModel.mode !== "organiser") return {};
+    const label = sub == null ? labelForTab(tab) : labelForSurface(tab, sub);
+    return label ? { "aria-label": label } : {};
+  };
+
   useEffect(() => {
     if (campaign?.is_sms_episode) {
       router.replace(SMS_EPISODE_TOOLS_HREF);
@@ -508,7 +524,7 @@ export default function CampaignDetailPage() {
             onImportWorkers={() => setImportWizardOpen(true)}
           />
 
-        <TabsContent value="overview" className="space-y-6">
+        <TabsContent value="overview" className="space-y-6" {...panelName("overview")}>
           {canWrite && (
             <div className="flex justify-end">
               <Button onClick={() => setImportWizardOpen(true)}>
@@ -602,7 +618,7 @@ export default function CampaignDetailPage() {
           <CampaignStageCoveragePanel campaignId={campaignId} />
         </TabsContent>
 
-        <TabsContent value="plan">
+        <TabsContent value="plan" {...panelName("plan")}>
           <Tabs
             value={activeSub ?? "strategy"}
             onValueChange={handleSubChange}
@@ -617,7 +633,7 @@ export default function CampaignDetailPage() {
               onImportWorkers={() => setImportWizardOpen(true)}
             />
 
-            <TabsContent value="strategy">
+            <TabsContent value="strategy" {...panelName("plan", "strategy")}>
               <CampaignPlanPanel campaignId={Number(id)} organiserId={campaign?.organiser_id} />
               {(!campaign.current_phase || campaign.current_phase === "preparing_to_bargain") && (
                 <div className="mt-6 pt-6 border-t border-slate-200">
@@ -626,11 +642,11 @@ export default function CampaignDetailPage() {
               )}
             </TabsContent>
 
-            <TabsContent value="workplan">
+            <TabsContent value="workplan" {...panelName("plan", "workplan")}>
               <CampaignWorkplanSection campaignId={id} canWrite={!!canWrite} />
             </TabsContent>
 
-            <TabsContent value="actions">
+            <TabsContent value="actions" {...panelName("plan", "actions")}>
               <CampaignActionsSection
                 campaignId={campaignId}
                 canWrite={!!canWrite}
@@ -645,21 +661,21 @@ export default function CampaignDetailPage() {
               />
             </TabsContent>
 
-            <TabsContent value="task-lists">
+            <TabsContent value="task-lists" {...panelName("plan", "task-lists")}>
               <CampaignTaskListsSection campaignId={id} canWrite={!!canWrite} />
             </TabsContent>
 
-            <TabsContent value="pending-review">
+            <TabsContent value="pending-review" {...panelName("plan", "pending-review")}>
               <PendingReviewTab campaignId={campaignId} canWrite={!!canWrite} />
             </TabsContent>
 
-            <TabsContent value="role-check">
+            <TabsContent value="role-check" {...panelName("plan", "role-check")}>
               <RoleCheckTab campaignId={campaignId} canWrite={!!canWrite} />
             </TabsContent>
           </Tabs>
         </TabsContent>
 
-        <TabsContent value="outcomes">
+        <TabsContent value="outcomes" {...panelName("outcomes")}>
           <Tabs
             value={activeSub ?? "reports"}
             onValueChange={handleSubChange}
@@ -674,15 +690,15 @@ export default function CampaignDetailPage() {
               onImportWorkers={() => setImportWizardOpen(true)}
             />
 
-            <TabsContent value="reports">
+            <TabsContent value="reports" {...panelName("outcomes", "reports")}>
               <CampaignReportingCharts campaignId={id} />
             </TabsContent>
 
-            <TabsContent value="results">
+            <TabsContent value="results" {...panelName("outcomes", "results")}>
               <CampaignResultsSection results={results} />
             </TabsContent>
 
-            <TabsContent value="insights" className="space-y-6">
+            <TabsContent value="insights" className="space-y-6" {...panelName("outcomes", "insights")}>
               {campaign.current_phase === "bargaining_to_win" && (
                 <BargainingInsightsWidget campaignId={campaignId} />
               )}
@@ -691,7 +707,7 @@ export default function CampaignDetailPage() {
           </Tabs>
         </TabsContent>
 
-        <TabsContent value="workforce">
+        <TabsContent value="workforce" {...panelName("workforce")}>
           <Tabs
             value={activeSub ?? "wall-chart"}
             onValueChange={handleSubChange}
@@ -706,7 +722,7 @@ export default function CampaignDetailPage() {
               onImportWorkers={() => setImportWizardOpen(true)}
             />
 
-            <TabsContent value="universe" className="space-y-6">
+            <TabsContent value="universe" className="space-y-6" {...panelName("workforce", "universe")}>
               <CampaignUniverseSection campaignId={id} canWrite={!!canWrite} />
 
               {SHOW_NAMED_UNIVERSES && (
@@ -814,38 +830,38 @@ export default function CampaignDetailPage() {
               )}
             </TabsContent>
 
-            <TabsContent value="assessments">
+            <TabsContent value="assessments" {...panelName("workforce", "assessments")}>
               <CampaignAssessmentsSection campaignId={id} canWrite={!!canWrite} />
             </TabsContent>
 
-            <TabsContent value="data-fields">
+            <TabsContent value="data-fields" {...panelName("workforce", "data-fields")}>
               <CampaignDataFieldsSection campaignId={id} canWrite={!!canWrite} />
             </TabsContent>
 
-            <TabsContent value="wall-chart">
+            <TabsContent value="wall-chart" {...panelName("workforce", "wall-chart")}>
               <WorkforceBoard campaignId={id} canWrite={!!canWrite} />
             </TabsContent>
 
-            <TabsContent value="campaign-units" className="space-y-6">
+            <TabsContent value="campaign-units" className="space-y-6" {...panelName("workforce", "campaign-units")}>
               <CampaignUnitsSection campaignId={id} canWrite={!!canWrite} />
               {activeSub === "campaign-units" && (
                 <CoveragePanel campaignId={id} canWrite={!!canWrite} />
               )}
             </TabsContent>
 
-            <TabsContent value="activists">
+            <TabsContent value="activists" {...panelName("workforce", "activists")}>
               {activeSub === "activists" && (
                 <ActivistsWocsSection campaignId={id} canWrite={!!canWrite} />
               )}
             </TabsContent>
 
-            <TabsContent value="foundational-readiness">
+            <TabsContent value="foundational-readiness" {...panelName("workforce", "foundational-readiness")}>
               <FoundationalReadinessPanel campaignId={campaignId} />
             </TabsContent>
           </Tabs>
         </TabsContent>
 
-        <TabsContent value="outreach">
+        <TabsContent value="outreach" {...panelName("outreach")}>
           <Tabs
             value={activeSub ?? "comms"}
             onValueChange={handleSubChange}
@@ -860,21 +876,21 @@ export default function CampaignDetailPage() {
               onImportWorkers={() => setImportWizardOpen(true)}
             />
 
-            <TabsContent value="comms">
+            <TabsContent value="comms" {...panelName("outreach", "comms")}>
               {/* CampaignCommsSection has its own internal sub-tabs (Drafts & Send /
                   List Builder) — intentional two-level nesting; do not flatten. */}
               <CampaignCommsSection campaignId={id} canWrite={!!canWrite} />
             </TabsContent>
 
-            <TabsContent value="phone">
+            <TabsContent value="phone" {...panelName("outreach", "phone")}>
               <InlinePhoneOpsPanel campaignId={id} />
             </TabsContent>
 
-            <TabsContent value="sms">
+            <TabsContent value="sms" {...panelName("outreach", "sms")}>
               {activeSub === "sms" && <InlineSmsOpsPanel campaignId={id} />}
             </TabsContent>
 
-            <TabsContent value="soc">
+            <TabsContent value="soc" {...panelName("outreach", "soc")}>
               <Card>
                 <CardHeader>
                   <CardTitle>Structure of Concern (SOC)</CardTitle>
@@ -900,19 +916,19 @@ export default function CampaignDetailPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="library">
+        <TabsContent value="library" {...panelName("library")}>
           {activeTab === "library" && (
             <LibrarySection campaignId={campaignId} canWrite={!!canWrite} />
           )}
         </TabsContent>
 
-        <TabsContent value="section-plans">
+        <TabsContent value="section-plans" {...panelName("section-plans")}>
           {activeTab === "section-plans" && (
             <SectionPlansTab campaignId={campaignId} />
           )}
         </TabsContent>
 
-        <TabsContent value="bargaining">
+        <TabsContent value="bargaining" {...panelName("bargaining")}>
           <BargainingTabContent campaignId={campaignId} />
         </TabsContent>
         </Tabs>

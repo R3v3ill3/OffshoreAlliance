@@ -10,8 +10,11 @@
  *
  * Plan §4 principle 16 asks for it to collapse "to a label for
  * single-campaign users", so with one campaign (or none, or while the list
- * is loading) this renders a plain span: no popover mounts, no keyboard
+ * is loading) this renders a plain heading: no popover mounts, no keyboard
  * listener is registered.
+ *
+ * Either way the name is inside the page's `<h1>`, because organiser mode's
+ * header shows the campaign name here and nowhere else.
  *
  * Full mode is byte-for-byte today's header, so the switcher is not
  * rendered there. Adding it later is one condition removed in
@@ -34,7 +37,7 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { MY_CAMPAIGNS_HREF } from "@/lib/nav/nav-model";
+import { ALL_CAMPAIGNS_HREF, MY_CAMPAIGNS_HREF } from "@/lib/nav/nav-model";
 import {
   SWITCHER_CHORD_HINT,
   stepChord,
@@ -85,57 +88,73 @@ export function CampaignSwitcher({ campaignId, campaignName }: CampaignSwitcherP
     [router]
   );
 
+  // WP1.4 fix round 1: in organiser mode the header no longer repeats the
+  // campaign name in a second block, so this control *is* the page heading.
+  // Both branches are an <h1> carrying the name, styled as the heading it
+  // replaces, so the document keeps exactly one h1 either way.
   if (collapsed) {
     return (
-      <span className="min-w-0 truncate text-sm text-muted-foreground">{label}</span>
+      <h1 className="min-w-0 truncate text-base font-semibold md:text-lg">{label}</h1>
     );
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="max-w-[14rem] shrink-0 justify-between gap-1"
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          title={`Switch campaign (${SWITCHER_CHORD_HINT})`}
-        >
-          <span className="truncate">{label}</span>
-          <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 p-0">
-        <Command>
-          <CommandInput placeholder="Find a campaign" />
-          <CommandList>
-            <CommandEmpty>No campaign found.</CommandEmpty>
-            <CommandGroup heading="Recent">
-              {campaigns.map((c) => (
+    <h1 className="min-w-0">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="max-w-[14rem] shrink-0 justify-between gap-1 text-base font-semibold md:text-lg"
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            title={`Switch campaign (${SWITCHER_CHORD_HINT})`}
+          >
+            <span className="truncate">{label}</span>
+            <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-72 p-0">
+          <Command>
+            <CommandInput placeholder="Find a campaign" />
+            <CommandList>
+              <CommandEmpty>No campaign found.</CommandEmpty>
+              <CommandGroup heading="Recent">
+                {campaigns.map((c) => (
+                  <CommandItem
+                    key={c.campaign_id}
+                    value={`${c.name} ${c.campaign_id}`}
+                    onSelect={() => go(`/campaigns/${c.campaign_id}`)}
+                  >
+                    <span className="truncate">{c.name}</span>
+                    {c.isTeam && (
+                      <span className="ml-auto pl-2 text-xs text-muted-foreground">Team</span>
+                    )}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+              <CommandSeparator />
+              <CommandGroup>
+                {/* Two destinations, because they are two different pages:
+                    "All campaigns" is plan 5.4's wording and must mean the
+                    full list at /campaigns, so WP1.3's personal home gets its
+                    own row rather than quietly taking the other one's label. */}
                 <CommandItem
-                  key={c.campaign_id}
-                  value={`${c.name} ${c.campaign_id}`}
-                  onSelect={() => go(`/campaigns/${c.campaign_id}`)}
+                  value="my-campaigns"
+                  onSelect={() => go(MY_CAMPAIGNS_HREF)}
                 >
-                  <span className="truncate">{c.name}</span>
-                  {c.isTeam && (
-                    <span className="ml-auto pl-2 text-xs text-muted-foreground">Team</span>
-                  )}
+                  My campaigns
+                  <CommandShortcut>{SWITCHER_CHORD_HINT}</CommandShortcut>
                 </CommandItem>
-              ))}
-            </CommandGroup>
-            <CommandSeparator />
-            <CommandGroup>
-              <CommandItem value="all-campaigns" onSelect={() => go(MY_CAMPAIGNS_HREF)}>
-                All campaigns
-                <CommandShortcut>{SWITCHER_CHORD_HINT}</CommandShortcut>
-              </CommandItem>
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+                <CommandItem value="all-campaigns" onSelect={() => go(ALL_CAMPAIGNS_HREF)}>
+                  All campaigns
+                </CommandItem>
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    </h1>
   );
 }

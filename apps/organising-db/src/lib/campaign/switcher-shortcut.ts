@@ -26,6 +26,10 @@ export interface ShortcutKeyEvent {
   targetTag: string | null;
   /** event.target.isContentEditable */
   targetEditable: boolean;
+  /** The event target is inside a `[role="dialog"]` subtree. */
+  inDialog: boolean;
+  /** Some `[role="dialog"][data-state="open"]` exists in the document. */
+  dialogOpen: boolean;
 }
 
 export const SWITCHER_CHORD = ["g", "c"] as const;
@@ -58,6 +62,10 @@ export interface ChordStep {
  * S5 `c` after the timeout does not open.
  * S6 any other key resets.
  * S7 `g` then `g` keeps the chord pending — a double tap is still a start.
+ * S8 a dialog is open (or owns the target) → no-op, reset. A modal owns the
+ *    keyboard: the basics sheet, the import wizard and the two create
+ *    dialogs are all `[role="dialog"]`, and so is the switcher's own
+ *    popover, so the chord never fights a surface that is already up.
  */
 export function stepChord(
   pending: ChordState | null,
@@ -70,6 +78,9 @@ export function stepChord(
   // S2 — never steal a keystroke from something the user is typing into.
   if (ev.targetEditable) return { pending: null, open: false };
   if (ev.targetTag && TYPING_TAGS.has(ev.targetTag)) return { pending: null, open: false };
+
+  // S8 — never steal a keystroke from an open modal.
+  if (ev.inDialog || ev.dialogOpen) return { pending: null, open: false };
 
   const key = ev.key.toLowerCase();
   const [first, second] = SWITCHER_CHORD;
@@ -90,6 +101,10 @@ export function stepChord(
   return { pending: null, open: false };
 }
 
+/** The selector Radix's Dialog, Sheet and Popover content all match. */
+const DIALOG_SELECTOR = '[role="dialog"]';
+const OPEN_DIALOG_SELECTOR = '[role="dialog"][data-state="open"]';
+
 /** Read the fields `stepChord` needs off a real KeyboardEvent. */
 export function toShortcutKeyEvent(ev: KeyboardEvent): ShortcutKeyEvent {
   const target = ev.target as HTMLElement | null;
@@ -101,5 +116,12 @@ export function toShortcutKeyEvent(ev: KeyboardEvent): ShortcutKeyEvent {
     shiftKey: ev.shiftKey,
     targetTag: target?.tagName ? target.tagName.toUpperCase() : null,
     targetEditable: Boolean(target?.isContentEditable),
+    // A Radix modal portals its content to <body>, so the target is often
+    // outside the header's own tree — hence both a target test and a
+    // document test.
+    inDialog: Boolean(target?.closest?.(DIALOG_SELECTOR)),
+    dialogOpen:
+      typeof document !== "undefined" &&
+      document.querySelector(OPEN_DIALOG_SELECTOR) !== null,
   };
 }

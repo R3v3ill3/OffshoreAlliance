@@ -134,6 +134,15 @@ export function moduleForSurface(
   return def.subs.find((s) => s.sub === norm.sub)?.module ?? null;
 }
 
+/**
+ * The registry label of a level-1 tab, *without* normalising to its default
+ * sub-tab. `labelForSurface("plan", null)` answers "Strategy" because that
+ * is where the URL lands; the cluster's own panel wants "Plan & Execution".
+ */
+export function labelForTab(tab: string): string | null {
+  return TAB_BY_ID.get(tab)?.label ?? null;
+}
+
 /** The registry label of a surface — the sub's when there is one, else the tab's. */
 export function labelForSurface(tab: string, sub: string | null): string | null {
   const norm = normalise(tab, sub);

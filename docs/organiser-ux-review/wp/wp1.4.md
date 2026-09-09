@@ -1138,7 +1138,208 @@ _(to be completed by the reviewer)_
 
 ## 6. Deviations from plan
 
-_(implementer keeps this list)_
+Twelve, all small; nothing in §2 was skipped.
+
+1. **`ResolveVisibleTabsInput` has no `enabledModules`.** §2.1.4 listed it beside `moduleState`, but
+   rule V4 forbids deriving a state from it ("never re-derived from `adminOnly` or from
+   `enabledModules` directly"), so the field would have been dead weight the next reader has to
+   rule out. The orchestrator brief's own signature — `{mode, moduleState, hasPlan, phase}` —
+   omits it too. The resolver takes `moduleState` and nothing else about modules.
+2. **Q1 was split, per the §5 approval.** The plan's §2.1.2 table put both review queues on
+   `strategic_plan`; the approval moved `role-check` to `wall_chart_people`. Implemented as
+   approved. The visible consequence: for an organiser on the default module set Role check is
+   the one **live** item in More, and Pending review is the muted one — which is what the e2e
+   asserts.
+3. **R6 did not fire, and needed no fallback.** `CreatePhoneCallOrchestrator`,
+   `CreateEmailOrchestrator` and `CreateSmsOrchestrator` are no longer dialogs: each is
+   `trigger ? <Link href={href}>{trigger}</Link> : <Button asChild>…` (e.g.
+   `CreatePhoneCallOrchestrator.tsx:30-35`). Passing a `DropdownMenuItem` as `trigger` therefore
+   produces a menu item inside an anchor — one navigation per click, nothing to keep open, and no
+   `onSelect`-preventDefault needed. The `open`/`onOpenChange` fallback the plan named was not
+   used. Assessment and Task list are still `useState` + `open`, as planned.
+4. **`useSwitcherCampaigns()` takes no argument.** The plan sketched a `{ data, isLoading }` seam
+   with two implementations; WP1.3 is merged, so only the `useMyCampaigns()` branch exists and
+   the fallback query was not written. The hook is only ever mounted in organiser mode (the header
+   renders `CampaignSwitcher` nowhere else), so an `enabled` parameter would have been a second,
+   weaker statement of that fact.
+5. **`MY_CAMPAIGNS_HREF` is imported, not literalised.** §2.6 allowed the literal `"/campaigns"`
+   if `nav-model.ts` did not exist; it does (WP1.2 is merged), so the constant is imported and the
+   switcher's "All campaigns" item follows WP1.3's flip for free.
+6. **One exported helper the plan did not name: `labelForSurface(tab, sub)`.** V7's
+   `activeMoreLabel` and the More menu's sub-item labels both need "the registry label of this
+   surface", and writing it twice is how the two drift apart.
+7. **The More trigger reads `More · <label>`, not `<label>`.** §2.2 says the trigger "renders in
+   its active state carrying `activeMoreLabel`". Replacing the word "More" would have made the
+   control unfindable for a user who is looking for More; appending it keeps both. Full text at
+   `?tab=plan&sub=pending-review` is "More · Pending review".
+8. **The Setup tab's Basics card links straight to `/campaigns/[id]/settings`** and is labelled
+   "Basics & all settings", rather than reaching into the header bar's `CampaignBasicsEditSheet`.
+   §2.1.3's own table already specified the link; the sheet stays where it is, opened by the
+   pencil, so there is exactly one mount of it.
+9. **The two count-badged Plan triggers moved to a new file.** §2.9 offered "exported from
+   `page.tsx` (or, cleaner, moved verbatim into `src/components/campaigns/plan-tab-triggers.tsx`)";
+   the second was taken. The markup, the query keys and the badge variant are byte-identical.
+10. **`page.tsx` line numbers in §2 are stale by about seven lines.** The working tree is 937
+    lines, not 930 — WP1.6 added `useCanWriteToCampaign` and its comment block above the JSX. The
+    five slots were located by their markup rather than by line number. Same drift, two or three
+    lines, in `campaign-detail-header-bar.tsx`; `campaign-header-actions.fixture.ts` records the
+    appendix's numbers with a note saying so.
+11. **The three §2.7 fixtures exist as separate files; their tests live in
+    `workspace-tabs.test.ts`.** One suite, one snapshot file, so a reviewer reads the coverage
+    census and the full-mode model side by side. T1–T10 are all present and labelled; extra cases
+    (T2b, T6b, and one per V-rule) were added rather than removed.
+12. **The e2e switcher locator is `button[aria-haspopup="listbox"]`, not an accessible name.**
+    The trigger's accessible name is the campaign name (its content wins over `title`), which
+    varies with the seed data. `aria-haspopup="listbox"` is the affordance the component itself
+    declares, so it is a product anchor, not a test hook. No `data-testid` was added anywhere.
+
+Not deviations, but worth stating so the reviewer does not go looking:
+
+- No migration, no `gen:types`, no new dependency, no `supabase/.temp/*` staged. `Popover`,
+  `Command` and `DropdownMenu` were already in `src/components/ui`.
+- The diff of `campaign-detail-header-bar.tsx` does not touch the full-mode `actionButtons`
+  literal: the only edits are the imports, three added lines of state/mode, the `!canWrite ? null
+  : isOrganiserMode ? … : (` branch above it, the `) : null;` → `);` below it, and two
+  organiser-only blocks.
+- The diff of `page.tsx` touches the five `TabsList` slots, the imports, three hook additions, one
+  `select`, one interface field, and the deletion of the two trigger components. No `TabsContent`
+  child was edited.
+- `trackCampaignTabOpened` is untouched: it instruments the resolved surface, which is
+  mode-independent, which is exactly what a before/after comparison wants.
+
+### Incidental finding for the ledger
+
+`page.tsx` links to `/campaigns/soc-wizard?cid=${campaignId}` and `PhoneWizardSteps.tsx:1783` does
+the same, but `SocWizardSteps.tsx:76` reads only `campaign_id`, so the SOC wizard never pre-fills
+the campaign it was launched from. `campaignIdForChrome` accepts both names, so the **header** is
+correct either way; the wizard's own pre-fill is a one-line change in someone else's file and
+stays out of scope, as the approval directed.
+
+## 6a. Implementer notes
+
+### Files
+
+New (14):
+
+| Path | What |
+|---|---|
+| `src/lib/campaign/workspace-tabs.ts` | the resolver, `resolveVisibleTabs` / `findSurface` / `moduleForSurface` / `labelForSurface` / `activeOrganiserTabId`, pure |
+| `src/lib/campaign/switcher-shortcut.ts` | the `g`-then-`c` chord, pure |
+| `src/lib/hooks/useSwitcherCampaigns.ts` | the switcher's recency-sorted list, over `useMyCampaigns` + `campaign_last_activity` |
+| `src/components/campaigns/campaign-tab-bar.tsx` | the five slots: full-mode `TabsList`s, or the organiser bar + More + Setup cards |
+| `src/components/campaigns/campaign-switcher.tsx` | the popover, and the plain label for one campaign |
+| `src/components/campaigns/organiser-campaign-actions.tsx` | New action ▾ / Build list / ⋯ |
+| `src/components/campaigns/plan-tab-triggers.tsx` | the two count-badged Plan triggers, moved verbatim |
+| `src/components/campaigns/setup/campaign-setup-cards.tsx` | the Setup tab's five link cards |
+| `src/lib/campaign/__tests__/workspace-tabs.test.ts` | T1–T10, 36 cases |
+| `src/lib/campaign/__tests__/campaign-surfaces.fixture.ts` | the 45-row inventory |
+| `src/lib/campaign/__tests__/campaign-tabs-full-mode.fixture.ts` | the hand-written 8/20 second opinion |
+| `src/lib/campaign/__tests__/campaign-header-actions.fixture.ts` | appendix D 3.3's twelve rows + destinations |
+| `src/lib/campaign/__tests__/switcher-shortcut.test.ts` | S1–S7, 10 cases |
+| `tests/e2e/organiser-campaign.spec.ts` | the two browser tests |
+
+Changed (8): `src/lib/campaign-tabs.ts` (the registry), `src/lib/campaign/campaign-detail-routes.ts`
+(`campaignIdForChrome`), `src/components/layout/header.tsx` (the Suspense split),
+`src/components/campaigns/campaign-detail-header-bar.tsx` (one mode branch, the switcher, one
+dialog mount), `src/app/(dashboard)/campaigns/[id]/page.tsx` (five slots + three hooks + one
+`select`), `src/app/(dashboard)/campaigns/[id]/plan/page.tsx` (`id="campaign-team"`),
+`src/lib/__tests__/campaign-tabs.test.ts`, `src/lib/campaign/__tests__/campaign-detail-routes.test.ts`.
+
+One snapshot file is added: `src/lib/campaign/__tests__/__snapshots__/workspace-tabs.test.ts.snap`
+(four snapshots — the two full-mode models, the coverage census, the header destination map). No
+existing snapshot changed; the WP1.2 nav snapshots are untouched.
+
+### Where each of the 45 surfaces is, in organiser mode
+
+Generated from the same `findSurface` the tests use (the T4 census snapshot is the machine-readable
+version). Nothing is unreachable, on the default module set or on any other.
+
+| # | Surface (`?tab=&sub=`) | Level | Organiser-mode location |
+|---|---|---|---|
+| 1 | `overview` | 1 | More → **Overview** (muted by default: `insights` is off) |
+| 2 | `plan` | 1 | More → **Plan & Execution** group; opens Strategy |
+| 3 | `section-plans` | 1 | More → **Section Plans** (muted by default) |
+| 4 | `workforce` | 1 | **Wall chart** tab (its default sub is `wall-chart`) |
+| 5 | `outcomes` | 1 | More → **Outcomes** group; opens Reports |
+| 6 | `outreach` | 1 | **Activity** tab (its target is `outreach/comms`) |
+| 7 | `library` | 1 | More → **Library** (muted by default) |
+| 8 | `bargaining` | 1 | More → **Bargaining**, only at `current_phase = 'bargaining_to_win'` (the gate is mode-independent) |
+| 9 | `plan/strategy` | 2 | More → Plan & Execution → **Strategy** |
+| 10 | `plan/workplan` | 2 | More → Plan & Execution → **Workplan** |
+| 11 | `plan/actions` | 2 | Activity → **Actions** |
+| 12 | `plan/task-lists` | 2 | Activity → **Task Lists** |
+| 13 | `plan/pending-review` | 2 | More → Plan & Execution → **Pending review** (muted by default) |
+| 14 | `plan/role-check` | 2 | More → Plan & Execution → **Role check** (on by default) |
+| 15 | `workforce/wall-chart` | 2 | **Wall chart** tab (`view=wall-chart`) and **People** tab (`view=list`) |
+| 16 | `workforce/campaign-units` | 2 | Setup → **Units** |
+| 17 | `workforce/universe` | 2 | **Setup** tab's own target → **Who's in** |
+| 18 | `workforce/assessments` | 2 | Activity → **Assessments** |
+| 19 | `workforce/data-fields` | 2 | More → Workforce → **Data fields** (muted by default) |
+| 20 | `workforce/activists` | 2 | More → Workforce → **Activists & WOCs** (muted by default) |
+| 21 | `workforce/foundational-readiness` | 2 | More → Workforce → **Foundational Readiness** (muted by default) |
+| 22 | `outcomes/reports` | 2 | More → Outcomes → **Reports** (muted by default) |
+| 23 | `outcomes/results` | 2 | More → Outcomes → **Results** (muted by default) |
+| 24 | `outcomes/insights` | 2 | More → Outcomes → **Insights** (muted by default) |
+| 25 | `outreach/comms` | 2 | **Activity** tab's own target → **Comms** |
+| 26 | `outreach/phone` | 2 | Activity → **Phone Ops** |
+| 27 | `outreach/sms` | 2 | Activity → **SMS** |
+| 28 | `outreach/soc` | 2 | Activity → **SOC** |
+| 29 | `outreach/comms#drafts` "Drafts & Send" | 3 | Activity → Comms, then the panel's own tab row (unchanged) |
+| 30 | `outreach/comms#list-builder` "List Builder" | 3 | Activity → Comms, then the panel's own tab row |
+| 31 | `outreach/comms#inbox` "Inbox" | 3 | Activity → Comms, then the panel's own tab row (`?email_view=inbox`) |
+| 32 | `outreach/sms#blasts` | 3 | Activity → SMS, then the panel's own tab row |
+| 33 | `outreach/sms#inbox` | 3 | Activity → SMS, then the panel's own tab row |
+| 34 | `outreach/sms#surveys` | 3 | Activity → SMS, then the panel's own tab row |
+| 35 | `outreach/sms#chats` | 3 | Activity → SMS, then the panel's own tab row |
+| 36 | `outreach/sms#relays` | 3 | Activity → SMS, then the panel's own tab row — **the surface appendix D 3.2 undercounts** |
+| 37 | `workforce/activists#register` | 3 | More → Workforce → Activists & WOCs, then `?view=register` |
+| 38 | `workforce/activists#tasking` "4A Tasking" | 3 | …then `?view=tasking` |
+| 39 | `workforce/activists#wocs` "WOCs" | 3 | …then `?view=wocs` |
+| 40 | `workforce/activists#structure-tests` | 3 | …then `?view=structure-tests` |
+| 41 | `library#documents` | 3 | More → Library, then the panel's own tab row (local state) |
+| 42 | `library#agreements` | 3 | More → Library, then the panel's own tab row |
+| 43 | `library#offers` | 3 | More → Library, then the panel's own tab row |
+| 44 | `workforce/wall-chart#wall-chart` | 3 | the **Wall chart** tab is this layout |
+| 45 | `workforce/wall-chart#list` | 3 | the **People** tab is this layout |
+
+Read "muted by default" as: the item is listed in More, disabled, captioned **"Ask an admin to
+enable"** — and the surface still renders on a deep link, with the More trigger naming it. One
+press of WP1.2's **Show everything** (in the sidebar, one tap away via `MobileNav`, which the
+header keeps in both modes) turns every one of them back on, because `resolveWorkspace` returns
+`mode: "full"` and the page gets the eight-tab model.
+
+### Where each of the 12 header actions is, in organiser mode
+
+| # | Action today (appendix D 3.3) | Organiser-mode home |
+|---|---|---|
+| 1 | Back arrow "Back to campaigns" | **unchanged** — the back arrow, left of the campaign name |
+| 2 | Pencil "Edit campaign basics" | **unchanged** — the pencil beside the campaign name |
+| 3 | Build ▾ → Build list (checkbox) | **"Build list"** — a top-level toggle button calling the same `handleToggleBuildList`, with `aria-pressed` |
+| 4 | Build ▾ → Import worker list | **⋯ overflow**, and the Setup tab's "Import worker list" card |
+| 5 | Build ▾ → Add assessment | **New action ▾ → Assessment** |
+| 6 | Build ▾ → Task management | **⋯ overflow** (the same `?tab=plan&sub=task-lists&from=header` link); the *create* half is **New action ▾ → Task list** |
+| 7 | Create Phone Call | **New action ▾ → Call list** |
+| 8 | Create Email | **New action ▾ → Email** |
+| 9 | Create SMS | **New action ▾ → SMS** |
+| 10 | Actions ▾ → Re-run wizard | **⋯ overflow**, and the Setup tab's "Re-run wizard" card |
+| 11 | Actions ▾ → All settings | **⋯ overflow**, and the Setup tab's "Basics & all settings" card |
+| 12 | Actions ▾ → View full plan | **⋯ overflow**, the Setup tab's "Strategic plan" card, and More → Plan & Execution when the module is on |
+| — | the three resume banners | **unchanged**, both modes |
+
+Nothing is removed. The mapping is asserted, not promised:
+`campaign-header-actions.fixture.ts` holds all twelve rows and their destinations, and
+`workspace-tabs.test.ts` fails if the two objects stop covering the same twelve ids.
+
+### Commits
+
+| SHA | Subject |
+|---|---|
+| `708da79` | `feat(oux-wp1.4): tab registry with module ids, and the pure workspace-tabs resolver` |
+| `7ca1926` | `feat(oux-wp1.4): wizards keep the campaign header; URL contract tests` |
+| `0bb3ac4` | `feat(oux-wp1.4): organiser-mode campaign header — switcher, New action, Build list, overflow` |
+| `6468246` | `feat(oux-wp1.4): the campaign tab bar — four tabs plus More in organiser mode` |
+| `9ca840b` | `feat(oux-wp1.4): e2e — full mode's eight tabs, and the organiser-mode round trip` |
+| _this one_ | `docs(oux-wp1.4): deviations and implementer notes` |
 
 ## 7. Verification output
 

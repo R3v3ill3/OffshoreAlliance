@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { STORAGE_STATE } from "../../../playwright.config";
 import {
   E2E_FOREIGN_CAMPAIGN_ID,
   NO_CREDENTIALS_MESSAGE,
@@ -8,13 +9,25 @@ import {
   hasE2EForeignCampaign,
 } from "../env";
 import {
-  WRITE_ACCESS_RPC,
+  ROLE_CHECK_CAMPAIGN_PREFIX,
+  campaignExists,
+  deleteCampaignViaRpc,
+  restClientFor,
+  sessionFromCookies,
+  sessionFromStorageState,
+  sweepRoleCheckCampaigns,
+} from "./campaign-cleanup";
+import {
+  campaignsListRows,
   collectAlerts,
   createUnit,
   deleteCampaign,
   deleteUnit,
+  gotoDocument,
+  openCampaignsList,
   openWallChart,
   renameUnit,
+  showAllOrganisers,
 } from "./unit-lifecycle";
 
 /**
@@ -24,7 +37,10 @@ import {
  * Positive path (decision 8's note): a user creates a campaign with
  * themselves assigned, then creates, renames and deletes a unit on it, then
  * deletes the campaign. The spec creates its own fixture and removes it, so
- * it depends on no dev data and leaves dev clean.
+ * it depends on no dev data and leaves dev clean: beforeAll sweeps any
+ * "WP1.6 role check …" campaign this account left behind, and afterEach
+ * deletes the campaign through the same delete_campaign RPC if the UI step
+ * did not get to it (fix round 2, item D).
  *
  * Negative path (§2.7.3): on a campaign the account cannot write to, the
  * write controls are absent. Which campaign that is must be discovered, not
@@ -32,20 +48,58 @@ import {
  * query); without it that test skips with a clear message.
  */
 test.describe("WP1.6 role coverage — user", () => {
+  // Each test is several full page loads on a cold preview plus the 30s
+  // per-step waits; the default 30s test timeout closed the context mid-test
+  // (§12 run 2, unit-lifecycle-user.spec.ts:80).
+  test.describe.configure({ timeout: 180_000 });
   test.skip(!hasE2ECredentials, NO_CREDENTIALS_MESSAGE);
+
+  /** The campaign the positive test created, for afterEach's fallback delete. */
+  let createdCampaignId: string | null = null;
+
+  test.beforeAll(async () => {
+    if (!hasE2ECredentials) return;
+    test.setTimeout(120_000);
+    await sweepRoleCheckCampaigns(STORAGE_STATE);
+  });
+
+  test.afterEach(async ({ page, request }) => {
+    if (!createdCampaignId) return;
+    const campaignId = createdCampaignId;
+    createdCampaignId = null;
+    // Prefer the live context's cookies (the middleware may have rotated the
+    // token during the test); fall back to the storage state if the page is
+    // already unusable (test timeout).
+    const session =
+      (await page
+        .context()
+        .cookies()
+        .then(sessionFromCookies)
+        .catch(() => null)) ?? sessionFromStorageState(STORAGE_STATE);
+    const client = restClientFor(request, session);
+    if (!client) return;
+    if (!(await campaignExists(client, campaignId))) return;
+    const result = await deleteCampaignViaRpc(client, campaignId);
+    test.info().annotations.push({
+      type: "cleanup",
+      description: `campaign ${campaignId} was still present after the test; delete_campaign RPC: ${result.ok ? "deleted" : result.detail}`,
+    });
+    expect(result.ok, `Fallback cleanup of campaign ${campaignId} via delete_campaign failed: ${result.detail}`).toBe(
+      true
+    );
+  });
 
   test("creates a campaign, then creates, renames and deletes a unit and the campaign", async ({
     page,
   }) => {
-    test.setTimeout(180_000);
     const alerts = collectAlerts(page);
     const stamp = Date.now();
-    const campaignName = `WP1.6 role check ${stamp}`;
+    const campaignName = `${ROLE_CHECK_CAMPAIGN_PREFIX}${stamp}`;
     const unitName = `WP1.6 unit ${stamp}`;
     const renamedUnitName = `${unitName} renamed`;
 
     // 1. Create the campaign via manual create (src/app/(dashboard)/campaigns/new/manual/page.tsx).
-    await page.goto("/campaigns/new/manual");
+    await gotoDocument(page, "/campaigns/new/manual", "manual create page");
     await expect(page.getByRole("heading", { name: /Create campaign/ })).toBeVisible({
       timeout: 30_000,
     });
@@ -55,6 +109,7 @@ test.describe("WP1.6 role coverage — user", () => {
     await page.waitForURL(/\/campaigns\/(\d+)\/settings/, { timeout: 60_000 });
     const campaignId = page.url().match(/\/campaigns\/(\d+)\/settings/)?.[1];
     expect(campaignId, "manual create must redirect to /campaigns/<id>/settings").toBeTruthy();
+    createdCampaignId = campaignId!;
 
     // 2. The wall chart renders, and the write-access RPC says we can write.
     await openWallChart(page, campaignId!);
@@ -72,9 +127,11 @@ test.describe("WP1.6 role coverage — user", () => {
       "No window.alert may fire: delete-organising-unit-dialog surfaces NoRowsAffectedError that way."
     ).toEqual([]);
 
-    // 6. Delete the campaign (delete_campaign() with the is_campaign_creator arm).
+    // 6. Delete the campaign (delete_campaign() with the is_campaign_creator arm),
+    //    from the list reached by client-side navigation off the wall chart.
     await deleteCampaign(page, campaignName);
     expect(alerts).toEqual([]);
+    // afterEach re-checks that the row is gone and only then clears the fixture.
   });
 
   test("offers no write controls on a campaign the account cannot write to", async ({ page }) => {
@@ -113,10 +170,13 @@ test.describe("WP1.6 role coverage — user", () => {
     // Filter by name exactly as deleteCampaign() does: the DataTable paginates,
     // so without the filter a row off the first page would make this check
     // vacuous. The row must be present before its delete control is asserted absent.
-    await page.goto("/campaigns");
-    await page.waitForResponse(WRITE_ACCESS_RPC, { timeout: 30_000 }).catch(() => null);
+    // The list defaults to this account's own organiser, which hides the
+    // foreign campaign (a different organiser by construction): widen to all.
+    const { writeAccess } = await openCampaignsList(page);
+    await writeAccess;
+    await showAllOrganisers(page);
     await page.getByPlaceholder("Search campaigns…").fill(foreignCampaignName);
-    const row = page.locator("table tbody tr").filter({
+    const row = campaignsListRows(page).filter({
       has: page.locator(`a[href^="/campaigns/${E2E_FOREIGN_CAMPAIGN_ID}/plan"]`),
     });
     await expect(

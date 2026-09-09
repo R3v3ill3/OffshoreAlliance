@@ -195,6 +195,7 @@ DO $probe$
 DECLARE
   n int;
   cid int;
+  standing_cid int;
   oid int;
 BEGIN
   INSERT INTO public.campaigns (name, campaign_type, status)
@@ -251,19 +252,26 @@ BEGIN
 
   -- The organisation's real standing campaign: refused for everyone, before
   -- the role gate, so the message is campaign_is_standing, not not_authorized.
-  BEGIN
-    PERFORM public.delete_campaign(
-      (SELECT campaign_id FROM public.campaigns WHERE is_standing = true ORDER BY campaign_id LIMIT 1));
-    RAISE WARNING 'FAIL user/delete_campaign(standing campaign): did not raise';
-  EXCEPTION WHEN OTHERS THEN
-    IF SQLERRM LIKE '%campaign_is_standing%' THEN
-      RAISE NOTICE 'PASS user/delete_campaign(standing campaign): campaign_is_standing';
-    ELSIF SQLERRM LIKE '%campaign_not_found%' THEN
-      RAISE NOTICE 'SKIP user/delete_campaign(standing campaign): no standing campaign on this database';
-    ELSE
-      RAISE WARNING 'FAIL user/delete_campaign(standing campaign): unexpected %', SQLERRM;
-    END IF;
-  END;
+  -- Existence check first (fix round 2): with no standing campaign the old
+  -- sub-select passed NULL, the is_standing check is false for a NULL id and
+  -- delete_campaign() reached the role gate (not_authorized) before its
+  -- campaign_not_found branch — a false FAIL (wp1.6.md §12 run 2). SKIP instead.
+  SELECT campaign_id INTO standing_cid
+  FROM public.campaigns WHERE is_standing = true ORDER BY campaign_id LIMIT 1;
+  IF standing_cid IS NULL THEN
+    RAISE NOTICE 'SKIP user/delete_campaign(standing campaign): no standing campaign on this database';
+  ELSE
+    BEGIN
+      PERFORM public.delete_campaign(standing_cid);
+      RAISE WARNING 'FAIL user/delete_campaign(standing campaign): did not raise';
+    EXCEPTION WHEN OTHERS THEN
+      IF SQLERRM LIKE '%campaign_is_standing%' THEN
+        RAISE NOTICE 'PASS user/delete_campaign(standing campaign): campaign_is_standing';
+      ELSE
+        RAISE WARNING 'FAIL user/delete_campaign(standing campaign): unexpected %', SQLERRM;
+      END IF;
+    END;
+  END IF;
 
   BEGIN
     PERFORM public.delete_campaign(cid);

@@ -23,6 +23,13 @@ export const E2E_BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 export const STORAGE_STATE = "tests/e2e/.auth/user.json";
 /** Written by global setup — always exists, even with no admin credentials. */
 export const ADMIN_STORAGE_STATE = "tests/e2e/.auth/admin.json";
+/**
+ * Written by global setup when a sign-in happened: the Supabase REST origin
+ * and public anon key the app itself used, so the WP1.6 role specs can clean
+ * up through the same project the session belongs to (never read from a
+ * local .env file, which may point at production).
+ */
+export const REST_CONFIG_PATH = "tests/e2e/.auth/rest.json";
 
 const ADMIN_SPECS = /roles\/.*-admin\.spec\.ts$/;
 

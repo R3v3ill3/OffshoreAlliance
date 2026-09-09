@@ -19,7 +19,8 @@ and `supabase/migrations/20260909130000_wp1_6_delete_campaign_standing_guard.sql
 ## Production run sheet
 
 All SQL below is run by the operator against production with `psql "$PROD_DB_URL" -v ON_ERROR_STOP=1 -f <file>`
-(or pasted into the SQL editor; the two read-only files have no `psql`-only directives). `95_role_probes.sql`
+(or pasted into the Supabase SQL editor: `00` and `01` are plain SQL with no `psql` meta-commands — fix round 2
+removed the `\set ON_ERROR_STOP on` lines they carried, which the SQL editor rejects as a syntax error). `95_role_probes.sql`
 is **DEV ONLY** and does not appear in this sheet.
 
 1. **Pre-flight, before anything ships.** `00_preflight_organiser_write_access.sql` → **zero rows.** Any row is a

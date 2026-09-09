@@ -157,7 +157,11 @@ export function useRemoveWorkerFromCampaign({
         })
       }
     },
-    onSuccess: (_data, variables) => {
+    // Invalidate on settle, not only on success: the steps above are several
+    // deletes without a transaction, so a NoRowsAffectedError part-way (unit
+    // rows gone, membership refused) must refetch to show the real state
+    // rather than keep the pre-removal picture.
+    onSettled: () => {
       const cidStr = String(campaignId)
       const cidNum = Number(campaignId)
       qc.invalidateQueries({ queryKey: ['campaign-members-full', cidStr] })
@@ -168,6 +172,8 @@ export function useRemoveWorkerFromCampaign({
       qc.invalidateQueries({ queryKey: ['campaign-rating-summary', cidStr] })
       qc.invalidateQueries({ queryKey: ['workers'] })
       qc.invalidateQueries({ queryKey: ['call-list-items'] })
+    },
+    onSuccess: (_data, variables) => {
       const name =
         variables.workerName ??
         defaultWorkerName ??

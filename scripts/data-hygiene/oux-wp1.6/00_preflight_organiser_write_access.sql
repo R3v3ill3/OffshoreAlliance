@@ -1,7 +1,9 @@
 -- WP1.6 pre-flight (wp1.6.md §6, R1). READ-ONLY. Safe on any environment,
 -- production included: one SELECT, no impersonation, no SET ROLE, no
 -- transaction, nothing written. Run as the operator's normal psql / SQL
--- editor session.
+-- editor session (plain SQL only — no psql meta-commands, so it pastes
+-- into the Supabase SQL editor as-is; ON_ERROR_STOP is a psql flag on the
+-- command line below, not part of the file).
 --
 -- Question it answers: which non-episode, non-standing campaigns have a named
 -- organiser who, after WP1.6's write policies, would have NO route to write
@@ -26,7 +28,6 @@
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 \
 --     -f scripts/data-hygiene/oux-wp1.6/00_preflight_organiser_write_access.sql
 
-\set ON_ERROR_STOP on
 
 SELECT c.campaign_id, c.name, c.organiser_id, up.display_name, up.role, up.work_role
 FROM public.campaigns c

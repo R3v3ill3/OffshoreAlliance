@@ -284,23 +284,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        // Every other event (SIGNED_IN, USER_UPDATED, PASSWORD_RECOVERY, ...).
+        //
+        // The body runs in a macrotask ON PURPOSE (WP1.6 fix round 2). auth-js
+        // delivers the start-up SIGNED_IN from _recoverAndRefresh() while
+        // initialize() still holds the auth lock and awaits every subscriber
+        // callback. When this subscriber is already registered at that moment
+        // (a warm navigation, where hydration beats the client's cookie read
+        // by a few ms), a Supabase query awaited HERE — fetchProfile →
+        // PostgREST → getSession() — takes _acquireLock's re-entrant path and
+        // waits on initializePromise, which cannot resolve until this callback
+        // returns: a deadlock with no timeout that wedges every query on the
+        // page, INITIAL_SESSION never arrives, and the 8s fallback above cannot
+        // unwedge the client (the "Loading" list that never resolves after
+        // navigating to /campaigns). Deferring by one macrotask lets the lock's
+        // microtask chain release first; the same work is then safe. The
+        // INITIAL_SESSION branch above is not affected: its lock holder does
+        // not await _emitInitialSession, so the lock is released independently.
+        // Supabase's own guidance for onAuthStateChange says the same: never
+        // await other client calls inside the callback — defer them.
         const sessionUser = session?.user ?? null;
         setKnownExpiry(session?.expires_at);
-        setUser(sessionUser);
-        if (sessionUser) {
-          setProfile((prev) => {
-            if (prev?.user_id === sessionUser.id) return prev;
-            return null;
-          });
-          const profileData = await fetchProfile(sessionUser.id);
-          setProfile(profileData);
-        } else {
-          setProfile(null);
-          // INITIAL_SESSION is handled earlier (and returns); any other event
-          // reaching here with no user means the session is gone — go to login.
-          redirectToLogin("session_expired");
-        }
-        setLoading(false);
+        setTimeout(() => {
+          void (async () => {
+            setUser(sessionUser);
+            if (sessionUser) {
+              setProfile((prev) => {
+                if (prev?.user_id === sessionUser.id) return prev;
+                return null;
+              });
+              const profileData = await fetchProfile(sessionUser.id);
+              setProfile(profileData);
+            } else {
+              setProfile(null);
+              // INITIAL_SESSION is handled earlier (and returns); any other event
+              // reaching here with no user means the session is gone — go to login.
+              redirectToLogin("session_expired");
+            }
+            setLoading(false);
+          })();
+        }, 0);
       }
     );
 

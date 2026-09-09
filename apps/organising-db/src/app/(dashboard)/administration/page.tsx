@@ -99,6 +99,27 @@ interface UserRow extends UserProfile {
   [key: string]: unknown;
 }
 
+/** WP1.1: the per-user workspace fields exactly as they were parsed on open. */
+interface EditWorkspaceSnapshot {
+  mode: "default" | WorkspaceMode;
+  modules: WorkspaceModuleId[] | null;
+  allowShowEverything: boolean | undefined;
+}
+
+const NO_WORKSPACE_OVERRIDE: EditWorkspaceSnapshot = {
+  mode: "default",
+  modules: null,
+  allowShowEverything: undefined,
+};
+
+function sameModuleList(
+  a: WorkspaceModuleId[] | null,
+  b: WorkspaceModuleId[] | null
+): boolean {
+  if (a === null || b === null) return a === b;
+  return a.length === b.length && a.every((id, i) => id === b[i]);
+}
+
 function UsersTab() {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
@@ -122,6 +143,10 @@ function UsersTab() {
   // Not editable here (org-level switch lives in Settings); preserved on save.
   const [editWorkspaceAllowShowEverything, setEditWorkspaceAllowShowEverything] =
     useState<boolean | undefined>(undefined);
+  // What the three fields above held when the dialog opened, so a name-only
+  // edit sends no `workspacePrefs` at all and never rewrites the column.
+  const [editWorkspaceInitial, setEditWorkspaceInitial] =
+    useState<EditWorkspaceSnapshot>(NO_WORKSPACE_OVERRIDE);
   const [editError, setEditError] = useState<string | null>(null);
   const [setPasswordUserId, setSetPasswordUserId] = useState<string | null>(null);
   const [setPasswordUserName, setSetPasswordUserName] = useState("");
@@ -219,7 +244,8 @@ function UsersTab() {
       displayName: string;
       email: string;
       phone: string | null;
-      workspacePrefs: WorkspacePrefs | null;
+      /** `undefined` = untouched; JSON.stringify drops the key entirely. */
+      workspacePrefs: WorkspacePrefs | null | undefined;
     }) => {
       setEditError(null);
       const res = await fetchApi("/api/admin/update-user", {
@@ -260,13 +286,31 @@ function UsersTab() {
   });
   const editWorkspaceEffectiveMode = editWorkspaceResolved.mode;
   const editWorkspacePlaceholder = editWorkspaceResolved.enabledModules;
+  // A pinned list means nothing in full mode (every module is shown), so it is
+  // omitted from the saved document rather than stored to surprise a later
+  // switch back to organiser mode.
+  const editWorkspaceModulesToSave =
+    editWorkspaceEffectiveMode === "organiser" ? editWorkspaceModules : null;
+  // Organiser mode with an empty list resolves to the registry defaults
+  // (resolve.ts R6), so it is never what the admin means.
+  const editWorkspaceModulesEmpty =
+    editWorkspaceEffectiveMode === "organiser" &&
+    editWorkspaceModules !== null &&
+    editWorkspaceModules.length === 0;
   const editWorkspacePrefs: WorkspacePrefs = {
     ...(editWorkspaceMode !== "default" ? { mode: editWorkspaceMode } : {}),
-    ...(editWorkspaceModules !== null ? { modules: editWorkspaceModules } : {}),
+    ...(editWorkspaceModulesToSave !== null ? { modules: editWorkspaceModulesToSave } : {}),
     ...(editWorkspaceAllowShowEverything !== undefined
       ? { allowShowEverything: editWorkspaceAllowShowEverything }
       : {}),
   };
+  // Only send `workspacePrefs` when one of the three fields actually moved;
+  // otherwise the field is absent from the PATCH body and the column is left
+  // exactly as it was (see /api/admin/update-user).
+  const editWorkspaceChanged =
+    editWorkspaceMode !== editWorkspaceInitial.mode ||
+    editWorkspaceAllowShowEverything !== editWorkspaceInitial.allowShowEverything ||
+    !sameModuleList(editWorkspaceModules, editWorkspaceInitial.modules);
 
   const userColumns: Column<UserRow>[] = [
     { key: "display_name", header: "Name" },
@@ -349,9 +393,15 @@ function UsersTab() {
               setEditWorkRole((row.work_role as WorkRole) ?? "none");
               setEditReportsTo(row.reports_to ?? "none");
               const prefs = parseWorkspacePrefs(row.workspace_prefs);
-              setEditWorkspaceMode(prefs?.mode ?? "default");
-              setEditWorkspaceModules(prefs?.modules ?? null);
-              setEditWorkspaceAllowShowEverything(prefs?.allowShowEverything);
+              const snapshot: EditWorkspaceSnapshot = {
+                mode: prefs?.mode ?? "default",
+                modules: prefs?.modules ?? null,
+                allowShowEverything: prefs?.allowShowEverything,
+              };
+              setEditWorkspaceMode(snapshot.mode);
+              setEditWorkspaceModules(snapshot.modules);
+              setEditWorkspaceAllowShowEverything(snapshot.allowShowEverything);
+              setEditWorkspaceInitial(snapshot);
               setEditError(null);
             }}
           >
@@ -697,7 +747,11 @@ function UsersTab() {
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <Label>Modules</Label>
-                  {editWorkspaceModules === null ? (
+                  {editWorkspaceEffectiveMode === "full" ? (
+                    <span className="text-xs text-muted-foreground">
+                      Full mode shows every module
+                    </span>
+                  ) : editWorkspaceModules === null ? (
                     <Button
                       type="button"
                       variant="outline"
@@ -724,6 +778,12 @@ function UsersTab() {
                   disabled={editWorkspaceModules === null || editWorkspaceEffectiveMode === "full"}
                   targetIsAdmin={editPermissionRole === "admin"}
                 />
+                {editWorkspaceModulesEmpty && (
+                  <p className="text-xs text-destructive">
+                    Tick at least one module, or choose &ldquo;Follow role default&rdquo; —
+                    an organiser with nothing ticked cannot be saved.
+                  </p>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
                 Workspace mode changes what this person sees, not what they can do.
@@ -755,13 +815,14 @@ function UsersTab() {
                   displayName: editDisplayName.trim(),
                   email: editEmail.trim(),
                   phone: editPhone.trim() === "" ? null : editPhone.trim(),
-                  workspacePrefs: editWorkspacePrefs,
+                  workspacePrefs: editWorkspaceChanged ? editWorkspacePrefs : undefined,
                 })
               }
               disabled={
                 updateUserMutation.isPending ||
                 !editDisplayName.trim() ||
-                !editEmail.trim()
+                !editEmail.trim() ||
+                editWorkspaceModulesEmpty
               }
             >
               {updateUserMutation.isPending && (

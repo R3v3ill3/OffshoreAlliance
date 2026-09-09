@@ -84,7 +84,29 @@ describe("parseWorkspaceDefaults (lenient reader)", () => {
     for (const v of NOT_DOCUMENTS) expect(parseWorkspaceDefaults(v), String(v)).toBeNull();
     expect(parseWorkspaceDefaults({ byWorkRole: 5 })).toBeNull();
     expect(parseWorkspaceDefaults({ byWorkRole: [] })).toBeNull();
-    expect(parseWorkspaceDefaults({ byWorkRole: { organiser: "x" } })).toBeNull();
+  });
+
+  it("drops one unusable role entry and keeps the entries beside it", () => {
+    expect(
+      parseWorkspaceDefaults({
+        byWorkRole: {
+          organiser: { mode: "organiser", modules: ["inbox"] },
+          coordinator: "x",
+          specialist: { mode: "simple" },
+          lead_organiser: { mode: "full" },
+        },
+      })
+    ).toEqual({
+      byWorkRole: {
+        organiser: { mode: "organiser", modules: ["inbox"] },
+        lead_organiser: { mode: "full" },
+      },
+    });
+    // A document whose only entry is unusable degrades to an empty map, not
+    // to `null` — the caller then falls back per work role, not wholesale.
+    expect(parseWorkspaceDefaults({ byWorkRole: { organiser: "x" } })).toEqual({
+      byWorkRole: {},
+    });
   });
 
   it("strips unknown work-role keys and unknown module ids but keeps the rest", () => {

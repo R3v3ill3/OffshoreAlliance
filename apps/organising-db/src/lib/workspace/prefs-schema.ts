@@ -81,9 +81,10 @@ export function parseWorkspacePrefs(v: unknown): WorkspacePrefs | null {
 /**
  * Never throws. Returns the parsed org-wide defaults, or `null` when the
  * value is not a usable document (`byWorkRole` missing-or-object is fine;
- * `byWorkRole` that is not an object, or an entry that is not a usable
- * prefs object, is not). Unknown work-role keys and unknown module ids are
- * dropped silently.
+ * `byWorkRole` that is not an object is not). Unknown work-role keys and
+ * unknown module ids are dropped silently, and **one unusable role entry is
+ * dropped on its own** — it never invalidates the entries beside it, which
+ * would drag every other work role back to `full`.
  */
 export function parseWorkspaceDefaults(v: unknown): WorkspaceDefaults | null {
   if (!isPlainObject(v)) return null;
@@ -94,7 +95,10 @@ export function parseWorkspaceDefaults(v: unknown): WorkspaceDefaults | null {
     const cleaned: Record<string, unknown> = {};
     for (const [key, entry] of Object.entries(byWorkRole)) {
       if (!isWorkRole(key)) continue;
-      cleaned[key] = isPlainObject(entry) ? stripUnknownModules(entry) : entry;
+      if (!isPlainObject(entry)) continue;
+      const parsedEntry = lenientPrefsSchema.safeParse(stripUnknownModules(entry));
+      if (!parsedEntry.success) continue;
+      cleaned[key] = parsedEntry.data;
     }
     candidate.byWorkRole = cleaned;
   }

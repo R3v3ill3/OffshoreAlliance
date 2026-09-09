@@ -99,8 +99,13 @@ export function resolveWorkspace(input: ResolveWorkspaceInput): ResolvedWorkspac
 
   // R6 — organiser mode module list: user prefs → role entry → registry default.
   // R5 — a user list replaces the role list wholesale.
+  // An empty array is treated as "not provided" and falls through: organiser
+  // mode with zero modules would render an empty shell, which is never what a
+  // stored `"modules": []` is meant to express.
+  const userList = prefs?.modules?.length ? prefs.modules : undefined;
+  const roleList = roleEntry?.modules?.length ? roleEntry.modules : undefined;
   const list: readonly WorkspaceModuleId[] =
-    prefs?.modules ?? roleEntry?.modules ?? [...ORGANISER_DEFAULT_MODULE_IDS];
+    userList ?? roleList ?? [...ORGANISER_DEFAULT_MODULE_IDS];
 
   // R3 — admin-only ids never survive for a non-admin; R7 — unknown ids were
   // already dropped by the lenient parsers and duplicates collapse in the Set.

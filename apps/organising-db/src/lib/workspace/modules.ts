@@ -141,8 +141,11 @@ export const MODULES: readonly WorkspaceModule[] = [
     description:
       "worksites, employers, agreements, programs, work scopes, upcoming projects",
     defaultForOrganiser: false,
+    // Capability-shaped, not permission-shaped: any organiser may look these
+    // up, so when it is off it is muted ("Ask an admin to enable"), not
+    // hidden. (Orchestrator ruling, WP1.2 approval.)
     adminOnly: false,
-    offState: "hidden",
+    offState: "muted",
   },
   {
     id: "administration",

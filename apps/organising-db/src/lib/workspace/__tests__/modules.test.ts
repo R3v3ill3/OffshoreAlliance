@@ -72,8 +72,11 @@ describe("workspace module registry", () => {
 
   it("hides exactly the permission-shaped modules when off; the rest are muted", () => {
     const hidden = MODULES.filter((m) => m.offState === "hidden").map((m) => m.id);
-    expect(hidden).toEqual(["imports", "organisation_databases", "administration"]);
-    expect(MODULES.filter((m) => m.offState === "muted")).toHaveLength(10);
+    expect(hidden).toEqual(["imports", "administration"]);
+    expect(MODULES.filter((m) => m.offState === "muted")).toHaveLength(11);
+    // Orchestrator ruling (WP1.2 approval): organisation databases are
+    // capability-shaped, so they are muted when off, not hidden.
+    expect(getModule("organisation_databases").offState).toBe("muted");
   });
 
   it("gives every module a non-empty label and description using plan-3.6 wording", () => {

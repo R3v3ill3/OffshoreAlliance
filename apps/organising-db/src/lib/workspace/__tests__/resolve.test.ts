@@ -226,6 +226,9 @@ describe("resolveWorkspace", () => {
   });
 
   it("T14 (R10): malformed org defaults resolve to full/default without throwing", () => {
+    // The last two are malformed only in the *organiser entry*, which is now
+    // dropped on its own (fix round 1, finding 6) rather than nulling the
+    // whole document — the organiser still has no usable entry either way.
     const malformed: unknown[] = [
       null,
       undefined,
@@ -241,6 +244,57 @@ describe("resolveWorkspace", () => {
       expect(r.source, JSON.stringify(orgDefaults)).toBe("default");
       expect(ids(r.enabledModules)).toEqual([...NON_ADMIN_MODULES].sort());
     }
+  });
+
+  it("T14b (R10): one unusable role entry does not disable the entries beside it", () => {
+    const orgDefaults = {
+      byWorkRole: {
+        coordinator: "not an entry",
+        organiser: { mode: "organiser", modules: ["actions", "library"] },
+      },
+    };
+    const organiser = resolve({ workRole: "organiser", orgDefaults });
+    expect(organiser.mode).toBe("organiser");
+    expect(organiser.source).toBe("role");
+    expect(ids(organiser.enabledModules)).toEqual(["actions", "library"]);
+
+    // The broken entry's own role falls back to full/default, not to a crash.
+    const coordinator = resolve({ workRole: "coordinator", orgDefaults });
+    expect(coordinator.mode).toBe("full");
+    expect(coordinator.source).toBe("default");
+  });
+
+  it("T17 (R6): an empty modules array is treated as not provided, never as zero modules", () => {
+    // From the user prefs: falls through to the role entry's list.
+    const overRoleList = resolve({
+      orgDefaults: { byWorkRole: { organiser: { mode: "organiser", modules: ["library"] } } },
+      userPrefs: { modules: [] },
+    });
+    expect(overRoleList.mode).toBe("organiser");
+    expect(ids(overRoleList.enabledModules)).toEqual(["library"]);
+
+    // From the user prefs with no role list: falls through to the registry defaults.
+    const overRegistry = resolve({
+      orgDefaults: ORG_ORGANISER_MODE,
+      userPrefs: { mode: "organiser", modules: [] },
+    });
+    expect(overRegistry.mode).toBe("organiser");
+    expect(ids(overRegistry.enabledModules)).toEqual([...ORGANISER_DEFAULTS].sort());
+
+    // From the role entry: falls through to the registry defaults.
+    const fromRole = resolve({
+      orgDefaults: { byWorkRole: { organiser: { mode: "organiser", modules: [] } } },
+    });
+    expect(fromRole.mode).toBe("organiser");
+    expect(ids(fromRole.enabledModules)).toEqual([...ORGANISER_DEFAULTS].sort());
+
+    // The fallback is on the *stored* list only. A non-empty list that prunes
+    // to nothing (R3) is still an explicit choice and stays empty — T8.
+    expect(
+      resolve({
+        orgDefaults: { byWorkRole: { organiser: { mode: "organiser", modules: ["administration"] } } },
+      }).enabledModules.size
+    ).toBe(0);
   });
 
   it("T15 (R10): malformed user prefs leave the role default in force", () => {

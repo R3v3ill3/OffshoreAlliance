@@ -86,6 +86,10 @@ export function WorkspaceDefaultsCard({ workRoles }: WorkspaceDefaultsCardProps)
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Kept apart from `error`: while the initial GET has failed, `rows` is only
+  // the all-`full` seed, so saving would overwrite the stored document with
+  // it. Save stays disabled until a reload succeeds.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,11 +106,14 @@ export function WorkspaceDefaultsCard({ workRoles }: WorkspaceDefaultsCardProps)
         return json;
       })
       .then((json) => {
-        if (!cancelled) setRows(rowsFromDocument(parseWorkspaceDefaults(json)));
+        if (!cancelled) {
+          setRows(rowsFromDocument(parseWorkspaceDefaults(json)));
+          setLoadError(null);
+        }
       })
       .catch((err: unknown) => {
         if (!cancelled)
-          setError(err instanceof Error ? err.message : "Failed to load workspace defaults");
+          setLoadError(err instanceof Error ? err.message : "Failed to load workspace defaults");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -119,7 +126,16 @@ export function WorkspaceDefaultsCard({ workRoles }: WorkspaceDefaultsCardProps)
   const updateRow = (role: WorkRole, patch: Partial<RoleRowState>) =>
     setRows((prev) => ({ ...prev, [role]: { ...prev[role], ...patch } }));
 
+  // Organiser mode with an empty list would resolve to the registry defaults
+  // anyway (resolve.ts R6), so an empty tick list is never what the admin
+  // means: block the save and say so.
+  const emptyOrganiserRoles = workRoles.filter(
+    ({ value }) => rows[value].mode === "organiser" && rows[value].modules.length === 0
+  );
+  const saveBlocked = loadError !== null || emptyOrganiserRoles.length > 0;
+
   const handleSave = async () => {
+    if (saveBlocked) return;
     setSaving(true);
     setError(null);
     try {
@@ -151,14 +167,17 @@ export function WorkspaceDefaultsCard({ workRoles }: WorkspaceDefaultsCardProps)
         <CardDescription>
           What each work role sees by default. Full is today&apos;s interface; Organiser
           shows only the ticked modules. Per-user overrides live in Users. Workspace mode
-          changes what people see, not what they can do.
+          changes what people see, not what they can do. A viewer with no work role follows
+          the Organiser row; a user with no work role is always Full.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {error && (
+        {(loadError ?? error) && (
           <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             <AlertTriangle className="h-4 w-4 shrink-0" />
-            {error}
+            {loadError
+              ? `${loadError}. Reload the page before saving — saving now would overwrite the stored defaults.`
+              : error}
           </div>
         )}
 
@@ -214,10 +233,19 @@ export function WorkspaceDefaultsCard({ workRoles }: WorkspaceDefaultsCardProps)
           })}
         </div>
 
-        <Button onClick={handleSave} disabled={loading || saving}>
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          {saved ? "Saved!" : saving ? "Saving…" : "Save workspace defaults"}
-        </Button>
+        <div className="space-y-1.5">
+          <Button onClick={handleSave} disabled={loading || saving || saveBlocked}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {saved ? "Saved!" : saving ? "Saving…" : "Save workspace defaults"}
+          </Button>
+          {!loadError && emptyOrganiserRoles.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Tick at least one module for{" "}
+              {emptyOrganiserRoles.map(({ label }) => label).join(", ")} — an Organiser row
+              with nothing ticked cannot be saved.
+            </p>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

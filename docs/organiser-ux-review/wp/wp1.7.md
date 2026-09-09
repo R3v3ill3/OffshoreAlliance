@@ -864,6 +864,8 @@ Page snapshot at failure time shows the "Got it" button present in the DOM insid
 
 **Summary:** DB/migration/policy/RLS/CHECK verification all green. Type generation clean (no diff). tsc/test/lint/build all green and at baseline. Preview green. E2E: 12/13 non-skipped specs passed; the WP1.7 "Got it" dismissal hint test failed on a viewport/scroll issue with the "Got it" button, while the companion badge-click hint test passed. This is a blocking finding for WP1.7 sign-off.
 
+**Screenshots.** Taken against the same preview with a throwaway Playwright script (not committed; `apps/organising-db/test-results/` is gitignored), loading `tests/e2e/.auth/user.json`, dismissal row deleted first: `/tmp/oux-plans/shots/wp1.7-rating-hint.png` (1280×800, `/campaigns/1?tab=workforce&sub=wall-chart`, hint visible and fully in view over the "Green Hat" tile — no scroll/viewport problem at this viewport/scroll position); `/tmp/oux-plans/shots/wp1.7-rating-hint-mobile.png` (iPhone 13 emulation, switched to the Wall chart toggle — the tile grid collapses to one column at that width and visually resembles a list, confirmed distinct from the actual List tab by a side-by-side capture; hint visible, not clipped); `/tmp/oux-plans/shots/wp1.7-rating-hint-dismissed.png` (desktop, after clicking "Got it" and reloading — hint absent, `workspace_prefs`/dismissal row cleaned up after). Note: this script's own "Got it" click succeeded immediately (no viewport issue), unlike the e2e spec's failure above — the discrepancy is reported as-is, not explained further.
+
 ## 8. Reviewer findings
 
 _(reviewer)_

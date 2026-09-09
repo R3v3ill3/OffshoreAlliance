@@ -1,35 +1,44 @@
-import { resolve } from "node:path";
-
 import { expect, test, type BrowserContext } from "@playwright/test";
 
-import { ADMIN_STORAGE_STATE, E2E_BASE_URL } from "../../playwright.config";
 import {
-  E2E_USER_EMAIL,
   NO_ADMIN_CREDENTIALS_MESSAGE,
   NO_CREDENTIALS_MESSAGE,
   hasE2EAdminCredentials,
   hasE2ECredentials,
 } from "./env";
+import {
+  findE2EUserId,
+  openAdminContext,
+  readUserPrefs,
+  restoreUserPrefs,
+  setUserMode,
+  withUserMode,
+} from "./workspace-mode";
 
 /**
  * WP1.4: the campaign workspace.
  *
  * Test 1 is the zero-change-in-full-mode criterion measured in a browser.
- * Every account resolves to full mode by default, so the eight tabs, their
- * labels and their order must be exactly today's, and none of the
- * organiser-mode furniture may appear.
+ * The suite pins the e2e account to full mode first (`withUserMode`,
+ * tests/e2e/workspace-mode.ts) — with no per-user override the account
+ * otherwise follows the org-wide default for its work role, which an admin
+ * can change in the app at any time — so the eight tabs, their labels and
+ * their order must be exactly today's, and none of the organiser-mode
+ * furniture may appear.
  *
  * Test 2 is the organiser-mode round trip, in the same shape as
  * organiser-nav.spec.ts: an admin flips the e2e user into organiser mode
  * through WP1.1's validated write path, the user reloads, and the four tabs,
  * More, the deep links, the switcher and the header actions are checked.
- * An `afterEach` hook ALWAYS clears the override again — the dev database is
- * shared, and leaving the account in organiser mode would change what
- * wall-chart.spec.ts sees on the next run. It is a hook and not a `finally`
- * on purpose: Playwright disposes the test's contexts the moment the test
- * times out, so a `finally` inside the test body is exactly what does *not*
- * run in the one failure mode the reset exists for. Hooks get their own
- * timeout budget and run either way.
+ * An `afterEach` hook ALWAYS puts the account's previous `workspace_prefs`
+ * back — the dev database is shared, and leaving the account in organiser
+ * mode would change what wall-chart.spec.ts sees on the next run. What it
+ * restores is what `beforeAll` recorded, not a blind `{}`, which would erase
+ * a deliberate per-user override. It is a hook and not a `finally` on
+ * purpose: Playwright disposes the test's contexts the moment the test times
+ * out, so a `finally` inside the test body is exactly what does *not* run in
+ * the one failure mode the reset exists for. Hooks get their own timeout
+ * budget and run either way.
  *
  * Every selector is an anchor the product already relies on: the Radix
  * tablist, the two <nav> landmarks the organiser bar renders, the button
@@ -62,6 +71,7 @@ const HEADER_BACK_OR_HEADING = 'header button[aria-label="Back to campaigns"], h
 
 test.describe("Campaign workspace — full mode is today's page", () => {
   test.skip(!hasE2ECredentials, NO_CREDENTIALS_MESSAGE);
+  withUserMode("full");
 
   test("the eight tabs, in order, with no organiser-mode furniture", async ({ page }) => {
     await page.goto(WALL_CHART_URL);
@@ -109,6 +119,8 @@ test.describe("Campaign workspace — the organiser-mode round trip", () => {
   // which is precisely when the test body stops running.
   let admin: BrowserContext | null = null;
   let userId: string | null = null;
+  /** The account's `workspace_prefs` before this suite touched them. */
+  let previousPrefs: unknown;
 
   test.beforeAll(async ({ browser }) => {
     // Belt and braces: if Playwright ever runs hooks for a statically
@@ -116,40 +128,18 @@ test.describe("Campaign workspace — the organiser-mode round trip", () => {
     // a credential-less checkout does not have.
     if (!hasE2ECredentials || !hasE2EAdminCredentials) return;
 
-    admin = await browser.newContext({
-      baseURL: E2E_BASE_URL,
-      storageState: resolve(__dirname, "../..", ADMIN_STORAGE_STATE),
-    });
-
-    const list = await admin.request.get("/api/admin/users");
-    expect(list.ok(), "the admin account must be able to list users").toBeTruthy();
-    const { users } = (await list.json()) as {
-      users: { user_id: string; email?: string }[];
-    };
-    userId =
-      users.find((u) => u.email?.toLowerCase() === E2E_USER_EMAIL.toLowerCase())?.user_id ??
-      null;
-    expect(userId, "the E2E_USER account must exist on dev").toBeTruthy();
+    admin = await openAdminContext(browser);
+    userId = await findE2EUserId(admin);
+    if (!userId) return;
+    previousPrefs = await readUserPrefs(admin, userId);
   });
 
   test.afterEach(async () => {
     if (!admin || !userId) return;
-    // `null` parses to `{}` and clears the override. Asserted, not
-    // fire-and-forget: a silently failed reset leaves the shared dev
-    // account in organiser mode and breaks the other specs.
-    const reset = await admin.request.patch("/api/admin/update-user", {
-      data: { userId, workspacePrefs: null },
-    });
-    expect(reset.ok(), await reset.text()).toBe(true);
-
-    const after = await admin.request.get("/api/admin/users");
-    expect(after.ok(), "the reset must be verifiable").toBe(true);
-    const { users: usersAfter } = (await after.json()) as {
-      users: { user_id: string; workspace_prefs?: unknown }[];
-    };
-    const rowAfter = usersAfter.find((u) => u.user_id === userId);
-    expect(rowAfter, "the e2e user's profile row must still exist").toBeTruthy();
-    expect(rowAfter?.workspace_prefs, "workspace_prefs must be exactly {}").toEqual({});
+    // Put back what beforeAll recorded — not a blind `{}`. Asserted inside
+    // the helper, not fire-and-forget: a silently failed reset leaves the
+    // shared dev account in organiser mode and breaks the other specs.
+    await restoreUserPrefs(admin, userId, previousPrefs);
   });
 
   test.afterAll(async () => {
@@ -164,10 +154,7 @@ test.describe("Campaign workspace — the organiser-mode round trip", () => {
     expect(userId, "beforeAll must have found the e2e user").toBeTruthy();
     if (!admin || !userId) return;
 
-    const set = await admin.request.patch("/api/admin/update-user", {
-      data: { userId, workspacePrefs: { mode: "organiser" } },
-    });
-    expect(set.ok(), await set.text()).toBeTruthy();
+    await setUserMode(admin, userId, "organiser");
 
     // AuthProvider caches workspace_prefs with the profile at sign-in, so
     // a full reload is required for the new mode to take effect.

@@ -14,6 +14,7 @@ import {
   hasE2EAdminCredentials,
   hasE2ECredentials,
 } from "./env";
+import { WALL_CHART_RATING_HINT_ID, seedHintDismissal } from "./hint-dismissals";
 
 const EMPTY_STORAGE_STATE = { cookies: [], origins: [] };
 
@@ -99,5 +100,17 @@ export default async function globalSetup(): Promise<void> {
 
   if (capturedRestConfig) {
     writeFileSync(restPath, JSON.stringify(capturedRestConfig), "utf8");
+  }
+
+  // WP1.7 follow-up — the suite-wide invariant: the e2e user is always "hint
+  // dismissed" EXCEPT inside the hint spec (tests/e2e/wall-chart.spec.ts,
+  // "first-use rating hint", which deletes the row in beforeEach and puts it
+  // back in afterEach). Without this seed, a hint-spec run that ended without
+  // its afterEach leaves the hint armed for the NEXT run's earlier specs,
+  // where the callout's scroll-into-view and popover layer break steps that
+  // predate WP1.7. Must come after the sign-in and the rest.json write, which
+  // are what it reads. Silent no-op without credentials; refuses production.
+  if (hasE2ECredentials && capturedRestConfig) {
+    await seedHintDismissal(WALL_CHART_RATING_HINT_ID);
   }
 }

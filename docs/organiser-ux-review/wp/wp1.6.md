@@ -1301,9 +1301,12 @@ carries the production run sheet.
 **Post-flight.** Per-account write coverage, so the operator can see the shape of the change:
 
 ```sql
+-- count(DISTINCT …) on both columns (fix round 2): the two LEFT JOINs are independent
+-- one-to-many joins, so an account with r roster rows and k created campaigns yields
+-- r*k rows and count(*) FILTER would report r*k for both.
 SELECT up.display_name, up.role, up.work_role,
-       count(*) FILTER (WHERE co.campaign_id IS NOT NULL) AS campaigns_on_roster,
-       count(*) FILTER (WHERE c.created_by = up.user_id)  AS campaigns_created
+       count(DISTINCT co.campaign_id) AS campaigns_on_roster,
+       count(DISTINCT c.campaign_id)  AS campaigns_created
 FROM public.user_profiles up
 LEFT JOIN public.organisers o          ON o.organiser_id = up.organiser_id
 LEFT JOIN public.campaign_organisers co ON co.organiser_id = o.organiser_id
@@ -1626,6 +1629,196 @@ sibling user spec in attempt 2 and identical here) is replaced by one CSS select
 three new PASS lines: flipped-standing, standing campaign, mint path — and the count of lines changes from 38);
 re-run the credentialled e2e — `unit-lifecycle-user.spec.ts:37` and `unit-lifecycle-admin.spec.ts:25` are
 expected to pass the rename step now. No type regeneration is needed (`delete_campaign`'s signature is unchanged).
+
+### Fix round 2 (2026-09-09, implementer Fable)
+
+The last allowed round. Nothing in `20260909120000` / `20260909130000` was edited and no schema change was
+needed. The blocking item was the e2e; its cause turned out to be a pre-existing product defect that the
+new specs were the first thing to hit deterministically.
+
+**E2E diagnosis (A) — the delete control was fine; the list never loaded.** Every failing attempt in §12
+run 2 (`unit-lifecycle-user.spec.ts:37` at the delete step, `:80` at the search box, and the
+`wall-chart.spec.ts` / `actions-hub.spec.ts` flakes in attempt 2) has the same signature in the retained
+traces: after the `page.goto("/campaigns")` document load there is **no request to `*.supabase.co` at all**
+— not the AuthProvider's `user_profiles` fetch, not the list query, not `campaigns_i_can_write` — only
+`POST /api/auth/refresh?src=auth-context-init-fallback` eight seconds later and the console line
+`[connection-monitor] lock_timeout auth init: INITIAL_SESSION not received within budget`. The page
+snapshot at failure shows the DataTable's `Loading` row (`role="status"`) and `0 records`, i.e. the
+`["campaigns"]` query was *in flight* — so `user` had been set — but its PostgREST fetch never left the
+client. Reproduced against the preview with a throwaway Playwright script (storage state only, nothing
+typed): a healthy load issues `user_profiles` within ~250 ms; a wedged one never does.
+
+| Document load (same signed-in context) | Result |
+|---|---|
+| `/campaigns`, cold cache (first page in a fresh context) | OK 3/3 (one with a 20 ms margin, see below) |
+| `/campaigns`, warm cache (after any campaign page) | **STALL 8/8** (user), 2/2 (admin) |
+| `/campaigns/new/manual`, warm | **STALL** 1/1 user, 1/1 admin |
+| wall chart `/campaigns/3?tab=workforce&sub=wall-chart`, cold or warm reload | OK 8/8 user, 8/8 admin |
+| Units tab, warm | OK 1/1 each |
+| `/campaigns` reached by **client-side** navigation (sidebar link) from the wall chart | OK 2/2 (list query fired, rows rendered) |
+
+**Mechanism** (auth-js 2.104.1, `GoTrueClient.js`; the app passes `processLock` via `instrumentedLock`).
+`initialize()` runs in the constructor and holds the auth lock for the whole of `_initialize()` →
+`_recoverAndRefresh()`, which for a valid cookie session ends with
+`await this._notifyAllSubscribers('SIGNED_IN', currentSession)` — *every registered subscriber is awaited
+under the lock*. The AuthProvider subscribes in a `useEffect`. On a cold load hydration is slow, the effect
+runs after `SIGNED_IN` has already been broadcast to nobody, and the later `INITIAL_SESSION` (emitted by
+`onAuthStateChange`'s own IIFE after `initializePromise`) drives the page: healthy. On a warm load of a
+small page the effect runs first — in the probe, the providers' "Shims installed" effect logged 4–5 ms
+*before* the `SIGNED_IN` BroadcastChannel post, in every stalled cycle, and after it in every healthy one.
+The subscriber's generic branch (everything but `INITIAL_SESSION` / `TOKEN_REFRESHED` / `SIGNED_OUT`) then
+did `setUser(...)` and **`await fetchProfile()`** — a PostgREST query → supabase-js `_getAccessToken()` →
+`auth.getSession()` → `_acquireLock()`. Because `lockAcquired` is already true, that takes the
+**re-entrant path** (`await last; return await fn()`, no timeout), and `fn` = `_useSession` starts with
+`await this.initializePromise`, which cannot resolve until `_notifyAllSubscribers` — waiting on this very
+callback — returns. Deadlock. `setUser` had already fired, so the `["campaigns"]` query started and hung in
+the same queue (the `Loading` row); the `onAuthStateChange` IIFE queued behind it, so `INITIAL_SESSION`
+never came; the 8 s fallback only refreshes the server cookie and cannot unwedge the in-tab client
+(§11 fix round 1 item 7's "a control that appears a moment late" was therefore wrong for this case — it
+never appears). It is the hang the app's `hardRefreshConnection` button and the connection-monitor exist
+for, and it predates WP1.6 (the generic branch is unchanged since before this package).
+
+The brief's four questions, answered against the code and the preview: (1) the list's delete control does
+gate on `useCampaignWriteAccess` → `campaigns_i_can_write`, and the RPC does return the new id — the query
+key is the sorted id list *from the list query itself* (`campaignIdsForAccess`), so a new campaign forms a
+new key and cannot be stale from before creation; with the list loaded, run 1's snapshot shows the row and
+`button "Delete WP1.6 role check 1788939657420"` (aria-label from `campaigns/page.tsx:294`) under the
+default organiser filter. (2) The "Filter by organiser" default is the account's own organiser;
+`manual/page.tsx` sets `organiser_id` from `resolveCampaignOrganiserId(supabase, "", …)`, which resolves to
+the creator's own organiser when the select is left empty, so the created row is visible — but the
+**foreign** campaign is not (different organiser by construction), which the negative spec never reached
+before and now handles by selecting "All organisers". (3) The aria-label matches the spec. (4) The control
+is hidden while the RPC loads and the spec waits 30 s — irrelevant here because the RPC was never sent.
+
+**Product fix (`src/lib/supabase/auth-context.tsx`).** The generic branch's body — `setUser`, the
+`fetchProfile` await, `setProfile`, `setLoading(false)`, `redirectToLogin` — now runs in a `setTimeout(…, 0)`
+macrotask; `setKnownExpiry` stays synchronous. When the callback returns immediately, `_notifyAllSubscribers`
+→ `_initialize` → the lock's drain loop → `lockAcquired = false` → `initializePromise` all resolve on the
+microtask queue, so by the time the macrotask runs the lock is free and `getSession()` takes the normal
+path. This is Supabase's own guidance for `onAuthStateChange` ("do not await other client calls inside the
+callback"). Not affected: the `INITIAL_SESSION` branch (its lock holder does not await
+`_emitInitialSession`, so it never held the lock across our callback — that is why the cold path always
+worked), `TOKEN_REFRESHED` (no awaits), the login page (`signInWithPassword` does not take the lock at all;
+`_saveSession` + notify only), and the `SIGNED_OUT` recovery branch (untouched). Side effect on a warm load:
+both `SIGNED_IN` (deferred) and `INITIAL_SESSION` now arrive, so the profile is fetched twice at start-up —
+the same double fetch a login already produced. **Not verifiable on this round's preview** (built at
+`8a184d1`, before the fix); the two passing runs below pass because the specs no longer perform the
+navigation that trips the defect. On the next preview the verifier should see zero `auth-init-stall`
+annotations (see "For the verifier"), and the out-of-scope `wall-chart.spec.ts` / `actions-hub.spec.ts`
+flakes, which are the same hang on `/campaigns` and `/sms`, should stop.
+
+**Spec changes.** `tests/e2e/roles/unit-lifecycle.ts`: `openCampaignsList()` reaches `/campaigns` by
+clicking the sidebar link (`sidebar.tsx` `navItems[0]`, `link "Campaigns"`), waits for the list query
+(`/rest/v1/campaigns?select=campaign_id…`) and for the DataTable's `role="status"` loading row to go, and
+returns the pending `campaigns_i_can_write` response; `deleteCampaign()` and the negative test use it.
+`gotoDocument()` wraps every remaining full document load (manual create, wall chart, Units tab, the admin
+fallback list): it registers a wait for the AuthProvider's `user_profiles` request *before* navigating and,
+if none arrives within 20 s, annotates `auth-init-stall` and reloads (max 3 loads) — a bounded guard for
+previews without the product fix that never fires on a fixed build. `campaignsListRows()` scopes row
+locators to the table whose header has the "Start Date" sort button, because `/campaigns` renders two
+tables (CampaignsDashboard's overview grid also carries the campaign name — run 1's `toHaveCount(1)` got 2).
+`showAllOrganisers()` picks "All organisers" from the Radix Select that follows the "Filter by organiser:"
+span. (B) `test.describe.configure({ timeout: 180_000 })` in both roles specs replaces the per-test
+`setTimeout`; the negative test had none and hit Playwright's 30 s default (`:80`'s "closed" error), and
+every step awaits. (C) `clickNewUnit()` waits up to 30 s for *either* the standalone "New unit" button or
+the "Units (n)" popover trigger (`newUnit.or(unitsMenu).first()`), then for "New unit" inside the popover
+with a message naming `campaigns_i_can_write`, instead of probing `isVisible()` straight after navigation.
+(D) `tests/e2e/roles/campaign-cleanup.ts`: PostgREST calls with the signed-in session's own token — project
+ref and access token decoded from the `sb-<ref>-auth-token` cookie of the running context (storage-state
+file as fallback), REST origin and public anon key captured by `global-setup.ts` from the app's own
+sign-in request into `tests/e2e/.auth/rest.json` (gitignored; removed at the start of every run). It refuses
+to run if the ref is the production project or the origin host is not `<ref>.supabase.co`; **it never reads
+`.env.local`, which in this checkout points at production.** User spec: `beforeAll` sweeps every
+`WP1.6 role check %` campaign `created_by` this account through `delete_campaign` (the RPC
+`useDeleteCampaign.ts` calls); `afterEach` checks the created id still exists and, if so, deletes it the
+same way and annotates `cleanup`. Admin spec: `beforeAll` removes leftover `WP1.6 admin unit %` units,
+`afterEach` removes this run's unit (both names) if the UI step did not. Both use the app's role gates, so
+they cannot remove more than the UI could.
+
+**Per-item changes**
+
+- (F) `00_preflight_organiser_write_access.sql` and `01_postflight_write_coverage.sql`: `\set ON_ERROR_STOP
+  on` removed (psql meta-command; a syntax error in the SQL editor — `-v ON_ERROR_STOP=1` on the command
+  line does the same job); headers say "plain SQL only". `01` and §6 now use `count(DISTINCT
+  co.campaign_id)` / `count(DISTINCT c.campaign_id)` with a comment: the two LEFT JOINs are independent
+  one-to-many joins, so an account with r roster rows and k created campaigns produced r·k rows and both
+  `count(*) FILTER` columns reported r·k (troy reveille's "4 / 4" in §12 R2.4 is that product). README's
+  "no psql-only directives" claim is now true and says why.
+- (G) `95_role_probes.sql`: the standing-campaign probe selects the id into `standing_cid` first and prints
+  `SKIP user/delete_campaign(standing campaign): no standing campaign on this database` when it is NULL;
+  the delete is only attempted with a real id. **Correction to the `20260909130000` header (`:86`, file
+  applied, not edited):** "Absent the row this is false and campaign_not_found fires below" is only true for
+  an admin. The role gate (`is_admin() OR is_lead_organiser_for_campaign() OR is_campaign_creator()`) runs
+  *before* the `campaign_not_found` check, and for a missing or NULL id both organiser arms are false, so a
+  non-admin caller gets `not_authorized` — which is exactly what run 2's FAIL line showed. The probe no
+  longer relies on that branch.
+- (H) `useMoveWorkersMutation` call sites: `campaign-wall-chart.tsx` (drag/drop `moveWorkers.mutate`, ~`:1343`)
+  and `copy-worker-to-unit-dialog.tsx` (`submit`, ~`:105`) pass `onError` → `toast.error(err.message)`
+  (sonner, imported in both), so a `NoRowsAffectedError` on the source delete is announced; the dialog's
+  `onOpenChange(false)` stays in `onSuccess` only, so it remains open on error.
+- (I) `useRemoveWorkerFromCampaign.ts`: the eight `invalidateQueries` calls moved from `onSuccess` to
+  `onSettled` (the success toast and `onRemoved` stay in `onSuccess`; `onError` unchanged).
+
+**E2E runs against the preview `https://offshore-alliance-ahwhwpnjd-reveille-strategy.vercel.app`**
+(`E2E_USER_*` / `E2E_ADMIN_*` from the shell profile, never printed).
+
+Attempt 1 (after the first spec rewrite; not counted): 2 failed / 1 passed — `deleteCampaign()`'s
+`toHaveCount(1)` resolved to 2 rows (the two tables above), and the negative test's foreign row was hidden
+by the organiser filter. Both fixed as described; **the list had loaded and the `Delete …` button was
+rendered** (snapshot ref e431), confirming the diagnosis. afterEach's fallback removed that run's campaign
+(the next run's sweep found nothing).
+
+Run A — `E2E_BASE_URL=<preview> E2E_FOREIGN_CAMPAIGN_ID=3 pnpm e2e tests/e2e/roles`:
+```
+Running 3 tests using 1 worker
+
+[cleanup] no leftover "WP1.6 role check " campaigns for this account.
+  ✓  1 [chromium] › tests/e2e/roles/unit-lifecycle-user.spec.ts:92:7 › WP1.6 role coverage — user › creates a campaign, then creates, renames and deletes a unit and the campaign (15.3s)
+  ✓  2 [chromium] › tests/e2e/roles/unit-lifecycle-user.spec.ts:137:7 › WP1.6 role coverage — user › offers no write controls on a campaign the account cannot write to (8.7s)
+[cleanup] removed 0 leftover "WP1.6 admin unit " unit(s).
+  ✓  3 [chromium-admin] › tests/e2e/roles/unit-lifecycle-admin.spec.ts:76:7 › WP1.6 role coverage — admin › creates, renames and deletes a unit on any campaign (6.1s)
+
+  3 passed (44.8s)
+```
+Run B — same command with `--reporter=list,json` so annotations are visible:
+```
+Running 3 tests using 1 worker
+
+[cleanup] no leftover "WP1.6 role check " campaigns for this account.
+  ✓  1 [chromium] › tests/e2e/roles/unit-lifecycle-user.spec.ts:92:7 › WP1.6 role coverage — user › creates a campaign, then creates, renames and deletes a unit and the campaign (11.5s)
+  ✓  2 [chromium] › tests/e2e/roles/unit-lifecycle-user.spec.ts:137:7 › WP1.6 role coverage — user › offers no write controls on a campaign the account cannot write to (5.8s)
+[cleanup] removed 0 leftover "WP1.6 admin unit " unit(s).
+  ✓  3 [chromium-admin] › tests/e2e/roles/unit-lifecycle-admin.spec.ts:76:7 › WP1.6 role coverage — admin › creates, renames and deletes a unit on any campaign (7.4s)
+
+  3 passed (38.4s)
+```
+JSON report: all three `expected`, annotations `[]` — no `auth-init-stall` reload, no `cleanup` fallback.
+Run C — the brief's exact command (no `E2E_FOREIGN_CAMPAIGN_ID`): user positive passed (9.6s), negative
+skipped with `NO_FOREIGN_CAMPAIGN_MESSAGE`, admin passed on the `/campaigns` fallback path (9.9s) — `2
+passed, 1 skipped (27.9s)`. Residue check afterwards through the same REST session on dev
+(`dpnnmkhabysfdogllsyh`): `campaigns` named `WP1.6 role check *` created by the e2e account → `[]`; any
+campaign or `campaign_organising_units` row named `WP1.6*` → `[]`.
+
+**Gates (from `apps/organising-db` unless noted)**
+
+- `pnpm exec eslint` on the 10 touched TS/TSX files (`auth-context.tsx`, `campaign-wall-chart.tsx`,
+  `copy-worker-to-unit-dialog.tsx`, `useRemoveWorkerFromCampaign.ts`, `global-setup.ts`,
+  `campaign-cleanup.ts`, `unit-lifecycle.ts`, both roles specs, `playwright.config.ts`) → 0 errors,
+  0 warnings, exit 0.
+- `pnpm test` → 63 files, 852 tests passed.
+- `pnpm exec tsc --noEmit -p tsconfig.json` → exit 0.
+- `pnpm build` → exit 0.
+- `env -u E2E_USER_EMAIL -u E2E_USER_PASSWORD -u E2E_ADMIN_EMAIL -u E2E_ADMIN_PASSWORD pnpm e2e` → 7 skipped,
+  exit 0.
+- repo root `pnpm validate:migrations` → `Validated 6 Supabase migrations with unique 14-digit versions.`
+
+**For the verifier.** No migration this round: `db push --dry-run` on dev must list nothing. Re-run 95 and
+expect the standing-campaign line to read `SKIP … no standing campaign on this database` (41 lines, 40 PASS
+/ 1 SKIP). Re-run the credentialled e2e against the **new** preview with
+`--reporter=list,json` and `PLAYWRIGHT_JSON_OUTPUT_NAME=<file>`; both roles specs must pass and carry no
+`auth-init-stall` or `cleanup` annotation — that absence is the check that the auth-context fix is live.
+`.env.local` in this checkout points at production; the cleanup helper ignores it by design and refuses
+that ref outright.
 
 ## 12. Verification output
 

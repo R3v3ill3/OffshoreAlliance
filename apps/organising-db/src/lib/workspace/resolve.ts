@@ -14,7 +14,9 @@ import {
   ADMIN_ONLY_MODULE_IDS,
   MODULE_IDS,
   ORGANISER_DEFAULT_MODULE_IDS,
+  getModule,
   isWorkRole,
+  type ModuleOffState,
   type WorkspaceModuleId,
 } from "./modules";
 import { parseWorkspaceDefaults, parseWorkspacePrefs } from "./prefs-schema";
@@ -46,6 +48,25 @@ export interface ResolvedWorkspace {
 export function modulesForRole(role: UserRole): Set<WorkspaceModuleId> {
   if (role === "admin") return new Set(MODULE_IDS);
   return new Set(MODULE_IDS.filter((id) => !ADMIN_ONLY_MODULE_IDS.has(id)));
+}
+
+/** `"on"` when the module is enabled; otherwise the registry's `offState`. */
+export type ModuleState = "on" | ModuleOffState;
+
+/**
+ * The whole hidden-vs-muted decision, in one pure function.
+ *
+ * `useWorkspace().moduleState` is this bound to the resolved set, and
+ * `buildNavModel()` receives it as an input. It lives here, next to
+ * `resolveWorkspace()`, so consumers and tests import the real rule instead
+ * of re-typing `enabled.has(id) ? "on" : getModule(id).offState` — a second
+ * copy that can drift is exactly what WP1.1 set out to avoid.
+ */
+export function moduleStateFor(
+  enabledModules: ReadonlySet<WorkspaceModuleId>,
+  id: WorkspaceModuleId
+): ModuleState {
+  return enabledModules.has(id) ? "on" : getModule(id).offState;
 }
 
 export function resolveWorkspace(input: ResolveWorkspaceInput): ResolvedWorkspace {

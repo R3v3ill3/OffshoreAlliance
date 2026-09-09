@@ -14,15 +14,20 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { useWorkspaceDefaults } from "@/lib/hooks/useWorkspaceDefaults";
-import { getModule, type ModuleOffState, type WorkspaceModuleId } from "./modules";
+import { type WorkspaceModuleId } from "./modules";
 import {
+  moduleStateFor,
   modulesForRole,
   resolveWorkspace,
+  type ModuleState,
   type WorkspaceMode,
   type WorkspaceSource,
 } from "./resolve";
 
-export type ModuleState = "on" | ModuleOffState;
+// The type and the rule both live in `resolve.ts` (pure, so the
+// `environment: node` suites can import the real one instead of retyping it);
+// re-exported here because this is where consumers already reach for them.
+export type { ModuleState };
 
 export interface WorkspaceContextValue {
   mode: WorkspaceMode;
@@ -49,7 +54,7 @@ const DEFAULT_VALUE: WorkspaceContextValue = {
   showEverything: false,
   setShowEverything: () => {},
   isModuleEnabled: (id) => DEFAULT_MODULES.has(id),
-  moduleState: (id) => (DEFAULT_MODULES.has(id) ? "on" : getModule(id).offState),
+  moduleState: (id) => moduleStateFor(DEFAULT_MODULES, id),
   source: "default",
   loading: false,
 };
@@ -82,8 +87,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       showEverything,
       setShowEverything,
       isModuleEnabled: (id) => resolved.enabledModules.has(id),
-      moduleState: (id) =>
-        resolved.enabledModules.has(id) ? "on" : getModule(id).offState,
+      moduleState: (id) => moduleStateFor(resolved.enabledModules, id),
       loading,
     };
   }, [role, workRole, orgDefaults, userPrefs, hasProfile, showEverything, loading]);

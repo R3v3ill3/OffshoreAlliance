@@ -8,9 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Building2, ChevronDown, Eye, Menu, LogOut, RefreshCcw, Loader2 } from "lucide-react";
-import { allNavHrefs } from "./sidebar";
 import { NavRow } from "./nav-row";
-import { buildNavModel, isNavRowActive } from "@/lib/nav/nav-model";
+import { ALL_NAV_HREFS, buildNavModel, isNavRowActive } from "@/lib/nav/nav-model";
 import { useWorkspace } from "@/lib/workspace/use-workspace";
 import { useEmailInboxUnreadCount } from "@/lib/hooks/useEmailInbox";
 
@@ -23,7 +22,6 @@ const BADGE_CLASS =
 
 export function MobileNav() {
   const [open, setOpen] = useState(false);
-  const [orgOpen, setOrgOpen] = useState(false);
   const [signOutInProgress, setSignOutInProgress] = useState(false);
   const [recoveryFeedback, setRecoveryFeedback] = useState<string | null>(null);
   const pathname = usePathname();
@@ -37,30 +35,24 @@ export function MobileNav() {
   } = useAuth();
   const { data: emailUnreadCount = 0 } = useEmailInboxUnreadCount(!!user);
   const workspace = useWorkspace();
-  const { mode, enabledModules, moduleState, canShowEverything, showEverything } =
-    workspace;
+  const { mode, moduleState, canShowEverything, showEverything } = workspace;
 
   const model = useMemo(
     () =>
       buildNavModel({
         mode,
-        enabledModules,
         moduleState,
         isAdmin,
         canShowEverything,
         showEverything,
         unreadEmail: emailUnreadCount,
       }),
-    [
-      mode,
-      enabledModules,
-      moduleState,
-      isAdmin,
-      canShowEverything,
-      showEverything,
-      emailUnreadCount,
-    ]
+    [mode, moduleState, isAdmin, canShowEverything, showEverything, emailUnreadCount]
   );
+
+  // "Collapsed by default" is the model's rule; read it back rather than
+  // re-stating it here (matches sidebar.tsx).
+  const [orgOpen, setOrgOpen] = useState(!model.organisation.collapsed);
 
   const organisationItems = model.organisation.items.filter((i) => i.state !== "hidden");
 
@@ -116,7 +108,7 @@ export function MobileNav() {
               <NavRow
                 key={item.id}
                 item={item}
-                isActive={isNavRowActive(pathname, item, allNavHrefs)}
+                isActive={isNavRowActive(pathname, item, ALL_NAV_HREFS)}
                 baseClassName={ROW_BASE}
                 activeClassName={ROW_ACTIVE}
                 inactiveClassName={ROW_INACTIVE}
@@ -152,7 +144,7 @@ export function MobileNav() {
                       <NavRow
                         key={item.id}
                         item={item}
-                        isActive={isNavRowActive(pathname, item, allNavHrefs)}
+                        isActive={isNavRowActive(pathname, item, ALL_NAV_HREFS)}
                         baseClassName={ROW_BASE}
                         activeClassName={ROW_ACTIVE}
                         inactiveClassName={ROW_INACTIVE}
@@ -173,7 +165,7 @@ export function MobileNav() {
                   <NavRow
                     key={item.id}
                     item={item}
-                    isActive={isNavRowActive(pathname, item, allNavHrefs)}
+                    isActive={isNavRowActive(pathname, item, ALL_NAV_HREFS)}
                     baseClassName={ROW_BASE}
                     activeClassName={ROW_ACTIVE}
                     inactiveClassName={ROW_INACTIVE}

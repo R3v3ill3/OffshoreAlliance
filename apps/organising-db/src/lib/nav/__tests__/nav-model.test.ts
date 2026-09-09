@@ -22,8 +22,12 @@
 
 import { describe, expect, it } from "vitest";
 
-import { ORGANISER_DEFAULT_MODULE_IDS, getModule } from "@/lib/workspace/modules";
-import { resolveWorkspace, type ResolveWorkspaceInput } from "@/lib/workspace/resolve";
+import { ORGANISER_DEFAULT_MODULE_IDS } from "@/lib/workspace/modules";
+import {
+  moduleStateFor,
+  resolveWorkspace,
+  type ResolveWorkspaceInput,
+} from "@/lib/workspace/resolve";
 import { buildNavModel, type NavModel } from "../nav-model";
 
 const BASE: ResolveWorkspaceInput = {
@@ -42,9 +46,9 @@ function modelFor(
   const resolved = resolveWorkspace(resolveInput);
   return buildNavModel({
     mode: resolved.mode,
-    enabledModules: resolved.enabledModules,
-    moduleState: (id) =>
-      resolved.enabledModules.has(id) ? "on" : getModule(id).offState,
+    // WP1.1's own helper, so the suite exercises the shipped rule rather than
+    // a copy of it that can drift.
+    moduleState: (id) => moduleStateFor(resolved.enabledModules, id),
     isAdmin: opts.isAdmin ?? resolveInput.role === "admin",
     canShowEverything: resolved.canShowEverything,
     showEverything: resolveInput.sessionShowEverything,

@@ -109,7 +109,12 @@ test.describe("Sidebar — the organiser-mode round trip", () => {
         const nav = page.locator("aside nav");
         await expect(nav.getByRole("link", { name: "My campaigns" })).toBeVisible();
         await expect(nav.getByRole("link", { name: "Actions" })).toBeVisible();
-        await expect(nav.getByRole("link", { name: "Inbox", exact: true })).toBeVisible();
+        // The unread badge is inside the link and carries its own aria-label,
+        // so the link's accessible name is "Inbox <n> unread email
+        // conversations" whenever the account has unread mail. Anchor on the
+        // start of the name instead, which also keeps it distinct from
+        // "SMS Inbox".
+        await expect(nav.getByRole("link", { name: /^Inbox/ })).toBeVisible();
         await expect(nav.getByRole("link", { name: "Guides" })).toBeVisible();
         expect(await page.locator(LABELS).allTextContents()).toEqual([
           "My campaigns",
@@ -137,10 +142,25 @@ test.describe("Sidebar — the organiser-mode round trip", () => {
         expect(await page.locator(LABELS).allTextContents()).toEqual(FULL_MODE_LABELS);
       } finally {
         // `null` parses to `{}` and clears the override. Idempotent, so a
-        // re-run after a crash also restores the account.
-        await admin.request.patch("/api/admin/update-user", {
+        // re-run after a crash also restores the account. Asserted, not
+        // fire-and-forget: a silently failed reset leaves the shared dev
+        // account in organiser mode and breaks wall-chart.spec.ts on the next
+        // run — exactly the failure risk R8 names.
+        const reset = await admin.request.patch("/api/admin/update-user", {
           data: { userId, workspacePrefs: null },
         });
+        expect(reset.ok(), await reset.text()).toBe(true);
+
+        // Read it back from the same route the test used to find the user:
+        // GET /api/admin/users selects * from user_profiles, so the cleared
+        // column comes back as {}.
+        const after = await admin.request.get("/api/admin/users");
+        expect(after.ok(), "the reset must be verifiable").toBe(true);
+        const { users: usersAfter } = (await after.json()) as {
+          users: { user_id: string; workspace_prefs?: unknown }[];
+        };
+        const prefsAfter = usersAfter.find((u) => u.user_id === userId)?.workspace_prefs;
+        expect(prefsAfter ?? {}, "workspace_prefs must be cleared").toEqual({});
       }
     } finally {
       await admin.close();

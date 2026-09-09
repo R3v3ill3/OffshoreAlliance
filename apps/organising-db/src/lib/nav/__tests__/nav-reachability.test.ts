@@ -18,8 +18,13 @@
 
 import { describe, expect, it } from "vitest";
 
+import { ACTIONS_HUB_PATH } from "@/lib/actions/hub-path";
 import { getModule } from "@/lib/workspace/modules";
-import { resolveWorkspace, type ResolveWorkspaceInput } from "@/lib/workspace/resolve";
+import {
+  moduleStateFor,
+  resolveWorkspace,
+  type ResolveWorkspaceInput,
+} from "@/lib/workspace/resolve";
 import {
   ALL_NAV_HREFS,
   MUTED_REASON,
@@ -42,10 +47,9 @@ function modelFor(input: Partial<ResolveWorkspaceInput>, isAdmin: boolean): NavM
   const resolveInput = { ...BASE, ...input };
   const resolved = resolveWorkspace(resolveInput);
   return buildNavModel({
+    // WP1.1's own helper, not a second copy of the expression.
+    moduleState: (id) => moduleStateFor(resolved.enabledModules, id),
     mode: resolved.mode,
-    enabledModules: resolved.enabledModules,
-    moduleState: (id) =>
-      resolved.enabledModules.has(id) ? "on" : getModule(id).offState,
     isAdmin,
     canShowEverything: resolved.canShowEverything,
     showEverything: resolveInput.sessionShowEverything,
@@ -106,22 +110,109 @@ describe("full mode is byte-identical to the pinned fixture", () => {
 });
 
 describe("reachability — decision 7", () => {
-  it("every full-mode href a non-admin can see is reachable in organiser mode", () => {
-    const fullHrefs = new Set(fullUser.primary.map((i) => i.href));
+  // The organiser default, pinned as a literal. Not a snapshot: `vitest -u`
+  // must not be able to rewrite what an organiser sees. If a row changes
+  // label, href, order or state this fails and someone has to say why.
+  const ORGANISER_DEFAULT_ROWS = {
+    primary: [
+      { label: "My campaigns", href: "/campaigns", state: "on" },
+      { label: "Actions", href: "/actions", state: "on" },
+      { label: "Inbox", href: "/email/inbox", state: "on" },
+      { label: "Guides", href: "/help", state: "on" },
+    ],
+    organisation: [
+      { label: "Worksites", href: "/worksites", state: "muted" },
+      { label: "Upcoming Projects", href: "/upcoming-projects", state: "muted" },
+      { label: "Overview", href: "/overview", state: "muted" },
+      { label: "Dashboard", href: "/dashboard", state: "muted" },
+      { label: "Reports", href: "/reports", state: "muted" },
+    ],
+    admin: [] as { label: string; href: string; state: string }[],
+  };
 
-    const present = new Set(
+  const row = (i: NavItem) => ({ label: i.label, href: i.href, state: i.state });
+
+  it("the default organiser sees exactly these rows, in this order", () => {
+    expect({
+      primary: organiser.primary.map(row),
+      organisation: organiser.organisation.items.map(row),
+      admin: organiser.admin.map(row),
+    }).toEqual(ORGANISER_DEFAULT_ROWS);
+  });
+
+  it("nothing in the Organisation section is hidden from a default organiser", () => {
+    // The orchestrator's WP1.2 ruling: only permission-shaped modules
+    // (`imports`, `administration`) are `hidden`; every capability-shaped one
+    // is `muted` with an explanation. So an organiser is never silently
+    // denied a row in this section — they are told it exists and why it is
+    // off. Flipping `organisation_databases.offState` back to "hidden" in
+    // `modules.ts` fails this line, which is the point of asserting it.
+    const hidden = organiser.organisation.items.filter((i) => i.state === "hidden");
+    expect(hidden).toEqual([]);
+  });
+
+  it("only /sms/inbox needs Show everything or the hub pill", () => {
+    // Reachable *without leaving organiser mode*: the rows the sidebar
+    // actually renders — `on` (a live link) or `muted` (visible, explained,
+    // and one admin flag from being live). "Show everything" is deliberately
+    // NOT counted here: an expanded organiser is resolved as full mode, so
+    // counting it would make this assertion a tautology that passes however
+    // organiser mode is shaped.
+    const fullHrefs = new Set(fullUser.primary.map((i) => i.href));
+    const reachableInOrganiserMode = new Set(
       everyItem(organiser)
         .filter((i) => i.state !== "hidden")
         .map((i) => i.href)
     );
+
+    const unreachable = [...fullHrefs].filter((h) => !reachableInOrganiserMode.has(h));
+
+    // The single documented exception. `/sms/inbox` is not a nav row in
+    // organiser mode because the one Inbox entry carries the email unread
+    // badge (there is no SMS count endpoint). It stays reachable two ways:
+    // "Show everything", and the Actions hub's own Inbox pill — both asserted
+    // below, so this exception can never become "and nothing gets you there".
+    expect(unreachable).toEqual(["/sms/inbox"]);
+
     const afterShowEverything = new Set(
       [...expanded.primary, ...expanded.admin].map((i) => i.href)
     );
+    expect(afterShowEverything.has("/sms/inbox")).toBe(true);
+    // The hub pill: `SmsHubNav.tsx` renders Actions / Inbox (/sms/inbox) /
+    // Numbers on every hub page, so the second route is one click from the
+    // Actions row — which organiser mode always shows.
+    expect(reachableInOrganiserMode.has(ACTIONS_HUB_PATH)).toBe(true);
+  });
 
-    const unreachable = [...fullHrefs].filter(
-      (h) => !present.has(h) && !afterShowEverything.has(h)
+  it("with allowShowEverything: false the same one route has only the hub pill", () => {
+    // The "no out" configuration. Show everything renders no button at all,
+    // so the escape hatch is the Actions hub's Inbox pill and the URL —
+    // named here rather than left to be discovered in the field.
+    const noOut = modelFor(
+      {
+        role: "user",
+        userPrefs: { mode: "organiser", allowShowEverything: false },
+      },
+      false
     );
-    expect(unreachable).toEqual([]);
+    expect(noOut.showEverythingControl).toBe("hidden");
+
+    const fullHrefs = new Set(fullUser.primary.map((i) => i.href));
+    const reachable = new Set(
+      everyItem(noOut)
+        .filter((i) => i.state !== "hidden")
+        .map((i) => i.href)
+    );
+    const onlyByUrlOrHubPill = [...fullHrefs].filter((h) => !reachable.has(h));
+
+    expect(onlyByUrlOrHubPill).toEqual(["/sms/inbox"]);
+    // …and the page carrying the Inbox pill (`SmsHubNav.tsx`) is still a
+    // primary row, so the one exception keeps a two-click path even with no
+    // "Show everything" button at all.
+    expect(reachable.has(ACTIONS_HUB_PATH)).toBe(true);
+    // The four primary items survive the no-out configuration: the worst case
+    // is still a usable workspace, never an empty shell (risk R5).
+    expect(noOut.primary.map(row)).toEqual(ORGANISER_DEFAULT_ROWS.primary);
   });
 
   it("an admin's own model is the full fixture — admins are never in organiser mode", () => {

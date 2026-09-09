@@ -23,8 +23,7 @@
 
 import { ACTIONS_HUB_PATH } from "@/lib/actions/hub-path";
 import type { WorkspaceModuleId } from "@/lib/workspace/modules";
-import type { WorkspaceMode } from "@/lib/workspace/resolve";
-import type { ModuleState } from "@/lib/workspace/use-workspace";
+import type { ModuleState, WorkspaceMode } from "@/lib/workspace/resolve";
 import { isNavItemActive } from "./active-nav";
 import type { NavIconKey } from "./nav-icons";
 
@@ -61,7 +60,12 @@ export interface NavModel {
 
 export interface BuildNavModelInput {
   mode: WorkspaceMode;
-  enabledModules: ReadonlySet<WorkspaceModuleId>;
+  /**
+   * WP1.1's `moduleStateFor()` bound to the resolved set — the hidden/muted
+   * decision, whole. The resolved module *set* is deliberately not an input:
+   * this file must never re-derive a state from it, and an unused input is a
+   * standing invitation to start.
+   */
   moduleState: (id: WorkspaceModuleId) => ModuleState;
   isAdmin: boolean;
   canShowEverything: boolean;

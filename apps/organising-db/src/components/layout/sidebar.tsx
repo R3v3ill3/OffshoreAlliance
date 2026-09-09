@@ -70,35 +70,29 @@ export function Sidebar() {
     isAdmin,
   } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
-  const [orgOpen, setOrgOpen] = useState(false);
   const [signOutInProgress, setSignOutInProgress] = useState(false);
   const [recoveryFeedback, setRecoveryFeedback] = useState<string | null>(null);
   const { data: emailUnreadCount = 0 } = useEmailInboxUnreadCount(!!user);
   const workspace = useWorkspace();
-  const { mode, enabledModules, moduleState, canShowEverything, showEverything } =
-    workspace;
+  const { mode, moduleState, canShowEverything, showEverything } = workspace;
 
   const model = useMemo(
     () =>
       buildNavModel({
         mode,
-        enabledModules,
         moduleState,
         isAdmin,
         canShowEverything,
         showEverything,
         unreadEmail: emailUnreadCount,
       }),
-    [
-      mode,
-      enabledModules,
-      moduleState,
-      isAdmin,
-      canShowEverything,
-      showEverything,
-      emailUnreadCount,
-    ]
+    [mode, moduleState, isAdmin, canShowEverything, showEverything, emailUnreadCount]
   );
+
+  // The model owns "collapsed by default", not this component: reading the
+  // hard-coded `false` back from it keeps one source for the initial state
+  // and lets a future model change take effect without a second edit here.
+  const [orgOpen, setOrgOpen] = useState(!model.organisation.collapsed);
 
   const organisationItems = model.organisation.items.filter((i) => i.state !== "hidden");
 
@@ -168,6 +162,10 @@ export function Sidebar() {
             <Separator className="my-2" />
             <button
               type="button"
+              // The label span is dropped in the collapsed (w-16) sidebar, so
+              // the name has to come from the attribute or the control is
+              // anonymous to a screen reader at that width.
+              aria-label="Organisation"
               aria-expanded={orgOpen}
               aria-controls="nav-organisation"
               onClick={() => setOrgOpen((v) => !v)}
@@ -228,6 +226,9 @@ export function Sidebar() {
         {model.showEverythingControl !== "hidden" && (
           <button
             type="button"
+            // Same reason as the Organisation disclosure: icon only when the
+            // sidebar is collapsed.
+            aria-label="Show everything"
             onClick={() => workspace.setShowEverything(!showEverything)}
             aria-pressed={model.showEverythingControl === "active"}
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"

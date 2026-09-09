@@ -1005,3 +1005,19 @@ Running 4 tests using 1 worker
   1 skipped
   3 passed (23.9s)
 ```
+
+### Orchestrator e2e run after fix round 2 (2026-09-09) against preview https://offshore-alliance-n04koip0x-reveille-strategy.vercel.app
+
+```
+
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › tests/e2e/actions-hub.spec.ts:22:7 › Actions hub › open /actions, see the three start cards and the status buckets (6.9s)
+  ✓  2 [chromium] › tests/e2e/actions-hub.spec.ts:62:7 › Actions hub › /sms still works and lands on the hub with its params intact (4.0s)
+  -  3 [chromium] › tests/e2e/mobile-dialer.spec.ts:30:7 › Mobile dialer — happy path › volunteer can sign in, claim, dial, record outcome, advance
+  ✓  4 [chromium] › tests/e2e/wall-chart.spec.ts:23:7 › Wall chart — flow one › open a campaign from /campaigns and see the wall chart (10.2s)
+
+  1 skipped
+  3 passed (42.5s)
+```

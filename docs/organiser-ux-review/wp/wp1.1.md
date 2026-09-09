@@ -924,6 +924,65 @@ change: the migration and `packages/db-types/generated.ts` are untouched.
 - Whole-project `pnpm exec eslint .`: 294 problems (143 errors, 151 warnings) — unchanged from
   the develop baseline.
 
+### Fix round 2
+
+Reviewer round-2 findings 1, 4 and 7, applied on `feat/oux-wp1.1-workspace-mode`. No schema
+change: the migration and `packages/db-types/generated.ts` are untouched. This is the last fix
+round.
+
+1. **The org-defaults query no longer swallows a failed GET**
+   (`src/app/(dashboard)/administration/page.tsx`). `if (!res.ok) return {}` became a `throw`, so
+   `isError` is real and an unreachable route can no longer masquerade as "nothing stored"
+   (which resolves everyone to full mode). While the query is pending or has errored, the
+   per-user Workspace section shows a status line — "Loading workspace defaults…" or "Workspace
+   defaults could not be loaded; reload before changing workspace settings." — the "Set modules
+   for this user" control is replaced by "Modules unavailable" and the checklist is disabled.
+   Crucially, the outgoing document no longer computes `modules: null` from an assumed `full`
+   mode: with the defaults unavailable the **stored `modules` list is preserved verbatim**, and
+   a dialog in which no workspace field moved still sends no `workspacePrefs` at all.
+4. **"Nothing stored" is now distinguishable from "stored but unparseable"**
+   (`src/components/administration/workspace-defaults-card.tsx`,
+   `src/app/api/admin/workspace-defaults/route.ts`). The GET route used to return
+   `parseWorkspaceDefaults(raw) ?? {}`, which flattened a malformed stored document into the
+   same `{}` the card reads as "nothing stored" — so the next save silently overwrote it. GET
+   now returns the stored document as-is (unparseable *text* is handed back as the raw string,
+   which the parser rejects at the top level just as the card needs), and `{}` therefore means,
+   and only means, "no row stored". When the card's parse returns `null` it sets `malformed`:
+   the banner says the stored document is malformed and must be repaired in SQL
+   (`app_settings.workspace_defaults`) or replaced, Save is blocked, the row editors are
+   disabled (the rows on screen are only the all-`full` seed), and a small **"Reset to
+   defaults"** button — behind a `window.confirm` — is the only way to overwrite it from the UI.
+   Separately, per-entry drops are now visible: new pure `droppedRoleKeys(raw)` in
+   `src/lib/workspace/prefs-schema.ts` diffs the raw `byWorkRole` keys against the parsed ones,
+   and the card names them in an amber notice, because `documentFromRows` writes all six roles
+   back and would otherwise discard them silently.
+7. **The empty-organiser-list guard is scoped to the workspace payload**
+   (`administration/page.tsx`). It no longer disables the whole Save button, so a name, email,
+   role or reports-to edit still saves. When the selection is empty in organiser mode the
+   `workspacePrefs` key is simply omitted from the PATCH body and the inline hint says the
+   workspace settings will be left unchanged.
+
+**New pure seam and tests.** `src/lib/workspace/prefs-payload.ts` (new, pure, no React) holds
+`workspacePrefsPayload({initial, current, effectiveMode, defaultsAvailable})` returning the
+`workspacePrefs` value or `undefined`, plus `workspaceFormChanged`, `workspaceSelectionEmpty`
+and `sameModuleList` (moved out of the page). `src/lib/workspace/__tests__/prefs-payload.test.ts`
+covers: name-only edit → `undefined`; defaults unavailable + mode change → stored `modules`
+preserved verbatim; empty organiser selection → `undefined`; normal organiser change → the
+document; full mode drops a pinned list; a form returned to the role default sends `{}`.
+`prefs-schema.test.ts` gains two `droppedRoleKeys` cases.
+
+**Gates re-run (from `apps/organising-db`):**
+
+- `pnpm exec eslint` on the seven touched/added files: 0 errors, 2 warnings — both pre-existing,
+  in `administration/page.tsx` (the `fetchStatus` dep and the unused `getLatencyColor`, now at
+  lines 2827/2833). Zero findings on changed lines.
+- `pnpm test`: 780 passed (780) — the 769 baseline plus 9 `prefs-payload` and 2
+  `droppedRoleKeys` cases.
+- `pnpm exec tsc --noEmit -p tsconfig.json`: exit 0.
+- `pnpm build`: "Compiled successfully in 2.4min", 126/126 static pages, exit 0.
+- Whole-project `pnpm exec eslint .`: 294 problems (143 errors, 151 warnings) — unchanged from
+  the develop baseline.
+
 ## 7. Verification output
 
 Verifier run 2026-09-09 at d61cb8d; migration applied to dev dpnnmkhabysfdogllsyh via supabase db push.

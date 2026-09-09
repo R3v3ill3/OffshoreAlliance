@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       _archive_call_attempt_outcomes_20260613: {
@@ -147,6 +122,45 @@ export type Database = {
           title?: string | null
           updated_at?: string | null
           version?: number | null
+        }
+        Relationships: []
+      }
+      _oux_hygiene_log: {
+        Row: {
+          action: string
+          after_row: Json | null
+          before_row: Json | null
+          log_id: number
+          logged_at: string
+          note: string | null
+          rolled_back_at: string | null
+          row_pk: Json
+          script: string
+          table_name: string
+        }
+        Insert: {
+          action: string
+          after_row?: Json | null
+          before_row?: Json | null
+          log_id?: number
+          logged_at?: string
+          note?: string | null
+          rolled_back_at?: string | null
+          row_pk: Json
+          script: string
+          table_name: string
+        }
+        Update: {
+          action?: string
+          after_row?: Json | null
+          before_row?: Json | null
+          log_id?: number
+          logged_at?: string
+          note?: string | null
+          rolled_back_at?: string | null
+          row_pk?: Json
+          script?: string
+          table_name?: string
         }
         Relationships: []
       }
@@ -18365,6 +18379,7 @@ export type Database = {
           updated_at: string
           user_id: string
           work_role: string | null
+          workspace_prefs: Json
         }
         Insert: {
           created_at?: string
@@ -18376,6 +18391,7 @@ export type Database = {
           updated_at?: string
           user_id: string
           work_role?: string | null
+          workspace_prefs?: Json
         }
         Update: {
           created_at?: string
@@ -18387,6 +18403,7 @@ export type Database = {
           updated_at?: string
           user_id?: string
           work_role?: string | null
+          workspace_prefs?: Json
         }
         Relationships: [
           {
@@ -21946,14 +21963,14 @@ export type Database = {
           },
           {
             foreignKeyName: "user_profiles_organiser_id_fkey"
-            columns: ["granted_by_organiser_id"]
+            columns: ["granted_to_organiser_id"]
             isOneToOne: false
             referencedRelation: "organisers"
             referencedColumns: ["organiser_id"]
           },
           {
             foreignKeyName: "user_profiles_organiser_id_fkey"
-            columns: ["granted_to_organiser_id"]
+            columns: ["granted_by_organiser_id"]
             isOneToOne: false
             referencedRelation: "organisers"
             referencedColumns: ["organiser_id"]
@@ -26528,6 +26545,7 @@ export type Database = {
           worksite_count: number
         }[]
       }
+      get_workspace_defaults: { Args: never; Returns: Json }
       grant_campaign_edit_permission: {
         Args: { p_request_id: number; p_response_reason?: string }
         Returns: Json
@@ -26953,9 +26971,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       campaign_phase_enum: [

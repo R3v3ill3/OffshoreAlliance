@@ -35,6 +35,12 @@ export type InlineRatingPopoverProps = {
   onSaved?: () => void;
   /** Per-level label overrides for the 1–5 scale. Keys "1"–"5". */
   customLabels?: Record<string, string> | null;
+  /**
+   * Optional: fired when the popover opens (WP1.7). The organiser has found
+   * the control, so the first-use hint gets out of the way. Additive; never
+   * gates the open.
+   */
+  onRatingControlOpen?: () => void;
   /** The clickable anchor (typically a rating number chip inside a WorkerTile). */
   children: ReactNode;
 };
@@ -51,6 +57,7 @@ export function InlineRatingPopover({
   onOpenDetail,
   onSaved,
   customLabels,
+  onRatingControlOpen,
   children,
 }: InlineRatingPopoverProps) {
   const [open, setOpen] = useState(false);
@@ -82,6 +89,11 @@ export function InlineRatingPopover({
       // repeated quick edits start from the current stored value.
       setValue(initial);
       setNotes("");
+      try {
+        onRatingControlOpen?.();
+      } catch {
+        /* an additive notification must never break the open path */
+      }
     }
     setOpen(next);
   };
@@ -188,6 +200,8 @@ export type CumulativeRatingPopoverProps = {
   onOpenDetail?: () => void;
   /** Optional: fired after a rating save succeeds. Additive; never gates the save. */
   onSaved?: () => void;
+  /** Optional: fired when the popover opens (WP1.7). Additive; never gates the open. */
+  onRatingControlOpen?: () => void;
   /** The clickable trigger (the large rating badge on the tile). */
   children: ReactNode;
 };
@@ -198,6 +212,7 @@ export function CumulativeRatingPopover({
   workerName,
   onOpenDetail,
   onSaved,
+  onRatingControlOpen,
   children,
 }: CumulativeRatingPopoverProps) {
   const [open, setOpen] = useState(false);
@@ -234,6 +249,11 @@ export function CumulativeRatingPopover({
       setSelectedActivityId("");
       setValue({ rating: null, binary_value: null });
       setNotes("");
+      try {
+        onRatingControlOpen?.();
+      } catch {
+        /* an additive notification must never break the open path */
+      }
     }
     setOpen(next);
   };

@@ -18,6 +18,7 @@ import type {
   WorkerListActivityRow,
 } from "./types";
 import { CumulativeRatingPopover, InlineRatingPopover } from "./inline-rating-popover";
+import { FirstUseHint } from "@/components/hints/first-use-hint";
 import {
   BuildListCheck,
   CumulativeRatingDot,
@@ -50,6 +51,13 @@ export type WorkerTileProps = {
   campaignId?: string | number;
   /** This worker's rating for the selected assessment, if any. */
   activityRating?: ActivityRating | null;
+  /**
+   * WP1.7: render the first-use rating hint anchored to this tile's rating
+   * badge. The wall chart sets it on exactly one tile (pickRatingHintAnchor).
+   */
+  showRatingHint?: boolean;
+  /** WP1.7: "Got it" pressed, or the rating control opened, on the hinted tile. */
+  onRatingHintDismiss?: () => void;
   /**
    * Click handler. The tile decides whether the click is a plain click (open
    * the detail sheet), a modifier click (toggle selection), or a shift-click
@@ -106,6 +114,8 @@ export function WorkerTile({
   selection,
   campaignId,
   activityRating,
+  showRatingHint,
+  onRatingHintDismiss,
   onClick,
   onCopy,
   isSelected,
@@ -289,6 +299,7 @@ export function WorkerTile({
       customLabels={assessment.ratingLabels}
       onOpenDetail={() => onClick?.(worker.worker_id, ouId ?? null, "open")}
       onSaved={onRatingSaved}
+      onRatingControlOpen={showRatingHint ? onRatingHintDismiss : undefined}
     >
       {largeBadge}
     </InlineRatingPopover>
@@ -299,6 +310,7 @@ export function WorkerTile({
       workerName={displayName}
       onOpenDetail={() => onClick?.(worker.worker_id, ouId ?? null, "open")}
       onSaved={onRatingSaved}
+      onRatingControlOpen={showRatingHint ? onRatingHintDismiss : undefined}
     >
       {largeBadge}
     </CumulativeRatingPopover>
@@ -363,7 +375,15 @@ export function WorkerTile({
               {displayName}
             </span>
           </div>
-          <div className="shrink-0">{largeBadgeRendered}</div>
+          <div className="shrink-0">
+            {showRatingHint ? (
+              <FirstUseHint id="wall_chart_rating" onDismiss={onRatingHintDismiss}>
+                {largeBadgeRendered}
+              </FirstUseHint>
+            ) : (
+              largeBadgeRendered
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-1 flex-wrap w-full">
           <WorkerBadgeRow

@@ -669,7 +669,129 @@ Every sidebar row and every appendix D §1.6 page, as shipped:
 
 ## 7. Verification output
 
-_(verifier pastes raw output)_
+Verifier run 2026-09-09 at 84beee7; preview https://offshore-alliance-2x8cvtu57-reveille-strategy.vercel.app
+
+### 1. `apps/organising-db` checks
+
+```
+$ pnpm exec tsc --noEmit -p tsconfig.json; echo tsc $?
+tsc 0
+```
+
+```
+$ pnpm test 2>&1 | grep -E 'Test Files|Tests |FAIL'
+ Test Files  65 passed (65)
+      Tests  881 passed (881)
+```
+
+```
+$ pnpm lint 2>&1 | grep problems
+✖ 294 problems (143 errors, 151 warnings)
+```
+
+Matches the PROGRESS.md baseline exactly (294/143/151) — no new lint debt from the files this package touched.
+
+```
+$ pnpm build 2>&1 | tail -4  (re-run to confirm exit code)
+$ echo "build exit $?"
+build exit 0
+```
+
+### 2. Repo-root diffs against `feat/oux-wp1.6-auth-rls`
+
+```
+$ git diff --stat feat/oux-wp1.6-auth-rls..HEAD | tail -1
+ 14 files changed, 3094 insertions(+), 141 deletions(-)
+
+$ git diff --name-only feat/oux-wp1.6-auth-rls..HEAD | grep -E '^supabase/|^packages/db-types/' || echo "no schema or type changes"
+no schema or type changes
+
+$ git log --oneline feat/oux-wp1.6-auth-rls..HEAD
+84beee7 docs(oux-wp1.2): deviations from plan and implementer notes
+698d1fe feat(oux-wp1.2): e2e for both navs — full-mode regression and organiser round trip
+af65a94 feat(oux-wp1.2): sidebar, mobile nav and header consume the nav model
+19aad31 feat(oux-wp1.2): navigation as pure data — buildNavModel, icons, snapshots
+3bbb950 docs(oux): WP1.2 plan, approved
+```
+
+Confirms deviation §6.9 ("`modules.ts` was not touched") — no schema or `packages/db-types` changes on this branch, consistent with "no migration in this package".
+
+### 3. E2E user's stored prefs, before the run
+
+```
+select workspace_prefs from user_profiles where user_id = 'f7c048e2-ecfe-4e9c-8715-7f4c899f0d37';
+→ [{"workspace_prefs": {}}]
+```
+
+As expected.
+
+### 4. Preview deployment
+
+The deployment for `84beee7e131f4277b6dd5acd6bfe5f06abeb888c` already existed (created 2026-09-09T08:32:55Z) and was already `success` on first poll — no polling loop was needed.
+
+```
+$ gh api "repos/R3v3ill3/OffshoreAlliance/deployments?sha=84beee7e131f4277b6dd5acd6bfe5f06abeb888c&per_page=3"
+→ deployment id 6345760460, environment "Preview", sha 84beee7e131f4277b6dd5acd6bfe5f06abeb888c
+
+$ gh api "repos/R3v3ill3/OffshoreAlliance/deployments/6345760460/statuses"
+→ state "success", environment_url "https://offshore-alliance-2x8cvtu57-reveille-strategy.vercel.app"
+
+$ curl -s -o /dev/null -w '%{http_code}\n' https://offshore-alliance-2x8cvtu57-reveille-strategy.vercel.app/login
+200
+```
+
+### 5. Credentialled e2e — full suite, both projects
+
+```
+$ E2E_FOREIGN_CAMPAIGN_ID=3 E2E_BASE_URL=<preview> pnpm e2e 2>&1 | grep -v -i password | tail -60
+Running 9 tests using 1 worker
+
+  ✓  1 [chromium] › tests/e2e/actions-hub.spec.ts:22:7 › Actions hub › open /actions, see the three start cards and the status buckets (6.7s)
+  ✓  2 [chromium] › tests/e2e/actions-hub.spec.ts:62:7 › Actions hub › /sms still works and lands on the hub with its params intact (3.3s)
+  -  3 [chromium] › tests/e2e/mobile-dialer.spec.ts:30:7 › Mobile dialer — happy path › volunteer can sign in, claim, dial, record outcome, advance
+  ✓  4 [chromium] › tests/e2e/organiser-nav.spec.ts:52:7 › Sidebar — full mode is today's sidebar › the ten rows, in order, with no organiser-mode furniture (1.4s)
+  ✓  5 [chromium] › tests/e2e/organiser-nav.spec.ts:68:7 › Sidebar — the organiser-mode round trip › organiser mode shows four primary items, Organisation and Show everything (10.9s)
+[cleanup] no leftover "WP1.6 role check " campaigns for this account.
+  ✓  6 [chromium] › tests/e2e/roles/unit-lifecycle-user.spec.ts:92:7 › WP1.6 role coverage — user › creates a campaign, then creates, renames and deletes a unit and the campaign (11.5s)
+  ✓  7 [chromium] › tests/e2e/roles/unit-lifecycle-user.spec.ts:137:7 › WP1.6 role coverage — user › offers no write controls on a campaign the account cannot write to (3.6s)
+  ✓  8 [chromium] › tests/e2e/wall-chart.spec.ts:23:7 › Wall chart — flow one › open a campaign from /campaigns and see the wall chart (10.9s)
+[cleanup] removed 0 leftover "WP1.6 admin unit " unit(s).
+  ✓  9 [chromium-admin] › tests/e2e/roles/unit-lifecycle-admin.spec.ts:76:7 › WP1.6 role coverage — admin › creates, renames and deletes a unit on any campaign (8.1s)
+
+  1 skipped
+  8 passed (1.2m)
+```
+
+No failures. Both new nav specs (full-mode regression, organiser round trip) passed on the first run; no re-run was needed. The 1 skip is `mobile-dialer.spec.ts`, gated on credentials this run did not need to exercise (unrelated to this package).
+
+### 6. Post-e2e residue checks
+
+```
+select workspace_prefs from user_profiles where user_id = 'f7c048e2-ecfe-4e9c-8715-7f4c899f0d37';
+→ [{"workspace_prefs": {}}]
+```
+
+Reset correctly by the spec's `finally` block.
+
+```
+select campaign_id, name from campaigns where name like 'WP1.6%';
+→ []
+```
+
+No residue.
+
+### 7. Visual evidence
+
+A throwaway Playwright script (`apps/organising-db/test-results/*.ts`, gitignored, deleted after the run) loaded `tests/e2e/.auth/user.json` / `.auth/admin.json` and drove the same `PATCH /api/admin/update-user` call the spec uses (`workspacePrefs: { mode: "organiser" }` for the e2e user, resolved via `GET /api/admin/users`).
+
+- `/tmp/oux-plans/shots/wp1.2-full-mode-sidebar.png` — full mode, desktop 1280×800, today's 10-row sidebar.
+- `/tmp/oux-plans/shots/wp1.2-organiser-sidebar.png` — organiser mode: My campaigns / Actions / Inbox / Guides, collapsed Organisation (chevron down), Show everything control, both confirmed present.
+- `/tmp/oux-plans/shots/wp1.2-organisation-expanded.png` — Organisation section expanded, showing the five muted rows (Worksites, Upcoming Projects, Overview, Dashboard, Reports) each with "Ask an admin to enable".
+- `/tmp/oux-plans/shots/wp1.2-mobile-organiser.png` — iPhone 13 emulation, open mobile sheet in organiser mode: same four primary items, collapsed Organisation, Show everything and footer, confirming appendix D §1.4 "identical inventory" holds in organiser mode too.
+
+**One deviation from the script recipe, noted honestly:** the first attempt captured `wp1.2-organiser-sidebar.png` immediately after `page.reload()` with only a generic `waitForSelector("aside nav a span")` guard, which resolved against the still-rendering full-mode nav (a client-side propagation delay after the admin's `PATCH`, not a product bug — the real Playwright spec's `expect(...).toEqual(...)` retries and passed cleanly in §5, test 5). The screenshot was retaken waiting explicitly for `nav.getByRole("link", { name: "My campaigns" })` to be visible before capturing; the corrected image is the one referenced above. workspace_prefs was reset to `{}` after every capture attempt, confirmed by SQL each time (see §6 output above, final state `{}`).
+
+Final SQL confirmation after the last capture and reset: `workspace_prefs = {}`.
 
 ## 8. Reviewer findings
 

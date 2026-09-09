@@ -36,7 +36,7 @@ test.describe("WP1.1 — Administration → Users edit dialog fits the viewport"
 
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByText("Workspace mode")).toBeVisible();
+    await expect(dialog.getByText("Workspace mode", { exact: true })).toBeVisible();
 
     const save = dialog.getByRole("button", { name: /save changes/i });
     const viewport = page.viewportSize();

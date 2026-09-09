@@ -1151,7 +1151,12 @@ export function CampaignWallChart({
           campaignId={campaignId}
           activityRating={activityRating}
           // Both ids: a worker in several units renders as several tiles, and
-          // the hint must appear on exactly one of them.
+          // the hint must appear on exactly one of them. The anchor flag is
+          // independent of visibility so the badge wrapper stays mounted across
+          // the dismissal (fix round 1, finding 1).
+          ratingHintAnchor={
+            ratingHintAnchor?.workerId === workerId && ratingHintAnchor.ouId === ouId
+          }
           showRatingHint={
             ratingHint.visible &&
             ratingHintAnchor?.workerId === workerId &&

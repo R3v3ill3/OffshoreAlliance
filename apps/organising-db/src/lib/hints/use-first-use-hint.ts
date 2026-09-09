@@ -6,7 +6,7 @@
 // a row in public.user_hint_dismissals (owner-only RLS) and never a
 // localStorage key (plan 5.1 principle 6, plan §7 "What not to do").
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -31,12 +31,17 @@ export const HINT_DISMISSALS_QUERY_KEY = "hint-dismissals" as const;
 
 /**
  * One query per signed-in user for all of their dismissals (`staleTime:
- * Infinity` — a dismissal cannot un-happen within a session), plus a write
- * that sets session state FIRST so the callout disappears on the click, not
- * on the round trip. A failed write is logged and otherwise ignored: a hint
- * that fails to persist must never block the chart, and it will simply
- * reappear next session. Outside a session the hook issues no query and
- * reports `visible: false`.
+ * Infinity` — a dismissal cannot un-happen within a session), plus a write.
+ *
+ * `dismiss()` adds the id to the CACHED list first, synchronously, so the
+ * callout disappears on the click, not on the round trip — and because the
+ * optimistic entry lives in the query cache rather than in this hook's
+ * state, it survives leaving and re-entering the wall chart (every instance
+ * of the hook reads the same cache entry). A failed write is logged and the
+ * cached entry is kept: a hint that fails to persist must never block the
+ * chart or come back mid-session; it will simply reappear next session, when
+ * the cache is cold and the query reads the table again. Outside a session
+ * the hook issues no query and reports `visible: false`.
  *
  * `createClient()` returns an untyped `SupabaseClient`, so
  * `.from("user_hint_dismissals")` compiles before the generated types carry
@@ -47,7 +52,6 @@ export function useFirstUseHint(id: HintId, opts: UseFirstUseHintOptions): First
   const userId = user?.id ?? null;
   const supabase = createClient();
   const queryClient = useQueryClient();
-  const [dismissedThisSession, setDismissedThisSession] = useState(false);
 
   const queryKey = useMemo(() => [HINT_DISMISSALS_QUERY_KEY, userId] as const, [userId]);
 
@@ -77,11 +81,6 @@ export function useFirstUseHint(id: HintId, opts: UseFirstUseHintOptions): First
         .upsert({ user_id: userId, hint_id: id }, { onConflict: "user_id,hint_id", ignoreDuplicates: true });
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.setQueryData<string[]>(queryKey, (prev) =>
-        prev && prev.includes(id) ? prev : [...(prev ?? []), id]
-      );
-    },
     onError: (e: Error) => {
       console.warn(`[hints] could not record dismissal of ${id}: ${e.message}`);
     },
@@ -89,17 +88,22 @@ export function useFirstUseHint(id: HintId, opts: UseFirstUseHintOptions): First
   const { mutate } = write;
 
   const dismiss = useCallback(() => {
-    setDismissedThisSession(true);
-    if (userId !== null) mutate(undefined);
-  }, [mutate, userId]);
+    if (userId === null) return;
+    queryClient.setQueryData<string[]>(queryKey, (prev) =>
+      prev && prev.includes(id) ? prev : [...(prev ?? []), id]
+    );
+    mutate(undefined);
+  }, [id, mutate, queryClient, queryKey, userId]);
 
+  // The cached list already carries this session's optimistic dismissal, so
+  // the predicate's separate `dismissedThisSession` input is not needed here.
   const seen = (dismissals.data ?? []).includes(id);
   const loaded = userId !== null && dismissals.isSuccess;
   const visible = shouldShowHint(id, {
     seen,
     loaded,
     hasTiles: opts.hasTiles,
-    dismissedThisSession,
+    dismissedThisSession: false,
     canWrite: opts.canWrite,
   });
 

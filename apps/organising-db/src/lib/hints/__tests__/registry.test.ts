@@ -12,10 +12,12 @@ import { HINTS, HINT_BY_ID } from "../registry";
 const RETIRED = /scope|universe|unalloc|no unit|\bOU\b|sms tools|standing campaign|episode/i;
 
 describe("hint registry", () => {
-  it("has unique snake_case ids", () => {
+  it("has unique snake_case ids that satisfy the user_hint_dismissals CHECK", () => {
     const ids = HINTS.map((h) => h.id);
     expect(new Set(ids).size).toBe(ids.length);
-    for (const id of ids) expect(id).toMatch(/^[a-z][a-z0-9_]*$/);
+    // Same expression as user_hint_dismissals_hint_id_check
+    // (supabase/migrations/20260911100000_user_hint_dismissals_check.sql).
+    for (const id of ids) expect(id).toMatch(/^[a-z][a-z0-9_]{0,63}$/);
   });
 
   it("HINT_BY_ID covers every entry and only those", () => {

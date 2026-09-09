@@ -290,13 +290,22 @@ test.describe("My campaigns", () => {
  * The copy is the literal sentence from the registry, so the spec and the
  * product cannot drift. The dismissal row is reset through the same signed-in
  * session via `restClientFor` (which refuses the production project outright)
- * both before and after the test, using the owner-only DELETE policy the
- * WP1.7 migration adds. Without a REST client the test skips rather than run
+ * both before and after each test, using the owner-only DELETE policy the
+ * WP1.7 migration adds. Without a REST client the tests skip rather than run
  * without a reset: a spec that cannot clean up must not run twice.
  *
  * Precondition the operator must know: the dev e2e account's campaign must
  * have at least one worker tile AND the account must have write access, or
  * the hint correctly does not render and the assertion below says so.
+ *
+ * Fix round 1 (findings 1, 2, 11): two tests, because opening the rating
+ * control dismisses the hint by design, so "Got it" and "click the badge"
+ * cannot both be exercised on one visible hint. Each asserts that neither
+ * the worker sheet (a `role=dialog` whose heading is the worker's name,
+ * `campaign-worker-detail-provider.tsx` SheetTitle) nor anything else opened
+ * by mistake; the badge test asserts that the rating popover — the element
+ * the badge's `aria-controls` points at, containing the "Save" button of
+ * `inline-rating-popover.tsx` — opened on the first click.
  */
 test.describe("Wall chart — first-use rating hint", () => {
   test.skip(!hasE2ECredentials, NO_CREDENTIALS_MESSAGE);
@@ -327,10 +336,8 @@ test.describe("Wall chart — first-use rating hint", () => {
     await rest.delete(dismissalPath(rest.session.userId));
   });
 
-  test("the rating hint shows once, then stays dismissed", async ({ page }) => {
-    if (!rest) return;
-    const client = rest;
-
+  /** Opens the e2e account's first campaign on the wall chart and waits for the hint. */
+  async function openWallChartWithHint(page: Page) {
     await page.goto("/my-campaigns");
     const card = page.getByRole("link", { name: "Open wall chart" }).first();
     await expect(
@@ -355,11 +362,27 @@ test.describe("Wall chart — first-use rating hint", () => {
     ).toBeVisible({ timeout: 30_000 });
     await expect(hint).toHaveCount(1);
 
-    await page.getByRole("button", { name: "Got it" }).click();
-    await expect(hint).toHaveCount(0);
+    // The hinted tile: the anchor wrapper (`first-use-hint.tsx`,
+    // data-hint-anchor) sits inside exactly one [data-worker-id] tile, whose
+    // badge is the span with role=button (`worker-tile.tsx` largeBadge). The
+    // worker's name is the tile button's title up to its first full stop
+    // (`${displayName}. Cumulative …`), the same first+last string the sheet
+    // uses as its heading.
+    const anchor = page.locator(`[data-hint-anchor="${HINT_ID}"]`);
+    await expect(anchor).toHaveCount(1);
+    const tile = page.locator("[data-worker-id]").filter({ has: anchor });
+    const tileTitle = (await tile.getByRole("button").first().getAttribute("title")) ?? "";
+    const workerName = tileTitle.split(". ")[0];
+    expect(workerName, "the hinted tile must carry the worker's name in its title").not.toBe("");
+    const badge = anchor.getByRole("button").first();
+    const workerSheet = page
+      .getByRole("dialog")
+      .filter({ has: page.getByRole("heading", { name: workerName, exact: true }) });
+    return { hint, badge, workerName, workerSheet };
+  }
 
-    // The dismissal is persisted for this user (the write is fire-and-forget
-    // after the click, so poll rather than read once).
+  async function expectDismissalPersisted(client: RestClient) {
+    // The write is fire-and-forget after the click, so poll rather than read once.
     await expect
       .poll(
         async () => {
@@ -369,6 +392,21 @@ test.describe("Wall chart — first-use rating hint", () => {
         { message: "the dismissal row must be written for the signed-in user", timeout: 10_000 }
       )
       .toBe(1);
+  }
+
+  test("the rating hint shows once, then stays dismissed", async ({ page }) => {
+    if (!rest) return;
+    const client = rest;
+    const { hint, badge, workerSheet } = await openWallChartWithHint(page);
+
+    await page.getByRole("button", { name: "Got it" }).click();
+    await expect(hint).toHaveCount(0);
+    // "Got it" must not bubble into the tile (finding 2): no worker sheet, and
+    // the badge's own popover did not open either.
+    await expect(workerSheet).toHaveCount(0);
+    await expect(badge).toHaveAttribute("aria-expanded", "false");
+
+    await expectDismissalPersisted(client);
 
     // After a reload the hint is absent — asserted only once the dismissals
     // query has answered, because the hint fails closed while loading and
@@ -384,5 +422,32 @@ test.describe("Wall chart — first-use rating hint", () => {
     ).toBeVisible({ timeout: 30_000 });
     await dismissalsAnswered;
     await expect(hint).toHaveCount(0);
+    await expect(workerSheet).toHaveCount(0);
+  });
+
+  test("the hinted badge opens its rating control on the first click", async ({ page }) => {
+    if (!rest) return;
+    const client = rest;
+    const { hint, badge, workerSheet } = await openWallChartWithHint(page);
+
+    // Finding 1: the first click on the badge, while the hint is visible,
+    // must open the rating popover — not be swallowed by a remount.
+    await badge.click();
+    await expect(badge).toHaveAttribute("aria-expanded", "true");
+    const controlsId = await badge.getAttribute("aria-controls");
+    expect(controlsId, "the badge is the rating popover's trigger (aria-controls)").toBeTruthy();
+    const ratingPopover = page.locator(`[id="${controlsId}"]`);
+    await expect(ratingPopover).toBeVisible();
+    await expect(ratingPopover.getByRole("button", { name: "Save" })).toBeVisible();
+    // Opening the control counts as "found it": the hint is gone, and no
+    // worker sheet opened.
+    await expect(hint).toHaveCount(0);
+    await expect(workerSheet).toHaveCount(0);
+
+    await ratingPopover.getByRole("button", { name: "Cancel" }).click();
+    await expect(ratingPopover).toHaveCount(0);
+    await expect(workerSheet).toHaveCount(0);
+
+    await expectDismissalPersisted(client);
   });
 });

@@ -52,9 +52,13 @@ export type WorkerTileProps = {
   /** This worker's rating for the selected assessment, if any. */
   activityRating?: ActivityRating | null;
   /**
-   * WP1.7: render the first-use rating hint anchored to this tile's rating
-   * badge. The wall chart sets it on exactly one tile (pickRatingHintAnchor).
+   * WP1.7: this tile is the one the first-use rating hint anchors to
+   * (pickRatingHintAnchor). The anchor wrapper around the badge is rendered
+   * whenever this is set, visible hint or not, so dismissing the hint never
+   * remounts the badge's rating popover (fix round 1, finding 1).
    */
+  ratingHintAnchor?: boolean;
+  /** WP1.7: the hint is currently shown on this tile. Implies `ratingHintAnchor`. */
   showRatingHint?: boolean;
   /** WP1.7: "Got it" pressed, or the rating control opened, on the hinted tile. */
   onRatingHintDismiss?: () => void;
@@ -114,6 +118,7 @@ export function WorkerTile({
   selection,
   campaignId,
   activityRating,
+  ratingHintAnchor,
   showRatingHint,
   onRatingHintDismiss,
   onClick,
@@ -376,8 +381,12 @@ export function WorkerTile({
             </span>
           </div>
           <div className="shrink-0">
-            {showRatingHint ? (
-              <FirstUseHint id="wall_chart_rating" onDismiss={onRatingHintDismiss}>
+            {ratingHintAnchor || showRatingHint ? (
+              <FirstUseHint
+                id="wall_chart_rating"
+                visible={!!showRatingHint}
+                onDismiss={onRatingHintDismiss}
+              >
                 {largeBadgeRendered}
               </FirstUseHint>
             ) : (

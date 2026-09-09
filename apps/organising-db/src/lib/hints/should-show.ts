@@ -10,7 +10,11 @@ export interface ShouldShowHintInput {
   loaded: boolean;
   /** The screen has at least one thing the hint can point at. */
   hasTiles: boolean;
-  /** Dismissed in this session (optimistic; also true right after a write). */
+  /**
+   * Dismissed in this session but not (yet) known to be persisted. The hook
+   * folds this into `seen` via the query cache and passes false; the input
+   * stays so a caller without a cache can express it directly.
+   */
   dismissedThisSession: boolean;
   /** The viewer may edit. A read-only viewer has no rating control to hint at. */
   canWrite: boolean;

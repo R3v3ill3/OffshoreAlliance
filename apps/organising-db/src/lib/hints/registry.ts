@@ -30,7 +30,7 @@ export const HINTS: readonly Hint[] = [
   {
     id: "wall_chart_rating",
     target: "the rating number on a worker tile in the wall chart",
-    copy: "Click a worker's number to set their rating.",
+    copy: "Tap a worker's rating to set it — 1 is a supportive leader, 5 is opposed.",
     showWhen:
       "the first time this user opens a wall chart that has at least one tile they can edit, in either mode",
   },

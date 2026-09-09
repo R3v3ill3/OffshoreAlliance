@@ -28,7 +28,7 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 | 1.2 | Navigation driven by modules | not started | | | | | |
 | 1.3 | My campaigns home | not started | | | | | |
 | 1.4 | Campaign workspace | not started | | | | | |
-| 1.5 | Actions hub | not started | | | | | |
+| 1.5 | Actions hub | implementing | `feat/oux-wp1.5-actions-hub` | | | | 10 |
 | 1.6 | Auth and RLS alignment | not started | | | | | 2, 8 |
 | 1.7 | Guides and hints | not started | | | | | 9 |
 | 2.1 | Schema and migration | not started | | | | | 3, 4, 5 |

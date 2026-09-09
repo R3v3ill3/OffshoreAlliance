@@ -74,6 +74,11 @@ ffmpeg -y -ss 14 -i output/<ID>/<ID>.mp4 -frames:v 1 /tmp/f.png   # then Read /t
 OA_DEMO_EMAIL=... OA_DEMO_PASSWORD=... TARGET=both node upload-to-storage.mjs
 # 7. regenerate the hub manifest (storage paths)
 node publish-to-app.mjs
+#    WP1.7: publish-to-app.mjs OVERWRITES the manifest. Before running it, re-apply the
+#    route edits in docs/organiser-ux-review/wp/wp1.7.md §2.1.6 to the clip specs:
+#    OVERVIEW and A4 gain "/my-campaigns"; D1 and D2 gain "/actions" (six strings, four clips).
+#    apps/organising-db/src/lib/hints/__tests__/help-manifest.test.ts pins those six routes
+#    and the 19 clip ids, so `pnpm test` goes red if a regeneration drops any of them.
 # 8. commit manifest on develop, push (fetch first!)
 ```
 `runClip(spec)` (in `lib/clip.mjs`) handles narration → demo‑row cleanup → record (visible cursor, **absolute‑timeline sync** so actions line up with narration, page‑load lead trimmed) → ffmpeg assemble → manifest. A clip spec = `{ id, title, segments[], steps[] (one per segment), startUrl (string or async({get})=>url), readySelector, cleanup[], upNext[], upNextLabels[], tags[], summary, … }`. Campaign‑scoped `startUrl` resolves the id by name: `get('campaigns?name=eq.<encoded>')`.

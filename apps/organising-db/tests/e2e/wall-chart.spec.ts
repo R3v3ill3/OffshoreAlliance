@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { expect, test, type APIRequestContext, type Browser, type Page } from "@playwright/test";
 
 import { groupMyCampaigns, type MyCampaignRosterRow, type MyCampaignRow } from "@/lib/campaign/my-campaigns";
+import { HINT_BY_ID } from "@/lib/hints/registry";
 import { LANDING_PARAM } from "@/lib/workspace/landing";
 import { resolveWorkspace, type WorkspaceMode } from "@/lib/workspace/resolve";
 import type { UserRole, WorkRole } from "@/types/organising-row-types";
@@ -15,7 +16,7 @@ import {
   hasE2EAdminCredentials,
   hasE2ECredentials,
 } from "./env";
-import { restClientFor, sessionFromStorageState } from "./roles/campaign-cleanup";
+import { restClientFor, sessionFromStorageState, type RestClient } from "./roles/campaign-cleanup";
 
 /**
  * Canonical flow one, phase-1 form (WP0.2 → WP1.3): sign in and reach a wall
@@ -280,5 +281,108 @@ test.describe("My campaigns", () => {
     await page.getByRole("tab", { name: "Wall Chart / List" }).click();
     await expect(page).toHaveURL(/sub=wall-chart/);
     await expect(wallChartCardTitle(page)).toBeVisible();
+  });
+});
+
+/**
+ * WP1.7 — the first-use rating hint shows once per user, then stays dismissed.
+ *
+ * The copy is the literal sentence from the registry, so the spec and the
+ * product cannot drift. The dismissal row is reset through the same signed-in
+ * session via `restClientFor` (which refuses the production project outright)
+ * both before and after the test, using the owner-only DELETE policy the
+ * WP1.7 migration adds. Without a REST client the test skips rather than run
+ * without a reset: a spec that cannot clean up must not run twice.
+ *
+ * Precondition the operator must know: the dev e2e account's campaign must
+ * have at least one worker tile AND the account must have write access, or
+ * the hint correctly does not render and the assertion below says so.
+ */
+test.describe("Wall chart — first-use rating hint", () => {
+  test.skip(!hasE2ECredentials, NO_CREDENTIALS_MESSAGE);
+
+  const HINT_ID = "wall_chart_rating";
+  const HINT_COPY = HINT_BY_ID[HINT_ID].copy;
+  const dismissalPath = (userId: string) =>
+    `/rest/v1/user_hint_dismissals?hint_id=eq.${HINT_ID}&user_id=eq.${userId}&select=hint_id`;
+
+  let rest: RestClient | null = null;
+
+  test.beforeEach(async ({ request }) => {
+    rest = restClientFor(request, sessionFromStorageState(STORAGE_STATE));
+    test.skip(
+      !rest,
+      "Skipped: no REST client for the signed-in session (see the [cleanup] line above); the hint spec must be able to reset its own dismissal."
+    );
+    if (!rest) return;
+    const reset = await rest.delete(dismissalPath(rest.session.userId));
+    expect(
+      [200, 204],
+      `resetting the hint dismissal must succeed (got ${reset.status}: ${JSON.stringify(reset.body)})`
+    ).toContain(reset.status);
+  });
+
+  test.afterEach(async () => {
+    if (!rest) return;
+    await rest.delete(dismissalPath(rest.session.userId));
+  });
+
+  test("the rating hint shows once, then stays dismissed", async ({ page }) => {
+    if (!rest) return;
+    const client = rest;
+
+    await page.goto("/my-campaigns");
+    const card = page.getByRole("link", { name: "Open wall chart" }).first();
+    await expect(
+      card,
+      "the e2e account must be on at least one dev campaign (campaign_organisers or campaigns.organiser_id)"
+    ).toBeVisible({ timeout: 30_000 });
+    await card.click();
+    await expect(page).toHaveURL(/\/campaigns\/\d+\?.*tab=workforce.*sub=wall-chart/, {
+      timeout: 30_000,
+    });
+    await expectWallChart(page);
+    await expect(
+      page.locator('[data-worker-id], [data-ou-id="unassigned"]').first(),
+      "Expected at least one worker tile or the Unassigned card."
+    ).toBeVisible({ timeout: 30_000 });
+
+    // One hint, not one per tile.
+    const hint = page.getByText(HINT_COPY, { exact: true });
+    await expect(
+      hint,
+      "the first-use rating hint must render: the e2e account's campaign needs at least one worker tile and the account needs write access to it"
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(hint).toHaveCount(1);
+
+    await page.getByRole("button", { name: "Got it" }).click();
+    await expect(hint).toHaveCount(0);
+
+    // The dismissal is persisted for this user (the write is fire-and-forget
+    // after the click, so poll rather than read once).
+    await expect
+      .poll(
+        async () => {
+          const res = await client.get(dismissalPath(client.session.userId));
+          return Array.isArray(res.body) ? res.body.length : -1;
+        },
+        { message: "the dismissal row must be written for the signed-in user", timeout: 10_000 }
+      )
+      .toBe(1);
+
+    // After a reload the hint is absent — asserted only once the dismissals
+    // query has answered, because the hint fails closed while loading and
+    // "not painted yet" must not pass as "dismissed".
+    const dismissalsAnswered = page.waitForResponse(
+      (r) => r.url().includes("/rest/v1/user_hint_dismissals") && r.request().method() === "GET",
+      { timeout: 30_000 }
+    );
+    await page.reload();
+    await expectWallChart(page);
+    await expect(
+      page.locator('[data-worker-id], [data-ou-id="unassigned"]').first()
+    ).toBeVisible({ timeout: 30_000 });
+    await dismissalsAnswered;
+    await expect(hint).toHaveCount(0);
   });
 });

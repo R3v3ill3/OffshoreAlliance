@@ -2447,6 +2447,182 @@ spec's own delete step, which is its only cleanup path.
 
 Preview: `https://offshore-alliance-ahwhwpnjd-reveille-strategy.vercel.app`
 
+### Verifier run 3 (after fix round 2) at c05bef1; preview https://offshore-alliance-r1xiitar4-reveille-strategy.vercel.app
+
+Reported without interpretation, per this round's brief. Branch `feat/oux-wp1.6-auth-rls` checked out at
+`c05bef1acd05d15a0afaec57d6774afaabf6db6a`, unchanged (no source edits; `supabase/.temp/*` left untouched
+and unstaged). No migration this round — nothing to push.
+
+#### R3.1 `tsc` / `test` / `lint` / `build` / `validate:migrations`
+
+```
+$ pnpm exec tsc --noEmit -p tsconfig.json; echo tsc $?
+tsc 0
+
+$ pnpm test 2>&1 | grep -E 'Test Files|Tests |FAIL'
+ Test Files  63 passed (63)
+      Tests  852 passed (852)
+
+$ pnpm lint 2>&1 | grep problems
+✖ 294 problems (143 errors, 151 warnings)
+
+$ pnpm build 2>&1 | tail -4
+✓ Compiled successfully in 3.0min
+(route table, no errors)
+
+$ pnpm validate:migrations
+Validated 6 Supabase migrations with unique 14-digit versions.
+```
+
+`lint` count (294 problems, 143 errors / 151 warnings) is unchanged from run 2's recorded baseline.
+
+#### R3.2 Standing-campaign probe (the section that changed in fix round 2)
+
+`git diff 8a184d1..HEAD -- scripts/data-hygiene/oux-wp1.6/95_role_probes.sql` shows one hunk: the "real
+standing campaign" delete probe inside section 2's positive-`user` `DO` block now selects the standing
+campaign id first and prints `SKIP` when none exists, instead of passing a possibly-NULL id straight into
+`delete_campaign()`. Re-run as its own `BEGIN … ROLLBACK` (impersonating `e2e_uid =
+f7c048e2-ecfe-4e9c-8715-7f4c899f0d37`, `SET LOCAL ROLE authenticated`, output captured via a temp table
+because the MCP tool does not surface `RAISE`, same technique as prior runs):
+
+```
+1 SKIP user/delete_campaign(standing campaign): no standing campaign on this database
+```
+
+Matches the fix round's expectation (no standing campaign exists on dev, so this must read SKIP, not FAIL).
+
+#### R3.3 `00_preflight_organiser_write_access.sql` and `01_postflight_write_coverage.sql` (dev, as-is)
+
+Both pasted and run as plain SQL (no psql meta-commands needed, confirming fix round 1 item 2's "no
+psql-only directives" claim).
+
+`00_preflight_organiser_write_access.sql` → **0 rows** (expected zero).
+
+`01_postflight_write_coverage.sql` → 9 rows:
+
+| display_name | role | work_role | campaigns_on_roster | campaigns_created |
+|---|---|---|---|---|
+| Jason | admin | lead_organiser | 0 | 0 |
+| Rosco | admin | coordinator | 0 | 0 |
+| Troy Burton | admin | lead_organiser | 2 | 0 |
+| Zach | admin | industrial_coordinator | 0 | 0 |
+| Daini | user | organiser | 0 | 0 |
+| Damian | user | organiser | 1 | 0 |
+| Jarred Payne | user | organiser | 1 | 0 |
+| Maddie | user | organiser | 0 | 0 |
+| troy reveille | user | organiser | 1 | 0 |
+
+#### R3.4 Preview deployment
+
+`gh api "repos/R3v3ill3/OffshoreAlliance/deployments?sha=c05bef1acd05d15a0afaec57d6774afaabf6db6a&per_page=3"`
+returned the deployment on the first poll (id `6345199706`, environment `Preview`). Its `/statuses` was
+already `state=success` on the first poll — `environment_url`:
+`https://offshore-alliance-r1xiitar4-reveille-strategy.vercel.app`.
+
+#### R3.5 Credentialled e2e, full suite, both projects, twice
+
+`source ~/.zshrc >/dev/null 2>&1; cd apps/organising-db; E2E_FOREIGN_CAMPAIGN_ID=3
+E2E_BASE_URL=https://offshore-alliance-r1xiitar4-reveille-strategy.vercel.app pnpm e2e
+--reporter=list,json` (with `PLAYWRIGHT_JSON_OUTPUT_NAME` set per run so each run's JSON report is kept
+separately) — accepted `--reporter=list,json` directly, no fallback needed.
+
+Run 1:
+```
+Running 7 tests using 1 worker
+
+  ✓  1 [chromium] › tests/e2e/actions-hub.spec.ts:22:7 › Actions hub › open /actions, see the three start cards and the status buckets (6.8s)
+  ✓  2 [chromium] › tests/e2e/actions-hub.spec.ts:62:7 › Actions hub › /sms still works and lands on the hub with its params intact (4.2s)
+  -  3 [chromium] › tests/e2e/mobile-dialer.spec.ts:30:7 › Mobile dialer — happy path › volunteer can sign in, claim, dial, record outcome, advance
+[cleanup] no leftover "WP1.6 role check " campaigns for this account.
+  ✓  4 [chromium] › tests/e2e/roles/unit-lifecycle-user.spec.ts:92:7 › WP1.6 role coverage — user › creates a campaign, then creates, renames and deletes a unit and the campaign (13.4s)
+  ✓  5 [chromium] › tests/e2e/roles/unit-lifecycle-user.spec.ts:137:7 › WP1.6 role coverage — user › offers no write controls on a campaign the account cannot write to (4.0s)
+  ✓  6 [chromium] › tests/e2e/wall-chart.spec.ts:23:7 › Wall chart — flow one › open a campaign from /campaigns and see the wall chart (11.0s)
+[cleanup] removed 0 leftover "WP1.6 admin unit " unit(s).
+  ✓  7 [chromium-admin] › tests/e2e/roles/unit-lifecycle-admin.spec.ts:76:7 › WP1.6 role coverage — admin › creates, renames and deletes a unit on any campaign (7.6s)
+
+  1 skipped
+  6 passed (1.1m)
+EXIT_0
+```
+`mobile-dialer.spec.ts` skip annotation is `"Test token/password not set"` — an unrelated, pre-existing
+skip (no `E2E_VOLUNTEER_*` creds in this shell), not `auth-init-stall` or `cleanup`. Every non-skipped spec
+passed. JSON report (`run1.json`): zero `annotations` entries of type `auth-init-stall`; zero lines
+matching `"cleanup"` anywhere in the file (`grep -c` both 0).
+
+Run 2 (identical command, fresh sign-in via global-setup):
+```
+Running 7 tests using 1 worker
+
+  ✓  1 [chromium] › tests/e2e/actions-hub.spec.ts:22:7 › Actions hub › open /actions, see the three start cards and the status buckets (3.8s)
+  ✓  2 [chromium] › tests/e2e/actions-hub.spec.ts:62:7 › Actions hub › /sms still works and lands on the hub with its params intact (2.9s)
+  -  3 [chromium] › tests/e2e/mobile-dialer.spec.ts:30:7 › Mobile dialer — happy path › volunteer can sign in, claim, dial, record outcome, advance
+[cleanup] no leftover "WP1.6 role check " campaigns for this account.
+  ✓  4 [chromium] › tests/e2e/roles/unit-lifecycle-user.spec.ts:92:7 › WP1.6 role coverage — user › creates a campaign, then creates, renames and deletes a unit and the campaign (10.8s)
+  ✓  5 [chromium] › tests/e2e/roles/unit-lifecycle-user.spec.ts:137:7 › WP1.6 role coverage — user › offers no write controls on a campaign the account cannot write to (5.9s)
+  ✓  6 [chromium] › tests/e2e/wall-chart.spec.ts:23:7 › Wall chart — flow one › open a campaign from /campaigns and see the wall chart (10.5s)
+[cleanup] removed 0 leftover "WP1.6 admin unit " unit(s).
+  ✓  7 [chromium-admin] › tests/e2e/roles/unit-lifecycle-admin.spec.ts:76:7 › WP1.6 role coverage — admin › creates, renames and deletes a unit on any campaign (7.8s)
+
+  1 skipped
+  6 passed (52.1s)
+EXIT_0
+```
+Same result: 6 passed, 1 pre-existing unrelated skip, `run2.json` zero `auth-init-stall` annotations, zero
+`"cleanup"` matches. `unit-lifecycle-user.spec.ts:37` and `:80` (the specs that failed in run 2's report
+under the pre-fix preview) both pass in both runs here.
+
+The `[cleanup] no leftover …` / `[cleanup] removed 0 leftover …` console lines are the specs'
+`beforeAll`/`afterAll` sweep logging, not the Playwright `cleanup` *annotation* the brief's `grep` targets
+— confirmed by the JSON check above finding zero `"cleanup"` matches in either report.
+
+#### R3.6 Dev residue after the e2e runs
+
+```sql
+select campaign_id, name from campaigns where name like 'WP1.6%' order by 1;
+-- []
+select ou_id, name from campaign_organising_units where name like 'WP1.6%' order by 1;
+-- []
+```
+
+Both empty. No residue left on dev by either e2e run.
+
+#### R3.7 Auth stall check outside the specs (warm loads)
+
+Throwaway script at `apps/organising-db/test-results/wp16-warm-load-probe.ts` (gitignored,
+`apps/organising-db/test-results/` per `.gitignore:58`; removed after this check). One browser context,
+`storageState` loaded from `tests/e2e/.auth/user.json` (written fresh by run 2's global-setup). Warmed once
+via `/campaigns/1?tab=workforce&sub=wall-chart`, then six full document loads (`page.goto`, not
+client-side navigation) of `<url>/campaigns`, each waiting up to 20 s for `table tbody tr` to become
+visible:
+
+| Attempt | Result | Time |
+|---|---|---|
+| 1 | pass | 1521 ms |
+| 2 | pass | 1094 ms |
+| 3 | pass | 1120 ms |
+| 4 | pass | 834 ms |
+| 5 | pass | 1512 ms |
+| 6 | pass | 1042 ms |
+
+**6/6 passed**, all well under the 20 s budget (max 1.52 s). Fix round 2 claims this stalled 8/8 before the
+fix (§11, "warm cache (after any campaign page)" row of the diagnosis table); this round's preview
+(`https://offshore-alliance-r1xiitar4-reveille-strategy.vercel.app`, built after the `setTimeout(…, 0)`
+deferral in `auth-context.tsx`) shows the opposite result on the same repro shape.
+
+#### R3.8 Summary table
+
+| Step | Result | Key values |
+|---|---|---|
+| 1. tsc / test / lint / build / validate:migrations | green | tsc 0; 63 files / 852 tests passed; 294 problems (143/151, unchanged baseline); build compiled; 6 migrations validated |
+| 2. Standing-campaign probe (fix round 2 diff) | green | `SKIP user/delete_campaign(standing campaign): no standing campaign on this database` |
+| 3. `00_preflight` / `01_postflight` (dev, as-is, plain SQL) | green | pre-flight 0 rows; post-flight 9 rows recorded |
+| 4. Preview deployment | green | found on first poll; `state=success`; `environment_url` recorded |
+| 5. Credentialled e2e, full suite, both projects, twice | green | run 1: 6 passed / 1 unrelated skip, exit 0, 0 `auth-init-stall`, 0 `cleanup` annotations; run 2: identical result |
+| 6. Dev residue after e2e | green | `campaigns` and `campaign_organising_units` named `WP1.6%` both `[]` |
+| 7. Warm-load auth stall check (outside specs) | green | 6/6 full `/campaigns` loads passed, 834–1521 ms, well under the 20 s budget (fix round 2 claims 8/8 stalled before the fix) |
+
+Preview: `https://offshore-alliance-r1xiitar4-reveille-strategy.vercel.app`
+
 ## 13. Reviewer findings
 
 _(reviewer)_

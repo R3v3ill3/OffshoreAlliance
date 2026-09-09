@@ -1203,9 +1203,63 @@ Not deviations, but worth stating so the reviewer does not go looking:
   organiser-only blocks.
 - The diff of `page.tsx` touches the five `TabsList` slots, the imports, three hook additions, one
   `select`, one interface field, and the deletion of the two trigger components. No `TabsContent`
-  child was edited.
+  child was edited. _(Fix round 1 amends this: every one of the 28 `TabsContent` opening tags now
+  carries `{...panelName(…)}`, which spreads `{}` in full mode. No child was edited.)_
 - `trackCampaignTabOpened` is untouched: it instruments the resolved surface, which is
   mode-independent, which is exactly what a before/after comparison wants.
+
+### Fix round 1
+
+Reviewer round 1: one e2e failure and thirteen advisories. All applied except where noted.
+
+**E1 — the Build list locator collided.** `getByRole('button', { name: 'Build list' })` matched
+both the toggle and the wall chart's own `aria-label="Close build list panel"` icon button, whose
+name contains the substring. Now `{ name: 'Build list', exact: true }`. The audit the finding
+asked for: `"New action"` is now `exact` too (harmless, no collision existed); the two `"More"`
+locators stay non-exact **on purpose** — one is scoped to `nav[aria-label="Campaign sections"]`,
+where nothing else can match, and the other is deliberately a `/More/` regex because the trigger
+reads "More · Pending review" at that point in the test.
+
+**A second, latent e2e defect the fix exposed.** With the locator corrected the test ran on to the
+last two steps and hit Playwright's default 30-second per-test timeout — and the timeout disposed
+the context *before* the `finally` could clear the account's organiser-mode override, which is
+exactly the failure mode that `finally` exists to prevent. The test does seven full page loads and
+two admin round trips against a cold preview; it was inside budget only because it used to abort
+early. `test.slow()` (90s) is now set on it. This was never a product bug and would have surfaced
+on any green run.
+
+| # | Advisory | What changed |
+|---|---|---|
+| 3 | the `g`-then-`c` chord fired inside dialogs | `switcher-shortcut.ts` gains rule **S8** and two event fields, `inDialog` (target inside `[role="dialog"]`) and `dialogOpen` (any `[role="dialog"][data-state="open"]` in the document — Radix portals to `<body>`, so the target test alone is not enough). Four new cases in `switcher-shortcut.test.ts`. |
+| 4 | "All campaigns" went to `/my-campaigns` | The switcher now has **two** rows: "My campaigns" → `MY_CAMPAIGNS_HREF` and "All campaigns" → the new `ALL_CAMPAIGNS_HREF` in `nav-model.ts`, which `DEFS.campaigns` also uses so the label and the path cannot drift. No test pinned the old behaviour. |
+| 5 | `MUTED_REASON` was declared twice | `campaign-tab-bar.tsx` imports it from `@/lib/nav/nav-model`. |
+| 6 | muted More items had no `title`, no `sr-only` | They now carry both, as `nav-row.tsx` does. The visible caption is `aria-hidden` so the sentence is announced once, not twice — nav-row has no visible caption to compete with, which is the one difference. |
+| 7 | organiser-mode tabpanels had a dangling `aria-labelledby` | Radix names a panel from its trigger; organiser mode renders a `<nav>` of plain buttons instead, so the reference pointed at nothing. `page.tsx` gains `panelName(tab, sub?)`, spread onto all 28 `TabsContent`, which returns `{"aria-label": <registry label>}` in organiser mode and **`{}` in full mode** — no attribute, no markup change. `labelForTab()` is new in `workspace-tabs.ts`: `labelForSurface("plan", null)` answers "Strategy" (where the URL lands), and the cluster panel wants "Plan & Execution". |
+| 8 | the campaign name rendered twice in organiser mode | The static `<h1>` block is omitted in organiser mode; the status pill, the type pill, the pencil and the dates stay. To keep the page's only `<h1>`, `CampaignSwitcher` now *is* the heading in both its branches — `<h1>label</h1>` collapsed, `<h1><button…></h1>` with the popover — styled as the heading it replaces. Full mode renders no switcher, so its `<h1>` is untouched. |
+| 9 | the e2e's redirect coverage was overstated | See the deviation recorded below. |
+| 12 | organiser-only code shipped to full-mode users | `CampaignSwitcher`, `OrganiserCampaignActions` and `CreateTaskListDialog` are `next/dynamic` in `campaign-detail-header-bar.tsx`. All three sit behind `isOrganiserMode`, so full mode never mounts the lazy boundary and its markup is unchanged. Applied, not skipped. |
+| 13 | the SMS-episode redirect could fire mid-wizard | `isCampaignChromeWizardRoute()` is exported from `campaign-detail-routes.ts` (and `campaignIdForChrome` now uses it, so there is one copy of the path-normalising rule), and the effect returns early on those four routes. Two new cases, C7. See the deviation below for the visible full-mode change this package made and did not state. |
+| 14 | the More trigger rendered with an empty menu | `model.more.length > 0` gates it. |
+| 1, 2, 11 | three overclaims in §6a and one wrong cost comment | §6a's "Nothing is unreachable" is replaced by the count (1 of 14 More items live on the default module set); the header-action mapping now says plainly that the unit test is a two-literal comparison and the e2e is what proves ten of the twelve controls exist; `useSwitcherCampaigns.ts`'s "no query of its own" is corrected — mounting it mounts `useMyCampaigns` and `useCampaignLastActivity`, two queries, shared keys and `staleTime: 60_000`. |
+
+Nothing was skipped. Advisory 10 asked for no change beyond the doc corrections above.
+
+**Two further deviations, recorded as §6 asks.**
+
+13. **Full-mode users now see the campaign header above the four wizards.** This is intended and
+    it is visible: `/campaigns/new`, `/campaigns/soc-wizard`, `/campaigns/email-wizard` and
+    `/campaigns/phone-wizard`, launched with `?cid=` or `?campaign_id=`, now render the full
+    campaign header — the campaign name, the back arrow, all twelve actions in full mode's
+    arrangement, and the three resume banners — above the wizard's own steps. That is appendix D
+    pain point 9 being fixed, but §6 never said out loud that a full-mode user's wizard pages
+    gained a header they did not have yesterday. They did.
+
+9. **The e2e's redirect step proves the URL rewrite, not the render.** Step 4 walks the four
+   legacy `?tab=` values and asserts two things per value: that the URL rewrites to the documented
+   `tab=&sub=` pair, and that the organiser nav is visible on the resulting page. It does not
+   assert that each of the four target surfaces rendered its own content — only one surface's
+   render is proven anywhere in the spec, at step 3 (`?tab=plan&sub=pending-review`, asserted by
+   its empty-state text). Four rewrites, one render.
 
 ### Incidental finding for the ledger
 
@@ -1252,7 +1306,23 @@ existing snapshot changed; the WP1.2 nav snapshots are untouched.
 ### Where each of the 45 surfaces is, in organiser mode
 
 Generated from the same `findSurface` the tests use (the T4 census snapshot is the machine-readable
-version). Nothing is unreachable, on the default module set or on any other.
+version). Every surface has a location in the model — `findSurface` returns non-null for all 45 —
+but "has a location" is not "is one click away", so here is the honest count.
+
+**On the default module set, More holds 14 items and exactly one of them is live: Role check.**
+The other thirteen — Overview, Strategy, Workplan, Pending review, Section Plans, Library, Data
+fields, Activists & WOCs, Foundational Readiness, Reports, Results, Insights, and Bargaining when
+the phase gate passes — render as disabled items captioned "Ask an admin to enable". A user who
+wants one of them has two ways in, neither of which is a click on the item itself: a **deep link**
+(the surface renders in full, and the More trigger names it — this is the "mode is presentation,
+never permission" rule, and the e2e asserts it for Pending review), or **Show everything** in the
+sidebar, which flips the account to full mode and gives back the eight-tab bar. Turning the
+module on is the third way, and the only one that makes the item clickable in organiser mode.
+
+That is a deliberate consequence of WP1.2's default module set, not of this package's navigation:
+the same thirteen are muted in the sidebar today. It is recorded here because "nothing is
+unreachable" would have read as "everything is reachable by clicking", which on the default set is
+true of one item in fourteen.
 
 | # | Surface (`?tab=&sub=`) | Level | Organiser-mode location |
 |---|---|---|---|
@@ -1326,9 +1396,21 @@ header keeps in both modes) turns every one of them back on, because `resolveWor
 | 12 | Actions ▾ → View full plan | **⋯ overflow**, the Setup tab's "Strategic plan" card, and More → Plan & Execution when the module is on |
 | — | the three resume banners | **unchanged**, both modes |
 
-Nothing is removed. The mapping is asserted, not promised:
-`campaign-header-actions.fixture.ts` holds all twelve rows and their destinations, and
-`workspace-tabs.test.ts` fails if the two objects stop covering the same twelve ids.
+Nothing is removed. What that claim rests on, stated precisely, because the wording here was
+stronger than the evidence:
+
+- **The unit test is a two-literal comparison.** `campaign-header-actions.fixture.ts` holds the
+  twelve appendix D 3.3 rows and their organiser-mode destinations, and `workspace-tabs.test.ts`
+  checks that the two objects cover the same twelve ids. Both objects are hand-written; nothing
+  reads `organiser-campaign-actions.tsx`. It catches a row deleted from one side and not the
+  other. It cannot catch a destination that was never wired up, and it would not notice if the
+  component stopped rendering a control entirely.
+- **The e2e is what proves the controls exist.** `organiser-campaign.spec.ts` opens New action ▾
+  and asserts its five items by text, toggles Build list and asserts `aria-pressed` and the
+  resulting URL, and opens ⋯ and asserts its five items by text — ten of the twelve, in a real
+  browser. That is rows 3–12. The two unchanged controls, the back arrow and the basics pencil,
+  are not asserted by any test; the §7 screenshots are all the evidence they have.
+- Together those cover the mapping; neither on its own does.
 
 ### Commits
 

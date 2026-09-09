@@ -1343,7 +1343,183 @@ Nothing is removed. The mapping is asserted, not promised:
 
 ## 7. Verification output
 
-_(verifier pastes raw output)_
+Verifier run 2026-09-09 at 6a844d4; preview https://offshore-alliance-buk5fi2xh-reveille-strategy.vercel.app
+
+### 1. `apps/organising-db` — tsc / test / lint / build
+
+```
+$ pnpm exec tsc --noEmit -p tsconfig.json; echo tsc $?
+tsc 0
+```
+
+```
+$ pnpm test 2>&1 | grep -E 'Test Files|Tests |FAIL'
+ Test Files  72 passed (72)
+      Tests  995 passed (995)
+```
+No `FAIL` lines.
+
+```
+$ pnpm lint 2>&1 | grep problems
+✖ 294 problems (143 errors, 151 warnings)
+```
+Matches the baseline (294/143/151) exactly.
+
+```
+$ pnpm build 2>&1 | tail -20
+...
+├ ƒ /worksites
+└ ƒ /worksites/[id]
+
+ƒ Proxy (Middleware)
+ƒ  (Dynamic)  server-rendered on demand
+```
+Build completed; every route dynamic, no static-render bail-out.
+
+### 2. Diff stat and schema/type check
+
+```
+$ git diff --stat feat/oux-wp1.3-my-campaigns..HEAD | tail -1
+ 25 files changed, 4966 insertions(+), 107 deletions(-)
+
+$ git diff --name-only feat/oux-wp1.3-my-campaigns..HEAD | grep -E '^supabase/|^packages/db-types/' || echo "no schema or type changes"
+no schema or type changes
+
+$ git log --oneline feat/oux-wp1.3-my-campaigns..HEAD
+6a844d4 docs(oux-wp1.4): deviations and implementer notes
+9ca840b feat(oux-wp1.4): e2e — full mode's eight tabs, and the organiser-mode round trip
+6468246 feat(oux-wp1.4): the campaign tab bar — four tabs plus More in organiser mode
+0bb3ac4 feat(oux-wp1.4): organiser-mode campaign header — switcher, New action, Build list, overflow
+7ca1926 feat(oux-wp1.4): wizards keep the campaign header; URL contract tests
+708da79 feat(oux-wp1.4): tab registry with module ids, and the pure workspace-tabs resolver
+06aef68 docs(oux): WP1.4 plan, approved
+```
+
+### 3. Prefs before
+
+```sql
+select workspace_prefs from user_profiles where user_id = 'f7c048e2-ecfe-4e9c-8715-7f4c899f0d37'
+```
+`{"workspace_prefs": {}}` — as expected.
+
+### 4. Preview deployment
+
+`gh api "repos/R3v3ill3/OffshoreAlliance/deployments?sha=6a844d4c8dbb48b7efa5f67fb7d61f620bb1423f&per_page=3"` returned one deployment (id `6348834799`) on first poll — no waiting required.
+
+`gh api "repos/R3v3ill3/OffshoreAlliance/deployments/6348834799/statuses"` → `state: "success"`, `environment_url: "https://offshore-alliance-buk5fi2xh-reveille-strategy.vercel.app"`.
+
+### 5. Credentialled e2e — full suite, both projects
+
+```
+E2E_FOREIGN_CAMPAIGN_ID=3 E2E_BASE_URL=<preview> pnpm e2e
+```
+
+```
+Running 12 tests using 1 worker
+
+  ✓   1 [chromium] actions-hub.spec.ts:22:7 › open /actions, see the three start cards and the status buckets (5.8s)
+  ✓   2 [chromium] actions-hub.spec.ts:62:7 › /sms still works and lands on the hub with its params intact (4.4s)
+  -   3 [chromium] mobile-dialer.spec.ts:30:7 › volunteer can sign in, claim, dial, record outcome, advance (skipped)
+  ✓   4 [chromium] organiser-campaign.spec.ts:54:7 › the eight tabs, in order, with no organiser-mode furniture (2.6s)
+  ✘   5 [chromium] organiser-campaign.spec.ts:82:7 › four tabs plus More, deep links, the switcher and every header action (27.1s)
+  ✓   6 [chromium] organiser-nav.spec.ts:52:7 › the ten rows, in order, with no organiser-mode furniture (1.9s)
+  ✓   7 [chromium] organiser-nav.spec.ts:68:7 › organiser mode shows four primary items, Organisation and Show everything (10.9s)
+  ✓   8 [chromium] roles/unit-lifecycle-user.spec.ts:92:7 › creates a campaign, then creates, renames and deletes a unit and the campaign (11.5s)
+  ✓   9 [chromium] roles/unit-lifecycle-user.spec.ts:137:7 › offers no write controls on a campaign the account cannot write to (3.6s)
+  ✓  10 [chromium] wall-chart.spec.ts:162:7 › sign in and reach a wall chart in under ten seconds (10.2s)
+  ✓  11 [chromium] wall-chart.spec.ts:244:7 › lists my campaigns and opens the wall chart (10.1s)
+  ✓  12 [chromium-admin] roles/unit-lifecycle-admin.spec.ts:76:7 › creates, renames and deletes a unit on any campaign (6.4s)
+
+  1) organiser-campaign.spec.ts:82:7 › Campaign workspace — the organiser-mode round trip › four tabs
+     plus More, deep links, the switcher and every header action
+
+    Error: expect(locator).toHaveAttribute(expected) failed
+
+    Locator: getByRole('button', { name: 'Build list' })
+    Expected: "true"
+    Error: strict mode violation: getByRole('button', { name: 'Build list' }) resolved to 2 elements:
+        1) <button type="button" aria-pressed="true" title="Close build list panel" ...>Build list</button>
+           aka getByRole('button', { name: 'Build list', exact: true })
+        2) <button type="button" aria-label="Close build list panel" ...>…</button>
+           aka getByRole('button', { name: 'Close build list panel' })
+
+    Call log:
+      - Expect "toHaveAttribute" with timeout 5000ms
+      - waiting for getByRole('button', { name: 'Build list' })
+
+      198 |         await buildList.click();
+      199 |         await expect(page).toHaveURL(/buildList=1/);
+    > 200 |         await expect(buildList).toHaveAttribute("aria-pressed", "true");
+          |                                 ^
+      201 |
+      202 |         // …and the ⋯ menu holds the five demoted actions, none removed.
+      203 |         await page.getByRole("button", { name: "More campaign actions" }).click();
+        at tests/e2e/organiser-campaign.spec.ts:200:33
+
+    Screenshots:
+      test-results/organiser-campaign-Campaig-32631-her-and-every-header-action-chromium/test-failed-1.png
+    Trace:
+      test-results/organiser-campaign-Campaig-32631-her-and-every-header-action-chromium/trace.zip
+
+  1 failed
+    organiser-campaign.spec.ts:82:7 › four tabs plus More, deep links, the switcher and every header action
+  1 skipped
+  10 passed (2.0m)
+```
+
+Every non-skipped spec passed except the new organiser-mode round trip (Test 2). Test 1 (full mode, eight tabs) passed. The `mobile-dialer` spec skipped (its own gating, unrelated to this package). Per instruction, the new spec was re-run alone:
+
+```
+E2E_FOREIGN_CAMPAIGN_ID=3 E2E_BASE_URL=<preview> pnpm exec playwright test tests/e2e/organiser-campaign.spec.ts
+
+Running 2 tests using 1 worker
+
+  ✓  1 [chromium] the eight tabs, in order, with no organiser-mode furniture (3.8s)
+  ✘  2 [chromium] four tabs plus More, deep links, the switcher and every header action (24.1s)
+```
+
+Identical failure, same line (`organiser-campaign.spec.ts:200`), same strict-mode-violation message, reproducible on both runs. The finally block's reset ran regardless: `PATCH /api/admin/update-user` with `workspacePrefs: null` succeeded in both runs (confirmed independently by the SQL query in step 6 below, which read `{}` after each run).
+
+Raw locator collision, unedited: `getByRole('button', { name: 'Build list' })` resolves to two elements once the panel is open — the toggle button itself (whose accessible name is its own text, "Build list", with `title="Close build list panel"`) and a second, separate icon-only button whose `aria-label="Close build list panel"` also contains the substring "build list", which Playwright's default non-exact name matching treats as a match. Reported without further interpretation, as instructed.
+
+### 6. After
+
+```sql
+select workspace_prefs from user_profiles where user_id = 'f7c048e2-ecfe-4e9c-8715-7f4c899f0d37'
+```
+`{"workspace_prefs": {}}` — as expected, both after the `pnpm e2e` run and again after the standalone re-run.
+
+```sql
+select campaign_id, name from campaigns where name like 'WP1.6%'
+```
+`[]` — no leftover rows, as expected.
+
+### 7. Visual evidence
+
+Throwaway script `apps/organising-db/test-results/wp1.4-visual-evidence.mjs` (gitignored, not committed), loading `tests/e2e/.auth/user.json` (and `.auth/admin.json` for the mode-switch calls) at 1280×800 against the preview URL. All six screenshots captured successfully:
+
+| Screenshot | Path | Observed |
+|---|---|---|
+| (a) Full mode | `/tmp/oux-plans/shots/wp1.4-full-mode-campaign.png` | Today's header — Build ▾, Create Phone Call, Create Email, Create SMS, Actions ▾ (12 actions across the menus) — and the 8-tab bar (`Workforce` active; 7 unconditional tabs visible, no `Bargaining` tab rendered for this seed campaign's current phase). |
+| (b) Organiser mode | `/tmp/oux-plans/shots/wp1.4-organiser-campaign.png` | Plain-label switcher ("testco1", no popover — the account owns exactly one campaign), back arrow, name, pencil, type + status badges, **New action**, **Build list**, **⋯**; tab bar reads Wall chart / People / Activity / Setup / More. |
+| More menu | `/tmp/oux-plans/shots/wp1.4-organiser-more.png` | Opens over the four tabs; live item **Role check** (bold, enabled); muted items (Overview, Strategy, Workplan, Pending review, Section Plans, Data fields, Activists & WOCs, Foundational Readiness, …) each captioned "Ask an admin to enable". |
+| Switcher shortcut | `/tmp/oux-plans/shots/wp1.4-switcher.png` | `g` then `c` pressed; page unchanged (no popover) — consistent with the single-campaign plain-label branch, matching (b). |
+| Deep link | `/tmp/oux-plans/shots/wp1.4-deep-link-pending-review.png` | `?tab=plan&sub=pending-review` renders ("No pending submissions to review."); tab bar shows no active primary tab and the More trigger reads "More · Pending review". |
+| Wizard chrome | `/tmp/oux-plans/shots/wp1.4-wizard-keeps-header.png` | `/campaigns/soc-wizard?cid=1` renders the SOC wizard ("Structured Organising Conversation", Step 1 of 11) under the unchanged campaign header (testco1, back arrow, pencil, badges, New action, Build list, ⋯). |
+
+Prefs reset to `{}` by the script's `finally` block; confirmed by SQL immediately after (see §6).
+
+### Step summary
+
+| Step | Result |
+|---|---|
+| 1. tsc / test / lint / build | green — tsc 0; 72 files / 995 tests passed, no FAIL; lint 294/143/151 (baseline); build clean, all routes dynamic |
+| 2. diff stat / schema check | 25 files, +4966/-107; no `supabase/` or `packages/db-types/` changes |
+| 3. prefs before | `{}` |
+| 4. preview deployment | ready on first poll — `success`, https://offshore-alliance-buk5fi2xh-reveille-strategy.vercel.app |
+| 5. e2e full suite | 10 passed, 1 skipped (unrelated), **1 failed** (organiser round trip, Test 2) — reproduced identically on standalone re-run |
+| 6. prefs/campaigns after | `{}`; no leftover WP1.6 campaigns |
+| 7. visual evidence | all 6 screenshots captured; prefs reset and confirmed |
 
 ## 8. Reviewer findings
 

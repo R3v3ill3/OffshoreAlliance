@@ -13,7 +13,7 @@ import {
   LogOut,
   RefreshCcw,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { NAV_ICONS } from "@/lib/nav/nav-icons";
@@ -30,8 +30,10 @@ import { NavRow } from "./nav-row";
 
 /**
  * WP1.2: the nav rows now live in `@/lib/nav/nav-model` so a vitest `node`
- * suite can pin them. These three exports stay for backwards compatibility —
- * they are re-projections of that single definition, not a second copy.
+ * suite can pin them. These two exports stay for backwards compatibility —
+ * they are re-projections of that single definition (icon *components* rather
+ * than icon keys), not a second copy. The `allNavHrefs` re-export is gone:
+ * nothing imported it, and `ALL_NAV_HREFS` is the one name for that list.
  */
 export const navItems = FULL_NAV_ITEMS.map((i) => ({
   href: i.href,
@@ -44,14 +46,6 @@ export const adminItems = FULL_ADMIN_ITEMS.map((i) => ({
   label: i.label,
   icon: NAV_ICONS[i.icon],
 }));
-
-/**
- * Every sidebar href, so nested items (e.g. /sms and /sms/inbox) resolve to
- * one active entry. Always the full-mode set, in both workspace modes: the
- * longest-prefix rule needs every href in scope to disambiguate, and in
- * organiser mode the visible set is only a subset.
- */
-export const allNavHrefs = ALL_NAV_HREFS;
 
 const ROW_BASE =
   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors";
@@ -89,10 +83,28 @@ export function Sidebar() {
     [mode, moduleState, isAdmin, canShowEverything, showEverything, emailUnreadCount]
   );
 
-  // The model owns "collapsed by default", not this component: reading the
-  // hard-coded `false` back from it keeps one source for the initial state
-  // and lets a future model change take effect without a second edit here.
-  const [orgOpen, setOrgOpen] = useState(!model.organisation.collapsed);
+  // Closed on every first paint, then re-synced whenever the mode changes.
+  //
+  // A `useState` initialiser cannot carry the model's rule here: it is read
+  // once, on the first render, and `WorkspaceProvider` is still resolving to
+  // FULL mode at that point (`resolve.ts:74` answers "no prefs yet" with
+  // `full`, WP1.1's deliberate fail-open). Full mode's model says
+  // `collapsed: false`, so `useState(!model.organisation.collapsed)` latched
+  // OPEN and never revisited the question when the profile arrived and the
+  // mode flipped to organiser — the section rendered `aria-expanded="true"`
+  // for the whole session.
+  //
+  // So: start closed, and let the effect below re-apply the model's rule on
+  // every mode change (organiser → `collapsed: true` → closed; a "Show
+  // everything" expansion → full → no Organisation section to show anyway,
+  // and toggling back re-collapses it). Between mode changes this is a plain
+  // React toggle: the effect's dependency is a boolean that only moves when
+  // the mode does, so a user who opens the section keeps it open. No storage.
+  const [orgOpen, setOrgOpen] = useState(false);
+  const organisationCollapsed = model.organisation.collapsed;
+  useEffect(() => {
+    setOrgOpen(!organisationCollapsed);
+  }, [organisationCollapsed]);
 
   const organisationItems = model.organisation.items.filter((i) => i.state !== "hidden");
 
@@ -145,7 +157,7 @@ export function Sidebar() {
           <NavRow
             key={item.id}
             item={item}
-            isActive={isNavRowActive(pathname, item, allNavHrefs)}
+            isActive={isNavRowActive(pathname, item, ALL_NAV_HREFS)}
             baseClassName={cn("relative", ROW_BASE)}
             activeClassName={ROW_ACTIVE}
             inactiveClassName={ROW_INACTIVE}
@@ -190,7 +202,7 @@ export function Sidebar() {
                   <NavRow
                     key={item.id}
                     item={item}
-                    isActive={isNavRowActive(pathname, item, allNavHrefs)}
+                    isActive={isNavRowActive(pathname, item, ALL_NAV_HREFS)}
                     baseClassName={ROW_BASE}
                     activeClassName={ROW_ACTIVE}
                     inactiveClassName={ROW_INACTIVE}
@@ -210,7 +222,7 @@ export function Sidebar() {
               <NavRow
                 key={item.id}
                 item={item}
-                isActive={isNavRowActive(pathname, item, allNavHrefs)}
+                isActive={isNavRowActive(pathname, item, ALL_NAV_HREFS)}
                 baseClassName={ROW_BASE}
                 activeClassName={ROW_ACTIVE}
                 inactiveClassName={ROW_INACTIVE}

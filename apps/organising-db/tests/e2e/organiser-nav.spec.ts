@@ -159,8 +159,15 @@ test.describe("Sidebar — the organiser-mode round trip", () => {
         const { users: usersAfter } = (await after.json()) as {
           users: { user_id: string; workspace_prefs?: unknown }[];
         };
-        const prefsAfter = usersAfter.find((u) => u.user_id === userId)?.workspace_prefs;
-        expect(prefsAfter ?? {}, "workspace_prefs must be cleared").toEqual({});
+        // The row itself must still be there. `?? {}` on a missing row would
+        // have passed this assertion for a user who had been deleted, or for
+        // a response shape change that dropped `workspace_prefs` entirely —
+        // neither of which is "the override was cleared".
+        const rowAfter = usersAfter.find((u) => u.user_id === userId);
+        expect(rowAfter, "the e2e user's profile row must still exist").toBeTruthy();
+        // `?.` and no `?? {}` fallback: if the row is missing this reads
+        // `undefined`, which does not equal `{}`, so the assertion bites.
+        expect(rowAfter?.workspace_prefs, "workspace_prefs must be exactly {}").toEqual({});
       }
     } finally {
       await admin.close();

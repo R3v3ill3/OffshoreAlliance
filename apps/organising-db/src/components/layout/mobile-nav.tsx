@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { Button } from "@/components/ui/button";
@@ -50,9 +50,15 @@ export function MobileNav() {
     [mode, moduleState, isAdmin, canShowEverything, showEverything, emailUnreadCount]
   );
 
-  // "Collapsed by default" is the model's rule; read it back rather than
-  // re-stating it here (matches sidebar.tsx).
-  const [orgOpen, setOrgOpen] = useState(!model.organisation.collapsed);
+  // Closed on every first paint, then re-synced on a mode change. A
+  // `useState` initialiser is read once, while the workspace is still
+  // resolving to full mode, so it latched the section OPEN and never
+  // revisited it — see the long note in `sidebar.tsx`, which this mirrors.
+  const [orgOpen, setOrgOpen] = useState(false);
+  const organisationCollapsed = model.organisation.collapsed;
+  useEffect(() => {
+    setOrgOpen(!organisationCollapsed);
+  }, [organisationCollapsed]);
 
   const organisationItems = model.organisation.items.filter((i) => i.state !== "hidden");
 

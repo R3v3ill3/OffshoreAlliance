@@ -39,6 +39,8 @@ export interface SmsActivityRow {
   is_standalone: boolean
   created_at: string
   updated_at: string
+  /** Who started it. Null on rows created before the column was set. */
+  created_by: string | null
   /** The platform number the action sends (or listens) on. */
   sender_number_id: number | null
   sender_phone: string | null
@@ -97,7 +99,7 @@ export async function GET(req: NextRequest) {
       supabase
         .from('sms_lists')
         .select(
-          'list_id, campaign_id, name, status, mode, relay_id, created_at, updated_at, sender_number_id, total_items, sent_items, delivered_items, archived_at',
+          'list_id, campaign_id, name, status, mode, relay_id, created_at, updated_at, created_by, sender_number_id, total_items, sent_items, delivered_items, archived_at',
         )
         .order('created_at', { ascending: false })
         .limit(LIMIT),
@@ -107,7 +109,7 @@ export async function GET(req: NextRequest) {
       supabase
         .from('sms_surveys')
         .select(
-          'survey_id, campaign_id, title, status, is_test, created_at, updated_at, sender_number_id, archived_at',
+          'survey_id, campaign_id, title, status, is_test, created_at, updated_at, created_by, sender_number_id, archived_at',
         )
         .order('created_at', { ascending: false })
         .limit(LIMIT),
@@ -116,7 +118,9 @@ export async function GET(req: NextRequest) {
     let relayQuery = applyArchivedFilter(
       supabase
         .from('sms_relays')
-        .select('relay_id, campaign_id, name, status, number_id, created_at, updated_at, archived_at')
+        .select(
+          'relay_id, campaign_id, name, status, number_id, created_at, updated_at, created_by, archived_at',
+        )
         .order('created_at', { ascending: false })
         .limit(LIMIT),
       archived,
@@ -145,6 +149,7 @@ export async function GET(req: NextRequest) {
       relay_id: number | null
       created_at: string
       updated_at: string
+      created_by: string | null
       sender_number_id: number | null
       total_items: number | null
       sent_items: number | null
@@ -159,6 +164,7 @@ export async function GET(req: NextRequest) {
       is_test: boolean | null
       created_at: string
       updated_at: string
+      created_by: string | null
       sender_number_id: number | null
       archived_at: string | null
     }>
@@ -170,6 +176,7 @@ export async function GET(req: NextRequest) {
       number_id: number
       created_at: string
       updated_at: string
+      created_by: string | null
       archived_at: string | null
     }>
 
@@ -334,6 +341,7 @@ export async function GET(req: NextRequest) {
         status: l.status,
         created_at: l.created_at,
         updated_at: l.updated_at,
+        created_by: l.created_by,
         audience_count: l.total_items ?? 0,
         progress_count: (l.sent_items ?? 0) + (l.delivered_items ?? 0),
         relay_id: l.relay_id,
@@ -354,6 +362,7 @@ export async function GET(req: NextRequest) {
       status: s.status,
       created_at: s.created_at,
       updated_at: s.updated_at,
+      created_by: s.created_by,
       audience_count: sessionCount.get(s.survey_id) ?? 0,
       progress_count: completedCount.get(s.survey_id) ?? 0,
       is_test: !!s.is_test,
@@ -370,6 +379,7 @@ export async function GET(req: NextRequest) {
       status: r.status,
       created_at: r.created_at,
       updated_at: r.updated_at,
+      created_by: r.created_by,
       audience_count: targetCounts.get(r.relay_id)?.total ?? 0,
       progress_count: targetCounts.get(r.relay_id)?.active ?? 0,
       pending_moderation_count: pendingCounts.get(r.relay_id) ?? 0,

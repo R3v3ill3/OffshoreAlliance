@@ -7,10 +7,13 @@
  * (sms_lists mode 'blast'), a chat board (sms_lists mode 'p2p'), a
  * survey (sms_surveys) or a relay (sms_relays). Blasts, chats and
  * surveys always live inside a campaign — a real one, or the hidden
- * per-send episode campaign behind a standalone action. Relays are
- * either campaign-linked or org-wide (campaign_id NULL).
+ * per-send campaign behind an action the organiser sees as
+ * **Standalone** (the `is_sms_episode` flag). Relays are either
+ * campaign-linked or carry no campaign at all (campaign_id NULL),
+ * which the hub also shows as **Standalone**.
  */
 
+import { ACTIONS_HUB_PATH } from '@/lib/actions/hub-path'
 import type { SmsLifecycleAction } from '@/lib/sms/archive-policy'
 
 export type SmsActionKind = 'blast' | 'chat' | 'survey' | 'relay'
@@ -29,9 +32,12 @@ export function isSmsActionKind(value: unknown): value is SmsActionKind {
 }
 
 /**
- * Where an action belongs. `standalone` is only meaningful for blast,
- * chat and survey (they get a hidden episode campaign); `org` is only
- * meaningful for relays (campaign_id NULL).
+ * Where an action belongs, as a mechanism. `standalone` is only
+ * meaningful for blast, chat and survey (they get a hidden episode
+ * campaign); `org` is only meaningful for relays (campaign_id NULL).
+ * Both read as **Standalone** in the hub — see `scopeFor` in
+ * `@/lib/actions/hub-rows`. These value names are the URL and wizard
+ * contract, not UI copy.
  */
 export type SmsActionScope =
   | { type: 'campaign'; campaignId: number }
@@ -148,7 +154,7 @@ export function smsActionHref(ref: SmsActionRef, opts?: { standalone?: boolean }
   }
   const params = new URLSearchParams({ open: encodeSmsActionRef(ref) })
   if (opts?.standalone) params.set('standalone', '1')
-  return `/sms?${params.toString()}`
+  return `${ACTIONS_HUB_PATH}?${params.toString()}`
 }
 
 export function smsLifecycleHref(

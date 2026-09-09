@@ -188,7 +188,7 @@ export const HINTS: readonly Hint[] = [
   {
     id: "wall_chart_rating",
     target: "the rating number on a worker tile in the wall chart",
-    copy: "Click a worker's number to set their rating.",
+    copy: "Tap a worker's rating to set it — 1 is a supportive leader, 5 is opposed.",
     showWhen:
       "the first time this user opens a wall chart that has at least one tile they can edit, in either mode",
   },
@@ -397,7 +397,7 @@ Against each requirement:
 - **Non-modal** — Radix `Popover` with `modal` unset. Nothing is inert; the organiser can click straight past it.
 - **Anchored to the rating control** — `PopoverAnchor` wraps the badge itself. **`PopoverAnchor` is not currently exported**: add it to `src/components/ui/popover.tsx` — one line at `:8` (`const PopoverAnchor = PopoverPrimitive.Anchor`) and one name in the export at `:29`. Purely additive; no existing consumer changes.
 - **Not obscuring a tile on small screens** — this is the primitive doing the work rather than a hand-rolled position: `side="right"` with `collisionPadding={8}` makes Radix flip and shift the content into the viewport automatically. Verified by the mobile screenshot in §2.6, not asserted from the code.
-- **Keyboard-focusable** — the content is portalled after the anchor in the DOM (`popover.tsx:14`, `PopoverPrimitive.Portal`) and Radix's non-modal Popover keeps the content in the tab order; the "Got it" `<Button>` is a real button reachable by Tab from the badge and dismissible with Enter/Space. `onOpenAutoFocus` is prevented so opening the chart does not yank focus.
+- **Keyboard-focusable** — the content is portalled to the end of `<body>` (`popover.tsx:14`, `PopoverPrimitive.Portal`), so Tab from the badge does **not** reach it (corrected in fix round 1, finding 4); "Got it" is a real `<Button>` reached at the end of the document's tab order and dismissible with Enter/Space, and the callout is announced through `role="status"`/`aria-live`. On "Got it" (or Escape with focus inside the callout) focus returns to the badge. `onOpenAutoFocus` is prevented so opening the chart does not yank focus.
 - **1 cm target on touch** (plan 4 principle 17, `:187`) — `h-11 min-w-11` is 44 px ≥ 1 cm at standard density. The repo's default `size="sm"` button is `h-8`; the override is explicit and commented.
 - **Shown once per user** — §2.3.4/§2.3.5.
 
@@ -525,7 +525,7 @@ A third `test.describe`, guarded by `test.skip(!hasE2ECredentials, NO_CREDENTIAL
 test("the rating hint shows once, then stays dismissed", async ({ page, request }) => {
   // 0. Preconditions: reset any prior dismissal so the test is idempotent.
   // 1. goto /my-campaigns, click "Open wall chart" (the existing locator at :249)
-  // 2. expect(page.getByText("Click a worker's number to set their rating.")).toBeVisible()
+  // 2. expect(page.getByText("Tap a worker's rating to set it — 1 is a supportive leader, 5 is opposed.")).toBeVisible()
   //    and expect that locator to have count 1 — one hint, not one per tile.
   // 3. click "Got it"; expect it to disappear.
   // 4. page.reload(); expect count 0 after the chart's tiles are visible
@@ -613,7 +613,7 @@ Every string this package adds to the product:
 
 | String | Where | 3.6 check |
 |---|---|---|
-| `Click a worker's number to set their rating.` | `registry.ts` | No retired term. "rating" is the app's and the plan's word (`plan:126` row 6 renames only the *view* control, to "Colour by"). |
+| `Tap a worker's rating to set it — 1 is a supportive leader, 5 is opposed.` (reworded in fix round 1, finding 10: the badge shows "—" when unrated, so "number" was false for the very workers the hint is for) | `registry.ts` | No retired term. "rating" is the app's and the plan's word (`plan:126` row 6 renames only the *view* control, to "Colour by"). |
 | `Choose one Group at a time — Unassigned holds anyone not in a Unit.` | `registry.ts` (pending) | **Group**, **Unit**, **Unassigned** exactly as 3.6 defines them. |
 | `Got it` | `first-use-hint.tsx` | Not a domain term. |
 
@@ -770,6 +770,26 @@ Implemented on `feat/oux-wp1.7-guides-hints` (Fable, 2026-09-09). Numbered so th
 - `9002591` feat(oux-wp1.7): first-use rating hint on the wall chart
 - `4352311` feat(oux-wp1.7): hint e2e spec and the manifest regeneration note
 - (this file) feat(oux-wp1.7): implementer notes and deviations
+
+### Fix round 1
+
+Fable-reviewer findings applied on `feat/oux-wp1.7-guides-hints` (Fable, 2026-09-10), on top of `4c3d54d` (migration applied to dev, types regenerated). Verified each against the file before changing it.
+
+| # | Finding | Change |
+|---|---|---|
+| 1 (blocking) | `worker-tile.tsx` swapped `<FirstUseHint>{badge}</FirstUseHint>` for the bare badge on dismiss, so the rating popover that had just set `open=true` was unmounted and remounted closed: the first click on the hinted badge never opened it. | Confirmed (the two branches of the ternary have different root element types). `FirstUseHint` now takes `visible` and renders `Popover` + `PopoverAnchor` around the child regardless, gating only `open`. The tile gets a new prop `ratingHintAnchor` (is this the anchor tile — independent of visibility) beside `showRatingHint` (is the hint shown); the wrapper renders when either is set, so the anchor tile's tree shape is identical before, during and after the hint. `campaign-wall-chart.tsx` passes both. The anchor wrapper is tagged `data-hint-anchor="wall_chart_rating"` for the spec. |
+| 2 (blocking) | The portalled `PopoverContent` is a React-tree descendant of the tile `<button onClick>`, so "Got it" bubbled into the tile: the worker sheet opened and a false first-interaction fired. | Confirmed. The content now stops propagation of `onClick`, `onDoubleClick`, `onContextMenu` and `onDragStart` (matching `inline-rating-popover.tsx:117`'s content). |
+| 3 | `onEscapeKeyDown={onDismiss}` was document-wide (a stray Escape anywhere on the chart counted as "seen"). | Escape dismisses only when `document.activeElement` is inside the callout's content. |
+| 4 | Focus after "Got it" was dropped on `<body>`; the comment and §2 claimed Tab from the badge reaches the button (it does not — the content is portalled to the end of `<body>`). | `onCloseAutoFocus` prevents Radix's default and, when the callout itself closed the hint ("Got it" or Escape inside it), focuses the first focusable inside the anchor wrapper — the badge. Not done when the hint closed because the rating control opened (focus is already in the control). Component comment and §2 "Keyboard-focusable" bullet corrected. |
+| 7 | `hint_id` was unbounded text. | **New** `supabase/migrations/20260911100000_user_hint_dismissals_check.sql`: `ADD CONSTRAINT user_hint_dismissals_hint_id_check CHECK (hint_id ~ '^[a-z][a-z0-9_]{0,63}$')`. The applied file is untouched. `registry.test.ts` pins the ids to the same expression. **Not applied** by the implementer (no database connection); the verifier applies it. |
+| 8 | The session-only dismissal flag was per wall-chart instance, so after a failed write, navigating away and back re-showed the hint; the comment said otherwise. | Lifted: `dismiss()` does `queryClient.setQueryData` on the dismissals list synchronously (before the write) instead of local state, so every hook instance in the session sees it; a failed write is logged and the cached entry kept. `shouldShowHint`'s `dismissedThisSession` input is unchanged (its truth table is tested); the hook passes `false` and says why. |
+| 10 | The badge shows "—" when unrated, so "Click a worker's number" was false for the workers the hint is for. | Copy is now `Tap a worker's rating to set it — 1 is a supportive leader, 5 is opposed.` — one sentence, one full stop, no retired term; the registry test's one-sentence and 3.6 checks pass unchanged; the spec reads the copy from the registry. §2 pins (three) updated. |
+| 5/6 | Known limits (recorded, not fixed). | (5) The hint does not appear on the touch default **List** layout: `pickRatingHintAnchor` and the anchor wrapper live in the tile grid, and the List rows render no `<WorkerTile>`. (6) A worker in two child units of a rolled-up parent may not match the anchor: the picker sees the parent-exclusive worker set and the `(workerId, ouId)` it returns may not be the pair the visible tile carries, in which case no tile shows the hint that session. |
+| 11 | Prove 1 and 2 end to end. | `tests/e2e/wall-chart.spec.ts`: the hint describe now has two tests sharing `openWallChartWithHint()` (opening the rating control dismisses the hint by design, so "Got it" and "click the badge" cannot both run on one visible hint). **Got it** test: after the click, no `role=dialog` whose heading is the hinted worker's name (`campaign-worker-detail-provider.tsx` `SheetTitle` = first + last, the same string as the tile's `title` prefix) and the badge's `aria-expanded` is `"false"`; then the existing persisted-row poll, reload and absent-after-load assertions. **Badge** test: click the badge inside `[data-hint-anchor="wall_chart_rating"]` while the hint is visible, assert `aria-expanded="true"` and that the element its `aria-controls` names is visible and contains the "Save" button (`inline-rating-popover.tsx`); the hint count is 0 and no worker sheet opened; Cancel closes it; the row is persisted. `beforeEach` reset and `afterEach` delete kept. |
+
+**Gates (from `apps/organising-db` unless stated):** `pnpm exec eslint` on the eight touched `.ts/.tsx` → exit 0, no findings. `pnpm test` → 76 files, 1029 tests passed. `pnpm exec tsc --noEmit -p tsconfig.json` → exit 0. `pnpm build` → exit 0. Credential-less `pnpm e2e` → 14 skipped, exit 0 (the hint tests are #12 and #13). Repo root `pnpm validate:migrations` → "Validated 9 Supabase migrations with unique 14-digit versions."
+
+**Existing preview (`fe75dd2`, https://offshore-alliance-a8u4ksna1-reveille-strategy.vercel.app) with credentials:** `wall-chart.spec.ts` → 2 passed (flow one; My campaigns), 2 failed. Both hint tests fail at the first hint assertion because that preview ships the old sentence and no `data-hint-anchor`: `getByText("Tap a worker's rating …")` finds nothing. So the preview proved the spec file loads, the two unchanged tests still pass, and the `beforeEach` reset succeeds (200/204) with `afterEach` running; it could not prove findings 1, 2 or 11 — those need the next preview (verifier step 6), with the CHECK migration applied first (step 2 gains a second pending file).
 
 ## 7. Verification output
 

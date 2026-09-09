@@ -124,7 +124,7 @@ export function CampaignWizard() {
   const searchParams = useSearchParams();
   const supabase = createClient();
   const queryClient = useQueryClient();
-  const { user, canWrite, isAdmin, profile, loading: authLoading } = useAuth();
+  const { user, canWrite, isAdmin, isLeadOrganiser, profile, loading: authLoading } = useAuth();
   const permissionDeniedLoggedForUser = useRef<string | null>(null);
   const basicsHydratedFor = useRef<number | null>(null);
   const scopeHydratedFor = useRef<number | null>(null);
@@ -559,7 +559,7 @@ export function CampaignWizard() {
 
       const resolvedOrganiserId = await resolveCampaignOrganiserId(supabase, basics.organiser_id, {
         currentUserId: user.id,
-        isAdmin,
+        canLinkOtherOrganisers: isAdmin || isLeadOrganiser,
       });
 
       const payload: Record<string, unknown> = {
@@ -616,7 +616,7 @@ export function CampaignWizard() {
 
       const resolvedOrganiserId = await resolveCampaignOrganiserId(supabase, basics.organiser_id, {
         currentUserId: user.id,
-        isAdmin,
+        canLinkOtherOrganisers: isAdmin || isLeadOrganiser,
       });
 
       const payload: Record<string, unknown> = {

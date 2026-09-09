@@ -24,6 +24,7 @@ import { isPostHogEnabled } from "@/lib/posthog-config";
 import { readLoginStamp, stampLogin } from "@/lib/analytics/session-timing";
 import type { User } from "@supabase/supabase-js";
 import type { UserRole, UserProfile } from "@/types/database";
+import { deriveWorkRoleFlags } from "@/lib/auth/work-role-flags";
 
 const PUBLIC_PATHS = ["/login", "/auth"];
 
@@ -39,6 +40,14 @@ interface AuthContextType {
   isUser: boolean;
   isViewer: boolean;
   canWrite: boolean;
+  /**
+   * work_role is lead_organiser, coordinator or industrial_coordinator
+   * (WP1.6; mirrors is_coordinator_or_lead() minus its admin arm — combine
+   * with isAdmin for "lead or above").
+   */
+  isLeadOrganiser: boolean;
+  /** Any organiser-shaped work_role, lead included (WP1.1 organiser mode audience). */
+  isOrganiser: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -58,6 +67,8 @@ const AuthContext = createContext<AuthContextType>({
   isUser: false,
   isViewer: true,
   canWrite: false,
+  isLeadOrganiser: false,
+  isOrganiser: false,
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -368,6 +379,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const role: UserRole = profile?.role ?? "viewer";
+  const workRoleFlags = deriveWorkRoleFlags(profile);
 
   return (
     <AuthContext.Provider
@@ -383,6 +395,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isUser: role === "user",
         isViewer: role === "viewer",
         canWrite: role === "admin" || role === "user",
+        isLeadOrganiser: workRoleFlags.isLeadOrganiser,
+        isOrganiser: workRoleFlags.isOrganiser,
       }}
     >
       {children}

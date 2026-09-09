@@ -123,7 +123,7 @@ export function CampaignBasicsEditSheet({
   onSaved,
 }: CampaignBasicsEditSheetProps) {
   const supabase = createClient();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isLeadOrganiser } = useAuth();
   const queryClient = useQueryClient();
 
   const [form, setForm] = useState<FormState>(() => hydrateForm(campaign));
@@ -234,7 +234,7 @@ export function CampaignBasicsEditSheet({
       const resolvedOrganiserId = await resolveCampaignOrganiserId(
         supabase,
         organiserPickerValue,
-        { currentUserId: user.id, isAdmin: isAdmin ?? false }
+        { currentUserId: user.id, canLinkOtherOrganisers: isAdmin || isLeadOrganiser }
       );
 
       const payload: Record<string, unknown> = {

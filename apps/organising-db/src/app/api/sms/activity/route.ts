@@ -11,6 +11,12 @@
  * hidden per-send campaigns behind standalone actions) are surfaced
  * as "Standalone" rather than by their internal name.
  *
+ * `?mine=1` narrows to the caller's own rows before the LIMIT applies,
+ * so a busy org cannot push an organiser's own actions out of their
+ * own view. Rows with no recorded owner are kept: the hub counts them
+ * and offers "switch to All", which it cannot do for rows it never
+ * received.
+ *
  * Blast rows carry `relay_id`/`relay_name` when the blast is a launch
  * text, so the table can say what it is and offer the relay.
  */
@@ -94,6 +100,9 @@ export async function GET(req: NextRequest) {
     const campaignId = raw ? parseInt(raw, 10) : null
     const scoped = campaignId != null && Number.isFinite(campaignId)
     const archived = parseArchivedParam(req.nextUrl.searchParams.get('archived'))
+    const mine = req.nextUrl.searchParams.get('mine') === '1'
+    /** Own rows, plus the ownerless ones the hub announces rather than hides. */
+    const ownerFilter = `created_by.eq.${user.id},created_by.is.null`
 
     let listQuery = applyArchivedFilter(
       supabase
@@ -129,6 +138,12 @@ export async function GET(req: NextRequest) {
       listQuery = listQuery.eq('campaign_id', campaignId as number)
       surveyQuery = surveyQuery.eq('campaign_id', campaignId as number)
       relayQuery = relayQuery.or(`campaign_id.eq.${campaignId},campaign_id.is.null`)
+    }
+    if (mine) {
+      // A second .or() is ANDed with the scope one, which is what is wanted.
+      listQuery = listQuery.or(ownerFilter)
+      surveyQuery = surveyQuery.or(ownerFilter)
+      relayQuery = relayQuery.or(ownerFilter)
     }
 
     const [
@@ -262,7 +277,7 @@ export async function GET(req: NextRequest) {
             .select('relay_id, name')
             .in('relay_id', launchRelayIds)
         : Promise.resolve({ data: [] as Array<{ relay_id: number; name: string | null }> }),
-      countArchived(supabase, scoped ? (campaignId as number) : null),
+      countArchived(supabase, scoped ? (campaignId as number) : null, mine ? ownerFilter : null),
     ])
     if (cErr) throw cErr
     if (nErr) throw nErr
@@ -406,6 +421,8 @@ export async function GET(req: NextRequest) {
 async function countArchived(
   supabase: Awaited<ReturnType<typeof import('@/lib/supabase/server').createClient>>,
   campaignId: number | null,
+  /** The same owner predicate the list queries used, so the two agree. */
+  ownerFilter: string | null,
 ): Promise<number> {
   let lists = supabase
     .from('sms_lists')
@@ -423,6 +440,11 @@ async function countArchived(
     lists = lists.eq('campaign_id', campaignId)
     surveys = surveys.eq('campaign_id', campaignId)
     relays = relays.or(`campaign_id.eq.${campaignId},campaign_id.is.null`)
+  }
+  if (ownerFilter) {
+    lists = lists.or(ownerFilter)
+    surveys = surveys.or(ownerFilter)
+    relays = relays.or(ownerFilter)
   }
   const [l, s, r] = await Promise.all([lists, surveys, relays])
   if (l.error) throw l.error

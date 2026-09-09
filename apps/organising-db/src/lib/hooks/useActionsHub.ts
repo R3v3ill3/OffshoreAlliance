@@ -16,13 +16,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchApi } from '@/lib/api/fetch-api'
 import { useAuth } from '@/lib/supabase/auth-context'
 import { useSmsActivity } from '@/lib/hooks/useSmsHub'
-import {
-  shapeCallListRow,
-  shapeEmailRow,
-  shapeSmsRow,
-  sortHubRows,
-  type HubActionRow,
-} from '@/lib/actions/hub-rows'
+import { mergeHubRows, type HubActionRow } from '@/lib/actions/hub-rows'
 import type { EmailActivityResponse } from '@/app/api/email/activity/route'
 import type { CallActivityResponse } from '@/app/api/calls/activity/route'
 
@@ -34,30 +28,42 @@ async function toError(res: Response, fallback: string): Promise<Error> {
 export const EMAIL_ACTIVITY_QUERY_KEY = ['email-activity'] as const
 export const CALL_ACTIVITY_QUERY_KEY = ['call-activity'] as const
 
+/**
+ * `mine` narrows to the caller server-side. Each route caps at 200
+ * rows, so filtering only on the client would let other people's
+ * actions crowd an organiser's own out of the response entirely —
+ * the one truncation the default view could not survive.
+ */
+function mineParam(mine: boolean): string {
+  return mine ? '?mine=1' : ''
+}
+
 /** Every email list and un-listed email draft, across every campaign. */
-export function useEmailActivity(enabled = true) {
+export function useEmailActivity(opts?: { mine?: boolean; enabled?: boolean }) {
+  const mine = opts?.mine ?? false
   return useQuery({
-    queryKey: EMAIL_ACTIVITY_QUERY_KEY,
+    queryKey: [...EMAIL_ACTIVITY_QUERY_KEY, mine ? 'mine' : 'everyone'],
     queryFn: async () => {
-      const res = await fetchApi('/api/email/activity')
+      const res = await fetchApi(`/api/email/activity${mineParam(mine)}`)
       if (!res.ok) throw await toError(res, 'Failed to load email activity')
       return res.json() as Promise<EmailActivityResponse>
     },
-    enabled,
+    enabled: opts?.enabled ?? true,
     staleTime: 30_000,
   })
 }
 
 /** Every call list, across every campaign. */
-export function useCallActivity(enabled = true) {
+export function useCallActivity(opts?: { mine?: boolean; enabled?: boolean }) {
+  const mine = opts?.mine ?? false
   return useQuery({
-    queryKey: CALL_ACTIVITY_QUERY_KEY,
+    queryKey: [...CALL_ACTIVITY_QUERY_KEY, mine ? 'mine' : 'everyone'],
     queryFn: async () => {
-      const res = await fetchApi('/api/calls/activity')
+      const res = await fetchApi(`/api/calls/activity${mineParam(mine)}`)
       if (!res.ok) throw await toError(res, 'Failed to load call activity')
       return res.json() as Promise<CallActivityResponse>
     },
-    enabled,
+    enabled: opts?.enabled ?? true,
     staleTime: 30_000,
   })
 }
@@ -71,6 +77,7 @@ export interface HubActionRowsResult {
   smsError: boolean
   emailError: boolean
   callsError: boolean
+  refetchSms: () => void
   refetchEmail: () => void
   refetchCalls: () => void
   /** SMS only — no other source table has an archived_at column. */
@@ -82,30 +89,38 @@ export interface HubActionRowsResult {
  * signed-in user so the "Mine" filter is a pure client-side predicate
  * over rows the routes already returned.
  */
-export function useHubActionRows(opts: { showArchived: boolean }): HubActionRowsResult {
+export function useHubActionRows(opts: {
+  showArchived: boolean
+  /** Ask the routes for the caller's rows only; see `mineParam`. */
+  mine?: boolean
+}): HubActionRowsResult {
   const { user } = useAuth()
+  const mine = opts.mine ?? false
   const sms = useSmsActivity(undefined, {
     archived: opts.showArchived ? 'include' : 'exclude',
+    mine,
   })
-  const email = useEmailActivity()
-  const calls = useCallActivity()
+  const email = useEmailActivity({ mine })
+  const calls = useCallActivity({ mine })
 
   const currentUserId = user?.id ?? null
-  const rows = useMemo(() => {
-    const ctx = { currentUserId }
-    const smsRows = [
-      ...(sms.data?.blasts ?? []),
-      ...(sms.data?.chats ?? []),
-      ...(sms.data?.surveys ?? []),
-      ...(sms.data?.relays ?? []),
-    ].map((r) => shapeSmsRow(r, ctx))
-    const emailRows = [
-      ...(email.data?.lists ?? []),
-      ...(email.data?.drafts ?? []),
-    ].map((r) => shapeEmailRow(r, ctx))
-    const callRows = (calls.data?.lists ?? []).map((r) => shapeCallListRow(r, ctx))
-    return sortHubRows([...smsRows, ...emailRows, ...callRows])
-  }, [sms.data, email.data, calls.data, currentUserId])
+  const rows = useMemo(
+    () =>
+      mergeHubRows(
+        {
+          sms: [
+            ...(sms.data?.blasts ?? []),
+            ...(sms.data?.chats ?? []),
+            ...(sms.data?.surveys ?? []),
+            ...(sms.data?.relays ?? []),
+          ],
+          email: [...(email.data?.lists ?? []), ...(email.data?.drafts ?? [])],
+          calls: calls.data?.lists ?? [],
+        },
+        { currentUserId },
+      ),
+    [sms.data, email.data, calls.data, currentUserId],
+  )
 
   return {
     rows,
@@ -114,6 +129,7 @@ export function useHubActionRows(opts: { showArchived: boolean }): HubActionRows
     smsError: sms.isError,
     emailError: email.isError,
     callsError: calls.isError,
+    refetchSms: () => void sms.refetch(),
     refetchEmail: () => void email.refetch(),
     refetchCalls: () => void calls.refetch(),
     archivedTotal: sms.data?.archived_total ?? 0,

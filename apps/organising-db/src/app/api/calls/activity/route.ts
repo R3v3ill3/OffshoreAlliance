@@ -11,6 +11,11 @@
  *
  * `?campaign_id=N` narrows to one campaign; the hub does not send it.
  *
+ * `?mine=1` narrows to the caller's own rows before the LIMIT applies,
+ * so a busy org cannot push an organiser's own lists out of their own
+ * view. Rows with no recorded owner are kept: the hub counts them and
+ * offers "switch to All", which it cannot do for rows it never got.
+ *
  * Reads only, under the existing `call_lists` SELECT policy — the
  * per-campaign routes already return these rows to the same users.
  */
@@ -45,15 +50,18 @@ export async function GET(req: NextRequest) {
     const raw = req.nextUrl.searchParams.get('campaign_id')
     const campaignId = raw ? parseInt(raw, 10) : null
     const scoped = campaignId != null && Number.isFinite(campaignId)
+    const mine = req.nextUrl.searchParams.get('mine') === '1'
 
     let listQuery = supabase
       .from('call_lists')
       .select(
-        'list_id, campaign_id, script_id, name, status, total_items, completed_items, created_by, created_at, updated_at',
+        'list_id, campaign_id, name, status, total_items, completed_items, created_by, created_at, updated_at',
       )
       .order('updated_at', { ascending: false })
       .limit(LIMIT)
     if (scoped) listQuery = listQuery.eq('campaign_id', campaignId as number)
+    // Own rows, plus the ownerless ones the hub announces rather than hides.
+    if (mine) listQuery = listQuery.or(`created_by.eq.${user.id},created_by.is.null`)
 
     const { data: lists, error: lErr } = await listQuery
     if (lErr) throw lErr

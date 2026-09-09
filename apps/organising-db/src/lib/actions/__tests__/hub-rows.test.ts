@@ -4,7 +4,10 @@ import {
   ACTIONS_HUB_PATH,
   bucketFor,
   countBy,
+  countUnknownOwnerRows,
   filterHubRows,
+  mergeHubRows,
+  pendingModerationTotal,
   scopeFor,
   scopeLabelFor,
   shapeCallListRow,
@@ -452,5 +455,127 @@ describe('scopeFor', () => {
     expect(
       scopeFor(5, { name: '   ', is_sms_episode: false, is_standing: false }),
     ).toEqual({ kind: 'campaign', campaignId: 5, name: 'Campaign' })
+  })
+})
+
+// ── 9. The three-source merge ────────────────────────────────────
+describe('mergeHubRows', () => {
+  it('interleaves all three sources strictly by updatedAt, newest first', () => {
+    const rows = mergeHubRows(
+      {
+        sms: [smsRow({ id: 1, updated_at: '2026-02-01T00:00:00Z' })],
+        email: [emailRow({ id: 11, updated_at: '2026-03-01T00:00:00Z' })],
+        calls: [callRow({ id: 88, updated_at: '2026-01-01T00:00:00Z' })],
+      },
+      CTX,
+    )
+    expect(rows.map((r) => r.key)).toEqual([
+      'email_send:list:11',
+      'sms_blast:1',
+      'call_list:88',
+    ])
+  })
+
+  it('treats a missing source as absent rather than an error', () => {
+    // One channel failing must not blank the other two.
+    expect(mergeHubRows({ sms: [smsRow()] }, CTX).map((r) => r.kind)).toEqual(['sms_blast'])
+    expect(mergeHubRows({ calls: [callRow()] }, CTX).map((r) => r.kind)).toEqual(['call_list'])
+    expect(mergeHubRows({}, CTX)).toEqual([])
+  })
+
+  it('resolves ownership against the caller for every kind', () => {
+    const rows = mergeHubRows(
+      {
+        sms: [smsRow({ created_by: 'me' })],
+        email: [emailRow({ created_by: 'someone-else' })],
+        calls: [callRow({ created_by: null })],
+      },
+      CTX,
+    )
+    const byKind = Object.fromEntries(rows.map((r) => [r.kind, r.owner]))
+    expect(byKind.sms_blast).toEqual({ userId: 'me', isMine: true, unknown: false })
+    expect(byKind.email_send).toEqual({
+      userId: 'someone-else',
+      isMine: false,
+      unknown: false,
+    })
+    expect(byKind.call_list).toEqual({ userId: null, isMine: false, unknown: true })
+  })
+})
+
+// ── 10. The unknown-owner count the table announces ──────────────
+describe('countUnknownOwnerRows', () => {
+  const rows = mergeHubRows(
+    {
+      sms: [
+        smsRow({ id: 1, status: 'draft', created_by: null }),
+        smsRow({ id: 2, created_by: 'me' }),
+      ],
+      email: [emailRow({ id: 11, created_by: null })],
+      calls: [callRow({ id: 88, created_by: 'someone-else' })],
+    },
+    CTX,
+  )
+
+  it('counts the rows nobody owns, whatever the Mine filter says', () => {
+    expect(countUnknownOwnerRows(rows, { bucket: 'all', kind: 'all', search: '' })).toBe(2)
+  })
+
+  it('respects every other filter, so it describes the view being looked at', () => {
+    expect(
+      countUnknownOwnerRows(rows, { bucket: 'all', kind: 'email_send', search: '' }),
+    ).toBe(1)
+    expect(
+      countUnknownOwnerRows(rows, { bucket: 'drafts_paused', kind: 'all', search: '' }),
+    ).toBe(1)
+    expect(
+      countUnknownOwnerRows(rows, { bucket: 'all', kind: 'all', search: 'no such thing' }),
+    ).toBe(0)
+  })
+})
+
+// ── 11. Awaiting review ──────────────────────────────────────────
+describe('pendingModerationTotal', () => {
+  it('adds up the moderation queues but skips archived rows', () => {
+    const rows = mergeHubRows(
+      {
+        sms: [
+          smsRow({ id: 1, kind: 'relay', status: 'active', pending_moderation_count: 3 }),
+          smsRow({ id: 2, kind: 'relay', status: 'paused', pending_moderation_count: 2 }),
+          smsRow({
+            id: 3,
+            kind: 'relay',
+            status: 'active',
+            pending_moderation_count: 9,
+            archived_at: '2026-01-05T00:00:00Z',
+          }),
+        ],
+      },
+      CTX,
+    )
+    expect(pendingModerationTotal(rows)).toBe(5)
+  })
+
+  it('is zero for kinds that have no moderation queue', () => {
+    expect(pendingModerationTotal(mergeHubRows({ calls: [callRow()] }, CTX))).toBe(0)
+  })
+})
+
+// ── 12. The launch-text subtitle ─────────────────────────────────
+describe('shapeSmsRow subtitle', () => {
+  it('marks a test action whether or not it is a launch text', () => {
+    // Parity with the SMS table this replaced: the suffix sat outside
+    // the launch-text branch, so both said "· test".
+    expect(shapeSmsRow(smsRow({ is_test: true }), CTX).subtitle).toBe('Blast · test')
+    expect(
+      shapeSmsRow(smsRow({ relay_name: 'Rig relay', is_test: true }), CTX).subtitle,
+    ).toBe('Launch text for Rig relay · test')
+  })
+
+  it('leaves an ordinary action unmarked', () => {
+    expect(shapeSmsRow(smsRow(), CTX).subtitle).toBe('Blast')
+    expect(shapeSmsRow(smsRow({ relay_name: 'Rig relay' }), CTX).subtitle).toBe(
+      'Launch text for Rig relay',
+    )
   })
 })

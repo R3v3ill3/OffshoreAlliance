@@ -135,7 +135,16 @@ export function ActionsTable({
   isLoading?: boolean
   canWrite?: boolean
   filters: ActionsTableFilters
-  counts: { byKind: Record<string, number>; byBucket: Record<string, number> }
+  counts: {
+    byKind: Record<string, number>
+    byBucket: Record<string, number>
+    /**
+     * Archived rows are only fetched on demand. While they are not,
+     * the Archived chip shows "…" rather than a number that would be
+     * the one count ignoring the filters the others respect.
+     */
+    archivedUnknown?: boolean
+  }
   onMineChange: (mine: boolean) => void
   onKindChange: (kind: HubActionKind | 'all') => void
   onBucketChange: (bucket: HubActionBucket | 'all') => void
@@ -225,7 +234,10 @@ export function ActionsTable({
             ...HUB_ACTION_BUCKETS.map((b) => ({
               value: b,
               label: HUB_BUCKET_LABEL[b],
-              count: counts.byBucket[b] ?? 0,
+              count:
+                b === 'archived' && counts.archivedUnknown
+                  ? '…'
+                  : (counts.byBucket[b] ?? 0),
             })),
             { value: 'all', label: 'All', count: counts.byBucket.all ?? 0 },
           ]}
@@ -412,6 +424,13 @@ export function ActionsTable({
           </Table>
         </div>
       )}
+      {rows.length > 0 && (
+        // The routes cap each channel's read, so a very long history is
+        // not all here. Said out loud rather than left to be noticed.
+        <p className="text-[11px] text-muted-foreground">
+          Showing the latest 200 actions per channel. Older ones stay where they live.
+        </p>
+      )}
       {ops && ops.row.smsRef && (
         <SmsActionOpsLauncher
           kind={ops.row.smsRef.kind}
@@ -439,7 +458,8 @@ function ChipRow({
 }: {
   label: string
   value: string
-  options: Array<{ value: string; label: string; count?: number }>
+  /** `count` is a string when the number is not yet knowable ("…"). */
+  options: Array<{ value: string; label: string; count?: number | string }>
   onChange: (value: string) => void
 }) {
   return (

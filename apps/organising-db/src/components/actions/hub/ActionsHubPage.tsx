@@ -37,9 +37,11 @@ import { useHubActionRows } from '@/lib/hooks/useActionsHub'
 import {
   ACTIONS_HUB_PATH,
   countBy,
+  countUnknownOwnerRows,
   filterHubRows,
   isHubActionBucket,
   isHubActionKind,
+  pendingModerationTotal,
   smsKindForHubKind,
   type HubActionBucket,
   type HubActionKind,
@@ -86,12 +88,26 @@ export function ActionsHubPage() {
   const {
     rows: allRows,
     isLoading,
+    smsError,
     emailError,
     callsError,
+    refetchSms,
     refetchEmail,
     refetchCalls,
     archivedTotal,
-  } = useHubActionRows({ showArchived })
+  } = useHubActionRows({ showArchived, mine })
+
+  // Named channels, so a failure says which list is short rather than
+  // leaving the organiser to wonder whether the gap is real. Memoised
+  // because the empty-state hint reads it: a fresh array every render
+  // would defeat the compiler's memoisation of the whole subtree.
+  const failedSources = useMemo(() => {
+    const failed: string[] = []
+    if (smsError) failed.push('SMS actions')
+    if (emailError) failed.push('email sends')
+    if (callsError) failed.push('call lists')
+    return failed
+  }, [smsError, emailError, callsError])
   const { data: campaigns = [], isLoading: campaignsLoading } = useSmsHubCampaigns()
   const { data: numbers } = useSmsNumbers()
 
@@ -129,20 +145,19 @@ export function ActionsHubPage() {
     const forKinds = countBy(
       filterHubRows(scopedRows, { mine, bucket, kind: 'all', search }),
     )
-    const byBucket = { ...forBuckets.byBucket }
-    // The archived rows are not fetched unless the toggle is on, so
-    // the chip carries the server's count rather than 0.
-    if (!showArchived) byBucket.archived = archivedTotal
-    return { byKind: forKinds.byKind, byBucket }
-  }, [scopedRows, mine, bucket, kind, search, showArchived, archivedTotal])
+    return {
+      byKind: forKinds.byKind,
+      byBucket: { ...forBuckets.byBucket },
+      // Archived rows are only fetched once the toggle is on. Until
+      // then the filtered count is unknowable, and the server's
+      // org-wide total would be the one chip ignoring the filters
+      // every other chip respects — so the chip says "…" instead.
+      archivedUnknown: !showArchived,
+    }
+  }, [scopedRows, mine, bucket, kind, search, showArchived])
 
   const unknownOwnerCount = useMemo(
-    () =>
-      mine
-        ? filterHubRows(scopedRows, { mine: false, bucket, kind, search }).filter(
-            (r) => r.owner.unknown,
-          ).length
-        : 0,
+    () => (mine ? countUnknownOwnerRows(scopedRows, { bucket, kind, search }) : 0),
     [scopedRows, mine, bucket, kind, search],
   )
 
@@ -160,8 +175,8 @@ export function ActionsHubPage() {
       else if (r.bucket === 'drafts_paused') pending += 1
       else finished += 1
     }
-    let review = 0
-    for (const r of allRows) review += r.pendingModerationCount
+    // Archived relays are put away; their queue is not a live duty.
+    const review = pendingModerationTotal(allRows)
     const activeNumbers = (numbers?.numbers ?? []).filter((n) => n.status === 'active')
     const spare = activeNumbers.filter((n) => n.purpose === 'spare' && n.live.length === 0).length
     return { live, pending, finished, review, numbers: activeNumbers.length, spare }
@@ -331,6 +346,9 @@ export function ActionsHubPage() {
       {/* 3. Everything */}
       <section aria-label="All actions" className="space-y-2">
         <h2 className="text-sm font-medium">All actions</h2>
+        {smsError && (
+          <ErrorStrip label="SMS actions could not be loaded." onRetry={refetchSms} />
+        )}
         {emailError && (
           <ErrorStrip label="Email sends could not be loaded." onRetry={refetchEmail} />
         )}
@@ -380,7 +398,13 @@ export function ActionsHubPage() {
             </Select>
           }
           emptyHint={
-            canWrite ? (
+            // An empty table after a failed read is not an empty
+            // universe. Say which channel is missing rather than
+            // inviting the organiser to start something they may
+            // already have.
+            failedSources.length > 0 ? (
+              `Nothing could be listed: ${joinWords(failedSources)} could not be loaded. Retry above.`
+            ) : canWrite ? (
               <>
                 No actions yet.{' '}
                 <Link href={smsCreateHref({})} className="underline underline-offset-4">
@@ -433,6 +457,12 @@ export function ActionsHubPage() {
       )}
     </div>
   )
+}
+
+/** "a", "a and b", "a, b and c" — for naming the channels that failed. */
+function joinWords(items: string[]): string {
+  if (items.length < 2) return items[0] ?? ''
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
 }
 
 function ErrorStrip({ label, onRetry }: { label: string; onRetry: () => void }) {

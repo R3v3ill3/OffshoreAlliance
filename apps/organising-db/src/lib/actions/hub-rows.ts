@@ -333,9 +333,11 @@ export function shapeSmsRow(row: SmsActivityRow, ctx: ShapeCtx): HubActionRow {
     archivedAt: row.archived_at ?? null,
     pendingModerationCount: row.pending_moderation_count ?? 0,
     relayId: row.relay_id ?? null,
-    subtitle: row.relay_name
-      ? `Launch text for ${row.relay_name}`
-      : `${HUB_KIND_NOUN[kind]}${row.is_test ? ' · test' : ''}`,
+    // `· test` marks a test action whatever the line says before it —
+    // a launch text can be a test too, and the old table said so.
+    subtitle: `${
+      row.relay_name ? `Launch text for ${row.relay_name}` : HUB_KIND_NOUN[kind]
+    }${row.is_test ? ' · test' : ''}`,
     senderPhone: row.sender_phone ?? null,
     senderLabel: row.sender_label ?? null,
   }
@@ -410,6 +412,27 @@ export function shapeCallListRow(row: CallActivityRow, ctx: ShapeCtx): HubAction
   }
 }
 
+/** The three sources, each optional: a source that failed is absent, not empty. */
+export interface HubRowSources {
+  sms?: SmsActivityRow[]
+  email?: EmailActivityRow[]
+  calls?: CallActivityRow[]
+}
+
+/**
+ * Every source shaped and merged into one sorted list. Pure, so the
+ * merge the hub renders is the merge the tests exercise, and a missing
+ * source is a missing array rather than a thrown error — one channel
+ * failing must never blank the other two.
+ */
+export function mergeHubRows(sources: HubRowSources, ctx: ShapeCtx): HubActionRow[] {
+  return sortHubRows([
+    ...(sources.sms ?? []).map((r) => shapeSmsRow(r, ctx)),
+    ...(sources.email ?? []).map((r) => shapeEmailRow(r, ctx)),
+    ...(sources.calls ?? []).map((r) => shapeCallListRow(r, ctx)),
+  ])
+}
+
 /** Newest first; ties broken on `key` so the order never flickers. */
 export function sortHubRows(rows: HubActionRow[]): HubActionRow[] {
   return [...rows].sort(
@@ -451,4 +474,30 @@ export function countBy(rows: HubActionRow[]): {
     byBucket[r.bucket] = (byBucket[r.bucket] ?? 0) + 1
   }
   return { byKind, byBucket }
+}
+
+/**
+ * How many rows the Mine filter hides only because nobody is recorded
+ * as their owner — the number the table announces above itself, so
+ * nothing disappears without being counted. Every other filter still
+ * applies, so the number describes the view being looked at.
+ */
+export function countUnknownOwnerRows(
+  rows: HubActionRow[],
+  f: Omit<HubRowFilters, 'mine'>,
+): number {
+  return filterHubRows(rows, { ...f, mine: false }).filter((r) => r.owner.unknown).length
+}
+
+/**
+ * Relay messages held for moderation. Archived rows are skipped: an
+ * archived relay is put away, and its queue is not a live duty.
+ */
+export function pendingModerationTotal(rows: HubActionRow[]): number {
+  let total = 0
+  for (const r of rows) {
+    if (r.bucket === 'archived') continue
+    total += r.pendingModerationCount
+  }
+  return total
 }

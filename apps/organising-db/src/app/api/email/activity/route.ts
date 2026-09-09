@@ -15,6 +15,11 @@
  * `?campaign_id=N` narrows to one campaign; the hub does not send it
  * (it is the whole-of-universe view) but the campaign panels can.
  *
+ * `?mine=1` narrows to the caller's own rows before the LIMIT applies,
+ * so a busy org cannot push an organiser's own sends out of their own
+ * view. Rows with no recorded owner are kept: the hub counts them and
+ * offers "switch to All", which it cannot do for rows it never got.
+ *
  * Reads only. `email_lists` and `campaign_comms_drafts` already return
  * cross-campaign rows to any authenticated user under their existing
  * SELECT policies, exactly as /api/sms/activity does; nothing here
@@ -52,11 +57,14 @@ export async function GET(req: NextRequest) {
     const raw = req.nextUrl.searchParams.get('campaign_id')
     const campaignId = raw ? parseInt(raw, 10) : null
     const scoped = campaignId != null && Number.isFinite(campaignId)
+    const mine = req.nextUrl.searchParams.get('mine') === '1'
+    /** Own rows, plus the ownerless ones the hub announces rather than hides. */
+    const ownerFilter = `created_by.eq.${user.id},created_by.is.null`
 
     let listQuery = supabase
       .from('email_lists')
       .select(
-        'list_id, campaign_id, draft_id, name, status, total_items, sent_items, delivered_items, failed_items, created_by, created_at, updated_at',
+        'list_id, campaign_id, draft_id, name, status, total_items, delivered_items, failed_items, created_by, created_at, updated_at',
       )
       .order('updated_at', { ascending: false })
       .limit(LIMIT)
@@ -73,6 +81,10 @@ export async function GET(req: NextRequest) {
       listQuery = listQuery.eq('campaign_id', campaignId as number)
       draftQuery = draftQuery.eq('campaign_id', campaignId as number)
     }
+    if (mine) {
+      listQuery = listQuery.or(ownerFilter)
+      draftQuery = draftQuery.or(ownerFilter)
+    }
 
     const [{ data: lists, error: lErr }, { data: drafts, error: dErr }] = await Promise.all([
       listQuery,
@@ -88,7 +100,6 @@ export async function GET(req: NextRequest) {
       name: string | null
       status: string
       total_items: number | null
-      sent_items: number | null
       delivered_items: number | null
       failed_items: number | null
       created_by: string | null

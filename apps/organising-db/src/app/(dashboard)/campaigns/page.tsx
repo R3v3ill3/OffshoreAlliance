@@ -27,6 +27,7 @@ import {
 } from "@/components/campaigns/campaign-delete-dialog";
 import { CampaignsDashboard } from "@/components/campaigns/CampaignsDashboard";
 import { excludeSmsEpisodes } from "@/lib/campaign/visible-campaigns";
+import { ACTIONS_HUB_PATH } from "@/lib/actions/hub-path";
 
 const TemplatesTab = dynamic(() => import("@/components/campaigns/templates-tab").then((m) => ({ default: m.TemplatesTab })), { ssr: false });
 
@@ -386,7 +387,7 @@ export default function CampaignsPage() {
                   the Actions hub's Start something cards; their URLs
                   still resolve, and the campaigns empty state still
                   lists them. */}
-              <Link href="/actions" className={tabBarActionClassName}>
+              <Link href={ACTIONS_HUB_PATH} className={tabBarActionClassName}>
                 <LayoutList className="h-4 w-4 shrink-0" />
                 Actions
               </Link>

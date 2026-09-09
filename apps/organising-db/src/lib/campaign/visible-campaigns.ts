@@ -15,3 +15,15 @@ export function excludeSmsEpisodes<T>(query: T): T {
     false,
   )
 }
+
+/**
+ * Everything `excludeSmsEpisodes` hides, plus the shared standing
+ * container that standalone call lists are filed on. Neither is a
+ * campaign an organiser chose, so neither belongs in a picker or a
+ * scope filter — "Standalone" already covers what lives on them.
+ */
+export function excludeNonCampaignContainers<T>(query: T): T {
+  return excludeSmsEpisodes(
+    (query as { eq: (column: string, value: boolean) => T }).eq('is_standing', false),
+  )
+}

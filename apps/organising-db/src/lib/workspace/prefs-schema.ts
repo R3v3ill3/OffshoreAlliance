@@ -105,3 +105,20 @@ export function parseWorkspaceDefaults(v: unknown): WorkspaceDefaults | null {
   const result = lenientDefaultsSchema.safeParse(candidate);
   return result.success ? result.data : null;
 }
+
+/**
+ * The `byWorkRole` keys of a raw stored document that `parseWorkspaceDefaults`
+ * discards — an unknown work role, or a work-role entry that does not parse.
+ * The editor uses it to name what a save would silently overwrite; it returns
+ * `[]` for a document the parser rejects outright (that case is reported as
+ * "malformed", not as a list of dropped roles).
+ */
+export function droppedRoleKeys(raw: unknown): string[] {
+  if (!isPlainObject(raw)) return [];
+  const byWorkRole = raw.byWorkRole;
+  if (!isPlainObject(byWorkRole)) return [];
+  const parsed = parseWorkspaceDefaults(raw);
+  if (parsed === null) return [];
+  const kept = parsed.byWorkRole ?? {};
+  return Object.keys(byWorkRole).filter((key) => !(key in kept));
+}

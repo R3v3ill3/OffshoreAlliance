@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  droppedRoleKeys,
   parseWorkspaceDefaults,
   parseWorkspacePrefs,
   workspaceDefaultsSchema,
@@ -120,5 +121,28 @@ describe("parseWorkspaceDefaults (lenient reader)", () => {
     ).toEqual({ byWorkRole: { organiser: { mode: "organiser", modules: ["inbox"] } } });
     expect(parseWorkspaceDefaults({})).toEqual({});
     expect(parseWorkspaceDefaults({ byWorkRole: {}, future: true })).toEqual({ byWorkRole: {} });
+  });
+});
+
+describe("droppedRoleKeys", () => {
+  it("names the byWorkRole keys the lenient reader discards", () => {
+    expect(
+      droppedRoleKeys({
+        byWorkRole: {
+          organiser: { mode: "organiser", modules: ["inbox"] },
+          coordinator: "x",
+          specialist: { mode: "simple" },
+          admin: { mode: "full" },
+          lead_organiser: { mode: "full" },
+        },
+      })
+    ).toEqual(["coordinator", "specialist", "admin"]);
+  });
+
+  it("returns [] for a clean document and for one the parser rejects outright", () => {
+    expect(droppedRoleKeys({ byWorkRole: { organiser: { mode: "full" } } })).toEqual([]);
+    expect(droppedRoleKeys({})).toEqual([]);
+    for (const v of NOT_DOCUMENTS) expect(droppedRoleKeys(v), String(v)).toEqual([]);
+    expect(droppedRoleKeys({ byWorkRole: 5 })).toEqual([]);
   });
 });

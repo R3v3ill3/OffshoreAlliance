@@ -11,10 +11,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import {
-  parseWorkspaceDefaults,
-  workspaceDefaultsSchema,
-} from "@/lib/workspace/prefs-schema";
+import { workspaceDefaultsSchema } from "@/lib/workspace/prefs-schema";
 
 const SETTINGS_KEY = "workspace_defaults";
 
@@ -51,16 +48,22 @@ export async function GET() {
 
   if (dbError) return NextResponse.json({ error: dbError.message }, { status: 500 });
 
+  // The stored document is returned as-is (WP1.1 fix round 2): sanitising it
+  // here made "nothing stored" and "stored but unparseable" indistinguishable
+  // to the editor, which would then silently overwrite a malformed document on
+  // the next save. Unparseable text is handed back as the raw string, which
+  // `parseWorkspaceDefaults` rejects at the top level just as the caller needs.
+  // `{}` therefore means, and only means, "no row stored".
   let raw: unknown = {};
   if (typeof data?.value === "string" && data.value.trim() !== "") {
     try {
       raw = JSON.parse(data.value);
     } catch {
-      raw = {};
+      raw = data.value;
     }
   }
 
-  return NextResponse.json(parseWorkspaceDefaults(raw) ?? {});
+  return NextResponse.json(raw);
 }
 
 export async function PUT(request: NextRequest) {

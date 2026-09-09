@@ -694,7 +694,82 @@ _(to be filled by the reviewer)_
 
 ## 6. Deviations from plan
 
-_(implementer keeps this list)_
+Implemented on `feat/oux-wp1.7-guides-hints` (Fable, 2026-09-09). Numbered so the reviewer can tick them off; none changes behaviour the plan promised.
+
+1. **Manifest diff shape.** §2.5 says the diff shows "+6 lines / −0". JSON needs a trailing comma on the previously-last route string of each of the four arrays, so the honest shape is **4 hunks, +8 / −4**, where every `−` line is a route string re-added one line later with a comma. `title`/`summary`/`tags` of all 19 clips are byte-identical. Corrected proof: `git diff HEAD~4 -- apps/organising-db/public/help-videos/manifest.json | grep '^-' | grep -v '^---' | grep -vE '^-\s+"/'` → empty.
+2. **Route inventory is 78, not 76.** The branch moved under the plan (WP1.4 and later routes, e.g. `/u/[token]`). No effect: T1 builds the inventory from `src/app/**/page.tsx` at test time.
+3. **`manifest.series` is a map, not an array** (`{"O": "Overview", …}`); T1's structure assertion checks membership against `Object.keys(series)` rather than a `series[].id`.
+4. **T1 has a sixth assertion** ("builds a route inventory that includes the screens the clips teach") pinning twelve sample paths, so a broken inventory walker cannot make assertion 2 pass vacuously.
+5. **Callout gains `onEscapeKeyDown={onDismiss}`** in addition to "Got it" — a second keyboard dismissal, additive, nothing else changes. `type="button"` is set explicitly on "Got it".
+6. **Hook write path.** `dismiss()` is `upsert(…, { onConflict: "user_id,hint_id", ignoreDuplicates: true })`, i.e. `INSERT … ON CONFLICT DO NOTHING` — an insert, needing no UPDATE grant, exactly as §2.3.5. On success the hook does `queryClient.setQueryData` (adds the id to the cached list) instead of `invalidateQueries`, saving a refetch; on error it `console.warn`s and keeps the session dismissal.
+7. **Hook return is memoised** (`useMemo({ visible, dismiss })`, `dismiss` via `useCallback`) so listing `ratingHint` in `renderTile`'s dependency array does not re-create the callback on every render. `HINT_DISMISSALS_QUERY_KEY` is exported for whoever needs to invalidate it later.
+8. **E2E reset is `beforeEach` + `afterEach`** (the brief's wording) rather than "step 0 + `finally`" — equivalent; both go through `restClientFor`, which refuses production. Two strengthening additions: after "Got it" the spec `expect.poll`s the row into existence through REST, and the post-reload "absent" assertion waits on the `GET …/rest/v1/user_hint_dismissals` response first, because the hint fails closed while loading and "not painted yet" must not pass as "dismissed" (risk 10 / §2.3.2).
+9. **The `UserHintDismissal` row type's `hint_id` is `string`**, not `HintId`, with the reason in its doc comment (the column is deliberately un-enumerated).
+10. **Not done here, by rule:** `packages/db-types/generated.ts` (the verifier regenerates from dev after `db push`); `docs/organiser-ux-review/PROGRESS.md` (the orchestrator copies the rows below); the §2.6 screenshots (verifier, on the preview). No app was started locally; no database was contacted.
+11. **This file carries two §5–§8 blocks** (the pre-approval template at the top and the post-approval set below it). The implementer filled the second, the one under "Orchestrator approval"; the first is left as the planner wrote it.
+
+### Implementer notes
+
+**Files changed (all under `apps/organising-db/` unless stated):**
+
+| Path | Change |
+|---|---|
+| `public/help-videos/manifest.json` | +6 route strings across OVERVIEW, A4, D1, D2 (deviation 1) |
+| `supabase/migrations/20260911090000_user_hint_dismissals.sql` | **new** — table, RLS, grants (§2.3.4) |
+| `src/types/organising-row-types.ts` | +`UserHintDismissal` after `UserProfile` |
+| `src/lib/hints/registry.ts` | **new** — `HintId`, `Hint`, `HINTS`, `HINT_BY_ID` |
+| `src/lib/hints/should-show.ts` | **new** — `shouldShowHint()` |
+| `src/lib/hints/pick-rating-hint-anchor.ts` | **new** — `pickRatingHintAnchor()` |
+| `src/lib/hints/use-first-use-hint.ts` | **new** — `useFirstUseHint(id, { hasTiles, canWrite })` |
+| `src/components/hints/first-use-hint.tsx` | **new** — the callout |
+| `src/components/ui/popover.tsx` | +`PopoverAnchor` (additive) |
+| `src/components/campaigns/wall-chart/worker-tile.tsx` | +`showRatingHint`, `onRatingHintDismiss`; wraps `largeBadgeRendered`; passes `onRatingControlOpen` |
+| `src/components/campaigns/wall-chart/inline-rating-popover.tsx` | +`onRatingControlOpen` on both popovers, called (guarded) inside the existing `if (next)` |
+| `src/components/campaigns/campaign-wall-chart.tsx` | +`ratingHintAnchor` memo and `useFirstUseHint` after `visibleWorkersForOu`; 2 props on `<WorkerTile>`; 2 deps |
+| `src/lib/hints/__tests__/{help-manifest,registry,should-show,pick-rating-hint-anchor}.test.ts` | **new** — T1–T4 (23 tests) |
+| `tests/e2e/wall-chart.spec.ts` | +1 `test.describe` (T5) |
+| `docs/HOW_TO_VIDEOS_HANDOFF.md` | 5-line note after §6 step 7 |
+| `docs/organiser-ux-review/wp/wp1.7.md` | this section |
+
+**Migration:** `supabase/migrations/20260911090000_user_hint_dismissals.sql`. Not applied by the implementer. `pnpm validate:migrations` → "Validated 8 Supabase migrations".
+
+**Untyped client, noted as asked:** `createClient()` (`src/lib/supabase/client.ts:134`) returns a bare `SupabaseClient`, so the two `.from("user_hint_dismissals")` calls in `use-first-use-hint.ts` compile before `generated.ts` knows the table. After `gen:types` nothing needs to change; the row shape is `UserHintDismissal`.
+
+**Human-task rows for the ledger** (`docs/organiser-ux-review/PROGRESS.md`, "Human tasks (not code)") — for the orchestrator to copy; the existing "Re-record OVERVIEW clip | WP1.7 | pending" row is replaced by the first, the second is added, the WP2.9 and WP3.7 rows are unchanged:
+
+| Task | Raised by | Status |
+|---|---|---|
+| **Re-record `OVERVIEW`** — the clip opens on `/campaigns` and narrates the eight-tab campaign page. What changed on screen after phase 1: the organiser's home is **`/my-campaigns`** with the "New campaign" button (WP1.3); the campaign page opens on the wall chart behind **four tabs plus More** with a campaign switcher (WP1.4); the sidebar in organiser mode is four primary rows, with **Actions** at `/actions` for SMS, email and call lists (WP1.2/WP1.5) and **Guides** at `/help`; the Workforce sub-tab formerly "Scope" is **Who's in**, "Unallocated" is **Unassigned** (WP0.3); and the first wall chart an organiser opens now shows a one-line **rating hint** on the first tile (WP1.7 — dismiss it before recording, or record it deliberately). Pipeline: `docs/HOW_TO_VIDEOS_HANDOFF.md` §6 steps 1–8; spec `scripts/video-pipeline/clips/overview.mjs` (local, untracked). **Before step 7** re-apply the `associatedRoutes` edits (wp1.7.md §2.1.6) to the clip specs, or `pnpm test` fails on `help-manifest.test.ts`. | WP1.7 | pending |
+| **`C1`, `C2`, `B3` re-record candidates (WP0.3 note) — deferred to WP2.9.** `C1`/`C2` were filmed before WP0.3 moved tiles above the charts and made List the touch default; `B3` was filmed against "Unallocated". Approval 2026-09-09 (wp1.7.md §5): defer all three to WP2.9, which already owns `B1–B3` and `C1–C3` for the group model, so they are shot once against the rebuilt chart. | WP1.7 (raised), WP2.9 (owns) | deferred to WP2.9 |
+
+**Verifier hand-off (dev `dpnnmkhabysfdogllsyh` only; never `gteygwfgjvczanmrwgbr`):**
+
+1. Confirm the CLI link: `cat supabase/.temp/project-ref` must read `dpnnmkhabysfdogllsyh`.
+2. `supabase db push --dry-run` — expect exactly one pending file, `20260911090000_user_hint_dismissals.sql`; then `supabase db push`.
+3. Policy snapshot (paste into §7): `select polname, polcmd, pg_get_expr(polqual, polrelid), pg_get_expr(polwithcheck, polrelid) from pg_policy where polrelid = 'public.user_hint_dismissals'::regclass;` → three rows (SELECT/INSERT/DELETE, all `user_id = auth.uid()`); `select grantee, privilege_type from information_schema.role_table_grants where table_name = 'user_hint_dismissals';` → `authenticated`: SELECT, INSERT, DELETE only; `service_role`: all; no `anon`.
+4. Repo root: `SUPABASE_PROJECT_REF=dpnnmkhabysfdogllsyh pnpm gen:types`; `git diff --stat packages/db-types/generated.ts` shows `user_hint_dismissals`; commit it as `feat(oux-wp1.7): regenerate db types from dev`.
+5. From `apps/organising-db`: `pnpm exec tsc --noEmit -p tsconfig.json`, `pnpm test`, `pnpm build`.
+6. Credentialled e2e on the branch preview: `E2E_BASE_URL=<preview> E2E_USER_EMAIL=… E2E_USER_PASSWORD=… pnpm e2e tests/e2e/wall-chart.spec.ts` — three tests including "the rating hint shows once, then stays dismissed". Precondition: the e2e account's campaign has at least one tile and the account can write to it.
+7. Dismissal reset check: after the run, `select * from public.user_hint_dismissals where hint_id = 'wall_chart_rating';` returns no row for the e2e user (the spec's `afterEach` deleted it). If a row remains, the `afterEach` did not run — delete it and say so in §7.
+8. Screenshots per §2.6 into `docs/organiser-ux-review/evidence/wp1.7/` (desktop with hint; 375 px mobile with hint not covering its tile; desktop after dismiss + reload).
+
+**Gates run by the implementer (from `apps/organising-db` unless stated):**
+
+- `pnpm exec eslint` on every touched `.ts/.tsx` → 0 errors, 0 warnings.
+- `pnpm test` → 76 files, 1029 tests passed (23 new).
+- `pnpm exec tsc --noEmit -p tsconfig.json` → exit 0.
+- `pnpm build` → exit 0.
+- `env -u E2E_USER_EMAIL -u E2E_USER_PASSWORD -u E2E_ADMIN_EMAIL -u E2E_ADMIN_PASSWORD pnpm e2e` → 13 skipped, exit 0 (the new spec is #12).
+- repo root `pnpm validate:migrations` → Validated 8 Supabase migrations.
+- Drift alarm proven: with the manifest stashed at HEAD, `help-manifest.test.ts` fails with "OVERVIEW lost route /my-campaigns — did scripts/video-pipeline/publish-to-app.mjs regenerate the manifest? See wp1.7.md §2.1.7."
+
+**Commits (oldest first):**
+
+- `ab9c3d1` feat(oux-wp1.7): manifest route additions, hint registry, predicate and anchor picker
+- `c836783` feat(oux-wp1.7): user_hint_dismissals table with owner-only RLS
+- `9002591` feat(oux-wp1.7): first-use rating hint on the wall chart
+- `4352311` feat(oux-wp1.7): hint e2e spec and the manifest regeneration note
+- (this file) feat(oux-wp1.7): implementer notes and deviations
 
 ## 7. Verification output
 

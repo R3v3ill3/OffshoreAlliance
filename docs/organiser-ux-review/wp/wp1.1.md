@@ -1122,6 +1122,20 @@ f82bfac docs(oux): phase-0 exit confirmed, SMS test arrangement, WP1.1 planning
 - The §2.12 R5 check (invite a throwaway user on dev, confirm the new row has `workspace_prefs = '{}'`) was not run: it was not listed in the numbered verifier steps 1–8 given for this pass, and inviting a real auth user is a side-effecting action beyond the SQL-probe/type-regen/build scope defined here. Flagging for the reviewer or a follow-up verification pass.
 - No SUPABASE_DB_PASSWORD prompt occurred at any CLI step, so no step was aborted for that reason.
 
+### Verifier run 2 (orchestrator, after fix round 1) at 35a6761
+```
+$ pnpm test
+ Test Files  59 passed (59)
+      Tests  769 passed (769)
+$ pnpm exec tsc --noEmit -p tsconfig.json; echo tsc $?
+tsc 0
+$ pnpm lint | tail -1
+✖ 294 problems (143 errors, 151 warnings)
+$ git log --oneline --stat ad67b6c..HEAD -- supabase/.temp (expect empty)
+$ git diff --stat ad67b6c..HEAD | tail -1
+ 9 files changed, 277 insertions(+), 34 deletions(-)
+```
+
 ## 8. Reviewer findings
 
 _(reviewer)_

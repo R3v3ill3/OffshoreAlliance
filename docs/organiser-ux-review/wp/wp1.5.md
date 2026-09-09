@@ -624,7 +624,129 @@ None blocking. Assumptions stated and proceeding:
 
 ## 6. Deviations from plan
 
-_(implementer keeps this list)_
+1. **`ACTIONS_HUB_PATH` is declared in a new one-line module, `src/lib/actions/hub-path.ts`, and re-exported from `hub-rows.ts`** (`hub-rows.ts:30`). §2.1.4 puts the constant in `hub-rows.ts`, but `hub-rows.ts` imports `smsActionHref` / `smsActionStatusGroup` / `smsActionCampaignHref` from `hub-actions.ts`, and §2.5 requires `hub-actions.ts` to build its href from `ACTIONS_HUB_PATH` — declaring it in `hub-rows.ts` would make the two modules mutually importing. The plan's stated import site still works (`import { ACTIONS_HUB_PATH } from '@/lib/actions/hub-rows'`); server-side files that must not pull the whole module (the two redirects, `SmsHubNav`) import from `hub-path.ts` directly.
+
+2. **Email row keys are `email_send:<source>:<id>`, not `${kind}:${id}`.** `email_lists.list_id` and `campaign_comms_drafts.draft_id` come from separate sequences, so a list and an un-listed draft can share an integer and would collide on the React key. Pinned by a test ("keeps list and draft keys apart even on the same id").
+
+3. **`HubActionRow` carries seven fields §2.1.4's type did not name**: `smsRef`, `archivedAt`, `pendingModerationCount`, `relayId`, `subtitle`, `senderPhone`, `senderLabel`. Each one exists only to preserve a §2.10 behaviour verbatim — the detail sheets and `SmsActionOpsLauncher` need the ref and the campaign id, the archive/un-archive menu needs `archived_at`, the "N to review" badge needs the moderation count, "Open relay" needs `relay_id`, "Launch text for X" needs the subtitle, and the Number column and its search need the sender. No new product surface.
+
+4. **`bucketFor`'s `email_send` branch is one branch, not two.** §2.1.4's truth table lists `email_lists` and `campaign_comms_drafts` as separate rows, but their two `CHECK` sets agree on every status they share (`draft`, `paused`, `sent`), so one branch covers both without ambiguity and the signature stays as specified. Both status sets are pinned by their own tests.
+
+5. **`EmailActivityRow` and `CallActivityRow` are declared in `hub-rows.ts` and imported by the two new routes**, rather than declared in the routes and imported by the pure module. This keeps the pure module self-contained for vitest; the only route import it retains is the pre-existing type-only `SmsActivityRow`.
+
+6. **`filterHubRows`'s free-text search also matches the sender number and label.** §2.1.4 names name + campaign name; `SmsActionsTable.tsx:150-153` also searched the number, and the search box still says "Search by name, campaign or number…". Dropping it would have been an SMS behaviour change.
+
+7. **Snapshot tiles follow the owner filter for Live / Drafts & paused / Finished, but not for Awaiting review** (`ActionsHubPage.tsx:146-165`). §2.10 requires the first three to count all six kinds, which they do. Scoping them to the owner filter keeps the tiles and the table describing the same set; "Awaiting review" deliberately counts every relay's moderation queue whoever set it up, because moderation is a duty over all relays rather than a personal to-do.
+
+8. **The scope Select has no separate "Org-wide relays" option.** §2.7 asked for that option to be relabelled "Standalone" and merged with the existing `standalone` option; merged means one option, so there is one. `?scope=org` still parses (`hub-actions.ts:parseScopeParam`) and selects the same filter, so old links are unchanged.
+
+9. **A fourth user-facing "Org-wide" was found in the hub and changed.** §2.7's grep listed three (`SmsActionsTable.tsx:73`, `SmsHubPage.tsx:279`, `SmsScopePicker.tsx:38`); `SmsNumbersPage.tsx:386-388` printed the same word for the same thing in the same directory. Left alone it would have meant two words for one concept inside one hub. Changed to `Standalone`; no behaviour change.
+
+10. **The e2e spec asserts the Scope column before narrowing to one bucket, and adds the Archived chip.** §2.11's draft asserts the column header last; the table is replaced by an empty-state panel when a filter matches nothing, so that assertion would have been data-dependent on an empty seed. Moved to the widest view (All owners, all buckets). The bucket loop covers all four chips rather than three.
+
+11. **`src/app/(dashboard)/campaigns/sms-tools/page.tsx` imports `ACTIONS_HUB_PATH`** rather than hardcoding `/actions` in its two strings, so there is one place the hub's route is written.
+
+12. **`useHubActionRows` returns per-source error flags and refetchers** (`smsError`, `emailError`, `callsError`, `refetchEmail`, `refetchCalls`) beyond §2.2's four fields. §2.2 requires the page to render an inline "could not be loaded. Retry." strip per channel; these are what it renders from.
+
+Not done, and deliberately: nothing in §3 (out of scope), and **no change to `src/components/layout/sidebar.tsx`** — §2.5 assigns the sidebar line to WP1.2. `/actions` is reachable at every commit on this branch via the campaigns strip, the hub pills, and `/sms` → `/actions`.
+
+## Implementer notes
+
+### Files
+
+**New (11)**
+
+| Path | Purpose |
+|---|---|
+| `src/lib/actions/hub-path.ts` | `ACTIONS_HUB_PATH`, on its own to keep `hub-rows` and `hub-actions` acyclic |
+| `src/lib/actions/hub-rows.ts` | the pure module: `HubActionRow`, `bucketFor`, `statusLabelFor`, `scopeFor`, `scopeLabelFor`, the three shapers, `sortHubRows`, `filterHubRows`, `countBy`, labels |
+| `src/lib/actions/__tests__/hub-rows.test.ts` | 44 tests over the eight case groups of §2.1.4, including the SMS parity pin |
+| `src/app/api/email/activity/route.ts` | cross-campaign email lists + un-listed email drafts |
+| `src/app/api/calls/activity/route.ts` | cross-campaign call lists |
+| `src/lib/hooks/useActionsHub.ts` | `useEmailActivity`, `useCallActivity`, `useHubActionRows` |
+| `src/app/(dashboard)/actions/page.tsx` | route shell, `<Suspense>` + `ActionsHubPage` |
+| `src/components/actions/hub/ActionsHubPage.tsx` | the generalised hub (from `SmsHubPage.tsx`) |
+| `src/components/actions/hub/ActionsTable.tsx` | the generalised table (from `SmsActionsTable.tsx`; still exports `STATUS_TONE`) |
+| `src/components/actions/hub/StartSomethingCards.tsx` | the three cards + the shared campaign picker dialog |
+| `tests/e2e/actions-hub.spec.ts` | §2.11 |
+
+**Modified (10)**
+
+| Path | Change |
+|---|---|
+| `src/app/api/sms/activity/route.ts` | `created_by` threaded through the type, the three selects, the three casts and the three emitted rows; additive only |
+| `src/lib/sms/hub-actions.ts` | `smsActionHref` base → `ACTIONS_HUB_PATH`; two comments reworded to say "Standalone" |
+| `src/lib/sms/__tests__/hub-actions.test.ts` | three href assertions `/sms?` → `/actions?` |
+| `src/lib/campaign/visible-campaigns.ts` | `SMS_EPISODE_TOOLS_HREF` → `/actions?scope=standalone` |
+| `src/components/sms/hub/SmsHubNav.tsx` | Actions pill href → `ACTIONS_HUB_PATH`; `aria-label` → "Actions sections" |
+| `src/components/sms/hub/SmsScopePicker.tsx` | `org` option label → Standalone wording (value unchanged); header comment |
+| `src/components/sms/hub/SmsNumbersPage.tsx` | `STATUS_TONE` import repointed; "Org-wide" → "Standalone" |
+| `src/app/(dashboard)/sms/page.tsx` | rewritten as a param-preserving redirect to `/actions` |
+| `src/app/(dashboard)/campaigns/sms-tools/page.tsx` | redirect target → `ACTIONS_HUB_PATH` |
+| `src/app/(dashboard)/campaigns/page.tsx` | three comms links → one **Actions** link; `lucide-react` imports adjusted (`Mail`, `MessageSquare`, `Phone` dropped, `LayoutList` added) |
+
+**Deleted (2)** — moved, every export survives:
+`src/components/sms/hub/SmsHubPage.tsx` → `src/components/actions/hub/ActionsHubPage.tsx`;
+`src/components/sms/hub/SmsActionsTable.tsx` → `src/components/actions/hub/ActionsTable.tsx`.
+
+No migration, no `pnpm gen:types`, no new dependency, no `sidebar.tsx` edit.
+
+### Coverage table — every standalone entry point has a hub counterpart
+
+§2.8's table, with the line numbers as built.
+
+| # | Entry point | Hub counterpart | path:line |
+|---|---|---|---|
+| 1 | Campaign header **Create Phone Call** | Calls card is the standalone twin; the list it makes is listed | `StartSomethingCards.tsx:118` |
+| 2 | Outreach → Phone Ops **Create Phone Call** | listed as a `call_list` row | `hub-rows.ts:385` (`shapeCallListRow`), `ActionsTable.tsx:271` |
+| 3 | Org-level `/campaigns/phone-wizard` (strip) | **Calls card → "New call list"** | `StartSomethingCards.tsx:118-119` |
+| 4 | `/campaigns/phone-wizard` (empty state) | unchanged, second reachable location | `CampaignsDashboard.tsx:233` |
+| 5 | Build-list fire → `/fire/phone` | its call list is listed | `hub-rows.ts:385` |
+| 6 | Campaign header **Create SMS** | SMS card is the standalone twin | `StartSomethingCards.tsx:53` |
+| 7 | Outreach → SMS panel | listed as `sms_*` rows | `hub-rows.ts:300` (`shapeSmsRow`) |
+| 8 | `/sms` hub "Start a new SMS action" cards | **moved into the SMS card** (all four kinds) | `StartSomethingCards.tsx:64` |
+| 9 | `/sms/new` | unchanged; SMS card links to it | `StartSomethingCards.tsx:53` |
+| 10 | Sidebar **SMS Tools** | reaches the hub through the `/sms` redirect until WP1.2 relabels it | `src/app/(dashboard)/sms/page.tsx:25` |
+| 11 | List-strip **SMS tools** | **strip "Actions" link → `/actions`** | `campaigns/page.tsx:389` |
+| 12 | `/sms` from the campaigns empty state | unchanged; redirects to `/actions` | `CampaignsDashboard.tsx:242` |
+| 13 | Build-list fire → `/fire/sms` | its list is listed | `hub-rows.ts:300` |
+| 14 | Campaign header **Create Email** | **Email card → "Email from a campaign"** → picker → `/campaigns/{id}/email/setup/order` | `StartSomethingCards.tsx:90,152` |
+| 15 | Comms → Drafts & Send | its lists and un-listed drafts are listed | `hub-rows.ts:344` (`shapeEmailRow`), `api/email/activity/route.ts` |
+| 16 | `/campaigns/email-wizard` (strip) | **Email card secondary**, honestly labelled | `StartSomethingCards.tsx:100-101` |
+| 17 | `/campaigns/email-wizard` (empty state) | unchanged, second reachable location | `CampaignsDashboard.tsx:224` |
+| 18 | Build-list fire → `/fire/email` | its draft is listed | `hub-rows.ts:344` |
+| 19 | Standalone SMS via a hidden episode campaign | listed as **Standalone** | `hub-rows.ts:273` (`scopeFor`) |
+| 20 | Standalone call list on the shared container | listed as **Standalone**; the container is never named | `hub-rows.ts:273`, test "never prints the shared non-campaign container by name" |
+| 21 | Standalone email (legacy wizard → Action Network) | **no row exists to list** — said in the card copy and in the empty hint | `StartSomethingCards.tsx:102-107`; `ActionsHubPage.tsx:387-395` |
+| — | Import worker list | not an action; strip control unchanged | `campaigns/page.tsx:393-397` |
+| — | Campaign creation | not an action; strip control unchanged | `campaigns/page.tsx:376-381` |
+| — | Call list inside a campaign | **Calls card secondary** → picker → `/campaigns/{id}/phone/lists/new` | `StartSomethingCards.tsx:134,153` |
+| — | `/campaigns/sms-tools` | still redirects, now to `/actions` | `campaigns/sms-tools/page.tsx:20` |
+| — | Hub pills (Inbox, Numbers) | Actions pill points at `/actions` | `SmsHubNav.tsx:23` |
+
+### Verification
+
+From `apps/organising-db`:
+
+- `pnpm test` — **61 files, 818 tests passed** (baseline 732 + the new 44 and WP1.1's; no failures, no skips).
+- `pnpm exec tsc --noEmit -p tsconfig.json` — clean, no output.
+- `pnpm exec eslint <every touched file>` — clean, no findings.
+- `pnpm exec eslint` (whole app) — **294 problems (143 errors, 151 warnings)**, identical to the pre-change baseline.
+- `pnpm build` — succeeded; `/actions`, `/api/email/activity` and `/api/calls/activity` present in the build output.
+- `env -u E2E_USER_EMAIL -u E2E_USER_PASSWORD pnpm e2e` — **4 skipped, exit 0** (the two new specs skip cleanly with no credentials).
+
+Not run: a credentialled `pnpm e2e` against a branch preview — no preview URL or `E2E_USER_*` available in this environment. The verifier runs it per §2.11.
+
+### Commits
+
+| SHA | Subject |
+|---|---|
+| `9fffda4` | `feat(oux-wp1.5): pure hub row module, buckets and scope` |
+| `361085f` | `feat(oux-wp1.5): cross-campaign email and call activity reads` |
+| `75b0ddc` | `feat(oux-wp1.5): the Actions hub at /actions` |
+| `6d05ee0` | `feat(oux-wp1.5): one Actions link on the campaigns strip, and Standalone` |
+| `9927796` | `feat(oux-wp1.5): e2e spec for the Actions hub` |
+| _(this file)_ | `docs(oux-wp1.5): deviations, coverage table and implementer notes` |
 
 ## 7. Verification output
 

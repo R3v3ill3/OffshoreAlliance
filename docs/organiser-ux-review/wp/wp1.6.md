@@ -2623,6 +2623,13 @@ deferral in `auth-context.tsx`) shows the opposite result on the same repro shap
 
 Preview: `https://offshore-alliance-r1xiitar4-reveille-strategy.vercel.app`
 
+
 ## 13. Reviewer findings
 
-_(reviewer)_
+**Round 1 (2026-09-09, fresh Fable reviewer): BLOCK** on two operator-facing items: the pre-flight query dropped organisers with a NULL work role (the very rows it exists to find), and no read-only production pre-flight script or run sheet existed under `scripts/`. Ten advisories (standing-campaign guard in `delete_campaign`, unproven mint path, partial-failure semantics on moves, stale-ref messaging, list-page delete gate while loading, probe false-FAIL, a vacuous e2e branch, a non-3.6 string, a wrong migration comment, a remove-worker message). All 15 policies, the guard trigger, the linking function, the rollback and the migration ordering were confirmed correct. Fixed in `724163f` (with a new follow-up migration for the standing guard; the applied migration untouched) and the deterministic e2e helper bug (`sub=units` vs `campaign-units`) found and fixed.
+
+**Round 2 (2026-09-09, fresh Fable reviewer): APPROVE WITH ADVISORIES.** Both blockers verified closed with a constructed counter-example; advisories on psql-only directives in the production scripts, a multiplied post-flight count, a dead SKIP branch, a silent move failure and one more `onSettled`. Fixed in `6625e90`, which also fixed a pre-existing auth start-up deadlock diagnosed from the e2e traces (the `onAuthStateChange` callback ran a query while auth-js held its initialisation lock; deferred per Supabase guidance).
+
+**Round 3 (2026-09-09, fresh Fable reviewer, confirmation): APPROVE WITH ADVISORIES.** The auth fix verified against the auth-js 2.104.1 source as credible, minimal and safe (the only state visible during the deferred window is less permissive, never more); recommended to stay in this package as a named scope addition. All advisories closed; e2e cleanup helper confirmed production-refusing and session-scoped. Residual advisories recorded, not fixed (fix rounds exhausted): timer not cleared on provider unmount (single root mount, no practical effect); one unscoped row locator in the admin fallback; wording of the deadlock mechanism in comments.
+
+**Verification (§12):** migration applied to dev twice-over (policies, then the standing guard); 41-line probe pack passes with the one SKIP; pre-flight zero rows on dev; full e2e suite (both projects) green twice on the final preview; warm-load stall check 6/6 pass; dev left with no residue.

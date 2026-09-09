@@ -22,6 +22,9 @@ const pageTitles: Record<string, string> = {
   "/campaigns": "Campaigns",
   "/templates": "Templates",
   "/email": "Email Inbox",
+  "/actions": "Actions",
+  // `/sms` still resolves (it redirects to `/actions`) and `/sms/inbox`
+  // and `/sms/numbers` are pages in their own right, so it keeps a title.
   "/sms": "SMS",
   "/reports": "Reports",
   "/administration": "Administration",

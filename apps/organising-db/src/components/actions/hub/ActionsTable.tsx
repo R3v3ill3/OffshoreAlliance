@@ -1,18 +1,37 @@
 'use client'
 
 /**
- * One table for every SMS action, whatever its kind or scope. Filters
- * are chips (kind, status bucket) plus a scope selector the parent
- * owns (it lives in the URL), so a link can land on "standalone,
+ * One table for every action, whatever its channel or scope. Filters
+ * are chips — owner (Mine / All), kind, status bucket — plus a scope
+ * selector and a search box. The parent owns every filter value
+ * because they all live in the URL, so a link can land on "mine,
  * live" or "campaign 12, finished".
  *
  * A blast that is a launch text says so under its name and offers its
- * relay in the row menu — the two are one piece of work.
+ * relay in the row menu — the two are one piece of work. Archive,
+ * un-archive and delete are offered for SMS rows only: no other source
+ * table has an archived_at column, and deletion of an email list or a
+ * call list belongs to the surface that owns it.
  */
-import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useState } from 'react'
 import { formatDistanceToNowStrict } from 'date-fns'
-import { Archive, ArchiveRestore, ArrowRightLeft, Copy, ExternalLink, Loader2, MoreHorizontal, Search, Trash2 } from 'lucide-react'
+import {
+  Archive,
+  ArchiveRestore,
+  ArrowRightLeft,
+  ClipboardList,
+  Copy,
+  ExternalLink,
+  Loader2,
+  Mail,
+  MessagesSquare,
+  MoreHorizontal,
+  Phone,
+  Search,
+  Send,
+  Trash2,
+} from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,61 +53,72 @@ import {
 import { cn } from '@/lib/utils/cn'
 import { toDisplay } from '@/lib/phone/normalise-phone'
 import {
-  SMS_ACTION_KIND_LABEL,
-  SMS_ACTION_KINDS,
-  SMS_STATUS_GROUP_LABEL,
-  smsActionCampaignHref,
-  smsActionStatusGroup,
-  smsActionStatusLabel,
-  type SmsActionKind,
-  type SmsActionRef,
-  type SmsActionStatusGroup,
-} from '@/lib/sms/hub-actions'
-import type { SmsActivityRow } from '@/lib/hooks/useSmsHub'
-import { SMS_ACTION_KIND_META } from './SmsActionKindPicker'
+  scopeLabelFor,
+  HUB_SOURCE_LIMIT,
+  HUB_ACTION_BUCKETS,
+  HUB_ACTION_KINDS,
+  HUB_BUCKET_LABEL,
+  HUB_KIND_LABEL,
+  type HubActionBucket,
+  type HubActionKind,
+  type HubActionRow,
+} from '@/lib/actions/hub-rows'
 import { ShowArchivedToggle, SmsActionOpsLauncher } from '@/components/sms/SmsArchiveDeleteControls'
 
 export const STATUS_TONE: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-700',
+  generating: 'bg-slate-100 text-slate-700',
+  approved: 'bg-slate-100 text-slate-700',
   queued: 'bg-sky-100 text-sky-800',
   sending: 'bg-sky-100 text-sky-800',
   open: 'bg-emerald-100 text-emerald-800',
   active: 'bg-emerald-100 text-emerald-800',
   sent: 'bg-blue-100 text-blue-800',
+  completed: 'bg-blue-100 text-blue-800',
   paused: 'bg-amber-100 text-amber-800',
   closed: 'bg-slate-100 text-slate-500',
   ended: 'bg-slate-100 text-slate-500',
   cancelled: 'bg-rose-100 text-rose-800',
+  failed: 'bg-rose-100 text-rose-800',
   archived: 'bg-slate-200 text-slate-600',
 }
 
-export function rowToRef(row: SmsActivityRow): SmsActionRef {
-  return row.kind === 'relay'
-    ? { kind: 'relay', id: row.id }
-    : { kind: row.kind, campaignId: row.campaign_id as number, id: row.id }
+/**
+ * Icon and tone per kind. The four SMS entries match
+ * SMS_ACTION_KIND_META; email and calls use the same two icons the
+ * campaigns strip used for its Email and Phone wizard links, so the
+ * association survives the move.
+ */
+export const HUB_KIND_META: Record<
+  HubActionKind,
+  { icon: React.ComponentType<{ className?: string }>; tone: string }
+> = {
+  sms_blast: { icon: Send, tone: 'text-blue-500' },
+  sms_chat: { icon: MessagesSquare, tone: 'text-emerald-500' },
+  sms_survey: { icon: ClipboardList, tone: 'text-purple-500' },
+  sms_relay: { icon: ArrowRightLeft, tone: 'text-amber-500' },
+  email_send: { icon: Mail, tone: 'text-sky-500' },
+  call_list: { icon: Phone, tone: 'text-rose-500' },
 }
 
-export function scopeLabel(row: Pick<SmsActivityRow, 'scope' | 'campaign_name'>): string {
-  if (row.scope === 'standalone') return 'Standalone'
-  if (row.scope === 'org') return 'Org-wide'
-  return row.campaign_name ?? 'Campaign'
+export interface ActionsTableFilters {
+  mine: boolean
+  kind: HubActionKind | 'all'
+  bucket: HubActionBucket | 'all'
+  search: string
 }
 
-function progressLabel(row: SmsActivityRow): string {
-  switch (row.kind) {
-    case 'survey':
-      return `${row.question_count ?? 0}q · ${row.progress_count}/${row.audience_count} completed`
-    case 'relay':
-      return `${row.progress_count}/${row.audience_count} target${row.audience_count === 1 ? '' : 's'} active`
-    default:
-      return `${row.progress_count}/${row.audience_count} messaged`
-  }
-}
-
-export function SmsActionsTable({
+export function ActionsTable({
   rows,
+  totalRows,
   isLoading = false,
   canWrite = false,
+  filters,
+  counts,
+  onMineChange,
+  onKindChange,
+  onBucketChange,
+  onSearchChange,
   onOpen,
   onDuplicate,
   onOpenRelay,
@@ -97,12 +127,32 @@ export function SmsActionsTable({
   showArchived = false,
   onShowArchivedChange,
   archivedTotal = 0,
+  unknownOwnerCount = 0,
+  capped = false,
 }: {
-  rows: SmsActivityRow[]
+  /** Already filtered and sorted by the parent. */
+  rows: HubActionRow[]
+  /** Everything the parent has before its filters — tells "empty" from "no match". */
+  totalRows: number
   isLoading?: boolean
   canWrite?: boolean
-  onOpen: (row: SmsActivityRow) => void
-  onDuplicate: (row: SmsActivityRow) => void
+  filters: ActionsTableFilters
+  counts: {
+    byKind: Record<string, number>
+    byBucket: Record<string, number>
+    /**
+     * Archived rows are only fetched on demand. While they are not,
+     * the Archived chip shows "…" rather than a number that would be
+     * the one count ignoring the filters the others respect.
+     */
+    archivedUnknown?: boolean
+  }
+  onMineChange: (mine: boolean) => void
+  onKindChange: (kind: HubActionKind | 'all') => void
+  onBucketChange: (bucket: HubActionBucket | 'all') => void
+  onSearchChange: (search: string) => void
+  onOpen: (row: HubActionRow) => void
+  onDuplicate: (row: HubActionRow) => void
   /** Open the relay a launch text belongs to (the parent owns the sheet). */
   onOpenRelay?: (relayId: number) => void
   /** Scope selector rendered in the filter row (owned by the parent). */
@@ -110,50 +160,22 @@ export function SmsActionsTable({
   emptyHint?: React.ReactNode
   showArchived?: boolean
   onShowArchivedChange?: (next: boolean) => void
+  /** SMS only — no other source table has an archived_at column. */
   archivedTotal?: number
+  /** Rows hidden by "Mine" because nobody is recorded as their owner. */
+  unknownOwnerCount?: number
+  /**
+   * At least one source came back at its cap, so what is listed is not
+   * the whole history. Said whatever the filters then matched — an
+   * empty filtered view over a truncated read is exactly when an
+   * organiser most needs to know the list has an end.
+   */
+  capped?: boolean
 }) {
-  const [search, setSearch] = useState('')
-  const [kind, setKind] = useState<SmsActionKind | 'all'>('all')
-  const [group, setGroup] = useState<SmsActionStatusGroup | 'all'>('all')
   const [ops, setOps] = useState<{
-    row: SmsActivityRow
+    row: HubActionRow
     intent: 'archive' | 'unarchive' | 'delete'
   } | null>(null)
-
-  const counts = useMemo(() => {
-    const byKind: Record<string, number> = { all: rows.length }
-    const byGroup: Record<string, number> = { all: rows.length }
-    for (const r of rows) {
-      byKind[r.kind] = (byKind[r.kind] ?? 0) + 1
-      const g = smsActionStatusGroup(r.kind, r.status, r.archived_at)
-      byGroup[g] = (byGroup[g] ?? 0) + 1
-    }
-    if (!showArchived) {
-      byGroup.archived = archivedTotal
-      byGroup.all = rows.length
-    }
-    return { byKind, byGroup }
-  }, [rows, showArchived, archivedTotal])
-
-  const visible = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    return rows
-      .filter((r) => kind === 'all' || r.kind === kind)
-      .filter(
-        (r) =>
-          group === 'all' ||
-          smsActionStatusGroup(r.kind, r.status, r.archived_at) === group,
-      )
-      .filter(
-        (r) =>
-          !term ||
-          r.name.toLowerCase().includes(term) ||
-          (r.campaign_name ?? '').toLowerCase().includes(term) ||
-          (r.sender_phone ?? '').includes(term) ||
-          (r.sender_label ?? '').toLowerCase().includes(term),
-      )
-      .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
-  }, [rows, kind, group, search])
 
   return (
     <div className="space-y-3">
@@ -163,9 +185,9 @@ export function SmsActionsTable({
           <Input
             className="h-8 pl-8 text-xs"
             placeholder="Search by name, campaign or number…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label="Search SMS actions"
+            value={filters.search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            aria-label="Search actions"
           />
         </div>
         {scopeControl}
@@ -174,7 +196,7 @@ export function SmsActionsTable({
             checked={showArchived}
             onCheckedChange={(next) => {
               onShowArchivedChange(next)
-              if (!next && group === 'archived') setGroup('all')
+              if (!next && filters.bucket === 'archived') onBucketChange('all')
             }}
             archivedCount={archivedTotal}
           />
@@ -185,43 +207,70 @@ export function SmsActionsTable({
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {/* Owner first: it is the default that hides the most, so it is
+            the first thing an organiser should be able to see and undo. */}
+        <ChipRow
+          label="Owner"
+          value={filters.mine ? 'mine' : 'all'}
+          onChange={(v) => onMineChange(v === 'mine')}
+          options={[
+            { value: 'mine', label: 'Mine' },
+            { value: 'all', label: 'All' },
+          ]}
+        />
         <ChipRow
           label="Kind"
-          value={kind}
-          onChange={(v) => setKind(v as SmsActionKind | 'all')}
+          value={filters.kind}
+          onChange={(v) => onKindChange(v as HubActionKind | 'all')}
           options={[
             { value: 'all', label: 'All', count: counts.byKind.all ?? 0 },
-            ...SMS_ACTION_KINDS.map((k) => ({
+            ...HUB_ACTION_KINDS.map((k) => ({
               value: k,
-              label: k === 'chat' ? 'Chats' : `${SMS_ACTION_KIND_LABEL[k]}s`,
+              label: HUB_KIND_LABEL[k],
               count: counts.byKind[k] ?? 0,
             })),
           ]}
         />
         <ChipRow
           label="Status"
-          value={group}
+          value={filters.bucket}
           onChange={(v) => {
-            const next = v as SmsActionStatusGroup | 'all'
+            const next = v as HubActionBucket | 'all'
             if (next === 'archived' && !showArchived) onShowArchivedChange?.(true)
-            setGroup(next)
+            onBucketChange(next)
           }}
           options={[
-            { value: 'all', label: 'Any', count: counts.byGroup.all ?? 0 },
-            ...(['live', 'pending', 'finished', 'archived'] as SmsActionStatusGroup[]).map(
-              (g) => ({
-                value: g,
-                label: SMS_STATUS_GROUP_LABEL[g],
-                count: counts.byGroup[g] ?? 0,
-              }),
-            ),
+            ...HUB_ACTION_BUCKETS.map((b) => ({
+              value: b,
+              label: HUB_BUCKET_LABEL[b],
+              count:
+                b === 'archived' && counts.archivedUnknown
+                  ? '…'
+                  : (counts.byBucket[b] ?? 0),
+            })),
+            { value: 'all', label: 'All', count: counts.byBucket.all ?? 0 },
           ]}
         />
       </div>
 
-      {!isLoading && visible.length === 0 ? (
+      {filters.mine && unknownOwnerCount > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {unknownOwnerCount} older action{unknownOwnerCount === 1 ? ' has' : 's have'} no
+          recorded owner.{' '}
+          <button
+            type="button"
+            className="underline underline-offset-4"
+            onClick={() => onMineChange(false)}
+          >
+            Switch to All
+          </button>{' '}
+          to see {unknownOwnerCount === 1 ? 'it' : 'them'}.
+        </p>
+      )}
+
+      {!isLoading && rows.length === 0 ? (
         <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-          {rows.length === 0 ? (emptyHint ?? 'No SMS actions yet.') : 'Nothing matches these filters.'}
+          {totalRows === 0 ? (emptyHint ?? 'No actions yet.') : 'Nothing matches these filters.'}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-md border">
@@ -240,17 +289,12 @@ export function SmsActionsTable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visible.map((row) => {
-                const meta = SMS_ACTION_KIND_META[row.kind]
-                const status = smsActionStatusLabel(row.kind, row.status, row.archived_at)
-                const ref = rowToRef(row)
-                const campaignHref =
-                  row.scope === 'campaign'
-                    ? smsActionCampaignHref(ref, row.campaign_id)
-                    : null
+              {rows.map((row) => {
+                const meta = HUB_KIND_META[row.kind]
+                const isSms = row.smsRef != null
                 return (
                   <TableRow
-                    key={`${row.kind}:${row.id}`}
+                    key={row.key}
                     className="cursor-pointer"
                     onClick={() => onOpen(row)}
                   >
@@ -260,10 +304,7 @@ export function SmsActionsTable({
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">{row.name}</p>
                           <p className="truncate text-[11px] text-muted-foreground">
-                            {row.relay_name
-                              ? `Launch text for ${row.relay_name}`
-                              : meta.label}
-                            {row.is_test ? ' · test' : ''}
+                            {row.subtitle}
                           </p>
                         </div>
                       </div>
@@ -272,16 +313,16 @@ export function SmsActionsTable({
                       <div className="flex flex-wrap items-center gap-1">
                         <Badge
                           variant="secondary"
-                          className={cn('text-[10px]', STATUS_TONE[status] ?? '')}
+                          className={cn('text-[10px]', STATUS_TONE[row.statusLabel] ?? '')}
                         >
-                          {status}
+                          {row.statusLabel}
                         </Badge>
-                        {(row.pending_moderation_count ?? 0) > 0 && (
+                        {row.pendingModerationCount > 0 && (
                           <Badge
                             variant="secondary"
                             className="bg-amber-100 text-[10px] text-amber-800"
                           >
-                            {row.pending_moderation_count} to review
+                            {row.pendingModerationCount} to review
                           </Badge>
                         )}
                       </div>
@@ -290,18 +331,18 @@ export function SmsActionsTable({
                       <span
                         className={cn(
                           'block truncate text-xs',
-                          row.scope !== 'campaign' && 'text-muted-foreground',
+                          row.scope.kind !== 'campaign' && 'text-muted-foreground',
                         )}
                       >
-                        {scopeLabel(row)}
+                        {scopeLabelFor(row.scope)}
                       </span>
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs">
-                      {row.sender_phone ? (
+                      {row.senderPhone ? (
                         <>
-                          <span className="font-mono">{toDisplay(row.sender_phone)}</span>
-                          {row.sender_label && (
-                            <span className="ml-1 text-muted-foreground">{row.sender_label}</span>
+                          <span className="font-mono">{toDisplay(row.senderPhone)}</span>
+                          {row.senderLabel && (
+                            <span className="ml-1 text-muted-foreground">{row.senderLabel}</span>
                           )}
                         </>
                       ) : (
@@ -309,10 +350,10 @@ export function SmsActionsTable({
                       )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                      {progressLabel(row)}
+                      {row.results}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-[11px] text-muted-foreground">
-                      {formatDistanceToNowStrict(new Date(row.updated_at), { addSuffix: true })}
+                      {formatDistanceToNowStrict(new Date(row.updatedAt), { addSuffix: true })}
                     </TableCell>
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
@@ -328,26 +369,26 @@ export function SmsActionsTable({
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onSelect={() => onOpen(row)}>
-                            {row.kind === 'chat' ? 'Open board' : 'Open'}
+                            {row.kind === 'sms_chat' ? 'Open board' : 'Open'}
                           </DropdownMenuItem>
-                          {canWrite && (
+                          {canWrite && isSms && (
                             <DropdownMenuItem onSelect={() => onDuplicate(row)}>
                               <Copy className="mr-2 h-3.5 w-3.5" />
                               Duplicate…
                             </DropdownMenuItem>
                           )}
-                          {row.relay_id != null && onOpenRelay && (
+                          {row.relayId != null && onOpenRelay && (
                             <DropdownMenuItem
-                              onSelect={() => onOpenRelay(row.relay_id as number)}
+                              onSelect={() => onOpenRelay(row.relayId as number)}
                             >
                               <ArrowRightLeft className="mr-2 h-3.5 w-3.5" />
                               Open relay
                             </DropdownMenuItem>
                           )}
-                          {canWrite && (
+                          {canWrite && isSms && (
                             <>
                               <DropdownMenuSeparator />
-                              {row.archived_at ? (
+                              {row.archivedAt ? (
                                 <DropdownMenuItem
                                   onSelect={() => setOps({ row, intent: 'unarchive' })}
                                 >
@@ -371,11 +412,11 @@ export function SmsActionsTable({
                               </DropdownMenuItem>
                             </>
                           )}
-                          {campaignHref && (
+                          {row.campaignHref && (
                             <>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem asChild>
-                                <Link href={campaignHref}>
+                                <Link href={row.campaignHref}>
                                   <ExternalLink className="mr-2 h-3.5 w-3.5" />
                                   Open in campaign
                                 </Link>
@@ -392,11 +433,28 @@ export function SmsActionsTable({
           </Table>
         </div>
       )}
-      {ops && (
+      {capped && (
+        // A channel came back at its cap, so a long history is not all
+        // here. Said out loud rather than left to be noticed — and said
+        // when the filtered view is empty too, because "nothing matches
+        // these filters" over a truncated read is the one time the
+        // sentence changes what the organiser should conclude.
+        <p className="text-[11px] text-muted-foreground">
+          Showing the latest {HUB_SOURCE_LIMIT} actions per channel. Older ones stay where
+          they live.
+        </p>
+      )}
+      {ops && ops.row.smsRef && (
         <SmsActionOpsLauncher
-          kind={ops.row.kind}
-          id={ops.row.id}
-          campaignId={ops.row.campaign_id}
+          kind={ops.row.smsRef.kind}
+          id={ops.row.smsRef.id}
+          campaignId={
+            ops.row.scope.kind === 'campaign'
+              ? ops.row.scope.campaignId
+              : ops.row.smsRef.kind === 'relay'
+                ? null
+                : ops.row.smsRef.campaignId
+          }
           intent={ops.intent}
           onClose={() => setOps(null)}
         />
@@ -413,7 +471,8 @@ function ChipRow({
 }: {
   label: string
   value: string
-  options: Array<{ value: string; label: string; count: number }>
+  /** `count` is a string when the number is not yet knowable ("…"). */
+  options: Array<{ value: string; label: string; count?: number | string }>
   onChange: (value: string) => void
 }) {
   return (
@@ -432,7 +491,9 @@ function ChipRow({
           onClick={() => onChange(o.value)}
         >
           {o.label}
-          <span className="text-[10px] text-muted-foreground">{o.count}</span>
+          {o.count != null && (
+            <span className="text-[10px] text-muted-foreground">{o.count}</span>
+          )}
         </Button>
       ))}
     </div>

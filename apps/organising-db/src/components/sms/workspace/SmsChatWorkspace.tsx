@@ -68,6 +68,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { p2pBoardProgress } from '@/lib/sms/p2p'
+import { ACTIONS_HUB_PATH } from '@/lib/actions/hub-path'
 import { SmsArchivedBanner, SmsArchiveDeleteControls } from '@/components/sms/SmsArchiveDeleteControls'
 
 /** Faster than the board sheet's 10s — see the header comment. */
@@ -350,7 +351,7 @@ export function SmsChatWorkspace({
             onGone={() =>
               router.push(
                 standaloneMode
-                  ? '/sms'
+                  ? ACTIONS_HUB_PATH
                   : `/campaigns/${campaignId}?tab=outreach&sub=sms&sms_view=chats`,
               )
             }

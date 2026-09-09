@@ -28,7 +28,7 @@ Status key: **not started** · **blocked (decision n)** · **planning** · **imp
 | 1.2 | Navigation driven by modules | not started | | | | | |
 | 1.3 | My campaigns home | not started | | | | | |
 | 1.4 | Campaign workspace | not started | | | | | |
-| 1.5 | Actions hub | not started | | | | | |
+| 1.5 | Actions hub | PR draft | `feat/oux-wp1.5-actions-hub` | [#28](https://github.com/R3v3ill3/OffshoreAlliance/pull/28) | 828 tests, tsc, build green, lint at baseline; credentialled e2e on the branch preview: hub spec, `/sms` redirect and flow one pass | Sidebar still labels the hub "SMS Tools" until WP1.2; moderation count capped by PostgREST max-rows at very high relay volumes | 10 |
 | 1.6 | Auth and RLS alignment | not started | | | | | 2, 8 |
 | 1.7 | Guides and hints | not started | | | | | 9 |
 | 2.1 | Schema and migration | not started | | | | | 3, 4, 5 |

@@ -3,8 +3,11 @@
 /**
  * Where a new action belongs. Two options, stated as consequences
  * rather than as data model ("wall-chart lists and assessments stay
- * off" beats "hidden episode campaign"). Picking a campaign is a
- * searchable combobox — the org has more campaigns than fit a select.
+ * off" beats the hidden per-send campaign behind them). Both ways of
+ * sitting outside a campaign are called **Standalone** in copy; the
+ * option *values* ('standalone', 'org') are the wizard and URL
+ * contract and do not change. Picking a campaign is a searchable
+ * combobox — the org has more campaigns than fit a select.
  */
 import { useMemo, useState } from 'react'
 import { Check, ChevronsUpDown, Loader2 } from 'lucide-react'
@@ -36,7 +39,7 @@ const MODE_COPY: Record<
       'Runs on its own. Replies still land in the Inbox; wall-chart lists, assessments and campaign reporting stay off.',
   },
   org: {
-    label: 'Org-wide',
+    label: 'Standalone — not part of a campaign',
     description:
       'Not tied to a campaign. Shows on every campaign’s Relays tab and here in the hub.',
   },

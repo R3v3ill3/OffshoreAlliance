@@ -33,6 +33,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/lib/supabase/auth-context'
+import { ACTIONS_HUB_PATH } from '@/lib/actions/hub-path'
 import { useSmsHubCampaigns, SMS_ACTIVITY_QUERY_KEY, SMS_NUMBERS_QUERY_KEY } from '@/lib/hooks/useSmsHub'
 import { useSmsListDetail } from '@/lib/hooks/useSmsBroadcast'
 import { useSmsSurveyDetail } from '@/lib/hooks/useSmsSurveys'
@@ -447,7 +448,7 @@ export function SmsCreateActionPage() {
         </p>
         <div className="flex items-center gap-2">
           <Button variant="outline" asChild>
-            <Link href="/sms">Cancel</Link>
+            <Link href={ACTIONS_HUB_PATH}>Cancel</Link>
           </Button>
           <Button onClick={() => void start()} disabled={!canContinue}>
             {starting ? (
@@ -578,9 +579,9 @@ export function SmsCreateActionPage() {
 function BackRow() {
   return (
     <Button variant="ghost" size="sm" asChild>
-      <Link href="/sms">
+      <Link href={ACTIONS_HUB_PATH}>
         <ArrowLeft className="mr-1 h-4 w-4" />
-        Back to SMS
+        Back to Actions
       </Link>
     </Button>
   )

@@ -1081,6 +1081,29 @@ The tiles settled well within the 20s window (script-observed `SETTLED: true`, n
 
 Matches the Phase 0 recorded value ("Mapping 73.1%, 95 named workers") for this account's campaign.
 
+
+### Orchestrator e2e run after fix round 2 (2026-09-09) against preview https://offshore-alliance-kmhpyajv9-reveille-strategy.vercel.app
+
+```
+  ✓  1 [chromium] › tests/e2e/actions-hub.spec.ts:22:7 › Actions hub › open /actions, see the three start cards and the status buckets (6.2s)
+  ✓  2 [chromium] › tests/e2e/actions-hub.spec.ts:62:7 › Actions hub › /sms still works and lands on the hub with its params intact (3.6s)
+  -  3 [chromium] › tests/e2e/mobile-dialer.spec.ts:30:7 › Mobile dialer — happy path › volunteer can sign in, claim, dial, record outcome, advance
+  ✓  4 [chromium] › tests/e2e/organiser-nav.spec.ts:52:7 › Sidebar — full mode is today's sidebar › the ten rows, in order, with no organiser-mode furniture (2.4s)
+  ✓  5 [chromium] › tests/e2e/organiser-nav.spec.ts:68:7 › Sidebar — the organiser-mode round trip › organiser mode shows four primary items, Organisation and Show everything (11.8s)
+  ✓  6 [chromium] › tests/e2e/roles/unit-lifecycle-user.spec.ts:92:7 › WP1.6 role coverage — user › creates a campaign, then creates, renames and deletes a unit and the campaign (13.6s)
+  ✓  7 [chromium] › tests/e2e/roles/unit-lifecycle-user.spec.ts:137:7 › WP1.6 role coverage — user › offers no write controls on a campaign the account cannot write to (7.2s)
+  ✓  8 [chromium] › tests/e2e/wall-chart.spec.ts:23:7 › Wall chart — flow one › open a campaign from /campaigns and see the wall chart (8.4s)
+  ✓  9 [chromium-admin] › tests/e2e/roles/unit-lifecycle-admin.spec.ts:76:7 › WP1.6 role coverage — admin › creates, renames and deletes a unit on any campaign (7.5s)
+  1 skipped
+  8 passed (1.3m)
+```
+
+Screenshots from verifier run 1 (captured at 84beee7; nav content unchanged since, snapshots byte-identical) under `evidence/wp1.2/`: full-mode sidebar, organiser sidebar (four items, collapsed Organisation, Show everything), Organisation expanded, mobile organiser menu, and the full-mode metrics tiles settled at the phase-0 values (95 named workers).
+
 ## 8. Reviewer findings
 
-_(reviewer)_
+**Round 1 (2026-09-09, fresh reviewer): BLOCK.** The reachability proof was a tautology (it compared the "Show everything" model, which is full mode, against full mode) and organiser mode had no literal pin, so `organisation_databases` flipping back to hidden would have passed. Twelve advisories (Inbox locator with badge text, unnamed icon-only controls when collapsed, disclosure not reading the model, an unused input, tests re-implementing `moduleState`, no reachability case for "no out", unasserted reset, comment and import nits). Fixed in `d00cdbf` with a reproduced bite proof (four assertions fail when the registry hides a module).
+
+**Round 2 (2026-09-09, fresh reviewer): BLOCK.** The round-1 fix for the disclosure initialised it from the initial full-mode model, so organisers saw the Organisation section expanded on first load; the credentialled nav spec caught it on the preview. Fixed in `2ed739a` (final round): collapsed on first paint, the model reasserts on mode change through an effect, no storage; `allNavHrefs` re-export removed; reset read-back tightened.
+
+**Round 3 (2026-09-09, fresh reviewer, confirmation): APPROVE WITH ADVISORIES.** Trace confirmed no render in which an organiser sees the section expanded at steady state; one single-frame flash during the already-recorded profile-load window remains (advisory, no flake); a stale `describe` label. Full suite green on the final preview.

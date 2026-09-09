@@ -878,6 +878,136 @@ A throwaway Playwright script (`apps/organising-db/test-results/*.ts`, gitignore
 
 Final SQL confirmation after the last capture and reset: `workspace_prefs = {}`.
 
+### Verifier run 2 (after fix round 1) at 9005a68; preview https://offshore-alliance-aavbzvsxn-reveille-strategy.vercel.app
+
+#### 1. `apps/organising-db` checks
+
+```
+$ pnpm exec tsc --noEmit -p tsconfig.json; echo tsc $?
+tsc 0
+
+$ pnpm test 2>&1 | grep -E 'Test Files|Tests |FAIL'
+ Test Files  65 passed (65)
+      Tests  884 passed (884)
+
+$ pnpm lint 2>&1 | grep problems
+✖ 294 problems (143 errors, 151 warnings)
+
+$ pnpm build 2>&1 | tail -4
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+```
+
+Build completed (exit implied by non-error tail output).
+
+#### 2. Diff against `d9a3e81`
+
+```
+$ git diff --stat d9a3e81..HEAD | tail -1
+ 10 files changed, 284 insertions(+), 58 deletions(-)
+
+$ git log --oneline d9a3e81..HEAD
+9005a68 docs(oux-wp1.2): fix round 1 findings, the bite proof and gate output
+d00cdbf fix(oux-wp1.2): reviewer round 1 — a reachability proof that can fail
+```
+
+#### 3. E2E user's stored prefs, before the run
+
+```
+select workspace_prefs from user_profiles where user_id = 'f7c048e2-ecfe-4e9c-8715-7f4c899f0d37';
+→ [{"workspace_prefs": {}}]
+```
+
+As expected.
+
+#### 4. Preview deployment
+
+Deployment for `9005a68d8a3d6800bf3a3342e05d8f6dbca8e950` already existed (created 2026-09-09T09:07:48Z) and was already `success` on first poll — no polling loop was needed.
+
+```
+$ gh api "repos/R3v3ill3/OffshoreAlliance/deployments?sha=9005a68d8a3d6800bf3a3342e05d8f6dbca8e950&per_page=3"
+→ deployment id 6346323114, environment "Preview", sha 9005a68d8a3d6800bf3a3342e05d8f6dbca8e950
+
+$ gh api "repos/R3v3ill3/OffshoreAlliance/deployments/6346323114/statuses"
+→ state "success", environment_url "https://offshore-alliance-aavbzvsxn-reveille-strategy.vercel.app"
+```
+
+#### 5. Credentialled e2e — full suite, both projects
+
+```
+$ E2E_FOREIGN_CAMPAIGN_ID=3 E2E_BASE_URL=<preview> pnpm e2e 2>&1 | grep -v -i password | tail -50
+Running 9 tests using 1 worker
+
+  ✓  1 [chromium] › tests/e2e/actions-hub.spec.ts:22:7 › Actions hub › open /actions, see the three start cards and the status buckets (3.5s)
+  ✓  2 [chromium] › tests/e2e/actions-hub.spec.ts:62:7 › Actions hub › /sms still works and lands on the hub with its params intact (3.7s)
+  -  3 [chromium] › tests/e2e/mobile-dialer.spec.ts:30:7 › Mobile dialer — happy path › volunteer can sign in, claim, dial, record outcome, advance
+  ✓  4 [chromium] › tests/e2e/organiser-nav.spec.ts:52:7 › Sidebar — full mode is today's sidebar › the ten rows, in order, with no organiser-mode furniture (1.5s)
+  ✘  5 [chromium] › tests/e2e/organiser-nav.spec.ts:68:7 › Sidebar — the organiser-mode round trip › organiser mode shows four primary items, Organisation and Show everything (16.5s)
+[cleanup] no leftover "WP1.6 role check " campaigns for this account.
+  ✓  6 [chromium] › tests/e2e/roles/unit-lifecycle-user.spec.ts:92:7 › WP1.6 role coverage — user › creates a campaign, then creates, renames and deletes a unit and the campaign (10.3s)
+  ✓  7 [chromium] › tests/e2e/roles/unit-lifecycle-user.spec.ts:137:7 › WP1.6 role coverage — user › offers no write controls on a campaign the account cannot write to (4.2s)
+  ✓  8 [chromium] › tests/e2e/wall-chart.spec.ts:23:7 › Wall chart — flow one › open a campaign from /campaigns and see the wall chart (11.5s)
+[cleanup] removed 0 leftover "WP1.6 admin unit " unit(s).
+  ✓  9 [chromium-admin] › tests/e2e/roles/unit-lifecycle-admin.spec.ts:76:7 › WP1.6 role coverage — admin › creates, renames and deletes a unit on any campaign (7.9s)
+
+  1) [chromium] › tests/e2e/organiser-nav.spec.ts:68:7 › Sidebar — the organiser-mode round trip › organiser mode shows four primary items, Organisation and Show everything
+
+    Error: expect(locator).toHaveAttribute(expected) failed
+
+    Locator:  locator('aside nav').getByRole('button', { name: 'Organisation' })
+    Expected: "false"
+    Received: "true"
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toHaveAttribute" with timeout 5000ms
+      - waiting for locator('aside nav').getByRole('button', { name: 'Organisation' })
+        9 × locator resolved to <button type="button" aria-expanded="true" aria-label="Organisation" aria-controls="nav-organisation" ...>…</button>
+          - unexpected value "true"
+
+      126 |         // The Organisation section is a disclosure, collapsed on first render.
+      127 |         const organisation = nav.getByRole("button", { name: "Organisation" });
+    > 128 |         await expect(organisation).toHaveAttribute("aria-expanded", "false");
+          |                                    ^
+      129 |         await organisation.click();
+      130 |         await expect(organisation).toHaveAttribute("aria-expanded", "true");
+
+  1 failed
+    [chromium] › tests/e2e/organiser-nav.spec.ts:68:7 › Sidebar — the organiser-mode round trip › organiser mode shows four primary items, Organisation and Show everything
+  1 skipped
+  7 passed (1.2m)
+ ELIFECYCLE  Command failed with exit code 1.
+```
+
+1 failed, 1 skipped, 7 passed. The failing assertion expects the "Organisation" disclosure button to render `aria-expanded="false"` on first paint but it resolved `"true"` nine times over the 5s retry window. The skip is `mobile-dialer.spec.ts`, gated on credentials this run did not need to exercise (unrelated to this package).
+
+#### 6. Post-e2e residue checks
+
+```
+select workspace_prefs from user_profiles where user_id = 'f7c048e2-ecfe-4e9c-8715-7f4c899f0d37';
+→ [{"workspace_prefs": {}}]
+
+select campaign_id, name from campaigns where name like 'WP1.6%';
+→ []
+```
+
+Both as expected.
+
+#### 7. Metrics-settled check (`/campaigns`, full mode, 1280×800)
+
+A throwaway Playwright script (`apps/organising-db/test-results/wp1.2-metrics-check.mjs`, gitignored) loaded `tests/e2e/.auth/user.json`, navigated to `<preview>/campaigns`, and polled up to 20s for the "0 named workers" placeholder to clear while recording any non-200 `/rest/v1/` responses.
+
+The tiles settled well within the 20s window (script-observed `SETTLED: true`, no non-200 `/rest/v1/` responses recorded). Screenshot at `/tmp/oux-plans/shots/wp1.2-full-mode-metrics-settled.png` shows:
+
+- Total estimate: **130** — across 1 campaign
+- Mapping: **73.1%** — 95 named workers
+- Membership: **42.3%** — members of estimated workers
+- Leadership: **1 : 13** — 10 leaders
+- Participation: **15.4%** — workers supportive on ≥1 activity
+
+Matches the Phase 0 recorded value ("Mapping 73.1%, 95 named workers") for this account's campaign.
+
 ## 8. Reviewer findings
 
 _(reviewer)_

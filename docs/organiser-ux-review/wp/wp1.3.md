@@ -1423,6 +1423,140 @@ Green.
 
 **Commits this run:** `a5f3197` (types), and this documentation commit (below).
 
+### Verifier run 2 (after fix round 1) at 6ff5ed8; preview https://offshore-alliance-o7hbs9jsc-reveille-strategy.vercel.app
+
+#### 1. tsc / test / lint / build
+
+```
+$ pnpm exec tsc --noEmit -p tsconfig.json; echo tsc $?
+tsc 0
+
+$ pnpm test 2>&1 | grep -E 'Test Files|Tests |FAIL'
+ Test Files  70 passed (70)
+      Tests  936 passed (936)
+
+$ pnpm lint 2>&1 | grep problems
+✖ 294 problems (143 errors, 151 warnings)
+
+$ pnpm build 2>&1 | tail -4
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+```
+
+Green. tsc clean; 70 files / 936 tests passed (up from 932 in run 1 — round 1's fix commits added coverage); lint at the same 294/143/151 baseline as run 1 (no regression); build succeeded.
+
+#### 2. Diff since baseline
+
+```
+$ git diff --stat 60de980..HEAD | tail -1
+ 11 files changed, 371 insertions(+), 38 deletions(-)
+
+$ git log --oneline 60de980..HEAD
+6ff5ed8 fix(oux-wp1.3): record fix round 1 in wp1.3.md §6 — test A diagnosis, gates, both preview runs
+8a617cf fix(oux-wp1.3): round 1 — gate waits for the profile; flow one spec race, locator and mode oracle
+```
+
+#### 3. Prefs before
+
+```sql
+select workspace_prefs from user_profiles where user_id = 'f7c048e2-ecfe-4e9c-8715-7f4c899f0d37';
+→ [{"workspace_prefs":{}}]
+```
+
+Green, as expected.
+
+#### 4. Preview deployment
+
+Deployment for sha `6ff5ed8358969ca71abc2ca6ae4f59763d2a2823` (id `6347902608`) was already `success` on first poll — no waiting required.
+
+```
+target_url / environment_url: https://offshore-alliance-o7hbs9jsc-reveille-strategy.vercel.app
+description: "Deployment has completed"
+```
+
+Green.
+
+#### 5. Credentialled e2e, full suite, both projects, FULL mode
+
+```
+$ E2E_FOREIGN_CAMPAIGN_ID=3 E2E_BASE_URL=<preview> pnpm e2e
+Running 10 tests using 1 worker
+
+  ✓   1 [chromium] tests/e2e/actions-hub.spec.ts:22:7 › open /actions, see the three start cards and the status buckets (21.8s)
+  ✓   2 [chromium] tests/e2e/actions-hub.spec.ts:62:7 › /sms still works and lands on the hub with its params intact (3.9s)
+  -   3 [chromium] tests/e2e/mobile-dialer.spec.ts:30:7 › volunteer can sign in, claim, dial, record outcome, advance (skipped)
+  ✓   4 [chromium] tests/e2e/organiser-nav.spec.ts:52:7 › full mode is today's sidebar (2.9s)
+  ✓   5 [chromium] tests/e2e/organiser-nav.spec.ts:68:7 › organiser mode shows four primary items, Organisation and Show everything (13.1s)
+  ✓   6 [chromium] tests/e2e/roles/unit-lifecycle-user.spec.ts:92:7 › creates a campaign, then creates, renames and deletes a unit and the campaign (11.9s)
+  ✓   7 [chromium] tests/e2e/roles/unit-lifecycle-user.spec.ts:137:7 › offers no write controls on a campaign the account cannot write to (4.2s)
+  ✓   8 [chromium] tests/e2e/wall-chart.spec.ts:162:7 › sign in and reach a wall chart in under ten seconds (11.7s)
+  ✓   9 [chromium] tests/e2e/wall-chart.spec.ts:244:7 › lists my campaigns and opens the wall chart (10.5s)
+  ✓  10 [chromium-admin] tests/e2e/roles/unit-lifecycle-admin.spec.ts:76:7 › creates, renames and deletes a unit on any campaign (8.5s)
+
+  1 skipped
+  9 passed (1.9m)
+```
+
+Green. All 9 non-skipped specs passed (`mobile-dialer` skips as usual — no volunteer credentials configured); flow one ("sign in and reach a wall chart in under ten seconds", test A) reported **11.7s** total test runtime, well inside its internal 10 s budget (measured from the sign-in click, not from test start — the assertion passed, so the click→chart interval was under 10 s even though the row includes `/login` navigation and form fill beforehand).
+
+#### 6. Organiser-mode flow one on the new gate
+
+Set the e2e user's `workspacePrefs` to `{ mode: "organiser" }` via the same `PATCH /api/admin/update-user` body the WP1.2 spec uses (admin storage state from step 5's global setup, no credentials typed), then verified with SQL:
+
+```sql
+select workspace_prefs from user_profiles where user_id = 'f7c048e2-ecfe-4e9c-8715-7f4c899f0d37';
+→ [{"workspace_prefs":{"mode":"organiser"}}]
+```
+
+Ran `tests/e2e/wall-chart.spec.ts` credentialled against the preview twice:
+
+```
+Run 1:
+  ✓  1 tests/e2e/wall-chart.spec.ts:162:7 › sign in and reach a wall chart in under ten seconds (11.3s)
+  ✓  2 tests/e2e/wall-chart.spec.ts:244:7 › lists my campaigns and opens the wall chart (10.9s)
+  2 passed (37.8s)
+
+Run 2:
+  ✓  1 tests/e2e/wall-chart.spec.ts:162:7 › sign in and reach a wall chart in under ten seconds (11.4s)
+  ✓  2 tests/e2e/wall-chart.spec.ts:244:7 › lists my campaigns and opens the wall chart (11.0s)
+  2 passed (36.6s)
+```
+
+Green both times. Test A passed on both runs, so the internal `Date.now() - t0 < 10_000` budget (from sign-in click to wall chart) held under load both times, even though total test wall-clock (which also includes `/login` navigation, filling the form, and the visibility assertions) reads 11.3–11.4s.
+
+Branch taken: the spec's `branch` string (e.g. `"landed on /campaigns/1 (account resolves to organiser mode, 1 of my campaigns)"`) is only surfaced as an `expect(...).toBe(...)` failure message — since both assertions passed, nothing was printed to stdout on either run. Inferred from the passing assertion plus the spec's own mode oracle (§7 run 1's note that this e2e account owns exactly one dev campaign): with `workspace_prefs.mode = "organiser"` and `mineCount === 1`, the oracle required `url.pathname` to match `/^\/campaigns\/\d+$/` — i.e. branch 1, landed directly on `/campaigns/{id}` via the landing hop, no click needed. Both runs passing confirms this branch was taken both times.
+
+Reset `workspacePrefs` to `{}` via the same admin API, verified with SQL:
+
+```sql
+select workspace_prefs from user_profiles where user_id = 'f7c048e2-ecfe-4e9c-8715-7f4c899f0d37';
+→ [{"workspace_prefs":{}}]
+```
+
+#### 7. Residue
+
+```sql
+select campaign_id, name from campaigns where name like 'WP1.6%';
+→ []
+```
+
+Green, none, as expected.
+
+### Verifier run 2 summary table
+
+| Step | Result | Key values |
+|---|---|---|
+| 1. tsc / test / lint / build | 🟢 green | tsc 0; 70 files/936 tests passed; lint 294/143/151 (unchanged baseline); build ok |
+| 2. diff / log since 60de980 | — | 11 files changed, +371/-38; 2 commits (6ff5ed8, 8a617cf) |
+| 3. prefs before | 🟢 green | `{}` |
+| 4. preview deployment | 🟢 green | `success` on first poll, https://offshore-alliance-o7hbs9jsc-reveille-strategy.vercel.app |
+| 5. e2e full suite (both projects, FULL mode) | 🟢 green | 9 passed, 1 skipped (mobile-dialer, no volunteer creds), 0 failed; flow one (test A) 11.7s |
+| 6. organiser-mode flow one (new gate) | 🟢 green | prefs set to `{mode:"organiser"}`, confirmed by SQL; `wall-chart.spec.ts` run twice, 2/2 passed each time (11.3s/10.9s, 11.4s/11.0s); branch 1 (`/campaigns/{id}`, one-campaign organiser landing hop) inferred from passing oracle; prefs reset to `{}`, confirmed by SQL |
+| 7. residue (`WP1.6%` campaigns) | 🟢 green | none |
+
+**Commits this run:** none to source (verification only); this documentation commit.
+
 ## 8. Reviewer findings
 
 _(reviewer)_

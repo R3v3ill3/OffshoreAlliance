@@ -25,7 +25,8 @@
       ],
       "associatedRoutes": [
         "/campaigns",
-        "/campaigns/*"
+        "/campaigns/*",
+        "/my-campaigns"
       ],
       "routeWeight": 2,
       "prerequisites": [],
@@ -170,7 +171,8 @@
       ],
       "associatedRoutes": [
         "/campaigns",
-        "/campaigns/new/manual"
+        "/campaigns/new/manual",
+        "/my-campaigns"
       ],
       "routeWeight": 10,
       "prerequisites": [
@@ -565,7 +567,8 @@
         "tasking"
       ],
       "associatedRoutes": [
-        "/campaigns/*/email/*"
+        "/campaigns/*/email/*",
+        "/actions"
       ],
       "routeWeight": 9,
       "prerequisites": [
@@ -601,7 +604,8 @@
       ],
       "associatedRoutes": [
         "/campaigns/*/phone",
-        "/campaigns/*/phone/lists/*"
+        "/campaigns/*/phone/lists/*",
+        "/actions"
       ],
       "routeWeight": 9,
       "prerequisites": [

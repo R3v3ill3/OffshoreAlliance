@@ -18,6 +18,7 @@ import {
 } from "./env";
 import { WALL_CHART_RATING_HINT_ID, insertHintDismissal } from "./hint-dismissals";
 import { restClientFor, sessionFromStorageState, type RestClient } from "./roles/campaign-cleanup";
+import { withUserMode } from "./workspace-mode";
 
 /**
  * Canonical flow one, phase-1 form (WP0.2 → WP1.3): sign in and reach a wall
@@ -25,9 +26,12 @@ import { restClientFor, sessionFromStorageState, type RestClient } from "./roles
  *
  * Test A performs its own login (empty storage state) so the budget is
  * measured from the sign-in submit, not from a restored session. After the
- * submit the landing gate at `/` sends the account to one of three places,
- * and all three are asserted — the operator may or may not have flipped this
- * account to organiser mode, and the account owns exactly one dev campaign:
+ * submit the landing gate at `/` sends the account to one of three places.
+ * The suite pins the account to full mode first (`withUserMode`, tests/e2e/
+ * workspace-mode.ts), so branch 3 is the expected one; the other two branches
+ * remain implemented because the oracle below — not the pin — is what decides
+ * which branch is correct, and it reads the mode the product actually
+ * resolved:
  *   1. `/campaigns/{id}?…`   organiser mode + one campaign: My campaigns'
  *                            landing hop (landing.ts L4) opened the chart;
  *   2. `/my-campaigns`       organiser mode + several campaigns: click "Open wall chart";
@@ -158,6 +162,16 @@ async function expectedLandingFor(
 
 test.describe("Wall chart — flow one, from the login submit", () => {
   test.skip(!hasE2ECredentials, NO_CREDENTIALS_MESSAGE);
+  // The precondition this spec was written against: full mode, so the landing
+  // gate's branch 3 is the one under test and the wall chart is today's page.
+  // The e2e account has no per-user override, so without this pin its mode is
+  // whatever an admin last set as the org-wide default for work role
+  // `organiser` — shared state this suite does not own (tests/e2e/
+  // workspace-mode.ts). The oracle below still reads the REAL resolved mode
+  // and asserts the branch: with the pin it predicts full → `/campaigns`, and
+  // the three branches stay in place because the oracle, not the pin, is what
+  // decides which one is correct.
+  withUserMode("full");
   // Own login: the budget starts at the submit, not at a restored session.
   test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -242,6 +256,11 @@ test.describe("Wall chart — flow one, from the login submit", () => {
 
 test.describe("My campaigns", () => {
   test.skip(!hasE2ECredentials, NO_CREDENTIALS_MESSAGE);
+  // `/my-campaigns` itself is mode-independent, but the chart it opens is
+  // not: the tab list this test round-trips through ("Overview", "Workforce",
+  // "Wall Chart / List") is the full-mode workspace, so the mode is pinned
+  // rather than assumed (tests/e2e/workspace-mode.ts).
+  withUserMode("full");
 
   test("lists my campaigns and opens the wall chart", async ({ page }) => {
     await page.goto("/my-campaigns");
@@ -312,6 +331,11 @@ test.describe("My campaigns", () => {
  */
 test.describe("Wall chart — first-use rating hint", () => {
   test.skip(!hasE2ECredentials, NO_CREDENTIALS_MESSAGE);
+  // The hint itself is mode-independent — it renders wherever the wall chart
+  // does — but everything around it here is not: `expectWallChart`, the
+  // sticky campaign summary `bringAnchorIntoView` fights, and the tile
+  // geometry are all the full-mode page. Pin it (tests/e2e/workspace-mode.ts).
+  withUserMode("full");
 
   const HINT_ID = WALL_CHART_RATING_HINT_ID;
   const HINT_COPY = HINT_BY_ID[HINT_ID].copy;

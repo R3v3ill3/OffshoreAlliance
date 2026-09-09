@@ -8,6 +8,7 @@ import {
   hasE2ECredentials,
   hasE2EForeignCampaign,
 } from "../env";
+import { withUserMode } from "../workspace-mode";
 import {
   ROLE_CHECK_CAMPAIGN_PREFIX,
   campaignExists,
@@ -53,6 +54,13 @@ test.describe("WP1.6 role coverage — user", () => {
   // (§12 run 2, unit-lifecycle-user.spec.ts:80).
   test.describe.configure({ timeout: 180_000 });
   test.skip(!hasE2ECredentials, NO_CREDENTIALS_MESSAGE);
+  // Role coverage is about permission, and workspace mode is presentation —
+  // but every step here is driven through the full-mode page (the /campaigns
+  // list with its per-campaign rows, the wall chart's unit manager). With no
+  // per-user override the e2e account follows the org-wide default for its
+  // work role, which an admin can change in the app at any time, so the mode
+  // is pinned for the duration of the suite (tests/e2e/workspace-mode.ts).
+  withUserMode("full");
 
   /** The campaign the positive test created, for afterEach's fallback delete. */
   let createdCampaignId: string | null = null;

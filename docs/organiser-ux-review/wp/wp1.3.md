@@ -1557,6 +1557,13 @@ Green, none, as expected.
 
 **Commits this run:** none to source (verification only); this documentation commit.
 
+
+Screenshots under `evidence/wp1.3/`: the My campaigns page in organiser mode (one card with 95 people / 95 in a unit / 61 rated / 10 leaders, rating bar, last activity, "Open wall chart", a Needs attention item, "See all campaigns", one New campaign button) and the same on an iPhone viewport.
+
 ## 8. Reviewer findings
 
-_(reviewer)_
+**Round 1 (2026-09-09, fresh Fable reviewer): BLOCK.** Two blocking findings: the landing gate could decide before the profile had loaded on the post-login hop (auth `loading` is already false after the login page's INITIAL_SESSION and is never re-armed on SIGNED_IN), sending an organiser to the full list; and flow-one test A raced the page's own single-campaign auto-open. Five advisories (uncapped last-activity ids, probe retries, a duplicated path constant, a reused "organiser record" string, test A unable to fail if landing broke). The migration, the invoker-rights function and every read policy it depends on were confirmed correct. Fixed in `8a617cf`, which also found the real cause of the full-mode test-A failure: the spec clicked the DataTable's loading placeholder row (a visible row with no click handler) after a soft navigation; the product is fine for users, the locator now targets the row carrying the wall-chart link.
+
+**Round 2 (2026-09-09, fresh Fable reviewer): APPROVE WITH ADVISORIES.** Both blockers verified closed with a full post-login trace including the cached-defaults re-login case; the WP1.6 deferral structure confirmed byte-identical apart from the `try/finally`; the spec's mode oracle confirmed to skip cleanly without admin credentials and to pull no React or Next into the test runtime. Advisories recorded, not fixed: `profileLoading` also toggles on tab refocus (no behavioural effect); a signed-in user with no profile row now waits the 5 s failsafe; a misleading cleanup log line in the oracle path.
+
+**Verification (§7):** migration `20260910090000_campaign_last_activity.sql` on dev; INVOKER + STABLE with grants to authenticated/service_role only; full e2e suite green in full mode; flow one green twice in organiser mode on the rebuilt preview, landing straight on the chart under the 10 s budget; prefs reset and no residue.

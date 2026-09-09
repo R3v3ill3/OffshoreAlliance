@@ -116,7 +116,7 @@ export interface HubActionRowsResult {
  */
 export function useHubActionRows(opts: {
   showArchived: boolean
-  /** Ask the routes for the caller's rows only; see `mineParam`. */
+  /** Ask the routes for the caller's rows only; see `ownerParam`. */
   mine?: boolean
 }): HubActionRowsResult {
   const { user } = useAuth()

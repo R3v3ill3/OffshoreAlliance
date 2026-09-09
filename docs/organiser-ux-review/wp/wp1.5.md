@@ -984,9 +984,6 @@ apps/organising-db/src/components/sms/hub/SmsCreateActionPage.tsx:272:    [activ
 
 All hits are `episode` as a code identifier (`useCreateSmsEpisode`, `deleteEpisode`, `active.episode`, etc.) inside `SmsCreateActionPage.tsx`; no "standing campaign" or "org-wide" hits, and no plain-English/UI-copy occurrences of "episode" surfaced in the first 20 matches. Raw output only — interpretation left to the reviewer.
 
-## 8. Reviewer findings
-
-_(reviewer)_
 
 ### Orchestrator e2e run after fix round 1 (2026-09-09) against preview https://offshore-alliance-i1m5sy6wk-reveille-strategy.vercel.app
 
@@ -1021,3 +1018,14 @@ Running 4 tests using 1 worker
   1 skipped
   3 passed (42.5s)
 ```
+
+### Corrections after round-3 review (orchestrator)
+Round-1 fix items 4 and 7 above describe the interim state: the API param has since been renamed `owner=mine_or_unowned` (round 2, item 5) and the moderation total is now a server field read by `pendingModerationTotal(response)` (round 2, item A). Known limit recorded, not fixed (fix rounds exhausted): the relay-id read behind `pending_moderation_total` has no explicit limit and would be capped by PostgREST `max-rows` (1,000) at volumes far above today's; a single embedded-filter read is the follow-up. `capped` is false while a source is erroring; the per-source error strip covers that case.
+
+## 8. Reviewer findings
+
+**Round 1 (2026-09-09, fresh reviewer): BLOCK.** An SMS-source failure silently dropped SMS rows while email and calls still rendered. Ten advisories (page title, archived count ignoring filters, the 200-row cap versus the new Mine default, the standing campaign in pickers, a lost "· test" suffix, archived relays in the moderation count, stale `/sms` literals, test gaps, echoed error details). All fixed in `10958b2`; coverage table and non-negotiables verified clean by the reviewer, including that the two new read routes expose nothing beyond what the SMS activity route already did.
+
+**Round 2 (2026-09-09, fresh reviewer): BLOCK.** The round-1 fixes collided: server-side owner filtering had silently owner-scoped the "Awaiting review" tile. Seven advisories. Fixed in `debea32` (final allowed round): the moderation total became an org-wide server field independent of the owner filter; `keepPreviousData`; honest `owner=mine_or_unowned` param; cap disclosure on empty views.
+
+**Round 3 (2026-09-09, fresh reviewer, confirmation): APPROVE WITH ADVISORIES.** Blocker verified closed under RLS; four advisories, two applied (comment and doc corrections) and two recorded as known limits above. Credentialled e2e against the final preview: hub, `/sms` redirect and flow one all pass.

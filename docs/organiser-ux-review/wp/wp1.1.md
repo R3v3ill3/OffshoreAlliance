@@ -863,7 +863,201 @@ user on dev and confirm `workspace_prefs = '{}'`.
 
 ## 7. Verification output
 
-_(verifier pastes raw output)_
+Verifier run 2026-09-09 at d61cb8d; migration applied to dev dpnnmkhabysfdogllsyh via supabase db push.
+
+### Step 1 — project-ref and migration validation
+
+```
+$ cat supabase/.temp/project-ref
+dpnnmkhabysfdogllsyh
+
+$ pnpm validate:migrations
+> offshore-alliance-monorepo@ validate:migrations /Volumes/DataDrive/cursor_repos/offshoreAlliance/OffshoreAlliance
+> node scripts/validate-supabase-migrations.mjs
+
+Validated 4 Supabase migrations with unique 14-digit versions.
+```
+Result: green.
+
+### Step 2 — migration list (before push)
+
+```
+$ env -u SUPABASE_DB_PASSWORD npx --no-install supabase migration list
+Initialising login role...
+Connecting to remote database...
+
+   Local          | Remote         | Time (UTC)
+  ----------------|----------------|---------------------
+   20260908050000 | 20260908050000 | 2026-09-08 05:00:00
+   20260908050100 | 20260908050100 | 2026-09-08 05:01:00
+   20260908050200 | 20260908050200 | 2026-09-08 05:02:00
+   20260909100000 |                | 2026-09-09 10:00:00
+```
+Result: green — three baselines applied remote, `20260909100000` local-only, as expected.
+
+### Step 3 — dry-run, push, migration list (after push)
+
+```
+$ env -u SUPABASE_DB_PASSWORD npx --no-install supabase db push --dry-run
+Initialising login role...
+DRY RUN: migrations will *not* be pushed to the database.
+Connecting to remote database...
+Would push these migrations:
+ • 20260909100000_workspace_mode.sql
+Finished supabase db push.
+```
+
+```
+$ env -u SUPABASE_DB_PASSWORD npx --no-install supabase db push
+Initialising login role...
+Connecting to remote database...
+Do you want to push these migrations to the remote database?
+ • 20260909100000_workspace_mode.sql
+Applying migration 20260909100000_workspace_mode.sql...
+Finished supabase db push.
+```
+
+```
+$ env -u SUPABASE_DB_PASSWORD npx --no-install supabase migration list
+Initialising login role...
+Connecting to remote database...
+
+   Local          | Remote         | Time (UTC)
+  ----------------|----------------|---------------------
+   20260908050000 | 20260908050000 | 2026-09-08 05:00:00
+   20260908050100 | 20260908050100 | 2026-09-08 05:01:00
+   20260908050200 | 20260908050200 | 2026-09-08 05:02:00
+   20260909100000 | 20260909100000 | 2026-09-09 10:00:00
+```
+Result: green — dry-run showed only the expected migration, push applied cleanly, `20260909100000` now applied on remote. `--include-all` and `migration repair` were not used. No password prompt occurred.
+
+### Step 4 — schema/function/grants/RLS confirmation (dev, execute_sql)
+
+`select column_name, data_type, column_default from information_schema.columns where table_name='user_profiles' and column_name='workspace_prefs';`
+```json
+[{"column_name":"workspace_prefs","data_type":"jsonb","column_default":"'{}'::jsonb"}]
+```
+
+`select proname, prosecdef from pg_proc where proname='get_workspace_defaults';`
+```json
+[{"proname":"get_workspace_defaults","prosecdef":true}]
+```
+
+`select grantee, privilege_type from information_schema.routine_privileges where routine_name='get_workspace_defaults';`
+```json
+[{"grantee":"postgres","privilege_type":"EXECUTE"},{"grantee":"authenticated","privilege_type":"EXECUTE"},{"grantee":"service_role","privilege_type":"EXECUTE"}]
+```
+
+`select relrowsecurity from pg_class where relname='app_settings';`
+```json
+[{"relrowsecurity":true}]
+```
+Result: green — `workspace_prefs` is `jsonb NOT NULL DEFAULT '{}'`, `get_workspace_defaults` is `SECURITY DEFINER`, grants are `postgres` (owner), `authenticated`, `service_role` — `anon` absent — and `app_settings` RLS remains enabled (`true`), unchanged.
+
+### Step 5 — role coverage probe (dev, rolled-back transaction, e2e user uuid f7c048e2-ecfe-4e9c-8715-7f4c899f0d37)
+
+```sql
+BEGIN;
+SELECT set_config(
+  'request.jwt.claims',
+  json_build_object('sub', 'f7c048e2-ecfe-4e9c-8715-7f4c899f0d37', 'role', 'authenticated')::text,
+  true);
+SET LOCAL ROLE authenticated;
+SELECT public.get_workspace_defaults() AS defaults, (SELECT count(*) FROM public.app_settings) AS app_settings_count;
+ROLLBACK;
+```
+```json
+[{"defaults":{},"app_settings_count":0}]
+```
+Result: green — `get_workspace_defaults()` returns `{}` (nothing stored yet) and `app_settings` remains 0 rows visible to the `authenticated` role — the table itself stays closed. Note: the MCP `execute_sql` tool executes the statement block as one call and returns only the final SELECT's result set (multi-statement transactions with `SET LOCAL ROLE` cannot be run as separate round-tripped calls through this tool while preserving the transaction/role scope), so both checks were combined into a single `SELECT` to capture both values in one result row, per the task's fallback instruction. Transaction was rolled back; no data was modified.
+
+### Step 6 — type regeneration
+
+```
+$ SUPABASE_PROJECT_REF=dpnnmkhabysfdogllsyh pnpm gen:types
+> offshore-alliance-monorepo@ gen:types /Volumes/DataDrive/cursor_repos/offshoreAlliance/OffshoreAlliance
+> supabase gen types typescript --project-id ${SUPABASE_PROJECT_REF:-gteygwfgjvczanmrwgbr} > packages/db-types/generated.ts
+```
+
+```
+$ git diff --stat packages/db-types/generated.ts
+ packages/db-types/generated.ts | 75 +++++++++++++++++++++++++-----------------
+ 1 file changed, 45 insertions(+), 30 deletions(-)
+```
+
+```
+$ git diff packages/db-types/generated.ts | /usr/bin/grep -n 'workspace_prefs\|get_workspace_defaults' | head
+87:+          workspace_prefs: Json
+95:+          workspace_prefs?: Json
+103:+          workspace_prefs?: Json
+128:+      get_workspace_defaults: { Args: never; Returns: Json }
+```
+Result: green — both `workspace_prefs` (Row/Insert/Update) and `get_workspace_defaults` are present in the regenerated types. The diff also contains unrelated drift versus the previously committed file (removal of the `graphql_public` schema block, addition of the `_oux_hygiene_log` table, and a reordering of two FK-constraint entries on `user_profiles_organiser_id_fkey`) — this reflects the current state of dev at regeneration time, not anything introduced by this package. Committed alone as `d61cb8d chore(oux-wp1.1): regenerate database types from dev`.
+
+### Step 7 — apps/organising-db gates (post regen)
+
+```
+$ pnpm exec tsc --noEmit -p tsconfig.json; echo tsc $?
+tsc 0
+```
+
+```
+$ pnpm test 2>&1 | /usr/bin/grep -E 'Test Files|Tests |FAIL'
+ Test Files  59 passed (59)
+      Tests  766 passed (766)
+```
+
+```
+$ pnpm lint 2>&1 | tail -3
+✖ 294 problems (143 errors, 151 warnings)
+  7 errors and 16 warnings potentially fixable with the `--fix` option.
+ ELIFECYCLE  Command failed with exit code 1.
+```
+
+```
+$ pnpm build 2>&1 | tail -6
+✓ Compiled successfully in 109s
+... (full page/route listing omitted for brevity, no errors)
+ƒ Proxy (Middleware)
+ƒ  (Dynamic)  server-rendered on demand
+EXIT 0
+```
+Result: green across all four — tsc clean, 766/766 tests pass, lint holds at the recorded baseline (294 problems, 143 errors, 151 warnings — no rise), build compiles successfully with exit 0.
+
+### Step 8 — final git state
+
+```
+$ git status --short
+ M supabase/.temp/cli-latest
+ M supabase/.temp/gotrue-version
+ M supabase/.temp/pooler-url
+ M supabase/.temp/postgres-version
+ M supabase/.temp/project-ref
+ M supabase/.temp/rest-version
+ M supabase/.temp/storage-migration
+ M supabase/.temp/storage-version
+```
+Result: green — only `supabase/.temp/*` CLI link files modified (left unstaged/uncommitted per instructions); no source changes outside the two verifier commits.
+
+```
+$ git log --oneline develop..HEAD
+d61cb8d chore(oux-wp1.1): regenerate database types from dev
+75308cc feat(oux-wp1.1): implementer notes and deviations in wp1.1.md
+11c1e83 feat(oux-wp1.1): admin workspace editors in Users and Settings
+99e852f feat(oux-wp1.1): admin workspace-defaults route and update-user allow-list
+e2ca3e0 feat(oux-wp1.1): useWorkspace() hook, WorkspaceProvider and org-defaults query
+57f9da8 feat(oux-wp1.1): workspace_prefs column, get_workspace_defaults() reader, UserProfile type
+e5997f9 feat(oux-wp1.1): module registry, prefs schemas and pure workspace resolver
+61a8370 docs(oux): WP1.1 plan, approved
+1c997d6 docs(oux): record operator's dev run of the WP0.4 scripts
+f82bfac docs(oux): phase-0 exit confirmed, SMS test arrangement, WP1.1 planning
+```
+
+### Not run / blocked
+
+- The §2.9 "Secondary check — through the app on the branch preview" (login via Vercel Preview, confirm `POST /rest/v1/rpc/get_workspace_defaults` returns 200 in the network panel) was not run by this verifier: it requires a browser session against a deployed preview and an admin having first saved a non-empty `workspace_defaults` document via Administration → Settings, neither of which is available in this non-interactive verification pass. The instruction "Never start the app" also rules out a local substitute.
+- The §2.12 R5 check (invite a throwaway user on dev, confirm the new row has `workspace_prefs = '{}'`) was not run: it was not listed in the numbered verifier steps 1–8 given for this pass, and inviting a real auth user is a side-effecting action beyond the SQL-probe/type-regen/build scope defined here. Flagging for the reviewer or a follow-up verification pass.
+- No SUPABASE_DB_PASSWORD prompt occurred at any CLI step, so no step was aborted for that reason.
 
 ## 8. Reviewer findings
 

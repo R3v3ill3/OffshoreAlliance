@@ -117,6 +117,40 @@ export function hasActiveFilter(s: WallChartFilterState): boolean {
   );
 }
 
+/** The filter dimensions reported on `wallchart_filter_applied` (WP0.2). */
+export type WallChartFilterKey =
+  | "membership"
+  | "roles"
+  | "ratings"
+  | "occupations"
+  | "phone"
+  | "email"
+  | "assessments"
+  | "facts";
+
+/**
+ * The dimensions that are currently constraining, as closed-union key names.
+ *
+ * One clause per line of {@link hasActiveFilter}, in the same order, so the
+ * invariant `activeFilterKeys(s).length > 0 === hasActiveFilter(s)` holds by
+ * construction. Telemetry sends these names and a count — never the selected
+ * ids, which could re-identify a worker.
+ *
+ * `sort` is deliberately not a key here (it is not a filter; see `applySort`).
+ */
+export function activeFilterKeys(s: WallChartFilterState): WallChartFilterKey[] {
+  const keys: WallChartFilterKey[] = [];
+  if (s.membershipTypeIds.size > 0 || s.includeNonMember) keys.push("membership");
+  if (s.roles.size > 0) keys.push("roles");
+  if (s.ratings.size > 0) keys.push("ratings");
+  if (s.occupationIds.size > 0) keys.push("occupations");
+  if (s.phone !== "any") keys.push("phone");
+  if (s.email !== "any") keys.push("email");
+  if (activeAssessmentFilters(s).length > 0) keys.push("assessments");
+  if (s.factFilters.length > 0) keys.push("facts");
+  return keys;
+}
+
 function hasValue(v: string | null | undefined): boolean {
   return typeof v === "string" && v.trim() !== "";
 }

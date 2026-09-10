@@ -21,8 +21,10 @@ import { logConnectionEvent } from "@/lib/supabase/connection-monitor";
 import * as Sentry from "@sentry/nextjs";
 import posthog from "posthog-js";
 import { isPostHogEnabled } from "@/lib/posthog-config";
+import { readLoginStamp, stampLogin } from "@/lib/analytics/session-timing";
 import type { User } from "@supabase/supabase-js";
 import type { UserRole, UserProfile } from "@/types/database";
+import { deriveWorkRoleFlags } from "@/lib/auth/work-role-flags";
 
 const PUBLIC_PATHS = ["/login", "/auth"];
 
@@ -31,6 +33,14 @@ interface AuthContextType {
   profile: UserProfile | null;
   role: UserRole;
   loading: boolean;
+  /**
+   * True from a SIGNED_IN / USER_UPDATED / PASSWORD_RECOVERY event until the
+   * profile it re-fetches has landed (WP1.3 fix round 1). `loading` covers
+   * only the INITIAL_SESSION path, and after the login form it is already
+   * false — so without this flag the landing gate at `/` decides on a
+   * missing profile. Folded into `useWorkspace().loading`.
+   */
+  profileLoading: boolean;
   signOut: () => Promise<void>;
   hardRefreshConnection: () => Promise<SessionRecoveryResult>;
   connectionRecoveryInProgress: boolean;
@@ -38,6 +48,14 @@ interface AuthContextType {
   isUser: boolean;
   isViewer: boolean;
   canWrite: boolean;
+  /**
+   * work_role is lead_organiser, coordinator or industrial_coordinator
+   * (WP1.6; mirrors is_coordinator_or_lead() minus its admin arm — combine
+   * with isAdmin for "lead or above").
+   */
+  isLeadOrganiser: boolean;
+  /** Any organiser-shaped work_role, lead included (WP1.1 organiser mode audience). */
+  isOrganiser: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -45,6 +63,7 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   role: "viewer",
   loading: true,
+  profileLoading: false,
   signOut: async () => {},
   hardRefreshConnection: async () => ({
     ok: false,
@@ -57,12 +76,15 @@ const AuthContext = createContext<AuthContextType>({
   isUser: false,
   isViewer: true,
   canWrite: false,
+  isLeadOrganiser: false,
+  isOrganiser: false,
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false);
   const [connectionRecoveryInProgress, setConnectionRecoveryInProgress] = useState(false);
   const supabase = createClient();
   const queryClient = useQueryClient();
@@ -205,6 +227,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             redirectToLogin("session_expired");
           }
           setLoading(false);
+          // Fallback t0 for the "login → wall chart" metric (WP0.2) so a
+          // reload or a restored session is not silently unmeasured. Only when
+          // the login form has not already stamped this tab; TOKEN_REFRESHED
+          // and the recovery path below must never reset t0. The event carries
+          // login_source so these rows stay a separate cohort in PostHog.
+          if (initialUser && readLoginStamp() === null) {
+            stampLogin("session_restored");
+          }
           return;
         }
 
@@ -264,23 +294,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        // Every other event (SIGNED_IN, USER_UPDATED, PASSWORD_RECOVERY, ...).
+        //
+        // The body runs in a macrotask ON PURPOSE (WP1.6 fix round 2). auth-js
+        // delivers the start-up SIGNED_IN from _recoverAndRefresh() while
+        // initialize() still holds the auth lock and awaits every subscriber
+        // callback. When this subscriber is already registered at that moment
+        // (a warm navigation, where hydration beats the client's cookie read
+        // by a few ms), a Supabase query awaited HERE — fetchProfile →
+        // PostgREST → getSession() — takes _acquireLock's re-entrant path and
+        // waits on initializePromise, which cannot resolve until this callback
+        // returns: a deadlock with no timeout that wedges every query on the
+        // page, INITIAL_SESSION never arrives, and the 8s fallback above cannot
+        // unwedge the client (the "Loading" list that never resolves after
+        // navigating to /campaigns). Deferring by one macrotask lets the lock's
+        // microtask chain release first; the same work is then safe. The
+        // INITIAL_SESSION branch above is not affected: its lock holder does
+        // not await _emitInitialSession, so the lock is released independently.
+        // Supabase's own guidance for onAuthStateChange says the same: never
+        // await other client calls inside the callback — defer them.
         const sessionUser = session?.user ?? null;
         setKnownExpiry(session?.expires_at);
-        setUser(sessionUser);
-        if (sessionUser) {
-          setProfile((prev) => {
-            if (prev?.user_id === sessionUser.id) return prev;
-            return null;
-          });
-          const profileData = await fetchProfile(sessionUser.id);
-          setProfile(profileData);
-        } else {
-          setProfile(null);
-          // INITIAL_SESSION is handled earlier (and returns); any other event
-          // reaching here with no user means the session is gone — go to login.
-          redirectToLogin("session_expired");
-        }
-        setLoading(false);
+        // Raised synchronously (a React state set, not a Supabase call, so it
+        // is safe inside the callback) so the profile gap is visible to the
+        // landing gate before the deferred fetch below even starts.
+        if (sessionUser) setProfileLoading(true);
+        setTimeout(() => {
+          void (async () => {
+            try {
+              setUser(sessionUser);
+              if (sessionUser) {
+                setProfile((prev) => {
+                  if (prev?.user_id === sessionUser.id) return prev;
+                  return null;
+                });
+                const profileData = await fetchProfile(sessionUser.id);
+                setProfile(profileData);
+              } else {
+                setProfile(null);
+                // INITIAL_SESSION is handled earlier (and returns); any other event
+                // reaching here with no user means the session is gone — go to login.
+                redirectToLogin("session_expired");
+              }
+              setLoading(false);
+            } finally {
+              setProfileLoading(false);
+            }
+          })();
+        }, 0);
       }
     );
 
@@ -359,6 +420,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const role: UserRole = profile?.role ?? "viewer";
+  const workRoleFlags = deriveWorkRoleFlags(profile);
 
   return (
     <AuthContext.Provider
@@ -367,6 +429,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile,
         role,
         loading,
+        profileLoading,
         signOut,
         hardRefreshConnection,
         connectionRecoveryInProgress,
@@ -374,6 +437,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isUser: role === "user",
         isViewer: role === "viewer",
         canWrite: role === "admin" || role === "user",
+        isLeadOrganiser: workRoleFlags.isLeadOrganiser,
+        isOrganiser: workRoleFlags.isOrganiser,
       }}
     >
       {children}

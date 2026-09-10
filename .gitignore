@@ -50,3 +50,10 @@ scripts/video-pipeline/.env
 # regenerate with scripts/video-pipeline/publish-to-app.mjs). To test on the
 # develop deploy, either remove this line to commit them, or host in storage.
 apps/organising-db/public/help-videos/*.mp4
+
+# Playwright storageState — contains a live dev session cookie. Never commit.
+apps/organising-db/tests/e2e/.auth/
+
+# Playwright run artefacts (traces, screenshots, HTML report).
+apps/organising-db/test-results/
+apps/organising-db/playwright-report/

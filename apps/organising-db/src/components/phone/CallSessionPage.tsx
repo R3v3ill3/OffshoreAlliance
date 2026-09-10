@@ -16,6 +16,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallList } from '@/lib/hooks/useCallList'
 import { usePhoneNext, useRecordCallAttempt } from '@/lib/hooks/useCallSession'
 import { useRemoveWorkerFromCampaign } from '@/lib/hooks/useRemoveWorkerFromCampaign'
+import { useCanWriteToCampaign } from '@/lib/hooks/useCampaignWriteAccess'
 import { useCallOutcomeDefinitions } from '@/lib/hooks/useCallOutcomes'
 import { useCampaignPhoneScriptContext } from '@/lib/hooks/useCampaignPhoneScriptContext'
 import { mergePhoneScriptVariableContext } from '@/lib/comms/template-variables'
@@ -160,6 +161,20 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
   const removeWorkerFromCampaign = useRemoveWorkerFromCampaign({
     campaignId,
   })
+  // WP1.6: the two removal dispositions delete campaign rows, which RLS now
+  // scopes to campaigns this account can write to. Offer them only when the
+  // database says the delete would succeed, so a disposition never fails
+  // silently after the call is recorded.
+  const { canWriteCampaign, isLoading: writeAccessLoading } = useCanWriteToCampaign(campaignId)
+  const offeredCallDispositions = useMemo(
+    () =>
+      writeAccessLoading || canWriteCampaign
+        ? CALL_DISPOSITIONS
+        : CALL_DISPOSITIONS.filter(
+            (d) => !(REMOVAL_CALL_DISPOSITIONS as readonly string[]).includes(d.value)
+          ),
+    [writeAccessLoading, canWriteCampaign]
+  )
 
   type ListWithLinks = typeof list & {
     call_list_scripts?: Array<{
@@ -851,7 +866,7 @@ export function CallSessionPage({ campaignId, listId }: CallSessionPageProps) {
                     </Select>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {CALL_DISPOSITIONS.map((d) => (
+                    {offeredCallDispositions.map((d) => (
                       <Button
                         key={d.value}
                         variant="outline" size="sm"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
@@ -9,10 +9,11 @@ import { Plus, Upload } from "lucide-react";
 import { EurekaLoadingSpinner } from "@/components/ui/eureka-loading";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
+import { useCanWriteToCampaign } from "@/lib/hooks/useCampaignWriteAccess";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -42,14 +43,8 @@ import { CampaignReportingCharts } from "@/components/campaigns/campaign-reporti
 import { CampaignProgressReport } from "@/components/reports/CampaignProgressReport";
 import { WorkforceBoard } from "@/components/campaigns/workforce/workforce-board";
 import { CampaignTaskListsSection } from "@/components/campaigns/campaign-task-lists";
-import {
-  PendingReviewTab,
-  usePendingReviewCount,
-} from "@/components/campaigns/pending-review-tab";
-import {
-  RoleCheckTab,
-  useRoleCheckCount,
-} from "@/components/campaigns/role-check-tab";
+import { PendingReviewTab } from "@/components/campaigns/pending-review-tab";
+import { RoleCheckTab } from "@/components/campaigns/role-check-tab";
 import { CampaignPlanPanel } from "@/components/campaigns/campaign-plan-panel";
 import { CampaignWorkplanSection } from "@/components/campaigns/campaign-workplan";
 import { CampaignUniverseSection } from "@/components/campaigns/campaign-universe-section";
@@ -81,6 +76,18 @@ import {
   resolveTabParams,
   needsRedirect,
 } from "@/lib/campaign-tabs";
+import { tabOpenKey, trackCampaignTabOpened } from "@/lib/analytics/events";
+// WP1.4 — which tab bar this user sees. The decision is the pure
+// resolveVisibleTabs(); CampaignTabBar only draws it.
+import { useDevice } from "@/contexts/device-context";
+import { useWorkspace } from "@/lib/workspace/use-workspace";
+import { resolveWorkforceView } from "@/lib/campaign/workforce-view";
+import {
+  panelLabelFor,
+  resolveVisibleTabs,
+  type CampaignSurfaceRef,
+} from "@/lib/campaign/workspace-tabs";
+import { CampaignTabBar } from "@/components/campaigns/campaign-tab-bar";
 
 interface CampaignDetail {
   campaign_id: number;
@@ -100,6 +107,8 @@ interface CampaignDetail {
   /** Added by Wave 1 of Bargaining to Win (20260510100000). May be absent on older rows. */
   current_phase?: string | null;
   is_sms_episode?: boolean;
+  /** WP1.4: presence only — drives the Setup tab's Strategic plan card copy. */
+  campaign_stage_plans?: { plan_id: number }[];
 }
 
 interface UniverseRow {
@@ -140,6 +149,12 @@ interface ResultRow {
 
 const INITIAL_UNIVERSE_FORM = { name: "", description: "" };
 
+// Named universes are a vestigial labelling feature (no rule editor exists).
+// Hidden from the Who's in tab pending the module work; existing rows still
+// drive the Universe select on the Actions tab (see the `universes` prop on
+// CampaignActionsSection below). Flip to true to restore the card.
+const SHOW_NAMED_UNIVERSES: boolean = false;
+
 function formatDate(d: string | null) {
   if (!d) return "—";
   try {
@@ -175,7 +190,7 @@ export default function CampaignDetailPage() {
     (VALID_TABS as readonly string[]).includes(rawTab ?? "")
       ? rawTab
       : rawTab
-        ? null // unknown tab value → fall back to overview
+        ? null // unknown tab value → fall back to the campaign default
         : null,
     rawSub
   );
@@ -187,16 +202,14 @@ export default function CampaignDetailPage() {
   useEffect(() => {
     if (needsRedirect(rawTab, rawSub, resolved)) {
       const params = new URLSearchParams(searchParams.toString());
-      if (resolved.tab === "overview") {
-        params.delete("tab");
-        params.delete("sub");
+      // Every tab — Overview included — is written explicitly. An absent ?tab=
+      // now resolves to the campaign default (Workforce › Wall chart), so
+      // Overview must not be encoded as the param-free state.
+      params.set("tab", resolved.tab);
+      if (resolved.sub) {
+        params.set("sub", resolved.sub);
       } else {
-        params.set("tab", resolved.tab);
-        if (resolved.sub) {
-          params.set("sub", resolved.sub);
-        } else {
-          params.delete("sub");
-        }
+        params.delete("sub");
       }
       const qs = params.toString();
       router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
@@ -208,14 +221,9 @@ export default function CampaignDetailPage() {
   const handleTabChange = useCallback(
     (next: string) => {
       const params = new URLSearchParams(searchParams.toString());
-      if (next === "overview") {
-        params.delete("tab");
-        params.delete("sub");
-      } else {
-        params.set("tab", next);
-        // Clear sub so the cluster default kicks in on next render.
-        params.delete("sub");
-      }
+      params.set("tab", next);
+      // Clear sub so the cluster default kicks in on next render.
+      params.delete("sub");
       const qs = params.toString();
       router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
     },
@@ -235,12 +243,69 @@ export default function CampaignDetailPage() {
     },
     [pathname, router, searchParams]
   );
-  const { user, canWrite } = useAuth();
+
+  // WP1.4. The organiser bar's targets are (tab, sub) pairs, sometimes with
+  // an extra param (?view=). Writing all three in one router.replace keeps a
+  // click to a single history entry instead of the two a tab-then-sub pair
+  // would make.
+  const handleNavigate = useCallback(
+    (ref: CampaignSurfaceRef) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("tab", ref.tab);
+      if (ref.sub) {
+        params.set("sub", ref.sub);
+      } else {
+        params.delete("sub");
+      }
+      for (const [key, value] of Object.entries(ref.params ?? {})) {
+        params.set(key, value);
+      }
+      const qs = params.toString();
+      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
+  const { user, canWrite: canWriteGlobal } = useAuth();
+  const { mode, moduleState } = useWorkspace();
+  // isMobile comes from the request's user-agent header, so it matches what
+  // WorkforceBoard resolves and the bar never disagrees with the board.
+  const { isMobile } = useDevice();
   const supabase = createClient();
   const queryClient = useQueryClient();
   const id = params.id as string;
   const campaignId = Number(id);
   const campaignIdValid = Number.isFinite(campaignId);
+  // WP1.6: every section on this page takes canWrite from here, so one
+  // campaign-scoped value gates every create/edit/delete control at once.
+  // The database is the authority (campaigns_i_can_write); while the RPC is
+  // in flight keep the global role flag so nothing flickers away.
+  const { canWriteCampaign, isLoading: writeAccessLoading } = useCanWriteToCampaign(campaignId);
+  const canWrite = writeAccessLoading ? canWriteGlobal : canWriteCampaign;
+
+  // campaign_tab_opened (WP0.2). Instruments the *resolved* tab rather than the
+  // click, because most surfaces are reached by deep link
+  // (?tab=workforce&sub=wall-chart) and never touch handleTabChange.
+  //
+  // The effect depends on the RAW params as well as the resolved pair, so it
+  // re-runs after the legacy redirect above rewrites the URL. The redirect
+  // never changes the resolved pair, which is why an earlier version that
+  // skipped while needsRedirect(...) was true emitted nothing at all for a bare
+  // /campaigns/{id}, for any legacy ?tab=, or for any cluster-tab click (which
+  // deletes ?sub= and therefore always redirects): the "re-run after the
+  // redirect" it was waiting for could never happen.
+  //
+  // De-duplication is the ref, not the dependency array: the pre- and
+  // post-redirect renders build the same tabOpenKey, so exactly one event is
+  // emitted per resolved (campaign, tab, sub).
+  const lastTabOpenKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!campaignIdValid) return;
+    const key = tabOpenKey(campaignId, activeTab, activeSub);
+    if (lastTabOpenKeyRef.current === key) return;
+    lastTabOpenKeyRef.current = key;
+    trackCampaignTabOpened({ campaign_id: campaignId, tab: activeTab, sub: activeSub ?? null });
+  }, [campaignId, campaignIdValid, rawTab, rawSub, activeTab, activeSub]);
 
   const [universeDialogOpen, setUniverseDialogOpen] = useState(false);
   const [universeForm, setUniverseForm] = useState(INITIAL_UNIVERSE_FORM);
@@ -254,7 +319,9 @@ export default function CampaignDetailPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("campaigns")
-        .select(`*, organiser:organisers(organiser_name)`)
+        // campaign_stage_plans(plan_id) costs no extra round trip and is the
+        // same embed the campaigns list page uses for its Campaign Plan column.
+        .select(`*, organiser:organisers(organiser_name), campaign_stage_plans(plan_id)`)
         .eq("campaign_id", campaignId)
         .single();
       if (error) throw error;
@@ -262,6 +329,42 @@ export default function CampaignDetailPage() {
     },
     enabled: !!user && campaignIdValid,
   });
+
+  // Hooks cannot be conditional, so the model is built above the early
+  // returns below. `campaign` is undefined while loading, which the resolver
+  // handles: phase null hides Bargaining, exactly as the JSX did.
+  const hasPlan = (campaign?.campaign_stage_plans?.length ?? 0) > 0;
+  const activeView = resolveWorkforceView(searchParams.get("view"), isMobile);
+  const navModel = useMemo(
+    () =>
+      resolveVisibleTabs({
+        mode,
+        moduleState,
+        phase: campaign?.current_phase ?? null,
+        hasPlan,
+        active: { tab: activeTab, sub: activeSub },
+        activeView,
+      }),
+    [mode, moduleState, campaign?.current_phase, hasPlan, activeTab, activeSub, activeView]
+  );
+
+  /**
+   * WP1.4 fix round 1. Radix names a tabpanel with `aria-labelledby`
+   * pointing at its trigger; in organiser mode no TabsTrigger is rendered
+   * (CampaignTabBar draws a <nav> of plain buttons instead), so that
+   * reference dangles and the live panel has no accessible name. Name it
+   * directly there. In full mode `panelLabelFor` returns null and this
+   * spreads `{}` — the trigger still names the panel and the markup is
+   * byte-identical.
+   *
+   * Fix round 2: the name comes from the organiser model on screen — "Wall
+   * chart", "People", "Units" — not from the full-mode registry, whose
+   * "Workforce" and "Campaign Units" an organiser never sees.
+   */
+  const panelName = (tab: string, sub?: string) => {
+    const label = panelLabelFor(navModel, { tab, sub: sub ?? null });
+    return label ? { "aria-label": label } : {};
+  };
 
   useEffect(() => {
     if (campaign?.is_sms_episode) {
@@ -414,20 +517,17 @@ export default function CampaignDetailPage() {
     <div className="space-y-6">
       <CampaignWorkerDetailProvider campaignId={id} canWrite={!!canWrite}>
         <Tabs value={activeTab} onValueChange={handleTabChange}>
-          <TabsList className="flex flex-wrap h-auto gap-1">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="plan">Plan &amp; Execution</TabsTrigger>
-          <TabsTrigger value="section-plans">Section Plans</TabsTrigger>
-          <TabsTrigger value="workforce">Workforce</TabsTrigger>
-          <TabsTrigger value="outcomes">Outcomes</TabsTrigger>
-          <TabsTrigger value="outreach">Outreach</TabsTrigger>
-          <TabsTrigger value="library">Library</TabsTrigger>
-          {campaign.current_phase === "bargaining_to_win" && (
-            <TabsTrigger value="bargaining">Bargaining</TabsTrigger>
-          )}
-        </TabsList>
+          <CampaignTabBar
+            campaignId={id}
+            canWrite={!!canWrite}
+            model={navModel}
+            cluster="top"
+            onNavigate={handleNavigate}
+            hasPlan={hasPlan}
+            onImportWorkers={() => setImportWizardOpen(true)}
+          />
 
-        <TabsContent value="overview" className="space-y-6">
+        <TabsContent value="overview" className="space-y-6" {...panelName("overview")}>
           {canWrite && (
             <div className="flex justify-end">
               <Button onClick={() => setImportWizardOpen(true)}>
@@ -521,21 +621,22 @@ export default function CampaignDetailPage() {
           <CampaignStageCoveragePanel campaignId={campaignId} />
         </TabsContent>
 
-        <TabsContent value="plan">
+        <TabsContent value="plan" {...panelName("plan")}>
           <Tabs
             value={activeSub ?? "strategy"}
             onValueChange={handleSubChange}
           >
-            <TabsList className="mb-4">
-              <TabsTrigger value="strategy">Strategy</TabsTrigger>
-              <TabsTrigger value="workplan">Workplan</TabsTrigger>
-              <TabsTrigger value="actions">Actions</TabsTrigger>
-              <TabsTrigger value="task-lists">Task Lists</TabsTrigger>
-              <PendingReviewTabTrigger campaignId={campaignId} />
-              <RoleCheckTabTrigger campaignId={campaignId} />
-            </TabsList>
+            <CampaignTabBar
+              campaignId={id}
+              canWrite={!!canWrite}
+              model={navModel}
+              cluster="plan"
+              onNavigate={handleNavigate}
+              hasPlan={hasPlan}
+              onImportWorkers={() => setImportWizardOpen(true)}
+            />
 
-            <TabsContent value="strategy">
+            <TabsContent value="strategy" {...panelName("plan", "strategy")}>
               <CampaignPlanPanel campaignId={Number(id)} organiserId={campaign?.organiser_id} />
               {(!campaign.current_phase || campaign.current_phase === "preparing_to_bargain") && (
                 <div className="mt-6 pt-6 border-t border-slate-200">
@@ -544,11 +645,11 @@ export default function CampaignDetailPage() {
               )}
             </TabsContent>
 
-            <TabsContent value="workplan">
+            <TabsContent value="workplan" {...panelName("plan", "workplan")}>
               <CampaignWorkplanSection campaignId={id} canWrite={!!canWrite} />
             </TabsContent>
 
-            <TabsContent value="actions">
+            <TabsContent value="actions" {...panelName("plan", "actions")}>
               <CampaignActionsSection
                 campaignId={campaignId}
                 canWrite={!!canWrite}
@@ -563,40 +664,44 @@ export default function CampaignDetailPage() {
               />
             </TabsContent>
 
-            <TabsContent value="task-lists">
+            <TabsContent value="task-lists" {...panelName("plan", "task-lists")}>
               <CampaignTaskListsSection campaignId={id} canWrite={!!canWrite} />
             </TabsContent>
 
-            <TabsContent value="pending-review">
+            <TabsContent value="pending-review" {...panelName("plan", "pending-review")}>
               <PendingReviewTab campaignId={campaignId} canWrite={!!canWrite} />
             </TabsContent>
 
-            <TabsContent value="role-check">
+            <TabsContent value="role-check" {...panelName("plan", "role-check")}>
               <RoleCheckTab campaignId={campaignId} canWrite={!!canWrite} />
             </TabsContent>
           </Tabs>
         </TabsContent>
 
-        <TabsContent value="outcomes">
+        <TabsContent value="outcomes" {...panelName("outcomes")}>
           <Tabs
             value={activeSub ?? "reports"}
             onValueChange={handleSubChange}
           >
-            <TabsList className="mb-4">
-              <TabsTrigger value="reports">Reports</TabsTrigger>
-              <TabsTrigger value="results">Results</TabsTrigger>
-              <TabsTrigger value="insights">Insights</TabsTrigger>
-            </TabsList>
+            <CampaignTabBar
+              campaignId={id}
+              canWrite={!!canWrite}
+              model={navModel}
+              cluster="outcomes"
+              onNavigate={handleNavigate}
+              hasPlan={hasPlan}
+              onImportWorkers={() => setImportWizardOpen(true)}
+            />
 
-            <TabsContent value="reports">
+            <TabsContent value="reports" {...panelName("outcomes", "reports")}>
               <CampaignReportingCharts campaignId={id} />
             </TabsContent>
 
-            <TabsContent value="results">
+            <TabsContent value="results" {...panelName("outcomes", "results")}>
               <CampaignResultsSection results={results} />
             </TabsContent>
 
-            <TabsContent value="insights" className="space-y-6">
+            <TabsContent value="insights" className="space-y-6" {...panelName("outcomes", "insights")}>
               {campaign.current_phase === "bargaining_to_win" && (
                 <BargainingInsightsWidget campaignId={campaignId} />
               )}
@@ -605,30 +710,31 @@ export default function CampaignDetailPage() {
           </Tabs>
         </TabsContent>
 
-        <TabsContent value="workforce">
+        <TabsContent value="workforce" {...panelName("workforce")}>
           <Tabs
             value={activeSub ?? "wall-chart"}
             onValueChange={handleSubChange}
           >
-            <TabsList className="mb-4">
-              <TabsTrigger value="wall-chart">Wall Chart / List</TabsTrigger>
-              <TabsTrigger value="campaign-units">Campaign Units</TabsTrigger>
-              <TabsTrigger value="universe">Scope</TabsTrigger>
-              <TabsTrigger value="assessments">Assessments</TabsTrigger>
-              <TabsTrigger value="data-fields">Data fields</TabsTrigger>
-              <TabsTrigger value="activists">Activists &amp; WOCs</TabsTrigger>
-              <TabsTrigger value="foundational-readiness">Foundational Readiness</TabsTrigger>
-            </TabsList>
+            <CampaignTabBar
+              campaignId={id}
+              canWrite={!!canWrite}
+              model={navModel}
+              cluster="workforce"
+              onNavigate={handleNavigate}
+              hasPlan={hasPlan}
+              onImportWorkers={() => setImportWizardOpen(true)}
+            />
 
-            <TabsContent value="universe" className="space-y-6">
+            <TabsContent value="universe" className="space-y-6" {...panelName("workforce", "universe")}>
               <CampaignUniverseSection campaignId={id} canWrite={!!canWrite} />
 
+              {SHOW_NAMED_UNIVERSES && (
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-4">
                   <div className="space-y-1 min-w-0">
                     <CardTitle className="text-lg">Named universes (optional)</CardTitle>
                     <CardDescription>
-                      Labels for the Actions tab only. Campaign scope (employers, worksites, workers) is
+                      Labels for the Actions tab only. Who&apos;s in (employers, worksites, workers) is
                       managed above.
                     </CardDescription>
                   </div>
@@ -724,66 +830,70 @@ export default function CampaignDetailPage() {
                   )}
                 </CardContent>
               </Card>
+              )}
             </TabsContent>
 
-            <TabsContent value="assessments">
+            <TabsContent value="assessments" {...panelName("workforce", "assessments")}>
               <CampaignAssessmentsSection campaignId={id} canWrite={!!canWrite} />
             </TabsContent>
 
-            <TabsContent value="data-fields">
+            <TabsContent value="data-fields" {...panelName("workforce", "data-fields")}>
               <CampaignDataFieldsSection campaignId={id} canWrite={!!canWrite} />
             </TabsContent>
 
-            <TabsContent value="wall-chart">
+            <TabsContent value="wall-chart" {...panelName("workforce", "wall-chart")}>
               <WorkforceBoard campaignId={id} canWrite={!!canWrite} />
             </TabsContent>
 
-            <TabsContent value="campaign-units" className="space-y-6">
+            <TabsContent value="campaign-units" className="space-y-6" {...panelName("workforce", "campaign-units")}>
               <CampaignUnitsSection campaignId={id} canWrite={!!canWrite} />
               {activeSub === "campaign-units" && (
                 <CoveragePanel campaignId={id} canWrite={!!canWrite} />
               )}
             </TabsContent>
 
-            <TabsContent value="activists">
+            <TabsContent value="activists" {...panelName("workforce", "activists")}>
               {activeSub === "activists" && (
                 <ActivistsWocsSection campaignId={id} canWrite={!!canWrite} />
               )}
             </TabsContent>
 
-            <TabsContent value="foundational-readiness">
+            <TabsContent value="foundational-readiness" {...panelName("workforce", "foundational-readiness")}>
               <FoundationalReadinessPanel campaignId={campaignId} />
             </TabsContent>
           </Tabs>
         </TabsContent>
 
-        <TabsContent value="outreach">
+        <TabsContent value="outreach" {...panelName("outreach")}>
           <Tabs
             value={activeSub ?? "comms"}
             onValueChange={handleSubChange}
           >
-            <TabsList className="mb-4">
-              <TabsTrigger value="comms">Comms</TabsTrigger>
-              <TabsTrigger value="phone">Phone Ops</TabsTrigger>
-              <TabsTrigger value="sms">SMS</TabsTrigger>
-              <TabsTrigger value="soc">SOC</TabsTrigger>
-            </TabsList>
+            <CampaignTabBar
+              campaignId={id}
+              canWrite={!!canWrite}
+              model={navModel}
+              cluster="outreach"
+              onNavigate={handleNavigate}
+              hasPlan={hasPlan}
+              onImportWorkers={() => setImportWizardOpen(true)}
+            />
 
-            <TabsContent value="comms">
+            <TabsContent value="comms" {...panelName("outreach", "comms")}>
               {/* CampaignCommsSection has its own internal sub-tabs (Drafts & Send /
                   List Builder) — intentional two-level nesting; do not flatten. */}
               <CampaignCommsSection campaignId={id} canWrite={!!canWrite} />
             </TabsContent>
 
-            <TabsContent value="phone">
+            <TabsContent value="phone" {...panelName("outreach", "phone")}>
               <InlinePhoneOpsPanel campaignId={id} />
             </TabsContent>
 
-            <TabsContent value="sms">
+            <TabsContent value="sms" {...panelName("outreach", "sms")}>
               {activeSub === "sms" && <InlineSmsOpsPanel campaignId={id} />}
             </TabsContent>
 
-            <TabsContent value="soc">
+            <TabsContent value="soc" {...panelName("outreach", "soc")}>
               <Card>
                 <CardHeader>
                   <CardTitle>Structure of Concern (SOC)</CardTitle>
@@ -809,19 +919,19 @@ export default function CampaignDetailPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="library">
+        <TabsContent value="library" {...panelName("library")}>
           {activeTab === "library" && (
             <LibrarySection campaignId={campaignId} canWrite={!!canWrite} />
           )}
         </TabsContent>
 
-        <TabsContent value="section-plans">
+        <TabsContent value="section-plans" {...panelName("section-plans")}>
           {activeTab === "section-plans" && (
             <SectionPlansTab campaignId={campaignId} />
           )}
         </TabsContent>
 
-        <TabsContent value="bargaining">
+        <TabsContent value="bargaining" {...panelName("bargaining")}>
           <BargainingTabContent campaignId={campaignId} />
         </TabsContent>
         </Tabs>
@@ -848,41 +958,9 @@ export default function CampaignDetailPage() {
   );
 }
 
-// ── Pending Review trigger (Phase 5) ──────────────────────────────────
-// Renders the "Pending review" sub-tab inside the Plan cluster with a live
-// count badge. The badge uses the same React Query key the tab uses, so the
-// count drops to zero immediately after Approve / Merge / Reject mutations
-// invalidate the queue.
-function PendingReviewTabTrigger({ campaignId }: { campaignId: number }) {
-  const { data: count = 0 } = usePendingReviewCount(campaignId);
-  return (
-    <TabsTrigger value="pending-review" className="gap-1.5">
-      Pending review
-      {count > 0 && (
-        <Badge variant="warning" className="h-5 px-1.5 text-[10px]">
-          {count}
-        </Badge>
-      )}
-    </TabsTrigger>
-  );
-}
-
-// ── Role Check trigger (post-Phase-6 remediation) ─────────────────────
-// Surfaces workers rated 1 (supportive_leader) whose global union role
-// is unset / non-leader. Reviewers confirm the role with a single click.
-function RoleCheckTabTrigger({ campaignId }: { campaignId: number }) {
-  const { data: count = 0 } = useRoleCheckCount(campaignId);
-  return (
-    <TabsTrigger value="role-check" className="gap-1.5">
-      Role check
-      {count > 0 && (
-        <Badge variant="warning" className="h-5 px-1.5 text-[10px]">
-          {count}
-        </Badge>
-      )}
-    </TabsTrigger>
-  );
-}
+// The two count-badged Plan-cluster triggers moved verbatim to
+// src/components/campaigns/plan-tab-triggers.tsx (WP1.4) so CampaignTabBar
+// can render them; their markup and query keys are unchanged.
 
 // ── Bargaining tab content (stub — delegates to /bargaining sub-route) ─────
 

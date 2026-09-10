@@ -68,6 +68,16 @@ import { ReferenceDataWizard } from "@/components/import/reference-data-wizard";
 import { MembershipImportWizard } from "@/components/import/membership-import-wizard";
 import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 import { WorkerDimensionsTab } from "@/components/administration/worker-dimensions-tab";
+import { WorkspaceModuleChecklist } from "@/components/administration/workspace-module-checklist";
+import { WorkspaceDefaultsCard } from "@/components/administration/workspace-defaults-card";
+import type { WorkspaceModuleId } from "@/lib/workspace/modules";
+import { parseWorkspacePrefs, type WorkspacePrefs } from "@/lib/workspace/prefs-schema";
+import {
+  workspacePrefsPayload,
+  workspaceSelectionEmpty,
+  type WorkspaceFormState,
+} from "@/lib/workspace/prefs-payload";
+import { resolveWorkspace, type WorkspaceMode } from "@/lib/workspace/resolve";
 
 const WorkloadTab = dynamic(() => import("@/components/administration/workload-tab").then((m) => ({ default: m.WorkloadTab })), { ssr: false });
 const OrganiserPatchesTab = dynamic(() => import("@/components/administration/organiser-patches-tab").then((m) => ({ default: m.OrganiserPatchesTab })), { ssr: false });
@@ -94,6 +104,13 @@ interface UserRow extends UserProfile {
   [key: string]: unknown;
 }
 
+/** WP1.1: the per-user workspace fields exactly as they were parsed on open. */
+const NO_WORKSPACE_OVERRIDE: WorkspaceFormState = {
+  mode: "default",
+  modules: null,
+  allowShowEverything: undefined,
+};
+
 function UsersTab() {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
@@ -111,6 +128,16 @@ function UsersTab() {
   const [editPhone, setEditPhone] = useState("");
   const [editWorkRole, setEditWorkRole] = useState<WorkRole | "none">("none");
   const [editReportsTo, setEditReportsTo] = useState<string>("none");
+  // WP1.1 workspace override: "default" / null = follow the role default.
+  const [editWorkspaceMode, setEditWorkspaceMode] = useState<"default" | WorkspaceMode>("default");
+  const [editWorkspaceModules, setEditWorkspaceModules] = useState<WorkspaceModuleId[] | null>(null);
+  // Not editable here (org-level switch lives in Settings); preserved on save.
+  const [editWorkspaceAllowShowEverything, setEditWorkspaceAllowShowEverything] =
+    useState<boolean | undefined>(undefined);
+  // What the three fields above held when the dialog opened, so a name-only
+  // edit sends no `workspacePrefs` at all and never rewrites the column.
+  const [editWorkspaceInitial, setEditWorkspaceInitial] =
+    useState<WorkspaceFormState>(NO_WORKSPACE_OVERRIDE);
   const [editError, setEditError] = useState<string | null>(null);
   const [setPasswordUserId, setSetPasswordUserId] = useState<string | null>(null);
   const [setPasswordUserName, setSetPasswordUserName] = useState("");
@@ -129,6 +156,36 @@ function UsersTab() {
       return json.users ?? [];
     },
   });
+
+  // WP1.1: org-wide defaults, only to show the resolved role default as
+  // placeholder ticks in the per-user editor. Admin-only route.
+  // A failed GET throws, so `isError` is real: an unreachable route must not
+  // masquerade as "nothing stored" (which resolves everyone to full mode).
+  const {
+    data: orgWorkspaceDefaults,
+    isPending: orgWorkspaceDefaultsPending,
+    isError: orgWorkspaceDefaultsFailed,
+  } = useQuery<unknown>({
+    queryKey: ["admin-workspace-defaults"],
+    queryFn: async () => {
+      const res = await fetchApi("/api/admin/workspace-defaults");
+      const json = (await res.json()) as unknown;
+      if (!res.ok) {
+        const message =
+          json && typeof json === "object" && "error" in json
+            ? String((json as { error: unknown }).error)
+            : "Failed to load workspace defaults";
+        throw new Error(message);
+      }
+      return json;
+    },
+    staleTime: 60_000,
+    retry: 1,
+  });
+  // Everything workspace-related in this dialog is only trustworthy once the
+  // org-wide defaults are in hand.
+  const orgWorkspaceDefaultsReady =
+    !orgWorkspaceDefaultsPending && !orgWorkspaceDefaultsFailed;
 
   const deleteMutation = useAuthAwareMutation({
     mutationFn: async (userId: string) => {
@@ -187,6 +244,7 @@ function UsersTab() {
       displayName,
       email,
       phone,
+      workspacePrefs,
     }: {
       userId: string;
       workRole: WorkRole | null;
@@ -195,6 +253,8 @@ function UsersTab() {
       displayName: string;
       email: string;
       phone: string | null;
+      /** `undefined` = untouched; JSON.stringify drops the key entirely. */
+      workspacePrefs: WorkspacePrefs | null | undefined;
     }) => {
       setEditError(null);
       const res = await fetchApi("/api/admin/update-user", {
@@ -208,6 +268,7 @@ function UsersTab() {
           displayName,
           email,
           phone,
+          workspacePrefs,
         }),
       });
       const json = await res.json();
@@ -220,6 +281,53 @@ function UsersTab() {
     onError: (err: Error) => {
       setEditError(err.message);
     },
+  });
+
+  // WP1.1: what the edited user would resolve to with the current form
+  // values, via the same pure resolver the app uses. Drives the placeholder
+  // ticks and the outgoing workspacePrefs document.
+  const editWorkspaceResolved = resolveWorkspace({
+    role: editPermissionRole,
+    workRole: editWorkRole !== "none" ? editWorkRole : null,
+    orgDefaults: orgWorkspaceDefaults,
+    userPrefs: editWorkspaceMode === "default" ? {} : { mode: editWorkspaceMode },
+    sessionShowEverything: false,
+  });
+  const editWorkspaceEffectiveMode = editWorkspaceResolved.mode;
+  const editWorkspacePlaceholder = editWorkspaceResolved.enabledModules;
+  // What "Default for role" would actually resolve to for this user — the
+  // same resolver, with no user override. Worth naming in the option label:
+  // with nothing stored org-wide the default is full mode (resolve.ts R1),
+  // which the bare wording never said.
+  const editWorkspaceRoleDefaultMode = resolveWorkspace({
+    role: editPermissionRole,
+    workRole: editWorkRole !== "none" ? editWorkRole : null,
+    orgDefaults: orgWorkspaceDefaults,
+    userPrefs: {},
+    sessionShowEverything: false,
+  }).mode;
+  const editWorkspaceCurrent: WorkspaceFormState = {
+    mode: editWorkspaceMode,
+    modules: editWorkspaceModules,
+    allowShowEverything: editWorkspaceAllowShowEverything,
+  };
+  // Organiser mode with an empty list resolves to the registry defaults
+  // (resolve.ts R6), so it is never what the admin means: the workspace part
+  // of the save is dropped and an inline hint says so. The rest of the dialog
+  // still saves.
+  const editWorkspaceModulesEmpty = workspaceSelectionEmpty({
+    current: editWorkspaceCurrent,
+    effectiveMode: editWorkspaceEffectiveMode,
+    defaultsAvailable: orgWorkspaceDefaultsReady,
+  });
+  // `undefined` = the key is absent from the PATCH body and the stored column
+  // is left exactly as it was (see /api/admin/update-user). All the rules live
+  // in the pure `workspacePrefsPayload`.
+  const editWorkspacePrefsToSend: WorkspacePrefs | undefined = workspacePrefsPayload({
+    initial: editWorkspaceInitial,
+    current: editWorkspaceCurrent,
+    effectiveMode: editWorkspaceEffectiveMode,
+    defaultsAvailable: orgWorkspaceDefaultsReady,
   });
 
   const userColumns: Column<UserRow>[] = [
@@ -302,6 +410,16 @@ function UsersTab() {
               setEditPhone(row.phone ?? "");
               setEditWorkRole((row.work_role as WorkRole) ?? "none");
               setEditReportsTo(row.reports_to ?? "none");
+              const prefs = parseWorkspacePrefs(row.workspace_prefs);
+              const snapshot: WorkspaceFormState = {
+                mode: prefs?.mode ?? "default",
+                modules: prefs?.modules ?? null,
+                allowShowEverything: prefs?.allowShowEverything,
+              };
+              setEditWorkspaceMode(snapshot.mode);
+              setEditWorkspaceModules(snapshot.modules);
+              setEditWorkspaceAllowShowEverything(snapshot.allowShowEverything);
+              setEditWorkspaceInitial(snapshot);
               setEditError(null);
             }}
           >
@@ -534,14 +652,23 @@ function UsersTab() {
           }
         }}
       >
-        <DialogContent>
-          <DialogHeader>
+        {/*
+          The workspace section makes this the tallest dialog in the app, so it
+          is the one that has to scroll: the shared DialogContent is a
+          `grid` with no height cap, which pushed the footer off a 720px-high
+          laptop viewport and made Save unreachable. Only this dialog is
+          changed — a flex column with a capped height, the header and footer
+          pinned, and the fields in between as the single scroll region.
+        */}
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-2xl">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Edit User — {editUser?.display_name}</DialogTitle>
             <DialogDescription>
               Update permission, contact details, work role, and reporting line.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          {/* -mx-6/px-6 puts the scrollbar on the dialog edge, not inside the padding. */}
+          <div className="-mx-6 min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-2">
             <div className="space-y-1.5">
               <Label>Permission level</Label>
               <Select
@@ -627,11 +754,108 @@ function UsersTab() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-3 rounded-md border p-3">
+              <div className="space-y-1.5">
+                <Label>Workspace mode</Label>
+                <Select
+                  value={editWorkspaceMode}
+                  onValueChange={(v) => setEditWorkspaceMode(v as "default" | WorkspaceMode)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">
+                      Default for role
+                      {orgWorkspaceDefaultsReady
+                        ? ` — currently ${
+                            editWorkspaceRoleDefaultMode === "full" ? "Full" : "Organiser"
+                          }`
+                        : ""}
+                    </SelectItem>
+                    <SelectItem value="full">Full</SelectItem>
+                    <SelectItem value="organiser">Organiser</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {!orgWorkspaceDefaultsReady && (
+                <p
+                  className={
+                    orgWorkspaceDefaultsFailed
+                      ? "text-xs text-destructive"
+                      : "text-xs text-muted-foreground"
+                  }
+                >
+                  {orgWorkspaceDefaultsFailed
+                    ? "Workspace defaults could not be loaded; reload before changing workspace settings."
+                    : "Loading workspace defaults…"}
+                </p>
+              )}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <Label>Modules</Label>
+                  {!orgWorkspaceDefaultsReady ? (
+                    // Without the role default we cannot say which mode this
+                    // user resolves to, so neither the "full mode" claim nor
+                    // the placeholder ticks would be honest. The status line
+                    // above explains it; the stored list is left untouched.
+                    <span className="text-xs text-muted-foreground">
+                      Modules unavailable
+                    </span>
+                  ) : editWorkspaceEffectiveMode === "full" ? (
+                    <span className="text-xs text-muted-foreground">
+                      Full mode shows every module
+                    </span>
+                  ) : editWorkspaceModules === null ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditWorkspaceModules([...editWorkspacePlaceholder])}
+                    >
+                      Set modules for this user
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditWorkspaceModules(null)}
+                    >
+                      Follow role default
+                    </Button>
+                  )}
+                </div>
+                <WorkspaceModuleChecklist
+                  idPrefix="edit-user-ws"
+                  value={editWorkspaceModules ?? [...editWorkspacePlaceholder]}
+                  onChange={setEditWorkspaceModules}
+                  disabled={
+                    !orgWorkspaceDefaultsReady ||
+                    editWorkspaceModules === null ||
+                    editWorkspaceEffectiveMode === "full"
+                  }
+                  targetIsAdmin={editPermissionRole === "admin"}
+                />
+                {editWorkspaceModulesEmpty && (
+                  <p className="text-xs text-destructive">
+                    Tick at least one module, or choose &ldquo;Follow role default&rdquo; —
+                    an organiser with nothing ticked is not saved, so the workspace
+                    settings will be left unchanged.
+                  </p>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Workspace mode changes what this person sees, not what they can do.
+                The role-wide defaults behind &ldquo;Default for role&rdquo; are set in
+                Administration → Settings.
+              </p>
+            </div>
             {editError && (
               <p className="text-sm text-destructive">{editError}</p>
             )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button
               variant="outline"
               onClick={() => setEditUser(null)}
@@ -653,6 +877,7 @@ function UsersTab() {
                   displayName: editDisplayName.trim(),
                   email: editEmail.trim(),
                   phone: editPhone.trim() === "" ? null : editPhone.trim(),
+                  workspacePrefs: editWorkspacePrefsToSend,
                 })
               }
               disabled={
@@ -1852,6 +2077,8 @@ function SettingsTab() {
             </div>
           </CardContent>
         </Card>
+
+        <WorkspaceDefaultsCard workRoles={WORK_ROLES} />
       </div>
 
       <Button onClick={handleSave} disabled={loading || saving}>

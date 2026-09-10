@@ -29,23 +29,73 @@ const repoRoot = resolve(appRoot, "../..");
 
 const read = (p: string) => readFileSync(resolve(repoRoot, p), "utf8");
 
-const MIGRATION = "supabase/migrations/20260813120000_sms_source_taxonomy.sql";
+// The taxonomy now lives in the baseline schema: the original
+// 20260813120000_sms_source_taxonomy.sql moved to supabase/migrations_legacy/
+// in the baseline repair, and the baseline is the live schema to assert against.
+const MIGRATION = "supabase/migrations/20260908050000_baseline_schema.sql";
 const ASSESSMENTS_ROUTE =
   "apps/organising-db/src/app/api/sms/conversations/[id]/assessments/route.ts";
 const SURVEY_RUNTIME = "apps/organising-db/src/lib/sms/survey-runtime.ts";
 
 const SPLIT_SOURCES = ["sms_chat", "sms_survey", "sms_inbound"] as const;
 
+/**
+ * Slice out just the declaration under test.
+ *
+ * The baseline schema is a ~33k-line pg_dump, so `text.slice(indexOf(needle))`
+ * runs to the end of the file: every value declared *anywhere* after the anchor
+ * satisfies a `toContain`, and the assertion proves nothing. Each slice below
+ * is therefore closed at the first terminator that ends the declaration.
+ */
+function declaration(text: string, start: string, terminators: readonly string[]): string {
+  const from = text.indexOf(start);
+  if (from < 0) throw new Error(`"${start}" not found in ${MIGRATION}`);
+  const rest = text.slice(from + start.length);
+  const end = terminators.reduce((soFar, t) => {
+    const at = rest.indexOf(t);
+    return at >= 0 && at < soFar ? at : soFar;
+  }, rest.length);
+  return start + rest.slice(0, end);
+}
+
+// The CHECK is a single pg_dump table-constraint clause: the next "CONSTRAINT"
+// starts the sibling clause, and ";" ends the CREATE TABLE.
+const sourceCheck = (migration: string) =>
+  declaration(migration, "campaign_activity_ratings_source_check", ["CONSTRAINT", ";"]);
+
+// The trigger function's body is dollar-quoted; "$$;" closes it. Anchored on
+// the schema-qualified name because the dump has ~500 CREATE OR REPLACE
+// FUNCTION statements and the unanchored first one is not this function.
+const ratingFn = (migration: string) =>
+  declaration(
+    migration,
+    'CREATE OR REPLACE FUNCTION "public"."fn_sms_to_rating"',
+    ["$$;"],
+  );
+
 describe("SMS rating source taxonomy", () => {
   const migration = read(MIGRATION);
+
+  it("bounds each slice to the declaration it asserts on", () => {
+    // Guards the guard: if either slice ever ran to the end of the file again,
+    // these would fail, because each of these strings exists elsewhere in the
+    // baseline but not inside the sliced declaration.
+    const check = sourceCheck(migration);
+    expect(check).not.toContain("inbound_keyword");
+    expect(check).not.toContain("CREATE OR REPLACE FUNCTION");
+    expect(check.length).toBeLessThan(2_000);
+
+    const fn = ratingFn(migration);
+    expect(fn).not.toContain("campaign_activity_ratings_source_check");
+    expect(fn).not.toContain("an_report_import");
+    expect(fn).toContain("RETURNS \"trigger\"");
+    expect(fn.length).toBeLessThan(2_000);
+  });
 
   it.each(SPLIT_SOURCES)(
     "allows %s in the campaign_activity_ratings source CHECK",
     (source) => {
-      const check = migration.slice(
-        migration.indexOf("campaign_activity_ratings_source_check"),
-      );
-      expect(check).toContain(`'${source}'`);
+      expect(sourceCheck(migration)).toContain(`'${source}'`);
     },
   );
 
@@ -53,6 +103,7 @@ describe("SMS rating source taxonomy", () => {
     // Written against the UNION of both databases: PROD carries
     // an_sync / an_report_import, DEV did not. Dropping either would
     // fail the migration on PROD data.
+    const check = sourceCheck(migration);
     for (const legacy of [
       "call_outcome",
       "phone_call_live",
@@ -70,12 +121,12 @@ describe("SMS rating source taxonomy", () => {
       "an_sync",
       "an_report_import",
     ]) {
-      expect(migration).toContain(`'${legacy}'`);
+      expect(check).toContain(`'${legacy}'`);
     }
   });
 
   it("emits both trigger-side values from fn_sms_to_rating", () => {
-    const fn = migration.slice(migration.indexOf("CREATE OR REPLACE FUNCTION"));
+    const fn = ratingFn(migration);
     expect(fn).toContain("'sms_survey'");
     expect(fn).toContain("'sms_inbound'");
     // The branch must key off the stamped origin, not the notes text.
@@ -88,8 +139,8 @@ describe("SMS rating source taxonomy", () => {
     // including in the window between this migration applying and the
     // stamping runtime deploying. A future keyword producer must
     // stamp 'inbound_keyword' to be counted as sms_inbound.
-    const fn = migration.slice(migration.indexOf("CREATE OR REPLACE FUNCTION"));
-    const branch = fn.slice(fn.indexOf("v_source := CASE"));
+    const fn = ratingFn(migration);
+    const branch = declaration(fn, "v_source := CASE", ["END;"]);
     expect(branch).toMatch(/ELSE\s+'sms_survey'/);
   });
 

@@ -1,0 +1,671 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`campaign header actions — every one keeps a home > records the destination map for review 1`] = `
+{
+  "add-assessment": "New action ▾ → Assessment",
+  "all-settings": "⋯ overflow, and the Setup tab's "Basics & all settings" card",
+  "back": "Header — unchanged, the back arrow left of the campaign name",
+  "build-list": "Header — the "Build list" toggle button (promoted out of the Build ▾ menu)",
+  "create-email": "New action ▾ → Email",
+  "create-phone-call": "New action ▾ → Call list",
+  "create-sms": "New action ▾ → SMS",
+  "edit-basics": "Header — unchanged, the pencil beside the campaign name",
+  "import-workers": "⋯ overflow, and the Setup tab's "Import worker list" card",
+  "rerun-wizard": "⋯ overflow, and the Setup tab's "Re-run wizard" card",
+  "task-management": "⋯ overflow (the link to ?tab=plan&sub=task-lists&from=header); the create half is New action ▾ → Task list",
+  "view-full-plan": "⋯ overflow, the Setup tab's "Strategic plan" card, and More → Plan & Execution when the module is on",
+}
+`;
+
+exports[`resolveVisibleTabs — full mode is today's campaign page > T1 — the eight tabs and twenty sub-tabs, in render order 1`] = `
+{
+  "activeMoreLabel": null,
+  "activeSubId": "wall-chart",
+  "activeTabId": "workforce",
+  "mode": "full",
+  "more": [],
+  "tabs": [
+    {
+      "href": {
+        "sub": null,
+        "tab": "overview",
+      },
+      "id": "overview",
+      "label": "Overview",
+      "module": "insights",
+      "state": "on",
+      "subs": [],
+    },
+    {
+      "href": {
+        "sub": "strategy",
+        "tab": "plan",
+      },
+      "id": "plan",
+      "label": "Plan & Execution",
+      "module": "strategic_plan",
+      "state": "on",
+      "subs": [
+        {
+          "href": {
+            "sub": "strategy",
+            "tab": "plan",
+          },
+          "id": "strategy",
+          "label": "Strategy",
+          "module": "strategic_plan",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "workplan",
+            "tab": "plan",
+          },
+          "id": "workplan",
+          "label": "Workplan",
+          "module": "strategic_plan",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "actions",
+            "tab": "plan",
+          },
+          "id": "actions",
+          "label": "Actions",
+          "module": "actions",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "task-lists",
+            "tab": "plan",
+          },
+          "id": "task-lists",
+          "label": "Task Lists",
+          "module": "actions",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "pending-review",
+            "tab": "plan",
+          },
+          "id": "pending-review",
+          "label": "Pending review",
+          "module": "strategic_plan",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "role-check",
+            "tab": "plan",
+          },
+          "id": "role-check",
+          "label": "Role check",
+          "module": "wall_chart_people",
+          "state": "on",
+        },
+      ],
+    },
+    {
+      "href": {
+        "sub": null,
+        "tab": "section-plans",
+      },
+      "id": "section-plans",
+      "label": "Section Plans",
+      "module": "strategic_plan",
+      "state": "on",
+      "subs": [],
+    },
+    {
+      "href": {
+        "sub": "wall-chart",
+        "tab": "workforce",
+      },
+      "id": "workforce",
+      "label": "Workforce",
+      "module": "wall_chart_people",
+      "state": "on",
+      "subs": [
+        {
+          "href": {
+            "sub": "wall-chart",
+            "tab": "workforce",
+          },
+          "id": "wall-chart",
+          "label": "Wall Chart / List",
+          "module": "wall_chart_people",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "campaign-units",
+            "tab": "workforce",
+          },
+          "id": "campaign-units",
+          "label": "Campaign Units",
+          "module": "setup",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "universe",
+            "tab": "workforce",
+          },
+          "id": "universe",
+          "label": "Who's in",
+          "module": "setup",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "assessments",
+            "tab": "workforce",
+          },
+          "id": "assessments",
+          "label": "Assessments",
+          "module": "wall_chart_people",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "data-fields",
+            "tab": "workforce",
+          },
+          "id": "data-fields",
+          "label": "Data fields",
+          "module": "data_fields",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "activists",
+            "tab": "workforce",
+          },
+          "id": "activists",
+          "label": "Activists & WOCs",
+          "module": "activists_wocs",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "foundational-readiness",
+            "tab": "workforce",
+          },
+          "id": "foundational-readiness",
+          "label": "Foundational Readiness",
+          "module": "strategic_plan",
+          "state": "on",
+        },
+      ],
+    },
+    {
+      "href": {
+        "sub": "reports",
+        "tab": "outcomes",
+      },
+      "id": "outcomes",
+      "label": "Outcomes",
+      "module": "insights",
+      "state": "on",
+      "subs": [
+        {
+          "href": {
+            "sub": "reports",
+            "tab": "outcomes",
+          },
+          "id": "reports",
+          "label": "Reports",
+          "module": "insights",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "results",
+            "tab": "outcomes",
+          },
+          "id": "results",
+          "label": "Results",
+          "module": "insights",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "insights",
+            "tab": "outcomes",
+          },
+          "id": "insights",
+          "label": "Insights",
+          "module": "insights",
+          "state": "on",
+        },
+      ],
+    },
+    {
+      "href": {
+        "sub": "comms",
+        "tab": "outreach",
+      },
+      "id": "outreach",
+      "label": "Outreach",
+      "module": "actions",
+      "state": "on",
+      "subs": [
+        {
+          "href": {
+            "sub": "comms",
+            "tab": "outreach",
+          },
+          "id": "comms",
+          "label": "Comms",
+          "module": "actions",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "phone",
+            "tab": "outreach",
+          },
+          "id": "phone",
+          "label": "Phone Ops",
+          "module": "actions",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "sms",
+            "tab": "outreach",
+          },
+          "id": "sms",
+          "label": "SMS",
+          "module": "actions",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "soc",
+            "tab": "outreach",
+          },
+          "id": "soc",
+          "label": "SOC",
+          "module": "actions",
+          "state": "on",
+        },
+      ],
+    },
+    {
+      "href": {
+        "sub": null,
+        "tab": "library",
+      },
+      "id": "library",
+      "label": "Library",
+      "module": "library",
+      "state": "on",
+      "subs": [],
+    },
+    {
+      "href": {
+        "sub": null,
+        "tab": "bargaining",
+      },
+      "id": "bargaining",
+      "label": "Bargaining",
+      "module": "bargaining",
+      "state": "on",
+      "subs": [],
+    },
+  ],
+}
+`;
+
+exports[`resolveVisibleTabs — full mode is today's campaign page > T2 — without the bargaining phase there are seven tabs and still no More 1`] = `
+{
+  "activeMoreLabel": null,
+  "activeSubId": "wall-chart",
+  "activeTabId": "workforce",
+  "mode": "full",
+  "more": [],
+  "tabs": [
+    {
+      "href": {
+        "sub": null,
+        "tab": "overview",
+      },
+      "id": "overview",
+      "label": "Overview",
+      "module": "insights",
+      "state": "on",
+      "subs": [],
+    },
+    {
+      "href": {
+        "sub": "strategy",
+        "tab": "plan",
+      },
+      "id": "plan",
+      "label": "Plan & Execution",
+      "module": "strategic_plan",
+      "state": "on",
+      "subs": [
+        {
+          "href": {
+            "sub": "strategy",
+            "tab": "plan",
+          },
+          "id": "strategy",
+          "label": "Strategy",
+          "module": "strategic_plan",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "workplan",
+            "tab": "plan",
+          },
+          "id": "workplan",
+          "label": "Workplan",
+          "module": "strategic_plan",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "actions",
+            "tab": "plan",
+          },
+          "id": "actions",
+          "label": "Actions",
+          "module": "actions",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "task-lists",
+            "tab": "plan",
+          },
+          "id": "task-lists",
+          "label": "Task Lists",
+          "module": "actions",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "pending-review",
+            "tab": "plan",
+          },
+          "id": "pending-review",
+          "label": "Pending review",
+          "module": "strategic_plan",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "role-check",
+            "tab": "plan",
+          },
+          "id": "role-check",
+          "label": "Role check",
+          "module": "wall_chart_people",
+          "state": "on",
+        },
+      ],
+    },
+    {
+      "href": {
+        "sub": null,
+        "tab": "section-plans",
+      },
+      "id": "section-plans",
+      "label": "Section Plans",
+      "module": "strategic_plan",
+      "state": "on",
+      "subs": [],
+    },
+    {
+      "href": {
+        "sub": "wall-chart",
+        "tab": "workforce",
+      },
+      "id": "workforce",
+      "label": "Workforce",
+      "module": "wall_chart_people",
+      "state": "on",
+      "subs": [
+        {
+          "href": {
+            "sub": "wall-chart",
+            "tab": "workforce",
+          },
+          "id": "wall-chart",
+          "label": "Wall Chart / List",
+          "module": "wall_chart_people",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "campaign-units",
+            "tab": "workforce",
+          },
+          "id": "campaign-units",
+          "label": "Campaign Units",
+          "module": "setup",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "universe",
+            "tab": "workforce",
+          },
+          "id": "universe",
+          "label": "Who's in",
+          "module": "setup",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "assessments",
+            "tab": "workforce",
+          },
+          "id": "assessments",
+          "label": "Assessments",
+          "module": "wall_chart_people",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "data-fields",
+            "tab": "workforce",
+          },
+          "id": "data-fields",
+          "label": "Data fields",
+          "module": "data_fields",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "activists",
+            "tab": "workforce",
+          },
+          "id": "activists",
+          "label": "Activists & WOCs",
+          "module": "activists_wocs",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "foundational-readiness",
+            "tab": "workforce",
+          },
+          "id": "foundational-readiness",
+          "label": "Foundational Readiness",
+          "module": "strategic_plan",
+          "state": "on",
+        },
+      ],
+    },
+    {
+      "href": {
+        "sub": "reports",
+        "tab": "outcomes",
+      },
+      "id": "outcomes",
+      "label": "Outcomes",
+      "module": "insights",
+      "state": "on",
+      "subs": [
+        {
+          "href": {
+            "sub": "reports",
+            "tab": "outcomes",
+          },
+          "id": "reports",
+          "label": "Reports",
+          "module": "insights",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "results",
+            "tab": "outcomes",
+          },
+          "id": "results",
+          "label": "Results",
+          "module": "insights",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "insights",
+            "tab": "outcomes",
+          },
+          "id": "insights",
+          "label": "Insights",
+          "module": "insights",
+          "state": "on",
+        },
+      ],
+    },
+    {
+      "href": {
+        "sub": "comms",
+        "tab": "outreach",
+      },
+      "id": "outreach",
+      "label": "Outreach",
+      "module": "actions",
+      "state": "on",
+      "subs": [
+        {
+          "href": {
+            "sub": "comms",
+            "tab": "outreach",
+          },
+          "id": "comms",
+          "label": "Comms",
+          "module": "actions",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "phone",
+            "tab": "outreach",
+          },
+          "id": "phone",
+          "label": "Phone Ops",
+          "module": "actions",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "sms",
+            "tab": "outreach",
+          },
+          "id": "sms",
+          "label": "SMS",
+          "module": "actions",
+          "state": "on",
+        },
+        {
+          "href": {
+            "sub": "soc",
+            "tab": "outreach",
+          },
+          "id": "soc",
+          "label": "SOC",
+          "module": "actions",
+          "state": "on",
+        },
+      ],
+    },
+    {
+      "href": {
+        "sub": null,
+        "tab": "library",
+      },
+      "id": "library",
+      "label": "Library",
+      "module": "library",
+      "state": "on",
+      "subs": [],
+    },
+  ],
+}
+`;
+
+exports[`resolveVisibleTabs — organiser mode > T4 — the coverage census: which surfaces are primary, sub-items or behind More 1`] = `
+{
+  "more": [
+    "overview",
+    "plan",
+    "section-plans",
+    "outcomes",
+    "library",
+    "bargaining",
+    "plan/strategy",
+    "plan/workplan",
+    "plan/pending-review",
+    "plan/role-check",
+    "workforce/data-fields",
+    "workforce/activists",
+    "workforce/foundational-readiness",
+    "outcomes/reports",
+    "outcomes/results",
+    "outcomes/insights",
+    "workforce/activists#register",
+    "workforce/activists#tasking",
+    "workforce/activists#wocs",
+    "workforce/activists#structure-tests",
+    "library#documents",
+    "library#agreements",
+    "library#offers",
+  ],
+  "sub": [
+    "plan/actions",
+    "plan/task-lists",
+    "workforce/campaign-units",
+    "workforce/assessments",
+    "outreach/phone",
+    "outreach/sms",
+    "outreach/soc",
+    "outreach/sms#blasts",
+    "outreach/sms#inbox",
+    "outreach/sms#surveys",
+    "outreach/sms#chats",
+    "outreach/sms#relays",
+  ],
+  "tab": [
+    "workforce",
+    "outreach",
+    "workforce/wall-chart",
+    "workforce/universe",
+    "outreach/comms",
+    "outreach/comms#drafts",
+    "outreach/comms#list-builder",
+    "outreach/comms#inbox",
+    "workforce/wall-chart#wall-chart",
+    "workforce/wall-chart#list",
+  ],
+}
+`;

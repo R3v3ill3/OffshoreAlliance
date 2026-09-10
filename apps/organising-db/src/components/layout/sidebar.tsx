@@ -1,56 +1,57 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
 import { useAuth } from "@/lib/supabase/auth-context";
 import {
-  LayoutDashboard,
-  MapPin,
-  Megaphone,
-  BarChart3,
-  Settings,
-  LogOut,
+  Building2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  LayoutGrid,
-  RefreshCcw,
+  Eye,
   Loader2,
-  MailOpen,
-  Compass,
-  GraduationCap,
-  Inbox,
-  LayoutTemplate,
-  MessageSquare,
-  MessageSquareMore,
+  LogOut,
+  RefreshCcw,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { isNavItemActive } from "@/lib/nav/active-nav";
+import { NAV_ICONS } from "@/lib/nav/nav-icons";
+import {
+  ALL_NAV_HREFS,
+  FULL_ADMIN_ITEMS,
+  FULL_NAV_ITEMS,
+  buildNavModel,
+  isNavRowActive,
+} from "@/lib/nav/nav-model";
+import { useWorkspace } from "@/lib/workspace/use-workspace";
 import { useEmailInboxUnreadCount } from "@/lib/hooks/useEmailInbox";
+import { NavRow } from "./nav-row";
 
-export const navItems = [
-  { href: "/campaigns", label: "Campaigns", icon: Megaphone },
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/overview", label: "Overview", icon: LayoutGrid },
-  { href: "/worksites", label: "Worksites", icon: MapPin },
-  { href: "/upcoming-projects", label: "Upcoming Projects", icon: Compass },
-  { href: "/email/inbox", label: "Email Inbox", icon: Inbox },
-  { href: "/sms", label: "SMS Tools", icon: MessageSquareMore },
-  { href: "/sms/inbox", label: "SMS Inbox", icon: MessageSquare },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
-  { href: "/help", label: "Guides", icon: GraduationCap },
-];
+/**
+ * WP1.2: the nav rows now live in `@/lib/nav/nav-model` so a vitest `node`
+ * suite can pin them. These two exports stay for backwards compatibility —
+ * they are re-projections of that single definition (icon *components* rather
+ * than icon keys), not a second copy. The `allNavHrefs` re-export is gone:
+ * nothing imported it, and `ALL_NAV_HREFS` is the one name for that list.
+ */
+export const navItems = FULL_NAV_ITEMS.map((i) => ({
+  href: i.href,
+  label: i.label,
+  icon: NAV_ICONS[i.icon],
+}));
 
-export const adminItems = [
-  { href: "/email-imports", label: "Email Imports", icon: MailOpen },
-  { href: "/email/wrappers", label: "Email Wrappers", icon: LayoutTemplate },
-  { href: "/administration", label: "Administration", icon: Settings },
-];
+export const adminItems = FULL_ADMIN_ITEMS.map((i) => ({
+  href: i.href,
+  label: i.label,
+  icon: NAV_ICONS[i.icon],
+}));
 
-/** Every sidebar href, so nested items (e.g. /sms and /sms/inbox) resolve to one active entry. */
-export const allNavHrefs = [...navItems, ...adminItems].map((i) => i.href);
+const ROW_BASE =
+  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors";
+const ROW_ACTIVE = "bg-sidebar-accent text-sidebar-accent-foreground";
+const ROW_INACTIVE =
+  "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -66,6 +67,46 @@ export function Sidebar() {
   const [signOutInProgress, setSignOutInProgress] = useState(false);
   const [recoveryFeedback, setRecoveryFeedback] = useState<string | null>(null);
   const { data: emailUnreadCount = 0 } = useEmailInboxUnreadCount(!!user);
+  const workspace = useWorkspace();
+  const { mode, moduleState, canShowEverything, showEverything } = workspace;
+
+  const model = useMemo(
+    () =>
+      buildNavModel({
+        mode,
+        moduleState,
+        isAdmin,
+        canShowEverything,
+        showEverything,
+        unreadEmail: emailUnreadCount,
+      }),
+    [mode, moduleState, isAdmin, canShowEverything, showEverything, emailUnreadCount]
+  );
+
+  // Closed on every first paint, then re-synced whenever the mode changes.
+  //
+  // A `useState` initialiser cannot carry the model's rule here: it is read
+  // once, on the first render, and `WorkspaceProvider` is still resolving to
+  // FULL mode at that point (`resolve.ts:74` answers "no prefs yet" with
+  // `full`, WP1.1's deliberate fail-open). Full mode's model says
+  // `collapsed: false`, so `useState(!model.organisation.collapsed)` latched
+  // OPEN and never revisited the question when the profile arrived and the
+  // mode flipped to organiser — the section rendered `aria-expanded="true"`
+  // for the whole session.
+  //
+  // So: start closed, and let the effect below re-apply the model's rule on
+  // every mode change (organiser → `collapsed: true` → closed; a "Show
+  // everything" expansion → full → no Organisation section to show anyway,
+  // and toggling back re-collapses it). Between mode changes this is a plain
+  // React toggle: the effect's dependency is a boolean that only moves when
+  // the mode does, so a user who opens the section keeps it open. No storage.
+  const [orgOpen, setOrgOpen] = useState(false);
+  const organisationCollapsed = model.organisation.collapsed;
+  useEffect(() => {
+    setOrgOpen(!organisationCollapsed);
+  }, [organisationCollapsed]);
+
+  const organisationItems = model.organisation.items.filter((i) => i.state !== "hidden");
 
   const handleSignOut = async () => {
     if (signOutInProgress) return;
@@ -112,62 +153,102 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-2">
-        {navItems.map((item) => {
-          const isActive = isNavItemActive(pathname, item.href, allNavHrefs);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-              )}
-            >
-              <item.icon className="h-4 w-4 shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
-              {item.href === "/email/inbox" && emailUnreadCount > 0 && (
-                <span
-                  className={cn(
-                    "ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground",
-                    collapsed && "absolute right-1 top-1 h-4 min-w-4 px-1"
-                  )}
-                  aria-label={`${emailUnreadCount} unread email conversations`}
-                >
-                  {emailUnreadCount > 99 ? "99+" : emailUnreadCount}
-                </span>
-              )}
-            </Link>
-          );
-        })}
+        {model.primary.map((item) => (
+          <NavRow
+            key={item.id}
+            item={item}
+            isActive={isNavRowActive(pathname, item, ALL_NAV_HREFS)}
+            baseClassName={cn("relative", ROW_BASE)}
+            activeClassName={ROW_ACTIVE}
+            inactiveClassName={ROW_INACTIVE}
+            showLabel={!collapsed}
+            badgeClassName={cn(
+              "ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground",
+              collapsed && "absolute right-1 top-1 h-4 min-w-4 px-1"
+            )}
+          />
+        ))}
 
-        {isAdmin && (
+        {organisationItems.length > 0 && (
           <>
             <Separator className="my-2" />
-            {adminItems.map((item) => {
-              const isActive = isNavItemActive(pathname, item.href, allNavHrefs);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                  )}
-                >
-                  <item.icon className="h-4 w-4 shrink-0" />
-                  {!collapsed && <span>{item.label}</span>}
-                </Link>
-              );
-            })}
+            <button
+              type="button"
+              // The label span is dropped in the collapsed (w-16) sidebar, so
+              // the name has to come from the attribute or the control is
+              // anonymous to a screen reader at that width.
+              aria-label="Organisation"
+              aria-expanded={orgOpen}
+              aria-controls="nav-organisation"
+              onClick={() => setOrgOpen((v) => !v)}
+              className={cn("w-full", ROW_BASE, ROW_INACTIVE)}
+            >
+              <Building2 className="h-4 w-4 shrink-0" />
+              {!collapsed && (
+                <>
+                  <span>Organisation</span>
+                  <ChevronDown
+                    className={cn(
+                      "ml-auto h-4 w-4 transition-transform",
+                      orgOpen && "rotate-180"
+                    )}
+                  />
+                </>
+              )}
+            </button>
+            {orgOpen && (
+              <div id="nav-organisation" className="space-y-1 pl-3">
+                {organisationItems.map((item) => (
+                  <NavRow
+                    key={item.id}
+                    item={item}
+                    isActive={isNavRowActive(pathname, item, ALL_NAV_HREFS)}
+                    baseClassName={ROW_BASE}
+                    activeClassName={ROW_ACTIVE}
+                    inactiveClassName={ROW_INACTIVE}
+                    showLabel={!collapsed}
+                    badgeClassName=""
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {model.admin.length > 0 && (
+          <>
+            <Separator className="my-2" />
+            {model.admin.map((item) => (
+              <NavRow
+                key={item.id}
+                item={item}
+                isActive={isNavRowActive(pathname, item, ALL_NAV_HREFS)}
+                baseClassName={ROW_BASE}
+                activeClassName={ROW_ACTIVE}
+                inactiveClassName={ROW_INACTIVE}
+                showLabel={!collapsed}
+                badgeClassName=""
+              />
+            ))}
           </>
         )}
       </nav>
 
       <div className="border-t p-2 space-y-1">
+        {model.showEverythingControl !== "hidden" && (
+          <button
+            type="button"
+            // Same reason as the Organisation disclosure: icon only when the
+            // sidebar is collapsed.
+            aria-label="Show everything"
+            onClick={() => workspace.setShowEverything(!showEverything)}
+            aria-pressed={model.showEverythingControl === "active"}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground transition-colors"
+          >
+            <Eye className="h-4 w-4 shrink-0" />
+            {!collapsed && <span>Show everything</span>}
+          </button>
+        )}
         {!collapsed && user && (
           <div className="px-3 py-2 text-xs text-muted-foreground truncate">
             {profile?.display_name || user.email}
@@ -183,7 +264,7 @@ export function Sidebar() {
           ) : (
             <RefreshCcw className="h-4 w-4 shrink-0" />
           )}
-          {!collapsed && <span>Hard Refresh Connection</span>}
+          {!collapsed && <span>{model.footer.hardRefresh.label}</span>}
         </button>
         {recoveryFeedback && !collapsed && (
           <p className="px-3 text-[11px] text-muted-foreground">{recoveryFeedback}</p>
@@ -198,7 +279,9 @@ export function Sidebar() {
           ) : (
             <LogOut className="h-4 w-4 shrink-0" />
           )}
-          {!collapsed && <span>{signOutInProgress ? "Signing out..." : "Sign out"}</span>}
+          {!collapsed && (
+            <span>{signOutInProgress ? "Signing out..." : model.footer.signOut.label}</span>
+          )}
         </button>
         <Button
           variant="ghost"

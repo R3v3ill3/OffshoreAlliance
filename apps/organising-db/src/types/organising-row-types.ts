@@ -839,6 +839,24 @@ export interface UserProfile {
   organiser_id: number | null;
   created_at: string;
   updated_at: string;
+  /**
+   * WP1.1 per-user workspace override (jsonb, `{}` by default). Typed
+   * `unknown` on purpose: read it through `parseWorkspacePrefs()` from
+   * `@/lib/workspace/prefs-schema`, never directly.
+   */
+  workspace_prefs: unknown;
+}
+
+/**
+ * WP1.7 — one row per first-use hint this user has dismissed
+ * (public.user_hint_dismissals, owner-only RLS). `hint_id` is a
+ * `HintId` from `@/lib/hints/registry`; typed `string` here because the
+ * column is deliberately un-enumerated in SQL.
+ */
+export interface UserHintDismissal {
+  user_id: string;
+  hint_id: string;
+  dismissed_at: string;
 }
 
 export interface AgreementOrganiser {

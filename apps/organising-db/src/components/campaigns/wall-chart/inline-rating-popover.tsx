@@ -31,8 +31,16 @@ export type InlineRatingPopoverProps = {
   disabled?: boolean;
   /** Optional callback to open worker details */
   onOpenDetail?: () => void;
+  /** Optional: fired after a rating save succeeds. Additive; never gates the save. */
+  onSaved?: () => void;
   /** Per-level label overrides for the 1–5 scale. Keys "1"–"5". */
   customLabels?: Record<string, string> | null;
+  /**
+   * Optional: fired when the popover opens (WP1.7). The organiser has found
+   * the control, so the first-use hint gets out of the way. Additive; never
+   * gates the open.
+   */
+  onRatingControlOpen?: () => void;
   /** The clickable anchor (typically a rating number chip inside a WorkerTile). */
   children: ReactNode;
 };
@@ -47,7 +55,9 @@ export function InlineRatingPopover({
   initial,
   disabled,
   onOpenDetail,
+  onSaved,
   customLabels,
+  onRatingControlOpen,
   children,
 }: InlineRatingPopoverProps) {
   const [open, setOpen] = useState(false);
@@ -57,6 +67,13 @@ export function InlineRatingPopover({
   const save = useSaveActivityRating({
     campaignId,
     onSuccess: () => {
+      // First, so a toast failure cannot swallow it; and guarded, so a throwing
+      // callback cannot leave the popover open ("never gates the save").
+      try {
+        onSaved?.();
+      } catch {
+        /* an additive notification must never break the save path */
+      }
       toast.success(`Rating saved for ${workerName}`);
       setOpen(false);
       setNotes("");
@@ -72,6 +89,11 @@ export function InlineRatingPopover({
       // repeated quick edits start from the current stored value.
       setValue(initial);
       setNotes("");
+      try {
+        onRatingControlOpen?.();
+      } catch {
+        /* an additive notification must never break the open path */
+      }
     }
     setOpen(next);
   };
@@ -176,6 +198,10 @@ export type CumulativeRatingPopoverProps = {
   workerId: number;
   workerName: string;
   onOpenDetail?: () => void;
+  /** Optional: fired after a rating save succeeds. Additive; never gates the save. */
+  onSaved?: () => void;
+  /** Optional: fired when the popover opens (WP1.7). Additive; never gates the open. */
+  onRatingControlOpen?: () => void;
   /** The clickable trigger (the large rating badge on the tile). */
   children: ReactNode;
 };
@@ -185,6 +211,8 @@ export function CumulativeRatingPopover({
   workerId,
   workerName,
   onOpenDetail,
+  onSaved,
+  onRatingControlOpen,
   children,
 }: CumulativeRatingPopoverProps) {
   const [open, setOpen] = useState(false);
@@ -201,6 +229,13 @@ export function CumulativeRatingPopover({
   const save = useSaveActivityRating({
     campaignId,
     onSuccess: () => {
+      // First, so a toast failure cannot swallow it; and guarded, so a throwing
+      // callback cannot leave the popover open ("never gates the save").
+      try {
+        onSaved?.();
+      } catch {
+        /* an additive notification must never break the save path */
+      }
       toast.success(`Rating saved for ${workerName}`);
       setOpen(false);
     },
@@ -214,6 +249,11 @@ export function CumulativeRatingPopover({
       setSelectedActivityId("");
       setValue({ rating: null, binary_value: null });
       setNotes("");
+      try {
+        onRatingControlOpen?.();
+      } catch {
+        /* an additive notification must never break the open path */
+      }
     }
     setOpen(next);
   };

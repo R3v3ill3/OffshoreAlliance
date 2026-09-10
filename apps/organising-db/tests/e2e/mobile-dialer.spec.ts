@@ -19,9 +19,7 @@
  * Each section below maps 1:1 to a stage of the dialer flow.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-declare const test: any;
-declare const expect: any;
+import { expect, test } from "@playwright/test";
 
 const TOKEN = process.env.MOBILE_DIALER_TEST_TOKEN;
 const PASSWORD = process.env.MOBILE_DIALER_TEST_PASSWORD;
@@ -29,11 +27,7 @@ const PASSWORD = process.env.MOBILE_DIALER_TEST_PASSWORD;
 test.describe("Mobile dialer — happy path", () => {
   test.skip(!TOKEN || !PASSWORD, "Test token/password not set");
 
-  test("volunteer can sign in, claim, dial, record outcome, advance", async ({
-    page,
-  }: {
-    page: any;
-  }) => {
+  test("volunteer can sign in, claim, dial, record outcome, advance", async ({ page }) => {
     await page.goto(`/call/${TOKEN}`);
 
     // Password gate

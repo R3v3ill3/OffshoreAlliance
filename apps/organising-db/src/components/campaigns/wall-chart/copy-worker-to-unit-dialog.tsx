@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { humanizeOuType, ouDisplayName, type WallChartOU } from "./types";
 import { useMoveWorkersMutation } from "./move-worker-mutation";
+import { toast } from "sonner";
 
 export type MoveMode = "move" | "copy";
 
@@ -108,6 +109,14 @@ export function MoveOrCopyWorkersDialog({
         onSuccess: (result) => {
           onCompleted?.(result);
           onOpenChange(false);
+        },
+        // Announce a failed move/copy (e.g. NoRowsAffectedError when the
+        // source delete is filtered by RLS) and keep the dialog open so the
+        // user can retry or cancel; nothing else reads moveMutation.error.
+        onError: (err) => {
+          toast.error(
+            err instanceof Error ? err.message : `${mode === "move" ? "Moving" : "Copying"} the workers failed.`
+          );
         },
       }
     );

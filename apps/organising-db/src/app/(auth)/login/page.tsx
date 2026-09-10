@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient, resetClient, withAuthOpTimeout, isAuthLockTimeout } from "@/lib/supabase/client";
+import { stampLogin } from "@/lib/analytics/session-timing";
 
 // Bound each sign-in attempt so a jammed in-tab auth lock can't leave the
 // button stuck on "Signing in…" indefinitely. 8 s is below auth-js's own 5 s
@@ -70,7 +71,13 @@ function LoginForm() {
         return;
       }
 
-      router.push("/campaigns");
+      // t0 for the "login → wall chart" metric (WP0.2). A timing stamp is not
+      // view state: nothing in the UI reads it, and it is per-tab
+      // sessionStorage, so losing it degrades a metric and nothing else.
+      stampLogin("login_form");
+      // WP1.3: the neutral landing gate at `/` decides between /campaigns
+      // (full mode) and /my-campaigns (organiser mode) once the profile loads.
+      router.push("/");
       router.refresh();
     } catch (err) {
       // Still jammed after a reset + retry — the holding op self-clears once its

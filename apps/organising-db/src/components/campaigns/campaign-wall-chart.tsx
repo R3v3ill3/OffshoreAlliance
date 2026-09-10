@@ -81,6 +81,7 @@ import { WallChartSelectionBar } from "./wall-chart/wall-chart-selection-bar";
 import { ClearRatingsDialog } from "./wall-chart/clear-ratings-dialog";
 import { useWallChartSelection } from "./wall-chart/use-wall-chart-selection";
 import { useMoveWorkersMutation } from "./wall-chart/move-worker-mutation";
+import { toast } from "sonner";
 import { LinkToLeaderDialog } from "./wall-chart/link-to-leader-dialog";
 import type { WorkerDragRef } from "./wall-chart/dnd";
 import { RelationshipOverlay } from "./wall-chart/relationship-overlay";
@@ -93,6 +94,7 @@ import {
 } from "./wall-chart/normalize-members";
 import {
   DEFAULT_FILTER_STATE,
+  activeFilterKeys,
   applyFilters,
   applySort,
   factSortOpts,
@@ -100,6 +102,17 @@ import {
   type RatingFilterAssessmentContext,
   type WallChartFilterState,
 } from "./wall-chart/filters";
+import {
+  trackWallchartFilterApplied,
+  trackWallchartFirstInteraction,
+  type Interaction,
+} from "@/lib/analytics/events";
+import {
+  firstInteractionPayload,
+  hasFiredFirstInteraction,
+  markFirstInteractionFired,
+  readLoginStamp,
+} from "@/lib/analytics/session-timing";
 import type {
   ActivityRating,
   AssessmentSelection,
@@ -119,6 +132,8 @@ import { WallChartAssessmentCharts } from "./WallChartAssessmentCharts";
 import { BuildListPanel } from "./wall-chart/build-list-panel";
 import { useBuildList, type FiredTaskDraft } from "./wall-chart/use-build-list";
 import { WorkerSearch, type WorkerSearchItem } from "./wall-chart/worker-search";
+import { pickRatingHintAnchor } from "@/lib/hints/pick-rating-hint-anchor";
+import { useFirstUseHint } from "@/lib/hints/use-first-use-hint";
 
 
 function activityIdsForWallChartSelections(
@@ -229,7 +244,9 @@ export function CampaignWallChart({
       const value = typeof next === "function" ? next(current) : next;
       if (value) {
         params.set("buildList", "1");
-        params.delete("view");
+        // The build-list panel is only mounted in the wall chart, and an absent
+        // ?view= means "device default" (list on touch), so state it explicitly.
+        params.set("view", "wall-chart");
       } else {
         params.delete("buildList");
       }
@@ -850,6 +867,21 @@ export function CampaignWallChart({
     [parentExclusiveWorkersByOu, workersByOu]
   );
 
+  // WP1.7: the one tile the first-use rating hint anchors to (first in DOM
+  // order: Unassigned, then the units), and the per-user seen state.
+  const ratingHintAnchor = useMemo(
+    () =>
+      pickRatingHintAnchor({
+        unassignedWorkerIds,
+        units: visibleOus.map((o) => ({ ouId: o.ou_id, workerIds: visibleWorkersForOu(o.ou_id) })),
+      }),
+    [unassignedWorkerIds, visibleOus, visibleWorkersForOu]
+  );
+  const ratingHint = useFirstUseHint("wall_chart_rating", {
+    hasTiles: ratingHintAnchor !== null,
+    canWrite,
+  });
+
   const estimate = (campaign?.total_worker_estimate as number | null) ?? 0;
   const named = memberRows.length;
   const campaignGreySlots = Math.max(0, estimate - named);
@@ -926,12 +958,63 @@ export function CampaignWallChart({
   const UNASSIGNED_KEY = 0;
 
   const getFilter = (scope: number) => filterByScope.get(scope) ?? DEFAULT_FILTER_STATE();
+
+  /**
+   * wallchart_first_interaction (WP0.2) — fires at most once per browser tab,
+   * so the §8 "seconds from login to the wall chart" metric is one number per
+   * login rather than one per campaign opened in the same sitting. The whole
+   * once-per-session + timing decision lives in the pure
+   * `firstInteractionPayload`; a null payload means "do not fire".
+   */
+  const noteFirstInteraction = useCallback(
+    (interaction: Interaction) => {
+      const payload = firstInteractionPayload({
+        stamp: readLoginStamp(),
+        now: Date.now(),
+        campaignId: Number(campaignId),
+        interaction,
+        alreadyFired: hasFiredFirstInteraction(),
+      });
+      if (!payload) return;
+      markFirstInteractionFired();
+      trackWallchartFirstInteraction(payload);
+    },
+    [campaignId]
+  );
+
   const setFilter = (scope: number, next: WallChartFilterState) => {
+    // wallchart_filter_applied (WP0.2). One function covers both filter bars
+    // (Unassigned card and every unit card) and Sort, which WallChartFilterBar
+    // routes through the same onChange — hence sort_key on the event.
+    const keys = activeFilterKeys(next);
+    trackWallchartFilterApplied({
+      campaign_id: Number(campaignId),
+      scope: scope === UNASSIGNED_KEY ? "unassigned" : "unit",
+      filter_keys: keys,
+      sort_key: next.sort,
+    });
+    noteFirstInteraction("filter");
     setFilterByScope((prev) => {
       const copy = new Map(prev);
       copy.set(scope, next);
       return copy;
     });
+  };
+
+  /** "Apply to all units" — shared by the Unassigned and unit filter bars. */
+  const applyToAllScopes = (filter: WallChartFilterState) => {
+    const keys = activeFilterKeys(filter);
+    trackWallchartFilterApplied({
+      campaign_id: Number(campaignId),
+      scope: "all",
+      filter_keys: keys,
+      sort_key: filter.sort,
+    });
+    noteFirstInteraction("filter");
+    const next = new Map<number, WallChartFilterState>();
+    next.set(UNASSIGNED_KEY, { ...filter });
+    for (const ou of ous) next.set(ou.ou_id, { ...filter });
+    setFilterByScope(next);
   };
 
   // Labels for filter options, derived from the already-fetched worker data.
@@ -1067,10 +1150,26 @@ export function CampaignWallChart({
           selection={effective}
           campaignId={campaignId}
           activityRating={activityRating}
+          // Both ids: a worker in several units renders as several tiles, and
+          // the hint must appear on exactly one of them. The anchor flag is
+          // independent of visibility so the badge wrapper stays mounted across
+          // the dismissal (fix round 1, finding 1).
+          ratingHintAnchor={
+            ratingHintAnchor?.workerId === workerId && ratingHintAnchor.ouId === ouId
+          }
+          showRatingHint={
+            ratingHint.visible &&
+            ratingHintAnchor?.workerId === workerId &&
+            ratingHintAnchor.ouId === ouId
+          }
+          onRatingHintDismiss={ratingHint.dismiss}
           enabledListBadges={enabledListBadges}
           listActivityRows={listActivityByWorker.get(workerId)}
           isSelected={selection.has(ouId, workerId)}
           onClick={(id, tileOuId, kind) => {
+            // Leading statement, before any branch, so a modifier-click counts
+            // too. Never alters this handler's control flow or return value.
+            noteFirstInteraction("tile_click");
             if (kind === "toggle-select") {
               selection.toggle(tileOuId, id);
               return;
@@ -1092,6 +1191,9 @@ export function CampaignWallChart({
           inBuildList={buildListOpen ? buildListWorkerIds.has(workerId) : undefined}
           buildListMode={buildListOpen || undefined}
           onDragStartRefs={(id, tileOuId) => {
+            // Drag *start* is the earliest honest signal: handleWorkerDrop can
+            // bail out after the organiser has already interacted.
+            noteFirstInteraction("drag");
             if (selection.has(tileOuId, id)) {
               return selection
                 .refs()
@@ -1109,6 +1211,7 @@ export function CampaignWallChart({
           }}
           onDragSessionStart={buildListOpen ? onBuildListWallDragStart : undefined}
           onDragEnd={buildListOpen ? onBuildListWallDragEnd : undefined}
+          onRatingSaved={() => noteFirstInteraction("rating")}
         />
       );
     },
@@ -1132,6 +1235,9 @@ export function CampaignWallChart({
       workerDetail,
       onBuildListWallDragStart,
       onBuildListWallDragEnd,
+      noteFirstInteraction,
+      ratingHint,
+      ratingHintAnchor,
     ]
   );
 
@@ -1278,6 +1384,12 @@ export function CampaignWallChart({
             // Clear selection after successful bulk action.
             if (selection.size > 0) selection.clear();
           },
+          // The mutation has no onError of its own and nothing reads .error, so
+          // a NoRowsAffectedError on the source delete (WP1.6) would otherwise
+          // be silent while the board refetches into the partial state.
+          onError: (err) => {
+            toast.error(err instanceof Error ? err.message : "Moving the worker failed.");
+          },
         }
       );
     },
@@ -1325,8 +1437,9 @@ export function CampaignWallChart({
           with the unit &quot;View&quot; control. Cells show c = cumulative and L = last activity.
           <span className="text-foreground/90">
             {" "}
-            Campaign-level unmapped slots are unnamed gaps from the worker estimate (up to 40
-            displayed); unassigned are named members not placed in an organising unit yet.
+            Campaign-level unmapped slots are unnamed gaps from the worker estimate (up to 24
+            cells shown per unit, then a &quot;+N more&quot; note); unassigned are named members
+            not placed in an organising unit yet.
           </span>{" "}
           Click a name to edit (staff only).
         </p>
@@ -1505,20 +1618,11 @@ export function CampaignWallChart({
 
         {/* overflow-anchor: none prevents the browser from picking these
             elements as scroll anchors. When the sticky summary above
-            collapses, its flow height shrinks and content here would
-            otherwise become the anchor — the browser would then adjust
-            scrollY to keep it visually stable, which felt like the page
-            "jumping back to the top of this section". */}
+            collapses, its flow height shrinks and content here (the units
+            container is now the first candidate) would otherwise become the
+            anchor — the browser would then adjust scrollY to keep it visually
+            stable, which felt like the page "jumping back to the top". */}
         <div style={{ overflowAnchor: "none" }}>
-        <WallChartAssessmentCharts
-          campaignId={campaignId}
-          activeAssessmentId={
-            campaignAssessmentDefault.kind === "assessment"
-              ? campaignAssessmentDefault.activityId
-              : null
-          }
-        />
-
         <div
           className={
             buildListOpen
@@ -1649,12 +1753,7 @@ export function CampaignWallChart({
                     occupations={derivedOptions.occupations}
                     dataFields={dataFields}
                     assessmentOptions={assessmentFilterOptions}
-                    onApplyToAll={() => {
-                      const next = new Map<number, WallChartFilterState>();
-                      next.set(UNASSIGNED_KEY, filter);
-                      for (const ou of ous) next.set(ou.ou_id, { ...filter });
-                      setFilterByScope(next);
-                    }}
+                    onApplyToAll={() => applyToAllScopes(filter)}
                   />
                 </div>
               }
@@ -2006,12 +2105,7 @@ export function CampaignWallChart({
                             occupations={derivedOptions.occupations}
                             dataFields={dataFields}
                             assessmentOptions={assessmentFilterOptions}
-                            onApplyToAll={() => {
-                              const next = new Map<number, WallChartFilterState>();
-                              next.set(UNASSIGNED_KEY, { ...filter });
-                              for (const o of ous) next.set(o.ou_id, { ...filter });
-                              setFilterByScope(next);
-                            }}
+                            onApplyToAll={() => applyToAllScopes(filter)}
                           />
                           {canWrite && (
                             <DropdownMenu>
@@ -2331,6 +2425,20 @@ export function CampaignWallChart({
             }}
           />
         )}
+        </div>
+
+        {/* Tiles first: the assessment-distribution charts sit below the unit
+            cards so an organiser sees the wall before the summary charts.
+            The card collapses itself, so below-the-fold costs nothing. */}
+        <div className="mt-4">
+          <WallChartAssessmentCharts
+            campaignId={campaignId}
+            activeAssessmentId={
+              campaignAssessmentDefault.kind === "assessment"
+                ? campaignAssessmentDefault.activityId
+                : null
+            }
+          />
         </div>
         </div>
 

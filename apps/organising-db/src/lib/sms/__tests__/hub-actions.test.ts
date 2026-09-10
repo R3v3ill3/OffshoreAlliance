@@ -100,11 +100,11 @@ describe('status groups', () => {
 
 describe('hrefs', () => {
   it('opens blasts, surveys and relays on the hub and chats in their workspace', () => {
-    expect(smsActionHref({ kind: 'blast', campaignId: 3, id: 4 })).toBe('/sms?open=blast%3A3%3A4')
+    expect(smsActionHref({ kind: 'blast', campaignId: 3, id: 4 })).toBe('/actions?open=blast%3A3%3A4')
     expect(
       smsActionHref({ kind: 'survey', campaignId: 3, id: 4 }, { standalone: true }),
-    ).toBe('/sms?open=survey%3A3%3A4&standalone=1')
-    expect(smsActionHref({ kind: 'relay', id: 9 })).toBe('/sms?open=relay%3A9')
+    ).toBe('/actions?open=survey%3A3%3A4&standalone=1')
+    expect(smsActionHref({ kind: 'relay', id: 9 })).toBe('/actions?open=relay%3A9')
     expect(smsActionHref({ kind: 'chat', campaignId: 3, id: 4 })).toBe('/campaigns/3/sms/chat/4')
     expect(
       smsLifecycleHref('open_board', { kind: 'chat', campaignId: 3, id: 4 }),

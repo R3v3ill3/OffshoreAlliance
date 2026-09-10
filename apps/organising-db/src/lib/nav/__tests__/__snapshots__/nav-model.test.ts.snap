@@ -1,0 +1,979 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildNavModel > 1. full mode / admin 1`] = `
+{
+  "admin": [
+    {
+      "href": "/email-imports",
+      "icon": "mail-open",
+      "id": "email_imports",
+      "label": "Email Imports",
+      "module": "administration",
+      "state": "on",
+    },
+    {
+      "href": "/email/wrappers",
+      "icon": "layout-template",
+      "id": "email_wrappers",
+      "label": "Email Wrappers",
+      "module": "administration",
+      "state": "on",
+    },
+    {
+      "href": "/administration",
+      "icon": "settings",
+      "id": "administration",
+      "label": "Administration",
+      "module": "administration",
+      "state": "on",
+    },
+  ],
+  "footer": {
+    "hardRefresh": {
+      "id": "hard_refresh",
+      "label": "Hard Refresh Connection",
+    },
+    "signOut": {
+      "id": "sign_out",
+      "label": "Sign out",
+    },
+  },
+  "organisation": {
+    "collapsed": false,
+    "items": [],
+  },
+  "primary": [
+    {
+      "href": "/campaigns",
+      "icon": "megaphone",
+      "id": "campaigns",
+      "label": "Campaigns",
+      "module": "wall_chart_people",
+      "state": "on",
+    },
+    {
+      "href": "/dashboard",
+      "icon": "layout-dashboard",
+      "id": "dashboard",
+      "label": "Dashboard",
+      "module": "insights",
+      "state": "on",
+    },
+    {
+      "href": "/overview",
+      "icon": "layout-grid",
+      "id": "overview",
+      "label": "Overview",
+      "module": "organisation_databases",
+      "state": "on",
+    },
+    {
+      "href": "/worksites",
+      "icon": "map-pin",
+      "id": "worksites",
+      "label": "Worksites",
+      "module": "organisation_databases",
+      "state": "on",
+    },
+    {
+      "href": "/upcoming-projects",
+      "icon": "compass",
+      "id": "upcoming_projects",
+      "label": "Upcoming Projects",
+      "module": "organisation_databases",
+      "state": "on",
+    },
+    {
+      "href": "/email/inbox",
+      "icon": "inbox",
+      "id": "email_inbox",
+      "label": "Email Inbox",
+      "module": "inbox",
+      "state": "on",
+    },
+    {
+      "activeHrefs": [
+        "/sms",
+      ],
+      "href": "/actions",
+      "icon": "layout-list",
+      "id": "actions",
+      "label": "Actions",
+      "module": "actions",
+      "state": "on",
+    },
+    {
+      "href": "/sms/inbox",
+      "icon": "message-square",
+      "id": "sms_inbox",
+      "label": "SMS Inbox",
+      "module": "inbox",
+      "state": "on",
+    },
+    {
+      "href": "/reports",
+      "icon": "bar-chart-3",
+      "id": "reports",
+      "label": "Reports",
+      "module": "insights",
+      "state": "on",
+    },
+    {
+      "href": "/help",
+      "icon": "graduation-cap",
+      "id": "guides",
+      "label": "Guides",
+      "state": "on",
+    },
+  ],
+  "showEverythingControl": "hidden",
+}
+`;
+
+exports[`buildNavModel > 2. full mode / user 1`] = `
+{
+  "admin": [],
+  "footer": {
+    "hardRefresh": {
+      "id": "hard_refresh",
+      "label": "Hard Refresh Connection",
+    },
+    "signOut": {
+      "id": "sign_out",
+      "label": "Sign out",
+    },
+  },
+  "organisation": {
+    "collapsed": false,
+    "items": [],
+  },
+  "primary": [
+    {
+      "href": "/campaigns",
+      "icon": "megaphone",
+      "id": "campaigns",
+      "label": "Campaigns",
+      "module": "wall_chart_people",
+      "state": "on",
+    },
+    {
+      "href": "/dashboard",
+      "icon": "layout-dashboard",
+      "id": "dashboard",
+      "label": "Dashboard",
+      "module": "insights",
+      "state": "on",
+    },
+    {
+      "href": "/overview",
+      "icon": "layout-grid",
+      "id": "overview",
+      "label": "Overview",
+      "module": "organisation_databases",
+      "state": "on",
+    },
+    {
+      "href": "/worksites",
+      "icon": "map-pin",
+      "id": "worksites",
+      "label": "Worksites",
+      "module": "organisation_databases",
+      "state": "on",
+    },
+    {
+      "href": "/upcoming-projects",
+      "icon": "compass",
+      "id": "upcoming_projects",
+      "label": "Upcoming Projects",
+      "module": "organisation_databases",
+      "state": "on",
+    },
+    {
+      "href": "/email/inbox",
+      "icon": "inbox",
+      "id": "email_inbox",
+      "label": "Email Inbox",
+      "module": "inbox",
+      "state": "on",
+    },
+    {
+      "activeHrefs": [
+        "/sms",
+      ],
+      "href": "/actions",
+      "icon": "layout-list",
+      "id": "actions",
+      "label": "Actions",
+      "module": "actions",
+      "state": "on",
+    },
+    {
+      "href": "/sms/inbox",
+      "icon": "message-square",
+      "id": "sms_inbox",
+      "label": "SMS Inbox",
+      "module": "inbox",
+      "state": "on",
+    },
+    {
+      "href": "/reports",
+      "icon": "bar-chart-3",
+      "id": "reports",
+      "label": "Reports",
+      "module": "insights",
+      "state": "on",
+    },
+    {
+      "href": "/help",
+      "icon": "graduation-cap",
+      "id": "guides",
+      "label": "Guides",
+      "state": "on",
+    },
+  ],
+  "showEverythingControl": "hidden",
+}
+`;
+
+exports[`buildNavModel > 3. organiser mode / user 1`] = `
+{
+  "admin": [],
+  "footer": {
+    "hardRefresh": {
+      "id": "hard_refresh",
+      "label": "Hard Refresh Connection",
+    },
+    "signOut": {
+      "id": "sign_out",
+      "label": "Sign out",
+    },
+  },
+  "organisation": {
+    "collapsed": true,
+    "items": [
+      {
+        "href": "/worksites",
+        "icon": "map-pin",
+        "id": "worksites",
+        "label": "Worksites",
+        "module": "organisation_databases",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/upcoming-projects",
+        "icon": "compass",
+        "id": "upcoming_projects",
+        "label": "Upcoming Projects",
+        "module": "organisation_databases",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/overview",
+        "icon": "layout-grid",
+        "id": "overview",
+        "label": "Overview",
+        "module": "organisation_databases",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/dashboard",
+        "icon": "layout-dashboard",
+        "id": "dashboard",
+        "label": "Dashboard",
+        "module": "insights",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/reports",
+        "icon": "bar-chart-3",
+        "id": "reports",
+        "label": "Reports",
+        "module": "insights",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+    ],
+  },
+  "primary": [
+    {
+      "href": "/my-campaigns",
+      "icon": "megaphone",
+      "id": "my_campaigns",
+      "label": "My campaigns",
+      "module": "wall_chart_people",
+      "state": "on",
+    },
+    {
+      "activeHrefs": [
+        "/sms",
+      ],
+      "href": "/actions",
+      "icon": "layout-list",
+      "id": "actions",
+      "label": "Actions",
+      "module": "actions",
+      "state": "on",
+    },
+    {
+      "href": "/email/inbox",
+      "icon": "inbox",
+      "id": "inbox",
+      "label": "Inbox",
+      "module": "inbox",
+      "state": "on",
+    },
+    {
+      "href": "/help",
+      "icon": "graduation-cap",
+      "id": "guides",
+      "label": "Guides",
+      "state": "on",
+    },
+  ],
+  "showEverythingControl": "offer",
+}
+`;
+
+exports[`buildNavModel > 4. organiser mode / viewer (via the role default and the viewer→organiser lookup) 1`] = `
+{
+  "admin": [],
+  "footer": {
+    "hardRefresh": {
+      "id": "hard_refresh",
+      "label": "Hard Refresh Connection",
+    },
+    "signOut": {
+      "id": "sign_out",
+      "label": "Sign out",
+    },
+  },
+  "organisation": {
+    "collapsed": true,
+    "items": [
+      {
+        "href": "/worksites",
+        "icon": "map-pin",
+        "id": "worksites",
+        "label": "Worksites",
+        "module": "organisation_databases",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/upcoming-projects",
+        "icon": "compass",
+        "id": "upcoming_projects",
+        "label": "Upcoming Projects",
+        "module": "organisation_databases",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/overview",
+        "icon": "layout-grid",
+        "id": "overview",
+        "label": "Overview",
+        "module": "organisation_databases",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/dashboard",
+        "icon": "layout-dashboard",
+        "id": "dashboard",
+        "label": "Dashboard",
+        "module": "insights",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/reports",
+        "icon": "bar-chart-3",
+        "id": "reports",
+        "label": "Reports",
+        "module": "insights",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+    ],
+  },
+  "primary": [
+    {
+      "href": "/my-campaigns",
+      "icon": "megaphone",
+      "id": "my_campaigns",
+      "label": "My campaigns",
+      "module": "wall_chart_people",
+      "state": "on",
+    },
+    {
+      "activeHrefs": [
+        "/sms",
+      ],
+      "href": "/actions",
+      "icon": "layout-list",
+      "id": "actions",
+      "label": "Actions",
+      "module": "actions",
+      "state": "on",
+    },
+    {
+      "href": "/email/inbox",
+      "icon": "inbox",
+      "id": "inbox",
+      "label": "Inbox",
+      "module": "inbox",
+      "state": "on",
+    },
+    {
+      "href": "/help",
+      "icon": "graduation-cap",
+      "id": "guides",
+      "label": "Guides",
+      "state": "on",
+    },
+  ],
+  "showEverythingControl": "offer",
+}
+`;
+
+exports[`buildNavModel > 5. organiser mode with \`insights\` on — Dashboard and Reports become live 1`] = `
+{
+  "admin": [],
+  "footer": {
+    "hardRefresh": {
+      "id": "hard_refresh",
+      "label": "Hard Refresh Connection",
+    },
+    "signOut": {
+      "id": "sign_out",
+      "label": "Sign out",
+    },
+  },
+  "organisation": {
+    "collapsed": true,
+    "items": [
+      {
+        "href": "/worksites",
+        "icon": "map-pin",
+        "id": "worksites",
+        "label": "Worksites",
+        "module": "organisation_databases",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/upcoming-projects",
+        "icon": "compass",
+        "id": "upcoming_projects",
+        "label": "Upcoming Projects",
+        "module": "organisation_databases",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/overview",
+        "icon": "layout-grid",
+        "id": "overview",
+        "label": "Overview",
+        "module": "organisation_databases",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/dashboard",
+        "icon": "layout-dashboard",
+        "id": "dashboard",
+        "label": "Dashboard",
+        "module": "insights",
+        "state": "on",
+      },
+      {
+        "href": "/reports",
+        "icon": "bar-chart-3",
+        "id": "reports",
+        "label": "Reports",
+        "module": "insights",
+        "state": "on",
+      },
+    ],
+  },
+  "primary": [
+    {
+      "href": "/my-campaigns",
+      "icon": "megaphone",
+      "id": "my_campaigns",
+      "label": "My campaigns",
+      "module": "wall_chart_people",
+      "state": "on",
+    },
+    {
+      "activeHrefs": [
+        "/sms",
+      ],
+      "href": "/actions",
+      "icon": "layout-list",
+      "id": "actions",
+      "label": "Actions",
+      "module": "actions",
+      "state": "on",
+    },
+    {
+      "href": "/email/inbox",
+      "icon": "inbox",
+      "id": "inbox",
+      "label": "Inbox",
+      "module": "inbox",
+      "state": "on",
+    },
+    {
+      "href": "/help",
+      "icon": "graduation-cap",
+      "id": "guides",
+      "label": "Guides",
+      "state": "on",
+    },
+  ],
+  "showEverythingControl": "offer",
+}
+`;
+
+exports[`buildNavModel > 6. organiser mode with \`organisation_databases\` on — the three org rows become live 1`] = `
+{
+  "admin": [],
+  "footer": {
+    "hardRefresh": {
+      "id": "hard_refresh",
+      "label": "Hard Refresh Connection",
+    },
+    "signOut": {
+      "id": "sign_out",
+      "label": "Sign out",
+    },
+  },
+  "organisation": {
+    "collapsed": true,
+    "items": [
+      {
+        "href": "/worksites",
+        "icon": "map-pin",
+        "id": "worksites",
+        "label": "Worksites",
+        "module": "organisation_databases",
+        "state": "on",
+      },
+      {
+        "href": "/upcoming-projects",
+        "icon": "compass",
+        "id": "upcoming_projects",
+        "label": "Upcoming Projects",
+        "module": "organisation_databases",
+        "state": "on",
+      },
+      {
+        "href": "/overview",
+        "icon": "layout-grid",
+        "id": "overview",
+        "label": "Overview",
+        "module": "organisation_databases",
+        "state": "on",
+      },
+      {
+        "href": "/dashboard",
+        "icon": "layout-dashboard",
+        "id": "dashboard",
+        "label": "Dashboard",
+        "module": "insights",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/reports",
+        "icon": "bar-chart-3",
+        "id": "reports",
+        "label": "Reports",
+        "module": "insights",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+    ],
+  },
+  "primary": [
+    {
+      "href": "/my-campaigns",
+      "icon": "megaphone",
+      "id": "my_campaigns",
+      "label": "My campaigns",
+      "module": "wall_chart_people",
+      "state": "on",
+    },
+    {
+      "activeHrefs": [
+        "/sms",
+      ],
+      "href": "/actions",
+      "icon": "layout-list",
+      "id": "actions",
+      "label": "Actions",
+      "module": "actions",
+      "state": "on",
+    },
+    {
+      "href": "/email/inbox",
+      "icon": "inbox",
+      "id": "inbox",
+      "label": "Inbox",
+      "module": "inbox",
+      "state": "on",
+    },
+    {
+      "href": "/help",
+      "icon": "graduation-cap",
+      "id": "guides",
+      "label": "Guides",
+      "state": "on",
+    },
+  ],
+  "showEverythingControl": "offer",
+}
+`;
+
+exports[`buildNavModel > 7. organiser mode, Show everything on — full rows plus an active control 1`] = `
+{
+  "admin": [],
+  "footer": {
+    "hardRefresh": {
+      "id": "hard_refresh",
+      "label": "Hard Refresh Connection",
+    },
+    "signOut": {
+      "id": "sign_out",
+      "label": "Sign out",
+    },
+  },
+  "organisation": {
+    "collapsed": false,
+    "items": [],
+  },
+  "primary": [
+    {
+      "href": "/campaigns",
+      "icon": "megaphone",
+      "id": "campaigns",
+      "label": "Campaigns",
+      "module": "wall_chart_people",
+      "state": "on",
+    },
+    {
+      "href": "/dashboard",
+      "icon": "layout-dashboard",
+      "id": "dashboard",
+      "label": "Dashboard",
+      "module": "insights",
+      "state": "on",
+    },
+    {
+      "href": "/overview",
+      "icon": "layout-grid",
+      "id": "overview",
+      "label": "Overview",
+      "module": "organisation_databases",
+      "state": "on",
+    },
+    {
+      "href": "/worksites",
+      "icon": "map-pin",
+      "id": "worksites",
+      "label": "Worksites",
+      "module": "organisation_databases",
+      "state": "on",
+    },
+    {
+      "href": "/upcoming-projects",
+      "icon": "compass",
+      "id": "upcoming_projects",
+      "label": "Upcoming Projects",
+      "module": "organisation_databases",
+      "state": "on",
+    },
+    {
+      "href": "/email/inbox",
+      "icon": "inbox",
+      "id": "email_inbox",
+      "label": "Email Inbox",
+      "module": "inbox",
+      "state": "on",
+    },
+    {
+      "activeHrefs": [
+        "/sms",
+      ],
+      "href": "/actions",
+      "icon": "layout-list",
+      "id": "actions",
+      "label": "Actions",
+      "module": "actions",
+      "state": "on",
+    },
+    {
+      "href": "/sms/inbox",
+      "icon": "message-square",
+      "id": "sms_inbox",
+      "label": "SMS Inbox",
+      "module": "inbox",
+      "state": "on",
+    },
+    {
+      "href": "/reports",
+      "icon": "bar-chart-3",
+      "id": "reports",
+      "label": "Reports",
+      "module": "insights",
+      "state": "on",
+    },
+    {
+      "href": "/help",
+      "icon": "graduation-cap",
+      "id": "guides",
+      "label": "Guides",
+      "state": "on",
+    },
+  ],
+  "showEverythingControl": "active",
+}
+`;
+
+exports[`buildNavModel > 8. organiser mode with allowShowEverything: false — no dead button 1`] = `
+{
+  "admin": [],
+  "footer": {
+    "hardRefresh": {
+      "id": "hard_refresh",
+      "label": "Hard Refresh Connection",
+    },
+    "signOut": {
+      "id": "sign_out",
+      "label": "Sign out",
+    },
+  },
+  "organisation": {
+    "collapsed": true,
+    "items": [
+      {
+        "href": "/worksites",
+        "icon": "map-pin",
+        "id": "worksites",
+        "label": "Worksites",
+        "module": "organisation_databases",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/upcoming-projects",
+        "icon": "compass",
+        "id": "upcoming_projects",
+        "label": "Upcoming Projects",
+        "module": "organisation_databases",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/overview",
+        "icon": "layout-grid",
+        "id": "overview",
+        "label": "Overview",
+        "module": "organisation_databases",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/dashboard",
+        "icon": "layout-dashboard",
+        "id": "dashboard",
+        "label": "Dashboard",
+        "module": "insights",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/reports",
+        "icon": "bar-chart-3",
+        "id": "reports",
+        "label": "Reports",
+        "module": "insights",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+    ],
+  },
+  "primary": [
+    {
+      "href": "/my-campaigns",
+      "icon": "megaphone",
+      "id": "my_campaigns",
+      "label": "My campaigns",
+      "module": "wall_chart_people",
+      "state": "on",
+    },
+    {
+      "activeHrefs": [
+        "/sms",
+      ],
+      "href": "/actions",
+      "icon": "layout-list",
+      "id": "actions",
+      "label": "Actions",
+      "module": "actions",
+      "state": "on",
+    },
+    {
+      "href": "/email/inbox",
+      "icon": "inbox",
+      "id": "inbox",
+      "label": "Inbox",
+      "module": "inbox",
+      "state": "on",
+    },
+    {
+      "href": "/help",
+      "icon": "graduation-cap",
+      "id": "guides",
+      "label": "Guides",
+      "state": "on",
+    },
+  ],
+  "showEverythingControl": "hidden",
+}
+`;
+
+exports[`buildNavModel > 9. organiser mode + isAdmin (unreachable today; the defensive branch) 1`] = `
+{
+  "admin": [
+    {
+      "href": "/email-imports",
+      "icon": "mail-open",
+      "id": "email_imports",
+      "label": "Email Imports",
+      "module": "administration",
+      "state": "on",
+    },
+    {
+      "href": "/email/wrappers",
+      "icon": "layout-template",
+      "id": "email_wrappers",
+      "label": "Email Wrappers",
+      "module": "administration",
+      "state": "on",
+    },
+    {
+      "href": "/administration",
+      "icon": "settings",
+      "id": "administration",
+      "label": "Administration",
+      "module": "administration",
+      "state": "on",
+    },
+  ],
+  "footer": {
+    "hardRefresh": {
+      "id": "hard_refresh",
+      "label": "Hard Refresh Connection",
+    },
+    "signOut": {
+      "id": "sign_out",
+      "label": "Sign out",
+    },
+  },
+  "organisation": {
+    "collapsed": true,
+    "items": [
+      {
+        "href": "/worksites",
+        "icon": "map-pin",
+        "id": "worksites",
+        "label": "Worksites",
+        "module": "organisation_databases",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/upcoming-projects",
+        "icon": "compass",
+        "id": "upcoming_projects",
+        "label": "Upcoming Projects",
+        "module": "organisation_databases",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/overview",
+        "icon": "layout-grid",
+        "id": "overview",
+        "label": "Overview",
+        "module": "organisation_databases",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/dashboard",
+        "icon": "layout-dashboard",
+        "id": "dashboard",
+        "label": "Dashboard",
+        "module": "insights",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+      {
+        "href": "/reports",
+        "icon": "bar-chart-3",
+        "id": "reports",
+        "label": "Reports",
+        "module": "insights",
+        "mutedReason": "Ask an admin to enable",
+        "state": "muted",
+      },
+    ],
+  },
+  "primary": [
+    {
+      "href": "/my-campaigns",
+      "icon": "megaphone",
+      "id": "my_campaigns",
+      "label": "My campaigns",
+      "module": "wall_chart_people",
+      "state": "on",
+    },
+    {
+      "activeHrefs": [
+        "/sms",
+      ],
+      "href": "/actions",
+      "icon": "layout-list",
+      "id": "actions",
+      "label": "Actions",
+      "module": "actions",
+      "state": "on",
+    },
+    {
+      "href": "/email/inbox",
+      "icon": "inbox",
+      "id": "inbox",
+      "label": "Inbox",
+      "module": "inbox",
+      "state": "on",
+    },
+    {
+      "href": "/help",
+      "icon": "graduation-cap",
+      "id": "guides",
+      "label": "Guides",
+      "state": "on",
+    },
+  ],
+  "showEverythingControl": "offer",
+}
+`;

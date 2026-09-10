@@ -18,6 +18,7 @@ import type {
   WorkerListActivityRow,
 } from "./types";
 import { CumulativeRatingPopover, InlineRatingPopover } from "./inline-rating-popover";
+import { FirstUseHint } from "@/components/hints/first-use-hint";
 import {
   BuildListCheck,
   CumulativeRatingDot,
@@ -51,6 +52,17 @@ export type WorkerTileProps = {
   /** This worker's rating for the selected assessment, if any. */
   activityRating?: ActivityRating | null;
   /**
+   * WP1.7: this tile is the one the first-use rating hint anchors to
+   * (pickRatingHintAnchor). The anchor wrapper around the badge is rendered
+   * whenever this is set, visible hint or not, so dismissing the hint never
+   * remounts the badge's rating popover (fix round 1, finding 1).
+   */
+  ratingHintAnchor?: boolean;
+  /** WP1.7: the hint is currently shown on this tile. Implies `ratingHintAnchor`. */
+  showRatingHint?: boolean;
+  /** WP1.7: "Got it" pressed, or the rating control opened, on the hinted tile. */
+  onRatingHintDismiss?: () => void;
+  /**
    * Click handler. The tile decides whether the click is a plain click (open
    * the detail sheet), a modifier click (toggle selection), or a shift-click
    * (range/add-to-selection — currently treated as toggle).
@@ -72,6 +84,11 @@ export type WorkerTileProps = {
   onDragEnd?: () => void;
   /** Phone / email icon → open worker sheet with that field focused (when canWrite). */
   onContactBadgeClick?: (workerId: number, field: WorkerTileContactField) => void;
+  /**
+   * Optional: fired after a rating saved from this tile's popover succeeds.
+   * Additive telemetry hook (WP0.2); no existing caller changes behaviour.
+   */
+  onRatingSaved?: () => void;
   /**
    * True when this worker is in the currently-active build list. Renders a
    * small green check overlay so users can see at a glance who has already
@@ -101,6 +118,9 @@ export function WorkerTile({
   selection,
   campaignId,
   activityRating,
+  ratingHintAnchor,
+  showRatingHint,
+  onRatingHintDismiss,
   onClick,
   onCopy,
   isSelected,
@@ -108,6 +128,7 @@ export function WorkerTile({
   onDragSessionStart,
   onDragEnd,
   onContactBadgeClick,
+  onRatingSaved,
   inBuildList,
   buildListMode,
   enabledListBadges,
@@ -282,6 +303,8 @@ export function WorkerTile({
       }}
       customLabels={assessment.ratingLabels}
       onOpenDetail={() => onClick?.(worker.worker_id, ouId ?? null, "open")}
+      onSaved={onRatingSaved}
+      onRatingControlOpen={showRatingHint ? onRatingHintDismiss : undefined}
     >
       {largeBadge}
     </InlineRatingPopover>
@@ -291,6 +314,8 @@ export function WorkerTile({
       workerId={worker.worker_id}
       workerName={displayName}
       onOpenDetail={() => onClick?.(worker.worker_id, ouId ?? null, "open")}
+      onSaved={onRatingSaved}
+      onRatingControlOpen={showRatingHint ? onRatingHintDismiss : undefined}
     >
       {largeBadge}
     </CumulativeRatingPopover>
@@ -311,6 +336,7 @@ export function WorkerTile({
     <div
       className="relative h-full"
       data-worker-id={worker.worker_id}
+      data-worker-name={displayName}
       data-ou-id={ouId ?? ""}
       draggable={canWrite && !!onDragStartRefs}
       onDragStart={handleDragStart}
@@ -355,7 +381,19 @@ export function WorkerTile({
               {displayName}
             </span>
           </div>
-          <div className="shrink-0">{largeBadgeRendered}</div>
+          <div className="shrink-0">
+            {ratingHintAnchor || showRatingHint ? (
+              <FirstUseHint
+                id="wall_chart_rating"
+                visible={!!showRatingHint}
+                onDismiss={onRatingHintDismiss}
+              >
+                {largeBadgeRendered}
+              </FirstUseHint>
+            ) : (
+              largeBadgeRendered
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-1 flex-wrap w-full">
           <WorkerBadgeRow

@@ -5,11 +5,11 @@
  * the number allocation table. Both are read-only views assembled
  * server-side; mutations go through the existing per-kind hooks.
  */
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { fetchApi } from '@/lib/api/fetch-api'
 import type { SmsActivityResponse, SmsActivityRow } from '@/app/api/sms/activity/route'
 import type { SmsNumbersResponse } from '@/app/api/sms/numbers/route'
-import { excludeSmsEpisodes } from '@/lib/campaign/visible-campaigns'
+import { excludeNonCampaignContainers } from '@/lib/campaign/visible-campaigns'
 import { createClient } from '@/lib/supabase/client'
 
 export type { SmsActivityRow, SmsActivityResponse }
@@ -24,21 +24,36 @@ export const SMS_ACTIVITY_QUERY_KEY = ['sms-activity'] as const
 /** Every action across every campaign, with a live poll while any is in flight. */
 export function useSmsActivity(
   campaignId?: number | null,
-  opts?: { archived?: 'exclude' | 'include' | 'only' },
+  opts?: { archived?: 'exclude' | 'include' | 'only'; mine?: boolean },
 ) {
   const scoped = campaignId != null
   const archived = opts?.archived ?? 'exclude'
+  // Narrowing to the caller server-side keeps their own rows from being
+  // pushed past the route's LIMIT by everybody else's. The route calls
+  // the parameter `owner=mine_or_unowned`, because it also returns the
+  // rows nobody owns.
+  const mine = opts?.mine ?? false
   return useQuery({
-    queryKey: [...SMS_ACTIVITY_QUERY_KEY, scoped ? campaignId : 'all', archived],
+    queryKey: [
+      ...SMS_ACTIVITY_QUERY_KEY,
+      scoped ? campaignId : 'all',
+      archived,
+      mine ? 'mine' : 'everyone',
+    ],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (scoped) params.set('campaign_id', String(campaignId))
       if (archived !== 'exclude') params.set('archived', archived === 'only' ? 'only' : '1')
+      if (mine) params.set('owner', 'mine_or_unowned')
       const qs = params.toString()
       const res = await fetchApi(`/api/sms/activity${qs ? `?${qs}` : ''}`)
       if (!res.ok) throw await toError(res, 'Failed to load SMS activity')
       return res.json() as Promise<SmsActivityResponse>
     },
+    // Mine and All are separate cache entries. Without this, flipping
+    // between them empties the table and the tiles for a beat; with it
+    // the previous answer stays on screen until the new one lands.
+    placeholderData: keepPreviousData,
     refetchInterval: (query) => {
       const data = query.state.data
       if (!data) return false
@@ -70,13 +85,18 @@ export interface SmsHubCampaignOption {
   status: string | null
 }
 
-/** Real campaigns (episodes excluded) for the scope picker and filters. */
+/**
+ * Real campaigns for the scope picker and the campaign pickers. Hidden
+ * episode campaigns and the shared standing container are both left
+ * out: neither is a campaign an organiser chose, and the Scope
+ * filter's "Standalone" option already covers everything filed on them.
+ */
 export function useSmsHubCampaigns(enabled = true) {
   return useQuery({
     queryKey: ['sms-hub-campaigns'],
     queryFn: async () => {
       const supabase = createClient()
-      const { data, error } = await excludeSmsEpisodes(
+      const { data, error } = await excludeNonCampaignContainers(
         supabase
           .from('campaigns')
           .select('campaign_id, name, status')

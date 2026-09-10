@@ -7,18 +7,17 @@ import { Button } from "@/components/ui/button";
 import { Download, LayoutGrid, List } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { fetchApi } from "@/lib/api/fetch-api";
+import { useDevice } from "@/contexts/device-context";
+import {
+  resolveWorkforceView,
+  type WorkforceView,
+} from "@/lib/campaign/workforce-view";
 import { CampaignWallChart } from "../campaign-wall-chart";
 import { ImportParticipationDialog } from "../wall-chart/participation-import/import-participation-dialog";
 import { FindDuplicatesButton } from "../wall-chart/find-duplicate-workers-dialog";
 import { WorkforceListView } from "./workforce-list-view";
 
-export type WorkforceView = "wall-chart" | "list";
-
-const DEFAULT_VIEW: WorkforceView = "wall-chart";
-
-function parseView(raw: string | null): WorkforceView {
-  return raw === "list" ? "list" : DEFAULT_VIEW;
-}
+export type { WorkforceView } from "@/lib/campaign/workforce-view";
 
 export function WorkforceBoard({
   campaignId,
@@ -30,16 +29,20 @@ export function WorkforceBoard({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const view = useMemo(() => parseView(searchParams.get("view")), [searchParams]);
+  // isMobile comes from the request's user-agent header, so it is identical on
+  // the server and the client — safe to read during render, no hydration gap.
+  const { isMobile } = useDevice();
+  const view = useMemo(
+    () => resolveWorkforceView(searchParams.get("view"), isMobile),
+    [searchParams, isMobile]
+  );
 
   const setView = useCallback(
     (next: WorkforceView) => {
       const params = new URLSearchParams(searchParams.toString());
-      if (next === DEFAULT_VIEW) {
-        params.delete("view");
-      } else {
-        params.set("view", next);
-      }
+      // Always write the param. Dropping it for the "default" view would send a
+      // phone user who picked the wall chart straight back to the list.
+      params.set("view", next);
       const qs = params.toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },

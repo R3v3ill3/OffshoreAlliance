@@ -70,7 +70,8 @@ export async function updateSession(request: NextRequest) {
 
   if (user && pathname === "/login") {
     const url = request.nextUrl.clone();
-    url.pathname = "/campaigns";
+    // WP1.3: the landing gate at `/` picks the mode-appropriate start page.
+    url.pathname = "/";
     return redirectWithCookies(url);
   }
 

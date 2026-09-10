@@ -1,13 +1,15 @@
 'use client'
 
 /**
- * Section switcher for the SMS hub: Actions (what is running and what
- * has run), Inbox (replies), Numbers (which platform number is doing
- * what). Three pages, one row of pills, so an organiser is never more
- * than one click from any of them.
+ * Section switcher for the Actions hub: Actions (what is running and
+ * what has run, across SMS, email and calls), Inbox (SMS replies),
+ * Numbers (which platform number is doing what). Three pages, one row
+ * of pills, so an organiser is never more than one click from any of
+ * them.
  */
 import Link from 'next/link'
 import { Hash, Inbox, LayoutList } from 'lucide-react'
+import { ACTIONS_HUB_PATH } from '@/lib/actions/hub-path'
 import { cn } from '@/lib/utils/cn'
 
 export type SmsHubSection = 'actions' | 'inbox' | 'numbers'
@@ -18,7 +20,7 @@ const SECTIONS: Array<{
   label: string
   icon: React.ComponentType<{ className?: string }>
 }> = [
-  { id: 'actions', href: '/sms', label: 'Actions', icon: LayoutList },
+  { id: 'actions', href: ACTIONS_HUB_PATH, label: 'Actions', icon: LayoutList },
   { id: 'inbox', href: '/sms/inbox', label: 'Inbox', icon: Inbox },
   { id: 'numbers', href: '/sms/numbers', label: 'Numbers', icon: Hash },
 ]
@@ -26,7 +28,7 @@ const SECTIONS: Array<{
 export function SmsHubNav({ current }: { current: SmsHubSection }) {
   return (
     <nav
-      aria-label="SMS sections"
+      aria-label="Actions sections"
       className="inline-flex h-9 items-center gap-0 rounded-lg bg-muted p-1 text-muted-foreground"
     >
       {SECTIONS.map((s) => {

@@ -966,7 +966,7 @@ export function CreateOrganisingUnitDialog({
                     }}
                     unassignedFilterMode="target"
                     excludedWorkerIds={committedWorkerIdsForOtherTargets}
-                    excludedWorkerLabel="Showing workers unallocated in this new group"
+                    excludedWorkerLabel="Showing workers unassigned in this new group"
                     showUnallocatedElsewhereFilter
                     compact
                   />

@@ -436,7 +436,7 @@ export function StepAllocateWorkers({
           Search, sort, and filter workers across the selected employers and worksites.
           Use the bulk bar to add workers to the campaign and place them into specific
           campaign units. Workers added to the campaign without a unit assignment land
-          in the &quot;Unallocated&quot; bucket.
+          in the &quot;Unassigned&quot; bucket.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -514,7 +514,7 @@ export function StepAllocateWorkers({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__any__">All units</SelectItem>
-                  <SelectItem value="__unallocated__">Unallocated (on campaign)</SelectItem>
+                  <SelectItem value="__unallocated__">Unassigned (on campaign)</SelectItem>
                   {units.map((u) => (
                     <SelectItem key={u.ou_id} value={String(u.ou_id)}>
                       {u.name}
@@ -565,7 +565,7 @@ export function StepAllocateWorkers({
                   <SelectValue placeholder="Pick a unit…" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__unallocated__">Unallocated (clear units)</SelectItem>
+                  <SelectItem value="__unallocated__">Unassigned (clear units)</SelectItem>
                   {units.map((u) => (
                     <SelectItem key={u.ou_id} value={String(u.ou_id)}>
                       {u.name}
@@ -803,7 +803,7 @@ export function StepAllocateWorkers({
                   </Badge>
                 ))}
                 <Badge variant="outline" className="text-[10px] h-4 px-1 border-dashed">
-                  Unallocated: {allocationCounts.unallocated}
+                  Unassigned: {allocationCounts.unallocated}
                 </Badge>
               </div>
             </div>

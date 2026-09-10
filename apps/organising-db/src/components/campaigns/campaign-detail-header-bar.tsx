@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -25,12 +26,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useCampaign } from "@/lib/hooks/usePlannerCampaigns";
 import { SMS_EPISODE_TOOLS_HREF } from "@/lib/campaign/visible-campaigns";
-import { isSmsChatWorkspaceRoute } from "@/lib/campaign/campaign-detail-routes";
+import {
+  isCampaignChromeWizardRoute,
+  isSmsChatWorkspaceRoute,
+} from "@/lib/campaign/campaign-detail-routes";
 import { useAuth } from "@/lib/supabase/auth-context";
+import { useWorkspace } from "@/lib/workspace/use-workspace";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { CampaignBasicsEditSheet } from "@/components/campaigns/campaign-basics-edit-sheet";
+import { SWITCHER_HEADING_CLASS } from "@/components/campaigns/campaign-switcher-heading";
 import { CreateAssessmentDialog } from "@/components/campaigns/assessments/create-assessment-dialog";
 import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 import { CreatePhoneCallOrchestrator } from "@/components/phone/CreatePhoneCallOrchestrator";
@@ -40,6 +46,34 @@ import { EmailResumeBanner } from "@/components/email/orchestrator/EmailResumeBa
 import { CreateSmsOrchestrator } from "@/components/sms/CreateSmsOrchestrator";
 import { SmsResumeBanner } from "@/components/sms/orchestrator/SmsResumeBanner";
 import type { CampaignStatus, CampaignType } from "@/types/database";
+
+// WP1.4 fix round 1. All three are rendered in organiser mode only, so a
+// full-mode user should not pay for their JavaScript. Because the branch
+// that renders them is `isOrganiserMode && …`, full mode never mounts the
+// lazy boundary at all and its markup is unchanged.
+//
+// WP1.4 fix round 2. The switcher *is* organiser mode's <h1>, so it may
+// never resolve to nothing: `next/dynamic` renders `null` until the chunk
+// arrives (its `loading` component takes no props, so it cannot carry the
+// name), which left the page headingless on a client-side navigation.
+// React.lazy takes a Suspense fallback that does take props, so the
+// heading is present from the first paint. Kept lazy: full mode never
+// mounts the boundary, so it still ships none of this.
+const CampaignSwitcher = lazy(() =>
+  import("@/components/campaigns/campaign-switcher").then((m) => ({
+    default: m.CampaignSwitcher,
+  }))
+);
+const OrganiserCampaignActions = dynamic(() =>
+  import("@/components/campaigns/organiser-campaign-actions").then(
+    (m) => m.OrganiserCampaignActions
+  )
+);
+const CreateTaskListDialog = dynamic(() =>
+  import("@/components/campaigns/task-lists/create-task-list-dialog").then(
+    (m) => m.CreateTaskListDialog
+  )
+);
 
 const STATUS_VARIANT: Record<CampaignStatus, "secondary" | "success" | "info" | "warning"> = {
   planning: "secondary",
@@ -74,6 +108,10 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { canWrite } = useAuth();
+  // WP1.4. Presentation only: `mode` never gates a control, it only chooses
+  // which arrangement of the same twelve actions is drawn.
+  const { mode } = useWorkspace();
+  const isOrganiserMode = mode === "organiser";
 
   const numericCampaignId = Number(campaignId);
   const campaignIdValid = Number.isFinite(numericCampaignId);
@@ -81,6 +119,7 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
   const [basicsSheetOpen, setBasicsSheetOpen] = useState(false);
   const [createAssessmentOpen, setCreateAssessmentOpen] = useState(false);
   const [importWorkersOpen, setImportWorkersOpen] = useState(false);
+  const [createTaskListOpen, setCreateTaskListOpen] = useState(false);
 
   const isBuildListOpen = searchParams.get("buildList") === "1";
   const handleToggleBuildList = useCallback(() => {
@@ -92,7 +131,9 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
       params.set("buildList", "1");
       params.set("tab", "workforce");
       params.set("sub", "wall-chart");
-      params.delete("view");
+      // The build-list panel is only mounted in the wall chart, and an absent
+      // ?view= means "device default" (list on touch), so state it explicitly.
+      params.set("view", "wall-chart");
     }
     const qs = params.toString();
     const mainCampaignPath = `/campaigns/${campaignId}`;
@@ -111,11 +152,19 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
   // organiser to the SMS hub. Its chat workspace is the one legitimate
   // place to be, so that route keeps a minimal header instead.
   const onChatWorkspace = isSmsChatWorkspaceRoute(pathname);
+  // WP1.4 fix round 1: this header now also mounts on the four wizard
+  // routes, where the effect had never run before. A wizard is a task in
+  // progress — bouncing out of it because ?cid= happens to name an episode
+  // campaign would destroy work. The redirect belongs to the campaign's own
+  // detail page and stays there; on a wizard route the header simply
+  // renders nothing (the `is_sms_episode` early return below).
+  const onChromeWizard = isCampaignChromeWizardRoute(pathname);
   useEffect(() => {
+    if (onChromeWizard) return;
     if (campaign?.is_sms_episode && !onChatWorkspace) {
       router.replace(SMS_EPISODE_TOOLS_HREF);
     }
-  }, [campaign, onChatWorkspace, router]);
+  }, [campaign, onChatWorkspace, onChromeWizard, router]);
 
   if (campaign?.is_sms_episode && onChatWorkspace) {
     return (
@@ -135,7 +184,19 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
     );
   }
 
-  const actionButtons = canWrite ? (
+  // canWrite === false ⇒ null in both modes, unchanged: a viewer in organiser
+  // mode sees the switcher, the name, the badges and the four tabs, and no
+  // write affordances.
+  const actionButtons = !canWrite ? null : isOrganiserMode ? (
+    <OrganiserCampaignActions
+      campaignId={campaignId}
+      isBuildListOpen={isBuildListOpen}
+      onToggleBuildList={handleToggleBuildList}
+      onImportWorkers={() => setImportWorkersOpen(true)}
+      onCreateAssessment={() => setCreateAssessmentOpen(true)}
+      onCreateTaskList={() => setCreateTaskListOpen(true)}
+    />
+  ) : (
     <div className="flex flex-wrap items-center justify-end gap-2">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -224,7 +285,7 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
-  ) : null;
+  );
 
   if (campaign?.is_sms_episode) {
     return null;
@@ -241,9 +302,28 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
             className="shrink-0"
             onClick={() => router.push("/campaigns")}
             title="Back to campaigns"
+            aria-label="Back to campaigns"
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
+          {/*
+            Organiser mode only; full mode's header is byte-for-byte today's.
+            Fix round 2: this sits *after* the back arrow and *before* the
+            badges, so the reading order is the one full mode has had all
+            along — back, then the heading, then the pills.
+          */}
+          {isOrganiserMode && (
+            <Suspense
+              fallback={
+                <h1 className={SWITCHER_HEADING_CLASS}>{campaign?.name ?? "Campaign"}</h1>
+              }
+            >
+              <CampaignSwitcher
+                campaignId={campaignId}
+                campaignName={campaign?.name ?? null}
+              />
+            </Suspense>
+          )}
 
           <div className="min-w-0 flex-1">
             {isLoading || !campaign ? (
@@ -254,7 +334,13 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
             ) : (
               <>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <h1 className="truncate text-base font-semibold md:text-lg">{campaign.name}</h1>
+                  {/* WP1.4 fix round 1: the switcher trigger to the left
+                      already carries the campaign name, so organiser mode
+                      renders it once. Full mode has no switcher, so the
+                      heading is exactly today's markup. */}
+                  {!isOrganiserMode && (
+                    <h1 className="truncate text-base font-semibold md:text-lg">{campaign.name}</h1>
+                  )}
                   {canWrite && (
                     <Button
                       variant="ghost"
@@ -326,6 +412,16 @@ export function CampaignDetailHeaderBar({ campaignId }: CampaignDetailHeaderBarP
               queryClient.invalidateQueries({ queryKey: ["workers"] });
             }}
           />
+          {/* WP1.4: organiser mode's New action ▾ → Task list. Mounted here
+              with the other dialogs so there is exactly one of each in the
+              tree; the menu item only flips the state. */}
+          {isOrganiserMode && (
+            <CreateTaskListDialog
+              campaignId={campaignId}
+              open={createTaskListOpen}
+              onOpenChange={setCreateTaskListOpen}
+            />
+          )}
         </>
       )}
     </>

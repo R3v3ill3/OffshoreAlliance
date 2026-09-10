@@ -110,7 +110,7 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
   const router = useRouter();
   const supabase = createClient();
   const queryClient = useQueryClient();
-  const { user, canWrite, isAdmin, loading: authLoading } = useAuth();
+  const { user, canWrite, isAdmin, isLeadOrganiser, loading: authLoading } = useAuth();
 
   const basicsHydratedFor = useRef<number | null>(null);
   const scopeHydratedFor = useRef<number | null>(null);
@@ -361,7 +361,7 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
       const resolvedOrganiserId = await resolveCampaignOrganiserId(
         supabase,
         basics.organiser_id,
-        { currentUserId: user.id, isAdmin }
+        { currentUserId: user.id, canLinkOtherOrganisers: isAdmin || isLeadOrganiser }
       );
       const payload: Record<string, unknown> = {
         name: basics.name,

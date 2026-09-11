@@ -1,4 +1,4 @@
-# Organiser UX programme — handoff (written 2026-09-10)
+# Organiser UX programme — handoff (written 2026-09-10; status updated 2026-09-11)
 
 This file is for whoever picks the work up next, human or agent. It records where the programme is, what
 is left on the two tracks in front of it (getting phase 1 onto production; starting phase 2), and a
@@ -7,8 +7,9 @@ tells you which ones to read and what they do not yet say.
 
 ## 1. Where things stand
 
-**Phase 0 and phase 1 are complete on `develop`.** Every work package was planned, implemented, verified
-and reviewed to approval per the protocol in `IMPLEMENTATION_ORCHESTRATION_PROMPT.md`, then squash-merged:
+**Phase 0 and phase 1 are complete and live in production.** Every work package was planned,
+implemented, verified and reviewed to approval per the protocol in
+`IMPLEMENTATION_ORCHESTRATION_PROMPT.md`, then merged into `develop` and promoted to `main`:
 
 | PRs | Content |
 |---|---|
@@ -17,12 +18,13 @@ and reviewed to approval per the protocol in `IMPLEMENTATION_ORCHESTRATION_PROMP
 | #34 | Tests only: e2e suite owns its preconditions (hint dismissal seeded, workspace mode pinned per spec) |
 | #35 | Fix: Users edit dialog capped to the viewport with scrolling body, two-column module checklist, "Default for role" shows the resolved mode |
 
-`develop` HEAD after #34: `e55b52d`. Gates on the merged tree: `tsc` clean; vitest green (1029+ tests);
-lint at the recorded baseline (294 problems, pre-existing; standard is touched lines clean and the count
-not rising); full credentialled e2e green three times in a row on Vercel previews.
+`develop` after the main-sync PR #36: `e6a97fc`; production promotion PR #37 merged to `main` at
+`0f22d49` on 2026-09-11 and Vercel Production completed successfully. Gates on the phase-1 tree:
+`tsc` clean; vitest green (1029+ tests); lint at the recorded baseline (294 problems, pre-existing;
+standard is touched lines clean and the count not rising); full credentialled e2e green repeatedly on
+Vercel previews.
 
-**Production has none of it yet.** `main` is behind `develop` by all of the above, and the six new
-migrations are applied to the dev project only:
+**The six phase-1 migrations are applied to both dev and production:**
 
 ```
 supabase/migrations/20260909100000_workspace_mode.sql
@@ -33,12 +35,17 @@ supabase/migrations/20260911090000_user_hint_dismissals.sql
 supabase/migrations/20260911100000_user_hint_dismissals_check.sql
 ```
 
-**What a user sees today on develop.** Nothing changes until an admin turns organiser mode on: the flag
-defaults to full mode for everyone. On dev the operator has set the org-wide default for the `organiser`
-work role to organiser mode (Administration → Settings → Workspace card), so the `troy@reveille.net.au`
-account lands on My campaigns with the reduced nav and the four-tab campaign workspace. Per-user
-overrides are set in Administration → Users → edit dialog. "Show everything" in the sidebar reveals the
-full nav for the session.
+**What an organiser sees today on production and dev.** The operator set the org-wide default for the
+`organiser` work role to organiser mode (Administration → Settings → Workspace card). A converted
+`user`-role organiser was verified signing out/in, opening their campaigns, deleting an empty unit,
+landing on My campaigns with the reduced nav and four-tab campaign workspace, and using "Show
+everything". Per-user overrides remain available in Administration → Users.
+
+**WP0.4 production data status.** The audit log is secured; script 02 inserted 21
+`campaign_organisers` rows with zero missing campaigns; script 01 converted seven organisers after
+WP1.6 was live. Script 03 safely deleted one eligible duplicate, but 29 further excess placements in
+five partitions contain orphaned historical rule rows and are explicitly deferred to a reviewed
+pre-WP2.1 data fix. Cross-campaign worker membership remains supported.
 
 ## 2. Documents to read, in order
 
@@ -104,44 +111,29 @@ No materialised Unassigned rows; no localStorage view state; no new campaign-cre
 agent each round; at most two fix rounds, then stop and report. Stop and ask the operator on open
 decisions, migration conflicts, wrong appendix claims, third fix rounds, or anything touching production.
 
-## 5. Track A — getting phase 1 onto production (operator-driven)
+## 5. Track A — phase 1 production transition (completed 2026-09-11)
 
-An agent prepares and checks; the operator executes every production step.
+Production promotion [PR #37](https://github.com/R3v3ill3/OffshoreAlliance/pull/37) merged at
+`0f22d49`; Vercel Production succeeded; the production migration ledger contains all six phase-1
+migrations. WP1.6 pre-flight returned zero rows, the post-flight roster was reviewed, seven organisers
+were converted to `user`, and the operator verified the organiser flow and enabled Organiser mode for
+all users with the organiser work role.
 
-1. **Merge `develop` into `main`.** Fast-forward or merge commit, operator's choice; nothing is on `main`
-   that is not on `develop`. Vercel deploys Production from `main`. Confirm the production environment has
-   the same variable names as Preview (nothing new was added in phase 1).
-2. **Apply the six migrations to production, in filename order.** Operator links the CLI to production
-   (`supabase link --project-ref gteygwfgjvczanmrwgbr`) and runs `supabase db push`, then relinks to dev so
-   the checkout is safe for agents again. The app is safe against either order of deploy vs. migration
-   (controls hide while an RPC is absent; wp1.6.md §3.2), but deploy first is the documented order.
-   `20260909100000_workspace_mode.sql` is the one that touches `user_profiles` and `app_settings` shape;
-   the rest are policies, functions and one new table.
-3. **Follow `scripts/data-hygiene/oux-wp1.6/README.md` "Production run sheet"** exactly:
-   00 pre-flight (expect zero rows) → deploy → 01 post-flight (read the roster) → 00 again (zero rows) →
-   `scripts/data-hygiene/oux-wp0.4/01_role_conversion.sql` (the held script; three-block paste in the SQL
-   editor) → spot-check one converted account (sign out and in; delete an empty unit). Rollbacks:
-   `oux-wp0.4/01_rollback.sql` and `oux-wp1.6/90_rollback_wp1_6_policies.sql`.
-   WP0.4 scripts 00 → 02 → 03 must have been run on production before this (ledger says still pending;
-   confirm with the operator). `95_role_probes.sql` is DEV ONLY.
-4. **Turn organiser mode on for the pilot group.** Administration → Settings → Workspace card sets the
-   org-wide default per work role; Administration → Users → edit dialog sets a per-user override. The
-   operator has not yet named the pilot group; that is a phase 1 exit-gate question.
-5. **Record the phase 1 exit** in `PROGRESS.md` (row 1 of "Phase exits"): who is in the pilot, the date
-   organiser mode went on, and the e2e run that proved flow one from a `user` account on production is
-   not required (e2e never runs against production; the develop-preview evidence stands).
-6. **Housekeeping the operator asked for:** gitignore `supabase/.temp/`; consider blanking `sms_provider`
-   on dev (test data has no real numbers; the operator's own mobile, supplied in-session and not recorded,
-   is the only test recipient); rotate the two passwords pasted into chat during setup; the lint debt
-   (143 errors) is a separate authorised task, not part of any WP.
+Do not rerun the production run sheet as a deployment step. Its audit log and rollback scripts remain
+available. Script 03's remaining orphan-rule placements are a phase-2 prerequisite, recorded in
+`PROGRESS.md`, not an incomplete phase-1 rollout.
+
+Outstanding housekeeping remains separately authorised: gitignore/untrack `supabase/.temp/`; consider
+blanking `sms_provider` on dev; rotate the two passwords pasted during setup; and address lint debt in a
+separate task.
 
 ## 6. Track B — phase 2
 
-**Gate first.** The phase 1 exit criteria are posted in `PROGRESS.md`. Before any phase 2 code, the
-operator answers: (a) who is the pilot group; (b) is phase 2 a go; (c) will a production snapshot be
-loaded into dev before WP2.1's rehearsal, and when. If (c) is "not yet", WP2.3 (wall-chart decomposition)
-can start alone because it is a behaviour-preserving refactor on disjoint files, and WP2.1's planning can
-proceed with the rehearsal deferred.
+**Gate answered.** The pilot is all users with the organiser work role; phase 2 is approved; a
+production-derived dev snapshot is to be prepared after the phase-1 rollout and is still pending.
+WP2.3 therefore started first. WP2.1 may be planned, but implementation/rehearsal remains blocked on
+the snapshot and the reviewed cleanup of the orphaned rule placements found during the production
+WP0.4 run.
 
 **Order** (from the orchestration prompt's dependency summary): WP2.1 and WP2.3 in parallel → WP2.2 →
 WP2.4 → WP2.5, WP2.6, WP2.7 (2.7 needs only 2.2) → WP2.8 → WP2.9. WP3.3 and WP3.5 may also start now
@@ -156,17 +148,20 @@ appendix C 8.4. Acceptance: rehearsal on production-seeded dev shows membership 
 leaf unit has a `group_id`, zero one-unit-per-group violations, hazard queries H1–H8 reproduced before and
 after, written rollback. Behind `groups_v2`, default off. Regenerate types.
 
-**WP2.3 Wall chart decomposition.** Split `src/components/campaigns/campaign-wall-chart.tsx` (about
-2,500 lines) along the render tree in appendix A section 0 with no visible change. Write the snapshot and
-interaction tests that pin current behaviour *before* the split. Keep the WP1.7 hint anchors
-(`data-hint-anchor`, `pickRatingHintAnchor`) and the WP1.4 tab/chrome contracts intact; the e2e specs
-`wall-chart.spec.ts` and the WP1.4 organiser-campaign spec are the regression net.
+**WP2.3 Wall chart decomposition — implemented and approved, PR pending.** Commit `1694b8a` reduces
+`src/components/campaigns/campaign-wall-chart.tsx` from 2,635 to 320 lines across focused
+hooks/components with no runtime behaviour change. Local gates and the dev-backed branch preview are
+green; frozen characterisation tests pass against the pre-refactor and decomposed implementations; the
+fresh terminal reviewer returned APPROVE WITH ADVISORIES after an operator-authorised third test-only
+round. The sole advisory is the fake PostgREST harness's incomplete projection/predicate/order
+emulation. Final evidence/ledger commit and PR remain.
 
 **Things phase 1 left that phase 2 touches.**
 - Incidental findings in `PROGRESS.md` (unassigned): SOC wizard `cid` mismatch; `supabase/.temp`
   tracked; appendix's 45-surface count. Assign or leave, but do not fold silently into a WP.
 - Human tasks: OVERVIEW clip re-record (phase 1 changes); B1–B3 and C1–C3 re-record is WP2.9; usability
-  baseline study (WP0.5 pack) still pending; WP0.4 production run pending.
+  baseline study (WP0.5 pack) still pending. The phase-1 portion of the WP0.4 production run is complete;
+  its orphan-rule cleanup is a pre-WP2.1 code/data task.
 - A separate operator session was started from this one on 2026-09-10 titled "Make e2e full-mode specs own
   their workspace default". If it produced a branch or PR, reconcile it with #34's `withUserMode` helper
   before adding more e2e suites.
@@ -174,6 +169,10 @@ interaction tests that pin current behaviour *before* the split. Keep the WP1.7 
   the checklist `title` tooltip is hover-only; the Users dialog admin suffix is suppressed while loading.
 
 ## 7. Prompt for the next orchestrating agent
+
+> **Superseded status notice (2026-09-11):** the prompt below predates the completed production rollout
+> and WP2.3 implementation. Do not paste it unchanged. Use sections 1, 5 and 6 above plus
+> `PROGRESS.md` and `wp/wp2.3.md` as the current state.
 
 Paste the following as the opening message of a new session in this repository.
 

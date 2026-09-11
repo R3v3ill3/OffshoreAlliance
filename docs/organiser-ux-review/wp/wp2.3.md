@@ -283,8 +283,8 @@ Named behaviours with fixed expected values; no copied implementation, no equali
 |---|---|
 | `effectiveAssessmentForScope` | returns the unit override when set; the campaign default when no override; `{ kind: "cumulative" }` when neither |
 | `activityIdsForWallChartSelections` | distinct activity ids from a mixed list; ignores cumulative selections; `[]` for none |
-| `buildAssessmentMetricsInput` | `undefined` for cumulative; for an assessment carries `activityId`, `isBinary`, `supporterOutcomeValue` and only that activity's ratings |
-| `scopeAssessmentFilterAndSort` | filter then sort (a fixed 5-worker input yields a fixed id order); an empty filter returns all ids in sort order |
+| `buildAssessmentMetricsInput` | `undefined` for cumulative; for an assessment carries `isBinary`, `supporterOutcomeValue` and only that activity's ratings. **Corrected in fix round 3:** the row originally also said "carries `activityId`". `AssessmentMetricsInput` has no `activityId` field, and one must not be invented to satisfy the plan — what is observable is *which* activity's ratings are selected, and that is what the test asserts (§9.3 deviation 40) |
+| `scopeAssessmentFilterAndSort` | resolves the scope's effective assessment and returns the `activityRatings`, `ratingCtx` and `sortAssessment` that `applyFilters` and `applySort` then use. **Corrected in fix round 3:** the row originally said "filter then sort (a fixed 5-worker input yields a fixed id order)". The helper does neither — it takes no ids and no filter state — so the behaviour is asserted by running the real `applyFilters` and `applySort` over its output with an unsorted five-worker input and a non-trivial filter, and pinning the exact filtered and sorted results (§9.3 deviation 40) |
 | `hierarchyViewKey` | `wallchart:subUnitView:7` for `"7"` |
 | `readHierarchyView` | returns the stored map; `{}` for missing key, corrupt JSON, non-object JSON |
 | `UNASSIGNED_KEY` | is `0` |
@@ -501,17 +501,20 @@ If a stage gate fails for a reason other than a harness defect, that stage's ext
 
 ### 9.1 Acceptance-criteria evidence matrix
 
-| Criterion | Evidence | Where |
-|---|---|---|
-| Tests written before the refactor pass after it | Stage 0 vitest output (new files green on untouched component) + Stage 10 output with no snapshot writes; develop-preview e2e baseline + branch-preview after-run | §9.5 |
-| No visible change | Characterisation and skeleton snapshots unchanged through all stages; both required e2e specs pass on the branch preview; screenshots of `/campaigns/1?tab=workforce&sub=wall-chart` from develop and branch previews under `docs/organiser-ux-review/evidence/wp2.3/` | §9.5 |
-| Bundle not worse | §6.1 route-bytes before/after for the frozen key; §6.2 JS Resource Timing before/after | §9.5 |
-| Render time not worse | §6.2 load-time medians (thin dev data, disclosed); §6.3 synthetic render-cost medians (not end-to-end, disclosed) | §9.5 |
-| No extra query | Frozen `queryKeys` unchanged in every characterisation snapshot; §4.6 request census `count ≤ MAX_LOAD_REQUESTS` on the branch preview | §9.5 |
-| Split along header, band/unit, tile, dialogs, hooks with preserved relative hook order | §3.2 files exist; §3.3 checks pass; reviewer confirms the five-hook sequence, verbatim contiguous blocks, and that only the `renderTile` `useCallback` left the parent | §9.5, §9.6 |
-| tsc / `pnpm test` / lint / build | Command outputs; lint total ≤ 294 and touched files clean | §9.5 |
-| No schema change; database-write statement holds | `pnpm validate:migrations`; no `supabase/migrations` change in the commit; mode-pin line plus clean suite completion (no `afterAll` error) | §9.5 |
-| Reviewer checklist item 7 (tests test behaviour) | §4.3 contracts, §4.4 explicit assertions, §4.5 fixed expectations — none compare against a copied implementation | §9.6 |
+Status column records the completed evidence, terminal review and operator
+acceptance as at 2026-09-11 (§9.6).
+
+| Criterion | Evidence | Where | Status |
+|---|---|---|---|
+| Tests written before the refactor pass after it | Stage 0 vitest output (new files green on untouched component) + Stage 10 output with no snapshot writes; develop-preview e2e baseline + branch-preview after-run | §9.5 | Met — 1093 local tests after the final test-only round; branch preview 8 passed focused / 15 passed full, 0 failed |
+| No visible change | Characterisation and skeleton snapshots unchanged through all stages; both required e2e specs pass on the branch preview; screenshots of `/campaigns/1?tab=workforce&sub=wall-chart` from develop and branch previews under `docs/organiser-ux-review/evidence/wp2.3/` | §9.5 | Snapshots and e2e met (two characterisation values corrected against the pre-refactor baseline, §9.6 findings 1–2); **screenshot pair not recorded** |
+| Bundle not worse | §6.1 route-bytes before/after for the frozen key; §6.2 JS Resource Timing before/after | §9.5 | Accepted by the operator 2026-09-11: +0.237 % local raw, +0.21 % browser transfer (two distinct metrics, §9.3 deviation 36), unchanged request/chunk graph, within the 1 % cap |
+| Render time not worse | §6.2 load-time medians (thin dev data, disclosed); §6.3 synthetic render-cost medians (not end-to-end, disclosed) | §9.5 | Accepted by the operator 2026-09-11: §6.3 improved (1,852–1,982 ms vs 2,133 ms); §6.2 elapsed medians 8,704 ms vs 7,585 ms with overlapping ranges and a lower branch maximum, treated as preview noise |
+| No extra query | Frozen `queryKeys` unchanged in every characterisation snapshot; §4.6 request census `count ≤ MAX_LOAD_REQUESTS` on the branch preview | §9.5 | Met — 45 query keys unchanged; identical 79 distinct route-load URLs; route-load max 90 ≤ ceiling 96 (median 90 vs baseline 89, inside baseline's own 88–90 spread) |
+| Split along header, band/unit, tile, dialogs, hooks with preserved relative hook order | §3.2 files exist; §3.3 checks pass; reviewer confirms the five-hook sequence, verbatim contiguous blocks, and that only the `renderTile` `useCallback` left the parent | §9.5, §9.6 | Met — all eight §3.3 checks pass; terminal reviewer approved |
+| tsc / `pnpm test` / lint / build | Command outputs; lint total ≤ 294 and touched files clean | §9.5 | Met — tsc clean, 1093 passed, lint 294 (= baseline), touched files exit 0, build exit 0 |
+| No schema change; database-write statement holds | `pnpm validate:migrations`; no `supabase/migrations` change in the commit; mode-pin line plus clean suite completion (no `afterAll` error) | §9.5 | Met — migrations validated and untouched; dev ref only, production ref absent; sync intercepted 1/1; no `afterAll` error on the preview run |
+| Reviewer checklist item 7 (tests test behaviour) | §4.3 contracts, §4.4 explicit assertions, §4.5 fixed expectations — none compare against a copied implementation | §9.6 | Met — baseline-proven characterisation fixes plus direct child/grandchild scope-key, filter and sort sensitivity; terminal reviewer approved |
 
 ### 9.2 Risks and mitigations
 
@@ -572,12 +575,18 @@ Stages 1–10 (extraction round).
 27. **The `// ── Split: members ──` section comment moved into hook F.** §2.2 lists it in the shell gap above block F; it documents the `split-unit-members` query that block F owns, so it travelled with it.
 28. **`pnpm eslint src/components/campaigns/wall-chart` cannot exit 0, and never could.** §7's command includes the whole directory, but six pre-existing modules in it (`delete-organising-unit-dialog.tsx`, `find-duplicate-workers-dialog.tsx`, `normalize-members.ts`, `worker-detail-sheet.tsx`, `worker-relationships-tab.tsx`, `participation-import/use-participation-import.ts`) already report 13 problems that are part of the 294 baseline and are out of scope under §10.7. The gate was therefore run as the explicit list of files this work package touches, which does exit 0.
 29. **The `react-free` and `dependency-direction` checks in §3.3 needed their own wording fixed, not the code.** `rg -n 'from "react"' wall-chart-model.ts` matched the module's own docblock sentence, which was reworded. `rg -n 'campaign-wall-chart"'` matches the pre-existing query key `["campaign-wall-chart", campaignId]` in `add-campaign-worker-dialog.tsx` — not an import, and in a file that must not be edited. The check was run in the form the outcome actually describes, `rg -n 'from "(\.\.?/)*campaign-wall-chart"'`, which returns nothing.
-30. **Route bytes rose 9,997 bytes (+0.24 %) — inside §6.1's +1 % cap but above the 0-byte noise floor.** 4,210,300 → 4,220,297 for the frozen key, same 45 files. The entire delta is one chunk: the wall chart's own, 729,440 → 739,437 (hash `3c878cc…` → `2744429…`); the other 44 files are byte-identical to Stage 0. It is the cost of the decomposition itself — twelve module boundaries and the prop/type plumbing — not of any single stage, so "undo the responsible extraction" (§6.1, §10.4) has no target smaller than the work package. Flagged for the operator rather than absorbed silently. **The first explanation offered for this figure was wrong and is corrected in deviation 32: the ten redundant `"use client"` directives were not part of it.**
+30. **Local raw route bytes rose 9,997 bytes (+0.24 %) — inside §6.1's +1 % cap but above the 0-byte noise floor.** (This figure is the §6.1 *local build-manifest raw route-chunk sum*. It is a different metric from the §6.2 browser transfer bytes measured on the preview, which moved by +2,513 B / +0.21 % — see deviation 36; the two must not be conflated or added.) 4,210,300 → 4,220,297 for the frozen key, same 45 files. The entire delta is one chunk: the wall chart's own, 729,440 → 739,437 (hash `3c878cc…` → `2744429…`); the other 44 files are byte-identical to Stage 0. It is the cost of the decomposition itself — twelve module boundaries and the prop/type plumbing — not of any single stage, so "undo the responsible extraction" (§6.1, §10.4) has no target smaller than the work package. Flagged for the operator rather than absorbed silently. **The first explanation offered for this figure was wrong and is corrected in deviation 32: the ten redundant `"use client"` directives were not part of it.**
 31. **Three product files outside the wall chart change mtime continuously without being edited.** `src/lib/supabase/client.ts`, `src/lib/supabase/session-recovery.ts` and `src/app/api/worker-import/apply/route.ts` report an mtime equal to whatever the current time is each time they are listed — something in the local environment (an editor or watcher process) touches them. No WP2.3 command writes to them. Content equality cannot be confirmed without git, so the reviewer should check them explicitly in the Stage 11 diff.
 32. **The ten new internal modules carried redundant `"use client"` directives; they were removed, and the bundle did not change by one byte.** Next.js 16.1.6's boundary rule is that `"use client"` marks the entry point of the client boundary: once `campaign-wall-chart.tsx` declares it, every module in its import graph is already in the client bundle, and an internal module needs its own directive only if it is *also* imported directly from a Server Component. A read-only audit of all importers (§9.5) shows every one of the ten is reached only from `campaign-wall-chart.tsx` or from a sibling WP2.3 module already below that boundary — none is imported by anything in `src/app`, by a page, layout, route handler or any other Server Component, and none is imported outside the WP2.3 subtree. The directives were therefore redundant and were removed from all ten; `campaign-wall-chart.tsx` remains the sole boundary, and no pre-existing file's directive was touched. **This did not reduce the route bytes: the frozen key still measures 4,220,297 across 45 files, and the wall chart's chunk is still exactly 739,437 bytes.** That is the expected result once stated plainly — the compiler strips the directive from emitted client JavaScript, so a redundant one costs nothing at runtime. Only the chunk's content hash moved (`2744429…` → `3c364e5…`), because chunk hashing is over module source, not emitted size. The removal stands on correctness and on matching the official boundary model, not on bundle size, and deviation 30's +9,997 bytes is confirmed as genuine module-boundary and prop-plumbing cost with no directive component.
 33. **Operator-approved frozen-test exception: the corrected Stage 0 tests were re-derived against an exact copy of the pre-refactor component, not against the decomposed one.** Pre-review fix round 1 found two characterisation defects (§9.6 findings 1 and 2) that had been recording the *wrong* observation since Stage 0, so the frozen snapshot encoded a hidden hint and a missing empty state. Correcting them necessarily changes snapshot values, which §10.1 makes a stop condition — so the operator approved a narrow exception with a procedure that makes the correction impossible to shape to the extracted code: the orchestrator created `apps/organising-db/src/components/campaigns/campaign-wall-chart.baseline.tsx`, a byte copy of `CampaignWallChart` at pre-refactor commit `03294d594c2f86cfb57ab6fb8d679bd8db023411`; the three specs were temporarily pointed at it; `-u` was run **only** while they pointed there; and the resulting values then had to pass unchanged against the real decomposed component with no `-u`. They did, on the first run — see §9.5 for the exact two-line diff and both run results. The baseline copy was deleted with the file-delete tool and its absence confirmed by Glob and by a failed read. No production source was touched in this round.
 34. **The mislabelled per-scope test was renamed and kept, not deleted, alongside the new approved one.** §9.6 finding 5 required replacing "per-scope state survives data refresh" — which actually exercised selection and display mode — with a real per-scope-filter test. The filter test was added as specified. The original assertions were retained under an accurate name ("selection and display mode survive a refresh of the underlying member data") rather than deleted: they are genuine passing coverage of state that crosses a hook boundary, and removing them to satisfy a naming complaint would have cost real protection. Only the misleading label is gone.
-35. **The fake backend still ignores `.eq` / `.select` / `.order`, and this remains an unresolved advisory for final review.** `harness/backend.ts` accepts PostgREST filters and returns the whole table, on the reasoning recorded in §9.3 deviation 1 that a fixture is a single campaign. That reasoning holds for `.eq("campaign_id", …)` but not in general: a `select` narrowed to the wrong columns, or an `.order` clause dropped or reversed, would not be caught by any test in this suite, and `["campaign-ous", cid]`'s `.order("display_order").order("name")` (§5, `WC:526–538`) is exactly such a clause. Fix round 1 deliberately did **not** broaden scope to address it — it is not a blocker for the decomposition, whose contract is that the same calls are made from a different module — but it is a genuine gap in the harness and is carried forward for the final reviewer to rule on rather than closed.
+35. **The fake backend still ignores `.eq` / `.select` / `.order`, and this remains an unresolved advisory for final review.** `harness/backend.ts` accepts PostgREST filters and returns the whole table, on the reasoning recorded in §9.3 deviation 1 that a fixture is a single campaign. That reasoning holds for `.eq("campaign_id", …)` but not in general: a `select` narrowed to the wrong columns, or an `.order` clause dropped or reversed, would not be caught by any test in this suite, and `["campaign-ous", cid]`'s `.order("display_order").order("name")` (§5, `WC:526–538`) is exactly such a clause. Fix round 1 deliberately did **not** broaden scope to address it — it is not a blocker for the decomposition, whose contract is that the same calls are made from a different module — but it is a genuine gap in the harness and is carried forward for the final reviewer to rule on rather than closed. **Still open after the Stage 11 preview run:** the branch-preview e2e exercises the real dev backend and so does not exercise this harness gap either way. **Still open after fix round 2, deliberately:** the final reviewer directed that it be left as the one explicit unresolved advisory rather than redesigned in a final fix round, on the basis that direct source and query-key review already cover the clauses it cannot see.
+36. **"Bundle size" in this work package is two distinct measurements, and the preview run makes the distinction load-bearing.** §6.1 sums the *raw bytes of the client chunk files on disk* that the per-route build manifests attribute to the campaign route (45 files, frozen key), measured locally after `pnpm build`. §6.2 sums what the *browser actually fetched* for the page, from `performance.getEntriesByType("resource")` on the deployed preview. They differ by construction: the manifest sum counts every chunk attributed to the route whether or not a given page load requests it, and counts uncompressed on-disk bytes; Resource Timing counts only the entries the browser really requested, over the wire, after compression, and reports 0 for a cache hit or a cross-origin resource without `Timing-Allow-Origin`. So the decomposition's two recorded deltas — **+9,997 B / +0.237 % local raw (deviation 30)** and **+2,513 B / +0.21 % transfer, +0.22 % encoded (§9.5 Stage 11)** — are two views of the same change, not two changes. Neither supersedes the other, and they are never summed. Both prior numbers stand as originally recorded; only their labels are now explicit.
+37. **§4.3/§4.4 claimed the four filter pipelines were covered; for the two nested ones that was not true, and final review blocked on it.** The plan asserted that the characterisation and interaction suites exercised all four filter→sort→render blocks through the component. They did not reach the child (#3) or grandchild (#4) scopes at all: child sub-unit cards render `contentCollapsible` and start closed, so they emit **no tiles** in any of the eight characterised states; a grandchild card is not even in the DOM until its parent's content is opened; the one nested test asserted headings only; and preview campaign 1 is flat, so the e2e specs never reach depth 1 or 2 either. Deleting the tile loops from `WallChartSubUnits`, or bypassing either nested `applyFilters` call, would have passed every gate in Stages 0–10 and fix round 1. Closed in fix round 2 by `wall-chart.nested-scopes.test.tsx` (§9.5, §9.6) — five behavioural tests that drive the product's own expand chevrons and "Apply to all units" control and assert exact worker identities per scope. The gap was in the tests, not the extraction: all five pass unchanged against the pre-refactor component.
+38. **The baseline-comparison procedure was used a second time, but with no snapshot update — none was needed and none was permitted.** Fix round 2's new tests were written against, and first run against, a second orchestrator-created copy of the pre-refactor component (`campaign-wall-chart.baseline.tsx` at base `03294d5`) with the five component-level specs temporarily re-pointed at it. Unlike fix round 1 (deviation 33) this round changed no frozen value, so `-u` was never run and the characterisation snapshot file was neither rewritten nor re-timestamped — its md5 is `bfac9a343b463f0aae4933814f2cfdcb` before and after, with an mtime of 2026-09-10 19:41. The copy was deleted with the file-delete tool and its absence confirmed three ways (§9.5). **This is fix round 2, which the operator set as the maximum**: any further blocking finding is escalated, not fixed in place.
+39. **The repo-root `pnpm lint` turbo task cannot exit 0 for a reason outside this work package.** `@oa/scraper#lint` runs `eslint src --ext .ts` in `apps/scraper`, which has no `eslint.config.*` file, so ESLint 9.39.4 aborts with "couldn't find an eslint.config file" before linting anything. That failure predates WP2.3, is unrelated to it, and is out of scope under §10.7. The §7 lint gate was therefore read where it is meaningful — `pnpm lint` inside `apps/organising-db`, which reports the frozen **294 problems (143 errors, 151 warnings)** and is unchanged by every round of this work package.
+40. **Two §4.5 rows described behaviour the helpers do not have, and the wording was corrected rather than the tests bent to fit it.** `buildAssessmentMetricsInput` was said to "carry `activityId`"; `AssessmentMetricsInput` has no such field, and inventing one to satisfy the plan would have been a product change in service of a document. `scopeAssessmentFilterAndSort` was said to "filter then sort"; it takes neither ids nor a filter state and does neither — it resolves the scope's effective assessment and returns the three values the real `applyFilters` and `applySort` consume. Fix round 2's tests were shaped by the wrong wording: the "fixed id order" test asserted the key order of a `Map` it had itself supplied, invoking neither function, which the confirmation reviewer correctly called a tautology. §4.5 now states what each helper does, and the model test runs the real filter and the real sort over the helper's output (§9.5 fix round 3).
+41. **Operator override: a third test-only fix round was authorised after the two-round maximum had already been reported as reached.** Deviation 38 recorded fix round 2 as the last round the operator had authorised, and the protocol stop was reported when the fresh confirmation reviewer returned a BLOCK. The operator then **explicitly authorised one narrowly scoped third test-only round** to close that BLOCK, on the same terms: no product source, no e2e, no snapshot change, no dependency. That authorisation is recorded here because it overrides deviation 38's stated maximum; deviation 38 stands as written for round 2 and is not retrospectively edited. Round 3 needed no baseline copy of the pre-refactor component — product source is unchanged since the preview commit, and the round's purpose is scope wiring that the public UI cannot construct, which a baseline comparison could not have demonstrated either.
 
 ### 9.4 Operator approval
 
@@ -1094,17 +1103,419 @@ in this round, so §9.5's route-byte and §6.3 figures stand. The render-cost
 test did run as part of the targeted suite (medians 1931 ms on the baseline,
 1852 ms on the decomposed component), both below the Stage 0 2,133 ms.
 
-**Stage 11 readiness.** No §10 stop condition is met, and no test was weakened,
+**Stage 11 readiness (recorded before the commit; superseded by the preview
+results below).** No §10 stop condition was met, and no test was weakened,
 skipped or shaped to the extracted code — the two corrected values were derived
-from the pre-refactor component. Stage 11 was not started: no git command was
-run, so the branch, commit and preview do not exist yet and the branch-preview
-e2e run remains outstanding. Two items are outstanding for the operator and
-final reviewer: the +0.237 % route-byte increase of §9.3 deviation 30, which
-sits inside §6.1's +1 % cap but above its 0-byte noise floor and cannot be
+from the pre-refactor component. Two items were outstanding for the operator and
+final reviewer: the +0.237 % local raw route-byte increase of §9.3 deviation 30,
+which sits inside §6.1's +1 % cap but above its 0-byte noise floor and cannot be
 recovered by boundary hygiene; and the unresolved harness advisory of §9.3
 deviation 35 (the fake backend ignores `.eq` / `.select` / `.order`).
 
-- Stage 11: branch-preview e2e (required specs + new spec; full-suite summary with zero failures):
+---
+
+**Stage 11, first preview commit — branch-preview verifier run, PREVIEW GATE
+GREEN.** Fresh verifier results, recorded as reported.
+
+*(a) Subject under test.*
+
+```
+commit   1694b8ae1da1061fd0eec4e742e2fc682b7bcc19
+preview  https://offshore-alliance-olew4zzse-reveille-strategy.vercel.app
+state    Vercel READY
+```
+
+*(b) Safety.* Session and REST traffic used the **dev** Supabase ref
+`dpnnmkhabysfdogllsyh` only; the production ref is **absent** from the run
+entirely. The universe sync was intercepted locally as at Stage 0 (§9.3
+deviation 11), so no campaign or domain row was written. The hint seed returned
+**HTTP 201**. No cleanup, auth-init or workspace-mode `afterAll` error was
+reported, and no residue was reported by any helper.
+
+*(c) Three dedicated `wall-chart-decomposition.spec.ts` runs — all `2 passed`,
+no `afterAll` error.*
+
+```
+run 1  routeLoad 90  raw 148  distinctRouteLoad 79  elapsed 8790ms  sync 1/1 intercepted  oracle 4 cards / 95 tiles
+run 2  routeLoad 89  raw 143  distinctRouteLoad 79  elapsed 7398ms  sync 1/1 intercepted  oracle 4 cards / 95 tiles
+run 3  routeLoad 90  raw 134  distinctRouteLoad 79  elapsed 8704ms  sync 1/1 intercepted  oracle 4 cards / 95 tiles
+
+Resource Timing, identical on all three runs:
+  transferSize 1,181,378 | encodedBodySize 1,168,178 | 50 script entries | 44 own chunks | 6 zero-transfer
+```
+
+*(d) Against the frozen develop baseline.*
+
+| Metric | develop (frozen) | branch | Reading |
+|---|---|---|---|
+| Route-load requests | 89 / 88 / 90, **median 89** | 90 / 89 / 90, **median 90** | max 90 = baseline max 90, and **90 ≤ ceiling 96** |
+| Distinct route-load URLs | 79 | **79** | identical set — no new request *kind* |
+| JS transferSize | 1,178,865 B | 1,181,378 B | **+2,513 B, +0.21 %** |
+| JS encodedBodySize | 1,165,665 B | 1,168,178 B | **+2,513 B, +0.22 %** |
+| Script entries / own chunks / zero-transfer | 50 / 44 / 6 | **50 / 44 / 6** | unchanged |
+| REST oracle | 4 cards, 95 tiles | **4 cards, 95 tiles** | unchanged |
+
+Stated precisely, because the §6.2 criterion is "after ≤ before": the
+**median route-load count is one request higher than the develop median** (90 vs
+89). It is not a new query — the distinct URL set is byte-identical at 79
+entries, and the develop baseline itself ranged 88–90, so 90 is the baseline's
+own maximum rather than a new level. The ceiling of 96 (§9.3 deviation 13) is
+not approached. **§10.5 (stop if the branch census exceeds the develop
+baseline) is therefore not triggered** — the branch maximum equals the develop
+maximum and the distinct-URL set is unchanged — but the one-request median
+difference is recorded here rather than rounded away. Raw totals
+(148 / 143 / 134, median 143 against a baseline 134–140) are reported but are
+not the ceiling metric, for the reasons in deviation 13.
+
+**Load time is inconclusive rather than clean.** Elapsed medians are
+**8,704 ms on the branch against 7,585 ms on develop**, which is *not* "after ≤
+before" on medians. The branch's full range (7,398–8,790 ms) nevertheless sits
+inside the baseline's own range (6,889–9,054 ms), and the branch maximum is
+below the baseline maximum, so the difference is within the run-to-run spread of
+a preview deployment on thin dev data. It is recorded as unresolved noise, not
+as a pass.
+
+*Caveats, unchanged from §9.3 deviation 14 and applied identically to both
+sides:* `transferSize` is 0 on a cache hit and otherwise includes ~300 B of
+response headers per entry, and both fields read 0 for a cross-origin resource
+served without `Timing-Allow-Origin` — which is why 6 of the 50 script entries
+report zero on develop and on the branch alike. The totals are therefore a
+**floor** for third-party weight, and the +2,513 B delta is a comparison between
+two measurements taken under the same caveats, not an absolute page weight.
+
+*(e) Focused required command (`wall-chart.spec.ts`,
+`organiser-campaign.spec.ts`, `wall-chart-decomposition.spec.ts`).*
+
+```
+8 passed, 0 skipped, 0 failed — exit 0
+```
+
+*(f) Full credentialled suite.*
+
+```
+chromium         13 passed,  2 skipped,  0 failed
+chromium-admin    2 passed,  0 skipped,  0 failed
+total            15 passed,  2 skipped,  0 failed — exit 0
+```
+
+Both skips are established and unrelated to WP2.3: the mobile-dialer test skips
+because its token/password are absent from the environment, and one test skips
+because `E2E_FOREIGN_CAMPAIGN_ID` is not set.
+
+*(g) Preview gate.* **GREEN.** Zero e2e failures on the branch preview across
+the dedicated, focused and full runs; the request-census ceiling holds; the
+distinct route-load set, script-entry counts and REST oracle are unchanged; and
+no write reached the backend.
+
+**Where this leaves the open items.** The operator had *provisionally*
+accepted the +0.237 % local raw route-byte change of deviation 30 subject to the
+preview metrics. **The engineering condition is met:** route-load requests are
+under the frozen ceiling with an identical distinct-URL set, the browser JS
+delta is **+0.21 % transfer / +0.22 % encoded — well under the 1 % cap** — and
+the request, script-entry and own-chunk counts are all unchanged. Note that
+these are two different metrics and must not be conflated: **+9,997 B is the
+local build-manifest raw route-chunk sum (§6.1); +2,513 B is the browser
+Resource Timing transfer measured on the preview (§6.2)** — see §9.3
+deviation 36. **Final operator acceptance of the bundle change and the fresh
+reviewer's verdict are both still pending; nothing here should be read as final
+approval.**
+The §9.3 deviation 35 harness advisory (the fake backend ignores `.eq` /
+`.select` / `.order`) also remains open for the fresh reviewer to rule on, and
+the elapsed-time reading in (d) is unresolved noise.
+
+---
+
+**Final review fix round 2 — nested child/grandchild coverage, harness cleanup
+and two model assertions (test/harness only; fix round 2 of a maximum of 2).**
+One blocking finding and three advisories from the fresh final reviewer. **No
+product source was touched in this round**, and no frozen value changed.
+
+*Files changed*
+
+```
+harness/backend.ts                       + backendInstalled()
+harness/locate.ts                        + filterTrigger()
+harness/mount.tsx                        failure-path cleanup; + options.queryClient
+wall-chart.nested-scopes.test.tsx        NEW — 5 tests (blocking finding)
+wall-chart.harness-cleanup.test.tsx      NEW — 2 tests (advisory 5)
+wall-chart-model.test.ts                 22 → 24 tests (advisory 6)
+__snapshots__/…characterization…snap     UNTOUCHED — byte-identical, same mtime
+```
+
+*(a) The blocking finding, and why the new tests fail on a nested regression.*
+The fixture's geometry gives one parent, two children and one grandchild:
+
+```
+Acme Group (10, group container)   tiles 101 Ada                       pipeline #2
+  ├─ Acme North (11)               tiles 102 Ben, 107 Gina             pipeline #3
+  └─ Acme South (12)               tiles 103 Cara, 108 Hugo            pipeline #3
+       └─ South Deck (13)          tiles 104 Dan                       pipeline #4
+```
+
+The five tests reach depth 1 and depth 2 through the product's own controls —
+the per-card "Expand unit" chevron, then the filter popover's "Apply to all
+units", which is the only product path to a nested scope's filter because
+nested cards have no filter UI of their own. Each asserts exact tile
+identities, never headings:
+
+| Test | Pins |
+|---|---|
+| child cards start collapsed, grandchild not rendered | current default behaviour, unchanged: `Acme North` and `Acme South` own **0 tiles**, `South Deck` absent from the unit titles |
+| expanding a child renders that child's own workers | `Acme South` → `["103 Cara Carter", "108 Hugo Hall"]`; parent still `["101 Ada Adams"]`; sibling still `[]` |
+| expanding a grandchild renders that grandchild's worker | `South Deck` → `["104 Dan Dawson"]`, parent and grandparent unchanged |
+| a top-level card's own filter does not reach its child or grandchild | ticking `3 (3–<4)` on `Acme Group` empties only `Acme Group`; all three nested scopes keep every tile |
+| Apply to all runs each nested pipeline over its own workers | `3 (3–<4)`: child → `["103 Cara Carter"]`, sibling → `[]`, grandchild → `[]`. Then `4 (4–<5)`: grandchild → `["104 Dan Dawson"]`, child → `[]` |
+
+That last pair is deliberate: under one filter the child keeps a tile and the
+grandchild loses its only one; under the other the reverse. So each nested
+pipeline is proven both to drop and to keep tiles, and the pre-filter
+assertions run first, so "stopped rendering nested tiles" can never be mistaken
+for "the filter removed them".
+
+**Sensitivity was proved, not assumed.** A throwaway probe stubbed
+`applyFilters` to an identity function via `vi.mock` — simulating "both nested
+pipelines bypassed" with **no product edit** — and the real spec's expectations
+failed exactly as required:
+
+```
+mutant child  (Acme South)  ["103 Cara Carter","108 Hugo Hall"]   expected ["103 Cara Carter"]   FAIL
+mutant grandchild (South Deck) ["104 Dan Dawson"]                 expected []                    FAIL
+```
+
+A pipeline moved to the wrong scope key is caught by the isolation test (a
+parent-keyed lookup would move the nested tiles) and by the second filter (a
+parent- or sibling-keyed grandchild would render `[]` instead of Dan). The
+probe was deleted; it is named here only because it is the evidence.
+
+*(b) Advisory 5 — the harness leaked on a failed mount.* `mountWallChart`
+installed the module-global fixture, appended a container to `document.body`
+and created a root and a QueryClient, but returned `unmount` only after
+`settle()` and `assertQueriesSettled()` had both passed. A mount that threw
+therefore left all four behind. Measured before the fix, with a fixture missing
+one queried table: the mount threw `Enabled queries did not settle as success`
+and `document.body` went from 0 children to **1**, still containing a rendered
+chart ("Campaign summary" heading present).
+
+*Resolved.* The render/settle/assert sequence is wrapped in `try`/`catch`; the
+catch runs the same `teardown` the successful path returns (root unmount inside
+`act`, container removed, `queryClient.clear()`, `resetBackend()`), inside its
+own `try`/`catch` so cleanup can never replace the failure the caller must see,
+and rethrows. The success path is unchanged — `unmount` *is* that same
+`teardown`, so there is no second implementation to drift. Proved by
+`wall-chart.harness-cleanup.test.tsx`: the failed mount rejects with the real
+error, `document.body.childElementCount` returns to its pre-mount value, the
+caller-supplied query cache is empty, and `backendInstalled()` is `false`; a
+second test then mounts, renders (`Unassigned` → `["112 Lena Lane"]`) and
+unmounts normally, which is itself the proof that the failed mount left no
+fixture behind. Two small additions support it: `backendInstalled()` in
+`harness/backend.ts`, and an optional `options.queryClient` so a mount that is
+expected to fail can still be inspected.
+
+*(c) Advisory 6 — two model assertions added.* `buildAssessmentMetricsInput`
+returns no `activityId` field, so the §4.5 "carries `activityId`" behaviour is
+pinned where it is observable: with two activities in the map, every rating
+handed to the metrics reports `activity_id` 7 for `assessment(7)` and 9 for
+`assessment(9)`, with the key sets `[101, 102, 103]` and `[101]` and Ada's
+rating 2 — so a helper keyed off the wrong activity fails. For
+`scopeAssessmentFilterAndSort`, a fixed five-worker activity map in
+deliberately non-ascending insertion order yields the fixed worker-id order
+`[204, 201, 203, 205, 202]` from both `activityRatings` and
+`sortAssessment.activityRatings`, with ratings `[2, 5, null, 1, 4]`. Both are
+fixed expectations chosen from the documented behaviour; neither re-implements
+the helper, and the helper does not sort — what is pinned is the order the
+downstream `applySort` actually receives.
+
+*(d) Advisory 7 — left open on instruction.* The fake backend's
+`.select`/predicate/`.order` limitation was **not** redesigned; see §9.3
+deviation 35.
+
+*(e) Baseline proof — no snapshot update was needed, and none was run.* All
+five component-level specs were temporarily pointed at
+`campaign-wall-chart.baseline.tsx` (the pre-refactor component at base
+`03294d5`), the suite was run with **no `-u`**, then the imports were restored
+and the identical tests re-run with expectations untouched:
+
+```
+baseline    vitest run …/wall-chart   (imports → .baseline)  7 files / 86 tests passed, no snapshot written
+decomposed  vitest run …/wall-chart   (imports → real)       7 files / 86 tests passed, no snapshot written
+```
+
+**Every new test passes unchanged against the pre-refactor component**, which
+is the point: the nested pipelines were never broken by the extraction, they
+were merely untested. Render-cost medians on the same two runs were 1,907 ms
+(baseline) and 1,710 ms (decomposed), both under the Stage 0 2,133 ms.
+
+*(f) Frozen values unchanged.* The characterisation snapshot file is
+byte-identical — md5 `bfac9a343b463f0aae4933814f2cfdcb` before and after, mtime
+still 2026-09-10 19:41, so it was not even rewritten — and with it all 45
+frozen query keys. No `-u` was run at any point in this round, and Vitest
+reported no snapshot written, updated or obsolete on either run.
+
+*(g) Baseline file deleted.* Removed with the file-delete tool (109,847 bytes).
+Absence confirmed three ways: a read returning "File not found",
+`Glob **/campaign-wall-chart.baseline*` → 0 files, and a repo-wide
+`rg --hidden "campaign-wall-chart\.baseline"` whose only hits are the three
+prose mentions in this document. Both throwaway probes were deleted too and the
+same search confirms no reference to either remains.
+
+*(h) Gates after deletion.*
+
+```
+pnpm tsc --noEmit -p tsconfig.json   exit 0, no diagnostics
+pnpm vitest run …/wall-chart         7 files / 86 tests passed (was 5 / 77), no snapshot written/updated/obsolete
+pnpm test                            82 files / 1090 tests passed, 0 failed   (80 / 1081 → 82 / 1090)
+pnpm eslint <6 touched files>        exit 0
+pnpm lint (apps/organising-db)       294 problems (143 errors, 151 warnings) = baseline, 0 in any wall-chart test or harness file
+pnpm lint (repo root)                fails in @oa/scraper for a pre-existing missing eslint.config — see §9.3 deviation 39
+```
+
+Bundle and render measurements were not re-run: production source is unchanged
+in this round, so the route-byte figures above and the §6.3 render figures
+stand. The Stage 11 preview evidence is untouched.
+
+- Stage 11: branch-preview e2e — dedicated spec 3 × `2 passed` (no `afterAll` error); focused required command **8 passed / 0 skipped / 0 failed, exit 0**; full suite **15 passed / 2 established unrelated skips / 0 failed, exit 0** on commit `1694b8ae` at the preview above. Preview gate GREEN.
+- Fix round 2: targeted suite **7 files / 86 tests**, `pnpm test` **82 files / 1090 tests**, tsc exit 0, touched-file eslint exit 0, `apps/organising-db` lint at the frozen 294; frozen snapshot byte-unchanged; no `-u` run. Not yet re-committed or re-previewed.
+- Fix round 3: targeted suite **8 files / 89 tests**, `pnpm test` **83 files / 1093 tests**, tsc exit 0, touched-file eslint exit 0, `apps/organising-db` lint at the frozen 294; frozen snapshot byte-unchanged; no `-u` run. Not yet re-committed or re-previewed.
+
+---
+
+**Final confirmation review fix round 3 — direct per-scope wiring coverage and
+a real model composition (test/harness only; operator-authorised third round,
+see §9.3 deviation 41).** One blocking finding with two parts. **No product
+source was touched**, no frozen value changed, and no runtime preview or e2e
+was needed because neither product source nor e2e code moved.
+
+*Files changed*
+
+```
+harness/mount.tsx                          installJsdomShims() exported (one word)
+harness/nested-scope-context.tsx           NEW — hand-built WallChartSubUnits props
+wall-chart.nested-scope-wiring.test.tsx    NEW — 3 tests (blocking finding, part 1)
+wall-chart-model.test.ts                   tautological test replaced (part 2); still 24 tests
+wall-chart.nested-scopes.test.tsx          UNCHANGED — kept as public-flow coverage
+__snapshots__/…characterization…snap       UNTOUCHED — byte-identical, same mtime
+```
+
+*(a) Why the round-2 tests could not close this.* They reach a nested filter
+only through "Apply to all units", which writes the **same** state to every
+scope. Nested cards have no filter UI of their own, so the public UI cannot
+give a child and a grandchild different states at all. With identical state
+everywhere, a grandchild reading its parent's or its sibling's scope key
+produces the same tiles as one reading its own, and the fixture's insertion
+order happened to match the default sort, so `applySort` was never exercised
+either. The reviewer was right on both counts.
+
+*(b) The fix.* `WallChartSubUnits` — the real extracted component that
+contains pipelines #3 and #4 — is now rendered directly with a
+`getFilter(scopeId)` that returns a different filter **and** a different sort
+per scope id. `harness/nested-scope-context.tsx` supplies only data and stubs;
+the component, the filter and the sort are the product's own. Geometry:
+
+```
+Parent Unit (500, not a group container → child cards render expanded)
+  ├─ Child Alpha   (510)  ids [604, 601, 606, 603, 602, 605]   pipeline #3
+  │    └─ Grandchild One (511)  ids [701, 703, 704, 702]       pipeline #4
+  └─ Child Sibling (520)  ids [607, 608]                       pipeline #3
+```
+
+Every id list is unsorted by both name and rating. Cumulative ratings:
+601→3, 602→2, 603→5, 604→3, 605→1, 606→2, 607→5, 608→1, 701→4, 702→2,
+703→4, 704→3.
+
+The distinct per-scope states and the exact expected tile orders:
+
+| Scope | `getFilter(id)` returns | Expected tiles, in order |
+|---|---|---|
+| 500 parent | no filter, `cumulative_desc` | (not rendered by this component) |
+| 510 child | buckets `{2,3}`, `first_name` | `601 Ada Zane`, `602 Bo Yates`, `604 Di Ware`, `606 Fay Upton` |
+| 511 grandchild | bucket `{4}`, `last_name` | `703 Ira Reed`, `701 Gus Tate` |
+| 520 sibling | buckets `{5,1}`, `last_name` | `608 Hana Sun`, `607 Gil Tell` |
+
+Each order is derived from the real comparators by hand, not read off a run,
+and each differs from its own filtered input order — so a bypassed sort cannot
+produce it. A second test registers the child's and the grandchild's states
+**under each other's ids** and asserts the outputs swap (child → `[]`,
+grandchild → `702 Hal Sims`, `704 Jo Quinn`): a scope that read the other's key
+would be unmoved by the swap and so must fail one of the two tests. A third
+test removes every filter and gives each scope a different sort, so ordering is
+the only thing left that can be wrong.
+
+*(c) Sensitivity proved with temporary probes, since deleted.* Two probe files
+simulated the named regressions with `vi.mock` and a remapped `getFilter` —
+**no product edit** — and the real spec's expectations failed in every case:
+
+```
+A  grandchild reads CHILD key    ["702 Hal Sims","704 Jo Quinn"]                     expected ["703 Ira Reed","701 Gus Tate"]   FAIL
+B  child reads PARENT key        6 tiles, ["603 Cy Xu","604 Di Ware","601 Ada Zane",
+                                  "606 Fay Upton","602 Bo Yates","605 Eli Vance"]    expected 4 tiles                           FAIL
+B2 child reads SIBLING key       ["605 Eli Vance","603 Cy Xu"]                       expected 4 tiles                           FAIL
+C  applySort → identity, child   ["604 Di Ware","601 Ada Zane","606 Fay Upton",
+                                  "602 Bo Yates"]  (the unsorted filtered order)     expected first_name order                  FAIL
+C  applySort → identity, gchild  ["701 Gus Tate","703 Ira Reed"]                     expected ["703 Ira Reed","701 Gus Tate"]   FAIL
+```
+
+Case C is the one round 2's fixture could not produce: the grandchild's ids are
+deliberately supplied as `[701, 703, …]` so that the filtered order and the
+sorted order disagree. Filter-bypass remains covered as in round 2 (it changes
+the tile count in both scopes). Filter-then-sort versus sort-then-filter is
+**not** distinguishable for a total order and is not claimed to be; what is
+covered is a bypassed filter, a bypassed sort, a sort fed the unfiltered list,
+and a wrong scope key in either nested path.
+
+*(d) The model assertion, corrected.* The round-2 "fixed order" test asserted
+the key order of a `Map` it had itself supplied and called neither
+`applyFilters` nor `applySort` — a tautology, as the reviewer said. It is
+replaced by a test that calls the real `scopeAssessmentFilterAndSort` and then
+runs the real filter and sort over its three outputs, with five workers whose
+assessment ratings deliberately disagree with their cumulative ratings:
+
+```
+id   name        cumulative   activity 7        ids supplied unsorted: [804, 801, 803, 805, 802]
+801  Ann Nash        3            1             filter: rating buckets {4,5}, sort cumulative_asc
+802  Bea Mills       5            4
+803  Cal Lloyd       4            2             applyFilters(… fa.activityRatings, fa.ratingCtx) → [804, 802]
+804  Dov Kerr        1            5             applySort(…, { assessmentSort: fa.sortAssessment }) → [802, 804]
+805  Eve James       2        (unrated)
+```
+
+Each of the helper's outputs is shown to be load-bearing by removing it, in
+the same test: without `activityRatings`/`ratingCtx` the filter falls back to
+cumulative ratings and keeps a *different pair* (`[803, 802]`); without
+`sortAssessment` the sort orders by cumulative rating and comes out in the
+*opposite* direction (`[804, 802]`). A bypassed sort leaves the filtered order
+`[804, 802]` and fails the `[802, 804]` assertion. The `activityId` and
+"filter then sort" claims in §4.5 were corrected rather than satisfied by
+invention — see §9.3 deviation 40.
+
+*(e) Round-2 tests kept.* `wall-chart.nested-scopes.test.tsx` is unchanged. It
+covers the public flow — real expand chevrons, the real filter popover, the
+real "Apply to all units" — which the direct test deliberately bypasses, so
+the two are complementary rather than redundant.
+
+*(f) Frozen values unchanged.* Characterisation snapshot md5
+`bfac9a343b463f0aae4933814f2cfdcb`, unchanged, with an mtime of
+2026-09-10 19:41:12 — it was not rewritten in this round or the last. All 45
+frozen query keys unchanged with it. No `-u` was run, and Vitest reported no
+snapshot written, updated or obsolete.
+
+*(g) Probes deleted.* Both `zz-sensitivity*.test.tsx` files removed with the
+file-delete tool (5,056 and 4,833 bytes); the test directory listing and a
+repo-wide `rg` confirm no probe file or reference remains.
+
+*(h) Gates.*
+
+```
+pnpm tsc --noEmit -p tsconfig.json   exit 0, no diagnostics
+pnpm vitest run …/wall-chart         8 files / 89 tests passed (was 7 / 86), no snapshot written/updated/obsolete
+pnpm test                            83 files / 1093 tests passed, 0 failed   (82 / 1090 → 83 / 1093)
+pnpm eslint <4 touched files>        exit 0
+pnpm lint (apps/organising-db)       294 problems (143 errors, 151 warnings) = baseline, 0 in any wall-chart test or harness file
+```
+
+Render-cost median 1,905 ms in the targeted run, under the Stage 0 2,133 ms.
+Bundle and render measurements were not re-run and the Stage 11 preview
+evidence is untouched: product source has not changed since commit
+`1694b8ae`.
 - `pnpm validate:migrations`: Stage 0 — `Validated 9 Supabase migrations with unique 14-digit versions.` (see (f) above)
 
 ### 9.6 Reviewer findings and resolution
@@ -1194,9 +1605,141 @@ accepts `.eq` / `.select` / `.order` and returns whole tables (§9.3 deviations 
 and 35). No test in this suite would catch a narrowed `select` or a dropped or
 reversed `.order`, and `["campaign-ous", cid]` carries exactly such a clause.
 Fix round 1 did not broaden scope to address it; the final reviewer should rule
-on whether it must be closed before merge.
+on whether it must be closed before merge. The Stage 11 preview run does not
+bear on it either way — that run goes through the real dev backend, not the
+harness.
 
-_Final review: pending._
+**Final review — BLOCK, one blocking finding and three advisories. Resolved in
+fix round 2 (test/harness only); this was the second and final fix round the
+operator authorised.**
+
+**Verdict recorded as given: BLOCK.** "Current interaction coverage only checks
+nested headings after expansion. Characterisation snapshots keep child cards
+collapsed with no tiles, and preview campaign 1 is flat. Breaking
+child/grandchild tile rendering or filter pipelines in
+`wall-chart-unit-hierarchy.tsx` would still pass, despite the plan claiming all
+four scopes are covered."
+
+*The finding was correct, and its reasoning was verified rather than accepted.*
+Child sub-unit cards are rendered `contentCollapsible={!!ou.is_group_container}`
+and start closed, so in all eight characterised states they own **no tiles**; a
+grandchild card is not in the DOM at all until its parent's content is opened;
+the sole nested test asserted `unitTitles` only; and the e2e campaign is flat.
+Pipelines #3 and #4 in `WallChartSubUnits` were therefore unprotected end to
+end. See §9.3 deviation 37.
+
+*Resolved* by `wall-chart.nested-scopes.test.tsx` — five behavioural tests that
+open depth 1 and depth 2 with the product's own "Expand unit" chevrons and
+filter depth 1 and 2 with the popover's "Apply to all units" (the only product
+route to a nested scope's filter, since nested cards carry no filter UI), and
+assert exact worker identities in each scope under two opposite filters, so
+each nested pipeline is proven both to drop and to keep tiles. A `vi.mock`
+probe that stubbed `applyFilters` to identity — no product edit — confirmed the
+new expectations fail when the nested pipelines are bypassed. The current
+collapsed default is pinned as behaviour, not changed. Exact values, the
+mutation output and both run results are in §9.5.
+
+**Advisory: the mount harness leaked root, container, query client and global
+backend on a failed mount.** Correct, and reproduced: a fixture missing one
+queried table left a rendered chart in `document.body` after the mount threw.
+*Resolved* with a `try`/`catch` failure path that runs the same teardown the
+success path returns, plus `wall-chart.harness-cleanup.test.tsx` proving DOM,
+query-cache and backend release after an intentional failure and unchanged
+behaviour on success — see §9.5(b).
+
+**Advisory: two §4.5 model assertions were missing.** *Resolved across rounds
+2 and 3* — `buildAssessmentMetricsInput`'s real output fields are pinned
+without inventing an `activityId` field that the type does not contain, and
+the model test now calls the real `scopeAssessmentFilterAndSort`,
+`applyFilters` and `applySort` over deliberately unsorted input with fixed
+filtered and sorted outputs. See §9.5(c) and the round-3 evidence.
+
+**Advisory: leave the fake-backend limitation open.** Followed exactly; it was
+not redesigned. See §9.3 deviation 35.
+
+**Fresh confirmation review — BLOCK, one finding in two parts. Escalated to the
+operator (fix round 2 had been the authorised maximum), who authorised one
+narrowly scoped third test-only round; resolved there. See §9.3 deviation 41.**
+
+**Verdict recorded as given: BLOCK.** "The nested tests use Apply to all,
+making child and grandchild filters identical. They cannot detect grandchild
+reading child scope or child reading a sibling scope. They also do not prove
+`applySort` because fixture insertion order already matches default sort. The
+model 'fixed order' test merely asserts Map insertion order and invokes neither
+`applyFilters` nor `applySort`."
+
+*Both parts were correct, and both were verified before being fixed.* "Apply to
+all units" writes one state to every scope, and nested cards have no filter UI
+of their own, so the public UI cannot produce differing per-scope states at
+all — round 2's coverage was structurally incapable of detecting a wrong scope
+key. And the round-2 model test asserted the key order of a `Map` the test
+itself had supplied.
+
+*Resolved, part 1* — `wall-chart.nested-scope-wiring.test.tsx` renders the real
+`WallChartSubUnits` directly with a `getFilter(scopeId)` that returns a
+different filter *and* sort per scope id: the child, the grandchild, a sibling
+and the parent all differ, every input id list is unsorted, and the expected
+tile order in each scope is derived from the real comparators by hand. A second
+test swaps the child's and grandchild's states under each other's ids and
+asserts the outputs swap, which no wrong-key wiring can survive. Temporary
+probes confirmed that a grandchild reading the child's key, a child reading the
+parent's or the sibling's key, and an identity `applySort` in either nested path
+all fail the new expectations; the probes were deleted. Exact states, expected
+orders and observed failures are in §9.5 fix round 3.
+
+*Resolved, part 2* — the tautological model test is replaced by one that calls
+the real `scopeAssessmentFilterAndSort` and runs the real `applyFilters` and
+`applySort` over its output, with unsorted ids and a non-trivial filter, and
+pins both the filtered and the sorted result. Dropping either the assessment
+ratings or the assessment sort changes the outcome, and both contrasts are
+asserted in the same test. The `activityId` field the plan asked for does not
+exist on `AssessmentMetricsInput`; §4.5's wording was corrected rather than a
+field invented (§9.3 deviation 40).
+
+*Round-2 coverage kept.* The full-component nested tests remain unchanged as
+public-flow coverage, per the reviewer's direction.
+
+**The fake-backend `.select` / predicate / `.order` limitation remains the sole
+outstanding advisory** (§9.3 deviations 1, 35). It was not touched in round 3
+either.
+
+**Final confirmation review — historical entry state before review.** The
+preview evidence in §9.5 is against commit
+`1694b8ae1da1061fd0eec4e742e2fc682b7bcc19`; **the test and harness changes from
+fix rounds 2 and 3 are not yet committed or re-previewed**, and are the only
+changes since that commit. No product source has changed since it. Open items
+for that verdict, none of which the implementer may close:
+
+| # | Item | Status entering review |
+|---|---|---|
+| 1 | The 8-item reviewer checklist of §8 Stage 11, including the five-hook sequence, verbatim contiguous blocks, and that only the `renderTile` `useCallback` left the parent | Not yet run by a fresh reviewer |
+| 2 | Bundle change: +9,997 B / +0.237 % local raw route bytes (§9.3 deviation 30) and +2,513 B / +0.21 % browser transfer (§9.5 Stage 11), the two metrics distinguished in deviation 36 | Engineering condition met on the preview; accepted by the operator 2026-09-11 |
+| 3 | Fake-backend `.eq` / `.select` / `.order` advisory (§9.3 deviations 1, 35) | Open, carried forward deliberately |
+| 4 | Branch-preview elapsed-time medians 8,704 ms vs 7,585 ms on develop, ranges overlapping (§9.5 Stage 11(d)) | Unresolved noise, not claimed as a pass |
+| 5 | The three product files outside the wall chart whose mtime moves without an edit (§9.3 deviation 31) | To be checked explicitly in the commit diff |
+| 6 | The operator-approved frozen-test exception and its baseline proof (§9.3 deviations 33, 34; §9.5 fix round 1), and the second baseline comparison in fix round 2, which changed no frozen value (§9.3 deviation 38) | Proof recorded for both; reviewer to confirm it is sufficient |
+| 7 | Route-load median 90 on the branch vs 89 on develop, with an identical 79-URL distinct set and max 90 = develop max (§9.5 Stage 11(d)) | Under the frozen ceiling of 96; §10.5 not triggered; median difference disclosed |
+| 8 | The develop/branch screenshot pair named in §9.1 under `docs/organiser-ux-review/evidence/wp2.3/` | Not recorded |
+| 9 | Fix round 2's nested child/grandchild coverage, harness cleanup fix and model assertions (§9.3 deviations 37, 38; §9.5 fix round 2) | Green against both the pre-refactor and the decomposed component; **uncommitted, and not covered by the preview run in §9.5** |
+| 10 | Fix round 3's direct per-scope wiring test, the corrected model composition test, and the §4.5 wording corrections (§9.3 deviations 40, 41; §9.5 fix round 3) | Green, with sensitivity proved and probes deleted; **uncommitted, and not covered by the preview run in §9.5** |
+| 11 | The operator override authorising a third fix round after the stated two-round maximum (§9.3 deviation 41) | Recorded; reviewer to confirm the scope actually stayed test-only |
+
+**Terminal confirmation review — APPROVE WITH ADVISORIES.** The fresh reviewer
+confirmed that round 3 closes the nested scope-key and sort-sensitivity
+blocker: the tests render the real `WallChartSubUnits`, use distinct
+parent/child/grandchild/sibling states, and fail under the reviewed wrong-key
+and sort-bypass mutations. The model-test advisory is also closed. No probe or
+baseline file remains, the frozen snapshots are untouched, and rounds 2 and 3
+changed only tests, harness code and this document.
+
+The sole remaining advisory is the fake PostgREST harness's deliberately
+incomplete emulation of `.select`, predicates and `.order`
+(`__tests__/harness/backend.ts`); direct source/query review and the
+real-dev-backend preview run cover the production query shape. The reviewer
+requires only commit/CI verification for the uncommitted test-only rounds; no
+new runtime preview is required. The operator accepted the measured bundle and
+preview-timing variance on 2026-09-11. WP2.3 is approved for its final
+evidence/ledger commit and PR.
 
 ---
 

@@ -35,6 +35,12 @@ export type MountWallChartOptions = {
   search?: string;
   /** Seeded before mount, e.g. `{ "wallchart:displayMode:1": "count" }`. */
   localStorage?: Record<string, string>;
+  /**
+   * Client to mount under. Defaults to a fresh `createWallChartQueryClient()`.
+   * A caller supplies its own only to inspect the cache after a mount that is
+   * expected to fail, where nothing is returned to inspect it through.
+   */
+  queryClient?: QueryClient;
 };
 
 export type MountedWallChart = {
@@ -64,7 +70,7 @@ let shimmed = false;
  * sentinel effect bails and `isSummaryStuck` stays false, which is the state
  * the snapshots pin.
  */
-function installJsdomShims(): void {
+export function installJsdomShims(): void {
   if (shimmed) return;
   shimmed = true;
 
@@ -149,21 +155,43 @@ export async function mountWallChart(
   const container = document.createElement("div");
   document.body.appendChild(container);
 
-  const queryClient = createWallChartQueryClient();
+  const queryClient = options.queryClient ?? createWallChartQueryClient();
   const { Component } = options;
   let root: Root | null = null;
 
-  await act(async () => {
-    root = createRoot(container);
-    root.render(
-      <QueryClientProvider client={queryClient}>
-        <Component campaignId={options.fixture.campaignId} canWrite={options.canWrite ?? true} />
-      </QueryClientProvider>
-    );
-  });
+  /** Releases everything this call acquired, in reverse order. */
+  const teardown = () => {
+    act(() => {
+      root?.unmount();
+    });
+    container.remove();
+    queryClient.clear();
+    resetBackend();
+  };
 
-  await settle(queryClient);
-  assertQueriesSettled(queryClient);
+  try {
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        <QueryClientProvider client={queryClient}>
+          <Component campaignId={options.fixture.campaignId} canWrite={options.canWrite ?? true} />
+        </QueryClientProvider>
+      );
+    });
+
+    await settle(queryClient);
+    assertQueriesSettled(queryClient);
+  } catch (error) {
+    // A mount that throws never returns its `unmount`, so without this the
+    // React root, the container, the query cache and the module-global backend
+    // all outlive the failing test and contaminate the next one.
+    try {
+      teardown();
+    } catch {
+      // Cleanup must never replace the failure the caller needs to see.
+    }
+    throw error;
+  }
 
   return {
     container,
@@ -191,14 +219,7 @@ export async function mountWallChart(
       await settle(queryClient);
       assertQueriesSettled(queryClient);
     },
-    unmount: () => {
-      act(() => {
-        root?.unmount();
-      });
-      container.remove();
-      queryClient.clear();
-      resetBackend();
-    },
+    unmount: teardown,
   };
 }
 

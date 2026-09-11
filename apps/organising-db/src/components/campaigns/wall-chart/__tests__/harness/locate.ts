@@ -59,6 +59,25 @@ export function cardTiles(card: HTMLElement): string[] {
 }
 
 /**
+ * A card's own filter trigger. The label gains an active count once a filter is
+ * set (`Filter` → `Filter (1)`), so it is matched on shape; nested sub-unit
+ * cards have no filter UI of their own, and the owning-card guard keeps a
+ * parent's trigger from being confused with a descendant's if that changes.
+ */
+export function filterTrigger(card: HTMLElement): HTMLButtonElement {
+  const matches = [...card.querySelectorAll("button")].filter(
+    (b) => b.parentElement?.closest(CARD_ROOT) === card && /^Filter( \(\d+\))?$/u.test(accessibleName(b))
+  );
+  if (matches.length === 0) {
+    fail("No filter trigger on this card", [...card.querySelectorAll("button")].map(accessibleName));
+  }
+  if (matches.length > 1) {
+    throw new Error(`${matches.length} filter triggers on one card`);
+  }
+  return matches[0];
+}
+
+/**
  * A checkbox in the open filter popover, addressed by its visible label.
  *
  * Radix portals the popover content out of the chart, so this searches the

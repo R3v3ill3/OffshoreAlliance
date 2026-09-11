@@ -43,6 +43,15 @@ export function currentSearchParams(): URLSearchParams {
   return searchParams;
 }
 
+/**
+ * Whether a fixture is currently installed. The backend is module-global, so a
+ * mount that fails part-way could leave one behind for the next test; the
+ * harness's own cleanup test reads this to prove it does not.
+ */
+export function backendInstalled(): boolean {
+  return backend !== null;
+}
+
 function requireBackend(): WallChartFixture {
   if (!backend) {
     throw new UnseededBackendError("No wall-chart fixture installed: call installBackend() first");

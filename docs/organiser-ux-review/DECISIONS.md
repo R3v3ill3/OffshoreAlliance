@@ -25,7 +25,7 @@ Status key: **Open** · **Confirmed** (recommendation accepted as written) · **
 | A dev-database test account with role `user` (and ideally one `viewer`), credentials supplied out of band as `E2E_USER_EMAIL` / `E2E_USER_PASSWORD`; plus one dev campaign visible to that account with at least one member (100% Unassigned is fine) | WP0.2 (e2e flow one), WP1.6 (role coverage) | Dev project `dpnnmkhabysfdogllsyh` only. Never production. |
 | A dev PostHog project key and host (`NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`) for the preview environment, confirmed as a dev project | WP0.2 | **2026-09-08: not set up for dev.** Capture no-ops without a key; the "events visible in a dev PostHog project" criterion is deferred until the operator creates one. Not blocking. |
 | A dev-pointed environment for the app | WP0.3 screenshots, every later e2e run | **2026-09-08: resolved by Vercel.** Every `feat/oux-*` branch gets a Vercel preview deployment backed by the dev project; agents use the branch preview URL as `E2E_BASE_URL` and never run the app locally (the local `.env.local` still targets production). |
-| Dev re-seeded from a production snapshot (schema plus campaign data) before each schema package | WP2.1 (WP0.4 no longer) | **2026-09-08: operator accepts dev-data-only rehearsal for WP0.4**; production is still in testing, so the production run is the first full-scale pass and its pre-checks are the gate. Still wanted before WP2.1. |
+| Dev re-seeded from a production snapshot (schema plus campaign data) before each schema package | WP2.1 (WP0.4 no longer) | **Amended 2026-09-13:** WP2.1 accepted the production-shaped clone `yqjkuobcawvigsfpgrcm` as its migration environment. Normal-dev schema/e2e is waived for this shipment because dev is thin/noncritical/different. This is a verification gap, not a pass; later dev may be refreshed/replaced or migrated separately. |
 | The pilot group for organiser mode | Phase 1 exit | Named by the operator. |
 
 ## Answers
@@ -45,6 +45,44 @@ Answered by the operator in the orchestration session on **2026-09-08**.
 - **Decision 10 — Confirmed.** Actions hub, one container mechanism, one-way Link to campaign with "New campaign from this action".
 
 **Operator inputs** (test accounts, PostHog key, dev re-seed, pilot group) will be supplied by the operator as each package needs them.
+
+## WP2.1 package decisions and amendments
+
+Recorded from the operator's WP2.1 approvals:
+
+- **2026-09-12 — E2:** defer `UNIQUE (worker_id, group_id)`, the duplicate-rejecting trigger check and
+  `campaign_group_membership` to WP2.2 after transactional writers exist.
+- **2026-09-12 — M2:** create Employer groups but defer Employer placement materialisation to WP2.2.
+- **2026-09-12 — C1:** preserve duplicate units; operator maps one canonical unit per duplicate basis and
+  noncanonical units receive audited/reversible `unit_basis.auto_match=false`.
+- **2026-09-12 — F1:** matcher requires all present recognised basis keys and honours C1. After the clone
+  safety STOP, the operator approved maximum-specificity precedence per `(campaign, future group, worker)`:
+  a both-key employer/worksite unit outranks an employer-only fallback, while equal-specificity ties remain
+  for C1/STOP handling and fallback remains when no specific match exists.
+- **2026-09-12 — timestamp amendment:** keep the existing unit `updated_at` trigger enabled during
+  backfill; 237 populated units advancing `updated_at` is expected metadata churn, excluded only from the
+  substantive unit checksum and reported separately.
+- **2026-09-12 — deferred-FK amendment:** retain both catalog FKs as
+  `ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED` and add the named `SET CONSTRAINTS ... IMMEDIATE`
+  statement after both backfills. Supabase CLI v2.84.4 executed each file as one implicit pipelined
+  transaction. Its first 55006 failure fully rolled back all objects/ledger, proving atomicity. The
+  statement emitted 25P01 because this is not an explicit transaction block, but still flushed queued
+  deferred RI events—the subsequent `ALTER TABLE` succeeded twice—and both FKs remained deferred. Keep the
+  warning as deployment evidence.
+- **2026-09-13 — shipment waiver:** skip normal-dev WP2.1 schema migration/e2e for this deadline shipment;
+  production-shaped clone evidence is accepted, with the missing dev/e2e run recorded as a conscious gap.
+  `groups_v2` is not yet introduced and no app consumes the schema. Release types were generated from clone
+  successfully on 2026-09-13; generated `campaign_worker_ou.Insert.group_id` is required despite trigger
+  derivation and is carried to WP2.2. Thin normal-dev exact-file read-only preflight was clean
+  (8 units / 111 memberships / 111 placements / F1 and H10 residual 0), but does not constitute schema/e2e
+  integration. Production mutation remains blocked on operator-run current preflight, reviewed mappings, cleanup and
+  migration. The agent never accesses production.
+- **2026-09-13 — final review:** **APPROVE FOR PR/MAIN WITH PRODUCTION DB GATE** after documentation
+  corrections. Production `00` must report `malformed_or_nonpositive_basis_units = 0`; the exact
+  rollback-only `95` file has no environment marker and must run whole; migration uses rehearsed
+  `supabase db push` or explicitly single-transaction `psql -1`, never plain autocommit `psql -f`.
+  Generated types also contain a harmless ordering swap of two
+  `user_profiles_organiser_id_fkey` relationship entries. No commit, PR or merge is recorded yet.
 
 **Test accounts (2026-09-08).** The operator supplies two dev accounts (one `admin` / lead organiser, one `user` / organiser) directly through `E2E_USER_EMAIL` / `E2E_USER_PASSWORD` in the environment where `pnpm e2e` runs. Credentials are never written into the repository, plan files or agent prompts, and no agent types them into a form; the harness reads them from the environment. Interface testing happens on the dev previews first; production is used later for full-scale testing.
 

@@ -26,13 +26,61 @@ export type CampaignUniverse = {
 export type OuPlacementTarget = {
   ouId: number;
   campaignId: number;
+  futureGroupKey: string | null;
   isGroupContainer: boolean;
+  autoMatch: boolean;
   employerId: number | null;
   worksiteId: number | null;
 };
 
+export type LegacyOuGroupIdentity = {
+  ouId: number;
+  ouType: string;
+  ouGroupId: number | null;
+  isGroupContainer: boolean;
+};
+
+const GROUP_KIND_BY_OU_TYPE: Readonly<Record<string, string>> = {
+  worksite: "worksite",
+  employer: "employer",
+  shift: "shift",
+  crew_rotation: "crew",
+  job_type: "occupation",
+  work_area: "work_area",
+  department: "custom",
+  custom: "custom",
+  network: "custom",
+  ethnic_community: "custom",
+  accommodation: "custom",
+};
+
 const MEMBERSHIP_CHUNK = 200;
 const OU_CHUNK = 200;
+
+/**
+ * Mirrors WP2.1's FGK-EXPRESSION using only columns that predate the migration,
+ * so application deployment remains safe before and after group_id is added.
+ */
+export function futureGroupKeyForLegacyOu(
+  ou: LegacyOuGroupIdentity,
+  parent: LegacyOuGroupIdentity | undefined
+): string | null {
+  const kind = GROUP_KIND_BY_OU_TYPE[ou.ouType];
+  if (kind == null) return null;
+  if (ou.isGroupContainer && kind === "custom") return null;
+  if (kind !== "custom") return `kind:${kind}`;
+
+  const parentKind = parent == null ? null : GROUP_KIND_BY_OU_TYPE[parent.ouType];
+  if (
+    ou.ouGroupId != null &&
+    parent?.ouId === ou.ouGroupId &&
+    parent.isGroupContainer &&
+    parentKind === "custom"
+  ) {
+    return `source:${parent.ouId}`;
+  }
+  return `type:${ou.ouType}`;
+}
 
 export function workerMatchesCampaignUniverse(
   worker: WorkerPlacement,
@@ -51,18 +99,36 @@ export function matchingOusForWorker(
   worker: WorkerPlacement,
   ous: OuPlacementTarget[]
 ): number[] {
-  const ids: number[] = [];
+  const candidates: Array<{
+    ouId: number;
+    partitionKey: string;
+    specificity: number;
+  }> = [];
+  const maximumSpecificity = new Map<string, number>();
+
   for (const ou of ous) {
-    if (ou.isGroupContainer) continue;
-    if (ou.employerId != null && worker.employerId === ou.employerId) {
-      ids.push(ou.ouId);
-      continue;
-    }
-    if (ou.worksiteId != null && worker.worksiteId === ou.worksiteId) {
-      ids.push(ou.ouId);
-    }
+    if (ou.isGroupContainer || !ou.autoMatch || ou.futureGroupKey == null) continue;
+    const hasEmployerBasis = ou.employerId != null;
+    const hasWorksiteBasis = ou.worksiteId != null;
+    if (!hasEmployerBasis && !hasWorksiteBasis) continue;
+    if (hasEmployerBasis && worker.employerId !== ou.employerId) continue;
+    if (hasWorksiteBasis && worker.worksiteId !== ou.worksiteId) continue;
+
+    const partitionKey = JSON.stringify([ou.campaignId, ou.futureGroupKey]);
+    const specificity = Number(hasEmployerBasis) + Number(hasWorksiteBasis);
+    candidates.push({ ouId: ou.ouId, partitionKey, specificity });
+    maximumSpecificity.set(
+      partitionKey,
+      Math.max(maximumSpecificity.get(partitionKey) ?? 0, specificity)
+    );
   }
-  return ids;
+
+  return candidates
+    .filter(
+      (candidate) =>
+        candidate.specificity === maximumSpecificity.get(candidate.partitionKey)
+    )
+    .map((candidate) => candidate.ouId);
 }
 
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -77,8 +143,17 @@ function parseUnitBasisId(
 ): number | null {
   if (!basis || typeof basis !== "object") return null;
   const raw = (basis as Record<string, unknown>)[key];
-  const n = typeof raw === "number" ? raw : Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  if (typeof raw === "number") {
+    return Number.isInteger(raw) && raw > 0 && raw <= 2_147_483_647 ? raw : null;
+  }
+  if (typeof raw !== "string" || !/^[0-9]+$/.test(raw)) return null;
+  const n = Number(raw);
+  return Number.isSafeInteger(n) && n > 0 && n <= 2_147_483_647 ? n : null;
+}
+
+function parseUnitBasisAutoMatch(basis: unknown): boolean {
+  if (!basis || typeof basis !== "object") return true;
+  return (basis as Record<string, unknown>).auto_match !== false;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -160,16 +235,43 @@ async function loadOuTargets(
   for (const batch of chunk(campaignIds, 200)) {
     const { data, error } = await supabase
       .from("campaign_organising_units")
-      .select("ou_id, campaign_id, is_group_container, unit_basis")
+      .select(
+        "ou_id, campaign_id, ou_type, ou_group_id, is_group_container, unit_basis"
+      )
       .in("campaign_id", batch);
     if (error) throw new Error(error.message);
-    for (const row of data ?? []) {
-      out.push({
-        ouId: row.ou_id as number,
-        campaignId: row.campaign_id as number,
+
+    const rows: Array<
+      LegacyOuGroupIdentity & { campaignId: number; unitBasis: unknown }
+    > = (
+      (data ?? []) as Array<{
+        ou_id: number;
+        campaign_id: number;
+        ou_type: string;
+        ou_group_id: number | null;
+        is_group_container: boolean;
+        unit_basis: unknown;
+      }>
+    ).map((row) => ({
+        ouId: row.ou_id,
+        campaignId: row.campaign_id,
+        ouType: row.ou_type,
+        ouGroupId: row.ou_group_id ?? null,
         isGroupContainer: Boolean(row.is_group_container),
-        employerId: parseUnitBasisId(row.unit_basis, "employer_id"),
-        worksiteId: parseUnitBasisId(row.unit_basis, "worksite_id"),
+        unitBasis: row.unit_basis,
+      }));
+    const rowsById = new Map(rows.map((row) => [row.ouId, row]));
+
+    for (const row of rows) {
+      const parent = row.ouGroupId == null ? undefined : rowsById.get(row.ouGroupId);
+      out.push({
+        ouId: row.ouId,
+        campaignId: row.campaignId,
+        futureGroupKey: futureGroupKeyForLegacyOu(row, parent),
+        isGroupContainer: row.isGroupContainer,
+        autoMatch: parseUnitBasisAutoMatch(row.unitBasis),
+        employerId: parseUnitBasisId(row.unitBasis, "employer_id"),
+        worksiteId: parseUnitBasisId(row.unitBasis, "worksite_id"),
       });
     }
   }

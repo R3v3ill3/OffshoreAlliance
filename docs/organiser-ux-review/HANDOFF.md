@@ -1,4 +1,4 @@
-# Organiser UX programme — handoff (written 2026-09-10; status updated 2026-09-11)
+# Organiser UX programme — handoff (written 2026-09-10; status updated 2026-09-13)
 
 This file is for whoever picks the work up next, human or agent. It records where the programme is, what
 is left on the two tracks in front of it (getting phase 1 onto production; starting phase 2), and a
@@ -18,11 +18,19 @@ implemented, verified and reviewed to approval per the protocol in
 | #34 | Tests only: e2e suite owns its preconditions (hint dismissal seeded, workspace mode pinned per spec) |
 | #35 | Fix: Users edit dialog capped to the viewport with scrolling body, two-column module checklist, "Default for role" shows the resolved mode |
 
-`develop` after the main-sync PR #36: `e6a97fc`; production promotion PR #37 merged to `main` at
-`0f22d49` on 2026-09-11 and Vercel Production completed successfully. Gates on the phase-1 tree:
+`develop` includes WP2.3 PR #38 at `4d2ff4b`; the latest recorded production promotion PR #37 merged
+phase 1 to `main` at `0f22d49` on 2026-09-11 and Vercel Production completed successfully. Gates on the phase-1 tree:
 `tsc` clean; vitest green (1029+ tests); lint at the recorded baseline (294 problems, pre-existing;
 standard is touched lines clean and the count not rising); full credentialled e2e green repeatedly on
 Vercel previews.
+
+**Phase 2 current edge.** WP2.3 is merged as [PR #38](https://github.com/R3v3ill3/OffshoreAlliance/pull/38)
+at `4d2ff4b`. WP2.1 clone rehearsal is green. On 2026-09-13 the operator explicitly waived WP2.1
+normal-dev schema/e2e for the deadline shipment because dev is thin, noncritical and materially different;
+the production-shaped clone is the migration acceptance environment. This is a verification gap, not a
+pass. `groups_v2` is not yet introduced and no app code consumes the new schema. Clone-generated types and final local
+gates are complete. Final reviewer verdict is **APPROVE FOR PR/MAIN WITH PRODUCTION DB GATE**; evidence
+commit/PR and merge remain pending.
 
 **The six phase-1 migrations are applied to both dev and production:**
 
@@ -91,20 +99,23 @@ pre-WP2.1 data fix. Cross-campaign worker membership remains supported.
   `tests/e2e/roles/*-admin.spec.ts`). Storage states under gitignored `tests/e2e/.auth/`. The REST helper
   `restClientFor` refuses a production session. `E2E_FOREIGN_CAMPAIGN_ID=3` is the campaign the e2e user
   must not be able to write to. Dev campaign 1 belongs to organiser 10 (reassigned for flow one).
-- **Types.** After any migration on dev: `SUPABASE_PROJECT_REF=dpnnmkhabysfdogllsyh pnpm gen:types` and
-  commit `packages/db-types`.
+- **Types.** Never run the root generator without an explicit non-production ref. WP2.1's dated shipment
+  exception is to generate from migrated clone `yqjkuobcawvigsfpgrcm` using
+  `SUPABASE_PROJECT_REF=yqjkuobcawvigsfpgrcm pnpm gen:types` (**completed exit 0**). Normal dev may later be
+  refreshed/replaced or migrated separately.
 - **Dev data state.** The operator ran the WP0.4 hygiene scripts on dev on 2026-09-08 (02 inserted 5,
   03 deleted 2, 01 converted 4). Dev has had no refresh from production since; campaign data is thin.
-  Phase 2's WP2.1 wants a production-seeded dev database for its rehearsal. Only the operator can produce
-  that snapshot (Supabase dashboard backup or their own `pg_dump`); an agent must not read production to
-  make one.
+  WP2.1 used the production-shaped disposable clone for acceptance and has a dated normal-dev schema/e2e
+  waiver. Later dev refresh/replacement or migration is separate; an agent must not read production to
+  make a snapshot.
 - **Bash gotcha.** Use absolute paths; `cd apps/organising-db` fails when the shell is already there.
   Delete `.next/types` before `tsc` if it reports errors in generated route types.
 
 ## 4. Non-negotiables (summary; the orchestration prompt is authoritative)
 
-Never touch production `gteygwfgjvczanmrwgbr`. Never edit an applied migration; add a timestamped file,
-apply to dev first, regenerate types. Branches `feat/oux-<wp-id>-<slug>` off `develop`, draft PRs into
+Never touch production `gteygwfgjvczanmrwgbr`. Never edit an applied migration; add a timestamped file.
+WP2.1 alone has the operator's dated clone-acceptance/dev-waiver/type-source exception above; other
+packages still apply to dev first and regenerate types there. Branches `feat/oux-<wp-id>-<slug>` off `develop`, draft PRs into
 `develop`, never push to `main`, no worktrees, no sub-branches, one commit per completed unit. Nothing is
 removed, only relocated; full mode keeps working; new flags default off. Do not skip or quarantine tests.
 No materialised Unassigned rows; no localStorage view state; no new campaign-creation path. Fresh reviewer
@@ -129,32 +140,67 @@ separate task.
 
 ## 6. Track B — phase 2
 
-**Gate answered.** The pilot is all users with the organiser work role; phase 2 is approved; a
-production-derived dev snapshot is to be prepared after the phase-1 rollout and is still pending.
-WP2.3 therefore started first. WP2.1 may be planned, but implementation/rehearsal remains blocked on
-the snapshot and the reviewed cleanup of the orphaned rule placements found during the production
-WP0.4 run.
+**Gate answered and amended.** The pilot is all users with the organiser work role; phase 2 is approved.
+The production-shaped disposable clone replaced the previously requested production-derived dev snapshot
+for WP2.1 migration acceptance. Normal-dev WP2.1 schema/e2e is explicitly waived for this shipment, not
+passed. Later dev may be refreshed/replaced or migrated separately.
 
 **Order** (from the orchestration prompt's dependency summary): WP2.1 and WP2.3 in parallel → WP2.2 →
 WP2.4 → WP2.5, WP2.6, WP2.7 (2.7 needs only 2.2) → WP2.8 → WP2.9. WP3.3 and WP3.5 may also start now
 that phase 1 is merged.
 
-**WP2.1 Schema and migration** (Fable planner and reviewer; high-risk implementer). Plan section 6:
-`campaign_groups` (with a user-defined `kind` per decision 3), `group_id` on units and worker-unit rows
-with the trigger and unique index, `campaign_group_membership` view, `user_campaign_prefs` (server-side
-per-user state replaces the removed localStorage state); the backfill mapping from section 6, where
-decision 5 makes Employer and Worksite independent facets; dependent views recreated in the order in
-appendix C 8.4. Acceptance: rehearsal on production-seeded dev shows membership counts unchanged, every
-leaf unit has a `group_id`, zero one-unit-per-group violations, hazard queries H1–H8 reproduced before and
-after, written rollback. Behind `groups_v2`, default off. Regenerate types.
+**WP2.1 Schema and migration — clone rehearsal green; release gates pending.** The final package follows
+E2/M2/C1/F1: uniqueness and `campaign_group_membership` are deferred to WP2.2; Employer placements are
+deferred; duplicate bases are canonicalised non-destructively; F1 uses legacy columns and maximum
+specificity. The clone proved cleanup forward/rollback/reapply, migration recovery/reapply, postflight and
+rolled-back role probes. Recovered cleanup bytes were not re-executed after checkout loss, so production
+application must re-establish that gate; migration/`04`/`95` were re-run after recovery. Pending shipment
+work is one evidence commit and PR. Clone-generated types and final local gates are complete; reviewer
+verdict is **APPROVE FOR PR/MAIN WITH PRODUCTION DB GATE**. `groups_v2` is not yet introduced and no
+application consumer exists.
 
-**WP2.3 Wall chart decomposition — implemented and approved, PR pending.** Commit `1694b8a` reduces
+Final local evidence: type generation from clone exit 0; tsc exit 0; 10 valid migrations; targeted F1
+37/37; full tests 83 files / 1,118 tests; touched ESLint exit 0; lint exactly 294 (143 errors / 151
+warnings), accepted baseline; Next.js 16 build exit 0 with 130 routes. Generated types contain both new
+tables, both `group_id` relationships and the three functions, omit the deferred membership view, and make
+`campaign_worker_ou.Insert.group_id` required despite trigger derivation. The diff also has a harmless
+generator ordering swap of two `user_profiles_organiser_id_fkey` relationship entries; it is not limited
+to WP2.1 symbols.
+
+The exact current `00` file also ran read-only on thin normal dev: 8 units, 111 memberships, 111
+placements, F1 residual 0 and H10 residual 0. No schema migration or e2e ran there; dev is not integrated.
+The CLI is currently linked to normal dev `dpnnmkhabysfdogllsyh`.
+
+Clone cleanup diagnostics/forward/rollback/reapply were executed through Supabase MCP; migration,
+exact `04`/`95`/`90`, dry-run/push and ledger repair used Supabase CLI. The successful CLI pushes emitted
+25P01 because Supabase CLI v2.84.4 executes each file as one implicit pipelined transaction, not an
+explicit transaction block. The first 55006 failure fully rolled back all objects and its ledger row,
+proving atomicity. The named `SET CONSTRAINTS` warned but still flushed queued deferred RI events, proven
+by the subsequent `ALTER TABLE` succeeding on both corrected applications; catalog FKs remained deferred.
+Keep the warning as deployment evidence. Do not claim MCP was read-only.
+
+**WP2.3 Wall chart decomposition — merged.** [PR #38](https://github.com/R3v3ill3/OffshoreAlliance/pull/38)
+merged at `4d2ff4b`. The implementation reduces
 `src/components/campaigns/campaign-wall-chart.tsx` from 2,635 to 320 lines across focused
 hooks/components with no runtime behaviour change. Local gates and the dev-backed branch preview are
 green; frozen characterisation tests pass against the pre-refactor and decomposed implementations; the
 fresh terminal reviewer returned APPROVE WITH ADVISORIES after an operator-authorised third test-only
-round. The sole advisory is the fake PostgREST harness's incomplete projection/predicate/order
-emulation. Final evidence/ledger commit and PR remain.
+round. The sole advisory is the fake PostgREST harness's incomplete projection/predicate/order emulation.
+
+**WP2.2 binding handoff.** Its structure API/enforcement package must address trigger-derived
+`campaign_worker_ou.group_id` versus likely required generated `Insert` typing, page/uncap the current OU
+loader, implement the transactional writer RPCs, materialise Employer placements (M2), fix/review the
+Recompute removal risk, then re-clean H9 before adding uniqueness and the membership view. No
+later group-model consumer is introduced before those steps.
+
+**WP2.1 production application remains blocked.** Shipping code first is compatible because F1 only reads
+legacy columns and reduces matching, while the schema/view/unique consumers are deferred and
+`groups_v2` is not yet introduced. The operator—not an agent—must run current production `00`, require
+`malformed_or_nonpositive_basis_units = 0`, supply reviewed canonical and placement mappings, run the
+rehearsed cleanup sequence, then apply and verify the migration. Migration execution must use rehearsed
+`supabase db push` or explicitly single-transaction `psql -1`; plain autocommit migration `psql -f` is
+forbidden because temp tables/postconditions require one transaction. `95_role_probes.sql` has no
+environment marker because it is rollback-only and must be run as the exact whole file only.
 
 **Things phase 1 left that phase 2 touches.**
 - Incidental findings in `PROGRESS.md` (unassigned): SOC wizard `cid` mismatch; `supabase/.temp`
@@ -170,9 +216,10 @@ emulation. Final evidence/ledger commit and PR remain.
 
 ## 7. Prompt for the next orchestrating agent
 
-> **Superseded status notice (2026-09-11):** the prompt below predates the completed production rollout
-> and WP2.3 implementation. Do not paste it unchanged. Use sections 1, 5 and 6 above plus
-> `PROGRESS.md` and `wp/wp2.3.md` as the current state.
+> **Superseded status notice (updated 2026-09-13):** the archival prompt below predates WP2.3 merge,
+> WP2.1 clone completion and the normal-dev waiver. Do not paste it unchanged. Current next steps are:
+> make the evidence commit/PR under explicit Git approvals; the reviewer verdict is already APPROVE FOR
+> PR/MAIN WITH PRODUCTION DB GATE. Production database work remains a separate operator-only run sheet.
 
 Paste the following as the opening message of a new session in this repository.
 
@@ -195,7 +242,7 @@ Non-negotiables, unchanged: never touch the production database `gteygwfgjvczanm
 all DB work on dev `dpnnmkhabysfdogllsyh`; never edit an applied migration (timestamped file, dev first,
 `SUPABASE_PROJECT_REF=dpnnmkhabysfdogllsyh pnpm gen:types`); branches `feat/oux-<wp-id>-<slug>` off
 `develop`, draft PRs into `develop`, never push to `main`, no worktrees; nothing removed, only relocated;
-full mode keeps working; `groups_v2` and any new flag default off; never skip or quarantine tests; no
+full mode keeps working; `groups_v2` is not yet introduced and any later new flag defaults off; never skip or quarantine tests; no
 materialised Unassigned rows, no localStorage view state, no new campaign-creation path; fresh reviewer
 each round, two fix rounds maximum then stop and report; stop and ask on open decisions, migration
 conflicts, wrong appendix claims, third fix rounds, or anything touching production. The local

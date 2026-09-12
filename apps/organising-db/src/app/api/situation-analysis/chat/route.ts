@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { getAiModel } from '@/lib/ai/models'
 import {
   SITUATION_ANALYSIS_CHAT_SYSTEM_PROMPT,
   buildSituationChatContextMessage,
@@ -95,7 +96,7 @@ export async function POST(req: NextRequest) {
     ]
 
     const encoder = new TextEncoder()
-    const model = 'claude-sonnet-4-20250514'
+    const model = await getAiModel('default')
     const PROPOSED_UPDATES_MARKER = '---PROPOSED-UPDATES---'
 
     const stream = new ReadableStream({

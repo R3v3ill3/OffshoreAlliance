@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { SOC_FRAMEWORK } from '@/lib/prompts/soc-framework'
-import { PHONE_SCRIPT_MODEL } from '@/lib/ai/models'
+import { getAiModel } from '@/lib/ai/models'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
       : ''
 
     const response = await anthropic.messages.create({
-      model: PHONE_SCRIPT_MODEL,
+      model: await getAiModel('default'),
       max_tokens: 4000,
       system: SYSTEM_PROMPT,
       messages: [{

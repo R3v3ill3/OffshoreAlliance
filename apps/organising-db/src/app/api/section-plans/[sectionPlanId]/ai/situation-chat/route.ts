@@ -7,8 +7,8 @@ import {
   loadSectionPlanForAi,
   writeAiAudit,
 } from '@/lib/section-planning/ai-helpers'
+import { getAiModel } from '@/lib/ai/models'
 import {
-  SECTION_AI_MODEL,
   SITUATION_CHAT_SYSTEM,
 } from '@/lib/prompts/section-planning'
 
@@ -54,8 +54,9 @@ export async function POST(
       2,
     )}\n\`\`\``
 
+    const aiModel = await getAiModel('default')
     const result = await anthropic.messages.create({
-      model: SECTION_AI_MODEL,
+      model: aiModel,
       max_tokens: 1500,
       system: SITUATION_CHAT_SYSTEM,
       messages: [
@@ -76,14 +77,14 @@ export async function POST(
       surface: 'situation_chat',
       prompt_snapshot: { messages: body.messages },
       response_snapshot: { text, proposed },
-      model: SECTION_AI_MODEL,
+      model: aiModel,
       created_by: user.id,
     })
 
     return NextResponse.json({
       natural_language: text,
       proposed_snippet_updates: proposed?.proposed_snippet_updates ?? null,
-      model: SECTION_AI_MODEL,
+      model: aiModel,
     })
   } catch (e) {
     if (e instanceof Response) return e

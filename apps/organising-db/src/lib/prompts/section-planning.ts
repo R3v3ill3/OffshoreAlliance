@@ -105,4 +105,3 @@ Stage reference:
 Respond ONLY with a JSON object of shape:
 {"mappings": [ {"subject_kind": "ambition"|"activity"|"wtp"|"capacity"|"soc", "subject_id": <int>, "stage_number": <1-11>, "confidence": 0.0-1.0, "rationale": "..."} ]}`
 
-export const SECTION_AI_MODEL = 'claude-sonnet-4-20250514'

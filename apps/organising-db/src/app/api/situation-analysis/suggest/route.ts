@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { getAiModel } from '@/lib/ai/models'
 import {
   SITUATION_ANALYSIS_SUGGEST_SYSTEM_PROMPT,
   buildSituationSuggestUserMessage,
@@ -79,8 +80,9 @@ export async function POST(req: NextRequest) {
       draft: body.draft,
     })
 
+    const model = await getAiModel('default')
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model,
       max_tokens: 2000,
       system: SITUATION_ANALYSIS_SUGGEST_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
@@ -117,7 +119,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ...parsed,
       _ai_meta: {
-        model: 'claude-sonnet-4-20250514',
+        model,
         prompt_version: 1,
       },
     })

@@ -70,6 +70,7 @@ import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
 import { WorkerDimensionsTab } from "@/components/administration/worker-dimensions-tab";
 import { WorkspaceModuleChecklist } from "@/components/administration/workspace-module-checklist";
 import { WorkspaceDefaultsCard } from "@/components/administration/workspace-defaults-card";
+import { AiModelsCard } from "@/components/administration/ai-models-card";
 import type { WorkspaceModuleId } from "@/lib/workspace/modules";
 import { parseWorkspacePrefs, type WorkspacePrefs } from "@/lib/workspace/prefs-schema";
 import {
@@ -1886,6 +1887,8 @@ function SettingsTab() {
       )}
 
       <div className="grid gap-6 md:grid-cols-2">
+        <AiModelsCard />
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">

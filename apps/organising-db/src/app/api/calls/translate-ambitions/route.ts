@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
-import { PHONE_SCRIPT_MODEL } from '@/lib/ai/models'
+import { getAiModel } from '@/lib/ai/models'
 
 interface AmbitionInput {
   ambition_id: number
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
     }).join('\n\n')
 
     const response = await anthropic.messages.create({
-      model: PHONE_SCRIPT_MODEL,
+      model: await getAiModel('default'),
       max_tokens: 2000,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: `Translate these ${ambitions.length} campaign ambitions into per-call recordable outcomes:\n\n${userMessage}` }],

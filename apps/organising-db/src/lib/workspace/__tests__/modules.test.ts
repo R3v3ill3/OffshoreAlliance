@@ -13,8 +13,8 @@ import {
 } from "../modules";
 
 describe("workspace module registry", () => {
-  it("has exactly the 13 plan-5.2 modules, in plan order, with unique ids", () => {
-    expect(MODULES).toHaveLength(13);
+  it("has exactly the 13 plan-5.2 modules plus surveys_forms, in plan order, with unique ids", () => {
+    expect(MODULES).toHaveLength(14);
     expect(MODULE_IDS).toEqual([
       "wall_chart_people",
       "actions",
@@ -23,6 +23,7 @@ describe("workspace module registry", () => {
       "strategic_plan",
       "bargaining",
       "insights",
+      "surveys_forms",
       "data_fields",
       "activists_wocs",
       "library",
@@ -31,7 +32,7 @@ describe("workspace module registry", () => {
       "administration",
     ]);
     expect(new Set(MODULE_IDS).size).toBe(MODULE_IDS.length);
-    expect(ALL_MODULE_IDS.size).toBe(13);
+    expect(ALL_MODULE_IDS.size).toBe(14);
   });
 
   it("MODULE_IDS covers the WorkspaceModuleId union exhaustively", () => {
@@ -49,6 +50,7 @@ describe("workspace module registry", () => {
       strategic_plan: true,
       bargaining: true,
       insights: true,
+      surveys_forms: true,
       data_fields: true,
       activists_wocs: true,
       library: true,
@@ -59,9 +61,9 @@ describe("workspace module registry", () => {
     expect(coverage).toEqual(expected);
   });
 
-  it("defaults exactly the first four modules on for organisers", () => {
+  it("defaults the first four modules plus surveys_forms on for organisers", () => {
     const defaults = MODULES.filter((m) => m.defaultForOrganiser).map((m) => m.id);
-    expect(defaults).toEqual(["wall_chart_people", "actions", "setup", "inbox"]);
+    expect(defaults).toEqual(["wall_chart_people", "actions", "setup", "inbox", "surveys_forms"]);
     expect([...ORGANISER_DEFAULT_MODULE_IDS]).toEqual(defaults);
   });
 
@@ -73,7 +75,7 @@ describe("workspace module registry", () => {
   it("hides exactly the permission-shaped modules when off; the rest are muted", () => {
     const hidden = MODULES.filter((m) => m.offState === "hidden").map((m) => m.id);
     expect(hidden).toEqual(["imports", "administration"]);
-    expect(MODULES.filter((m) => m.offState === "muted")).toHaveLength(11);
+    expect(MODULES.filter((m) => m.offState === "muted")).toHaveLength(12);
     // Orchestrator ruling (WP1.2 approval): organisation databases are
     // capability-shaped, so they are muted when off, not hidden.
     expect(getModule("organisation_databases").offState).toBe("muted");
@@ -89,6 +91,7 @@ describe("workspace module registry", () => {
     expect(getModule("strategic_plan").label).toBe("Strategic plan");
     expect(getModule("wall_chart_people").label).toBe("Wall chart & people");
     expect(getModule("activists_wocs").label).toBe("Activists & WOCs");
+    expect(getModule("surveys_forms").label).toBe("Surveys & Forms");
   });
 
   it("exposes the six legal work roles and the id guards", () => {

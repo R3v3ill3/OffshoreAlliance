@@ -187,6 +187,15 @@ const DEFS = {
     icon: "bar-chart-3",
     module: "insights",
   },
+  // Action Network survey/form imports + AI report. `/surveys-forms`, not
+  // `/surveys`, so it cannot be confused with the SMS survey module.
+  surveys_forms: {
+    id: "surveys_forms",
+    label: "Surveys & Forms",
+    href: "/surveys-forms",
+    icon: "clipboard-list",
+    module: "surveys_forms",
+  },
   // No module id on purpose: the registry's `library` is documents,
   // agreements and offers, not help content, and plan 5.2 lists Guides in the
   // organiser sidebar unconditionally. An item with no module is always `on`.
@@ -219,7 +228,10 @@ const DEFS = {
   },
 } satisfies Record<string, NavItemDef>;
 
-/** Today's sidebar, in today's order. Row 7 carries the WP1.5 rename. */
+/**
+ * Today's sidebar, in today's order. Row 7 carries the WP1.5 rename; row 10
+ * (Surveys & Forms) is the one addition since WP1.2.
+ */
 export const FULL_NAV_ITEMS: readonly NavItemDef[] = [
   DEFS.campaigns,
   DEFS.dashboard,
@@ -230,6 +242,7 @@ export const FULL_NAV_ITEMS: readonly NavItemDef[] = [
   DEFS.actions,
   DEFS.sms_inbox,
   DEFS.reports,
+  DEFS.surveys_forms,
   DEFS.guides,
 ];
 
@@ -258,6 +271,8 @@ const ORGANISATION_ITEMS: readonly NavItemDef[] = [
   DEFS.overview,
   DEFS.dashboard,
   DEFS.reports,
+  // On by default for organisers (`surveys_forms.defaultForOrganiser`).
+  DEFS.surveys_forms,
 ];
 
 /**

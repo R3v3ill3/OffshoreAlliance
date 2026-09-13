@@ -14,9 +14,11 @@
  * one trigger short. Relays is the relay-with-attribution feature the SMS
  * module brief locked in, so it is a real surface, not a stale one.
  *
- * This fixture therefore holds 45 rows: the 44 the appendix enumerates plus
+ * This fixture therefore held 45 rows: the 44 the appendix enumerates plus
  * Relays, flagged in its `appendix` field so the discrepancy is visible in
- * the data rather than only in a comment.
+ * the data rather than only in a comment. A 46th — Outcomes › Surveys &
+ * Forms, the Action Network survey importer — was added after the appendix
+ * was written and is flagged the same way.
  */
 
 export interface SurfaceFixtureRow {
@@ -66,6 +68,9 @@ export const CAMPAIGN_SURFACES: readonly SurfaceFixtureRow[] = [
   { id: "outcomes/reports", level: 2, tab: "outcomes", sub: "reports", third: null, label: "Reports", appendix: "3.2 table row 5" },
   { id: "outcomes/results", level: 2, tab: "outcomes", sub: "results", third: null, label: "Results", appendix: "3.2 table row 5" },
   { id: "outcomes/insights", level: 2, tab: "outcomes", sub: "insights", third: null, label: "Insights", appendix: "3.2 table row 5" },
+  // Added after appendix D: the Action Network survey/form importer's
+  // campaign-scoped list, under Outcomes.
+  { id: "outcomes/surveys", level: 2, tab: "outcomes", sub: "surveys", third: null, label: "Surveys & Forms", appendix: NOT_COUNTED },
 
   { id: "outreach/comms", level: 2, tab: "outreach", sub: "comms", third: null, label: "Comms", appendix: "3.2 table row 6" },
   { id: "outreach/phone", level: 2, tab: "outreach", sub: "phone", third: null, label: "Phone Ops", appendix: "3.2 table row 6" },

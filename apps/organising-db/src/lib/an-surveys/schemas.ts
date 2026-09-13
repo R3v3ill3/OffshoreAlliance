@@ -2,9 +2,13 @@
  * Zod contracts for the AI steps of the survey report.
  *
  * The AI output schemas (`reviewOutputSchema`, `generateOutputSchema`) are
- * handed to the Anthropic SDK's `zodOutputFormat()` for structured output,
- * so they use only required fields, nullable scalars and enums — no
- * optional keys, unions of objects are discriminated by `kind`.
+ * handed to the Anthropic SDK's `zodOutputFormat()` for structured output.
+ * Anthropic's structured outputs enforce shape (types, enums, required
+ * keys) but NOT length constraints (`maxItems`, `maxLength`, `minLength`),
+ * so those schemas carry no length rules — a `.max()` there makes the
+ * SDK's post-parse zod check reject an otherwise valid reply (seen in
+ * production: seven clarifying questions against a `.max(6)`). Limits are
+ * applied afterwards by `clampReviewOutput` / `clampGenerateOutput`.
  *
  * Claude never emits numbers we keep: chart_spec says *which* questions and
  * cross-tabs to show and how; narrative is prose. Everything numeric is
@@ -13,34 +17,102 @@
 
 import { z } from "zod";
 
+// ─── Limits (applied after parsing, never inside the output schema) ────────
+
+export const AI_OUTPUT_LIMITS = {
+  clarifyingQuestions: 6,
+  clarifyingOptions: 8,
+  schemaSuggestions: 30,
+  dataQualityNotes: 12,
+  perQuestionInsights: 60,
+  crosstabInsights: 20,
+  freeTextSummaries: 20,
+  caveats: 10,
+  chartSections: 60,
+  themesPerQuestion: 12,
+  themeRowIds: 20000,
+  shortText: 400,
+  labelText: 200,
+  insightText: 1200,
+  summaryText: 4000,
+} as const;
+
+function clip(text: string, max: number): string {
+  const t = text.trim();
+  return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
+}
+
 // ─── Step 1: review ──────────────────────────────────────────────────────────
 
 export const clarifyingQuestionSchema = z.object({
-  id: z.string().min(1).max(40),
-  question: z.string().min(1).max(400),
+  id: z.string(),
+  question: z.string(),
   kind: z.enum(["single", "multi", "text"]),
   /** Empty for kind = text. */
-  options: z.array(z.string().max(120)).max(8),
+  options: z.array(z.string()),
 });
 
 export const schemaSuggestionSchema = z.object({
-  qkey: z.string().min(1),
+  qkey: z.string(),
   suggested_type: z
     .enum(["single_choice", "multi_select", "scale", "free_text", "meta", "identity"])
     .nullable(),
-  suggested_label: z.string().max(200).nullable(),
-  reason: z.string().max(400),
+  suggested_label: z.string().nullable(),
+  reason: z.string(),
 });
 
 export const reviewOutputSchema = z.object({
-  summary: z.string().max(2000),
-  schema_suggestions: z.array(schemaSuggestionSchema).max(30),
-  data_quality_notes: z.array(z.string().max(400)).max(12),
-  clarifying_questions: z.array(clarifyingQuestionSchema).max(6),
+  summary: z.string(),
+  schema_suggestions: z.array(schemaSuggestionSchema),
+  data_quality_notes: z.array(z.string()),
+  clarifying_questions: z.array(clarifyingQuestionSchema),
 });
 
 export type ReviewOutput = z.infer<typeof reviewOutputSchema>;
 export type ClarifyingQuestion = z.infer<typeof clarifyingQuestionSchema>;
+
+/** Enforce the size limits the output schema deliberately omits. */
+export function clampReviewOutput(r: ReviewOutput): ReviewOutput {
+  const L = AI_OUTPUT_LIMITS;
+  const seenIds = new Set<string>();
+  const clarifying_questions: ClarifyingQuestion[] = [];
+  for (const q of r.clarifying_questions) {
+    if (clarifying_questions.length >= L.clarifyingQuestions) break;
+    const id = q.id.trim() || `q${clarifying_questions.length + 1}`;
+    const question = q.question.trim();
+    if (!question || seenIds.has(id)) continue;
+    seenIds.add(id);
+    clarifying_questions.push({
+      id: clip(id, 40),
+      question: clip(question, L.shortText),
+      kind: q.kind,
+      options:
+        q.kind === "text"
+          ? []
+          : q.options
+              .map((o) => clip(o, 120))
+              .filter(Boolean)
+              .slice(0, L.clarifyingOptions),
+    });
+  }
+  return {
+    summary: clip(r.summary, 2000),
+    schema_suggestions: r.schema_suggestions
+      .filter((s) => s.qkey.trim())
+      .slice(0, L.schemaSuggestions)
+      .map((s) => ({
+        qkey: s.qkey.trim(),
+        suggested_type: s.suggested_type,
+        suggested_label: s.suggested_label ? clip(s.suggested_label, L.labelText) : null,
+        reason: clip(s.reason, L.shortText),
+      })),
+    data_quality_notes: r.data_quality_notes
+      .map((n) => clip(n, L.shortText))
+      .filter(Boolean)
+      .slice(0, L.dataQualityNotes),
+    clarifying_questions,
+  };
+}
 
 // ─── Step 2: extraction brief (user input, validated by the route) ──────────
 
@@ -70,27 +142,27 @@ export const crosstabChartKindSchema = z.enum(["stacked_bar", "heatmap", "table"
 
 export const questionSectionSchema = z.object({
   kind: z.literal("question"),
-  qkey: z.string().min(1),
+  qkey: z.string(),
   chart: chartKindSchema,
   emphasis: z.enum(["lead", "normal"]),
 });
 
 export const crosstabSectionSchema = z.object({
   kind: z.literal("crosstab"),
-  row_qkey: z.string().min(1),
-  col_qkey: z.string().min(1),
+  row_qkey: z.string(),
+  col_qkey: z.string(),
   chart: crosstabChartKindSchema,
 });
 
 export const freeTextThemeSchema = z.object({
-  label: z.string().min(1).max(120),
-  row_ids: z.array(z.number().int().nonnegative()).max(20000),
+  label: z.string(),
+  row_ids: z.array(z.number().int().nonnegative()),
 });
 
 export const freeTextSectionSchema = z.object({
   kind: z.literal("free_text"),
-  qkey: z.string().min(1),
-  themes: z.array(freeTextThemeSchema).max(12),
+  qkey: z.string(),
+  themes: z.array(freeTextThemeSchema),
 });
 
 export const chartSectionSchema = z.discriminatedUnion("kind", [
@@ -100,28 +172,22 @@ export const chartSectionSchema = z.discriminatedUnion("kind", [
 ]);
 
 export const chartSpecSchema = z.object({
-  sections: z.array(chartSectionSchema).max(60),
+  sections: z.array(chartSectionSchema),
 });
 
 export const narrativeSchema = z.object({
-  headline: z.string().max(300),
-  summary: z.string().max(4000),
-  per_question: z
-    .array(z.object({ qkey: z.string().min(1), insight: z.string().max(1200) }))
-    .max(60),
-  crosstab_insights: z
-    .array(
-      z.object({
-        row_qkey: z.string().min(1),
-        col_qkey: z.string().min(1),
-        insight: z.string().max(1200),
-      })
-    )
-    .max(20),
-  free_text_summaries: z
-    .array(z.object({ qkey: z.string().min(1), summary: z.string().max(2000) }))
-    .max(20),
-  caveats: z.array(z.string().max(400)).max(10),
+  headline: z.string(),
+  summary: z.string(),
+  per_question: z.array(z.object({ qkey: z.string(), insight: z.string() })),
+  crosstab_insights: z.array(
+    z.object({
+      row_qkey: z.string(),
+      col_qkey: z.string(),
+      insight: z.string(),
+    })
+  ),
+  free_text_summaries: z.array(z.object({ qkey: z.string(), summary: z.string() })),
+  caveats: z.array(z.string()),
 });
 
 export const generateOutputSchema = z.object({
@@ -133,6 +199,51 @@ export type ChartSpec = z.infer<typeof chartSpecSchema>;
 export type ChartSection = z.infer<typeof chartSectionSchema>;
 export type ReportNarrative = z.infer<typeof narrativeSchema>;
 export type GenerateOutput = z.infer<typeof generateOutputSchema>;
+
+/** Enforce the size limits the output schema deliberately omits. */
+export function clampGenerateOutput(g: GenerateOutput): GenerateOutput {
+  const L = AI_OUTPUT_LIMITS;
+  const n = g.narrative;
+  return {
+    narrative: {
+      headline: clip(n.headline, 300),
+      summary: clip(n.summary, L.summaryText),
+      per_question: n.per_question
+        .filter((p) => p.qkey.trim())
+        .slice(0, L.perQuestionInsights)
+        .map((p) => ({ qkey: p.qkey.trim(), insight: clip(p.insight, L.insightText) })),
+      crosstab_insights: n.crosstab_insights
+        .filter((c) => c.row_qkey.trim() && c.col_qkey.trim())
+        .slice(0, L.crosstabInsights)
+        .map((c) => ({
+          row_qkey: c.row_qkey.trim(),
+          col_qkey: c.col_qkey.trim(),
+          insight: clip(c.insight, L.insightText),
+        })),
+      free_text_summaries: n.free_text_summaries
+        .filter((f) => f.qkey.trim())
+        .slice(0, L.freeTextSummaries)
+        .map((f) => ({ qkey: f.qkey.trim(), summary: clip(f.summary, 2000) })),
+      caveats: n.caveats
+        .map((c) => clip(c, L.shortText))
+        .filter(Boolean)
+        .slice(0, L.caveats),
+    },
+    chart_spec: {
+      sections: g.chart_spec.sections.slice(0, L.chartSections).map((s) =>
+        s.kind === "free_text"
+          ? {
+              ...s,
+              themes: s.themes.slice(0, L.themesPerQuestion).map((t) => ({
+                label: clip(t.label, 120),
+                row_ids: t.row_ids.slice(0, L.themeRowIds),
+              })),
+            }
+          : s
+      ),
+    },
+  };
+}
 
 // ─── Sanitising AI output against the real schema ───────────────────────────
 
@@ -193,7 +304,7 @@ export function sanitiseGenerateOutput(
         ...s,
         themes: s.themes
           .map((t) => ({ ...t, row_ids: Array.from(new Set(t.row_ids)) }))
-          .filter((t) => t.row_ids.length > 0),
+          .filter((t) => t.row_ids.length > 0 && t.label.trim()),
       });
     }
   }

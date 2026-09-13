@@ -314,6 +314,63 @@ describe("number guard + sanitise", () => {
   });
 });
 
+describe("AI output schemas vs Anthropic structured outputs", () => {
+  it("carry no length constraints (the API ignores them and the SDK would then reject valid replies)", async () => {
+    const { zodOutputFormat } = await import("@anthropic-ai/sdk/helpers/zod");
+    const { reviewOutputSchema: r, generateOutputSchema: g } = await import("../schemas");
+    for (const schema of [r, g]) {
+      const json = JSON.stringify(zodOutputFormat(schema));
+      expect(json).not.toMatch(/"maxItems"|"minItems"|"maxLength"|"minLength"/);
+    }
+  });
+
+  it("accepts seven clarifying questions and clamps them to six afterwards", async () => {
+    const { reviewOutputSchema: r, clampReviewOutput, AI_OUTPUT_LIMITS } = await import("../schemas");
+    const parsed = r.parse({
+      summary: "s",
+      schema_suggestions: [],
+      data_quality_notes: Array.from({ length: 20 }, (_, i) => `note ${i}`),
+      clarifying_questions: Array.from({ length: 7 }, (_, i) => ({
+        id: `q${i}`,
+        question: `Question ${i}?`,
+        kind: i % 2 ? "text" : "single",
+        options: ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"],
+      })),
+    });
+    const clamped = clampReviewOutput(parsed);
+    expect(clamped.clarifying_questions).toHaveLength(AI_OUTPUT_LIMITS.clarifyingQuestions);
+    expect(clamped.data_quality_notes).toHaveLength(AI_OUTPUT_LIMITS.dataQualityNotes);
+    // text questions carry no options; single-choice options are capped
+    expect(clamped.clarifying_questions[1].options).toEqual([]);
+    expect(clamped.clarifying_questions[0].options).toHaveLength(AI_OUTPUT_LIMITS.clarifyingOptions);
+  });
+
+  it("clamps generate output sizes without touching valid content", async () => {
+    const { generateOutputSchema: g, clampGenerateOutput, AI_OUTPUT_LIMITS } = await import("../schemas");
+    const parsed = g.parse({
+      narrative: {
+        headline: "h",
+        summary: "x".repeat(5000),
+        per_question: [{ qkey: "a", insight: "fine" }],
+        crosstab_insights: [],
+        free_text_summaries: [],
+        caveats: Array.from({ length: 15 }, () => "c"),
+      },
+      chart_spec: {
+        sections: [
+          { kind: "free_text", qkey: "notes", themes: Array.from({ length: 15 }, (_, i) => ({ label: `t${i}`, row_ids: [i] })) },
+        ],
+      },
+    });
+    const c = clampGenerateOutput(parsed);
+    expect(c.narrative.summary.length).toBeLessThanOrEqual(AI_OUTPUT_LIMITS.summaryText);
+    expect(c.narrative.caveats).toHaveLength(AI_OUTPUT_LIMITS.caveats);
+    expect(c.narrative.per_question[0]).toEqual({ qkey: "a", insight: "fine" });
+    const ft = c.chart_spec.sections[0];
+    expect(ft.kind === "free_text" && ft.themes.length).toBe(AI_OUTPUT_LIMITS.themesPerQuestion);
+  });
+});
+
 describe("scrubText", () => {
   it("redacts emails, phones, links and names", () => {
     expect(scrubText("Ring Jo Bloggs on +61 400 123 456 or jo@x.com, see www.x.com/cv", { names: ["Jo", "Bloggs"] })).toBe(

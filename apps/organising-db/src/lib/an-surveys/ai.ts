@@ -23,6 +23,8 @@ import { detectIdentityColumns } from "./dedupe";
 import { cleanCell } from "./normalise";
 import { scrubText } from "./pii";
 import {
+  clampGenerateOutput,
+  clampReviewOutput,
   generateOutputSchema,
   reviewOutputSchema,
   sanitiseGenerateOutput,
@@ -244,7 +246,7 @@ export async function reviewImport(
   assertNotRefused(response);
   if (!response.parsed_output) throw new AiOutputError();
   return {
-    output: response.parsed_output,
+    output: clampReviewOutput(response.parsed_output),
     model: response.model,
     usage: { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens },
   };
@@ -419,8 +421,8 @@ export async function generateReport(
     output_config: { format: zodOutputFormat(generateOutputSchema) },
   });
   assertNotRefused(response);
-  const output = response.parsed_output;
-  if (!output) throw new AiOutputError();
+  if (!response.parsed_output) throw new AiOutputError();
+  const output = clampGenerateOutput(response.parsed_output);
 
   const included = ctx.questions.filter((q) => q.include_in_report && q.qtype !== "identity");
   const knownQkeys = new Set(included.map((q) => q.qkey));

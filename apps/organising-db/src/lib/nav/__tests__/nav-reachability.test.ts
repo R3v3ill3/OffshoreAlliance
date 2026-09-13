@@ -33,7 +33,12 @@ import {
   type NavItem,
   type NavModel,
 } from "../nav-model";
-import { FULL_MODE_FIXTURE, TODAY_SIDEBAR_ROWS, toFixtureRow } from "./nav-model-fixture";
+import {
+  FULL_MODE_FIXTURE,
+  FULL_MODE_PRIMARY_COUNT,
+  TODAY_SIDEBAR_ROWS,
+  toFixtureRow,
+} from "./nav-model-fixture";
 
 const BASE: ResolveWorkspaceInput = {
   role: "user",
@@ -70,19 +75,31 @@ function everyItem(model: NavModel): NavItem[] {
 }
 
 describe("full mode is byte-identical to the pinned fixture", () => {
-  it("an admin sees today's 10 + 3 rows, in today's order, with today's labels", () => {
+  it("an admin sees today's 11 + 3 rows, in today's order, with today's labels", () => {
     expect([...fullAdmin.primary, ...fullAdmin.admin].map(toFixtureRow)).toEqual(
       FULL_MODE_FIXTURE
     );
   });
 
-  it("a non-admin sees the same 10 and no admin block", () => {
-    expect(fullUser.primary.map(toFixtureRow)).toEqual(FULL_MODE_FIXTURE.slice(0, 10));
+  it("a non-admin sees the same 11 and no admin block", () => {
+    expect(fullUser.primary.map(toFixtureRow)).toEqual(
+      FULL_MODE_FIXTURE.slice(0, FULL_MODE_PRIMARY_COUNT)
+    );
     expect(fullUser.admin).toEqual([]);
   });
 
-  it("the only difference from the pre-WP1.5 sidebar is row 7's three fields", () => {
-    const diffs = TODAY_SIDEBAR_ROWS.map((before, i) => ({ before, after: FULL_MODE_FIXTURE[i] }))
+  it("the only differences from the pre-WP1.5 sidebar are row 7's three fields and the added Surveys & Forms row", () => {
+    // The Surveys & Forms row is an addition, not a change: take it out and
+    // the remaining rows must line up with the pre-WP1.2 sidebar one-to-one.
+    const added = FULL_MODE_FIXTURE.filter((row) => !TODAY_SIDEBAR_ROWS.some((t) => t.id === row.id));
+    expect(added.map((row) => row.id)).toEqual(["surveys_forms"]);
+    expect(FULL_MODE_FIXTURE.indexOf(added[0])).toBe(
+      FULL_MODE_FIXTURE.findIndex((row) => row.id === "reports") + 1
+    );
+    const withoutAdded = FULL_MODE_FIXTURE.filter((row) => row.id !== "surveys_forms");
+    expect(withoutAdded).toHaveLength(TODAY_SIDEBAR_ROWS.length);
+
+    const diffs = TODAY_SIDEBAR_ROWS.map((before, i) => ({ before, after: withoutAdded[i] }))
       .filter(({ before, after }) => JSON.stringify(before) !== JSON.stringify(after))
       .map(({ before, after }) => ({ id: before.id, before, after }));
 
@@ -90,7 +107,7 @@ describe("full mode is byte-identical to the pinned fixture", () => {
       {
         id: "actions",
         before: TODAY_SIDEBAR_ROWS[6],
-        after: FULL_MODE_FIXTURE[6],
+        after: withoutAdded[6],
       },
     ]);
     // …and within that row, only label / href / icon moved.
@@ -127,6 +144,8 @@ describe("reachability — decision 7", () => {
       { label: "Overview", href: "/overview", state: "muted" },
       { label: "Dashboard", href: "/dashboard", state: "muted" },
       { label: "Reports", href: "/reports", state: "muted" },
+      // `surveys_forms` is an organiser default, so its row is live, not muted.
+      { label: "Surveys & Forms", href: "/surveys-forms", state: "on" },
     ],
     admin: [] as { label: string; href: string; state: string }[],
   };
@@ -235,7 +254,9 @@ describe("reachability — decision 7", () => {
   });
 
   it("Show everything restores every full-mode row for an organiser", () => {
-    expect(expanded.primary.map(toFixtureRow)).toEqual(FULL_MODE_FIXTURE.slice(0, 10));
+    expect(expanded.primary.map(toFixtureRow)).toEqual(
+      FULL_MODE_FIXTURE.slice(0, FULL_MODE_PRIMARY_COUNT)
+    );
   });
 });
 
@@ -285,6 +306,7 @@ describe("allNavHrefs", () => {
         "/reports",
         "/sms",
         "/sms/inbox",
+        "/surveys-forms",
         "/upcoming-projects",
         "/worksites",
       ].sort()

@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       _archive_call_attempt_outcomes_20260613: {
@@ -1537,6 +1512,360 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "workers_view"
             referencedColumns: ["worker_id"]
+          },
+        ]
+      }
+      an_survey_import_batches: {
+        Row: {
+          duplicate_count: number
+          file_name: string | null
+          headers: Json
+          id: string
+          import_id: string
+          response_count: number
+          row_count: number
+          uploaded_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          duplicate_count?: number
+          file_name?: string | null
+          headers?: Json
+          id?: string
+          import_id: string
+          response_count?: number
+          row_count?: number
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          duplicate_count?: number
+          file_name?: string | null
+          headers?: Json
+          id?: string
+          import_id?: string
+          response_count?: number
+          row_count?: number
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "an_survey_import_batches_import_id_fkey"
+            columns: ["import_id"]
+            isOneToOne: false
+            referencedRelation: "an_survey_imports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      an_survey_imports: {
+        Row: {
+          an_browser_url: string | null
+          an_last_synced_at: string | null
+          an_resource_id: string | null
+          an_resource_type: string | null
+          an_total_records: number | null
+          campaign_id: number | null
+          created_at: string
+          created_by: string | null
+          current_batch_id: string | null
+          current_report_id: string | null
+          id: string
+          source_kind: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          an_browser_url?: string | null
+          an_last_synced_at?: string | null
+          an_resource_id?: string | null
+          an_resource_type?: string | null
+          an_total_records?: number | null
+          campaign_id?: number | null
+          created_at?: string
+          created_by?: string | null
+          current_batch_id?: string | null
+          current_report_id?: string | null
+          id?: string
+          source_kind?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          an_browser_url?: string | null
+          an_last_synced_at?: string | null
+          an_resource_id?: string | null
+          an_resource_type?: string | null
+          an_total_records?: number | null
+          campaign_id?: number | null
+          created_at?: string
+          created_by?: string | null
+          current_batch_id?: string | null
+          current_report_id?: string | null
+          id?: string
+          source_kind?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "an_survey_imports_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "an_survey_imports_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "an_survey_imports_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "an_survey_imports_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_bargaining_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "an_survey_imports_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "an_survey_imports_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "an_survey_imports_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "an_survey_imports_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "an_survey_imports_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "an_survey_imports_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "an_survey_imports_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "an_survey_imports_current_batch_fkey"
+            columns: ["current_batch_id"]
+            isOneToOne: false
+            referencedRelation: "an_survey_import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "an_survey_imports_current_report_fkey"
+            columns: ["current_report_id"]
+            isOneToOne: false
+            referencedRelation: "an_survey_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      an_survey_questions: {
+        Row: {
+          created_at: string
+          id: string
+          import_id: string
+          include_in_report: boolean
+          label: string
+          missing_since: string | null
+          options: Json
+          other_column: string | null
+          qkey: string
+          qtype: string
+          sort: number
+          source_columns: string[]
+          updated_at: string
+          user_edited: boolean
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          import_id: string
+          include_in_report?: boolean
+          label: string
+          missing_since?: string | null
+          options?: Json
+          other_column?: string | null
+          qkey: string
+          qtype: string
+          sort?: number
+          source_columns?: string[]
+          updated_at?: string
+          user_edited?: boolean
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          import_id?: string
+          include_in_report?: boolean
+          label?: string
+          missing_since?: string | null
+          options?: Json
+          other_column?: string | null
+          qkey?: string
+          qtype?: string
+          sort?: number
+          source_columns?: string[]
+          updated_at?: string
+          user_edited?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "an_survey_questions_import_id_fkey"
+            columns: ["import_id"]
+            isOneToOne: false
+            referencedRelation: "an_survey_imports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      an_survey_reports: {
+        Row: {
+          batch_id: string | null
+          chart_spec: Json | null
+          extraction_brief: Json | null
+          generated_at: string
+          generated_by: string | null
+          id: string
+          import_id: string
+          input_tokens: number | null
+          model: string | null
+          narrative: Json | null
+          output_tokens: number | null
+          review: Json | null
+        }
+        Insert: {
+          batch_id?: string | null
+          chart_spec?: Json | null
+          extraction_brief?: Json | null
+          generated_at?: string
+          generated_by?: string | null
+          id?: string
+          import_id: string
+          input_tokens?: number | null
+          model?: string | null
+          narrative?: Json | null
+          output_tokens?: number | null
+          review?: Json | null
+        }
+        Update: {
+          batch_id?: string | null
+          chart_spec?: Json | null
+          extraction_brief?: Json | null
+          generated_at?: string
+          generated_by?: string | null
+          id?: string
+          import_id?: string
+          input_tokens?: number | null
+          model?: string | null
+          narrative?: Json | null
+          output_tokens?: number | null
+          review?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "an_survey_reports_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "an_survey_import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "an_survey_reports_import_id_fkey"
+            columns: ["import_id"]
+            isOneToOne: false
+            referencedRelation: "an_survey_imports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      an_survey_responses: {
+        Row: {
+          batch_id: string
+          data: Json
+          id: string
+          import_id: string
+          is_latest: boolean
+          respondent_key: string | null
+          row_index: number
+          submitted_at: string | null
+        }
+        Insert: {
+          batch_id: string
+          data?: Json
+          id?: string
+          import_id: string
+          is_latest?: boolean
+          respondent_key?: string | null
+          row_index: number
+          submitted_at?: string | null
+        }
+        Update: {
+          batch_id?: string
+          data?: Json
+          id?: string
+          import_id?: string
+          is_latest?: boolean
+          respondent_key?: string | null
+          row_index?: number
+          submitted_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "an_survey_responses_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "an_survey_import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "an_survey_responses_import_id_fkey"
+            columns: ["import_id"]
+            isOneToOne: false
+            referencedRelation: "an_survey_imports"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -5577,6 +5906,155 @@ export type Database = {
           },
         ]
       }
+      campaign_groups: {
+        Row: {
+          campaign_id: number
+          created_at: string
+          created_by: string | null
+          display_order: number
+          group_id: number
+          kind: string
+          name: string
+          source_ou_id: number | null
+          updated_at: string
+        }
+        Insert: {
+          campaign_id: number
+          created_at?: string
+          created_by?: string | null
+          display_order?: number
+          group_id?: number
+          kind: string
+          name: string
+          source_ou_id?: number | null
+          updated_at?: string
+        }
+        Update: {
+          campaign_id?: number
+          created_at?: string
+          created_by?: string | null
+          display_order?: number
+          group_id?: number
+          kind?: string
+          name?: string
+          source_ou_id?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_groups_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_groups_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_groups_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_groups_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_bargaining_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_groups_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_groups_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_groups_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_groups_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_groups_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_groups_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_groups_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_groups_source_ou_id_fkey"
+            columns: ["source_ou_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_organising_units"
+            referencedColumns: ["ou_id"]
+          },
+          {
+            foreignKeyName: "campaign_groups_source_ou_id_fkey"
+            columns: ["source_ou_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_unit_assignment_summary"
+            referencedColumns: ["ou_id"]
+          },
+          {
+            foreignKeyName: "campaign_groups_source_ou_id_fkey"
+            columns: ["source_ou_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_unit_hierarchy_summary"
+            referencedColumns: ["parent_ou_id"]
+          },
+          {
+            foreignKeyName: "campaign_groups_source_ou_id_fkey"
+            columns: ["source_ou_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_coverage_map"
+            referencedColumns: ["ou_id"]
+          },
+          {
+            foreignKeyName: "campaign_groups_source_ou_id_fkey"
+            columns: ["source_ou_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_workforce_mapping"
+            referencedColumns: ["worksite_ou_id"]
+          },
+        ]
+      }
       campaign_leader_form_events: {
         Row: {
           created_at: string
@@ -5968,6 +6446,7 @@ export type Database = {
           commonality_logic: string | null
           created_at: string
           display_order: number
+          group_id: number | null
           is_group_container: boolean
           name: string
           ou_group_id: number | null
@@ -5988,6 +6467,7 @@ export type Database = {
           commonality_logic?: string | null
           created_at?: string
           display_order?: number
+          group_id?: number | null
           is_group_container?: boolean
           name: string
           ou_group_id?: number | null
@@ -6008,6 +6488,7 @@ export type Database = {
           commonality_logic?: string | null
           created_at?: string
           display_order?: number
+          group_id?: number | null
           is_group_container?: boolean
           name?: string
           ou_group_id?: number | null
@@ -6120,6 +6601,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "workload_dashboard_summary"
             referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "campaign_organising_units_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_groups"
+            referencedColumns: ["group_id"]
           },
           {
             foreignKeyName: "campaign_organising_units_ou_group_id_fkey"
@@ -8708,6 +9196,7 @@ export type Database = {
           assigned_rule_id: number | null
           assignment_source: string
           created_at: string
+          group_id: number
           id: number
           is_primary: boolean
           ou_id: number
@@ -8717,6 +9206,7 @@ export type Database = {
           assigned_rule_id?: number | null
           assignment_source?: string
           created_at?: string
+          group_id: number
           id?: number
           is_primary?: boolean
           ou_id: number
@@ -8726,6 +9216,7 @@ export type Database = {
           assigned_rule_id?: number | null
           assignment_source?: string
           created_at?: string
+          group_id?: number
           id?: number
           is_primary?: boolean
           ou_id?: number
@@ -8738,6 +9229,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "campaign_unit_rules"
             referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "campaign_worker_ou_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_groups"
+            referencedColumns: ["group_id"]
           },
           {
             foreignKeyName: "campaign_worker_ou_ou_id_fkey"
@@ -18333,6 +18831,105 @@ export type Database = {
         }
         Relationships: []
       }
+      user_campaign_prefs: {
+        Row: {
+          campaign_id: number
+          prefs: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          campaign_id: number
+          prefs?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          campaign_id?: number
+          prefs?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_campaign_prefs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_ou_coverage_summary"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "user_campaign_prefs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "user_campaign_prefs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns_view"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "user_campaign_prefs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_bargaining_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "user_campaign_prefs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_foundational_readiness"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "user_campaign_prefs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "vw_sms_campaign_rollup"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "user_campaign_prefs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_activities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "user_campaign_prefs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_entities"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "user_campaign_prefs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaign_progress"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "user_campaign_prefs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_campaigns_by_stage"
+            referencedColumns: ["campaign_id"]
+          },
+          {
+            foreignKeyName: "user_campaign_prefs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "workload_dashboard_summary"
+            referencedColumns: ["campaign_id"]
+          },
+        ]
+      }
       user_hint_dismissals: {
         Row: {
           dismissed_at: string
@@ -22006,14 +22603,14 @@ export type Database = {
           },
           {
             foreignKeyName: "user_profiles_organiser_id_fkey"
-            columns: ["granted_by_organiser_id"]
+            columns: ["granted_to_organiser_id"]
             isOneToOne: false
             referencedRelation: "organisers"
             referencedColumns: ["organiser_id"]
           },
           {
             foreignKeyName: "user_profiles_organiser_id_fkey"
-            columns: ["granted_to_organiser_id"]
+            columns: ["granted_by_organiser_id"]
             isOneToOne: false
             referencedRelation: "organisers"
             referencedColumns: ["organiser_id"]
@@ -26405,6 +27002,37 @@ export type Database = {
         Args: { p_options: Json }
         Returns: string[]
       }
+      campaign_group_ensure: {
+        Args: {
+          p_campaign_id: number
+          p_kind: string
+          p_name: string
+          p_rank: number
+          p_source_ou_id: number
+        }
+        Returns: number
+      }
+      campaign_group_kind_for_ou_type: {
+        Args: { p_ou_type: string }
+        Returns: {
+          kind: string
+          label: string
+          rank: number
+        }[]
+      }
+      campaign_group_target_for_unit: {
+        Args: {
+          p_is_container: boolean
+          p_ou_group_id: number
+          p_ou_type: string
+        }
+        Returns: {
+          kind: string
+          name: string
+          rank: number
+          source_ou_id: number
+        }[]
+      }
       campaign_last_activity: {
         Args: { p_campaign_ids: number[] }
         Returns: {
@@ -26416,6 +27044,10 @@ export type Database = {
       campaigns_i_can_write: {
         Args: { p_campaign_ids: number[] }
         Returns: number[]
+      }
+      can_write_an_survey_import: {
+        Args: { p_import_id: string }
+        Returns: boolean
       }
       can_write_to_campaign: {
         Args: { p_campaign_id: number }
@@ -27030,9 +27662,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       campaign_phase_enum: [

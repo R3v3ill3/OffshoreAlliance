@@ -20,6 +20,10 @@ const ALLOWED_KEYS = [
   "email_reply_to",
   "email_webhook_token",
   "email_inbound_token",
+  // Anthropic model selection — resolved by src/lib/ai/models.ts
+  // getAiModel(); listed here so the "AI models" settings card can save.
+  "ai_model_default",
+  "ai_model_fast",
 ] as const;
 
 type SettingKey = (typeof ALLOWED_KEYS)[number];

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { getAiModel } from '@/lib/ai/models'
 
 /** Align with client `API_FETCH_TIMEOUT_LLM_MS` so Vercel does not exit first. */
 export const maxDuration = 120
@@ -140,7 +141,7 @@ ${Object.entries(STAGE_NAMES).map(([n, name]) => `${n}. ${name}`).join('\n')}`
 
     log('anthropic_start', importId)
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: await getAiModel('default'),
       max_tokens: 4000,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],

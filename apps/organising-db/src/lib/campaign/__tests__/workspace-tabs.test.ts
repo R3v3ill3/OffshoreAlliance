@@ -132,7 +132,7 @@ describe("resolveVisibleTabs — full mode is today's campaign page", () => {
 // ── T3/T4 — organiser mode, default modules ─────────────────────────────
 
 describe("resolveVisibleTabs — organiser mode", () => {
-  it("T3 — every one of the 45 surfaces is reachable with the default modules", () => {
+  it("T3 — every one of the 46 surfaces is reachable with the default modules", () => {
     expect(unreachable(model())).toEqual([]);
   });
 
@@ -174,7 +174,7 @@ describe("resolveVisibleTabs — organiser mode", () => {
     }
   });
 
-  it("V6 — More holds the fourteen registry pairs the four tabs do not reach", () => {
+  it("V6 — More holds the fifteen registry pairs the four tabs do not reach", () => {
     const m = model();
     const pairs = m.more.flatMap((t) =>
       t.subs.length === 0
@@ -194,6 +194,7 @@ describe("resolveVisibleTabs — organiser mode", () => {
       "outcomes/reports",
       "outcomes/results",
       "outcomes/insights",
+      "outcomes/surveys",
       "library/",
       "bargaining/",
     ]);
@@ -331,11 +332,11 @@ describe("URL compatibility — mode is presentation, never permission", () => {
 // ── T8 — registry integrity ─────────────────────────────────────────────
 
 describe("CAMPAIGN_TAB_REGISTRY — integrity", () => {
-  it("carries the appendix D 3.2 inventory plus the one surface it undercounts", () => {
-    expect(CAMPAIGN_SURFACES).toHaveLength(APPENDIX_D_COUNT + 1);
+  it("carries the appendix D 3.2 inventory plus the one surface it undercounts and the one added since", () => {
+    expect(CAMPAIGN_SURFACES).toHaveLength(APPENDIX_D_COUNT + 2);
     expect(
       CAMPAIGN_SURFACES.filter((r) => r.appendix.startsWith("not counted")).map((r) => r.id)
-    ).toEqual(["outreach/sms#relays"]);
+    ).toEqual(["outcomes/surveys", "outreach/sms#relays"]);
   });
 
   it("T8 — every module id is a real workspace module", () => {

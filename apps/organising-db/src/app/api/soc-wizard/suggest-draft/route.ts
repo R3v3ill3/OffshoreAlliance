@@ -23,6 +23,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { getAiModel } from '@/lib/ai/models'
 import { OA_CONTEXT, VARIABLE_GLOSSARY } from '@/lib/prompts/draft-prompts'
 import {
   SOC_FRAMEWORK,
@@ -232,8 +233,9 @@ export async function POST(req: NextRequest) {
       .filter(Boolean)
       .join('\n')
 
+    const aiModel = await getAiModel('default')
     const completion = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: aiModel,
       max_tokens: 1200,
       system: [
         {
@@ -320,7 +322,7 @@ export async function POST(req: NextRequest) {
           kind: 'draft_suggestion',
           draft_text: draftText,
           focus_phrases: focusPhrases,
-          model: 'claude-sonnet-4-20250514',
+          model: aiModel,
         },
       })
       .select()

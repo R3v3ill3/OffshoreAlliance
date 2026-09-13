@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { getAiModel } from '@/lib/ai/models'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -48,8 +49,9 @@ ${content.slice(0, 8000)}
 ---
 ${platform ? `\nThe user has indicated this is for platform: ${platform}` : ''}`
 
+    const aiModel = await getAiModel('default')
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: aiModel,
       max_tokens: 1000,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],

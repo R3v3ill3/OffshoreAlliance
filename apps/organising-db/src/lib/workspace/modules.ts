@@ -1,8 +1,10 @@
 // WP1.1 — the workspace module registry.
 //
-// Pure data, no React. The 13 rows below are the plan-5.2 module table
+// Pure data, no React. The rows below are the plan-5.2 module table
 // (docs/ORGANISER_UX_REVIEW_AND_PLAN.md, "Modules an admin can enable per
-// role or per user"), in that order. Ids are stable snake_case and are the
+// role or per user"), in that order, plus `surveys_forms` (the Action
+// Network survey/form importer, added after `insights`; on by default for
+// organisers). Ids are stable snake_case and are the
 // contract that navigation (WP1.2) and campaign tabs (WP1.4) key off; they
 // are never derived from labels. Labels follow plan 3.6 terminology.
 //
@@ -24,6 +26,7 @@ export type WorkspaceModuleId =
   | "strategic_plan"
   | "bargaining"
   | "insights"
+  | "surveys_forms"
   | "data_fields"
   | "activists_wocs"
   | "library"
@@ -100,6 +103,14 @@ export const MODULES: readonly WorkspaceModule[] = [
     label: "Insights",
     description: "reports, results, campaign progress, facts report",
     defaultForOrganiser: false,
+    adminOnly: false,
+    offState: "muted",
+  },
+  {
+    id: "surveys_forms",
+    label: "Surveys & Forms",
+    description: "Action Network form & survey imports and reports",
+    defaultForOrganiser: true,
     adminOnly: false,
     offState: "muted",
   },

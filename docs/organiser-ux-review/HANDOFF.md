@@ -18,19 +18,24 @@ implemented, verified and reviewed to approval per the protocol in
 | #34 | Tests only: e2e suite owns its preconditions (hint dismissal seeded, workspace mode pinned per spec) |
 | #35 | Fix: Users edit dialog capped to the viewport with scrolling body, two-column module checklist, "Default for role" shows the resolved mode |
 
-`develop` includes WP2.3 PR #38 at `4d2ff4b`; the latest recorded production promotion PR #37 merged
-phase 1 to `main` at `0f22d49` on 2026-09-11 and Vercel Production completed successfully. Gates on the phase-1 tree:
-`tsc` clean; vitest green (1029+ tests); lint at the recorded baseline (294 problems, pre-existing;
-standard is touched lines clean and the count not rising); full credentialled e2e green repeatedly on
-Vercel previews.
+`develop` includes WP2.3 PR #38 at `4d2ff4b` and WP2.1 PR #39 at `de338b5`; production promotion
+[PR #40](https://github.com/R3v3ill3/OffshoreAlliance/pull/40) merged both to `main` at `82ff71c` on
+2026-09-12 UTC and Vercel Production completed successfully (phase 1 had been promoted by PR #37 at
+`0f22d49` on 2026-09-11). Gates on the tree: `tsc` clean; vitest green (1,118 tests); lint at the recorded
+baseline (294 problems, pre-existing; standard is touched lines clean and the count not rising); full
+credentialled e2e green repeatedly on Vercel previews.
 
-**Phase 2 current edge.** WP2.3 is merged as [PR #38](https://github.com/R3v3ill3/OffshoreAlliance/pull/38)
-at `4d2ff4b`. WP2.1 clone rehearsal is green. On 2026-09-13 the operator explicitly waived WP2.1
-normal-dev schema/e2e for the deadline shipment because dev is thin, noncritical and materially different;
-the production-shaped clone is the migration acceptance environment. This is a verification gap, not a
-pass. `groups_v2` is not yet introduced and no app code consumes the new schema. Clone-generated types and final local
-gates are complete. Final reviewer verdict is **APPROVE FOR PR/MAIN WITH PRODUCTION DB GATE**; evidence
-commit/PR and merge remain pending.
+**Phase 2 current edge (2026-09-13).** WP2.3 is merged as [PR #38](https://github.com/R3v3ill3/OffshoreAlliance/pull/38)
+at `4d2ff4b`. WP2.1 **code** is merged as [PR #39](https://github.com/R3v3ill3/OffshoreAlliance/pull/39)
+at `de338b5` and is on `main`/production via PR #40. **The WP2.1 schema is not applied to production,
+and not to normal dev either; only the disposable clone has it.** On 2026-09-13 the operator explicitly
+waived WP2.1 normal-dev schema/e2e for that shipment because dev is thin, noncritical and materially
+different; the production-shaped clone is the migration acceptance environment. This is a verification
+gap, not a pass. `groups_v2` is not yet introduced and no app code consumes the new schema. After PR #40,
+`main`'s automatic types regeneration (`5fe7c93`, generated from production) stripped the WP2.1 symbols
+from `packages/db-types/generated.ts`; `develop` re-merged `main` at `1666660` keeping the clone-generated
+types, as it had at `332331d`. The next package is **WP2.2 Structure API**; its plan is `wp/wp2.2.md` and
+the plan was approved 2026-09-13 (R1, M2-a, K1, G1); Stages 3+ need WP2.1 on dev (`wp/wp2.2.md` §0).
 
 **The six phase-1 migrations are applied to both dev and production:**
 
@@ -149,15 +154,16 @@ passed. Later dev may be refreshed/replaced or migrated separately.
 WP2.4 → WP2.5, WP2.6, WP2.7 (2.7 needs only 2.2) → WP2.8 → WP2.9. WP3.3 and WP3.5 may also start now
 that phase 1 is merged.
 
-**WP2.1 Schema and migration — clone rehearsal green; release gates pending.** The final package follows
+**WP2.1 Schema and migration — code merged ([PR #39](https://github.com/R3v3ill3/OffshoreAlliance/pull/39)
+at `de338b5`, on `main` via PR #40); production schema not applied.** The package follows
 E2/M2/C1/F1: uniqueness and `campaign_group_membership` are deferred to WP2.2; Employer placements are
 deferred; duplicate bases are canonicalised non-destructively; F1 uses legacy columns and maximum
 specificity. The clone proved cleanup forward/rollback/reapply, migration recovery/reapply, postflight and
 rolled-back role probes. Recovered cleanup bytes were not re-executed after checkout loss, so production
-application must re-establish that gate; migration/`04`/`95` were re-run after recovery. Pending shipment
-work is one evidence commit and PR. Clone-generated types and final local gates are complete; reviewer
-verdict is **APPROVE FOR PR/MAIN WITH PRODUCTION DB GATE**. `groups_v2` is not yet introduced and no
-application consumer exists.
+application must re-establish that gate; migration/`04`/`95` were re-run after recovery. Clone-generated
+types and final local gates are complete; reviewer verdict was **APPROVE FOR PR/MAIN WITH PRODUCTION DB
+GATE**. `groups_v2` is not yet introduced and no application consumer exists. Production application is
+Track B in `CURRENT_STATUS_AND_NEXT_STEPS.md` (operator only).
 
 Final local evidence: type generation from clone exit 0; tsc exit 0; 10 valid migrations; targeted F1
 37/37; full tests 83 files / 1,118 tests; touched ESLint exit 0; lint exactly 294 (143 errors / 151
@@ -216,10 +222,11 @@ environment marker because it is rollback-only and must be run as the exact whol
 
 ## 7. Prompt for the next orchestrating agent
 
-> **Superseded status notice (updated 2026-09-13):** the archival prompt below predates WP2.3 merge,
-> WP2.1 clone completion and the normal-dev waiver. Do not paste it unchanged. Current next steps are:
-> make the evidence commit/PR under explicit Git approvals; the reviewer verdict is already APPROVE FOR
-> PR/MAIN WITH PRODUCTION DB GATE. Production database work remains a separate operator-only run sheet.
+> **Superseded status notice (updated 2026-09-13, evening):** the archival prompt below predates the
+> WP2.3 and WP2.1 merges (PRs #38, #39, #40). Do not paste it unchanged. Use the continuation checklist
+> and suggested prompt in `CURRENT_STATUS_AND_NEXT_STEPS.md` instead. Current next step is WP2.2
+> (`wp/wp2.2.md`, approved 2026-09-13; production/dev sequence in its §0). Production database work remains
+> a separate operator-only run sheet (Track B).
 
 Paste the following as the opening message of a new session in this repository.
 

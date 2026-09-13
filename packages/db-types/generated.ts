@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       _archive_call_attempt_outcomes_20260613: {
@@ -22603,14 +22628,14 @@ export type Database = {
           },
           {
             foreignKeyName: "user_profiles_organiser_id_fkey"
-            columns: ["granted_to_organiser_id"]
+            columns: ["granted_by_organiser_id"]
             isOneToOne: false
             referencedRelation: "organisers"
             referencedColumns: ["organiser_id"]
           },
           {
             foreignKeyName: "user_profiles_organiser_id_fkey"
-            columns: ["granted_by_organiser_id"]
+            columns: ["granted_to_organiser_id"]
             isOneToOne: false
             referencedRelation: "organisers"
             referencedColumns: ["organiser_id"]
@@ -27662,6 +27687,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       campaign_phase_enum: [

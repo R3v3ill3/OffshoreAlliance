@@ -2314,6 +2314,43 @@ exit=0
   `clone`; its ledger carries `20260913000000` (2.2a/2.2b were applied out of band and are intentionally not
   in its ledger — the clone is not a `db push` target).
 
+#### 2.2b applied to normal dev (2026-09-14, orchestrator via the Supabase connector, operator-approved)
+
+Operator approval 2026-09-14 ("1 - approved") for the exact file
+`supabase/migrations/20260914090100_wp2_2_one_unit_per_group_enforcement.sql` at commit `5f61208f` (unchanged
+since; sha256 prefix `593430d2`). Submitted to `dpnnmkhabysfdogllsyh` through the connector's `execute_sql` as one
+multi-statement submission (implicit single transaction; the file's own precondition and postcondition `DO` blocks
+ran inside it) with the ledger row `20260914090100 wp2_2_one_unit_per_group_enforcement` appended in the same
+submission. Preconditions before the run (read-only, 22:0x UTC): H9 partitions 0, marker `dev`, ledger had 2.2a only,
+no unique index, no view, 111 placements. The branch preview carried Stage 6 (`1a1293f2`, Vercel Ready 13:12 UTC)
+before the submission, and contract run 1 (pre-2.2b) had passed.
+
+Result row of the submission:
+
+```
+placements 111 | view_rows 143 | groups 4 | h9_partitions 0
+```
+
+Read-only verification afterwards:
+
+```
+unique_index                     true
+unique_index_is_unique           true
+membership_view                  true
+support_index_dropped            true
+cwo_set_group_id_has_precheck    true
+cwo_set_group_id_md5             e1be39ecea849c6127934eeb84557307
+ledger_2_2b                      1
+ledger_all_wp2                   20260912035329 wp2_1_campaign_groups; 20260914090000 wp2_2_structure_api; 20260914090100 wp2_2_one_unit_per_group_enforcement
+h9_partitions                    0
+view_rows_vs_placements          143 / 111
+anon_select_on_view              false
+authenticated_write_on_view      false
+```
+
+Normal dev now carries WP2.1 + 2.2a + marker + `10` + `20` + 2.2b, the same end state as the clone rehearsal.
+Next: contract run 2 (post-2.2b), then the e2e on the preview.
+
 ### 9.2a Stage 6 verifier run (2026-09-14)
 
 Independent verifier, fresh session. Repo `/home/user/OffshoreAlliance`, branch `feat/oux-wp2.2-structure-api`,

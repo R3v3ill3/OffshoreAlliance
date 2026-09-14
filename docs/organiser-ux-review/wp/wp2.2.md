@@ -1199,8 +1199,33 @@ Result across both runs: run 1 median 6682ms (runs 6682/5688/7090), run 2 median
   unchanged; committed. Restored `check_no_worker_on_group_container()` body `md5(prosrc)` =
   `cccde5a9642091135737f8ccadce27f4` = the baseline file's body (byte-identical), `prosecdef` false,
   `proconfig` null (as the baseline).
-- Next: 2.2a forward again (operator paste) → `10` twice → `20` → `03b` if H9 > 0 → 2.2b forward → `91` →
-  2.2b forward → `04` → `95`.
+- **Step 4 — 2.2a forward again (operator paste, third submission; one earlier attempt arrived truncated and
+  was rejected by the parser before any statement ran):** same six verification rows as step 2. Connector
+  read-back: `bodies_match_file` 32 of 32; 0 `SECURITY DEFINER`; placements 1,618; H9 0.
+- **Step 5 — `10_materialise_employer_placements.sql` (exact file, connector):** STOP condition 0; campaign 57
+  `placements_before` 303 → `placements_after` 606, `inserted` 303, `skipped_existing` 0, `containers` 18,
+  `multi_container_workers` 0; every other campaign 0 containers / 0 inserted; TOTAL 1,618 → 1,921; H9 0 → 0;
+  post-checks passed; committed.
+- **Step 6 — `10` re-run (idempotence):** TOTAL 1,921 → 1,921, `inserted` 0, `skipped_existing` 303,
+  `containers` 18, campaigns with inserts 0; H9 0 → 0.
+- **Step 7 — `20_relabel_unattributed_rule_rows.sql` (exact file, connector):** `rule_null_rule_id` 207 → 0;
+  `rule_attributed` 0 unchanged; `universe` 303 → 510; `manual` 1,411 unchanged; total 1,921; `rows_logged`
+  207; post-checks passed; committed. `03b` not needed (H9 = 0 throughout).
+- **Step 8 — 2.2b forward (exact file, connector):** preconditions passed; placements 1,921; `view_rows` 3,217;
+  groups 20; `h9_partitions` 0; post-assertions (unique index valid, support index gone, trigger pre-check
+  present, view `security_invoker`, grants, groups × members arithmetic, counts unchanged) passed.
+- **Step 9 — `91_rollback_wp2_2_enforcement.sql` (exact file, connector):** `view_rows_before` 3,217;
+  `view_remains` false; `unique_index_remains` false; `support_index_restored` true; H9 0; placements 1,921
+  unchanged; restored `cwo_set_group_id()` body `md5(prosrc)` = `e6a82738313df9b1955d3d7ed3d7a12d` = the
+  WP2.1 migration's body (byte-identical).
+- **Step 10 — exact `oux-wp2.1/04_postflight_hazards.sql` (read-only), run with WP2.1 + 2.2a + `10` + `20`
+  applied and 2.2b rolled back (the only state in which it is valid — D27):** PASSED.
+  `application:campaign_organising_units` 239 / `8adec341…` (unchanged); `campaign_worker_membership` 2726 /
+  `7ade5271…` (unchanged); `campaign_unit_rules` 2 / `5019cdf7…` (unchanged);
+  `application:campaign_worker_ou` 1921 / `5cddaed4c530462cca7baa9aa37fc5e3` (changed by `10`/`20`, as
+  intended); `metadata:…updated_at` unchanged; hazards 226 / 226 / 226 / 0 / 0 / H10 0 (identical to the
+  preflight); every `ou_dependant:*` and `view:*` checksum identical to the preflight.
+- Next: 2.2b forward again (final clone state) → `95` role probes.
 
 ### 9.3 Reviewer findings and resolution
 

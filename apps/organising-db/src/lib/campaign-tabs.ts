@@ -13,7 +13,7 @@
  * Overview is still reachable, but only as an explicit ?tab=overview.
  *
  * WP1.4 adds CAMPAIGN_TAB_REGISTRY: the labels and workspace module ids of
- * the eight tabs and twenty sub-tabs, as data. The import of
+ * the eight tabs and twenty-one sub-tabs, as data. The import of
  * `WorkspaceModuleId` below is type-only, so it is erased at build time and
  * this file keeps zero runtime dependencies — the node-environment test at
  * src/lib/__tests__/campaign-tabs.test.ts still imports it directly.
@@ -208,8 +208,8 @@ export interface CampaignTabDef {
 }
 
 /**
- * The eight tabs and twenty sub-tabs the campaign page renders today, in
- * render order. `subs[0].sub` is DEFAULT_SUB[tab] for every cluster tab —
+ * The eight tabs and twenty-one sub-tabs the campaign page renders today, in
+ * render order (the twenty WP1.4 pinned plus Outcomes › Surveys & Forms). `subs[0].sub` is DEFAULT_SUB[tab] for every cluster tab —
  * asserted by the registry-integrity test.
  *
  * Module assignments follow the WP1.4 plan §2.1.2 and the orchestrator's
@@ -273,6 +273,8 @@ export const CAMPAIGN_TAB_REGISTRY: readonly CampaignTabDef[] = [
       { sub: "reports", label: "Reports", module: "insights" },
       { sub: "results", label: "Results", module: "insights" },
       { sub: "insights", label: "Insights", module: "insights" },
+      // Action Network survey/form imports scoped to this campaign.
+      { sub: "surveys", label: "Surveys & Forms", module: "surveys_forms" },
     ],
   },
   {

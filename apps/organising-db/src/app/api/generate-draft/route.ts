@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { getAiModel } from '@/lib/ai/models'
 import type { CommsDraftRequest, CommsPlatform } from '@/types/planner-types'
 import { buildEmailPrompt, buildSmsPrompt, buildPhoneScriptPrompt } from '@/lib/prompts/draft-prompts'
 import { buildTransformPrompt, buildSubjectVariantsPrompt, type TransformAction } from '@/lib/prompts/email-transform-prompts'
@@ -18,8 +19,6 @@ interface SubjectVariantsRequestBody {
   body_text: string
   hint?: string
 }
-
-const ANTHROPIC_MODEL = 'claude-sonnet-4-20250514'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -116,7 +115,7 @@ export async function POST(req: NextRequest) {
     const maxTokens = MAX_TOKENS_BY_PLATFORM[body.platform]
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: await getAiModel('default'),
       max_tokens: maxTokens,
       system,
       messages: [{ role: 'user', content: userMessage }],
@@ -185,7 +184,7 @@ async function handleTransform(body: TransformRequestBody): Promise<NextResponse
       scope: body.scope ?? 'selection',
     })
     const response = await anthropic.messages.create({
-      model: ANTHROPIC_MODEL,
+      model: await getAiModel('default'),
       max_tokens: 1200,
       system,
       messages: [{ role: 'user', content: user }],
@@ -220,7 +219,7 @@ async function handleSubjectVariants(
       hint: body.hint,
     })
     const response = await anthropic.messages.create({
-      model: ANTHROPIC_MODEL,
+      model: await getAiModel('default'),
       max_tokens: 400,
       system,
       messages: [{ role: 'user', content: user }],

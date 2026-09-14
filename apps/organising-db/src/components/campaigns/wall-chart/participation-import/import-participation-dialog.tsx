@@ -16,7 +16,7 @@ import { StepAssessment } from "./step-assessment";
 import { StepMapping } from "./step-mapping";
 import { StepMatch } from "./step-match";
 import { StepReview } from "./step-review";
-import type { WizardStep } from "./types";
+import type { CsvData, WizardStep } from "./types";
 
 const STEP_TITLES: Record<WizardStep, string> = {
   source: "Import participation — source",
@@ -31,17 +31,23 @@ const STEP_TITLES: Record<WizardStep, string> = {
  * Wall chart / list "Import participation" wizard: bring participation
  * and ratings in from an Action Network report (CSV) or, via re-sync,
  * the AN API, and record them against a campaign assessment.
+ *
+ * `initialSource` seeds the wizard with a CSV that is already in hand (the
+ * Surveys & Forms "Map to assessment" action) and opens it on the assessment
+ * step. Without it the wizard behaves exactly as before.
  */
 export function ImportParticipationDialog({
   campaignId,
   open,
   onOpenChange,
+  initialSource,
 }: {
   campaignId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialSource?: CsvData;
 }) {
-  const controller = useParticipationImport(campaignId);
+  const controller = useParticipationImport(campaignId, undefined, initialSource);
   const { step, setStep, busy, error, reset } = controller;
 
   function handleOpenChange(next: boolean) {

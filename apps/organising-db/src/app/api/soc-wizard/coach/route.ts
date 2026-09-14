@@ -27,6 +27,7 @@
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { getAiModel } from '@/lib/ai/models'
 import { OA_CONTEXT, VARIABLE_GLOSSARY } from '@/lib/prompts/draft-prompts'
 import { SOC_FRAMEWORK, SOC_STAGE_NAMES, type HopeFrame, type SocStage } from '@/lib/prompts/soc-framework'
 import { STAGE_COACHING, HOPE_FRAME_COACHING, COACH_BEHAVIOUR_BLOCK } from '@/lib/prompts/soc/coaching'
@@ -245,13 +246,14 @@ export async function POST(req: NextRequest) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let usage: any = null
 
+  const aiModel = await getAiModel('default')
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const assistantTurnIndex = nextTurnIndex + 1
       controller.enqueue(sseEvent('turn_open', { turn_index: assistantTurnIndex, role: 'assistant' }))
       try {
         const aiStream = anthropic.messages.stream({
-          model: 'claude-sonnet-4-20250514',
+          model: aiModel,
           max_tokens: 600,
           system: [
             {
@@ -288,7 +290,7 @@ export async function POST(req: NextRequest) {
           turn_index: assistantTurnIndex,
           role: 'assistant',
           content: assistantBuffer,
-          ai_metadata: { stop_reason: stopReason, usage, model: 'claude-sonnet-4-20250514' },
+          ai_metadata: { stop_reason: stopReason, usage, model: aiModel },
         })
 
         controller.enqueue(sseEvent('turn_close', {

@@ -88,6 +88,8 @@ import {
   type CampaignSurfaceRef,
 } from "@/lib/campaign/workspace-tabs";
 import { CampaignTabBar } from "@/components/campaigns/campaign-tab-bar";
+import { AnSurveyList } from "@/components/an-surveys/AnSurveyList";
+import { AnSurveyDetail } from "@/components/an-surveys/AnSurveyDetail";
 
 interface CampaignDetail {
   campaign_id: number;
@@ -260,6 +262,22 @@ export default function CampaignDetailPage() {
       for (const [key, value] of Object.entries(ref.params ?? {})) {
         params.set(key, value);
       }
+      const qs = params.toString();
+      router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
+  // Outcomes › Surveys & Forms: ?survey=<id> opens one import inside the
+  // campaign page (tab=outcomes&sub=surveys are kept so Back lands on the list).
+  const surveyParam = searchParams.get("survey");
+  const setSurveyParam = useCallback(
+    (surveyId: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("tab", "outcomes");
+      params.set("sub", "surveys");
+      if (surveyId) params.set("survey", surveyId);
+      else params.delete("survey");
       const qs = params.toString();
       router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
     },
@@ -706,6 +724,19 @@ export default function CampaignDetailPage() {
                 <BargainingInsightsWidget campaignId={campaignId} />
               )}
               <CampaignProgressReport campaignId={campaignId} embedded />
+            </TabsContent>
+
+            <TabsContent value="surveys" {...panelName("outcomes", "surveys")}>
+              {activeSub === "surveys" &&
+                (surveyParam ? (
+                  <AnSurveyDetail
+                    importId={surveyParam}
+                    campaignId={campaignId}
+                    onBack={() => setSurveyParam(null)}
+                  />
+                ) : (
+                  <AnSurveyList campaignId={campaignId} onOpen={(id) => setSurveyParam(id)} />
+                ))}
             </TabsContent>
           </Tabs>
         </TabsContent>

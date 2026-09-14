@@ -23,6 +23,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { getAiModel } from '@/lib/ai/models'
 import { buildEmailPrompt, buildSmsPrompt, buildPhoneScriptPrompt } from '@/lib/prompts/draft-prompts'
 import type { CommsDraftRequest, CommsPlatform } from '@/types/planner-types'
 
@@ -173,8 +174,9 @@ export async function POST(req: NextRequest) {
 
     const { system, user: userMessage } = PROMPT_BUILDERS[artifact_kind](draftReq)
 
+    const aiModel = await getAiModel('default')
     const completion = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: aiModel,
       max_tokens: 2000,
       system,
       messages: [{ role: 'user', content: userMessage }],
@@ -208,7 +210,7 @@ export async function POST(req: NextRequest) {
         tone: (parsed.tone_applied as string) ?? tone ?? null,
         audience_segment: (parsed.audience_targeted as string) ?? audience ?? null,
         status: 'draft',
-        ai_model_used: 'claude-sonnet-4-20250514',
+        ai_model_used: aiModel,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         variables_used: (parsed.variables_used as any) ?? null,
         custom_instructions: draftReq.custom_instructions,

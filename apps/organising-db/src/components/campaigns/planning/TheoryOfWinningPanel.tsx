@@ -119,7 +119,7 @@ export function TheoryOfWinningPanel({
         plan_id: planId,
         if_then_statement: result.if_then_statement,
         ai_generated: true,
-        ai_model: 'claude-sonnet-4-20250514',
+        ai_model: result.model ?? 'unknown',
         ai_prompt_snapshot: request as unknown as Record<string, unknown>,
         gap_analysis: result.gap_analysis as unknown as Record<string, unknown>,
         risk_assessment: result.risk_assessment as unknown as Record<string, unknown>,

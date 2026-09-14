@@ -7,7 +7,7 @@
  *
  * Two models come out of the same registry:
  *
- *   full mode      the eight tabs and twenty sub-tabs the page renders
+ *   full mode      the eight tabs and twenty-one sub-tabs the page renders
  *                  today, unchanged, every one `on`. This is the default
  *                  for everyone, and it is also what "Show everything"
  *                  produces (resolveWorkspace flips `mode` to `full`).

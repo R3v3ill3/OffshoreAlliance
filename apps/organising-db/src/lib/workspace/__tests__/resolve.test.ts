@@ -68,12 +68,19 @@ describe("resolveWorkspace", () => {
     expect(r.canShowEverything).toBe(false);
   });
 
-  it("T3 (R4/R6): org default organiser with no modules gives the four registry defaults", () => {
+  it("T3 (R4/R6): org default organiser with no modules gives the five registry defaults", () => {
     const r = resolve({ orgDefaults: ORG_ORGANISER_MODE });
     expect(r.mode).toBe("organiser");
     expect(r.source).toBe("role");
     expect(ids(r.enabledModules)).toEqual([...ORGANISER_DEFAULTS].sort());
-    expect([...ORGANISER_DEFAULTS].sort()).toEqual(["actions", "inbox", "setup", "wall_chart_people"]);
+    // The four plan-5.2 defaults plus surveys_forms (the AN survey importer).
+    expect([...ORGANISER_DEFAULTS].sort()).toEqual([
+      "actions",
+      "inbox",
+      "setup",
+      "surveys_forms",
+      "wall_chart_people",
+    ]);
   });
 
   it("T4 (R4/R6): org default organiser with explicit modules gives exactly those ids", () => {

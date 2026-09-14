@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
+import { getAiModel } from "@/lib/ai/models";
 import { z } from "zod";
 
 const aiResponseSchema = z.object({
@@ -112,7 +113,7 @@ Worksites to analyse:
 ${JSON.stringify(worksites, null, 2)}`;
 
     const message = await client.messages.create({
-      model: "claude-3-5-haiku-20241022",
+      model: await getAiModel("fast"),
       max_tokens: 8192,
       system: systemPrompt,
       messages: [{ role: "user", content: userContent }],

@@ -319,6 +319,8 @@ export interface TheoryOfWinningRequest {
 }
 
 export interface TheoryOfWinningResponse {
+  /** Model id the server resolved for this generation (admin setting). */
+  model?: string
   if_then_statement: string
   gap_analysis: GapAnalysisItem[]
   risk_assessment: RiskAssessmentItem[]

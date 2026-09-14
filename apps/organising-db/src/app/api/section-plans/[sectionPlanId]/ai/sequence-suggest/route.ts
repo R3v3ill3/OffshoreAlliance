@@ -7,8 +7,8 @@ import {
   loadSectionPlanForAi,
   writeAiAudit,
 } from '@/lib/section-planning/ai-helpers'
+import { getAiModel } from '@/lib/ai/models'
 import {
-  SECTION_AI_MODEL,
   SEQUENCE_SUGGEST_SYSTEM,
 } from '@/lib/prompts/section-planning'
 
@@ -69,8 +69,9 @@ export async function POST(
       2,
     )}\n\`\`\``
 
+    const aiModel = await getAiModel('default')
     const result = await anthropic.messages.create({
-      model: SECTION_AI_MODEL,
+      model: aiModel,
       max_tokens: 1500,
       system: SEQUENCE_SUGGEST_SYSTEM,
       messages: [{ role: 'user', content: userMsg }],
@@ -86,11 +87,11 @@ export async function POST(
       surface: 'sequence_suggest',
       prompt_snapshot: { source_activity_id: body.source_activity_id },
       response_snapshot: { text, parsed },
-      model: SECTION_AI_MODEL,
+      model: aiModel,
       created_by: user.id,
     })
 
-    return NextResponse.json({ ...parsed, model: SECTION_AI_MODEL, raw: text })
+    return NextResponse.json({ ...parsed, model: aiModel, raw: text })
   } catch (e) {
     if (e instanceof Response) return e
     return NextResponse.json(

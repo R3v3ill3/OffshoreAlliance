@@ -7,8 +7,8 @@ import {
   loadSectionPlanForAi,
   writeAiAudit,
 } from '@/lib/section-planning/ai-helpers'
+import { getAiModel } from '@/lib/ai/models'
 import {
-  SECTION_AI_MODEL,
   TOW_CHECK_SYSTEM,
 } from '@/lib/prompts/section-planning'
 
@@ -68,8 +68,9 @@ export async function POST(
       2,
     )}\n\`\`\``
 
+    const aiModel = await getAiModel('default')
     const result = await anthropic.messages.create({
-      model: SECTION_AI_MODEL,
+      model: aiModel,
       max_tokens: 1500,
       system: TOW_CHECK_SYSTEM,
       messages: [{ role: 'user', content: userMsg }],
@@ -85,11 +86,11 @@ export async function POST(
       surface: 'tow_check',
       prompt_snapshot: { if_then_statement: body.if_then_statement },
       response_snapshot: { text, parsed },
-      model: SECTION_AI_MODEL,
+      model: aiModel,
       created_by: user.id,
     })
 
-    return NextResponse.json({ ...parsed, model: SECTION_AI_MODEL, raw: text })
+    return NextResponse.json({ ...parsed, model: aiModel, raw: text })
   } catch (e) {
     if (e instanceof Response) return e
     return NextResponse.json(

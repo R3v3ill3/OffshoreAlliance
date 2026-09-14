@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { getAiModel } from '@/lib/ai/models'
 import type { TheoryOfWinningRequest } from '@/types/planner-types'
 import { loadSituationContextString } from '@/lib/situation-analysis/serialise'
 
@@ -124,8 +125,9 @@ ${body.previous_stage_theory ? `PREVIOUS STAGE THEORY:\n${body.previous_stage_th
 
 Please generate the Theory of Winning for this stage.`
 
+    const aiModel = await getAiModel('default')
     const response = await anthropic.messages.create({
-      model: 'claude-opus-4-5',
+      model: aiModel,
       max_tokens: 2000,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
@@ -158,7 +160,7 @@ Please generate the Theory of Winning for this stage.`
       }
     }
 
-    return NextResponse.json(parsed)
+    return NextResponse.json({ ...parsed, model: aiModel })
   } catch (error) {
     console.error('Theory of Winning API error:', error)
 

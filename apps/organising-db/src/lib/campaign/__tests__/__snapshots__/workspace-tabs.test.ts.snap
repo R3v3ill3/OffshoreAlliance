@@ -241,6 +241,16 @@ exports[`resolveVisibleTabs — full mode is today's campaign page > T1 — the 
           "module": "insights",
           "state": "on",
         },
+        {
+          "href": {
+            "sub": "surveys",
+            "tab": "outcomes",
+          },
+          "id": "surveys",
+          "label": "Surveys & Forms",
+          "module": "surveys_forms",
+          "state": "on",
+        },
       ],
     },
     {
@@ -545,6 +555,16 @@ exports[`resolveVisibleTabs — full mode is today's campaign page > T2 — with
           "module": "insights",
           "state": "on",
         },
+        {
+          "href": {
+            "sub": "surveys",
+            "tab": "outcomes",
+          },
+          "id": "surveys",
+          "label": "Surveys & Forms",
+          "module": "surveys_forms",
+          "state": "on",
+        },
       ],
     },
     {
@@ -633,6 +653,7 @@ exports[`resolveVisibleTabs — organiser mode > T4 — the coverage census: whi
     "outcomes/reports",
     "outcomes/results",
     "outcomes/insights",
+    "outcomes/surveys",
     "workforce/activists#register",
     "workforce/activists#tasking",
     "workforce/activists#wocs",

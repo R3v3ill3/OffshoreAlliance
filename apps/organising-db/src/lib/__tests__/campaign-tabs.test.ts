@@ -141,9 +141,9 @@ describe("campaign-tabs — the legacy registry is unchanged", () => {
 });
 
 describe("CAMPAIGN_TAB_REGISTRY — it is the URL contract, spelled out", () => {
-  it("has the eight tabs and twenty sub-tabs, and only the bargaining phase gate", () => {
+  it("has the eight tabs and twenty-one sub-tabs, and only the bargaining phase gate", () => {
     expect(CAMPAIGN_TAB_REGISTRY).toHaveLength(8);
-    expect(CAMPAIGN_TAB_REGISTRY.flatMap((t) => t.subs)).toHaveLength(20);
+    expect(CAMPAIGN_TAB_REGISTRY.flatMap((t) => t.subs)).toHaveLength(21);
     expect(
       CAMPAIGN_TAB_REGISTRY.filter((t) => t.requiresPhase != null).map((t) => t.tab)
     ).toEqual(["bargaining"]);

@@ -26,7 +26,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { errorResponse } from '@/lib/api/error-response'
 import { checkRateLimit } from '@/lib/rate-limit-middleware'
-import { AI_MODEL } from '@/lib/ai/models'
+import { getAiModel } from '@/lib/ai/models'
 import { countSegments } from '@/lib/sms/segments'
 import {
   buildSmsReplyPrompt,
@@ -257,7 +257,7 @@ export async function POST(
     // ── Model call (pattern of /api/generate-draft) ──────────────
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
     const response = await anthropic.messages.create({
-      model: AI_MODEL,
+      model: await getAiModel('default'),
       max_tokens: 1000,
       system,
       messages: [{ role: 'user', content: userMessage }],

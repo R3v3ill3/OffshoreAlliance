@@ -44,6 +44,7 @@ export const FULL_MODE_SUBS: readonly { tab: string; sub: string; label: string 
   { tab: "outcomes", sub: "reports", label: "Reports" },
   { tab: "outcomes", sub: "results", label: "Results" },
   { tab: "outcomes", sub: "insights", label: "Insights" },
+  { tab: "outcomes", sub: "surveys", label: "Surveys & Forms" },
   { tab: "outreach", sub: "comms", label: "Comms" },
   { tab: "outreach", sub: "phone", label: "Phone Ops" },
   { tab: "outreach", sub: "sms", label: "SMS" },

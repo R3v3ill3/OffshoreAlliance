@@ -9,11 +9,13 @@
 // The keys below are the exact icons the sidebar imports today, plus three
 // introduced by this package: `layout-list` (Actions, matching the hub's own
 // nav at SmsHubNav.tsx), `building-2` (the Organisation section heading) and
-// `eye` (the Show everything control).
+// `eye` (the Show everything control), and `clipboard-list` for the Surveys &
+// Forms row.
 
 import {
   BarChart3,
   Building2,
+  ClipboardList,
   Compass,
   Eye,
   GraduationCap,
@@ -34,6 +36,7 @@ import {
 export type NavIconKey =
   | "bar-chart-3"
   | "building-2"
+  | "clipboard-list"
   | "compass"
   | "eye"
   | "graduation-cap"
@@ -52,6 +55,7 @@ export type NavIconKey =
 export const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   "bar-chart-3": BarChart3,
   "building-2": Building2,
+  "clipboard-list": ClipboardList,
   compass: Compass,
   eye: Eye,
   "graduation-cap": GraduationCap,

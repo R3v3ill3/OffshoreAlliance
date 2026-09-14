@@ -8,8 +8,8 @@ import {
   loadSectionPlanForAi,
   writeAiAudit,
 } from '@/lib/section-planning/ai-helpers'
+import { getAiModel } from '@/lib/ai/models'
 import {
-  SECTION_AI_MODEL,
   STAGE_MAPPING_SYSTEM,
 } from '@/lib/prompts/section-planning'
 
@@ -67,8 +67,9 @@ export async function POST(
       2,
     )}\n\`\`\``
 
+    const aiModel = await getAiModel('default')
     const result = await anthropic.messages.create({
-      model: SECTION_AI_MODEL,
+      model: aiModel,
       max_tokens: 3000,
       system: STAGE_MAPPING_SYSTEM,
       messages: [{ role: 'user', content: userMsg }],
@@ -108,7 +109,7 @@ export async function POST(
           stage_number: m.stage_number,
           confidence: m.confidence ?? null,
           rationale: m.rationale ?? null,
-          model: SECTION_AI_MODEL,
+          model: aiModel,
           prompt_snapshot: { source: 'ai/stage-mapping' },
           human_confirmed: false,
         },
@@ -122,13 +123,13 @@ export async function POST(
       surface: 'stage_mapping',
       prompt_snapshot: { regenerate: !!body.regenerate },
       response_snapshot: { text, parsed, inserted_count: inserted.length },
-      model: SECTION_AI_MODEL,
+      model: aiModel,
       created_by: user.id,
     })
 
     return NextResponse.json({
       mappings: inserted,
-      model: SECTION_AI_MODEL,
+      model: aiModel,
       raw: text,
     })
   } catch (e) {

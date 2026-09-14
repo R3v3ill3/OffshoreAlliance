@@ -40,8 +40,10 @@ export const TODAY_SIDEBAR_ROWS: readonly FixtureRow[] = [
 /**
  * What full mode must be after this package: identical to
  * `TODAY_SIDEBAR_ROWS` except row 7, which WP1.5 renamed to Actions and
- * moved to `/actions` (it explicitly handed this one sidebar line to WP1.2).
- * `/sms` keeps working as a redirect, so no URL is lost — decision 7.
+ * moved to `/actions` (it explicitly handed this one sidebar line to WP1.2),
+ * plus the Surveys & Forms row inserted after Reports by the Action Network
+ * survey importer. `/sms` keeps working as a redirect, so no URL is lost —
+ * decision 7.
  */
 export const FULL_MODE_FIXTURE: readonly FixtureRow[] = [
   { id: "campaigns", label: "Campaigns", href: "/campaigns", icon: "megaphone", module: "wall_chart_people", state: "on" },
@@ -54,13 +56,19 @@ export const FULL_MODE_FIXTURE: readonly FixtureRow[] = [
   { id: "actions", label: "Actions", href: "/actions", icon: "layout-list", module: "actions", state: "on" },
   { id: "sms_inbox", label: "SMS Inbox", href: "/sms/inbox", icon: "message-square", module: "inbox", state: "on" },
   { id: "reports", label: "Reports", href: "/reports", icon: "bar-chart-3", module: "insights", state: "on" },
+  // Surveys & Forms — the Action Network survey/form importer, added after
+  // WP1.2. The one row with no counterpart in TODAY_SIDEBAR_ROWS.
+  { id: "surveys_forms", label: "Surveys & Forms", href: "/surveys-forms", icon: "clipboard-list", module: "surveys_forms", state: "on" },
   { id: "guides", label: "Guides", href: "/help", icon: "graduation-cap", state: "on" },
   { id: "email_imports", label: "Email Imports", href: "/email-imports", icon: "mail-open", module: "administration", state: "on" },
   { id: "email_wrappers", label: "Email Wrappers", href: "/email/wrappers", icon: "layout-template", module: "administration", state: "on" },
   { id: "administration", label: "Administration", href: "/administration", icon: "settings", module: "administration", state: "on" },
 ];
 
-/** The 10 labels a full-mode sidebar renders, in order (mirrored by the e2e spec). */
+/** The number of primary (non-admin) rows in full mode. */
+export const FULL_MODE_PRIMARY_COUNT = 11;
+
+/** The 11 labels a full-mode sidebar renders, in order (mirrored by the e2e spec). */
 export const FULL_MODE_LABELS: readonly string[] = [
   "Campaigns",
   "Dashboard",
@@ -71,6 +79,7 @@ export const FULL_MODE_LABELS: readonly string[] = [
   "Actions",
   "SMS Inbox",
   "Reports",
+  "Surveys & Forms",
   "Guides",
 ];
 

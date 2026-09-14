@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { VARIABLE_GLOSSARY } from '@/lib/prompts/draft-prompts'
-import { AI_MODEL } from '@/lib/ai/models'
+import { getAiModel } from '@/lib/ai/models'
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -199,7 +199,7 @@ ${custom_instructions ? `\nADDITIONAL INSTRUCTIONS:\n${custom_instructions}` : '
 Please adapt this template to match the Where to Play context above.`
 
     const response = await anthropic.messages.create({
-      model: AI_MODEL,
+      model: await getAiModel('default'),
       max_tokens: 8000,
       system: getSystemPrompt(platform),
       messages: [{ role: 'user', content: userMessage }],

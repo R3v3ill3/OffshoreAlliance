@@ -27,6 +27,7 @@ import type {
   AnParticipantRow,
   AssessmentChoice,
   ColumnMap,
+  CsvData,
   ExtraColumnMapping,
   ImportRow,
   MatchState,
@@ -90,16 +91,49 @@ export interface NonResponderOption {
   target: ResponseValueTarget;
 }
 
-export function useParticipationImport(campaignId: string, onDataChanged?: () => void) {
+/** Identity column auto-mapping: first header wins per field. */
+function autoColumnMap(headers: readonly string[]): ColumnMap {
+  const map: ColumnMap = {};
+  for (const h of headers) {
+    const field = autoMapParticipationHeader(h);
+    if (field !== "ignore" && !(field in map)) map[field] = h;
+  }
+  return map;
+}
+
+/**
+ * The state the wizard opens in. With `initialSource` (the Surveys & Forms
+ * "Map to assessment" hand-off) the CSV is already here, so the wizard
+ * starts on the assessment step exactly as if that file had just been
+ * uploaded; `reset()` returns to the same seeded state.
+ */
+function seededState(initialSource: CsvData | undefined): {
+  step: WizardStep;
+  source: WizardSource | null;
+  columnMap: ColumnMap;
+} {
+  if (!initialSource) return { step: "source", source: null, columnMap: {} };
+  return {
+    step: "assessment",
+    source: { kind: "csv", csv: initialSource },
+    columnMap: autoColumnMap(initialSource.headers),
+  };
+}
+
+export function useParticipationImport(
+  campaignId: string,
+  onDataChanged?: () => void,
+  initialSource?: CsvData
+) {
   const queryClient = useQueryClient();
 
-  const [step, setStep] = useState<WizardStep>("source");
+  const [step, setStep] = useState<WizardStep>(() => seededState(initialSource).step);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [source, setSource] = useState<WizardSource | null>(null);
+  const [source, setSource] = useState<WizardSource | null>(() => seededState(initialSource).source);
   const [assessment, setAssessment] = useState<AssessmentChoice | null>(null);
-  const [columnMap, setColumnMap] = useState<ColumnMap>({});
+  const [columnMap, setColumnMap] = useState<ColumnMap>(() => seededState(initialSource).columnMap);
   const [responseColumn, setResponseColumn] = useState<string | null>(null);
   const [valueMappings, setValueMappings] = useState<ResponseValueMapping[]>([]);
   const [fixedTarget, setFixedTarget] = useState<ResponseValueTarget>({
@@ -117,12 +151,13 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
   const [result, setResult] = useState<ParticipationApplyResult | null>(null);
 
   const reset = useCallback(() => {
-    setStep("source");
+    const seeded = seededState(initialSource);
+    setStep(seeded.step);
     setBusy(false);
     setError(null);
-    setSource(null);
+    setSource(seeded.source);
     setAssessment(null);
-    setColumnMap({});
+    setColumnMap(seeded.columnMap);
     setResponseColumn(null);
     setValueMappings([]);
     setFixedTarget({ kind: "binary", value: "yes" });
@@ -132,7 +167,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
     setMatchState(null);
     setPreview(null);
     setResult(null);
-  }, []);
+  }, [initialSource]);
 
   // ── Source: CSV upload ──────────────────────────────────────────────────────
 
@@ -155,12 +190,7 @@ export function useParticipationImport(campaignId: string, onDataChanged?: () =>
           csv: { fileName: json.fileName, headers: json.headers, rows: json.rows },
         });
         // Seed identity column auto-mapping (first header wins per field).
-        const map: ColumnMap = {};
-        for (const h of json.headers as string[]) {
-          const field = autoMapParticipationHeader(h);
-          if (field !== "ignore" && !(field in map)) map[field] = h;
-        }
-        setColumnMap(map);
+        setColumnMap(autoColumnMap(json.headers as string[]));
         setExtraMappings([]);
         setStep("assessment");
       } catch (e) {

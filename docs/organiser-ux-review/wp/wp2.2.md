@@ -1357,7 +1357,18 @@ exit=1
   `application:campaign_worker_ou` 1921 / `5cddaed4c530462cca7baa9aa37fc5e3` (changed by `10`/`20`, as
   intended); `metadata:…updated_at` unchanged; hazards 226 / 226 / 226 / 0 / 0 / H10 0 (identical to the
   preflight); every `ou_dependant:*` and `view:*` checksum identical to the preflight.
-- Next: 2.2b forward again (final clone state) → `95` role probes.
+- **Step 11 — 2.2b forward again (exact file, connector; final clone state):** placements 1,921; `view_rows`
+  3,217 = 1,921 placed pairs + 1,296 derived Unassigned pairs; groups 20; H9 0; post-assertions passed.
+- **Step 12 — `95_role_probes.sql` (exact file, connector):** completed without exception (every failed probe is
+  a `RAISE EXCEPTION`); final row 17 / 14 / 0 / false / true / probe campaign 68; rolled back. Under the
+  unique index, the `user`-role owner probe executed all 17 public RPCs, `anon` was refused on a public RPC
+  and on a helper, and the foreign-campaign probe raised `42501`.
+- **Clone rehearsal verdict:** every file in `scripts/data-hygiene/oux-wp2.2/` and both migrations have now
+  run forward, and both rollbacks forward → back → forward, on production-shaped data with real Employer
+  containers (303 materialised placements) and real unattributed rule rows (207 relabelled); the WP2.1 `04`
+  gate passes in its correct slot (D27). The clone is left at WP2.1 + 2.2a + `10` + `20` + 2.2b with marker
+  `clone`; its ledger carries `20260913000000` (2.2a/2.2b were applied out of band and are intentionally not
+  in its ledger — the clone is not a `db push` target).
 
 ### 9.3 Reviewer findings and resolution
 

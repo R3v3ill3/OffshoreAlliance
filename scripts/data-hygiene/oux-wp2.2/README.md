@@ -45,8 +45,16 @@ project reference. `95_role_probes.sql` always rolls back and, like
 
 ### Normal dev (Stage 2 / Stage 3)
 
-1. `supabase db push` of `20260914090000_wp2_2_structure_api.sql` (WP2.2a) —
-   operator-approved, CLI linked to `dpnnmkhabysfdogllsyh`.
+1. `20260914090000_wp2_2_structure_api.sql` (WP2.2a), applied as one
+   submission (`BEGIN;` + exact file + `COMMIT;` + read-only check) in the dev
+   SQL Editor or by `psql -1 -v ON_ERROR_STOP=1 -f`, then the ledger row
+   `20260914090000 wp2_2_structure_api` inserted into
+   `supabase_migrations.schema_migrations`. **Do not `supabase db push` while
+   2.2b is also pending in the folder** — push applies every pending file and
+   2.2b must wait for the writer switch (Stage 6). Done 2026-09-14
+   (wp2.2.md §9.2).
+1a. `oux-wp2.1/01_environment_marker.sql` with `SET LOCAL oux.marker_env = 'dev';`
+   after `BEGIN;` (dev has no marker; `10`/`20` refuse without it).
 2. `95_role_probes.sql` (rolls back).
 3. Contract suite (`pnpm test:contract`, env in the shell only) — Stage 3.
    Required: `OUX_CONTRACT_SUPABASE_URL`, `_ANON_KEY`, `_USER_EMAIL`,
@@ -59,7 +67,10 @@ project reference. `95_role_probes.sql` always rolls back and, like
 4. `10_materialise_employer_placements.sql`, then re-run it (expect `inserted = 0`).
 5. `20_relabel_unattributed_rule_rows.sql`.
 6. `oux-wp2.1/00_preflight_hazards.sql`; `oux-wp2.1/03b_…` only if H9 > 0.
-7. `supabase db push` of `20260914090100_wp2_2_one_unit_per_group_enforcement.sql` (WP2.2b).
+7. `20260914090100_wp2_2_one_unit_per_group_enforcement.sql` (WP2.2b), same
+   mechanism as step 1 (one submission, then its ledger row), only after the
+   Stage 6 writer switch is on the branch preview: other branches' previews
+   share dev and still run the legacy writers.
 8. Contract suite again (enforcement-agnostic; both runs pasted in wp2.2.md §9.2).
 
 ### Clone (optional, wp2.2.md §0 step 5 / §4.4)

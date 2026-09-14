@@ -1125,6 +1125,35 @@ Exit code: 1
 Result across both runs: run 1 median 6682ms (runs 6682/5688/7090), run 2 median 6778ms (runs 6778/5818/6942) — both above the 6000ms budget, consistently failing rather than flaking.
 
 
+#### Stage 2 — WP2.2a on normal dev `dpnnmkhabysfdogllsyh` (2026-09-14)
+
+- **Pre-checks (read-only, connector):** ledger 11 rows through `20260913000000`; WP2.1 objects present;
+  0 `structure_*` functions; CHECK `(manual, rule)`; H9 = 0; 4 groups / 8 units / 111 placements /
+  111 memberships / 0 containers with a group; 1,470 workers; 5 campaigns; campaign 3 has organiser 4 and no
+  roster row for organiser 10 (qualifies as the contract suite's foreign campaign); the e2e profile is
+  `user` / `organiser` / organiser_id 10; `_oux_env_marker` **absent** (needed before `10`/`20`);
+  `_oux_hygiene_log` present; `anon`/`authenticated` neither superuser nor bypassrls, `service_role`
+  bypassrls; PostgreSQL 17.6. PostgREST exposed schemas on dev: `public, graphql_public` (a read-only GET
+  with `Accept-Profile: oux_internal` returned `PGRST106`), so `oux_internal` is unreachable via the API.
+- **Apply:** the operator pasted the agent-prepared file (`BEGIN;` + the exact committed bytes of
+  `20260914090000_wp2_2_structure_api.sql` at `5f61208f`, sha256 `060f9e7daa606361…` + `COMMIT;` + a
+  read-only verification `SELECT`) into the dev SQL Editor as one submission. Result rows:
+  `public_structure_rpcs` 17; `oux_internal_helpers` 14; `assignment_source_check` lists `manual`, `rule`,
+  `universe`; `anon_can_execute_group_create` false; `container_trigger_relaxed` true. The connector was
+  not used for the apply: echoing 3,336 lines through a tool argument risks a transcription error, and the
+  paste rehearses the production hand-over format.
+- **Post-apply (connector, read-only):** `md5(prosrc)` of all 32 functions (17 RPCs, 14 helpers, the
+  relaxed trigger function) equals the bodies in the committed file; 0 `SECURITY DEFINER`; `search_path`
+  pinned on every new function. **Ledger:** row `20260914090000 wp2_2_structure_api` inserted through the
+  connector (statement text records the source commit and checksum) so `supabase migration list` matches
+  the repo. 2.2b is deliberately **not** on dev yet.
+- **`95_role_probes.sql` (exact file, connector):** completed without exception (every failed probe is a
+  `RAISE EXCEPTION`); final row `17 / 14 / 0 / false / true / probe campaign 52`; rolled back — campaign 52
+  absent afterwards, counts unchanged (5 campaigns / 111 placements / 111 memberships / 8 units / 4 groups).
+  Probe 4 was not skipped: the probe user has 5 non-writable campaigns, so the `42501` path was exercised.
+- Not yet run on dev: `01_environment_marker` (WP2.1 file, `oux.marker_env = 'dev'`), `10`, `20`,
+  contract suite (Stage 3), 2.2b.
+
 ### 9.3 Reviewer findings and resolution
 
 #### Stage 1 reviews (2026-09-14, static pre-execution reviews; nothing had run on a database)

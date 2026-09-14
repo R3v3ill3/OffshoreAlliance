@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       _archive_call_attempt_outcomes_20260613: {
@@ -147,6 +122,24 @@ export type Database = {
           title?: string | null
           updated_at?: string | null
           version?: number | null
+        }
+        Relationships: []
+      }
+      _oux_env_marker: {
+        Row: {
+          env: string
+          marked_at: string
+          singleton: boolean
+        }
+        Insert: {
+          env: string
+          marked_at?: string
+          singleton?: boolean
+        }
+        Update: {
+          env?: string
+          marked_at?: string
+          singleton?: boolean
         }
         Relationships: []
       }
@@ -22628,14 +22621,14 @@ export type Database = {
           },
           {
             foreignKeyName: "user_profiles_organiser_id_fkey"
-            columns: ["granted_by_organiser_id"]
+            columns: ["granted_to_organiser_id"]
             isOneToOne: false
             referencedRelation: "organisers"
             referencedColumns: ["organiser_id"]
           },
           {
             foreignKeyName: "user_profiles_organiser_id_fkey"
-            columns: ["granted_to_organiser_id"]
+            columns: ["granted_by_organiser_id"]
             isOneToOne: false
             referencedRelation: "organisers"
             referencedColumns: ["organiser_id"]
@@ -27529,6 +27522,125 @@ export type Database = {
           sub_index: number
         }[]
       }
+      structure_group_create: {
+        Args: {
+          p_campaign_id: number
+          p_display_order?: number
+          p_kind: string
+          p_name: string
+        }
+        Returns: Json
+      }
+      structure_group_delete: {
+        Args: { p_campaign_id: number; p_group_id: number; p_mode: string }
+        Returns: Json
+      }
+      structure_group_reorder: {
+        Args: { p_campaign_id: number; p_group_ids: number[] }
+        Returns: Json
+      }
+      structure_group_update: {
+        Args: {
+          p_campaign_id: number
+          p_display_order?: number
+          p_group_id: number
+          p_name?: string
+        }
+        Returns: Json
+      }
+      structure_materialise_employer_placements: {
+        Args: { p_campaign_id: number }
+        Returns: Json
+      }
+      structure_placements_assign: {
+        Args: {
+          p_campaign_id: number
+          p_is_primary?: boolean
+          p_on_conflict?: string
+          p_ou_id: number
+          p_source?: string
+          p_worker_ids: number[]
+        }
+        Returns: Json
+      }
+      structure_placements_move: {
+        Args: {
+          p_campaign_id: number
+          p_from_ou_id?: number
+          p_keep_in_parent?: boolean
+          p_keep_source?: boolean
+          p_to_ou_id?: number
+          p_within_group_id?: number
+          p_worker_ids: number[]
+        }
+        Returns: Json
+      }
+      structure_placements_replace_rule_rows: {
+        Args: { p_campaign_id: number; p_rows: Json }
+        Returns: Json
+      }
+      structure_placements_set_primary: {
+        Args: { p_campaign_id: number; p_ou_id: number; p_worker_id: number }
+        Returns: Json
+      }
+      structure_placements_unassign: {
+        Args: {
+          p_campaign_id: number
+          p_ou_id?: number
+          p_within_group_id?: number
+          p_worker_ids: number[]
+        }
+        Returns: Json
+      }
+      structure_unit_delete: {
+        Args: {
+          p_campaign_id: number
+          p_delete_children?: boolean
+          p_ou_id: number
+          p_reassignments?: Json
+        }
+        Returns: Json
+      }
+      structure_unit_merge: {
+        Args: {
+          p_campaign_id: number
+          p_source_ou_ids: number[]
+          p_survivor_ou_id: number
+        }
+        Returns: Json
+      }
+      structure_unit_reorder: {
+        Args: { p_campaign_id: number; p_ou_ids: number[] }
+        Returns: Json
+      }
+      structure_unit_split: {
+        Args: {
+          p_assignments: Json
+          p_campaign_id: number
+          p_children: Json
+          p_group_id?: number
+          p_keep_in_source?: boolean
+          p_source_ou_id: number
+        }
+        Returns: Json
+      }
+      structure_unit_update: {
+        Args: { p_campaign_id: number; p_ou_id: number; p_patch: Json }
+        Returns: Json
+      }
+      structure_units_bulk_save: {
+        Args: {
+          p_campaign_id: number
+          p_creates: Json
+          p_delete_ou_ids: number[]
+          p_updates: Json
+        }
+        Returns: Json
+      }
+      structure_units_create: {
+        Args: { p_assignments?: Json; p_campaign_id: number; p_units: Json }
+        Returns: Json
+      }
       sync_agreement_expired_status_by_date: { Args: never; Returns: number }
       touch_email_conversation_inbound: {
         Args: { p_conversation_id: number; p_occurred_at?: string }
@@ -27687,9 +27799,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       campaign_phase_enum: [

@@ -2143,6 +2143,104 @@ Error: WP2.2 contract suite: sign-in failed: fetch failed
 exit=1
 ```
 
+#### Stage 3 — contract suite on normal dev, run 1 (before 2.2b) (2026-09-14, child session)
+
+Run on branch `feat/oux-wp2.2-structure-api` at commit `c582085`, from `apps/organising-db`, with the command below
+(this is the re-run after the network-blocked attempt recorded under the same heading above; this time the proxy
+allowed the connection and every test body ran); exit code `0`. Raw output follows (ANSI colour codes stripped);
+no diagnosis attempted. The one skipped test is the `OUX_CONTRACT_FOREIGN_USER_*`-gated permissions test
+`a user without write permission on the campaign gets forbidden from every RPC (SKIPPED when OUX_CONTRACT_FOREIGN_USER_EMAIL/_PASSWORD are unset — report the skipped count)`,
+which the suite skips because that optional pair was not set, as instructed.
+
+Command:
+
+```
+OUX_CONTRACT_SUPABASE_URL=https://dpnnmkhabysfdogllsyh.supabase.co \
+OUX_CONTRACT_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRwbm5ta2hhYnlzZmRvZ2xsc3loIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NzAzOTUsImV4cCI6MjA5NjA0NjM5NX0.hPLcsxELs3gvVTUu7kGHjjxQsvuE0l0LQgfiPurNb7k \
+OUX_CONTRACT_USER_EMAIL=<from E2E_USER_EMAIL> \
+OUX_CONTRACT_USER_PASSWORD=<from E2E_USER_PASSWORD> \
+OUX_CONTRACT_FOREIGN_CAMPAIGN_ID=3 \
+pnpm test:contract 2>&1 | tee /tmp/contract-run-1.log; echo "exit=${PIPESTATUS[0]}"
+```
+
+Raw output (`exit=0`):
+
+```
+
+> organising-db@0.1.0 test:contract /home/user/OffshoreAlliance/apps/organising-db
+> vitest run -c vitest.contract.config.ts
+
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 /home/user/OffshoreAlliance/apps/organising-db
+
+ ✓ src/lib/campaign/__contract__/structure-api.contract.test.ts (58 tests | 1 skipped) 103819ms
+   ✓ fixture > derived the expected groups and the legacy container has no group (C-e precondition) 495ms
+   ✓ structure_group_create > is idempotent for a fixed kind that already exists 490ms
+   ✓ structure_group_create > creates a missing fixed kind once and then returns it 1275ms
+   ✓ structure_group_create > creates a custom group and rejects a case-insensitive duplicate name (duplicate_group) 1008ms
+   ✓ structure_group_create > rejects an unknown kind and a blank custom name (22023) 732ms
+   ✓ structure_group_update > renames and reorders a custom group 1259ms
+   ✓ structure_group_update > renaming a container-backed group renames its legacy container 1023ms
+   ✓ structure_group_update > rejects a blank name, a missing group and a group of another campaign (C-i) 1309ms
+   ✓ structure_group_reorder > sets display_order by position and keeps unlisted groups after the listed ones 755ms
+   ✓ structure_group_reorder > rejects duplicates (22023) 485ms
+   ✓ structure_group_delete > empty_only refuses a group that still has units (P0001) 706ms
+   ✓ structure_group_delete > cascade_units deletes the group's units and their placements, then the group 1731ms
+   ✓ structure_group_delete > rejects an unknown mode (22023) 483ms
+   ✓ structure_units_create > creates a container plus members in one call via client_ref and applies assignments with move semantics 2322ms
+   ✓ structure_units_create > C-g: a fixed-kind unit cannot be pinned to a custom group; a custom unit can 965ms
+   ✓ structure_units_create > is atomic: a valid first element and an invalid second leave nothing behind 971ms
+   ✓ structure_units_create > C-i: a parent from another campaign is rejected (22023); an unknown parent is not_found 729ms
+   ✓ structure_units_create > rejects an unknown ou_type and a non-member assignment (22023) 767ms
+   ✓ structure_unit_update > applies a whitelisted patch (estimated_size alias) and returns the keys 1114ms
+   ✓ structure_unit_update > rejects keys outside the whitelist (description, leader_worker_id, ou_type) with 22023 1186ms
+   ✓ structure_unit_update > not_found for a missing unit and 22023 for another campaign's unit (C-i) 691ms
+   ✓ structure_unit_reorder > sets a 0-based display_order for the listed units 1168ms
+   ✓ structure_unit_reorder > rejects duplicates and foreign units 706ms
+   ✓ structure_unit_delete > moves and removes placements per reassignment, carries the primary (C-h), and removes the rest 2968ms
+   ✓ structure_unit_delete > detaches children by default and deletes them with deleteChildren 1985ms
+   ✓ structure_unit_delete > is atomic: a bad second reassignment leaves the unit and its placements untouched 1427ms
+   ✓ structure_unit_merge > re-points, collapses (primary OR-ed), preserves provenance (C-l), re-points unit rules and deletes the sources 3941ms
+   ✓ structure_unit_merge > C-j: refuses a cross-group merge and a survivor that is also a source; nothing changes 2130ms
+   ✓ structure_unit_merge > legacy check_worker_ou_group_exclusivity still refuses merging worksites of two different Employer containers (P0001 → rule_violation; wp2.2.md §3.4 C-j note) 3458ms
+   ✓ structure_unit_merge > refuses a source that has child units (P0001) 2144ms
+   ✓ structure_unit_split > C-k: same-group children take the workers out of the source; keepInSource is ignored and reported as displaced 3298ms
+   ✓ structure_unit_split > cross-group children honour keepInSource (kept) or move the source row (moved) 3469ms
+   ✓ structure_unit_split > is atomic: assigning one worker to two siblings raises duplicate_in_group and creates no children 1757ms
+   ✓ structure_unit_split > rejects a fixed-kind p_group_id (C-g) 528ms
+   ✓ structure_units_bulk_save > deletes, updates and creates in one call 1991ms
+   ✓ structure_units_bulk_save > is atomic: a unit both deleted and updated is refused and nothing changes 1437ms
+   ✓ structure_placements_assign > inserts, skips a same-group conflict by default, moves with onConflict move, errors with onConflict error (C-a) 2401ms
+   ✓ structure_placements_assign > C-e: a legacy container without a group rejects placements (P0001); an Employer container with a group accepts them 1223ms
+   ✓ structure_placements_assign > C-h: isPrimary makes the placement the single campaign-wide primary 1811ms
+   ✓ structure_placements_assign > rejects a non-member (22023), an unknown worker (P0002), a bad source and a bad conflict mode (22023) 2139ms
+   ✓ structure_placements_move > C-b/C-l: a move re-points the source row (same id, same provenance) and displaces the target group's other placement 2268ms
+   ✓ structure_placements_move > re-issuing a completed move is a no-op (skipped), and a missing source row is not_found 1246ms
+   ✓ structure_placements_move > dragging from Unassigned inserts a manual row and displaces the worker's other placement in that group 1299ms
+   ✓ structure_placements_move > C-c / K1: copy is allowed across groups and refused within a group (23505, state unchanged) 2340ms
+   ✓ structure_placements_move > C-d: unassign within one group removes only that group's placement; without a group removes all 2891ms
+   ✓ structure_placements_move > keepInParent creates the Employer-container placement for a worksite child target (M2 going forward) and can be turned off 2738ms
+   ✓ structure_placements_move > legacy check_worker_ou_group_exclusivity still refuses a move between worksites of two different Employer containers (P0001 → rule_violation; wp2.2.md §3.4 C-b note) 2146ms
+   ✓ structure_placements_move > rejects same source and target, withinGroupId with a target, and a container without a group (C-e) 982ms
+   ✓ structure_placements_unassign > removes one placement, a group's placement, or everything; idempotent 2285ms
+   ✓ structure_placements_set_primary > C-h: clears the other primary and sets this one; not_found without a placement 2301ms
+   ✓ structure_placements_replace_rule_rows > R1: replaces rule rows only; manual and universe rows survive; same-group manual rows win (skipped) 2207ms
+   ✓ structure_placements_replace_rule_rows > rejects a container target, a foreign rule id and a malformed element (22023) 994ms
+   ✓ structure_materialise_employer_placements > M2: gives every worksite-child member one universe placement on the Employer container; idempotent 2416ms
+   ✓ permissions (42501 from the pre-check, never a silent no-op) > the main user gets forbidden on OUX_CONTRACT_FOREIGN_CAMPAIGN_ID (always runs) 2333ms
+   ✓ permissions (42501 from the pre-check, never a silent no-op) > a missing campaign is not_found 498ms
+   ✓ invariants after the suite > C-a: no (worker, group) pair holds two placements; C-h: no worker holds two primaries 1202ms
+   ✓ invariants after the suite > C-f: no RPC created a unit named Unassigned 482ms
+
+ Test Files  1 passed (1)
+      Tests  57 passed | 1 skipped (58)
+   Start at  22:03:55
+   Duration  104.67s (transform 177ms, setup 0ms, collect 304ms, tests 103.82s, environment 0ms, prepare 86ms)
+
+exit=0
+```
+
 #### Clone rehearsal — realistic data set `yqjkuobcawvigsfpgrcm` (2026-09-14, §0 step 5 / §4.4)
 
 - **State before (read-only, connector):** marker `clone @ 2026-09-12 05:48:45+00`; 0 `structure_*`

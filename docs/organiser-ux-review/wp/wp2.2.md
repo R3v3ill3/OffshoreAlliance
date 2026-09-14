@@ -2451,6 +2451,102 @@ The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troub
 exit=0
 ```
 
+#### e2e — structure-api, wall-chart and roles specs on the branch preview (2026-09-14, child session, after 2.2b on dev)
+
+Run on branch `feat/oux-wp2.2-structure-api` at commit `45a182e` from `apps/organising-db` against the preview
+`https://offshore-alliance-git-feat-oux-wp22-st-53f672-reveille-strategy.vercel.app`, with the command below; all three
+permitted attempts (attempt 1; attempt 2 after a 60 s wait; attempt 3 with `NODE_USE_ENV_PROXY=1` prepended) failed
+identically in Playwright's global setup, before any test body ran, with `net::ERR_CERT_AUTHORITY_INVALID` on the
+first `page.goto` to `/login`; exit code `1` each time, so no spec produced a pass/fail/skip count. Raw output of every
+attempt follows (ANSI codes stripped); no diagnosis attempted. Environment note only: the session's proxy README states
+outbound HTTPS is TLS-re-terminated by the agent proxy and that its CA is meant to be pre-installed into the browser NSS
+store; whether that applies to the pre-installed Chromium under `/opt/pw-browsers` was not investigated.
+
+Command (attempt 1; attempt 2 identical; attempt 3 identical with `NODE_USE_ENV_PROXY=1` prepended):
+
+```
+E2E_BASE_URL=https://offshore-alliance-git-feat-oux-wp22-st-53f672-reveille-strategy.vercel.app \
+E2E_FOREIGN_CAMPAIGN_ID=3 \
+pnpm exec playwright test tests/e2e/structure-api.spec.ts tests/e2e/wall-chart.spec.ts tests/e2e/wall-chart-decomposition.spec.ts tests/e2e/roles --reporter=list 2>&1 | tee /tmp/e2e-run-1.log; echo "exit=${PIPESTATUS[0]}"
+```
+
+Attempt 1 raw output (`exit=1`):
+
+```
+Error: page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://offshore-alliance-git-feat-oux-wp22-st-53f672-reveille-strategy.vercel.app/login
+Call log:
+  - navigating to "https://offshore-alliance-git-feat-oux-wp22-st-53f672-reveille-strategy.vercel.app/login", waiting until "load"
+
+
+   at global-setup.ts:58
+
+  56 |     });
+  57 |
+> 58 |     await page.goto(new URL("/login", E2E_BASE_URL).toString());
+     |                ^
+  59 |     // Selectors from src/app/(auth)/login/page.tsx.
+  60 |     await page.locator("#email").fill(email);
+  61 |     await page.locator("#password").fill(password);
+    at signIn (/home/user/OffshoreAlliance/apps/organising-db/tests/e2e/global-setup.ts:58:16)
+    at globalSetup (/home/user/OffshoreAlliance/apps/organising-db/tests/e2e/global-setup.ts:90:5)
+
+exit=1
+```
+
+Attempt 2 raw output, after a 60 s wait (`exit=1`):
+
+```
+Error: page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://offshore-alliance-git-feat-oux-wp22-st-53f672-reveille-strategy.vercel.app/login
+Call log:
+  - navigating to "https://offshore-alliance-git-feat-oux-wp22-st-53f672-reveille-strategy.vercel.app/login", waiting until "load"
+
+
+   at global-setup.ts:58
+
+  56 |     });
+  57 |
+> 58 |     await page.goto(new URL("/login", E2E_BASE_URL).toString());
+     |                ^
+  59 |     // Selectors from src/app/(auth)/login/page.tsx.
+  60 |     await page.locator("#email").fill(email);
+  61 |     await page.locator("#password").fill(password);
+    at signIn (/home/user/OffshoreAlliance/apps/organising-db/tests/e2e/global-setup.ts:58:16)
+    at globalSetup (/home/user/OffshoreAlliance/apps/organising-db/tests/e2e/global-setup.ts:90:5)
+
+exit=1
+```
+
+Attempt 3 raw output, `NODE_USE_ENV_PROXY=1` prepended (`exit=1`):
+
+```
+(node:1170) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1183) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1196) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1196) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Error: page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://offshore-alliance-git-feat-oux-wp22-st-53f672-reveille-strategy.vercel.app/login
+Call log:
+  - navigating to "https://offshore-alliance-git-feat-oux-wp22-st-53f672-reveille-strategy.vercel.app/login", waiting until "load"
+
+
+   at global-setup.ts:58
+
+  56 |     });
+  57 |
+> 58 |     await page.goto(new URL("/login", E2E_BASE_URL).toString());
+     |                ^
+  59 |     // Selectors from src/app/(auth)/login/page.tsx.
+  60 |     await page.locator("#email").fill(email);
+  61 |     await page.locator("#password").fill(password);
+    at signIn (/home/user/OffshoreAlliance/apps/organising-db/tests/e2e/global-setup.ts:58:16)
+    at globalSetup (/home/user/OffshoreAlliance/apps/organising-db/tests/e2e/global-setup.ts:90:5)
+
+exit=1
+```
+
 ### 9.2a Stage 6 verifier run (2026-09-14)
 
 Independent verifier, fresh session. Repo `/home/user/OffshoreAlliance`, branch `feat/oux-wp2.2-structure-api`,

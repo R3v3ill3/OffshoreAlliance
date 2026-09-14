@@ -1162,6 +1162,31 @@ Result across both runs: run 1 median 6682ms (runs 6682/5688/7090), run 2 median
   `universe` 0 → 0; `manual` 111 unchanged; total 111; `rows_logged` 0; post-checks passed; committed.
 - Not yet run on dev: contract suite (Stage 3, needs `OUX_CONTRACT_*` credentials), 2.2b (after Stage 6).
 
+#### Clone rehearsal — realistic data set `yqjkuobcawvigsfpgrcm` (2026-09-14, §0 step 5 / §4.4)
+
+- **State before (read-only, connector):** marker `clone @ 2026-09-12 05:48:45+00`; 0 `structure_*`
+  functions; CHECK `(manual, rule)`; H9 = 0; 20 groups / 239 units / 1,618 placements / 2,726 memberships;
+  18 containers with a group; 207 `rule` rows with `assigned_rule_id IS NULL` (R1-b targets); 22 campaigns;
+  2,407 workers; `an_survey_reports` absent (ledger ends at `20260912035329`, one behind the repo);
+  `_oux_hygiene_log` 136 rows; `_oux_wp21_conflicts` present.
+- **Exact `oux-wp2.1/00_preflight_hazards.sql` (read-only, connector), final evidence set:**
+  `application:campaign_worker_ou` 1618 / `02e9750044fff0872db5ceaf8cbf4676`;
+  `application:campaign_organising_units` 239 / `8adec341ff176305497e637a83919adf` (identical to production's
+  2026-09-14 postflight); `application:campaign_worker_membership` 2726 / `7ade52719c51303ad9e3794ebeb6a026`;
+  `application:campaign_unit_rules` 2 / `5019cdf74e1f62903c4f75b5c0625db1`;
+  `metadata:campaign_organising_units_updated_at` 239 / `69bf1652efe412438f703b5d259b78e8`;
+  hazards `f1_pre_specificity_multi_target_partitions` 226 / `7749bb7d…`, `f1_pre_specificity_excess_targets`
+  226 / `aaf76cce…`, `f1_fallback_targets_suppressed` 226 / `aaf76cce…`, `f1_max_specificity_multi_target_partitions`
+  0, `f1_max_specificity_excess_targets` 0, `h10_enabled_duplicate_basis_sets` 0 (the production shape);
+  `ou_dependant:*` — canonical_basis 13 / `beef3d5a…`, placement_mapping 1 / `43e67509…`, campaign_groups
+  source_ou_id 2 / `c5e740c1…`, units ou_group_id 150 / `5bcd99bf…`, units parent_ou_id 150 / `5bcd99bf…`,
+  campaign_unit_rules 2 / `3da92745…`, campaign_worker_list_items 818 / `6384f89f…`, all others 0;
+  all ten `view:*` present (`46cd5f4b…`, `df730743…`, `fda9dfd3…`, `1e4a878f…`, `a37a221c…`, `a0ec642b…`,
+  `6d35c54b…`, `8fff6560…`, `d60b5f5a…`, `530614e3…`). No STOP raised.
+- Next (each under per-file approval): `20260913000000_an_survey_reports` (ledger catch-up) → 2.2a forward
+  (operator paste) → `90` → 2.2a forward → `10` twice → `20` → `03b` if H9 > 0 → 2.2b forward → `91` →
+  2.2b forward → `04` → `95`.
+
 ### 9.3 Reviewer findings and resolution
 
 #### Stage 1 reviews (2026-09-14, static pre-execution reviews; nothing had run on a database)

@@ -2554,6 +2554,47 @@ Call log:
 exit=1
 ```
 
+#### e2e re-run with E2E_IGNORE_HTTPS_ERRORS=1 (2026-09-14, child session, D80)
+
+Run on branch `feat/oux-wp2.2-structure-api` at commit `0e57413` from `apps/organising-db` against the preview
+`https://offshore-alliance-git-feat-oux-wp22-st-53f672-reveille-strategy.vercel.app`, with the command below, once; it
+failed in Playwright's global setup before any test body ran, this time with `page.goto: Timeout 30000ms exceeded` on the
+first navigation to `/login` (the earlier `net::ERR_CERT_AUTHORITY_INVALID` did not recur); exit code `1`; no spec
+produced a pass/fail/skip count. Raw output follows (ANSI codes stripped); no retry made and no diagnosis attempted, as
+instructed.
+
+Command:
+
+```
+E2E_IGNORE_HTTPS_ERRORS=1 \
+E2E_BASE_URL=https://offshore-alliance-git-feat-oux-wp22-st-53f672-reveille-strategy.vercel.app \
+E2E_FOREIGN_CAMPAIGN_ID=3 \
+pnpm exec playwright test tests/e2e/structure-api.spec.ts tests/e2e/wall-chart.spec.ts tests/e2e/wall-chart-decomposition.spec.ts tests/e2e/roles --reporter=list 2>&1 | tee /tmp/e2e-run-2.log; echo "exit=${PIPESTATUS[0]}"
+```
+
+Raw output (`exit=1`):
+
+```
+TimeoutError: page.goto: Timeout 30000ms exceeded.
+Call log:
+  - navigating to "https://offshore-alliance-git-feat-oux-wp22-st-53f672-reveille-strategy.vercel.app/login", waiting until "load"
+
+
+   at global-setup.ts:65
+
+  63 |     });
+  64 |
+> 65 |     await page.goto(new URL("/login", E2E_BASE_URL).toString());
+     |                ^
+  66 |     // Selectors from src/app/(auth)/login/page.tsx.
+  67 |     await page.locator("#email").fill(email);
+  68 |     await page.locator("#password").fill(password);
+    at signIn (/home/user/OffshoreAlliance/apps/organising-db/tests/e2e/global-setup.ts:65:16)
+    at globalSetup (/home/user/OffshoreAlliance/apps/organising-db/tests/e2e/global-setup.ts:97:5)
+
+exit=1
+```
+
 ### 9.2a Stage 6 verifier run (2026-09-14)
 
 Independent verifier, fresh session. Repo `/home/user/OffshoreAlliance`, branch `feat/oux-wp2.2-structure-api`,

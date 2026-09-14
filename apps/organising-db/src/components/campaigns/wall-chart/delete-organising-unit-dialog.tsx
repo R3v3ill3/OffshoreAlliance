@@ -34,12 +34,13 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
-import { assertRowsAffected } from "@/lib/supabase/assert-rows-affected";
+import { structureApi, type Reassignment } from "@/lib/campaign/structure-api";
 import {
   getReassignmentTargetOus,
   ouTargetLabel,
   type OuRowForReassignment,
 } from "@/lib/campaign/ou-reassignment-targets";
+import { structureErrorMessage } from "./structure-error-message";
 import type { WallChartOU } from "./types";
 
 const UNASSIGNED_VALUE = "__unassigned__";
@@ -101,95 +102,32 @@ export function DeleteOrganisingUnitDialog({
     setPerWorkerTarget({});
   }, [open, unit.ou_id, workers.length]);
 
+  // WP2.2 §3.11 row 3: `structure_unit_delete` in one transaction — per-worker
+  // reassignment (the source row is re-pointed, so its primary flag and
+  // provenance travel with it; "Unassigned" removes it), then the children
+  // (`deleteChildren: true`, today's order: sub-units before the parent), then
+  // the unit. A forbidden delete raises `forbidden` (42501) instead of the
+  // legacy RLS zero-row no-op, so the alert in onError still fires.
   const deleteMutation = useAuthAwareMutation({
     mutationFn: async (reassignments: Map<number, number | null>) => {
-      const ouId = unit.ou_id;
-      const workerIds = [...reassignments.keys()];
-
-      if (workerIds.length > 0) {
-        const { data: sourceRows, error: srcErr } = await supabase
-          .from("campaign_worker_ou")
-          .select("worker_id, is_primary")
-          .eq("ou_id", ouId)
-          .in("worker_id", workerIds);
-        if (srcErr) throw srcErr;
-
-        const primaryByWorker = new Map<number, boolean>();
-        for (const row of sourceRows ?? []) {
-          primaryByWorker.set(row.worker_id as number, row.is_primary === true);
-        }
-
-        for (const [workerId, toOuId] of reassignments) {
-          if (toOuId != null) {
-            const wasPrimary = primaryByWorker.get(workerId) === true;
-            const { error: insErr } = await supabase.from("campaign_worker_ou").upsert(
-              {
-                ou_id: toOuId,
-                worker_id: workerId,
-                assignment_source: "manual",
-                is_primary: wasPrimary,
-              },
-              { onConflict: "ou_id,worker_id", ignoreDuplicates: false }
-            );
-            if (insErr) throw insErr;
-
-            if (wasPrimary) {
-              const { data: campOus, error: ouErr } = await supabase
-                .from("campaign_organising_units")
-                .select("ou_id")
-                .eq("campaign_id", Number(campaignId));
-              if (ouErr) throw ouErr;
-              const otherOuIds = (campOus ?? [])
-                .map((o) => o.ou_id as number)
-                .filter((id) => id !== toOuId);
-              if (otherOuIds.length > 0) {
-                const { error: clrErr } = await supabase
-                  .from("campaign_worker_ou")
-                  .update({ is_primary: false })
-                  .eq("worker_id", workerId)
-                  .in("ou_id", otherOuIds);
-                if (clrErr) throw clrErr;
-              }
-            }
-          }
-
-          const delRes = await supabase
-            .from("campaign_worker_ou")
-            .delete({ count: "exact" })
-            .eq("ou_id", ouId)
-            .eq("worker_id", workerId);
-          assertRowsAffected(delRes, 1, "Removing the worker from the unit");
-        }
-      }
-
-      // Group container: delete its sub-units first (their worker assignments
-      // cascade away). Removing children before the parent also avoids the FK
-      // ON DELETE SET NULL path that trips the group-consistency trigger.
-      if (childOuIds.length > 0) {
-        const childRes = await supabase
-          .from("campaign_organising_units")
-          .delete({ count: "exact" })
-          .in("ou_id", childOuIds);
-        assertRowsAffected(childRes, childOuIds.length, "Deleting the units in the group");
-      }
-
-      // RLS filters a forbidden delete to zero rows with a 2xx (WP1.6); the
-      // assertion turns that into the alert in onError instead of a silent no-op.
-      const delOuRes = await supabase
-        .from("campaign_organising_units")
-        .delete({ count: "exact" })
-        .eq("ou_id", ouId);
-      assertRowsAffected(delOuRes, 1, "Deleting the unit");
+      const reassignmentList: Reassignment[] = [...reassignments].map(([worker_id, to_ou_id]) => ({
+        worker_id,
+        to_ou_id,
+      }));
+      await structureApi(supabase).units.remove({
+        campaignId: Number(campaignId),
+        ouId: unit.ou_id,
+        reassignments: reassignmentList,
+        deleteChildren: true,
+      });
     },
     onSuccess: () => {
       onDeleted?.();
       onOpenChange(false);
     },
-    onError: (e: Error) => window.alert(e.message || "Could not delete unit"),
-    // Invalidate on settle, not only on success: the steps above are not one
-    // transaction, so a throw part-way (a reassignment upserted, then the
-    // source delete filtered by RLS) must still refetch so the wall chart
-    // shows what the database actually holds rather than the pre-click state.
+    onError: (e: Error) => window.alert(structureErrorMessage(e, "Could not delete unit")),
+    // Invalidate on settle, not only on success, so a refused delete still
+    // refetches and the wall chart shows what the database actually holds.
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignKey] });
       queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignKey] });

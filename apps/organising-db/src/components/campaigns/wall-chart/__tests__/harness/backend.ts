@@ -21,8 +21,23 @@ import type { WallChartFixture } from "./fixture";
 
 export type FakePostgrestResult = { data: unknown[] | null; error: { message: string } | null };
 
+/** The shape `PostgrestError` has on the wire, as `structure-api.ts` reads it. */
+export type FakeRpcError = {
+  message: string;
+  code?: string;
+  details?: string | null;
+  hint?: string | null;
+};
+
+export type FakeRpcResult = { data: unknown; error: FakeRpcError | null };
+
+/** One recorded `client.rpc(name, args)` call, in issue order. */
+export type RpcInvocation = { name: string; args: Record<string, unknown> };
+
 let backend: WallChartFixture | null = null;
 let searchParams = new URLSearchParams();
+let rpcLog: RpcInvocation[] = [];
+let rpcAnswers = new Map<string, FakeRpcResult[]>();
 
 export class UnseededBackendError extends Error {}
 
@@ -33,6 +48,8 @@ export function installBackend(fixture: WallChartFixture): void {
 export function resetBackend(): void {
   backend = null;
   searchParams = new URLSearchParams();
+  rpcLog = [];
+  rpcAnswers = new Map();
 }
 
 export function setSearchParams(search: string): void {
@@ -139,6 +156,71 @@ export function fakeFrom(table: string): FakePostgrestQuery {
     throw new UnseededBackendError(`Unseeded table: ${table}`);
   }
   return new FakePostgrestQuery(rows);
+}
+
+/**
+ * WP2.2 Stage 4 — the `rpc` edge. Every structure write now leaves the wall
+ * chart as `client.rpc("structure_*", { p_… })` (wp2.2.md §3.9), so the fake
+ * client records each call and answers it with the RPC's own result shape,
+ * which the wrapper's zod schema then accepts. A test asserts on the exact
+ * `p_*` payload through `rpcInvocations()`; nothing here is a spy, so the
+ * calls are plain data the same way the fixture tables are.
+ *
+ * Deliberately minimal (wp2.2.md §4.1): the answers are static and the fake
+ * applies nothing to the fixture tables — the observable outcomes the tests
+ * pin are the call, the invalidations, the toasts and the dialog state, not a
+ * simulated database.
+ */
+const DEFAULT_RPC_RESULTS: Readonly<Record<string, unknown>> = {
+  structure_units_create: { units: [], inserted: 0, moved: 0, skipped: 0, displaced: 0 },
+  structure_unit_update: { ou_id: 0, updated_keys: [] },
+  structure_unit_reorder: { updated: 0 },
+  structure_unit_delete: {
+    deleted_ou_ids: [],
+    placements_moved: 0,
+    placements_removed: 0,
+    placements_displaced: 0,
+  },
+  structure_unit_merge: { moved: 0, collapsed: 0, deleted_ou_ids: [], repointed: {} },
+  structure_unit_split: { children: [], moved: 0, copied: 0, kept: 0, displaced: 0 },
+  structure_placements_move: {
+    moved: 0,
+    inserted: 0,
+    displaced: 0,
+    removed: 0,
+    skipped: 0,
+    parent_inserted: 0,
+  },
+  structure_placements_unassign: { removed: 0 },
+  structure_placements_set_primary: { placement_id: 0, cleared: 0 },
+};
+
+/**
+ * Queue the next answer for one RPC name (each call consumes one; the static
+ * default answers once the queue is empty). Pass `{ error }` to make the
+ * wrapper throw the mapped `StructureApiError`.
+ */
+export function answerRpc(name: string, result: FakeRpcResult): void {
+  const queue = rpcAnswers.get(name) ?? [];
+  queue.push(result);
+  rpcAnswers.set(name, queue);
+}
+
+/** Every `rpc` call made since the backend was installed, in order. */
+export function rpcInvocations(): RpcInvocation[] {
+  return rpcLog.map((call) => ({ name: call.name, args: { ...call.args } }));
+}
+
+/** `createClient().rpc` stand-in. Throws for an RPC the harness does not describe. */
+export function fakeRpc(name: string, args: Record<string, unknown> = {}): Promise<FakeRpcResult> {
+  requireBackend();
+  rpcLog.push({ name, args: JSON.parse(JSON.stringify(args)) as Record<string, unknown> });
+  const queued = rpcAnswers.get(name)?.shift();
+  if (queued) return Promise.resolve(queued);
+  if (!(name in DEFAULT_RPC_RESULTS)) {
+    throw new UnseededBackendError(`Unseeded rpc: ${name}`);
+  }
+  return Promise.resolve({ data: DEFAULT_RPC_RESULTS[name], error: null });
 }
 
 /** `fetchApi` stand-in. Throws for a route the fixture does not describe. */

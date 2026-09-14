@@ -3,7 +3,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
+import { structureApi } from "@/lib/campaign/structure-api";
 import { Badge } from "@/components/ui/badge";
+import { structureErrorMessage } from "./structure-error-message";
 import {
   UNIT_RATING_LEVELS,
   unitRatingLevel,
@@ -35,23 +37,17 @@ export function UnitRatingControl({
   const childAvg = averageSubunitRating(childRatings);
   const current = rating ?? null;
 
+  // WP2.2 §3.11 row 6: `structure_unit_update` with a `user_rating` patch.
   const rate = useAuthAwareMutation({
     mutationFn: async (value: number | null) => {
-      const scoped = supabase as unknown as {
-        from: (t: string) => {
-          update: (v: Record<string, unknown>) => {
-            eq: (c: string, val: unknown) => Promise<{ error: Error | null }>;
-          };
-        };
-      };
-      const { error } = await scoped
-        .from("campaign_organising_units")
-        .update({ user_rating: value })
-        .eq("ou_id", ouId);
-      if (error) throw error;
+      await structureApi(supabase).units.update({
+        campaignId: Number(campaignId),
+        ouId,
+        patch: { user_rating: value },
+      });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignId] }),
-    onError: (e: Error) => window.alert(e.message || "Could not save rating"),
+    onError: (e: Error) => window.alert(structureErrorMessage(e, "Could not save rating")),
   });
 
   const ownLevel = unitRatingLevel(current);

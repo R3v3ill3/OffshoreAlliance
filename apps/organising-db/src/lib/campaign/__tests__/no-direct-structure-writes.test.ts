@@ -29,8 +29,9 @@ const ANY_FROM_PATTERN = /\.from\(\s*['"]campaign_(?:organising_units|worker_ou)
 
 /**
  * Files (relative to `src/`) that still write directly to the two tables —
- * §2.3 rows 1–21 (row 13's real path is lib/campaign/, not lib/hooks/; see
- * wp2.2.md §8.3). Sorted. Each writer switch removes its file from this list.
+ * §2.3 rows 9–21 (row 13's real path is lib/campaign/, not lib/hooks/; see
+ * wp2.2.md §8.3). Sorted. Each writer switch removes its file from this list;
+ * Stage 4 (§11.8) removed the eight wall-chart writers, rows 1–8.
  */
 export const REMAINING_DIRECT_WRITERS: readonly string[] = [
   "app/api/campaign-import/apply/route.ts",
@@ -42,14 +43,6 @@ export const REMAINING_DIRECT_WRITERS: readonly string[] = [
   "components/campaigns/campaign-settings.tsx",
   "components/campaigns/campaign-units-section.tsx",
   "components/campaigns/campaign-wizard.tsx",
-  "components/campaigns/wall-chart/create-organising-unit-dialog.tsx",
-  "components/campaigns/wall-chart/delete-organising-unit-dialog.tsx",
-  "components/campaigns/wall-chart/hooks/use-wall-chart-actions.ts",
-  "components/campaigns/wall-chart/hooks/use-wall-chart-structure.ts",
-  "components/campaigns/wall-chart/merge-units-dialog.tsx",
-  "components/campaigns/wall-chart/move-worker-mutation.ts",
-  "components/campaigns/wall-chart/unit-rating-control.tsx",
-  "components/campaigns/wall-chart/worker-detail-sheet.tsx",
   "lib/campaign/recompute-ou-assignments.ts",
   "lib/campaign/use-allocate-workers-to-ou.ts",
   "lib/hooks/useRemoveWorkerFromCampaign.ts",

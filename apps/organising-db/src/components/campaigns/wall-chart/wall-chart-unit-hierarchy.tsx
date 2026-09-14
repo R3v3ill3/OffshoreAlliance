@@ -767,9 +767,25 @@ export function WallChartSubUnits(
                                             <DropdownMenuContent align="end" className="w-48">
                                               <DropdownMenuItem
                                                 onClick={() => setSplitTargetOu(child)}
-                                                disabled={(workersByOu.get(child.ou_id) ?? []).length === 0}
+                                                // The legacy split RPC refused a sub-unit of a
+                                                // non-container parent; the structure API does
+                                                // not, so the UI keeps the refusal (wp2.2.md D34)
+                                                // and says why in a sub-line — a title on a
+                                                // disabled item is never shown (D38).
+                                                disabled={
+                                                  (workersByOu.get(child.ou_id) ?? []).length === 0 ||
+                                                  !ou.is_group_container
+                                                }
                                               >
-                                                <Layers className="h-4 w-4 mr-2" /> Split into sub-units
+                                                <Layers className="h-4 w-4 mr-2 shrink-0" />
+                                                <span className="flex flex-col">
+                                                  <span>Split into sub-units</span>
+                                                  {!ou.is_group_container && (
+                                                    <span className="text-[10px] text-muted-foreground">
+                                                      Units nested under another unit cannot be split
+                                                    </span>
+                                                  )}
+                                                </span>
                                               </DropdownMenuItem>
                                               <DropdownMenuSeparator />
                                               <DropdownMenuItem

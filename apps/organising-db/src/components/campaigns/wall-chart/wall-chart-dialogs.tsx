@@ -29,6 +29,30 @@ import type { WallChartStructure } from "./hooks/use-wall-chart-structure";
  * (`actions`) and block C (`struct`), so the dialogs' props, confirm copy,
  * `canWrite` gates and invalidations are unchanged.
  */
+/**
+ * Every descendant of a unit (children, grandchildren, …), the set
+ * `structure_unit_delete` removes with `p_delete_children` (wp2.2.md D35) —
+ * the confirm copy counts what will actually go.
+ */
+export function descendantOuIds(
+  childrenByParent: Map<number, { ou_id: number }[]>,
+  ouId: number
+): number[] {
+  const out: number[] = [];
+  const seen = new Set<number>([ouId]);
+  const queue = [ouId];
+  while (queue.length > 0) {
+    const next = queue.shift() as number;
+    for (const child of childrenByParent.get(next) ?? []) {
+      if (seen.has(child.ou_id)) continue;
+      seen.add(child.ou_id);
+      out.push(child.ou_id);
+      queue.push(child.ou_id);
+    }
+  }
+  return out;
+}
+
 export function WallChartDialogs({
   campaignId,
   canWrite,
@@ -233,6 +257,13 @@ export function WallChartDialogs({
           }}
           campaignId={campaignId}
           parent={splitTargetOu}
+          // The container the source sits in, when any (D39): decides whether a
+          // same-type child shares the source's group.
+          sourceContainer={
+            splitTargetOu.ou_group_id != null
+              ? (ous.find((o) => o.ou_id === splitTargetOu.ou_group_id) ?? null)
+              : null
+          }
           members={splitMembers}
         />
       )}
@@ -254,7 +285,7 @@ export function WallChartDialogs({
           campaignId={campaignId}
           unit={deleteTargetOu}
           allOus={ous}
-          childOuIds={(childrenByParent.get(deleteTargetOu.ou_id) ?? []).map((c) => c.ou_id)}
+          childOuIds={descendantOuIds(childrenByParent, deleteTargetOu.ou_id)}
           workers={deleteUnitWorkers}
           onDeleted={() => {
             setDeleteTargetOu(null);

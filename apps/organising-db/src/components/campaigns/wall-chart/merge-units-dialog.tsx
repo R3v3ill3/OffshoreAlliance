@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
+import { structureApi } from "@/lib/campaign/structure-api";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { structureErrorMessage } from "./structure-error-message";
 import { ouDisplayName, type WallChartOU } from "./types";
 
 export type MergeUnitsDialogProps = {
@@ -57,39 +59,23 @@ export function MergeUnitsDialog({
       const deleteIds = toDelete.map((o) => o.ou_id);
       if (deleteIds.length === 0) return;
 
-      // Re-assign workers from units being deleted to the survivor.
-      for (const deleteId of deleteIds) {
-        // Get workers in this unit.
-        const { data: assignments, error: fetchErr } = await supabase
-          .from("campaign_worker_ou")
-          .select("worker_id, is_primary")
-          .eq("ou_id", deleteId);
-        if (fetchErr) throw fetchErr;
-
-        for (const a of assignments ?? []) {
-          // Upsert into survivor — ignore if already there.
-          await supabase
-            .from("campaign_worker_ou")
-            .upsert(
-              { ou_id: survivor.ou_id, worker_id: a.worker_id, is_primary: a.is_primary ?? false, assignment_source: "manual" },
-              { onConflict: "ou_id,worker_id", ignoreDuplicates: true }
-            );
-        }
-
-        // Delete the source unit (cascade deletes its campaign_worker_ou rows).
-        const { error: delErr } = await supabase
-          .from("campaign_organising_units")
-          .delete()
-          .eq("ou_id", deleteId);
-        if (delErr) throw delErr;
-      }
+      // WP2.2 §3.11 row 2: `structure_unit_merge` re-points every source
+      // placement to the survivor (collapsing duplicates, carrying the primary
+      // flag), re-points the units' dependants, and deletes the sources — one
+      // transaction. Units must share a group (C-j); a source with child
+      // units is refused (D8).
+      await structureApi(supabase).units.merge({
+        campaignId: Number(campaignId),
+        survivorOuId: survivor.ou_id,
+        sourceOuIds: deleteIds,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
       onOpenChange(false);
     },
-    onError: (e: Error) => window.alert(e.message || "Merge failed"),
+    onError: (e: Error) => window.alert(structureErrorMessage(e, "Merge failed")),
   });
 
   if (ous.length < 2) return null;

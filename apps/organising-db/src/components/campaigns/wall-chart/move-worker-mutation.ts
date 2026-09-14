@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
-import { assertRowsAffected } from "@/lib/supabase/assert-rows-affected";
+import { structureApi, type PlacementsMoveResult } from "@/lib/campaign/structure-api";
 import {
   stampEmployerWorksiteFromOu,
   syncWorkersToMatchingCampaigns,
@@ -20,13 +20,17 @@ export type MoveWorkerVars = {
   toOuId: number | null;
   mode: "move" | "copy";
   /**
-   * When true (default), moving a worker INTO a sub-unit also keeps any
-   * existing assignment in the sub-unit's parent OU intact, AND inserts a
-   * parent-OU assignment if missing. When moving between siblings of the
-   * same parent, the parent assignment is preserved unconditionally.
+   * When true (default), moving or copying a worker INTO a sub-unit also
+   * keeps (or creates) the worker's placement on the sub-unit's parent OU —
+   * but only when the parent can hold placements AND is in a different group
+   * from the target (an Employer container above a worksite; wp2.2.md D4).
+   * A parent in the target's own group can never hold the worker alongside
+   * the child (C-a), so nothing is written for it; a parent without a group
+   * is skipped. When the source IS that parent, the parent row is kept
+   * (copy semantics for the parent only, D19).
    *
-   * When false, the move strips the worker from the source OU only, with
-   * no special handling for parent/child relationships.
+   * When false, the move re-points the source placement only, with no
+   * special handling for parent/child relationships.
    *
    * Has no effect when toOuId is null or the target is a top-level OU.
    */
@@ -40,22 +44,27 @@ export type MoveWorkerResult = {
 };
 
 /**
- * Bulk move or copy worker↔OU assignments.
+ * Bulk move or copy worker↔OU assignments through the WP2.2 structure API
+ * (`structure_placements_move`, wp2.2.md §3.3 / §3.11 row 1).
  *
- * Contract:
- * - move + toOuId != null  : delete the (fromOuId, workerId) row (if any) and
- *                            insert (toOuId, workerId). Primary flag migrates.
- * - copy + toOuId != null  : insert (toOuId, workerId) only, is_primary=false.
- *                            Duplicates (worker already in target) are skipped.
- * - move + toOuId == null  : delete all campaign_worker_ou rows for the
- *                            worker in this campaign (worker becomes
- *                            "Unassigned").
+ * Contract (unchanged from the legacy client-side sequence):
+ * - move + toOuId != null  : the (fromOuId, workerId) placement is re-pointed
+ *                            to toOuId (inserted when the worker came from
+ *                            Unassigned). Primary flag travels with the row.
+ *                            Any other placement the worker held in the
+ *                            target's group is displaced (C-b).
+ * - copy + toOuId != null  : a new (toOuId, workerId) placement, is_primary
+ *                            false; workers already at the target are skipped;
+ *                            a same-group copy is refused with
+ *                            `duplicate_in_group` (K1, C-c).
+ * - move + toOuId == null  : every placement of the workers in this campaign
+ *                            is removed (the worker becomes "Unassigned").
  * - copy + toOuId == null  : no-op.
  *
- * Implemented as a sequence of client-side Supabase calls inside a single
- * mutation. The unique constraint on (ou_id, worker_id) makes retries
- * idempotent; partial failures surface as exceptions and the caller can
- * retry from a clean state (query invalidation refetches).
+ * The RPC takes one `p_from_ou_id`, so a move whose refs come from several
+ * source units issues one call per source unit (each call is its own
+ * transaction); a copy and an unassign are always one call. Re-issuing a
+ * completed move is a harmless no-op (`skipped`, wp2.2.md §1.5).
  */
 export function useMoveWorkersMutation(campaignId: string | number) {
   const supabase = createClient();
@@ -65,228 +74,62 @@ export function useMoveWorkersMutation(campaignId: string | number) {
     mutationFn: async (vars: MoveWorkerVars): Promise<MoveWorkerResult> => {
       if (vars.refs.length === 0) return { inserted: 0, deleted: 0, skipped: 0 };
 
+      const api = structureApi(supabase);
+      const campaignIdNum = Number(campaignId);
       const workerIds = [...new Set(vars.refs.map((r) => r.workerId))];
       let inserted = 0;
       let deleted = 0;
       let skipped = 0;
 
+      const tally = (result: PlacementsMoveResult) => {
+        // A re-pointed source row or a fresh target row both land the worker
+        // at the target, which is what the legacy `inserted` counted; parent
+        // rows were counted there too. `deleted` was the source rows removed;
+        // rows displaced from the target's group are removals as well.
+        inserted += result.moved + result.inserted + result.parent_inserted;
+        deleted += result.removed + result.displaced;
+        skipped += result.skipped;
+      };
+
       if (vars.toOuId == null) {
         // "Move to Unassigned" = strip all OU assignments for these workers in this campaign.
         if (vars.mode !== "move") return { inserted: 0, deleted: 0, skipped: workerIds.length };
-        // Constrain to ou ids belonging to this campaign to avoid nuking other campaigns.
-        const { data: campOus, error: ouErr } = await supabase
-          .from("campaign_organising_units")
-          .select("ou_id")
-          .eq("campaign_id", Number(campaignId));
-        if (ouErr) throw ouErr;
-        const ouIds = (campOus ?? []).map((o) => o.ou_id as number);
-        if (ouIds.length > 0) {
-          const delRes = await supabase
-            .from("campaign_worker_ou")
-            .delete({ count: "exact" })
-            .in("worker_id", workerIds)
-            .in("ou_id", ouIds);
-          // Every worker dragged out of a real unit has at least that one row;
-          // a worker dragged from Unassigned has none, so it is not counted.
-          const expectedAtLeast = new Set(
-            vars.refs.filter((r) => r.fromOuId != null).map((r) => r.workerId)
-          ).size;
-          assertRowsAffected(delRes, expectedAtLeast, "Moving the workers to Unassigned");
-          deleted = delRes.count ?? 0;
-        }
+        tally(await api.placements.move({ campaignId: campaignIdNum, workerIds, toOuId: null }));
+      } else if (vars.mode === "copy") {
+        // Copy ignores the source: one call, `p_from_ou_id` null, keep_source.
+        tally(
+          await api.placements.move({
+            campaignId: campaignIdNum,
+            workerIds,
+            fromOuId: null,
+            toOuId: vars.toOuId,
+            keepSource: true,
+            keepInParent: vars.keepInParent,
+          })
+        );
       } else {
-        // Determine workers who aren't already at target (to skip + avoid unique conflict).
-        const { data: existingAtTarget, error: exErr } = await supabase
-          .from("campaign_worker_ou")
-          .select("worker_id, is_primary")
-          .eq("ou_id", vars.toOuId)
-          .in("worker_id", workerIds);
-        if (exErr) throw exErr;
-        const alreadyAtTarget = new Set((existingAtTarget ?? []).map((r) => r.worker_id as number));
-        const toInsertIds = workerIds.filter((w) => !alreadyAtTarget.has(w));
-        skipped = workerIds.length - toInsertIds.length;
-
-        // Look up the target OU to detect sub-unit hierarchy. When the target
-        // is a sub-unit (parent_ou_id != null), `keepInParent` controls whether
-        // we also preserve / create assignments to the parent OU.
-        const keepInParent = vars.keepInParent ?? true;
-        let targetParentOuId: number | null = null;
-        // True when the direct parent of the target is a group container — workers
-        // must never be inserted directly into a group container (trigger enforces this),
-        // so we suppress the keepInParent INSERT for that case.
-        let parentIsGroupContainer = false;
-        let siblingOuIds: number[] = [];
-        {
-          const { data: targetOuRow, error: targetOuErr } = await supabase
-            .from("campaign_organising_units")
-            .select("ou_id, parent_ou_id, campaign_id")
-            .eq("ou_id", vars.toOuId)
-            .single();
-          if (targetOuErr) throw targetOuErr;
-          targetParentOuId = (targetOuRow?.parent_ou_id as number | null) ?? null;
-          if (targetParentOuId != null) {
-            const { data: siblings, error: sibErr } = await supabase
-              .from("campaign_organising_units")
-              .select("ou_id, is_group_container")
-              .eq("parent_ou_id", targetParentOuId);
-            if (sibErr) throw sibErr;
-            siblingOuIds = (siblings ?? []).map((r) => r.ou_id as number);
-
-            // Determine whether the parent itself is a group container.
-            const { data: parentRow, error: parentErr } = await supabase
-              .from("campaign_organising_units")
-              .select("is_group_container")
-              .eq("ou_id", targetParentOuId)
-              .single();
-            if (parentErr) throw parentErr;
-            parentIsGroupContainer = (parentRow?.is_group_container as boolean) === true;
-          }
+        // Move: one call per source unit (Unassigned counts as one source).
+        // A ref whose source is the target is already there — skipped, never sent.
+        const bySource = new Map<number | null, number[]>();
+        const sent = new Set<number>();
+        for (const ref of vars.refs) {
+          if (ref.fromOuId === vars.toOuId) continue;
+          const list = bySource.get(ref.fromOuId) ?? [];
+          if (!list.includes(ref.workerId)) list.push(ref.workerId);
+          bySource.set(ref.fromOuId, list);
+          sent.add(ref.workerId);
         }
-
-        if (vars.mode === "move") {
-          // Check which source rows are currently primary — migrate that flag.
-          const fromPairs = vars.refs
-            .filter((r) => r.fromOuId != null && toInsertIds.includes(r.workerId))
-            .map((r) => ({ workerId: r.workerId, ouId: r.fromOuId as number }));
-
-          // Query primary flags for the source rows so we can preserve them at the target.
-          const primaryWorkerIds = new Set<number>();
-          if (fromPairs.length > 0) {
-            const { data: srcRows, error: srcErr } = await supabase
-              .from("campaign_worker_ou")
-              .select("worker_id, ou_id, is_primary")
-              .in("worker_id", fromPairs.map((p) => p.workerId))
-              .in("ou_id", fromPairs.map((p) => p.ouId));
-            if (srcErr) throw srcErr;
-            for (const row of srcRows ?? []) {
-              const match = fromPairs.find(
-                (p) => p.workerId === row.worker_id && p.ouId === row.ou_id
-              );
-              if (match && row.is_primary) primaryWorkerIds.add(row.worker_id as number);
-            }
-          }
-
-          // Insert target rows first, with is_primary migrated for primary-sourced moves.
-          if (toInsertIds.length > 0) {
-            const rows = toInsertIds.map((wid) => ({
-              ou_id: vars.toOuId as number,
-              worker_id: wid,
-              is_primary: primaryWorkerIds.has(wid),
-            }));
-            const { error: insErr } = await supabase.from("campaign_worker_ou").insert(rows);
-            if (insErr) throw insErr;
-            inserted = rows.length;
-          }
-
-          // When the target is a sub-unit (and the parent is not a group container),
-          // ensure each affected worker is also assigned to the parent (idempotent).
-          // Group containers never receive direct worker assignments (trigger enforces this).
-          if (targetParentOuId != null && keepInParent && !parentIsGroupContainer && workerIds.length > 0) {
-            const { data: existingParent, error: pExErr } = await supabase
-              .from("campaign_worker_ou")
-              .select("worker_id")
-              .eq("ou_id", targetParentOuId)
-              .in("worker_id", workerIds);
-            if (pExErr) throw pExErr;
-            const alreadyInParent = new Set(
-              (existingParent ?? []).map((r) => r.worker_id as number)
-            );
-            const parentMissing = workerIds.filter((w) => !alreadyInParent.has(w));
-            if (parentMissing.length > 0) {
-              const parentRows = parentMissing.map((wid) => ({
-                ou_id: targetParentOuId as number,
-                worker_id: wid,
-                is_primary: false,
-              }));
-              const { error: pInsErr } = await supabase
-                .from("campaign_worker_ou")
-                .insert(parentRows);
-              if (pInsErr) throw pInsErr;
-              inserted += parentRows.length;
-            }
-          }
-
-          // Delete source rows — one pair at a time to avoid nuking unrelated memberships.
-          // Skip deletion if the source happens to be the target's parent (when
-          // we're keeping the worker in the parent), so the worker remains rolled-up.
-          for (const ref of vars.refs) {
-            if (ref.fromOuId == null) continue; // drag-from-unassigned — no row to delete
-            if (ref.fromOuId === vars.toOuId) continue;
-            if (
-              keepInParent &&
-              targetParentOuId != null &&
-              ref.fromOuId === targetParentOuId
-            ) {
-              // Moving from parent → its own sub-unit: preserve parent membership.
-              continue;
-            }
-            const delRes = await supabase
-              .from("campaign_worker_ou")
-              .delete({ count: "exact" })
-              .eq("worker_id", ref.workerId)
-              .eq("ou_id", ref.fromOuId);
-            assertRowsAffected(delRes, 1, "Moving the worker out of its unit");
-            deleted += delRes.count ?? 0;
-          }
-
-          // If we migrated a primary, clear any stale primary flags elsewhere for that worker.
-          if (primaryWorkerIds.size > 0) {
-            const { data: campOus, error: ouErr } = await supabase
-              .from("campaign_organising_units")
-              .select("ou_id")
-              .eq("campaign_id", Number(campaignId));
-            if (ouErr) throw ouErr;
-            const otherOuIds = (campOus ?? [])
-              .map((o) => o.ou_id as number)
-              .filter((id) => id !== vars.toOuId);
-            if (otherOuIds.length > 0) {
-              const { error: clrErr } = await supabase
-                .from("campaign_worker_ou")
-                .update({ is_primary: false })
-                .in("worker_id", [...primaryWorkerIds])
-                .in("ou_id", otherOuIds);
-              if (clrErr) throw clrErr;
-            }
-          }
-          // Suppress unused warning for siblingOuIds (kept for future cross-sibling move policy).
-          void siblingOuIds;
-        } else {
-          // copy: insert only, is_primary=false.
-          if (toInsertIds.length > 0) {
-            const rows = toInsertIds.map((wid) => ({
-              ou_id: vars.toOuId as number,
-              worker_id: wid,
-              is_primary: false,
-            }));
-            const { error: insErr } = await supabase.from("campaign_worker_ou").insert(rows);
-            if (insErr) throw insErr;
-            inserted = rows.length;
-          }
-          // For copy + sub-unit target, also ensure parent membership (skip for group containers).
-          if (targetParentOuId != null && keepInParent && !parentIsGroupContainer && workerIds.length > 0) {
-            const { data: existingParent, error: pExErr } = await supabase
-              .from("campaign_worker_ou")
-              .select("worker_id")
-              .eq("ou_id", targetParentOuId)
-              .in("worker_id", workerIds);
-            if (pExErr) throw pExErr;
-            const alreadyInParent = new Set(
-              (existingParent ?? []).map((r) => r.worker_id as number)
-            );
-            const parentMissing = workerIds.filter((w) => !alreadyInParent.has(w));
-            if (parentMissing.length > 0) {
-              const parentRows = parentMissing.map((wid) => ({
-                ou_id: targetParentOuId as number,
-                worker_id: wid,
-                is_primary: false,
-              }));
-              const { error: pInsErr } = await supabase
-                .from("campaign_worker_ou")
-                .insert(parentRows);
-              if (pInsErr) throw pInsErr;
-              inserted += parentRows.length;
-            }
-          }
+        skipped += workerIds.filter((w) => !sent.has(w)).length;
+        for (const [fromOuId, ids] of bySource) {
+          tally(
+            await api.placements.move({
+              campaignId: campaignIdNum,
+              workerIds: ids,
+              fromOuId,
+              toOuId: vars.toOuId,
+              keepInParent: vars.keepInParent,
+            })
+          );
         }
       }
 
@@ -304,12 +147,9 @@ export function useMoveWorkersMutation(campaignId: string | number) {
 
       return { inserted, deleted, skipped };
     },
-    // Invalidate on settle, not only on success. The insert-then-delete above
-    // is not one transaction: when the target insert lands and the source
-    // delete is then filtered by RLS (NoRowsAffectedError), the worker is in
-    // both units and the board must refetch to show that, not keep the
-    // optimistic pre-drag picture. WP2.2's transactional RPC removes the
-    // partial state itself; until then the refetch keeps the UI honest.
+    // Invalidate on settle, not only on success: each RPC is one transaction,
+    // but a multi-source move is several, and a failure part-way must still
+    // refetch so the board shows what the database holds.
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["campaign-worker-ou", String(campaignId)] });
       qc.invalidateQueries({ queryKey: ["campaign-members-full", String(campaignId)] });

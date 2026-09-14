@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { structureApi } from "@/lib/campaign/structure-api";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { pickRatingHintAnchor } from "@/lib/hints/pick-rating-hint-anchor";
 import { useFirstUseHint } from "@/lib/hints/use-first-use-hint";
@@ -90,15 +91,14 @@ export function useWallChartStructure({
     return Math.max(...ous.map((o) => o.display_order ?? 0)) + 1;
   }, [ous]);
 
+  // WP2.2 §3.11 row 7: `structure_unit_reorder` sets display_order = array
+  // position in one transaction (was one update per unit).
   const reorderOus = useAuthAwareMutation({
     mutationFn: async (orderedOuIds: number[]) => {
-      for (let i = 0; i < orderedOuIds.length; i++) {
-        const { error } = await supabase
-          .from("campaign_organising_units")
-          .update({ display_order: i })
-          .eq("ou_id", orderedOuIds[i]);
-        if (error) throw error;
-      }
+      await structureApi(supabase).units.reorder({
+        campaignId: Number(campaignId),
+        ouIds: orderedOuIds,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignId] });

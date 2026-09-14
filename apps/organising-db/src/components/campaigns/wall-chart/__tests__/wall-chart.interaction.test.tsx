@@ -194,20 +194,23 @@ describe("drag and drop", () => {
     });
   });
 
-  it("a drop on a nested card also reaches the parent card's handler", async () => {
-    // Drop events are not stopped at the sub-unit card, so a copy onto
-    // "Acme North" is seen by "Acme Group" too. Pinned as-is: it is the
-    // current behaviour, and the decomposition must not change it silently.
+  it("a drop on a nested card is handled by that card only — the parent card does not move the worker again", async () => {
+    // Drop events still bubble from the sub-unit card to "Acme Group", but
+    // the parent card sees that a descendant consumed the drop and does not
+    // issue a second move. WP2.3 pinned the double invocation as a latent
+    // defect (the second call was usually a no-op); the WP2.2 structure API
+    // turned it into a real one (a drag from Unassigned onto a nested card
+    // landed the worker on the parent container), so WP2.2 Stage 4 fixed it
+    // (wp2.2.md §8.3 D32) and this characterisation now pins the single call.
     const { container } = await mount();
 
     await dragAndDrop(tile(container, ADA), unitCard(container, "Acme North"), {
       shiftKey: true,
     });
 
-    expect(spies.moveWorkers).toHaveBeenCalledTimes(2);
+    expect(spies.moveWorkers).toHaveBeenCalledTimes(1);
     expect(spies.moveWorkers.mock.calls.map((c) => [c[0].toOuId, c[0].mode])).toEqual([
       [11, "copy"],
-      [10, "copy"],
     ]);
   });
 

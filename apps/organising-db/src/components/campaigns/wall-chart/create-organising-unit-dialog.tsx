@@ -26,6 +26,11 @@ import { CampaignWorkerAssignmentPicker } from "@/components/campaigns/campaign-
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { createClient } from "@/lib/supabase/client";
+import {
+  structureApi,
+  type UnitCreateAssignment,
+  type UnitCreateElement,
+} from "@/lib/campaign/structure-api";
 import type { CampaignOuType } from "@/types/database";
 import { FolderOpen, Layers, Users } from "lucide-react";
 
@@ -97,10 +102,6 @@ type DraftAssignmentTarget = {
   name: string;
   type: CampaignOuType;
   estimate: string;
-};
-
-type CreatedTarget = DraftAssignmentTarget & {
-  ouId: number;
 };
 
 function parseEstimate(value: string) {
@@ -321,43 +322,51 @@ export function CreateOrganisingUnitDialog({
     queryClient.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });
   };
 
+  // WP2.2 §3.11 row 4: the three shapes (single / add-to-existing /
+  // container + members) are payloads of one `structure_units_create` call,
+  // with the worker assignments on the same call (`ou_ref` = the element's
+  // `client_ref`). A container and its members are one call because a later
+  // element may name an earlier `client_ref` as its parent. The wall-chart
+  // placement then renumbers every top-level block through
+  // `structure_unit_reorder` (one call, where the legacy code issued one
+  // update per unit) — the create RPC cannot renumber units that already
+  // exist, and "top" / "after" need them renumbered.
   const createOrganisingUnits = useAuthAwareMutation<{ focusOuId: number }, Error, void>({
     mutationFn: async () => {
       if (draftAssignmentTargets.length === 0) throw new Error("Add at least one organising unit.");
 
-      const createdTargets: CreatedTarget[] = [];
-      const createdBlockIds: number[] = [];
-      let focusOuId: number | null = null;
+      const api = structureApi(supabase);
+      const campaignIdNum = Number(campaignId);
+      const units: UnitCreateElement[] = [];
+      const targetByRef = new Map<string, DraftAssignmentTarget>();
+      let focusRef: string;
 
       if (mode === "single") {
         const estimate = parseEstimate(singleEstimate);
-        const payload: Record<string, unknown> = {
-          campaign_id: Number(campaignId),
+        const element: UnitCreateElement = {
+          client_ref: "single",
           name: singleName.trim(),
           ou_type: singleType,
           display_order: displayOrder,
           source: "manual",
           is_group_container: false,
         };
-        if (estimate !== undefined) payload.total_workers_estimated = estimate;
-
-        const { data, error } = await supabase
-          .from("campaign_organising_units")
-          .insert(payload)
-          .select("ou_id")
-          .single();
-        if (error) throw error;
-        const ouId = data.ou_id as number;
-        createdTargets.push({ key: "single", name: singleName.trim(), type: singleType, estimate: singleEstimate, ouId });
-        createdBlockIds.push(ouId);
-        focusOuId = ouId;
+        if (estimate !== undefined) element.total_workers_estimated = estimate;
+        units.push(element);
+        targetByRef.set("single", {
+          key: "single",
+          name: singleName.trim(),
+          type: singleType,
+          estimate: singleEstimate,
+        });
+        focusRef = "single";
       } else if (groupPhase === "add_to_existing") {
         const containerOuId = Number(existingGroupId);
         const container = existingOus.find((ou) => ou.ou_id === containerOuId);
         if (!container || !addUnitName.trim()) throw new Error("Select a group and name the new unit.");
         const estimate = parseEstimate(addUnitEstimate);
-        const payload: Record<string, unknown> = {
-          campaign_id: Number(campaignId),
+        const element: UnitCreateElement = {
+          client_ref: "add-to-existing",
           name: addUnitName.trim(),
           ou_type: container.ou_type,
           display_order: displayOrder,
@@ -367,75 +376,66 @@ export function CreateOrganisingUnitDialog({
           ou_group_id: containerOuId,
           unit_basis: { custom: true },
         };
-        if (estimate !== undefined) payload.total_workers_estimated = estimate;
-
-        const { data, error } = await supabase
-          .from("campaign_organising_units")
-          .insert(payload)
-          .select("ou_id")
-          .single();
-        if (error) throw error;
-        const ouId = data.ou_id as number;
-        createdTargets.push({
+        if (estimate !== undefined) element.total_workers_estimated = estimate;
+        units.push(element);
+        targetByRef.set("add-to-existing", {
           key: "add-to-existing",
           name: addUnitName.trim(),
           type: container.ou_type,
           estimate: addUnitEstimate,
-          ouId,
         });
-        createdBlockIds.push(ouId);
-        focusOuId = ouId;
+        focusRef = "add-to-existing";
       } else {
         if (!groupName.trim()) throw new Error("Name the group.");
-        const { data: containerRow, error: containerErr } = await supabase
-          .from("campaign_organising_units")
-          .insert({
-            campaign_id: Number(campaignId),
-            name: groupName.trim(),
-            ou_type: groupType,
-            display_order: displayOrder,
-            source: "manual",
-            is_group_container: true,
-          })
-          .select("ou_id")
-          .single();
-        if (containerErr) throw containerErr;
+        units.push({
+          client_ref: "container",
+          name: groupName.trim(),
+          ou_type: groupType,
+          display_order: displayOrder,
+          source: "manual",
+          is_group_container: true,
+        });
+        focusRef = "container";
 
-        const containerOuId = containerRow.ou_id as number;
-        createdBlockIds.push(containerOuId);
-        focusOuId = containerOuId;
-
-        const memberRows = draftAssignmentTargets.map((target, index) => {
-          const row: Record<string, unknown> = {
-            campaign_id: Number(campaignId),
+        draftAssignmentTargets.forEach((target, index) => {
+          const ref = `member-${index}`;
+          const element: UnitCreateElement = {
+            client_ref: ref,
             name: target.name,
             ou_type: groupType,
             display_order: displayOrder + 1 + index,
             source: "manual",
             is_group_container: false,
-            parent_ou_id: containerOuId,
-            ou_group_id: containerOuId,
+            parent_ou_id: "container",
+            ou_group_id: "container",
             unit_basis: { custom: true },
           };
           const estimate = parseEstimate(target.estimate);
-          if (estimate !== undefined) row.total_workers_estimated = estimate;
-          return row;
-        });
-
-        const { data: createdMemberRows, error: memberErr } = await supabase
-          .from("campaign_organising_units")
-          .insert(memberRows)
-          .select("ou_id");
-        if (memberErr) throw memberErr;
-
-        (createdMemberRows ?? []).forEach((row, index) => {
-          const target = draftAssignmentTargets[index];
-          if (!target) return;
-          const ouId = row.ou_id as number;
-          createdTargets.push({ ...target, ouId });
-          createdBlockIds.push(ouId);
+          if (estimate !== undefined) element.total_workers_estimated = estimate;
+          units.push(element);
+          targetByRef.set(ref, target);
         });
       }
+
+      const assignments: UnitCreateAssignment[] = [];
+      for (const [ref, target] of targetByRef) {
+        if (!allocatedDraftKeys.has(target.key)) continue;
+        const selected = assignmentsByDraftKey[target.key] ?? new Set<number>();
+        for (const workerId of selected) {
+          assignments.push({ ou_ref: ref, worker_id: workerId, is_primary: false, source: "manual" });
+        }
+      }
+
+      const created = await api.units.create({ campaignId: campaignIdNum, units, assignments });
+      const ouIdByRef = new Map<string, number>();
+      for (const unit of created.units) {
+        if (unit.client_ref != null) ouIdByRef.set(unit.client_ref, unit.ou_id);
+      }
+      // Same order as the elements: the container first, then its members.
+      const createdBlockIds = units
+        .map((unit) => ouIdByRef.get(unit.client_ref ?? ""))
+        .filter((ouId): ouId is number => ouId != null);
+      const focusOuId = ouIdByRef.get(focusRef) ?? null;
 
       if (needsPlacement && createdBlockIds.length > 0) {
         const orderedIds = computeBlockOrder({
@@ -444,37 +444,10 @@ export function CreateOrganisingUnitDialog({
           placementMode,
           placementAfterOuId,
         });
-        for (let index = 0; index < orderedIds.length; index++) {
-          const { error } = await supabase
-            .from("campaign_organising_units")
-            .update({ display_order: index })
-            .eq("ou_id", orderedIds[index]);
-          if (error) throw error;
-        }
+        await api.units.reorder({ campaignId: campaignIdNum, ouIds: orderedIds });
       }
 
-      const assignmentRows = createdTargets.flatMap((target) => {
-        if (!allocatedDraftKeys.has(target.key)) return [];
-        const selected = assignmentsByDraftKey[target.key] ?? new Set<number>();
-        return [...selected].map((workerId) => ({
-          ou_id: target.ouId,
-          worker_id: workerId,
-          is_primary: false,
-          assignment_source: "manual",
-        }));
-      });
-      if (assignmentRows.length > 0) {
-        const { error } = await (supabase as unknown as {
-          from: (table: string) => {
-            insert: (rows: Record<string, unknown>[]) => Promise<{ error: Error | null }>;
-          };
-        })
-          .from("campaign_worker_ou")
-          .insert(assignmentRows);
-        if (error) throw error;
-      }
-
-      const resolvedFocusOuId = focusOuId ?? createdTargets[0]?.ouId ?? createdBlockIds[0];
+      const resolvedFocusOuId = focusOuId ?? createdBlockIds[0];
       if (resolvedFocusOuId == null) throw new Error("No organising unit was created.");
       return { focusOuId: resolvedFocusOuId };
     },

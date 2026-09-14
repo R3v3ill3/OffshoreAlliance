@@ -1,5 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@oa/db-types";
+import { structureApi, type RuleRow as DesiredRuleRow } from "./structure-api";
+
+/**
+ * Recompute rule-sourced placements for a campaign.
+ *
+ * WP2.2 Stage 6 (wp2.2.md §3.11 row 14, §3.8 R1): the planning logic below
+ * is unchanged; the three legacy write sites (delete every `rule` row when
+ * there are no rules, clear the rule rows of every non-container unit, insert
+ * the desired rows) are ONE `structure_placements_replace_rule_rows` call
+ * with the full desired rule-row set. The RPC deletes only
+ * `assignment_source = 'rule'` rows, so manual and universe-sync placements
+ * survive a Recompute (R1), and it places each desired row with skip
+ * semantics against a worker's existing placement in the same group (C-a).
+ */
 
 type RuleRow = {
   rule_id: number;
@@ -155,35 +169,28 @@ function matchesRule(
   }
 }
 
+type ReadResult = Promise<{ data: unknown[] | null; error: Error | null }>;
+
 export async function recomputeOuAssignments(
   supabase: SupabaseClient<Database>,
   campaignId: number
 ) {
+  // Reads only; every write goes through structureApi(supabase).
   const scoped = supabase as unknown as {
     from: (table: string) => {
       select: (query: string) => {
         eq: (
           column: string,
           value: unknown
-        ) => Promise<{ data: unknown[] | null; error: Error | null }>;
+        ) => ReadResult & { order: (column: string, options?: { ascending?: boolean }) => ReadResult };
         in: (
           column: string,
           values: number[]
-        ) => Promise<{ data: unknown[] | null; error: Error | null }>;
+        ) => ReadResult;
       };
-      delete: () => {
-        eq: (column: string, value: unknown) => {
-          in: (
-            column: string,
-            values: number[]
-          ) => Promise<{ error: Error | null }>;
-        };
-      };
-      insert: (
-        rows: Record<string, unknown>[]
-      ) => Promise<{ error: Error | null }>;
     };
   };
+  const api = structureApi(supabase);
 
   const { data: members, error: membersError } = await scoped
     .from("campaign_worker_membership")
@@ -208,16 +215,24 @@ export async function recomputeOuAssignments(
     .filter((id): id is number => Number.isFinite(id));
 
   if (workerIds.length === 0) {
-    return { inserted: 0, removed: 0 };
+    // As before Stage 6: a campaign with no members writes nothing (its
+    // stale rule rows, if any, are left alone rather than withdrawn).
+    return { inserted: 0, removed: 0, skipped: 0 };
   }
 
+  // Ordered by rule_id (Stage 6 fix round 1, A2): the desired rows follow the
+  // rules' order, and the RPC keeps the first row a worker gets in a group and
+  // skips the rest (C-a), so a stable order makes the winner deterministic
+  // between Recompute clicks. Sorted again here so the order does not depend
+  // on the server honouring it.
   const { data: rules, error: rulesError } = await scoped
     .from("campaign_unit_rules")
     .select("rule_id, ou_id, include, dimension_type, operator, value_int, value_text")
-    .eq("campaign_id", campaignId);
+    .eq("campaign_id", campaignId)
+    .order("rule_id", { ascending: true });
   if (rulesError) throw rulesError;
 
-  const allRuleRows = (rules ?? []) as RuleRow[];
+  const allRuleRows = ([...((rules ?? []) as RuleRow[])]).sort((a, b) => a.rule_id - b.rule_id);
 
   // Group container OUs (employer groups) cannot hold workers directly — the
   // database trigger rejects it. Drop any rules targeting a container so a
@@ -232,16 +247,10 @@ export async function recomputeOuAssignments(
   const ruleRows = allRuleRows.filter((r) => !containerOuIds.has(r.ou_id));
 
   if (ruleRows.length === 0) {
-    const ouIds = campaignOuRows.map((r) => r.ou_id);
-    if (ouIds.length > 0) {
-      const { error: clearError } = await scoped
-        .from("campaign_worker_ou")
-        .delete()
-        .eq("assignment_source", "rule")
-        .in("ou_id", ouIds);
-      if (clearError) throw clearError;
-    }
-    return { inserted: 0, removed: 0 };
+    // No rules: the desired rule-row set is empty, so the one call withdraws
+    // every rule row of the campaign (the legacy delete-all) and inserts
+    // nothing. Manual and universe rows are untouched (R1).
+    return replaceRuleRows(api, campaignId, []);
   }
 
   const { data: workerTagsRaw, error: tagsError } = await scoped
@@ -309,54 +318,54 @@ export async function recomputeOuAssignments(
     rulesByOu.get(rule.ou_id)?.push(rule);
   }
 
-  const desiredRows: { ou_id: number; worker_id: number }[] = [];
+  // The full desired rule-row set. `assigned_rule_id` attributes each row to
+  // the first include rule the worker matched, or — for a unit with exclude
+  // rules only, where the include match is vacuous — to the unit's first
+  // rule, so a Recompute row is never left with the NULL attribution the
+  // pre-WP2.2 universe sync used (the R1-b relabel script keys on it).
+  const desiredRows: DesiredRuleRow[] = [];
   for (const [ouId, ouRules] of rulesByOu.entries()) {
     const includeRules = ouRules.filter((r) => r.include);
     const excludeRules = ouRules.filter((r) => !r.include);
     for (const worker of workers) {
       const tagSet = tagsByWorker.get(worker.worker_id) ?? new Set<string>();
       const aliasSet = aliasesByWorker.get(worker.worker_id) ?? new Set<string>();
-      const includeMatch =
-        includeRules.length === 0 ||
-        includeRules.some((r) => matchesRule(worker, r, tagSet, aliasSet));
-      if (!includeMatch) continue;
+      const matchedInclude =
+        includeRules.length === 0
+          ? null
+          : includeRules.find((r) => matchesRule(worker, r, tagSet, aliasSet));
+      if (includeRules.length > 0 && !matchedInclude) continue;
       const excluded = excludeRules.some((r) => matchesRule(worker, r, tagSet, aliasSet));
       if (excluded) continue;
-      desiredRows.push({ ou_id: ouId, worker_id: worker.worker_id });
+      desiredRows.push({
+        ou_id: ouId,
+        worker_id: worker.worker_id,
+        assigned_rule_id: matchedInclude?.rule_id ?? ouRules[0].rule_id,
+      });
     }
   }
 
-  // Clear rule-sourced assignments for every non-container OU in the campaign
-  // (not just the ones with current matches) so that a now-unmatched OU — e.g.
-  // after its last rule is deleted or edited to match nobody — has its stale
-  // rule rows withdrawn. Manual assignments (assignment_source = 'manual') are
-  // never touched.
-  const clearableOuIds = campaignOuRows
-    .map((r) => r.ou_id)
-    .filter((id) => !containerOuIds.has(id));
+  // One transaction: withdraw every rule row of the campaign (so a
+  // now-unmatched unit — e.g. after its last rule is deleted or edited to
+  // match nobody — loses its stale rows) and place the desired set. Manual
+  // and universe placements are never touched (R1).
+  return replaceRuleRows(api, campaignId, desiredRows);
+}
 
-  if (clearableOuIds.length > 0) {
-    const { error: clearError } = await scoped
-      .from("campaign_worker_ou")
-      .delete()
-      .eq("assignment_source", "rule")
-      .in("ou_id", clearableOuIds);
-    if (clearError) throw clearError;
-  }
+export type RecomputeOuAssignmentsResult = {
+  /** Rule rows the RPC inserted. */
+  inserted: number;
+  /** Rule rows the RPC withdrew before re-placing (`assignment_source = 'rule'` only). */
+  removed: number;
+  /** Desired rows the RPC left out because the worker already holds a unit in that group (C-a). */
+  skipped: number;
+};
 
-  if (desiredRows.length === 0) {
-    return { inserted: 0, removed: 0 };
-  }
-
-  const insertRows = desiredRows.map((r) => ({
-    ou_id: r.ou_id,
-    worker_id: r.worker_id,
-    is_primary: false,
-    assignment_source: "rule",
-  }));
-
-  const { error: insertError } = await scoped.from("campaign_worker_ou").insert(insertRows);
-  if (insertError) throw insertError;
-
-  return { inserted: insertRows.length, removed: 0 };
+async function replaceRuleRows(
+  api: ReturnType<typeof structureApi>,
+  campaignId: number,
+  rows: DesiredRuleRow[]
+): Promise<RecomputeOuAssignmentsResult> {
+  const res = await api.placements.replaceRuleRows({ campaignId, rows });
+  return { inserted: res.inserted, removed: res.removed, skipped: res.skipped };
 }

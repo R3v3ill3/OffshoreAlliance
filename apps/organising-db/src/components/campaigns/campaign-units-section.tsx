@@ -672,10 +672,17 @@ export function CampaignUnitsSection({
       queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
       const inserted = result?.inserted ?? 0;
+      const skipped = result?.skipped ?? 0;
+      // Stage 6 (R1): a matched worker who already holds a manual / universe
+      // placement in the unit's group is skipped, not withdrawn and re-placed.
+      const skippedNote =
+        skipped > 0
+          ? `${skipped} worker${skipped === 1 ? "" : "s"} already placed in another unit of the same group.`
+          : null;
       setRecomputeMessage(
         inserted > 0
-          ? `Rules assigned ${inserted} worker${inserted === 1 ? "" : "s"} to matching units.`
-          : "No campaign workers matched the current rules."
+          ? `Rules assigned ${inserted} worker${inserted === 1 ? "" : "s"} to matching units.${skippedNote ? ` ${skippedNote}` : ""}`
+          : skippedNote ?? "No campaign workers matched the current rules."
       );
       setTimeout(() => setRecomputeMessage(null), 5000);
     },

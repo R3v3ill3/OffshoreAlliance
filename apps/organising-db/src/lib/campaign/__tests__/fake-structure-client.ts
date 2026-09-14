@@ -11,6 +11,11 @@
  * default per RPC (the wrapper's zod schema accepts each default).
  *
  * Not a spy and not a `vi.mock`: plain data, like the wall-chart harness.
+ *
+ * Stage 6: `range(from, to)` slices the table's rows (so the paging loops of
+ * §3.10 can be exercised with 2,500 synthetic rows), `single()` / `not()` /
+ * `ilike()` / `neq()` are recorded like the other builder calls, and the
+ * Stage 6 RPCs have static defaults.
  */
 
 import type { PostgrestErrorLike } from "../structure-api";
@@ -43,6 +48,8 @@ export interface FakeStructureClientOptions {
 
 const DEFAULT_RPC_RESULTS: Readonly<Record<string, unknown>> = {
   structure_units_bulk_save: { deleted_ou_ids: [], updated_ou_ids: [], created: [], placements_removed: 0 },
+  structure_units_create: { units: [], inserted: 0, moved: 0, skipped: 0, displaced: 0 },
+  structure_placements_replace_rule_rows: { removed: 0, inserted: 0, skipped: 0 },
   structure_unit_update: { ou_id: 0, updated_keys: [] },
   structure_placements_assign: { inserted: 0, moved: 0, skipped: 0, displaced: 0 },
   structure_placements_unassign: { removed: 0 },
@@ -53,7 +60,8 @@ type ChainResult = { data: unknown; error: PostgrestErrorLike | null; count: num
 
 class FakeChain implements PromiseLike<ChainResult> {
   private write = false;
-  private single = false;
+  private singleRow = false;
+  private page: { from: number; to: number } | null = null;
 
   constructor(
     private readonly record: RecordedFromCall,
@@ -80,6 +88,20 @@ class FakeChain implements PromiseLike<ChainResult> {
   limit(...args: unknown[]): this {
     return this.note("limit", args);
   }
+  neq(...args: unknown[]): this {
+    return this.note("neq", args);
+  }
+  not(...args: unknown[]): this {
+    return this.note("not", args);
+  }
+  ilike(...args: unknown[]): this {
+    return this.note("ilike", args);
+  }
+  /** Records the page and slices the table's rows to it (`from`..`to` inclusive, as PostgREST). */
+  range(from: number, to: number): this {
+    this.page = { from, to };
+    return this.note("range", [from, to]);
+  }
   delete(...args: unknown[]): this {
     this.write = true;
     return this.note("delete", args);
@@ -97,8 +119,12 @@ class FakeChain implements PromiseLike<ChainResult> {
     return this.note("upsert", args);
   }
   maybeSingle(): this {
-    this.single = true;
+    this.singleRow = true;
     return this.note("maybeSingle", []);
+  }
+  single(): this {
+    this.singleRow = true;
+    return this.note("single", []);
   }
 
   private resolve(): ChainResult {
@@ -106,8 +132,9 @@ class FakeChain implements PromiseLike<ChainResult> {
     if (this.write) {
       return { data: null, error, count: this.opts.counts?.[this.record.table] ?? null };
     }
-    const rows = this.opts.tables?.[this.record.table] ?? [];
-    return { data: this.single ? (rows[0] ?? null) : [...rows], error, count: null };
+    const all = this.opts.tables?.[this.record.table] ?? [];
+    const rows = this.page ? all.slice(this.page.from, this.page.to + 1) : [...all];
+    return { data: this.singleRow ? (rows[0] ?? null) : rows, error, count: null };
   }
 
   then<TResult1 = ChainResult, TResult2 = never>(

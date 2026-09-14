@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { toE164 } from "@/lib/phone/normalise-phone";
+import { structureApi } from "@/lib/campaign/structure-api";
+import { structureErrorMessage, structureErrorStatus } from "@/lib/campaign/structure-error-message";
 import {
   matchRow,
   buildWorkerIndex,
@@ -281,25 +283,24 @@ export async function POST(
     }
 
     if (body.ou_id != null) {
-      const { error: ouAssignErr } = await supabase.from("campaign_worker_ou").upsert(
-        {
-          ou_id: body.ou_id,
-          worker_id: workerId,
-          is_primary: false,
-          assignment_source: "manual",
-        },
-        {
-          onConflict: "ou_id,worker_id",
-          ignoreDuplicates: true,
-        }
-      );
-      if (ouAssignErr) {
+      // WP2.2 Stage 6 (wp2.2.md §3.11 row 18): the legacy upsert ignored a
+      // duplicate `(ou_id, worker_id)` → `p_on_conflict: "skip"`.
+      try {
+        await structureApi(supabase).placements.assign({
+          campaignId,
+          ouId: body.ou_id,
+          workerIds: [workerId],
+          source: "manual",
+          isPrimary: false,
+          onConflict: "skip",
+        });
+      } catch (ouAssignErr) {
         return NextResponse.json(
           {
             success: false,
-            error: `OU assignment failed: ${ouAssignErr.message}`,
+            error: `OU assignment failed: ${structureErrorMessage(ouAssignErr, "unknown error")}`,
           },
-          { status: 500 }
+          { status: structureErrorStatus(ouAssignErr) }
         );
       }
       await stampEmployerWorksiteFromOu(supabase, [workerId], ouUnitBasis);

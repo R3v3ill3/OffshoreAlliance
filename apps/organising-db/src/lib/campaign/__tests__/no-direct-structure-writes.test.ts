@@ -3,12 +3,12 @@
  * client write to `campaign_organising_units` or `campaign_worker_ou` outside
  * the structure API.
  *
- * Case 1 documents today's inventory (the 21 files of §2.3; each later stage
- * removes the files it switches and this list shrinks with it — 8 remain
- * after Stage 5). Case 2 is the
- * acceptance criterion itself and is EXPECTED to fail until Stage 6 — it is
- * deliberately not skipped or marked `fails`. Case 3 pins the sync-on-open
- * route (§2.3 row 15a) to "no direct write of its own".
+ * Case 1 documents the inventory (the 21 files of §2.3; each stage removed
+ * the files it switched and the list shrank with it — Stage 4 rows 1–8,
+ * Stage 5 rows 9–13, Stage 6 rows 14–21 — so it is now empty). Case 2 is the
+ * acceptance criterion itself: green since Stage 6, and the build fails on
+ * any regression. Case 3 pins the sync-on-open route (§2.3 row 15a) to "no
+ * direct write of its own".
  *
  * Scanner: the §2.3 regex, made robust to the `as never` cast inside or after
  * `.from(...)` and to chains broken across lines.
@@ -29,22 +29,14 @@ export const DIRECT_WRITE_PATTERN =
 const ANY_FROM_PATTERN = /\.from\(\s*['"]campaign_(?:organising_units|worker_ou)['"]/;
 
 /**
- * Files (relative to `src/`) that still write directly to the two tables —
- * §2.3 rows 14–21. Sorted. Each writer switch removes its file from this
- * list; Stage 4 (§11.8) removed the eight wall-chart writers, rows 1–8, and
- * Stage 5 (§11.12) the settings, wizard, units-section and hook writers,
- * rows 9–13 (row 13's real path was lib/campaign/, not lib/hooks/; D7).
+ * Files (relative to `src/`) that still write directly to the two tables.
+ * Empty since Stage 6: Stage 4 (§11.8) removed the eight wall-chart writers,
+ * rows 1–8; Stage 5 (§11.12) the settings, wizard, units-section and hook
+ * writers, rows 9–13 (row 13's real path was lib/campaign/, not lib/hooks/;
+ * D7); Stage 6 (§11.15) the Recompute and universe-sync libraries and the
+ * six API routes, rows 14–21.
  */
-export const REMAINING_DIRECT_WRITERS: readonly string[] = [
-  "app/api/campaign-import/apply/route.ts",
-  "app/api/campaigns/[id]/add-workers/route.ts",
-  "app/api/campaigns/[id]/create-worker/route.ts",
-  "app/api/campaigns/[id]/workers/duplicates/route.ts",
-  "app/api/worker-import/apply/route.ts",
-  "app/api/worker-import/organising-units/route.ts",
-  "lib/campaign/recompute-ou-assignments.ts",
-  "lib/workers/sync-campaign-universe.ts",
-];
+export const REMAINING_DIRECT_WRITERS: readonly string[] = [];
 
 /** Row 15a: sync-on-open. Writes only through row 15 (`sync-campaign-universe.ts`). */
 const SYNC_ON_OPEN_ROUTE = "app/api/campaigns/[id]/sync-universe-workers/route.ts";
@@ -82,7 +74,7 @@ describe("no direct structure writes (wp2.2.md §3.9 guard)", () => {
     expect(found).toEqual([...REMAINING_DIRECT_WRITERS].sort());
   });
 
-  it("no direct writers remain (acceptance criterion; expected to fail until Stage 6)", () => {
+  it("no direct writers remain (acceptance criterion)", () => {
     const found = scanDirectWriters();
     expect(
       found,

@@ -12,6 +12,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { POSTGREST_PAGE_SIZE } from "@/lib/supabase/fetch-all-rows";
 
 import { StructureApiError } from "../structure-api";
 import {
@@ -396,16 +397,16 @@ describe("saveUnitDrafts — the exact structure_units_bulk_save call", () => {
     expect(fake.rpcCalls()[0].args).toMatchObject({ p_delete_ou_ids: [], p_creates: [] });
   });
 
-  it("treats a failed read of the current units as 'nothing to delete', as the legacy sequence did", async () => {
+  it("A4 (Stage 6): throws on a failed read of the current units and issues no RPC — a save is never planned from a read that did not happen", async () => {
     const fake = createFakeStructureClient({
       errors: { campaign_organising_units: { code: "PGRST000", message: "read failed" } },
     });
-    await saveUnitDrafts(fake.client, CAMPAIGN, [draft({ draft_id: "srv_9", ou_id: 9, ou_type: "shift", name: "Days" })]);
-    expect(fake.rpcCalls()[0].args).toMatchObject({
-      p_delete_ou_ids: [],
-      p_updates: [{ ou_id: 9, name: "Days", total_workers_estimated: null, unit_basis: null }],
-      p_creates: [],
-    });
+    const thrown = await saveUnitDrafts(fake.client, CAMPAIGN, [draft({ draft_id: "srv_9", ou_id: 9, ou_type: "shift", name: "Days" })]).catch((e: unknown) => e);
+    // A real Error (fix round 1, A4): the settings toast shows `err.message` only for an Error instance.
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toBe("read failed");
+    expect(fake.trace()).toEqual(["from:campaign_organising_units.select.eq.order"]);
+    expect(fake.rpcCalls()).toEqual([]);
   });
 });
 
@@ -482,7 +483,7 @@ describe("savePlacements — the exact unassign / assign calls", () => {
     ]);
 
     expect(fake.trace()).toEqual([
-      "from:campaign_worker_ou.select.in",
+      "from:campaign_worker_ou.select.in.order.order.range",
       "rpc:structure_placements_unassign",
       "rpc:structure_placements_assign",
       "rpc:structure_placements_assign",
@@ -490,6 +491,9 @@ describe("savePlacements — the exact unassign / assign calls", () => {
     expect(fake.fromCalls()[0].ops).toEqual([
       { method: "select", args: ["ou_id, worker_id"] },
       { method: "in", args: ["ou_id", [11, 12, 20]] },
+      { method: "order", args: ["ou_id", { ascending: true }] },
+      { method: "order", args: ["worker_id", { ascending: true }] },
+      { method: "range", args: [0, POSTGREST_PAGE_SIZE - 1] },
     ]);
     expect(fake.rpcCalls().map((c) => c.args)).toEqual([
       { p_campaign_id: CAMPAIGN, p_worker_ids: [105], p_ou_id: 20, p_within_group_id: null },
@@ -513,6 +517,30 @@ describe("savePlacements — the exact unassign / assign calls", () => {
     expect(outcome).toMatchObject({ removed: 1, inserted: 2, moved: 0, skipped: 1 });
   });
 
+  it("Stage 6 (§8.2 unpaged read): pages the placement read in PAGE_SIZE ranges until a short page, so a row past PostgREST's max-rows is neither re-assigned nor left out of the unassign set", async () => {
+    const n = 2_500;
+    const rows = Array.from({ length: n }, (_, i) => ({ ou_id: 5, worker_id: i + 1 }));
+    const fake = createFakeStructureClient({ tables: { campaign_worker_ou: rows } });
+    fake.answerRpc("structure_placements_unassign", { data: { removed: 1 } });
+    // The grid keeps every row but the last one, and adds one new worker.
+    const desired = [...rows.slice(0, n - 1), { ou_id: 5, worker_id: 9_999 }];
+    const outcome = await savePlacements(fake.client, CAMPAIGN, [5], desired);
+
+    const reads = fake.fromCalls().filter((c) => c.table === "campaign_worker_ou");
+    expect(reads).toHaveLength(Math.ceil(n / POSTGREST_PAGE_SIZE));
+    expect(reads.map((c) => c.ops.find((o) => o.method === "range")?.args)).toEqual([
+      [0, 999],
+      [1000, 1999],
+      [2000, 2999],
+    ]);
+    expect(outcome.plan.unassign).toEqual([{ ouId: 5, workerIds: [n] }]);
+    expect(outcome.plan.assign).toEqual([{ ouId: 5, workerIds: [9_999] }]);
+    expect(fake.rpcCalls().map((c) => [c.name, c.args.p_worker_ids])).toEqual([
+      ["structure_placements_unassign", [n]],
+      ["structure_placements_assign", [9_999]],
+    ]);
+  });
+
   it("with no units in scope reads nothing and only assigns", async () => {
     const fake = createFakeStructureClient();
     await savePlacements(fake.client, CAMPAIGN, [], [{ ou_id: 5, worker_id: 1 }]);
@@ -522,7 +550,7 @@ describe("savePlacements — the exact unassign / assign calls", () => {
   it("with an unchanged grid issues no RPC at all", async () => {
     const fake = createFakeStructureClient({ tables: { campaign_worker_ou: [{ ou_id: 5, worker_id: 1 }] } });
     const outcome = await savePlacements(fake.client, CAMPAIGN, [5], [{ ou_id: 5, worker_id: 1 }]);
-    expect(fake.trace()).toEqual(["from:campaign_worker_ou.select.in"]);
+    expect(fake.trace()).toEqual(["from:campaign_worker_ou.select.in.order.order.range"]);
     expect(outcome).toMatchObject({ removed: 0, inserted: 0, skipped: 0 });
   });
 
@@ -536,6 +564,6 @@ describe("savePlacements — the exact unassign / assign calls", () => {
     const err = await savePlacements(refused.client, CAMPAIGN, [5], [{ ou_id: 6, worker_id: 1 }]).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(StructureApiError);
     expect((err as StructureApiError).kind).toBe("forbidden");
-    expect(refused.trace()).toEqual(["from:campaign_worker_ou.select.in", "rpc:structure_placements_unassign"]);
+    expect(refused.trace()).toEqual(["from:campaign_worker_ou.select.in.order.order.range", "rpc:structure_placements_unassign"]);
   });
 });

@@ -18,6 +18,29 @@ import { isStructureApiError, type StructureApiError } from "./structure-api";
 /** The K1 sentence (wp2.2.md §3.4 C-c): a same-group copy is refused, not converted to a move. */
 export const ALREADY_IN_GROUP_MESSAGE = "Already in this group — use Move.";
 
+/**
+ * Stage 6 (wp2.2.md §3.11 rows 16–21): the HTTP status an API route answers
+ * with for a refused structure write — 403 `forbidden`, 400 for an argument /
+ * rule / duplicate refusal, 404 `not_found`, 500 otherwise (including a
+ * missing schema and anything that is not a `StructureApiError`).
+ */
+export function structureErrorStatus(err: unknown): number {
+  if (!isStructureApiError(err)) return 500;
+  switch (err.kind) {
+    case "forbidden":
+      return 403;
+    case "invalid_argument":
+    case "rule_violation":
+    case "duplicate_in_group":
+    case "duplicate_group":
+      return 400;
+    case "not_found":
+      return 404;
+    default:
+      return 500;
+  }
+}
+
 export function structureErrorMessage(err: unknown, fallback: string): string {
   if (isStructureApiError(err)) {
     switch (err.kind) {

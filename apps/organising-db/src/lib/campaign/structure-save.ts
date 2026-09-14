@@ -31,6 +31,7 @@
  * of the two structure tables is constructed here.
  */
 
+import { fetchAllRows, POSTGREST_PAGE_SIZE } from "@/lib/supabase/fetch-all-rows";
 import {
   structureApi,
   type JsonObject,
@@ -45,11 +46,12 @@ import {
 // Client shape (reads only; every write goes through structureApi)
 // ---------------------------------------------------------------------------
 
-/** The read chains these helpers issue (`select(...).eq(...).order(...)` / `select(...).in(...)`). */
-interface ReadChain extends PromiseLike<{ data: unknown; error: unknown }> {
+/** The read chains these helpers issue (`select(...).eq(...).order(...)` / `select(...).in(...).order(...).order(...).range(...)`). */
+interface ReadChain extends PromiseLike<{ data: unknown; error: { message: string } | null }> {
   eq(column: string, value: unknown): ReadChain;
   in(column: string, values: unknown[]): ReadChain;
   order(column: string, options?: { ascending?: boolean }): ReadChain;
+  range(from: number, to: number): ReadChain;
 }
 interface ReadTable {
   select(columns: string): ReadChain;
@@ -407,17 +409,24 @@ export interface SaveUnitDraftsOutcome<T extends UnitDraftInput> {
  * `structure_units_bulk_save` — always, even when there is nothing to
  * change, so a refused save (42501) is a visible error and never a silent
  * "saved" (D41). Returns the drafts with their server ids resolved.
+ *
+ * A failed read throws (Stage 6, A4): the legacy sequence went on with
+ * `existing = []`, which planned a save from nothing — no deletes, every
+ * kept unit re-created, `display_order` restarted at 0. A save must never
+ * be planned from a read that did not happen. The read is not paged: a
+ * campaign's units number in the hundreds (the wizard renders them all),
+ * far below PostgREST's max-rows.
  */
 export async function saveUnitDrafts<T extends UnitDraftInput>(
   client: StructureSaveClient,
   campaignId: number,
   drafts: readonly T[]
 ): Promise<SaveUnitDraftsOutcome<T>> {
-  // As before, a failed read leaves `existing` empty (nothing is deleted).
-  const { data } = await (client.from("campaign_organising_units") as ReadTable)
+  const { data, error } = await (client.from("campaign_organising_units") as ReadTable)
     .select(EXISTING_UNIT_COLUMNS)
     .eq("campaign_id", campaignId)
     .order("ou_id", { ascending: true });
+  if (error) throw new Error(error.message);
   const existing = ((data as ExistingUnitRow[] | null) ?? []).map((r) => ({
     ou_id: r.ou_id,
     ou_type: r.ou_type,
@@ -497,6 +506,11 @@ export interface SavePlacementsOutcome {
  * `structure_placements_assign` (`manual`, not primary, `p_on_conflict:
  * "skip"`) per unit with rows to add. A read failure throws (the legacy
  * delete's error did too); nothing is written blind.
+ *
+ * The read is paged (Stage 6, §8.2 "Unpaged placement read"): `.order("ou_id")
+ * .order("worker_id").range(from, from + PAGE_SIZE - 1)` until a short page,
+ * so a row beyond PostgREST's max-rows is neither treated as absent (and so
+ * re-assigned → skipped) nor left out of the unassign set.
  */
 export async function savePlacements(
   client: StructureSaveClient,
@@ -506,11 +520,17 @@ export async function savePlacements(
 ): Promise<SavePlacementsOutcome> {
   let current: PlacementKey[] = [];
   if (ouIds.length > 0) {
-    const { data, error } = await (client.from("campaign_worker_ou") as ReadTable)
-      .select("ou_id, worker_id")
-      .in("ou_id", [...ouIds]);
-    if (error) throw error;
-    current = ((data as PlacementKey[] | null) ?? []).map((r) => ({ ou_id: r.ou_id, worker_id: r.worker_id }));
+    const rows = await fetchAllRows<PlacementKey>(
+      (from, to) =>
+        (client.from("campaign_worker_ou") as ReadTable)
+          .select("ou_id, worker_id")
+          .in("ou_id", [...ouIds])
+          .order("ou_id", { ascending: true })
+          .order("worker_id", { ascending: true })
+          .range(from, to) as PromiseLike<{ data: PlacementKey[] | null; error: { message: string } | null }>,
+      POSTGREST_PAGE_SIZE
+    );
+    current = rows.map((r) => ({ ou_id: r.ou_id, worker_id: r.worker_id }));
   }
 
   const plan = planPlacementsSave(current, desired);

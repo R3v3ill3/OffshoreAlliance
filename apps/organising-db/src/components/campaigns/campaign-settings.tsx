@@ -463,7 +463,7 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
       toast.success("Employers and worksites saved.");
     },
     onError: (error: Error) => {
-      toast.error(error.message || "Could not save employers and worksites.");
+      toast.error(structureErrorMessage(error, "Could not save employers and worksites."));
     },
   });
 

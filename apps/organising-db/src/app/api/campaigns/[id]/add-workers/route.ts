@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { structureApi } from "@/lib/campaign/structure-api";
+import { structureErrorMessage, structureErrorStatus } from "@/lib/campaign/structure-error-message";
 import {
   stampEmployerWorksiteFromOu,
   syncWorkersToMatchingCampaigns,
@@ -142,55 +144,63 @@ export async function POST(
     const nextOrder =
       (maxRow?.display_order != null ? Number(maxRow.display_order) : -1) + 1;
 
-    const { data: newOu, error: createErr } = await supabase
-      .from("campaign_organising_units")
-      .insert({
-        campaign_id: campaignId,
-        name: body.new_unit.name,
-        ou_type: body.new_unit.ou_type,
-        display_order: nextOrder,
-        source: "manual",
-      })
-      .select("ou_id, name")
-      .single();
-    if (createErr || !newOu) {
+    // WP2.2 Stage 6 (wp2.2.md §3.11 row 17): one `structure_units_create`
+    // with the legacy insert's columns.
+    try {
+      const created = await structureApi(supabase).units.create({
+        campaignId,
+        units: [
+          {
+            name: body.new_unit.name,
+            ou_type: body.new_unit.ou_type,
+            display_order: nextOrder,
+            source: "manual",
+          },
+        ],
+      });
+      const newOu = created.units[0];
+      if (!newOu) throw new Error("no row returned");
+      targetOuId = newOu.ou_id;
+      createdOu = { ou_id: newOu.ou_id, name: body.new_unit.name };
+    } catch (createErr) {
       return NextResponse.json(
         {
           success: false,
-          error: `Unit create failed: ${createErr?.message ?? "no row returned"}`,
+          error: `Unit create failed: ${structureErrorMessage(createErr, "no row returned")}`,
         },
-        { status: 500 }
+        { status: structureErrorStatus(createErr) }
       );
     }
-    targetOuId = newOu.ou_id;
-    createdOu = { ou_id: newOu.ou_id, name: newOu.name };
   }
 
   // Step 3: assign workers to the target unit if one is set.
+  // WP2.2 Stage 6 (row 17): one `structure_placements_assign` for the whole
+  // list; the legacy upsert ignored a duplicate `(ou_id, worker_id)`, so
+  // `p_on_conflict: "skip"` — a worker already in a unit of that group is
+  // skipped too (C-a) and counted in `ou_assignments_skipped`.
   let ouAssignmentsCount = 0;
+  let ouAssignmentsSkipped = 0;
   if (targetOuId != null) {
-    const ouRows = body.worker_ids.map((worker_id) => ({
-      ou_id: targetOuId as number,
-      worker_id,
-      is_primary: false,
-      assignment_source: "manual",
-    }));
-    const { error: ouAssignErr } = await supabase
-      .from("campaign_worker_ou")
-      .upsert(ouRows, {
-        onConflict: "ou_id,worker_id",
-        ignoreDuplicates: true,
+    try {
+      const res = await structureApi(supabase).placements.assign({
+        campaignId,
+        ouId: targetOuId,
+        workerIds: body.worker_ids,
+        source: "manual",
+        isPrimary: false,
+        onConflict: "skip",
       });
-    if (ouAssignErr) {
+      ouAssignmentsCount = res.inserted;
+      ouAssignmentsSkipped = res.skipped;
+    } catch (ouAssignErr) {
       return NextResponse.json(
         {
           success: false,
-          error: `OU assignment failed: ${ouAssignErr.message}`,
+          error: `OU assignment failed: ${structureErrorMessage(ouAssignErr, "unknown error")}`,
         },
-        { status: 500 }
+        { status: structureErrorStatus(ouAssignErr) }
       );
     }
-    ouAssignmentsCount = ouRows.length;
     if (targetOuBasis) {
       await stampEmployerWorksiteFromOu(supabase, body.worker_ids, targetOuBasis);
     }
@@ -202,6 +212,7 @@ export async function POST(
     success: true,
     membership_count: membershipRows.length,
     ou_assignments_count: ouAssignmentsCount,
+    ou_assignments_skipped: ouAssignmentsSkipped,
     created_ou: createdOu,
   });
 }

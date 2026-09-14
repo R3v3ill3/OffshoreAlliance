@@ -293,6 +293,10 @@ describe("wizard and settings save flows through the structure API (wp2.2.md §1
         [
           { method: "select", args: ["ou_id, worker_id"] },
           { method: "in", args: ["ou_id", [10, 11, 20]] },
+          // Stage 6: the read is paged (§8.2 "Unpaged placement read").
+          { method: "order", args: ["ou_id", { ascending: true }] },
+          { method: "order", args: ["worker_id", { ascending: true }] },
+          { method: "range", args: [0, 999] },
         ],
       ]);
       expect(rpcInvocations()).toEqual([

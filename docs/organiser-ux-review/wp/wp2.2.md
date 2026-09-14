@@ -1162,6 +1162,138 @@ Result across both runs: run 1 median 6682ms (runs 6682/5688/7090), run 2 median
   `universe` 0 → 0; `manual` 111 unchanged; total 111; `rows_logged` 0; post-checks passed; committed.
 - Not yet run on dev: contract suite (Stage 3, needs `OUX_CONTRACT_*` credentials), 2.2b (after Stage 6).
 
+#### Stage 3 — contract suite on normal dev, run 1 (before 2.2b) (2026-09-14, child session)
+
+Run on branch `feat/oux-wp2.2-structure-api` at commit `005a2cd`, from `apps/organising-db`, with the command below; the run
+failed to reach the dev project (proxy refused the tunnel to `dpnnmkhabysfdogllsyh.supabase.co`) before any test body ran, so
+all 58 tests were skipped; the one permitted retry with `NODE_USE_ENV_PROXY=1` prepended failed the same way (exit code 1
+both times). Raw output of both attempts follows; no diagnosis attempted.
+
+Command (attempt 1; attempt 2 identical with `NODE_USE_ENV_PROXY=1` prepended):
+
+```
+OUX_CONTRACT_SUPABASE_URL=https://dpnnmkhabysfdogllsyh.supabase.co \
+OUX_CONTRACT_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRwbm5ta2hhYnlzZmRvZ2xsc3loIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NzAzOTUsImV4cCI6MjA5NjA0NjM5NX0.hPLcsxELs3gvVTUu7kGHjjxQsvuE0l0LQgfiPurNb7k \
+OUX_CONTRACT_USER_EMAIL=<from E2E_USER_EMAIL> \
+OUX_CONTRACT_USER_PASSWORD=<from E2E_USER_PASSWORD> \
+OUX_CONTRACT_FOREIGN_CAMPAIGN_ID=3 \
+pnpm test:contract 2>&1 | tee /tmp/contract-run-1.log; echo "exit=${PIPESTATUS[0]}"
+```
+
+Attempt 1 raw output (`exit=1`):
+
+```
+
+> organising-db@0.1.0 test:contract /home/user/OffshoreAlliance/apps/organising-db
+> vitest run -c vitest.contract.config.ts
+
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 /home/user/OffshoreAlliance/apps/organising-db
+
+ ❯ src/lib/campaign/__contract__/structure-api.contract.test.ts (58 tests | 58 skipped) 256ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/lib/campaign/__contract__/structure-api.contract.test.ts [ src/lib/campaign/__contract__/structure-api.contract.test.ts ]
+Error: WP2.2 contract suite: sign-in failed: Unexpected token 'H', "Host not i"... is not valid JSON
+ ❯ src/lib/campaign/__contract__/structure-api.contract.test.ts:284:11
+    282|   const signIn = await client.auth.signInWithPassword({ email: env.ema…
+    283|   if (signIn.error || !signIn.data.session) {
+    284|     throw new Error(`WP2.2 contract suite: sign-in failed: ${signIn.er…
+       |           ^
+    285|   }
+    286|   api = structureApi(client);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  58 skipped (58)
+   Start at  08:58:52
+   Duration  900ms (transform 130ms, setup 0ms, collect 202ms, tests 256ms, environment 0ms, prepare 59ms)
+
+ ELIFECYCLE  Command failed with exit code 1.
+exit=1
+```
+
+Attempt 2 raw output, `NODE_USE_ENV_PROXY=1` prepended (`exit=1`):
+
+```
+(node:2249) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2262) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> organising-db@0.1.0 test:contract /home/user/OffshoreAlliance/apps/organising-db
+> vitest run -c vitest.contract.config.ts
+
+(node:2275) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 /home/user/OffshoreAlliance/apps/organising-db
+
+(node:2275) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2311) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+stderr | src/lib/campaign/__contract__/structure-api.contract.test.ts
+TypeError: fetch failed
+    at node:internal/deps/undici/undici:14976:13
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at _handleRequest (/home/user/OffshoreAlliance/node_modules/.pnpm/@supabase+auth-js@2.104.1/node_modules/@supabase/auth-js/src/lib/fetch.ts:187:14)
+    at _request (/home/user/OffshoreAlliance/node_modules/.pnpm/@supabase+auth-js@2.104.1/node_modules/@supabase/auth-js/src/lib/fetch.ts:160:16)
+    at SupabaseAuthClient.signInWithPassword (/home/user/OffshoreAlliance/node_modules/.pnpm/@supabase+auth-js@2.104.1/node_modules/@supabase/auth-js/src/GoTrueClient.ts:1048:15)
+    at /home/user/OffshoreAlliance/apps/organising-db/src/lib/campaign/__contract__/structure-api.contract.test.ts:282:18
+    at callSuiteHook (file:///home/user/OffshoreAlliance/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:964:22)
+    at runSuite (file:///home/user/OffshoreAlliance/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1175:29)
+    at runFiles (file:///home/user/OffshoreAlliance/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1262:5)
+    at startTests (file:///home/user/OffshoreAlliance/node_modules/.pnpm/@vitest+runner@2.1.9/node_modules/@vitest/runner/dist/index.js:1271:3) {
+  [cause]: DOMException [Error]: Request was cancelled.
+      at new DOMException (node:internal/per_context/domexception:76:18)
+      at makeAppropriateNetworkError (node:internal/deps/undici/undici:9559:182)
+      at httpNetworkFetch (node:internal/deps/undici/undici:11270:18)
+      at processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at httpNetworkOrCacheFetch (node:internal/deps/undici/undici:11145:33)
+      at httpFetch (node:internal/deps/undici/undici:10978:37)
+      at node:internal/deps/undici/undici:10740:20
+      at mainFetch (node:internal/deps/undici/undici:10730:20) {
+    cause: RequestAbortedError [AbortError]: Proxy response (403) !== 200 when HTTP Tunneling
+        at Client.connect (node:internal/deps/undici/undici:8581:26)
+        at processTicksAndRejections (node:internal/process/task_queues:103:5) {
+      code: 'UND_ERR_ABORTED',
+      [Symbol(undici.error.UND_ERR)]: true,
+      [Symbol(undici.error.UND_ERR_ABORT)]: true,
+      [Symbol(undici.error.UND_ERR_ABORTED)]: true
+    }
+  }
+}
+
+ ❯ src/lib/campaign/__contract__/structure-api.contract.test.ts (58 tests | 58 skipped) 331ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/lib/campaign/__contract__/structure-api.contract.test.ts [ src/lib/campaign/__contract__/structure-api.contract.test.ts ]
+Error: WP2.2 contract suite: sign-in failed: fetch failed
+ ❯ src/lib/campaign/__contract__/structure-api.contract.test.ts:284:11
+    282|   const signIn = await client.auth.signInWithPassword({ email: env.ema…
+    283|   if (signIn.error || !signIn.data.session) {
+    284|     throw new Error(`WP2.2 contract suite: sign-in failed: ${signIn.er…
+       |           ^
+    285|   }
+    286|   api = structureApi(client);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  58 skipped (58)
+   Start at  08:59:03
+   Duration  1.03s (transform 138ms, setup 0ms, collect 216ms, tests 331ms, environment 0ms, prepare 64ms)
+
+ ELIFECYCLE  Command failed with exit code 1.
+exit=1
+```
+
 #### Clone rehearsal — realistic data set `yqjkuobcawvigsfpgrcm` (2026-09-14, §0 step 5 / §4.4)
 
 - **State before (read-only, connector):** marker `clone @ 2026-09-12 05:48:45+00`; 0 `structure_*`

@@ -1,10 +1,11 @@
 # Organiser UX — current status and next steps
 
-**Written 2026-09-13; updated 2026-09-14 after the WP2.1 production database rollout completed.** This file is the durable handoff for a cloud agent or a new session that does not have this computer or the originating chat. It is operational, not archival. If it disagrees with older prose in `HANDOFF.md` section 7, this file and GitHub win.
+**Written 2026-09-13; updated 2026-09-14 after the WP2.1 production database rollout completed, and again on 2026-09-14 when the integration branch moved from `develop` to `main`.** This file is the durable handoff for a cloud agent or a new session that does not have this computer or the originating chat. It is operational, not archival. If it disagrees with older prose in `HANDOFF.md` section 7, this file and GitHub win.
 
 ## Read this first
 
 - **Phase 0 and phase 1 are complete and live on production.** Do not rerun the phase-1 production run sheet.
+- **The integration branch is `main` (from 2026-09-14).** `develop` is parked at `f5529a4a` (equal to `main` at parking) and is not used: do not branch from it, merge into it, merge from it, or delete it. Every feature branch is cut from `main`; every pull request targets `main`; never push to `main` directly. Because a merge to `main` deploys to Vercel Production immediately and regenerates `packages/db-types/generated.ts` from production, **a pull request that carries a migration is merged only after the operator has applied that migration to production** (promotion gate; `PROGRESS.md` standing notes). Older text below that says `develop` describes the state at the time it was written. The orchestration prompt for this phase is `PHASE2_MAIN_ORCHESTRATION_PROMPT.md` in this directory.
 - **WP2.1 and WP2.3 code are on `main` and deployed to Vercel Production** ([PR #39](https://github.com/R3v3ill3/OffshoreAlliance/pull/39) → `develop` at `de338b5`; [PR #40](https://github.com/R3v3ill3/OffshoreAlliance/pull/40) → `main` at `82ff71c`, both 2026-09-12 UTC). **The WP2.1 schema IS applied to production** (migration 2026-09-13; cleanup and passing postflight 2026-09-14; `wp/wp2.1.md` §15). The live app still does not consume `campaign_groups`, `group_id` or `user_campaign_prefs`; only the F1 matcher (legacy columns) is live.
 - **Do not re-run any WP2.1 script or the migration on production.** The Track B run sheet below is retained as the record of what ran and as the template for WP2.2's own migrations; it is finished for WP2.1.
 - **Next package is WP2.2 Structure API.** Its plan is `docs/organiser-ux-review/wp/wp2.2.md` (approved). §0 steps 1 and 2 are done: production and normal dev both carry the WP2.1 migration (dev verified read-only 2026-09-14 via the Supabase connector: ledger row `20260912035329 wp2_1_campaign_groups` (and `20260913000000 an_survey_reports`) present; `campaign_groups` and `user_campaign_prefs` tables, both `group_id` columns, 4 groups, 8 units all grouped, 111 placements / 111 memberships, 0 flagged units, no membership view, no unique index). **No database action is outstanding.** Stage 1 (migrations, wrapper, unit tests, guard test) may start now.
@@ -28,11 +29,13 @@ Amendments in `DECISIONS.md` override stale text in the original plan and in the
 
 ## Environment safety
 
-| Environment | Ref | Role | Agent access |
+Three Supabase projects exist and stay as they are for the rest of this development phase (do not propose changing the arrangement; returning to two projects is an end-of-programme human task in `PROGRESS.md`):
+
+| Environment | Ref | Role today | Agent access |
 |---|---|---|---|
-| Production | `gteygwfgjvczanmrwgbr` | Live organiser app and data | **Never.** Operator only. |
-| Normal dev | `dpnnmkhabysfdogllsyh` | Thin, noncritical, not production-shaped | Allowed. CLI should stay linked here after any clone work. |
-| Disposable clone | `yqjkuobcawvigsfpgrcm` | Production-shaped WP2.1 rehearsal | Allowed only when isolated (no Vercel, cron, webhooks, or edge functions). |
+| Production | `gteygwfgjvczanmrwgbr` | Live app; `main` → Vercel Production. Has WP2.1 with cleanup. PITR enabled. | **Never.** Operator only, via run sheets the agent prepares. |
+| Normal dev | `dpnnmkhabysfdogllsyh` | Backs every Vercel Preview (all non-`main` branches) and the e2e accounts. Thin: 8 units, 111 placements. Has WP2.1. CLI should stay linked here after any other CLI work. | Read freely; mutate with per-file operator approval. |
+| Realistic data set (`offshore-alliance-wp21-rehearsal`) | `yqjkuobcawvigsfpgrcm` | Production-shaped copy from 2026-09-12 with WP2.1 and cleanup applied: 22 campaigns, 2,407 workers, the 161-unit campaign. Retained for the rest of phase 2 (WP2.5's performance acceptance needs it). Contains real worker contact details and real staff accounts. Not wired to Vercel. Migration ledger one behind the repo (`20260913000000_an_survey_reports`; apply in the next approved run sheet that touches it). | Read freely; mutate only under an approved run sheet. Never wire it to Vercel, cron, webhooks or messaging credentials without the operator's explicit instruction. |
 
 `supabase/.temp/*` is tracked and a fresh clone links to production. Those files always look modified locally. **Never commit them.** Relink to normal dev after any clone or production CLI command.
 
@@ -210,10 +213,10 @@ Mappings, helper tables, and `_oux_hygiene_log` are retained on purpose. Do not 
 A cloud agent picking this up with only GitHub + this repo should:
 
 1. Read this file, then `HANDOFF.md`, `DECISIONS.md`, `PROGRESS.md`, `wp/wp2.1.md`, `wp/wp2.2.md`, and `scripts/data-hygiene/oux-wp2.1/README.md`.
-2. Treat GitHub as source of truth for PR/CI/preview. As of 2026-09-14: PRs #39–#43 merged; `main` = `f5529a4a` (includes regen `9138424f` with WP2.1 symbols); `develop` = `68400084` (3 commits behind `main`); draft PR #41 on `feat/oux-wp2.2-structure-api`; Vercel Production green; validate-migrations green.
+2. Treat GitHub as source of truth for PR/CI/preview. As of 2026-09-14 (after Step 0 of the `main` orchestration): PRs #39–#43 merged; `main` = `f5529a4a` (includes regen `9138424f` with WP2.1 symbols); `develop` parked at `f5529a4a` (equal to `main`; not used); draft PR #41 on `feat/oux-wp2.2-structure-api` targets `main` and carries `origin/main` merged in (`93df7e28`); Vercel Production green; validate-migrations green.
 3. Not run any production SQL, MCP query, or `supabase` command against `gteygwfgjvczanmrwgbr`.
 4. Not run the app locally.
-5. Continue with WP2.2 under the protocol: plan approved by the operator → implement on `feat/oux-wp2.2-structure-api` → verify → fresh review → draft PR into `develop`. Ask before every exact git command, before opening/merging PRs, and before any database mutation.
+5. Continue with WP2.2 under the protocol: plan approved by the operator → implement on `feat/oux-wp2.2-structure-api` → verify → fresh review → draft PR #41 into `main`, merged by the operator only after WP2.2a is on production (G1). Ask before every exact git command that pushes or opens a pull request, before merging, and before any database mutation.
 6. Update `PROGRESS.md` / `HANDOFF.md` only after evidence exists (CI green, merge SHAs, operator confirmation).
 7. Track B for WP2.1 is done on production and dev; no database action is outstanding until WP2.2a exists. Prepare WP2.2a/2.2b run sheets the same way (one file per submission, guard line pre-inserted, read-only verification appended). Dev may be applied by the operator's CLI `db push` or, with the operator's approval, by the agent through the Supabase connector's `apply_migration` — never production.
 

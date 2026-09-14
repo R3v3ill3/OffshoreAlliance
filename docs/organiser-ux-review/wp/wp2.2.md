@@ -1,11 +1,11 @@
 # WP2.2 — Structure API (transactional RPCs) and the end of direct client writes
 
-Status: **approved 2026-09-13 (R1, M2-a, K1, G1; §0 sequence clarified). Implementation not started.**
-Written 2026-09-13 against `develop` at `1666660` (main `5fe7c93`). Depends on WP2.1 (code merged via
+Status: **approved 2026-09-13 (R1, M2-a, K1, G1; §0 sequence clarified). Revision 4 (2026-09-14): the integration branch is `main`. Implementation not started.**
+Written 2026-09-13 against `develop` at `1666660` (main `5fe7c93`); revised 2026-09-14 against `main` at `f5529a4a`. Depends on WP2.1 (code merged via
 PR #39 `de338b5` / #40 `82ff71c`; **schema applied to production 2026-09-13, cleanup and postflight
 complete 2026-09-14 — `wp/wp2.1.md` §15; also on normal dev, found applied 2026-09-14**).
 
-Branch (not yet created): `feat/oux-wp2.2-structure-api` off `develop`; draft PR into `develop`.
+Branch: `feat/oux-wp2.2-structure-api` (cut from `develop` at `1666660` before `develop` was parked; `origin/main` at `f5529a4a` merged in with `--no-ff` on 2026-09-14). Draft [PR #41](https://github.com/R3v3ill3/OffshoreAlliance/pull/41) into **`main`** (retargeted from `develop` in Step 0 of `PHASE2_MAIN_ORCHESTRATION_PROMPT.md`, 2026-09-14). `develop` is parked and not used; see `PROGRESS.md` standing notes and §10 Revision 4.
 
 This document follows `wp/README.md`: specification → plan → approval → deviations → verification →
 review. §0 is placed first because the operator must answer it before any implementation stage can run
@@ -44,7 +44,7 @@ units grouped, 111/111 placements and memberships, no view, no unique index) —
 | 3 | — | implementer | Build WP2.2: code + two new migrations (2.2a additive RPCs, 2.2b enforcement) + two small scripts (§3.7 materialisation, §3.8 relabel). | — |
 | 4 | **Dev** | operator | `supabase db push` of 2.2a when Stage 1 is ready. | Contract tests (§4.2) and preview e2e (§4.5) need the RPCs. |
 | 5 | **Clone** (optional, recommended) | operator links, implementer runs approved commands | One pass of the **new** SQL only: 2.2a forward/rollback/forward, `10_materialise…`, `20_relabel…`, 2.2b forward/rollback/forward (§4.4). | These files have never run anywhere; this is what caught the deferred-FK bug in WP2.1. It is not a re-test of WP2.1. With PITR in place the operator may skip it. |
-| 6 | **Production** | operator (Track B) | In this order: 2.2a → merge `develop → main` (WP2.2 code) → `10_materialise…` and `20_relabel…` (with `SET LOCAL oux.env = 'production';`) → `00_preflight` once more → `03b` only if it reports duplicates → 2.2b → `04_postflight`. | 2.2a is compatible with the old writers, so it can go first; the code needs 2.2a, so it goes second (G1, §6.4); 2.2b adds the unique index and would fail if any duplicate placements appeared between steps 1 and 6, hence the single preflight re-check. |
+| 6 | **Production** | operator (Track B) | **Revision 4 (`main`-based).** In this order, as one checklist with each step's output pasted back before the next file is handed over: 2.2a (run sheet) → operator merges [PR #41](https://github.com/R3v3ill3/OffshoreAlliance/pull/41) into `main` (the WP2.2 code deploys to Vercel Production and `gen-types.yml` regenerates from production, now with the RPC symbols) → `10_materialise…` → `20_relabel…` (R1-b) → `00_preflight` → `03b` only if H9 > 0 → 2.2b → `04_postflight`. Every mutating file carries `SET LOCAL oux.env = 'production';` after each `BEGIN;` and a read-only verification `SELECT` after the final `COMMIT;`. | 2.2a is compatible with the old writers, so it goes first; the code needs 2.2a, so the merge goes second (G1, §6.4); the two scripts and the preflight run against the deployed code's data; 2.2b adds the unique index and would fail on any duplicate created between the steps, hence the single preflight re-check immediately before it. There is no separate `develop → main` promotion any more: the merge of PR #41 **is** the code deploy. |
 
 Production application of every migration and script is **operator-only**. Nothing in this plan runs
 anything against `gteygwfgjvczanmrwgbr`, not even a read.
@@ -193,6 +193,7 @@ including `as never` casts). All paths are under `apps/organising-db/src/`.
 | 19 | `app/api/campaigns/[id]/workers/duplicates/route.ts` | `:130` delete placements (then `:215` `rpc("merge_workers")`) | API routes |
 | 20 | `app/api/worker-import/organising-units/route.ts` | `:38` insert units | API routes |
 | 21 | `app/api/worker-import/apply/route.ts` | `:261` upsert placements | API routes |
+| 15a | `app/api/campaigns/[id]/sync-universe-workers/route.ts` (**sync-on-open**, added in Revision 4) | No direct write of its own: `:43` calls `syncCampaignUniverseFromEmployersWorksites` (row 15) with the user-session server client after a role check (`:30–41`, viewers rejected). What makes it a writer path is its caller: `components/campaigns/workforce/workforce-board.tsx:55–79` runs `useQuery(["sync-universe-workers", campaignId])`, which POSTs this route on every campaign-page mount for any user with `canWrite` (`enabled: canWrite`, 5-minute `staleTime`), so **opening a campaign writes to both tables** through row 15. On production on 2026-09-14 one page open enrolled 334 workers and inserted 233 placements (`wp/wp2.1.md` §15.3); it will be the first writer to meet the WP2.2b unique index. The same library function is also called from `campaign-settings.tsx:443` and `campaign-universe-section.tsx:255, 312` (user-initiated syncs; they ride row 15 too). | lib (via row 15) / API routes |
 
 Plus: `wall-chart/split-unit-dialog.tsx:436–441` calls the legacy RPC (not a direct write, but §6.4 step 2
 names it); `wall-chart/copy-worker-to-unit-dialog.tsx` writes only through `useMoveWorkersMutation`.
@@ -505,6 +506,7 @@ every row is returned and the request count is `ceil(n / PAGE_SIZE)`.
 | 13 | `use-allocate-workers-to-ou.ts` | `placements.assign(onConflict: 'skip')` — today's insert has no `onConflict`, so a duplicate `(ou_id, worker_id)` currently errors; the hook's callers are checked and `skip` vs `error` chosen per caller (recorded in deviations). |
 | 14 | `recompute-ou-assignments.ts` | `placements.replaceRuleRows` (one call per campaign). |
 | 15 | `sync-campaign-universe.ts` | `placements.assign(source: 'universe' \| 'rule' per R, onConflict: 'skip')` per target unit; `loadOuTargets` paged (§3.10). |
+| 15a | `sync-universe-workers/route.ts` + `workforce-board.tsx:55–79` (sync-on-open) | Routed through the structure API by row 15: the route keeps calling `syncCampaignUniverseFromEmployersWorksites`, which after row 15 writes only through `placements.assign` (`source: 'universe'`, `onConflict: 'skip'`), so a page open is safe both before and after WP2.2b (a worker already placed in the target's group is skipped, never duplicated). WP2.2 does **not** change *when* the sync runs: the mount query, its `enabled: canWrite` and `staleTime` stay as they are; whether sync-on-open survives at all is WP2.4's decision (`PROGRESS.md` incidental findings). The guard test lists this route among the writer paths it documents and additionally asserts the route file contains no `.from("campaign_organising_units")` / `.from("campaign_worker_ou")` call, so a later direct write there cannot slip past the regex inventory. |
 | 16 | `campaign-import/apply/route.ts` | `units.create` (`:525`, `:637`, with `client_ref` for the container→member link); `placements.assign(isPrimary: true, source: 'manual', onConflict: 'skip')`. |
 | 17 | `add-workers/route.ts` | `units.create`; `placements.assign`. |
 | 18 | `create-worker/route.ts` | `placements.assign`. |
@@ -646,31 +648,48 @@ Never `pnpm dev`/`pnpm start`.
 
 ### 6.2 Commits
 
-Programme rule: one commit per completed unit; feature branch off `develop`. Proposed units = Stage 1,
-Stage 3, Stage 4, Stage 5, Stage 6, Stage 7 (six commits, squash-merged by the PR as with #38/#39).
+Programme rule: one commit per completed unit; the feature branch integrates on `main` (Revision 4: it was cut
+from `develop` before `develop` was parked and has since merged `origin/main` with `--no-ff`; from here it
+only ever merges `main` in, never rebases). Proposed units = Stage 1, Stage 3, Stage 4, Stage 5, Stage 6,
+Stage 7 (six commits, squash-merged by the PR as with #38/#39).
 Every git command is put to the operator individually before it runs. `supabase/.temp/*` is never staged.
 
 ### 6.3 PR
 
-Draft PR `feat/oux-wp2.2-structure-api → develop`, titled `feat(oux-wp2.2): transactional structure API
-and enforcement migration`. Body: this plan's §3 summary, the writer table with ticks, the evidence matrix,
-and the explicit **G1** notice.
+Draft [PR #41](https://github.com/R3v3ill3/OffshoreAlliance/pull/41) `feat/oux-wp2.2-structure-api → main`
+(base retargeted from `develop` on 2026-09-14), titled `feat(oux-wp2.2): transactional structure API and
+enforcement migration`. Body: this plan's §3 summary, the writer table with ticks, the evidence matrix, and
+the explicit **G1** notice. It is marked ready only after Stage 7, and it is **merged by the operator only
+after WP2.2a is on production** (§6.4): merging deploys the code to Vercel Production.
 
 ### 6.4 G1 — promotion gate (binding)
 
 Unlike WP2.1, WP2.2 code **requires** the schema: every structure write becomes an RPC call, so a
 production deploy without WP2.1 + WP2.2a would fail every move/create/delete with `PGRST202`. Therefore:
 
-1. `develop` may carry WP2.2 (its previews use normal dev, which has the schema after §0 steps 2 and 4).
-2. **No `develop → main` PR is opened until the operator confirms WP2.1 and WP2.2a are applied to
-   production** (Track B; rehearsed `supabase db push` or `psql -1`; never autocommit `psql -f`).
-3. Production order after that: promote code → verify wall-chart writes on production (operator, UI only) →
-   operator runs `10_materialise…` (M2-a) and `20_relabel…` (R1-b if approved) with `SET LOCAL oux.env =
-   'production';` → `00_preflight_hazards` → `03b` if H9 > 0 → WP2.2b → `04_postflight`.
-4. Only after step 3 completes on production may WP2.4 consume `campaign_group_membership`.
-5. Side effect: with WP2.1 + WP2.2a on production before the promotion, `gen-types.yml` will regenerate
-   **with** the symbols, ending the develop/main `generated.ts` divergence. (The RPC `Functions` entries
-   still are not consumed by code — §2.7.)
+1. The branch may carry WP2.2 (its Vercel preview uses normal dev, which has WP2.1 and gets 2.2a at §0
+   step 4). Nothing on the branch reaches production until PR #41 is merged.
+2. **PR #41 is not merged into `main` until the operator confirms WP2.2a is applied to production**
+   (WP2.1 already is: `wp/wp2.1.md` §15). A merge to `main` deploys to Vercel Production immediately and
+   regenerates `packages/db-types/generated.ts` from production, so the schema has to be there first.
+   Production application is by operator run sheet: one file per SQL Editor submission, prepared from the
+   committed migration with `SET LOCAL oux.env = 'production';` after every `BEGIN;` in mutating files and
+   a read-only verification `SELECT` appended after the final `COMMIT;`; `postgres` role, RLS bypassed;
+   never the connector's `apply_migration` on production.
+3. Production order after that, one checklist, each output pasted before the next file is handed over:
+   operator merges PR #41 → verify wall-chart writes on production (operator, UI only) →
+   `10_materialise…` (M2-a) → `20_relabel…` (R1-b) → `00_preflight_hazards` → `03b` if H9 > 0 →
+   WP2.2b → `04_postflight`. Before/after evidence compares hazard counts and checksums, not row totals
+   (sync-on-open moves the totals whenever a campaign is opened; §2.3 row 15a).
+4. Only after step 3 completes on production may WP2.4 begin and consume `campaign_group_membership`.
+5. Side effect: with WP2.1 + WP2.2a on production before the merge, `gen-types.yml` regenerates **with**
+   the symbols on the merge push. With `develop` parked there is no second integration branch, so the
+   `generated.ts` divergence of `5fe7c93`/`1666660` cannot recur. (The RPC `Functions` entries still are
+   not consumed by code — §2.7.)
+
+This gate is the WP2.2 instance of the programme-wide promotion gate recorded in `PROGRESS.md` standing
+notes on 2026-09-14: every pull request that carries a migration is merged only after the operator has
+applied that migration to production.
 
 ---
 
@@ -764,7 +783,7 @@ _None yet._
 | **R** | Recompute provenance: **R1** new `'universe'` source (+ **R1-b** relabel script for existing NULL-rule-id rows, operator-run); **R2** attribution-only | **R1**, with **R1-b** rehearsed on the clone and left to the operator for production |
 | **M2** | Employer materialisation timing: **M2-a** operator-run script after code deploy; **M2-b** inside WP2.2a | **M2-a** |
 | **K** | Same-group copy: **K1** reject with message; **K2** silently convert to move | **K1** |
-| **G1** | Promotion gate: no `develop → main` until production has WP2.1 + WP2.2a | required (not optional) |
+| **G1** | Promotion gate: PR #41 is not merged into `main` until production has WP2.1 + WP2.2a (Revision 4 wording; approved on 2026-09-13 as "no `develop → main`", same gate) | required (not optional) |
 | **T** | Contract suite as a separate `pnpm test:contract` config (environment-gated, fails loudly without env) rather than inside `pnpm test` | approve |
 | **C-k** | Same-group split takes workers out of the source (full-mode change) | approve |
 
@@ -800,6 +819,16 @@ _pending_
 
 ## 10. Revision history
 
+- **Revision 4** (2026-09-14): the integration branch is `main`. `develop` is parked at `f5529a4a` (equal to
+  `main` at parking; the phase-2 prompt expected `68400084`) and is not used. §0 step 6, §6.2–§6.4 and §9.1
+  G1 now describe the `main`-based sequence (2.2a to production → operator merges PR #41 → `10` → `20` →
+  `00` → `03b` if H9 > 0 → 2.2b → `04`), run as one checklist with each step's output pasted before the next
+  (lesson from the WP2.1 production run, `wp/wp2.1.md` §15.5). Sync-on-open (`WorkforceBoard` →
+  `/api/campaigns/[id]/sync-universe-workers`) added to the §2.3 writer inventory as row 15a and to the
+  §3.11 switch table; WP2.2 routes it through the structure API and leaves its timing to WP2.4.
+  `origin/main` (`f5529a4a`) merged into the branch with `--no-ff` (`93df7e28`, docs-only, no conflicts);
+  PR #41 retargeted to `main`. The orchestration prompt for this phase is saved verbatim as
+  `docs/organiser-ux-review/PHASE2_MAIN_ORCHESTRATION_PROMPT.md`.
 - **Revision 3** (2026-09-14): §0 step 1 recorded as done (production has WP2.1 with cleanup and a passing
   postflight; `wp/wp2.1.md` §15). Step 2 (dev) was found already applied the same day, so no
   database action is outstanding; Stage 1 may start. §2.7's regen hazard no longer applies to WP2.1 symbols (G1 still applies to

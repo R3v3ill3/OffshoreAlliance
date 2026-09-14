@@ -88,7 +88,9 @@ WP2.2a (run sheet: `SET LOCAL oux.env = 'production';` after every `BEGIN;`
 of a mutating file, a read-only verification `SELECT` after the final
 `COMMIT;`) → operator merges PR #41 (code deploy) → `10` → `20` →
 `oux-wp2.1/00_preflight_hazards.sql` → `oux-wp2.1/03b` only if H9 > 0 →
-WP2.2b → `oux-wp2.1/04_postflight_hazards.sql`.
+`oux-wp2.1/04_postflight_hazards.sql` (BEFORE 2.2b: it asserts the deferred view
+and unique index are absent and stops otherwise, wp2.2.md D27) → WP2.2b (its
+post-assertions are the WP2.2b postflight) → read-only WP2.2b check.
 
 ## Rollback order
 

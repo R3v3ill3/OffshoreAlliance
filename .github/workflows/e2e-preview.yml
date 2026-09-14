@@ -1,0 +1,108 @@
+# OUX WP2.2 — e2e on a GitHub-hosted runner (docs/organiser-ux-review/wp/wp2.2.md §4.5, D81).
+#
+# Purpose: run the Playwright specs of wp2.2.md §4.5 against a Vercel BRANCH
+# PREVIEW. The sandboxed agent runners cannot host a browser suite reliably
+# (their intercepting proxy makes the login page take ~36 s to load and fails
+# `_next/static/chunks/*` requests with net::ERR_TOO_MANY_RETRIES; wp2.2.md
+# §9.2), so the operator dispatches this workflow by hand from the Actions tab
+# or with `gh workflow run e2e-preview.yml -f base_url=<preview>`.
+#
+# Target: ONLY a branch preview (`https://<project>-git-<branch>-<owner>.vercel.app`),
+# which talks to normal dev. The guard step refuses any other URL and the
+# production project ref. Nothing here links to, queries or deploys production.
+#
+# Secrets (repository Settings → Secrets and variables → Actions; dev accounts only):
+#   E2E_USER_EMAIL, E2E_USER_PASSWORD, E2E_ADMIN_EMAIL, E2E_ADMIN_PASSWORD
+# Without them the specs skip themselves (tests/e2e/env.ts) rather than fail.
+#
+# E2E_IGNORE_HTTPS_ERRORS is deliberately NOT set: a GitHub-hosted runner trusts
+# the preview's certificate, so certificate verification stays on (wp2.2.md D80).
+
+name: e2e (branch preview)
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Vercel preview URL of the branch under test — never production"
+        required: true
+        type: string
+      foreign_campaign_id:
+        description: "Campaign id the e2e user must NOT be able to write to (E2E_FOREIGN_CAMPAIGN_ID)"
+        required: false
+        type: string
+        default: "3"
+      specs:
+        description: "Spec files / directories passed to `playwright test`"
+        required: false
+        type: string
+        default: "tests/e2e/structure-api.spec.ts tests/e2e/wall-chart.spec.ts tests/e2e/wall-chart-decomposition.spec.ts tests/e2e/roles"
+
+permissions:
+  contents: read
+
+# One run at a time per ref: the specs create and sweep their own fixtures on
+# shared dev data, so two runs against the same campaign would race.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Guard — branch preview only, never production
+        shell: bash
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$BASE_URL" =~ ^https://[a-z0-9-]+\.vercel\.app/?$ ]]; then
+            echo "::error::base_url must be a Vercel preview URL (https://<host>.vercel.app), got: $BASE_URL"
+            exit 1
+          fi
+          echo "ok: base_url is an https://*.vercel.app URL"
+          if [[ "$BASE_URL" != *-git-* ]]; then
+            echo "::error::base_url must be a branch preview (its host contains '-git-'), got: $BASE_URL"
+            exit 1
+          fi
+          echo "ok: base_url is a branch preview (contains -git-)"
+          if [[ "$BASE_URL" == *gteygwfgjvczanmrwgbr* ]]; then
+            echo "::error::base_url names the production project ref; refusing"
+            exit 1
+          fi
+          echo "ok: base_url does not name the production project"
+
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter organising-db exec playwright install --with-deps chromium
+
+      - name: Playwright
+        working-directory: apps/organising-db
+        env:
+          CI: "1"
+          E2E_BASE_URL: ${{ inputs.base_url }}
+          E2E_FOREIGN_CAMPAIGN_ID: ${{ inputs.foreign_campaign_id }}
+          E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
+          E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+        run: pnpm exec playwright test ${{ inputs.specs }} --reporter=list
+
+      - name: Upload traces, screenshots and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-preview-${{ github.run_id }}
+          path: |
+            apps/organising-db/test-results
+            apps/organising-db/playwright-report
+          if-no-files-found: ignore
+          retention-days: 14

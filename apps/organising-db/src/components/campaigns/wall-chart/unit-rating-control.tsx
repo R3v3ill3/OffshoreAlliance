@@ -5,7 +5,7 @@ import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
 import { structureApi } from "@/lib/campaign/structure-api";
 import { Badge } from "@/components/ui/badge";
-import { structureErrorMessage } from "./structure-error-message";
+import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import {
   UNIT_RATING_LEVELS,
   unitRatingLevel,

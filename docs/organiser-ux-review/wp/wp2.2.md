@@ -501,11 +501,11 @@ every row is returned and the request count is `ceil(n / PAGE_SIZE)`.
 | 6 | `unit-rating-control.tsx` | `units.update({ user_rating })`. — **done (Stage 4)** |
 | 7 | `use-wall-chart-structure.ts` | `units.reorder`. — **done (Stage 4)** |
 | 8 | `use-wall-chart-actions.ts` | `placements.unassign({ ouId })` per ref, batched by unit. — **done (Stage 4)** |
-| 9 | `campaign-units-section.tsx` | `units.bulkSave` for the unit CRUD; `placements.assign` / `placements.unassign` for the member editor (`:798`, `:804`). |
-| 10 | `campaign-wizard.tsx` | `units.bulkSave` (`:795–894`); `placements.unassign` + `placements.assign` (`:1102`, `:1118`). Wizard `cid` vs `campaign_id` advisory untouched. |
-| 11 | `campaign-settings.tsx` | same as 10. |
-| 12 | `useRemoveWorkerFromCampaign.ts` | `placements.unassign` (all) — the membership delete that follows stays as is (not one of the two tables). |
-| 13 | `use-allocate-workers-to-ou.ts` | `placements.assign(onConflict: 'skip')` — today's insert has no `onConflict`, so a duplicate `(ou_id, worker_id)` currently errors; the hook's callers are checked and `skip` vs `error` chosen per caller (recorded in deviations). |
+| 9 | `campaign-units-section.tsx` | `units.bulkSave` for the unit CRUD; `placements.assign` / `placements.unassign` for the member editor (`:798`, `:804`). — **done (Stage 5)** (`units.update` for the rating as row 6; the reallocate dialog is one `placements.move`, D50) |
+| 10 | `campaign-wizard.tsx` | `units.bulkSave` (`:795–894`); `placements.unassign` + `placements.assign` (`:1102`, `:1118`). Wizard `cid` vs `campaign_id` advisory untouched. — **done (Stage 5)** (through `lib/campaign/structure-save.ts`, D41–D45) |
+| 11 | `campaign-settings.tsx` | same as 10. — **done (Stage 5)** |
+| 12 | `useRemoveWorkerFromCampaign.ts` | `placements.unassign` (all) — the membership delete that follows stays as is (not one of the two tables). — **done (Stage 5)** |
+| 13 | `use-allocate-workers-to-ou.ts` | `placements.assign(onConflict: 'skip')` — today's insert has no `onConflict`, so a duplicate `(ou_id, worker_id)` currently errors; the hook's callers are checked and `skip` vs `error` chosen per caller (recorded in deviations). — **done (Stage 5)** (one caller, `workforce-bulk-toolbar.tsx`: `skip`, D46) |
 | 14 | `recompute-ou-assignments.ts` | `placements.replaceRuleRows` (one call per campaign). |
 | 15 | `sync-campaign-universe.ts` | `placements.assign(source: 'universe' \| 'rule' per R, onConflict: 'skip')` per target unit; `loadOuTargets` paged (§3.10). |
 | 15a | `sync-universe-workers/route.ts` + `workforce-board.tsx:55–79` (sync-on-open) | Routed through the structure API by row 15: the route keeps calling `syncCampaignUniverseFromEmployersWorksites`, which after row 15 writes only through `placements.assign` (`source: 'universe'`, `onConflict: 'skip'`), so a page open is safe both before and after WP2.2b (a worker already placed in the target's group is skipped, never duplicated). WP2.2 does **not** change *when* the sync runs: the mount query, its `enabled: canWrite` and `staleTime` stay as they are; whether sync-on-open survives at all is WP2.4's decision (`PROGRESS.md` incidental findings). The guard test lists this route among the writer paths it documents and additionally asserts the route file contains no `.from("campaign_organising_units")` / `.from("campaign_worker_ou")` call, so a later direct write there cannot slip past the regex inventory. |
@@ -714,6 +714,13 @@ New:
 - `apps/organising-db/src/lib/campaign/__contract__/structure-api.contract.test.ts`
 - `apps/organising-db/vitest.contract.config.ts`
 - `apps/organising-db/tests/e2e/structure-api.spec.ts`
+- Stage 4: `apps/organising-db/src/components/campaigns/wall-chart/structure-error-message.ts` (D28), moved in
+  Stage 5 to `apps/organising-db/src/lib/campaign/structure-error-message.ts` (D40)
+- Stage 5: `apps/organising-db/src/lib/campaign/structure-save.ts` (the wizard/settings save plans, D41–D45),
+  `src/lib/campaign/__tests__/structure-save.test.ts`, `src/lib/campaign/__tests__/fake-structure-client.ts`,
+  `src/lib/campaign/__tests__/use-allocate-workers-to-ou.test.tsx`,
+  `src/lib/hooks/__tests__/useRemoveWorkerFromCampaign.test.tsx`,
+  `src/components/campaigns/__tests__/campaign-units-section.structure-writes.test.tsx`
 
 Modified: the 21 files of §2.3, `split-unit-dialog.tsx`, `copy-worker-to-unit-dialog.tsx` (K1 message),
 WP2.3 interaction-test harness, `sync-campaign-universe.test.ts`, `apps/organising-db/package.json`
@@ -757,6 +764,10 @@ WP2.2, recorded in PROGRESS.md incidental findings), any `campaigns` creation pa
 | WP2.3 nested-card double `move` | second call is a no-op (`moved: 0`) — verified by an interaction test; advisory remains open for WP2.4 UI fix. *Stage 4 (D31): the no-op holds only when both calls name the same target; on the nested-card drop the second call named the parent container, so it was a second, different move. **Fixed in the Stage 4 fix round (D32): the parent card ignores a drop a nested card already consumed; one call per drop, pinned by the WP2.3 characterisation and a Stage 4 test (§11.9).* |
 | e2e hygiene (`tests/e2e/structure-api.spec.ts`, review round 2 N4, advisory) | The chosen worker's original placements (`chosen`) live only in memory: a hard kill between `placeOnlyOn` and `afterAll` loses them and the worker is left as the last test placed it. **Deferred to Stage 5**, when the spec first runs on the preview: persist `chosen` to `test-results/` before the first write and restore from that file in the next `beforeAll` before sweeping. Until then the risk is one dev worker on campaign 1 whose placements must be put back by hand from the `[wp2.2] fixture` log line. |
 | Merge loses dependants | explicit re-point list in `structure_unit_merge`; contract test per dependant table. |
+| Unpaged placement read in `savePlacements` (Stage 5 review round 1, advisory 5) | `lib/campaign/structure-save.ts` reads `campaign_worker_ou … .in("ou_id", ouIds)` for the units the screen knows, without `.range()`; PostgREST's max-rows setting would truncate it silently. A truncated row is treated as absent, so it is neither unassigned nor re-assigned — it **survives** (safer than the legacy wipe-and-reinsert, which deleted every row regardless). Stage 6's paging of `loadOuTargets` (§3.10) does not cover this read; Stage 6 decides whether to page it with the same `PAGE_SIZE` loop. |
+| Read-failure asymmetry in `structure-save.ts` (review round 2, A4 — carry to Stage 6) | `saveUnitDrafts` swallows the scope read's error as the legacy sequence did (`existing = []`: nothing deleted, `display_order` restarts at 0, no D42 reuse), while `savePlacements` throws on the same condition. Recommendation for Stage 6: make both throw (a failed read must not plan a save). |
+| Membership rewritten before a refused placement save (review round 2, A5 — Stage 6 / WP2.4) | Wizard step 6 and the settings allocation save delete and re-insert `campaign_worker_membership` before `savePlacements`; a refused placement save (42501 or otherwise) leaves the membership rewritten and the placements as they were — the legacy order, now visible through the D53 line / toast rather than silent. Whether membership should follow the placements, or both go into one transaction, is a Stage 6 / WP2.4 question. |
+| Bulk toolbar hides skipped placements (D46 follow-up, Stage 6 one-liner) | `components/campaigns/workforce/workforce-bulk-toolbar.tsx` ~:262 toasts `Allocated ${res.inserted} workers …` and ignores the hook's `skipped`; outside rows 9–13 — Stage 6 (or WP2.4) adds "N skipped: already in a unit of that group" (also recorded in §11.12). |
 | Same-group copy now errors (K1) | approved behaviour change; message + e2e 2. |
 | Employer materialisation changes full-mode observables | M2-a keeps it operator-timed; e2e asserts render + one worksite card per member. |
 | Contract suite accidentally targets production | hard throw on production host; env names distinct from app env; no `.env` file read. |
@@ -835,6 +846,43 @@ Stage 4 review round 2 (2026-09-14; §11.11):
 | **D38** | The disabled "Split into sub-units" item on a child card of a non-container parent (D34) now shows its reason as a sub-line inside the item — "Units nested under another unit cannot be split" — instead of a `title` (never shown on a disabled Radix item). Wording uses §3.6 terms only ("unit"; "group" is not used). Tests: the sub-line and `aria-disabled` are present for a child of a non-container parent and absent for a child of a group container. | Review round 2 N2. | D34. |
 | **D39** | Amends D33: the split dialog receives the container the source sits in (`WallChartDialogs` looks it up in `ous` by `parent.ou_group_id`; prop `sourceContainer`) and decides exactly as WP2.1's `campaign_group_target_for_unit`: a custom-bucket source under a **custom-kind** container is in that container's group (cross-group for any child → switch shown); under a **fixed-kind** container it derives as if top-level (same `ou_type` child → same group → switch hidden, `p_keep_in_source: false`); the conservative "show the switch" applies only when the source has an `ou_group_id` and the container row is genuinely unavailable (`sourceContainer === undefined`). With mixed children the switch's description adds "Applies only to the sub-units in a different group from ‘<parent>’; workers assigned to a sub-unit in the same group move into it." Tests: fixed-kind container + same-type child → hidden; custom-kind container → shown; row unavailable → shown; shift source with a Shift child and a custom child → shown with the partial sentence, `true`. | Review round 2 N3. | D33. |
 
+Stage 5 (2026-09-14, settings / wizard / units-section / hook writers; §11.12):
+
+| # | Deviation | Reason | Plan section changed |
+|---|---|---|---|
+| **D40** | `structure-error-message.ts` (D28) moved unchanged from `components/campaigns/wall-chart/` to `lib/campaign/`; its seven wall-chart importers and the Stage 4 test import re-pointed. | The settings toasts, the units-section alerts/inline line and the remove-from-campaign hook need the same sentences, and `lib/` must not import from the chart. | §7; D28. |
+| **D41** | `saveUnitDrafts` issues `structure_units_bulk_save` on every "save units", even with nothing to delete, update or create (`p_delete_ou_ids: []`, `p_updates: []`, `p_creates: []`). | The RPC's permission pre-check is what turns a refused save into a visible error: the legacy sequence issued no statement for an empty diff and toasted "Campaign units saved." on a campaign the account could not write to (e2e item 6 relies on it). The empty call writes nothing. | §3.11 rows 10–11. |
+| **D42** | A new draft that re-identifies an existing unit about to be deleted — same `ou_type`, both top-level and non-container, identical `unit_basis` carrying one of `worksite_id` / `employer_id` / `canonical_occupation_id` / `occupation_group_id` — is sent as an **update** of that unit (name, estimate, basis) instead of a delete plus a create; each existing unit matches at most one draft. `{ custom: true }` and split-derived bases never match. | The units editor's "employers / worksites as units" toggles remove and re-add the scope units as fresh drafts; the legacy save deleted and re-created them, losing their placements, `user_rating` and `campaign_unit_rules` (the "silently drop" defect the reviewer flags). The end state the user sees (the unit list) is unchanged; a non-matching draft still goes the legacy way. | §3.11 rows 10–11; §3.1 principle 7 (preserving, not changing). |
+| **D43** | "Save worker allocation" (wizard step 6, settings) is the **difference** between the placements on the units the screen knows and the grid: `structure_placements_unassign` per unit for rows that left the grid, then `structure_placements_assign` (`manual`, not primary, `p_on_conflict: "skip"`) per unit for rows that joined it, units in ascending `ou_id`. Rows the grid keeps are not touched. The settings success toast reports skipped rows ("… N placements skipped: already in another unit of the same group."); the wizard, which has no toast, stays silent. | The legacy sequence deleted every row on the campaign's units and re-inserted the grid, so every placement lost its id, `is_primary`, `assignment_source` and `assigned_rule_id` on each save; the diff keeps them for unchanged rows. `skip` is the assign-family semantics of §3.11 (rows 13, 15, 16); the grid's "+ add" picker does not exclude same-type units, so a worker put in two units of one group is saved in the lower-numbered unit and counted as skipped rather than written twice (C-a). Downstream note: a kept `rule` row stays `rule` (Recompute may still replace it) where the legacy re-insert would have made it `manual`. | §3.11 rows 10–11. |
+| **D44** | The update patch for an existing unit is `name`, `total_workers_estimated`, `unit_basis` only. | The legacy update also re-sent `ou_type`, `parent_ou_id`, `is_group_container` and `ou_group_id` with their unchanged values (the units editor never edits them on a saved unit: `updateUnit` is only called with `name` / `total_workers_estimated`); the structure API's whitelist excludes them (C-g). No-op today, so nothing is lost. | §3.11 rows 10–11. |
+| **D45** | A created child carries `ou_group_id` only when its parent is a group container (an existing one, or a container created in the same call by `client_ref`); a sub-unit under a plain unit gets `parent_ou_id` only. The settings page's creates now carry the hierarchy (`parent_ou_id`, `is_group_container`, `ou_group_id`) exactly as the wizard's do. | The wizard's legacy insert set `ou_group_id = parent` for **every** non-container child, container or not; `structure_units_create` refuses `ou_group_id` on a non-container (22023), and the column's documented meaning (and every other creator: the create dialog, the split RPC) is container membership. The settings page's legacy insert dropped the hierarchy altogether, so a group drafted there was saved as flat plain units (a container with `is_group_container = false`) — a silent loss the shared planner removes. **Orchestrator to confirm both.** | §3.11 rows 10–11. |
+| **D46** | `useAllocateWorkersToOu` → `placements.assign({ source: "manual", isPrimary: single worker only, onConflict: "skip" })`; the result is `{ inserted, skipped }`. Its one caller, `workforce-bulk-toolbar.tsx` (untouched), toasts `res.inserted` and `err.message`. | Row 13 as planned. The legacy insert failed the whole batch on a worker already on the unit (23505) and wrote a second same-group unit silently; now the former is skipped (the units section's own assign already did that) and the latter is skipped and counted. | §3.11 row 13. |
+| **D47** | Units-section create paths (`createOu`, `acceptCandidate`) no longer read `max(display_order)` first; the element carries no `display_order` and the RPC derives it. | `structure__create_units` defaults `display_order` to `max + 1` over the campaign — the same value the legacy read computed — now inside the transaction. | §3.11 row 9. |
+| **D48** | Units-section edit dialog: the Type select is disabled while editing an existing unit, with the line "The type is fixed once a unit exists — it decides which group the unit belongs to."; the update patch never sends `ou_type`. The dialog gains an inline `role="alert"` line for a refused create/update (`structureErrorMessage`, D36 precedent) and both mutations are reset when the dialog closes so a stale error never greets the next opening. | The structure API keeps `ou_type` immutable (C-g; the plan's `structure_unit_update` whitelist), while the legacy dialog let the type of a saved unit be changed. A silently dropped change was not acceptable; a visible, explained refusal is. The legacy dialog showed no error at all (a failed save re-enabled the button). **Orchestrator to decide** whether the type should instead become updatable through the API (SQL + wrapper change, not made here). | §3.11 row 9; §3.3 `structure_unit_update` (note). |
+| **D49** | Units-section assign dialog → `placements.assign({ onConflict: "error" })`; a `duplicate_in_group` (and, as before, any message containing "group") shows the dialog's existing sentence "Some of these workers already belong to a different group of the same type in this campaign, so they can't also be assigned here."; other kinds go through `structureErrorMessage`. The feedback count is the RPC's `inserted`. | The dialog pre-filters workers already on the unit and already had a refusal sentence for the legacy Employer-exclusivity trigger — the same shape as C-a. `error` keeps the batch atomic and visible where `skip` would silently leave a worker out. | §3.11 row 9. |
+| **D50** | Units-section reallocate dialog → one `placements.move({ fromOuId, toOuId, keepInParent: false })` (from Unallocated: `fromOuId: null`) instead of the plan's `assign` + `unassign` pair. | The dialog restricts targets to units of the source's type (same group for fixed kinds), so `assign(skip)` would skip the target and the following `unassign` would drop the worker; `assign(move)` + `unassign` is two transactions for what `move` does in one, re-pointing the row so `is_primary` and provenance travel with it (C-l; the legacy upsert+delete lost both). `keepInParent: false` because this dialog never created a placement on the target's parent container (D4 is wall-chart behaviour). | §3.11 row 9. |
+| **D51** | Creates are ordered top-level drafts first (legacy pass 1), then children in as many passes as needed; a child of a **new** child (a sub-unit under a new group member) is created through its parent's `client_ref`. `display_order` values are identical to the legacy numbering whenever the legacy insert would have resolved every child. | The legacy two-pass insert dropped such a grandchild silently (its parent had no id yet, "safeChildRows"). | §3.11 rows 10–11. |
+| **D52** | *(corrected in review round 1)* Recorded: of the RPC's validations, only the **blank / whitespace-only name** is new — the legacy insert/update saved it (`varchar(200) NOT NULL`, no non-empty CHECK); a name over 200 characters and a negative estimate were already refused by the column and its CHECK. Because every existing unit is re-sent on "save units" (D44), one legacy blank-named row would have made every later save fail — silently in the wizard (steps 5 and 6 had no error surface at all) and in settings with the RPC's `p_updates[n]` index. **Fixed by D53.** Also recorded: `structure__delete_unit` detaches a surviving member of a deleted container where the legacy `DELETE … IN (…)` failed with 23503 — unreachable from the editor (removing a container removes its members) but different for a stale draft list. | Found while mapping the flows; the fix is D53. | §8.2. |
+
+
+Stage 5 review round 1 (2026-09-14; §11.13):
+
+| # | Deviation | Reason | Plan section changed |
+|---|---|---|---|
+| **D53** | **Blocking 1.** (a) `structure-save.ts` `validateUnitsSavePlan(plan, drafts)` runs before the bulk-save RPC and throws `UnitDraftValidationError` with a sentence in §3.6 terms — `Unit 3 (worksite) has no name.` for a blank or whitespace-only name (an update of a legacy blank row, a reused unit or a create alike), `Unit "…" has a name longer than 200 characters.`, `Unit "…" has a negative worker estimate.` — mirroring `structure__create_units` / `structure__update_unit`; no RPC is issued. (b) The wizard renders `saveUnitsMutation.error` under step 5 and `saveWorkersMutation.error` under step 6 as a `<p role="alert" className="text-xs text-destructive">` line (the `step1Error` style) through `structureErrorMessage`. (c) Settings already toasted both saves through `structureErrorMessage`; the validation sentence rides the same toast. Tests: `structure-save.test.ts` (the sentences, the update / reuse / create paths, no RPC), `campaign-save-flows.structure-writes.test.tsx` (wizard steps 5/6 error lines and refusals, settings units-save toast and blank-name toast). | Reviewer blocking finding: a refused or invalid save was silent in the wizard and an index in settings. | §3.11 rows 10–11; D52. |
+| **D54** | `duplicateInGroupMessage(err, lead)` in `structure-error-message.ts` is the general form of the split dialog's sentence (`splitDuplicateInGroupMessage` now wraps it, byte-identical output); the units-section assign dialog uses it with the lead "A worker is already in another unit of that group", so the sentence names the worker and the group from the RPC's DETAIL ("… — Worker 112 already has a placement in group 3 of campaign 1; move it instead of adding a second one."). The legacy Employer-exclusivity P0001 (a message mentioning "group") keeps the dialog's original sentence. | Advisory 2: "a different group of the same type" is not the group model's vocabulary. | D49. |
+| **D55** | `saveUnitDrafts` reads the campaign's units with `.order("ou_id", { ascending: true })`, and `planUnitsBulkSave` sorts the delete candidates by `ou_id` before the D42 match, so with two legacy units of the same identity the lowest `ou_id` is reused whatever order the rows arrive in. Test: two same-basis rows in both orders. | Advisory 3. | D42. |
+| **D56** | Settings "Allocate workers" grid receives only non-container units (`!u.is_group_container`), as the wizard's grid always did; for that flag to exist the settings scope query now selects `parent_ou_id, is_group_container, ou_group_id` and hydrates drafts as the wizard does (`parent_draft_id: srv_<parent>`), so a container is known as one and its members nest under it in the settings units editor instead of reading as plain units. Test: Ada, placed only on the container, shows no chip; "Acme North" remains pickable. | Advisory 6: a custom-kind container drafted in settings could be picked in the grid and refused with the P0001 sentence. The hydration change is what makes the filter real. | §3.11 row 11. |
+| **D57** | Harness (`wall-chart/__tests__/harness/backend.ts`): a direct `insert/update/upsert/delete` on `campaign_organising_units` / `campaign_worker_ou` throws `DirectStructureWriteError` unless the test called `allowDirectStructureWrites()`; other tables are recorded (`writeInvocations()`); every chain's builder calls are recorded (`queryInvocations()`, used to pin the placement read's `.in("ou_id", …)` scope); the `structure_placements_assign` default answer is removed (an unexpected assign is an `UnseededBackendError` again; tests seed it with `answerRpc`). Stage 4's eight wall-chart suites re-run green under it (134 tests). | Advisory 4: the Stage 5 harness answered structure-table writes with success, so a regressed wall-chart writer would have passed. | §4.1 (harness note). |
+
+
+Stage 5 review round 2 (2026-09-14; §11.14):
+
+| # | Deviation | Reason | Plan section changed |
+|---|---|---|---|
+| **D58** | `validateUnitsSavePlan` also mirrors `structure__json_int` for `total_workers_estimated`: a fractional value → `Unit "Port Alpha" has a worker estimate that is not a whole number.`, a value above 2,147,483,647 → `Unit "…" has a worker estimate above 2,147,483,647.` The editor's number inputs (`step-campaign-units.tsx` ~:1272–1275, ~:889–893) are left as they are. Tests: planner (updates and creates, the boundary value passes) and the mounted wizard (no RPC, the sentence under step 5). | Review round 2 A2: "2.5" is typeable and the RPC refused it in index form. | D53. |
+| **D59** | The wizard resets `saveUnitsMutation` in step 5's `onBack` and `saveWorkersMutation` in step 6's `onBack`, so a refusal said under a step does not greet a return to it; a later successful save clears the line by itself (a new `mutate` resets the error). Test: refusal → Back → forward through step 4's own save shows no line; refusal → success clears it; the same for step 6. | Review round 2 A3: the line was gated on the step but the mutation was never reset on navigation. | D53. |
+
 ### 8.4 Stop conditions (implementer stops and reports; no workaround)
 
 1. `supabase/.temp/project-ref` shows anything other than the two allowed refs.
@@ -862,6 +910,7 @@ Stage 4 review round 2 (2026-09-14; §11.11):
 | **G1** | Promotion gate: PR #41 is not merged into `main` until production has WP2.1 + WP2.2a (Revision 4 wording; approved on 2026-09-13 as "no `develop → main`", same gate) | required (not optional) |
 | **T** | Contract suite as a separate `pnpm test:contract` config (environment-gated, fails loudly without env) rather than inside `pnpm test` | approve |
 | **C-k** | Same-group split takes workers out of the source (full-mode change) | approve |
+| **T2** | Unit type change in the units-section edit dialog: the legacy dialog let a saved unit's `ou_type` change (the WP2.1 trigger cascade moved the unit and its placements to another group); interim = the Type select is disabled with a visible reason (D48). Widening `structure_unit_update`'s whitelist needs SQL plus C-a displacement after the cascade → operator decision, candidate for Stage 6 or WP2.7 | **pending operator** |
 
 Approvals required, in order:
 
@@ -886,6 +935,308 @@ overrule them before Stage 4.
 §0 steps 1–2 being scheduled by the operator (Stage 1 does not need a database; Stages 3–6 do).
 
 ### 9.2 Verification output (verifier pastes raw output)
+
+#### Stage 5 verifier run (2026-09-14, Sonnet, no database)
+
+**1. `pnpm --filter organising-db exec tsc --noEmit`** (from `/home/user/OffshoreAlliance`)
+
+```
+(no output)
+```
+
+Exit code: 0
+
+Note: `tsc --noEmit` produced no output and exit code 0, so the `.next/types` deletion/rerun contingency in the verifier instructions did not apply.
+
+**2. `pnpm --filter organising-db test`** (from `/home/user/OffshoreAlliance`)
+
+```
+> organising-db@0.1.0 test /home/user/OffshoreAlliance/apps/organising-db
+> vitest run
+
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 /home/user/OffshoreAlliance/apps/organising-db
+
+[... 94 passing test files trimmed — see the summary line below; the guard failure below is the full, untrimmed output ...]
+
+ ❯ src/lib/campaign/__tests__/no-direct-structure-writes.test.ts (3 tests | 1 failed) 214ms
+   × no direct structure writes (wp2.2.md §3.9 guard) > no direct writers remain (acceptance criterion; expected to fail until Stage 6) 129ms
+     → 8 file(s) still write directly to campaign_organising_units / campaign_worker_ou:
+  app/api/campaign-import/apply/route.ts
+  app/api/campaigns/[id]/add-workers/route.ts
+  app/api/campaigns/[id]/create-worker/route.ts
+  app/api/campaigns/[id]/workers/duplicates/route.ts
+  app/api/worker-import/apply/route.ts
+  app/api/worker-import/organising-units/route.ts
+  lib/campaign/recompute-ou-assignments.ts
+  lib/workers/sync-campaign-universe.ts: expected [ …(8) ] to deeply equal []
+
+stdout | src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > CampaignWallChart render cost > renders 305 members across 161 units within budget
+[wp2.3] render-cost median 10081ms over 3 runs (runs: 11883, 10081, 7442; tiles=250, cards=162)
+
+ ❯ src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx (1 test | 1 failed) 30988ms
+   × CampaignWallChart render cost > renders 305 members across 161 units within budget 30987ms
+     → expected 10081.229044 to be less than 6000
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/lib/campaign/__tests__/no-direct-structure-writes.test.ts > no direct structure writes (wp2.2.md §3.9 guard) > no direct writers remain (acceptance criterion; expected to fail until Stage 6)
+AssertionError: 8 file(s) still write directly to campaign_organising_units / campaign_worker_ou:
+  app/api/campaign-import/apply/route.ts
+  app/api/campaigns/[id]/add-workers/route.ts
+  app/api/campaigns/[id]/create-worker/route.ts
+  app/api/campaigns/[id]/workers/duplicates/route.ts
+  app/api/worker-import/apply/route.ts
+  app/api/worker-import/organising-units/route.ts
+  lib/campaign/recompute-ou-assignments.ts
+  lib/workers/sync-campaign-universe.ts: expected [ …(8) ] to deeply equal []
+
+- Expected
++ Received
+
+- Array []
++ Array [
++   "app/api/campaign-import/apply/route.ts",
++   "app/api/campaigns/[id]/add-workers/route.ts",
++   "app/api/campaigns/[id]/create-worker/route.ts",
++   "app/api/campaigns/[id]/workers/duplicates/route.ts",
++   "app/api/worker-import/apply/route.ts",
++   "app/api/worker-import/organising-units/route.ts",
++   "lib/campaign/recompute-ou-assignments.ts",
++   "lib/workers/sync-campaign-universe.ts",
++ ]
+
+ ❯ src/lib/campaign/__tests__/no-direct-structure-writes.test.ts:90:7
+     88|       found,
+     89|       `${found.length} file(s) still write directly to campaign_organi…
+     90|     ).toEqual([]);
+       |       ^
+     91|   });
+     92|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > CampaignWallChart render cost > renders 305 members across 161 units within budget
+AssertionError: expected 10081.229044 to be less than 6000
+ ❯ src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx:97:16
+     95|     expect(tiles).toBe(EXPECTED_TILES);
+     96|     expect(cards).toBe(162);
+     97|     expect(ms).toBeLessThan(BUDGET_MS);
+       |                ^
+     98|   }, 120_000);
+     99| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+ Test Files  2 failed | 94 passed (96)
+      Tests  2 failed | 1325 passed (1327)
+   Start at  11:37:17
+   Duration  86.62s (transform 6.81s, setup 0ms, collect 46.85s, tests 142.80s, environment 13.21s, prepare 9.43s)
+
+/home/user/OffshoreAlliance/apps/organising-db:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  organising-db@0.1.0 test: `vitest run`
+Exit status 1
+```
+
+Exit code: 1
+
+**3. `git diff --name-only HEAD` / `git ls-files --others --exclude-standard` + one eslint invocation over every `.ts`/`.tsx` path listed** (from `/home/user/OffshoreAlliance/apps/organising-db`)
+
+`git diff --name-only HEAD`:
+
+```
+apps/organising-db/src/components/campaigns/campaign-settings.tsx
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx
+apps/organising-db/src/components/campaigns/campaign-wizard.tsx
+apps/organising-db/src/components/campaigns/wall-chart/__tests__/harness/backend.ts
+apps/organising-db/src/components/campaigns/wall-chart/__tests__/wall-chart.structure-writes.test.tsx
+apps/organising-db/src/components/campaigns/wall-chart/copy-worker-to-unit-dialog.tsx
+apps/organising-db/src/components/campaigns/wall-chart/delete-organising-unit-dialog.tsx
+apps/organising-db/src/components/campaigns/wall-chart/hooks/use-wall-chart-actions.ts
+apps/organising-db/src/components/campaigns/wall-chart/merge-units-dialog.tsx
+apps/organising-db/src/components/campaigns/wall-chart/split-unit-dialog.tsx
+apps/organising-db/src/components/campaigns/wall-chart/structure-error-message.ts
+apps/organising-db/src/components/campaigns/wall-chart/unit-rating-control.tsx
+apps/organising-db/src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+apps/organising-db/src/lib/campaign/use-allocate-workers-to-ou.ts
+apps/organising-db/src/lib/hooks/useRemoveWorkerFromCampaign.ts
+apps/organising-db/tests/e2e/structure-api.spec.ts
+docs/organiser-ux-review/wp/wp2.2.md
+```
+
+`git ls-files --others --exclude-standard`:
+
+```
+src/components/campaigns/__tests__/campaign-units-section.structure-writes.test.tsx
+src/lib/campaign/__tests__/fake-structure-client.ts
+src/lib/campaign/__tests__/structure-save.test.ts
+src/lib/campaign/__tests__/use-allocate-workers-to-ou.test.tsx
+src/lib/campaign/structure-error-message.ts
+src/lib/campaign/structure-save.ts
+src/lib/hooks/__tests__/useRemoveWorkerFromCampaign.test.tsx
+```
+
+`apps/organising-db/src/components/campaigns/wall-chart/structure-error-message.ts` appears in the `git diff --name-only HEAD` list with a `D` (deleted) status in `git status --short`; it no longer exists on disk. `docs/organiser-ux-review/wp/wp2.2.md` is not `.ts`/`.tsx` and was excluded from the eslint invocation. All other paths from both lists (23 total, including the deleted one) were passed to eslint.
+
+eslint invocation (`.ts`/`.tsx` paths from both lists joined, paths resolved relative to `apps/organising-db`):
+
+```
+$ pnpm exec eslint \
+  src/components/campaigns/campaign-settings.tsx \
+  src/components/campaigns/campaign-units-section.tsx \
+  src/components/campaigns/campaign-wizard.tsx \
+  src/components/campaigns/wall-chart/__tests__/harness/backend.ts \
+  src/components/campaigns/wall-chart/__tests__/wall-chart.structure-writes.test.tsx \
+  src/components/campaigns/wall-chart/copy-worker-to-unit-dialog.tsx \
+  src/components/campaigns/wall-chart/delete-organising-unit-dialog.tsx \
+  src/components/campaigns/wall-chart/hooks/use-wall-chart-actions.ts \
+  src/components/campaigns/wall-chart/merge-units-dialog.tsx \
+  src/components/campaigns/wall-chart/split-unit-dialog.tsx \
+  src/components/campaigns/wall-chart/structure-error-message.ts \
+  src/components/campaigns/wall-chart/unit-rating-control.tsx \
+  src/lib/campaign/__tests__/no-direct-structure-writes.test.ts \
+  src/lib/campaign/use-allocate-workers-to-ou.ts \
+  src/lib/hooks/useRemoveWorkerFromCampaign.ts \
+  tests/e2e/structure-api.spec.ts \
+  src/components/campaigns/__tests__/campaign-units-section.structure-writes.test.tsx \
+  src/lib/campaign/__tests__/fake-structure-client.ts \
+  src/lib/campaign/__tests__/structure-save.test.ts \
+  src/lib/campaign/__tests__/use-allocate-workers-to-ou.test.tsx \
+  src/lib/campaign/structure-error-message.ts \
+  src/lib/campaign/structure-save.ts \
+  src/lib/hooks/__tests__/useRemoveWorkerFromCampaign.test.tsx
+
+Oops! Something went wrong! :(
+
+ESLint: 9.39.4
+
+No files matching the pattern "src/components/campaigns/wall-chart/structure-error-message.ts" were found.
+Please check for typing mistakes in the pattern.
+```
+
+Exit code: 2
+
+**4. `pnpm --filter organising-db lint 2>&1 | tail -6`** (from `/home/user/OffshoreAlliance`)
+
+```
+✖ 294 problems (143 errors, 151 warnings)
+  7 errors and 16 warnings potentially fixable with the `--fix` option.
+
+/home/user/OffshoreAlliance/apps/organising-db:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  organising-db@0.1.0 lint: `eslint`
+Exit status 1
+```
+
+Exit code (pipeline, first command): 1
+
+Matches the stated baseline (294 problems = 143 errors / 151 warnings).
+
+**5. `rg -n --pcre2 "\.from\(['\"]campaign_(organising_units|worker_ou)['\"]\)(\s*as\s+never)?\s*\.\s*(insert|update|upsert|delete)\(" apps/organising-db/src --glob '!**/__tests__/**' -l`**
+
+```
+/home/user/OffshoreAlliance/apps/organising-db/src/lib/workers/sync-campaign-universe.ts
+/home/user/OffshoreAlliance/apps/organising-db/src/lib/campaign/recompute-ou-assignments.ts
+/home/user/OffshoreAlliance/apps/organising-db/src/app/api/campaigns/[id]/create-worker/route.ts
+```
+
+Exit code: 0
+
+**6. `git -C /home/user/OffshoreAlliance status --short`**
+
+```
+ M apps/organising-db/src/components/campaigns/campaign-settings.tsx
+ M apps/organising-db/src/components/campaigns/campaign-units-section.tsx
+ M apps/organising-db/src/components/campaigns/campaign-wizard.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/__tests__/harness/backend.ts
+ M apps/organising-db/src/components/campaigns/wall-chart/__tests__/wall-chart.structure-writes.test.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/copy-worker-to-unit-dialog.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/delete-organising-unit-dialog.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/hooks/use-wall-chart-actions.ts
+ M apps/organising-db/src/components/campaigns/wall-chart/merge-units-dialog.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/split-unit-dialog.tsx
+ D apps/organising-db/src/components/campaigns/wall-chart/structure-error-message.ts
+ M apps/organising-db/src/components/campaigns/wall-chart/unit-rating-control.tsx
+ M apps/organising-db/src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+ M apps/organising-db/src/lib/campaign/use-allocate-workers-to-ou.ts
+ M apps/organising-db/src/lib/hooks/useRemoveWorkerFromCampaign.ts
+ M apps/organising-db/tests/e2e/structure-api.spec.ts
+ M docs/organiser-ux-review/wp/wp2.2.md
+?? apps/organising-db/src/components/campaigns/__tests__/
+?? apps/organising-db/src/lib/campaign/__tests__/fake-structure-client.ts
+?? apps/organising-db/src/lib/campaign/__tests__/structure-save.test.ts
+?? apps/organising-db/src/lib/campaign/__tests__/use-allocate-workers-to-ou.test.tsx
+?? apps/organising-db/src/lib/campaign/structure-error-message.ts
+?? apps/organising-db/src/lib/campaign/structure-save.ts
+?? apps/organising-db/src/lib/hooks/__tests__/
+```
+
+Exit code: 0
+
+**7. `git -C /home/user/OffshoreAlliance diff --stat HEAD`**
+
+```
+ .../src/components/campaigns/campaign-settings.tsx | 113 +++------
+ .../campaigns/campaign-units-section.tsx           | 264 +++++++++++----------
+ .../src/components/campaigns/campaign-wizard.tsx   | 188 ++-------------
+ .../wall-chart/__tests__/harness/backend.ts        |  43 +++-
+ .../__tests__/wall-chart.structure-writes.test.tsx |   2 +-
+ .../wall-chart/copy-worker-to-unit-dialog.tsx      |   2 +-
+ .../wall-chart/delete-organising-unit-dialog.tsx   |   2 +-
+ .../wall-chart/hooks/use-wall-chart-actions.ts     |   2 +-
+ .../campaigns/wall-chart/merge-units-dialog.tsx    |   2 +-
+ .../campaigns/wall-chart/split-unit-dialog.tsx     |   2 +-
+ .../wall-chart/structure-error-message.ts          |  47 ----
+ .../campaigns/wall-chart/unit-rating-control.tsx   |   2 +-
+ .../__tests__/no-direct-structure-writes.test.ts   |  15 +-
+ .../src/lib/campaign/use-allocate-workers-to-ou.ts |  58 +++--
+ .../src/lib/hooks/useRemoveWorkerFromCampaign.ts   |  43 ++--
+ apps/organising-db/tests/e2e/structure-api.spec.ts | 253 +++++++++++++++++++-
+ docs/organiser-ux-review/wp/wp2.2.md               | 208 +++++++++++++++-
+ 17 files changed, 746 insertions(+), 500 deletions(-)
+```
+
+Exit code: 0
+
+**8. `pnpm --filter organising-db exec vitest run src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx`** (from `/home/user/OffshoreAlliance`)
+
+```
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 /home/user/OffshoreAlliance/apps/organising-db
+
+stdout | src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > CampaignWallChart render cost > renders 305 members across 161 units within budget
+[wp2.3] render-cost median 11036ms over 3 runs (runs: 14369, 11036, 9342; tiles=250, cards=162)
+
+ ❯ src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx (1 test | 1 failed) 36440ms
+   × CampaignWallChart render cost > renders 305 members across 161 units within budget 36439ms
+     → expected 11035.903694999997 to be less than 6000
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > CampaignWallChart render cost > renders 305 members across 161 units within budget
+AssertionError: expected 11035.903694999997 to be less than 6000
+ ❯ src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx:97:16
+     95|     expect(tiles).toBe(EXPECTED_TILES);
+     96|     expect(cards).toBe(162);
+     97|     expect(ms).toBeLessThan(BUDGET_MS);
+       |                ^
+     98|   }, 120_000);
+     99| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  11:37:25
+   Duration  45.90s (transform 2.95s, setup 0ms, collect 7.03s, tests 36.44s, environment 1.19s, prepare 99ms)
+
+undefined
+/home/user/OffshoreAlliance/apps/organising-db:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx
+```
+
+Exit code: 1
 
 #### Stage 4 verifier run (2026-09-14, Sonnet, no database)
 
@@ -1880,6 +2231,39 @@ exit=1
   and structure-writes tests green; guard lists the same 13 files).
 - Fix rounds used at Stage 4: two reviewer rounds (the maximum), both closed.
 
+#### Stage 5 reviews (2026-09-14, settings / wizard / units-section / hook writers; static, no database)
+
+- **Verifier (Sonnet, §9.2 "Stage 5 verifier run"):** `tsc` clean; 1,327 tests / 1,325 passing at that point
+  (only the guard acceptance case, now listing the 8 remaining writers of rows 14–21, and the pre-existing
+  render-cost timing test); lint total 294 (baseline); its eslint step errored only because the relocated
+  `structure-error-message.ts` path no longer exists under `wall-chart/` (the implementer's per-file eslint
+  showed only the pre-existing `delete-organising-unit-dialog.tsx` finding); the plan's single-line `rg`
+  finds 3 of the guard's 8 files (D7).
+- **Review 1 (fresh Fable): CHANGES REQUIRED.** Blocking: the wizard's steps 5 and 6 had no error surface
+  while the RPC refuses a blank unit name the legacy path saved, and `planUnitsBulkSave` re-sends every
+  existing unit, so one legacy blank-named row would have broken every later save of that campaign —
+  silently in the wizard and as an index (`p_updates[3]`) in settings. Decision raised: D48 removes the
+  full-mode ability to change a unit's type (which moved the unit and its placements to another group via
+  the WP2.1 cascade) → recorded as **T2, pending operator** in §9.1 with the interim (type fixed after
+  creation, visible reason). Advisories: D49 wording under the group model; D46 skipped rows uncounted in
+  the toolbar toast (outside rows 9–13, Stage 6); D42 nondeterministic reuse read; D43 unpaged read (rows
+  survive, safer than legacy); harness softened by a success-answering write; missing component-level pins;
+  D45 consequences for three readers and the settings grid listing containers; e2e selectors verified.
+  **Resolution:** all applied (D53–D57, §11.13): client-side validation naming the unit before any RPC,
+  `role="alert"` error lines under wizard steps 5/6, D54 wording from the RPC DETAIL, `.order("ou_id")`,
+  harness throws on direct structure-table writes, `!is_group_container` grid filter matching the wizard,
+  §8.2 rows, component pins for the wizard and settings save flows.
+- **Review 2 (fresh Fable): APPROVE WITH ADVISORIES.** All seven round-1 fixes confirmed with `path:line`
+  evidence; completeness of the client validation checked against the RPC rules for every producible
+  input. Advisories: A1 Stage 5 ledger row missing (added in this commit); A2 non-integer estimate refused
+  in index form; A3 stale wizard error after Back/forward; A4 read-failure asymmetry in
+  `structure-save.ts` (pre-existing); A5 membership rewritten before a refused placement save
+  (legacy-identical order, now visible). **Resolution:** A2, A3 applied (D58, D59, §11.14); A4, A5 and the
+  toolbar note recorded in §8.2 for Stage 6 / WP2.4. Orchestrator verified the final round directly
+  (validation sentences present, both `reset()` calls present, Stage 5 suites and guard behave as expected,
+  no direct write in rows 9–13).
+- Fix rounds used at Stage 5: two reviewer rounds (the maximum), both closed. 1,348 tests / 1,346 passing.
+
 ## 10. Revision history
 
 - **Revision 4** (2026-09-14): the integration branch is `main`. `develop` is parked at `f5529a4a` (equal to
@@ -2814,3 +3198,387 @@ $ git status --short
 ```
 
 Stage 4 stops here.
+
+### 11.12 Stage 5 — settings, wizard, units-section and hook writers (2026-09-14)
+
+No database, CLI, Playwright, commit or `structure-api.ts` change; no migration touched. Rows 9–13 of §2.3 now
+write only through `structureApi(client)` with the client each file already used; the guard inventory shrank
+from 13 to the 8 files of rows 14–21. Deviations D40–D52 (§8.3). Stops: none of §8.4 was hit; the two
+behaviours the wrapper cannot express (`ou_type` on an existing unit, `ou_group_id` on a non-container
+parent) are handled visibly / normalised and flagged for decision (D48, D45) rather than worked around silently.
+
+**Files changed** (all under `apps/organising-db/`):
+
+| File | Change |
+|---|---|
+| `src/components/campaigns/campaign-units-section.tsx` | Row 9: `acceptCandidate` / `createOu` → `units.bulkSave({ creates: [one] })` (D47); `updateOu` → `units.bulkSave({ updates: [one] })` without `ou_type`, Type select fixed while editing, inline error line, reset on close (D48); `assignOu` → `placements.assign(onConflict: "error")` (D49); `rateUnit` → `units.update({ user_rating })`; `removeFromUnitMutation` → `placements.unassign({ ouId })` + the legacy `assertRowsAffected` count check on `removed`; `reallocateToUnitMutation` → `placements.move(keepInParent: false)` (D50). Alerts / feedback through `structureErrorMessage`. `assertRowsAffected` still imported (rules + the count check). |
+| `src/components/campaigns/campaign-wizard.tsx` | Row 10: step 5 `saveUnitsMutation` → `saveUnitDrafts(supabase, campaignId, units)`; step 6 `saveWorkersMutation` → `savePlacements(supabase, campaignId, ouIds, allocationRows)`; the auto-allocation, `stampEmployerWorksiteFromOu` / `syncWorkersToMatchingCampaigns` calls, invalidations and `setStep` transitions unchanged; `cid` vs `campaign_id` advisory untouched. |
+| `src/components/campaigns/campaign-settings.tsx` | Row 11: the same two helpers; `setUnits(saved.drafts)`; toasts through `structureErrorMessage`; the allocation toast reports skipped rows (D43). |
+| `src/lib/hooks/useRemoveWorkerFromCampaign.ts` | Row 12: `placements.unassign({ campaignId, workerIds: [workerId] })` (all placements); the `ou_id` read is gone; the membership delete, worker update, call-list scrub and audit row unchanged; `onError` through `structureErrorMessage`. |
+| `src/lib/campaign/use-allocate-workers-to-ou.ts` | Row 13: `placements.assign(source manual, isPrimary single-only, onConflict skip)`; result `{ inserted, skipped }` (D46). |
+| `src/lib/campaign/structure-save.ts` | **New**: `planUnitsBulkSave`, `applyUnitsSaveResult`, `saveUnitDrafts`, `planPlacementsSave`, `savePlacements` (D41–D45, D51). Reads through the caller's client; writes only through `structureApi`. Outside the brief's touch list for the same reason D28 was (the two screens would otherwise duplicate 100 lines of planning that must be unit-tested without mounting 1,000-line components). |
+| `src/lib/campaign/structure-error-message.ts` | **Moved** from the wall chart (D40); body unchanged, header notes the move. |
+| Seven wall-chart importers + `wall-chart.structure-writes.test.tsx` | Import path only. |
+| `src/components/campaigns/wall-chart/__tests__/harness/backend.ts` | **Harness change**: `FakePostgrestQuery` takes its table name and records `insert` / `update` / `upsert` / `delete` chains into `writeInvocations()` (answered with no rows; fixture tables never change); `resetBackend` clears it; `DEFAULT_RPC_RESULTS` gains `structure_units_bulk_save` and `structure_placements_assign`. Needed so the accept-candidate path (RPC, then the `campaign_ou_candidates` row update) can be pinned. `mocks.ts` unchanged. |
+| `src/lib/campaign/__tests__/fake-structure-client.ts` | **New** recording fake (from-chains and rpc in one ordered `calls` list) for the node/hook tests. |
+| `src/lib/campaign/__tests__/structure-save.test.ts` | **New**, 22 tests: planner composition (deletes/updates/creates, ordering, `client_ref` links, `ou_group_id` rule, grandchild, dropped orphan, reuse rule and its limits), result application, and the exact `p_*` payloads of `saveUnitDrafts` / `savePlacements` including the empty-diff call (D41), the failed-read paths and a refused RPC. |
+| `src/lib/hooks/__tests__/useRemoveWorkerFromCampaign.test.tsx` | **New**, 5 tests: exact unassign payload, order (unassign → membership delete → call lists → audit row), toasts, `onRemoved`, the eight invalidations, forbidden path, `removed: 0` + missing membership = loud, unit rows without membership = warn. |
+| `src/lib/campaign/__tests__/use-allocate-workers-to-ou.test.tsx` | **New**, 4 tests: exact assign payload with `skip`, primary-for-one-only, empty selection, refusal reaches the caller. |
+| `src/components/campaigns/__tests__/campaign-units-section.structure-writes.test.tsx` | **New**, 16 tests, the real section mounted under the wall-chart harness: every row-9 path's exact `p_*` payload, dialog closes, invalidations, `window.alert` wording, the inline error line and Type select (D48), the group sentence (D49), the candidate row update after the RPC, and "no direct write" through the harness write log. |
+| `src/lib/campaign/__tests__/no-direct-structure-writes.test.ts` | Five entries removed from `REMAINING_DIRECT_WRITERS` (8 remain); case 2 stays a plain failing `it`. |
+| `tests/e2e/structure-api.spec.ts` | §4.5 items 4–6 appended as a second describe block (own prefix, own beforeAll/afterAll, restore of the chosen worker). Not run. |
+| `docs/organiser-ux-review/wp/wp2.2.md` | §3.11 ticks, §7, §8.3 D40–D52, this section. |
+
+**Per row — wrapper call and argument mapping:**
+
+| Row | Wrapper call and mapping |
+|---|---|
+| 9 create (`createOu`) | `units.bulkSave({ campaignId: Number(campaignId), creates: [{ name, ou_type, source: "manual", total_workers_estimated?, anchor_worker_id?, commonality_logic?, target_size? }] })` — the optional keys only when the form field is set, as the legacy payload; no `display_order` (D47). |
+| 9 accept candidate | `units.bulkSave({ creates: [{ name, ou_type, total_workers_estimated, commonality_logic, source: "wtp_seeded" }] })` → `created[0].ou_id` → the `campaign_ou_candidates` update as before. |
+| 9 edit (`updateOu`) | `units.bulkSave({ updates: [{ ou_id, name, commonality_logic: text \| null, total_workers_estimated: n \| null, anchor_worker_id: n \| null, target_size: n \| null }] })` — the legacy patch minus `ou_type` (D48). |
+| 9 rating | `units.update({ campaignId, ouId, patch: { user_rating: value \| null } })`. |
+| 9 assign dialog | `placements.assign({ ouId, workerIds (pre-filtered: not already on the unit), source: "manual", isPrimary: assignPrimary && one worker, onConflict: "error" })` (D49). |
+| 9 remove from unit (row / bulk) | `placements.unassign({ workerIds, ouId })`, then `assertRowsAffected({ error: null, count: removed }, workerIds.length, "Removing the workers from the unit")` — the legacy wording, now meaning "changed since you loaded" only (the RPC cannot be RLS-silent). |
+| 9 reallocate | `placements.move({ workerIds, fromOuId (null from Unallocated), toOuId, keepInParent: false })` → `p_keep_source: false, p_within_group_id: null` (D50). |
+| 10 / 11 save units | `saveUnitDrafts`: read `ou_id, ou_type, unit_basis, parent_ou_id, is_group_container` of the campaign's units (a failed read = nothing to delete, as before) → `units.bulkSave({ campaignId, deleteOuIds, updates: [{ ou_id, name, total_workers_estimated, unit_basis }], creates: [{ client_ref: draft_id, name, ou_type, total_workers_estimated, unit_basis, display_order: existing.length + i, is_group_container, parent_ou_id?: id \| client_ref, ou_group_id?: id \| client_ref (containers only) }] })` → drafts resolved from `reusedOuIdByDraftId` and `created[].client_ref`. Always one call (D41). |
+| 10 / 11 save allocation | `savePlacements`: read `ou_id, worker_id` on the state's `ouIds` (a failed read throws) → `placements.unassign({ workerIds, ouId })` per unit with rows to drop → `placements.assign({ ouId, workerIds, source: "manual", isPrimary: false, onConflict: "skip" })` per unit with rows to add (D43). Membership delete/insert before it unchanged; the wizard's post-save universe helpers unchanged. |
+| 12 | `placements.unassign({ campaignId: Number(campaignId), workerIds: [workerId] })` → `p_ou_id: null, p_within_group_id: null`; `removed` feeds the legacy "unit rows removed but no membership row" warning. |
+| 13 | `placements.assign({ campaignId: Number(campaignId), ouId, workerIds, source: "manual", isPrimary: !!isPrimary && workerIds.length === 1, onConflict: "skip" })` (D46). |
+
+**`onConflict` per caller:** row 13's only caller (`workforce-bulk-toolbar.tsx`, bulk "Assign to unit") →
+`skip` (D46); the units-section assign dialog → `error` (D49); wizard step 6 / settings allocation →
+`skip` (D43); row 12 and the units-section remove paths are unassigns (no conflict semantics); the
+reallocate dialog is a `move` (C-b displacement, D50).
+
+**Preserved vs still lost, per screen (the data-integrity comparison the brief asks for):**
+
+| Screen | Today's loss | Now |
+|---|---|---|
+| Units section — create / edit / rating | Nothing (single-row writes). | Nothing; `user_rating`, placements and rules untouched by an edit. |
+| Units section — reallocate | The target row was a fresh `manual`, non-primary row and the source row was deleted: `is_primary`, `assignment_source`, `assigned_rule_id` and the row id were lost on every move. | **Preserved**: `structure_placements_move` re-points the source row (C-l); a same-group placement on another unit is displaced (C-a), which the legacy left as a duplicate. From Unallocated a new `manual` row is inserted, as before. |
+| Units section — assign / remove | None beyond the rows asked for. | Same. |
+| Wizard step 5 / settings "save units" — a unit the user removed | Its placements (FK cascade), `campaign_unit_rules` and `campaign_ou_coverage` (cascade), rating (the row) all went. | **Identical loss, explicit mechanism**: `structure__delete_unit` deletes the unit's placements and the row; `campaign_unit_rules` / `campaign_ou_coverage` / `woc_scope_units` / `structure_test_results` / `section_plan_workforce_mapping_overrides` go with their `ON DELETE CASCADE`, the `SET NULL` dependants are nulled (§3.3 list). Nothing can preserve rows of a unit the user deleted. |
+| Wizard step 5 / settings — a scope unit toggled off and on (same `unit_basis`) | Deleted and re-created: placements, rating, rules lost. | **Preserved** (D42): updated in place. |
+| Wizard step 5 / settings — an existing unit kept | Nothing (the legacy update never touched `user_rating` or placements). | Same. A legacy **blank-named** unit is the one thing the RPC refuses that the legacy update re-saved; since every unit is re-sent, the save is refused until that unit is named — said as `Unit n (type) has no name.` under the wizard step / in the settings toast, before any RPC (D53; round 1 corrected the earlier D52 reading that length and estimate refusals were also new). |
+| Wizard step 6 / settings "save worker allocation" | Every placement on the campaign's units was deleted and the grid re-inserted: every row lost its id, `is_primary`, `assignment_source` (rule / universe rows became `manual`) and `assigned_rule_id`, whether or not the grid changed it. | **Preserved for every row the grid keeps** (D43). Rows the grid drops go (as they should); a worker moved between two units in the grid is an unassign + a `manual`, non-primary assign, so *that* row's flag and provenance are still lost, as today. |
+| Remove from campaign (row 12) | All placements of the worker deleted; membership deleted. | Identical. |
+| Bulk allocate (row 13) | A worker already on the unit failed the batch; a same-group duplicate was written. | Skipped and counted (D46). |
+
+**Raw command output** (this session, after every change):
+
+```
+$ pnpm --filter organising-db exec tsc --noEmit
+[exit=0]
+
+$ pnpm --filter organising-db test 2>&1 | grep -E "Test Files|Tests |×|FAIL|structure-writes|no-direct-structure-writes|structure-save|useRemove|use-allocate"
+ ✓ src/components/campaigns/__tests__/campaign-units-section.structure-writes.test.tsx (16 tests) 13718ms
+ ✓ src/components/campaigns/wall-chart/__tests__/wall-chart.structure-writes.test.tsx (46 tests) 20245ms
+ ✓ src/lib/hooks/__tests__/useRemoveWorkerFromCampaign.test.tsx (5 tests) 122ms
+ ✓ src/lib/campaign/__tests__/use-allocate-workers-to-ou.test.tsx (4 tests) 108ms
+ ✓ src/lib/campaign/__tests__/structure-save.test.ts (22 tests) 31ms
+ ❯ src/lib/campaign/__tests__/no-direct-structure-writes.test.ts (3 tests | 1 failed) 218ms
+   × no direct structure writes (wp2.2.md §3.9 guard) > no direct writers remain (acceptance criterion; expected to fail until Stage 6) 114ms
+   × CampaignWallChart render cost > renders 305 members across 161 units within budget 32723ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/lib/campaign/__tests__/no-direct-structure-writes.test.ts > no direct structure writes (wp2.2.md §3.9 guard) > no direct writers remain (acceptance criterion; expected to fail until Stage 6)
+ FAIL  src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > CampaignWallChart render cost > renders 305 members across 161 units within budget
+ Test Files  2 failed | 94 passed (96)
+      Tests  2 failed | 1325 passed (1327)
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  organising-db@0.1.0 test: `vitest run`
+[exit=1]
+
+$ pnpm --filter organising-db test 2>&1 | grep -A9 "file(s) still write"   # guard case 2, the 8 files
+     → 8 file(s) still write directly to campaign_organising_units / campaign_worker_ou:
+  app/api/campaign-import/apply/route.ts
+  app/api/campaigns/[id]/add-workers/route.ts
+  app/api/campaigns/[id]/create-worker/route.ts
+  app/api/campaigns/[id]/workers/duplicates/route.ts
+  app/api/worker-import/apply/route.ts
+  app/api/worker-import/organising-units/route.ts
+  lib/campaign/recompute-ou-assignments.ts
+  lib/workers/sync-campaign-universe.ts: expected [ …(8) ] to deeply equal []
+
+$ pnpm --filter organising-db exec eslint src/components/campaigns/campaign-units-section.tsx src/components/campaigns/campaign-wizard.tsx src/components/campaigns/campaign-settings.tsx src/lib/hooks/useRemoveWorkerFromCampaign.ts src/lib/campaign/use-allocate-workers-to-ou.ts src/lib/campaign/structure-save.ts src/lib/campaign/structure-error-message.ts src/components/campaigns/wall-chart/merge-units-dialog.tsx src/components/campaigns/wall-chart/delete-organising-unit-dialog.tsx src/components/campaigns/wall-chart/unit-rating-control.tsx src/components/campaigns/wall-chart/copy-worker-to-unit-dialog.tsx src/components/campaigns/wall-chart/split-unit-dialog.tsx src/components/campaigns/wall-chart/hooks/use-wall-chart-actions.ts src/components/campaigns/wall-chart/__tests__/harness/backend.ts src/components/campaigns/wall-chart/__tests__/wall-chart.structure-writes.test.tsx src/lib/campaign/__tests__/no-direct-structure-writes.test.ts src/lib/campaign/__tests__/structure-save.test.ts src/lib/campaign/__tests__/fake-structure-client.ts src/lib/campaign/__tests__/use-allocate-workers-to-ou.test.tsx src/lib/hooks/__tests__/useRemoveWorkerFromCampaign.test.tsx src/components/campaigns/__tests__/campaign-units-section.structure-writes.test.tsx tests/e2e/structure-api.spec.ts
+/home/user/OffshoreAlliance/apps/organising-db/src/components/campaigns/wall-chart/delete-organising-unit-dialog.tsx
+  100:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+  [… the pre-existing react-hooks/set-state-in-effect finding at :100, present at e9379dd5 and in §11.8; only the import line of this file changed]
+✖ 1 problem (1 error, 0 warnings)
+[exit=1]
+
+$ pnpm --filter organising-db lint 2>&1 | tail -3
+/home/user/OffshoreAlliance/apps/organising-db:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  organising-db@0.1.0 lint: `eslint`
+Exit status 1
+$ pnpm --filter organising-db lint 2>&1 | grep -F problems | tail -1
+✖ 294 problems (143 errors, 151 warnings)
+
+$ rg -n --pcre2 "\.from\(['\"]campaign_(organising_units|worker_ou)['\"]\)(\s*as\s+never)?\s*\.\s*(insert|update|upsert|delete)\(" apps/organising-db/src/components/campaigns apps/organising-db/src/lib/hooks apps/organising-db/src/lib/campaign --glob '!**/__tests__/**' -l
+apps/organising-db/src/lib/campaign/recompute-ou-assignments.ts
+[exit=0]
+
+$ git status --short
+ M apps/organising-db/src/components/campaigns/campaign-settings.tsx
+ M apps/organising-db/src/components/campaigns/campaign-units-section.tsx
+ M apps/organising-db/src/components/campaigns/campaign-wizard.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/__tests__/harness/backend.ts
+ M apps/organising-db/src/components/campaigns/wall-chart/__tests__/wall-chart.structure-writes.test.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/copy-worker-to-unit-dialog.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/delete-organising-unit-dialog.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/hooks/use-wall-chart-actions.ts
+ M apps/organising-db/src/components/campaigns/wall-chart/merge-units-dialog.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/split-unit-dialog.tsx
+ D apps/organising-db/src/components/campaigns/wall-chart/structure-error-message.ts
+ M apps/organising-db/src/components/campaigns/wall-chart/unit-rating-control.tsx
+ M apps/organising-db/src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+ M apps/organising-db/src/lib/campaign/use-allocate-workers-to-ou.ts
+ M apps/organising-db/src/lib/hooks/useRemoveWorkerFromCampaign.ts
+ M apps/organising-db/tests/e2e/structure-api.spec.ts
+ M docs/organiser-ux-review/wp/wp2.2.md
+?? apps/organising-db/src/components/campaigns/__tests__/
+?? apps/organising-db/src/lib/campaign/__tests__/fake-structure-client.ts
+?? apps/organising-db/src/lib/campaign/__tests__/structure-save.test.ts
+?? apps/organising-db/src/lib/campaign/__tests__/use-allocate-workers-to-ou.test.tsx
+?? apps/organising-db/src/lib/campaign/structure-error-message.ts
+?? apps/organising-db/src/lib/campaign/structure-save.ts
+?? apps/organising-db/src/lib/hooks/__tests__/
+```
+
+Reading: `tsc` clean; 1,327 tests (was 1,280), 1,325 passing — the two failures are guard case 2 (by design,
+8 files = §2.3 rows 14–21) and the pre-existing render-cost timing test; eslint on the changed files reports
+only the pre-existing `delete-organising-unit-dialog.tsx:100` finding (its only change is the D40 import
+path); lint total 294 = baseline; the `rg` line finds only row 14 (`recompute-ou-assignments.ts`, Stage 6);
+no direct write remains in rows 9–13; `supabase/.temp/*` untouched.
+
+**D45 consequences to carry into WP2.7 (review round 1, advisory 6):** sub-units created after Stage 5 under a
+plain (non-container) parent carry `ou_group_id = NULL`, and the readers that treat `ou_group_id` as "in a
+group" — `components/campaigns/workforce/workforce-list-view.tsx` (~:288, :448, :609),
+`lib/campaign/ou-reassignment-targets.ts` (~:35) and `components/campaigns/step-allocate-workers.tsx`
+(~:353–378, the cross-group conflict hint) — read them as "not in a group", while legacy rows created by the
+wizard keep the old shape (`ou_group_id = parent`). Both shapes coexist until WP2.7 normalises or the
+readers switch to `group_id`. The settings allocation grid no longer lists containers (D56).
+
+**Stage 6 one-liner (D46 follow-up, advisory 7):** `components/campaigns/workforce/workforce-bulk-toolbar.tsx`
+~:262 toasts `Allocated ${res.inserted} workers …` and ignores the hook's `skipped`; outside rows 9–13, so
+Stage 6 (or WP2.4) adds "N skipped: already in a unit of that group" to that toast.
+
+**Decisions for the orchestrator before Stage 6** (none blocks Stage 6's own rows):
+
+1. D48 — `ou_type` of an existing unit is now fixed in the units-section edit dialog (visible, explained). The
+   alternative is to add `ou_type` to `structure_unit_update`'s whitelist (SQL + wrapper; the WP2.1 triggers
+   already re-derive `group_id` and cascade it to the placements), which Stage 5 did not do.
+2. D45 — a sub-unit under a plain (non-container) unit is created with `ou_group_id = NULL` where the wizard
+   wrote the parent's id; and the settings page now saves drafted groups as groups. Confirm both.
+3. D43 — `skip` for the allocation grid: a worker put in two units of one group lands in the lower-numbered
+   one and is counted (settings toast; the wizard has no toast). `error` would refuse the whole save with a
+   partial state (unassigns already applied).
+4. D42 — the reuse rule (type + identical basis on the four scope keys). Confirm the keys, or ask for a
+   narrower rule.
+5. ~~D52 — the wizard's steps 5 and 6 have no error surface~~ — **resolved in review round 1 (D53)**: the
+   sentence names the unit and is rendered under the step / in the settings toast.
+6. e2e item 6 assumes the settings page renders for a `user` on `E2E_FOREIGN_CAMPAIGN_ID` (it is gated on
+   role only) and that its scope reads are RLS-visible or empty; the test is written to pass either way but
+   has not run.
+7. `lib/campaign/structure-save.ts` and the test fake are new files outside the brief's touch list (D28's
+   reasoning); `useAllocateWorkersToOu`'s result gained `skipped` (its caller ignores extra keys).
+
+Stage 5 stops here; items 1–6 of the e2e spec run on the preview when the operator schedules them.
+
+### 11.13 Stage 5 review round 1 (2026-09-14)
+
+Fresh-reviewer round on §11.12: one blocking finding (D52's silent refusal), one recorded decision (D48 →
+§9.1 T2, no code change), advisories 2–9. Same constraints (no database, no commits, no SQL or
+`structure-api.ts` change, no test weakened). Deviations D53–D57 (§8.3); D52 corrected.
+
+**Per item:**
+
+| Item | Where | What changed |
+|---|---|---|
+| Blocking 1 (a) | `src/lib/campaign/structure-save.ts` — `UnitDraftValidationError`, `validateUnitsSavePlan()` (called in `saveUnitDrafts` after planning, before the RPC) | Blank / whitespace-only name → `Unit 3 (worksite) has no name.` (position in the list, type label); > 200 chars and negative estimate mirrored with the unit's name. No RPC issued (D53). |
+| Blocking 1 (b) | `src/components/campaigns/campaign-wizard.tsx` — after the step-5 `<StepCampaignUnits/>` and the step-6 `<StepAllocateWorkers/>` blocks | `saveUnitsMutation.error` / `saveWorkersMutation.error` rendered as `<p role="alert" className="text-xs text-destructive">` through `structureErrorMessage(…)`. |
+| Blocking 1 (c) | `src/components/campaigns/campaign-settings.tsx` `saveUnitsMutation.onError`, `saveWorkersMutation.onError` | Already `structureErrorMessage`; the D53 sentence rides the same toast (test: "Unit 2 (employer) has no name."). |
+| Blocking 1 tests | `src/lib/campaign/__tests__/structure-save.test.ts` (+4: the sentences per path, `saveUnitDrafts` throws with no RPC); **new** `src/components/campaigns/__tests__/campaign-save-flows.structure-writes.test.tsx` (12: wizard step 5 success / refused / blank name, step 6 success / refused, settings units success / refused / blank name, settings grid D56, allocation success / skipped-count toast / refused) | Wizard and settings mounted for real under the wall-chart harness with a units + placements fixture. |
+| D48 decision | §9.1 row **T2**, "pending operator" | No code change. |
+| Advisory 2 | `src/lib/campaign/structure-error-message.ts` `duplicateInGroupMessage(err, lead)`; `campaign-units-section.tsx` `assignOu.onError` | D54 wording; test updated to the new sentence, plus a pin that the legacy P0001 keeps the old one. |
+| Advisory 3 | `structure-save.ts` `saveUnitDrafts` read `.order("ou_id", { ascending: true })`; `planUnitsBulkSave` sorts delete candidates | D55; test with two same-basis rows in both orders; the read's ops pinned `[select, eq, order]`. |
+| Advisory 4 | `wall-chart/__tests__/harness/backend.ts` | D57: `DirectStructureWriteError` for the two tables unless `allowDirectStructureWrites()`; `queryInvocations()`; `structure_placements_assign` default removed. Stage 4 suites re-run: 8 files, 134 tests green. Pin: `campaign-units-section.structure-writes.test.tsx` "the harness refuses a direct write on a structure table". |
+| Advisory 5 | §8.2 new row | Unpaged `savePlacements` read; truncated rows survive; Stage 6 to decide paging. |
+| Advisory 6 | `campaign-settings.tsx` scope query + draft mapping (hierarchy columns), grid `units` filter `!u.is_group_container`; §11.12 D45-consequences paragraph | D56. |
+| Advisory 7 | §11.12 Stage 6 one-liner | `workforce-bulk-toolbar.tsx` ~:262 hides `skipped`. |
+| Advisory 8 | `campaign-save-flows.structure-writes.test.tsx` | Pins: the `campaign_worker_ou` read `.in("ou_id", [10, 11, 20])` (the units the step knows, container included), `router.replace("/campaigns/new?cid=1&step=6")` / `…step=7` after success and not after a refusal, the membership delete + insert payload, the settings "Worker allocation saved. 1 placement skipped: …" toast. |
+| Advisory 9 | §11.12 preserved-vs-lost table, "existing unit kept" row | D52 sentence corrected (only the blank name is new). |
+
+**Raw command output:**
+
+```
+$ pnpm --filter organising-db exec tsc --noEmit
+[exit=0]
+
+$ pnpm --filter organising-db test 2>&1 | grep -E "Test Files|Tests |×|FAIL|structure-writes|no-direct-structure-writes|structure-save|useRemove|use-allocate|save-flows"
+ ✓ src/components/campaigns/__tests__/campaign-save-flows.structure-writes.test.tsx (12 tests) 2358ms
+ ✓ src/components/campaigns/__tests__/campaign-units-section.structure-writes.test.tsx (18 tests) 10490ms
+ ✓ src/components/campaigns/wall-chart/__tests__/wall-chart.structure-writes.test.tsx (46 tests) 18150ms
+ ✓ src/lib/hooks/__tests__/useRemoveWorkerFromCampaign.test.tsx (5 tests) 97ms
+ ✓ src/lib/campaign/__tests__/use-allocate-workers-to-ou.test.tsx (4 tests) 115ms
+ ✓ src/lib/campaign/__tests__/structure-save.test.ts (26 tests) 21ms
+ ❯ src/lib/campaign/__tests__/no-direct-structure-writes.test.ts (3 tests | 1 failed) 200ms
+   × no direct structure writes (wp2.2.md §3.9 guard) > no direct writers remain (acceptance criterion; expected to fail until Stage 6) 109ms
+   × CampaignWallChart render cost > renders 305 members across 161 units within budget 36939ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/lib/campaign/__tests__/no-direct-structure-writes.test.ts > no direct structure writes (wp2.2.md §3.9 guard) > no direct writers remain (acceptance criterion; expected to fail until Stage 6)
+ FAIL  src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > CampaignWallChart render cost > renders 305 members across 161 units within budget
+ Test Files  2 failed | 95 passed (97)
+      Tests  2 failed | 1343 passed (1345)
+[exit=1]
+
+$ pnpm --filter organising-db test 2>&1 | grep -A9 "file(s) still write"   # guard case 2, the same 8 files
+     → 8 file(s) still write directly to campaign_organising_units / campaign_worker_ou:
+  app/api/campaign-import/apply/route.ts
+  app/api/campaigns/[id]/add-workers/route.ts
+  app/api/campaigns/[id]/create-worker/route.ts
+  app/api/campaigns/[id]/workers/duplicates/route.ts
+  app/api/worker-import/apply/route.ts
+  app/api/worker-import/organising-units/route.ts
+  lib/campaign/recompute-ou-assignments.ts
+  lib/workers/sync-campaign-universe.ts: expected [ …(8) ] to deeply equal []
+
+$ pnpm exec vitest run src/components/campaigns/wall-chart/__tests__ --exclude "**/wall-chart.render-cost.test.tsx"   # Stage 4 suites under the hardened harness (D57)
+ Test Files  8 passed (8)
+      Tests  134 passed (134)
+
+$ pnpm --filter organising-db exec eslint <the 22 changed/new files of §11.12 + campaign-save-flows.structure-writes.test.tsx; the deleted wall-chart path skipped>
+/home/user/OffshoreAlliance/apps/organising-db/src/components/campaigns/wall-chart/delete-organising-unit-dialog.tsx
+  100:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+  [… the pre-existing react-hooks/set-state-in-effect finding at :100 (§11.8); only this file's import line changed]
+✖ 1 problem (1 error, 0 warnings)
+[exit=1]
+
+$ pnpm --filter organising-db lint 2>&1 | tail -3
+/home/user/OffshoreAlliance/apps/organising-db:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  organising-db@0.1.0 lint: `eslint`
+Exit status 1
+$ pnpm --filter organising-db lint 2>&1 | grep -F problems | tail -1
+✖ 294 problems (143 errors, 151 warnings)
+
+$ rg -n --pcre2 "\.from\(['\"]campaign_(organising_units|worker_ou)['\"]\)(\s*as\s+never)?\s*\.\s*(insert|update|upsert|delete)\(" apps/organising-db/src --glob '!**/__tests__/**' -l | sort
+apps/organising-db/src/app/api/campaigns/[id]/create-worker/route.ts
+apps/organising-db/src/lib/campaign/recompute-ou-assignments.ts
+apps/organising-db/src/lib/workers/sync-campaign-universe.ts
+[exit=0]   # rows 18, 14, 15 — the single-line regex finds 3 of the guard's 8 (D7); none of rows 9–13
+
+$ git status --short
+ M apps/organising-db/src/components/campaigns/campaign-settings.tsx
+ M apps/organising-db/src/components/campaigns/campaign-units-section.tsx
+ M apps/organising-db/src/components/campaigns/campaign-wizard.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/__tests__/harness/backend.ts
+ M apps/organising-db/src/components/campaigns/wall-chart/__tests__/wall-chart.structure-writes.test.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/copy-worker-to-unit-dialog.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/delete-organising-unit-dialog.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/hooks/use-wall-chart-actions.ts
+ M apps/organising-db/src/components/campaigns/wall-chart/merge-units-dialog.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/split-unit-dialog.tsx
+ D apps/organising-db/src/components/campaigns/wall-chart/structure-error-message.ts
+ M apps/organising-db/src/components/campaigns/wall-chart/unit-rating-control.tsx
+ M apps/organising-db/src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+ M apps/organising-db/src/lib/campaign/use-allocate-workers-to-ou.ts
+ M apps/organising-db/src/lib/hooks/useRemoveWorkerFromCampaign.ts
+ M apps/organising-db/tests/e2e/structure-api.spec.ts
+ M docs/organiser-ux-review/wp/wp2.2.md
+?? apps/organising-db/src/components/campaigns/__tests__/
+?? apps/organising-db/src/lib/campaign/__tests__/fake-structure-client.ts
+?? apps/organising-db/src/lib/campaign/__tests__/structure-save.test.ts
+?? apps/organising-db/src/lib/campaign/__tests__/use-allocate-workers-to-ou.test.tsx
+?? apps/organising-db/src/lib/campaign/structure-error-message.ts
+?? apps/organising-db/src/lib/campaign/structure-save.ts
+?? apps/organising-db/src/lib/hooks/__tests__/
+```
+
+Reading: `tsc` clean; 1,345 tests (1,343 passing; +18 since §11.12), the same two expected failures; the
+guard lists the same 8 files; eslint only the pre-existing finding; lint 294 = baseline; no direct write in
+rows 9–13; Stage 4's suites green under the hardened harness; `supabase/.temp/*` untouched.
+
+### 11.14 Stage 5 review round 2 (2026-09-14)
+
+Second fresh reviewer: approve with advisories; A2 and A3 applied, A4 and A5 recorded, the toolbar note
+mirrored into §8.2. Same constraints. Deviations D58–D59 (§8.3).
+
+| Item | Where | What changed |
+|---|---|---|
+| A2 | `src/lib/campaign/structure-save.ts` `validateUnitsSavePlan` (~:262–270, `INT32_MAX`) | Fractional / over-32-bit estimate refused before the RPC with the unit's name (D58). Tests: `structure-save.test.ts` (+1), `campaign-save-flows.structure-writes.test.tsx` ("a fractional estimate is refused before any RPC, naming the unit"). Input handlers untouched. |
+| A3 | `src/components/campaigns/campaign-wizard.tsx` step-5 `onBack` (~:1714) and step-6 `onBack` (~:1751) | `saveUnitsMutation.reset()` / `saveWorkersMutation.reset()` before `setStep` (D59). Tests: refusal → Back → forward (through step 4's "Continue") shows no stale line; refusal → successful save clears it; step-6 refusal → Back clears it. |
+| A4 | §8.2 row "Read-failure asymmetry" | Recorded for Stage 6 (recommend both helpers throw). |
+| A5 | §8.2 row "Membership rewritten before a refused placement save" | Recorded for Stage 6 / WP2.4. |
+| Toolbar note | §8.2 row "Bulk toolbar hides skipped placements" (also §11.12) | Mirrored. |
+
+**Raw command output:**
+
+```
+$ pnpm --filter organising-db exec tsc --noEmit
+[exit=0]
+
+$ pnpm --filter organising-db test 2>&1 | grep -E "Test Files|Tests |×|FAIL|save-flows|structure-save"
+ ✓ src/components/campaigns/__tests__/campaign-save-flows.structure-writes.test.tsx (14 tests) 3402ms
+ ✓ src/lib/campaign/__tests__/structure-save.test.ts (27 tests) 82ms
+   × no direct structure writes (wp2.2.md §3.9 guard) > no direct writers remain (acceptance criterion; expected to fail until Stage 6) 98ms
+   × CampaignWallChart render cost > renders 305 members across 161 units within budget 36015ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/lib/campaign/__tests__/no-direct-structure-writes.test.ts > no direct structure writes (wp2.2.md §3.9 guard) > no direct writers remain (acceptance criterion; expected to fail until Stage 6)
+ FAIL  src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > CampaignWallChart render cost > renders 305 members across 161 units within budget
+ Test Files  2 failed | 95 passed (97)
+      Tests  2 failed | 1346 passed (1348)
+[exit=1]
+
+$ pnpm --filter organising-db test 2>&1 | grep -A9 "file(s) still write"   # guard case 2, the same 8 files
+     → 8 file(s) still write directly to campaign_organising_units / campaign_worker_ou:
+  app/api/campaign-import/apply/route.ts
+  app/api/campaigns/[id]/add-workers/route.ts
+  app/api/campaigns/[id]/create-worker/route.ts
+  app/api/campaigns/[id]/workers/duplicates/route.ts
+  app/api/worker-import/apply/route.ts
+  app/api/worker-import/organising-units/route.ts
+  lib/campaign/recompute-ou-assignments.ts
+  lib/workers/sync-campaign-universe.ts: expected [ …(8) ] to deeply equal []
+
+$ pnpm --filter organising-db exec eslint <the 23 changed/new files of §11.13; the deleted wall-chart path skipped>
+/home/user/OffshoreAlliance/apps/organising-db/src/components/campaigns/wall-chart/delete-organising-unit-dialog.tsx
+  100:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+  [… the pre-existing react-hooks/set-state-in-effect finding at :100 (§11.8); only this file's import line changed]
+✖ 1 problem (1 error, 0 warnings)
+[exit=1]
+
+$ pnpm --filter organising-db lint 2>&1 | tail -3
+/home/user/OffshoreAlliance/apps/organising-db:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  organising-db@0.1.0 lint: `eslint`
+Exit status 1
+$ pnpm --filter organising-db lint 2>&1 | grep -F problems | tail -1
+✖ 294 problems (143 errors, 151 warnings)
+
+$ git status --short
+ M apps/organising-db/src/components/campaigns/campaign-settings.tsx
+ M apps/organising-db/src/components/campaigns/campaign-units-section.tsx
+ M apps/organising-db/src/components/campaigns/campaign-wizard.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/__tests__/harness/backend.ts
+ M apps/organising-db/src/components/campaigns/wall-chart/__tests__/wall-chart.structure-writes.test.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/copy-worker-to-unit-dialog.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/delete-organising-unit-dialog.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/hooks/use-wall-chart-actions.ts
+ M apps/organising-db/src/components/campaigns/wall-chart/merge-units-dialog.tsx
+ M apps/organising-db/src/components/campaigns/wall-chart/split-unit-dialog.tsx
+ D apps/organising-db/src/components/campaigns/wall-chart/structure-error-message.ts
+ M apps/organising-db/src/components/campaigns/wall-chart/unit-rating-control.tsx
+ M apps/organising-db/src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+ M apps/organising-db/src/lib/campaign/use-allocate-workers-to-ou.ts
+ M apps/organising-db/src/lib/hooks/useRemoveWorkerFromCampaign.ts
+ M apps/organising-db/tests/e2e/structure-api.spec.ts
+ M docs/organiser-ux-review/wp/wp2.2.md
+?? apps/organising-db/src/components/campaigns/__tests__/
+?? apps/organising-db/src/lib/campaign/__tests__/fake-structure-client.ts
+?? apps/organising-db/src/lib/campaign/__tests__/structure-save.test.ts
+?? apps/organising-db/src/lib/campaign/__tests__/use-allocate-workers-to-ou.test.tsx
+?? apps/organising-db/src/lib/campaign/structure-error-message.ts
+?? apps/organising-db/src/lib/campaign/structure-save.ts
+?? apps/organising-db/src/lib/hooks/__tests__/
+```
+
+Reading: `tsc` clean; 1,348 tests (1,346 passing; +3 since §11.13), the same two expected failures; the guard
+lists the same 8 files; eslint only the pre-existing finding; lint 294 = baseline; `supabase/.temp/*`
+untouched. Stage 5 is complete; the e2e spec (items 1–6) runs on the preview when the operator schedules it.

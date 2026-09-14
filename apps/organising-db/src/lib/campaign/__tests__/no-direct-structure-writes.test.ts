@@ -4,7 +4,8 @@
  * the structure API.
  *
  * Case 1 documents today's inventory (the 21 files of §2.3; each later stage
- * removes the files it switches and this list shrinks with it). Case 2 is the
+ * removes the files it switches and this list shrinks with it — 8 remain
+ * after Stage 5). Case 2 is the
  * acceptance criterion itself and is EXPECTED to fail until Stage 6 — it is
  * deliberately not skipped or marked `fails`. Case 3 pins the sync-on-open
  * route (§2.3 row 15a) to "no direct write of its own".
@@ -29,9 +30,10 @@ const ANY_FROM_PATTERN = /\.from\(\s*['"]campaign_(?:organising_units|worker_ou)
 
 /**
  * Files (relative to `src/`) that still write directly to the two tables —
- * §2.3 rows 9–21 (row 13's real path is lib/campaign/, not lib/hooks/; see
- * wp2.2.md §8.3). Sorted. Each writer switch removes its file from this list;
- * Stage 4 (§11.8) removed the eight wall-chart writers, rows 1–8.
+ * §2.3 rows 14–21. Sorted. Each writer switch removes its file from this
+ * list; Stage 4 (§11.8) removed the eight wall-chart writers, rows 1–8, and
+ * Stage 5 (§11.12) the settings, wizard, units-section and hook writers,
+ * rows 9–13 (row 13's real path was lib/campaign/, not lib/hooks/; D7).
  */
 export const REMAINING_DIRECT_WRITERS: readonly string[] = [
   "app/api/campaign-import/apply/route.ts",
@@ -40,12 +42,7 @@ export const REMAINING_DIRECT_WRITERS: readonly string[] = [
   "app/api/campaigns/[id]/workers/duplicates/route.ts",
   "app/api/worker-import/apply/route.ts",
   "app/api/worker-import/organising-units/route.ts",
-  "components/campaigns/campaign-settings.tsx",
-  "components/campaigns/campaign-units-section.tsx",
-  "components/campaigns/campaign-wizard.tsx",
   "lib/campaign/recompute-ou-assignments.ts",
-  "lib/campaign/use-allocate-workers-to-ou.ts",
-  "lib/hooks/useRemoveWorkerFromCampaign.ts",
   "lib/workers/sync-campaign-universe.ts",
 ];
 

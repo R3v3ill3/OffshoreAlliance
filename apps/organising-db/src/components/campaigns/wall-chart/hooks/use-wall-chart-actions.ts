@@ -7,7 +7,7 @@ import { structureApi } from "@/lib/campaign/structure-api";
 import type { WorkerDragRef } from "../dnd";
 import type { DeleteUnitWorker } from "../delete-organising-unit-dialog";
 import type { SplitMember } from "../split-unit-dialog";
-import { structureErrorMessage } from "../structure-error-message";
+import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import type { WallChartShellEnv, WallChartShellState } from "./use-wall-chart-shell-state";
 import type { WallChartStructure } from "./use-wall-chart-structure";
 

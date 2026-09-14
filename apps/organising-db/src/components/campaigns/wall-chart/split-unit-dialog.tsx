@@ -42,7 +42,7 @@ import type {
   WorkerShiftOption,
   WorkerWorkAreaOption,
 } from "@/types/database";
-import { splitDuplicateInGroupMessage, structureErrorMessage } from "./structure-error-message";
+import { splitDuplicateInGroupMessage, structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import { humanizeOuType, ouDisplayName, type WallChartOU } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────────

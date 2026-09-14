@@ -76,7 +76,7 @@ import { MergeUnitsDialog } from "../merge-units-dialog";
 import { MoveOrCopyWorkersDialog } from "../copy-worker-to-unit-dialog";
 import { useMoveWorkersMutation, type MoveWorkerResult, type MoveWorkerVars } from "../move-worker-mutation";
 import { SplitUnitDialog, type SplitMember } from "../split-unit-dialog";
-import { ALREADY_IN_GROUP_MESSAGE } from "../structure-error-message";
+import { ALREADY_IN_GROUP_MESSAGE } from "@/lib/campaign/structure-error-message";
 import type { WallChartOU } from "../types";
 import { UnitsTab } from "../worker-detail-sheet";
 

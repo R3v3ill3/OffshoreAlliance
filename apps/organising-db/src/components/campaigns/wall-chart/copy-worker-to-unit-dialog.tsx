@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/select";
 import { humanizeOuType, ouDisplayName, type WallChartOU } from "./types";
 import { useMoveWorkersMutation } from "./move-worker-mutation";
-import { structureErrorMessage } from "./structure-error-message";
+import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import { toast } from "sonner";
 
 export type MoveMode = "move" | "copy";

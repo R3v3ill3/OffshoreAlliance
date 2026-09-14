@@ -40,7 +40,7 @@ import {
   ouTargetLabel,
   type OuRowForReassignment,
 } from "@/lib/campaign/ou-reassignment-targets";
-import { structureErrorMessage } from "./structure-error-message";
+import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import type { WallChartOU } from "./types";
 
 const UNASSIGNED_VALUE = "__unassigned__";

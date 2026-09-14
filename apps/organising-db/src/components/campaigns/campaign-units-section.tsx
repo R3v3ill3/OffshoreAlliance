@@ -5,6 +5,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAwareMutation } from "@/lib/hooks/useAuthAwareMutation";
 import { createClient } from "@/lib/supabase/client";
 import { assertRowsAffected } from "@/lib/supabase/assert-rows-affected";
+import {
+  isStructureApiError,
+  structureApi,
+  type UnitCreateElement,
+  type UnitPatch,
+} from "@/lib/campaign/structure-api";
+import { duplicateInGroupMessage, structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import { formatWorkerLabel } from "@/lib/workers/format-worker-label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -446,31 +453,28 @@ export function CampaignUnitsSection({
       estimated_workers: number | null;
       commonality_logic: string | null;
     }) => {
-      const { data: maxRow } = await supabase
-        .from("campaign_organising_units")
-        .select("display_order")
-        .eq("campaign_id", Number(campaignId))
-        .order("display_order", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      const { data: ou, error: ouErr } = await supabase
-        .from("campaign_organising_units")
-        .insert({
-          campaign_id: Number(campaignId),
-          name: c.suggested_name,
-          ou_type: c.suggested_ou_type,
-          total_workers_estimated: c.estimated_workers,
-          commonality_logic: c.commonality_logic,
-          source: "wtp_seeded",
-          display_order: (maxRow?.display_order != null ? Number(maxRow.display_order) : -1) + 1,
-        })
-        .select("ou_id")
-        .single();
-      if (ouErr) throw ouErr;
+      // WP2.2 §3.11 row 9: one `structure_units_bulk_save` with a single
+      // create. `display_order` is not sent: the RPC's default is the same
+      // max(display_order) + 1 the legacy read computed, now inside the
+      // transaction (D47).
+      const created = await structureApi(supabase).units.bulkSave({
+        campaignId: Number(campaignId),
+        creates: [
+          {
+            name: c.suggested_name,
+            ou_type: c.suggested_ou_type,
+            total_workers_estimated: c.estimated_workers,
+            commonality_logic: c.commonality_logic,
+            source: "wtp_seeded",
+          },
+        ],
+      });
+      const ouId = created.created[0]?.ou_id;
+      if (ouId == null) throw new Error("The organising unit was not created.");
 
       const { error: upErr } = await supabase
         .from("campaign_ou_candidates")
-        .update({ status: "accepted" as OuCandidateStatus, accepted_ou_id: ou.ou_id })
+        .update({ status: "accepted" as OuCandidateStatus, accepted_ou_id: ouId })
         .eq("candidate_id", c.candidate_id);
       if (upErr) throw upErr;
     },
@@ -513,36 +517,32 @@ export function CampaignUnitsSection({
 
   const createOu = useAuthAwareMutation({
     mutationFn: async () => {
-      const { data: maxRow } = await supabase
-        .from("campaign_organising_units")
-        .select("display_order")
-        .eq("campaign_id", Number(campaignId))
-        .order("display_order", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      const payload: Record<string, unknown> = {
-        campaign_id: Number(campaignId),
+      // WP2.2 §3.11 row 9: `structure_units_bulk_save` with one create. The
+      // element carries exactly the columns the legacy insert set; the RPC
+      // derives `display_order` (= max + 1, as the legacy read did; D47).
+      const unit: UnitCreateElement = {
         name: ouForm.name,
         ou_type: ouForm.ou_type,
-        display_order: (maxRow?.display_order != null ? Number(maxRow.display_order) : -1) + 1,
         source: "manual",
       };
       if (ouForm.total_workers_estimated) {
         const n = Number(ouForm.total_workers_estimated);
-        if (!Number.isNaN(n)) payload.total_workers_estimated = n;
+        if (!Number.isNaN(n)) unit.total_workers_estimated = n;
       }
       if (ouForm.anchor_worker_id) {
-        payload.anchor_worker_id = Number(ouForm.anchor_worker_id);
+        unit.anchor_worker_id = Number(ouForm.anchor_worker_id);
       }
       if (ouForm.commonality_logic) {
-        payload.commonality_logic = ouForm.commonality_logic;
+        unit.commonality_logic = ouForm.commonality_logic;
       }
       if (ouForm.target_size) {
         const n = Number(ouForm.target_size);
-        if (!Number.isNaN(n)) payload.target_size = n;
+        if (!Number.isNaN(n)) unit.target_size = n;
       }
-      const { error } = await supabase.from("campaign_organising_units").insert(payload);
-      if (error) throw error;
+      await structureApi(supabase).units.bulkSave({
+        campaignId: Number(campaignId),
+        creates: [unit],
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignId] });
@@ -562,33 +562,35 @@ export function CampaignUnitsSection({
 
   const updateOu = useAuthAwareMutation({
     mutationFn: async (ouId: number) => {
-      const payload: Record<string, unknown> = {
+      // WP2.2 §3.11 row 9: `structure_units_bulk_save` with one update. The
+      // patch is the legacy update minus `ou_type`, which the structure API
+      // keeps immutable (a unit's type derives its group, rule C-g); the
+      // dialog's Type select is fixed while editing for the same reason (D48).
+      const patch: UnitPatch = {
         name: ouForm.name,
-        ou_type: ouForm.ou_type,
         commonality_logic: ouForm.commonality_logic || null,
       };
       if (ouForm.total_workers_estimated) {
         const n = Number(ouForm.total_workers_estimated);
-        if (!Number.isNaN(n)) payload.total_workers_estimated = n;
+        if (!Number.isNaN(n)) patch.total_workers_estimated = n;
       } else {
-        payload.total_workers_estimated = null;
+        patch.total_workers_estimated = null;
       }
       if (ouForm.anchor_worker_id) {
-        payload.anchor_worker_id = Number(ouForm.anchor_worker_id);
+        patch.anchor_worker_id = Number(ouForm.anchor_worker_id);
       } else {
-        payload.anchor_worker_id = null;
+        patch.anchor_worker_id = null;
       }
       if (ouForm.target_size) {
         const n = Number(ouForm.target_size);
-        if (!Number.isNaN(n)) payload.target_size = n;
+        if (!Number.isNaN(n)) patch.target_size = n;
       } else {
-        payload.target_size = null;
+        patch.target_size = null;
       }
-      const { error } = await supabase
-        .from("campaign_organising_units")
-        .update(payload)
-        .eq("ou_id", ouId);
-      if (error) throw error;
+      await structureApi(supabase).units.bulkSave({
+        campaignId: Number(campaignId),
+        updates: [{ ou_id: ouId, ...patch }],
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignId] });
@@ -606,6 +608,14 @@ export function CampaignUnitsSection({
     },
   });
 
+  const closeUnitDialog = () => {
+    setOuDialog(false);
+    setEditingOuId(null);
+    // A failed attempt's inline error must not greet the next opening (D48).
+    createOu.reset();
+    updateOu.reset();
+  };
+
   const resetAssignDialogState = () => {
     setSelectedAssignWorkerIds(new Set());
     setAssignPrimary(false);
@@ -614,26 +624,21 @@ export function CampaignUnitsSection({
   const assignOu = useAuthAwareMutation({
     mutationFn: async (workerIdsToAssign: number[]) => {
       if (!assignDialog || workerIdsToAssign.length === 0) return { inserted: 0 };
-      const rows = workerIdsToAssign.map((workerId) => ({
-        ou_id: assignDialog.ou_id,
-        worker_id: workerId,
-        is_primary: assignPrimary && workerIdsToAssign.length === 1,
-        assignment_source: "manual",
-      }));
-      // Upsert so workers already in the unit are skipped rather than failing the
-      // whole batch on the (ou_id, worker_id) unique constraint.
-      const { error } = await (supabase as unknown as {
-        from: (table: string) => {
-          upsert: (
-            rows: Record<string, unknown>[],
-            opts: { onConflict: string; ignoreDuplicates: boolean }
-          ) => Promise<{ error: Error | null }>;
-        };
-      })
-        .from("campaign_worker_ou")
-        .upsert(rows, { onConflict: "ou_id,worker_id", ignoreDuplicates: true });
-      if (error) throw error;
-      return { inserted: rows.length };
+      // WP2.2 §3.11 row 9: one `structure_placements_assign`. A worker already
+      // on the unit is skipped by the RPC (the legacy upsert's
+      // ignoreDuplicates); a worker who already holds another unit in this
+      // unit's group refuses the whole batch with `duplicate_in_group`
+      // (`p_on_conflict: "error"`, D49) — the dialog already had a sentence for
+      // the legacy group-exclusivity refusal, and that is the same shape.
+      const result = await structureApi(supabase).placements.assign({
+        campaignId: Number(campaignId),
+        ouId: assignDialog.ou_id,
+        workerIds: workerIdsToAssign,
+        source: "manual",
+        isPrimary: assignPrimary && workerIdsToAssign.length === 1,
+        onConflict: "error",
+      });
+      return { inserted: result.inserted + result.moved };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
@@ -648,9 +653,15 @@ export function CampaignUnitsSection({
       setTimeout(() => setAssignFeedback(null), 4500);
     },
     onError: (e: Error) => {
-      const msg = /group/i.test(e.message)
-        ? "Some of these workers already belong to a different group of the same type in this campaign, so they can't also be assigned here."
-        : e.message || "Could not assign workers.";
+      // D54: a same-group duplicate (C-a) names the worker and the group from
+      // the RPC's DETAIL; the legacy Employer-exclusivity trigger's P0001
+      // keeps the sentence the dialog always had for it.
+      const msg =
+        isStructureApiError(e) && e.kind === "duplicate_in_group"
+          ? duplicateInGroupMessage(e, "A worker is already in another unit of that group")
+          : /group/i.test(e.message)
+            ? "Some of these workers already belong to a different group of the same type in this campaign, so they can't also be assigned here."
+            : structureErrorMessage(e, "Could not assign workers.");
       setAssignFeedback(msg);
     },
   });
@@ -736,31 +747,29 @@ export function CampaignUnitsSection({
 
   const rateUnit = useAuthAwareMutation({
     mutationFn: async ({ ouId, rating }: { ouId: number; rating: number | null }) => {
-      const scoped = supabase as unknown as {
-        from: (t: string) => {
-          update: (v: Record<string, unknown>) => {
-            eq: (c: string, val: unknown) => Promise<{ error: Error | null }>;
-          };
-        };
-      };
-      const { error } = await scoped
-        .from("campaign_organising_units")
-        .update({ user_rating: rating })
-        .eq("ou_id", ouId);
-      if (error) throw error;
+      // WP2.2 §3.11 row 9 (as row 6): `structure_unit_update` with the one key.
+      await structureApi(supabase).units.update({
+        campaignId: Number(campaignId),
+        ouId,
+        patch: { user_rating: rating },
+      });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignId] }),
-    onError: (e: Error) => window.alert(e.message || "Could not save rating"),
+    onError: (e: Error) => window.alert(structureErrorMessage(e, "Could not save rating")),
   });
 
   const removeFromUnitMutation = useAuthAwareMutation({
     mutationFn: async ({ ouId, workerIds }: { ouId: number; workerIds: number[] }) => {
-      const res = await supabase
-        .from("campaign_worker_ou" as never)
-        .delete({ count: "exact" })
-        .eq("ou_id", ouId)
-        .in("worker_id", workerIds);
-      assertRowsAffected(res, workerIds.length, "Removing the workers from the unit");
+      // WP2.2 §3.11 row 9: one `structure_placements_unassign` for the unit.
+      // The RPC cannot be RLS-silent (it raises 42501), so a short count now
+      // means only that the rows changed since the page loaded; it stays as
+      // loud as the legacy counted delete.
+      const { removed } = await structureApi(supabase).placements.unassign({
+        campaignId: Number(campaignId),
+        workerIds,
+        ouId,
+      });
+      assertRowsAffected({ error: null, count: removed }, workerIds.length, "Removing the workers from the unit");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
@@ -768,7 +777,7 @@ export function CampaignUnitsSection({
       setUnitSelection(null);
       setRemoveConfirmState(null);
     },
-    onError: (e: Error) => window.alert(e.message || "Could not remove workers from unit"),
+    onError: (e: Error) => window.alert(structureErrorMessage(e, "Could not remove workers from unit")),
   });
 
   const reallocateToUnitMutation = useAuthAwareMutation({
@@ -781,33 +790,21 @@ export function CampaignUnitsSection({
       toOuId: number;
       workerIds: number[];
     }) => {
-      const rows = workerIds.map((id) => ({
-        ou_id: toOuId,
-        worker_id: id,
-        assignment_source: "manual",
-        is_primary: false,
-      }));
-      const { error: insErr } = await (supabase as unknown as {
-        from: (table: string) => {
-          upsert: (
-            rows: unknown[],
-            opts: { onConflict: string; ignoreDuplicates: boolean }
-          ) => Promise<{ error: Error | null }>;
-        };
-      })
-        .from("campaign_worker_ou")
-        .upsert(rows, { onConflict: "ou_id,worker_id", ignoreDuplicates: true });
-      if (insErr) throw insErr;
-
-      // Only remove from source when source is a real unit (not coming from Unallocated).
-      if (fromOuId !== null) {
-        const delRes = await supabase
-          .from("campaign_worker_ou" as never)
-          .delete({ count: "exact" })
-          .eq("ou_id", fromOuId)
-          .in("worker_id", workerIds);
-        assertRowsAffected(delRes, workerIds.length, "Moving the workers out of the old unit");
-      }
+      // WP2.2 §3.11 row 9: one `structure_placements_move` (D50). From a real
+      // unit the source row is re-pointed to the target (id, primary flag and
+      // provenance travel with it, C-l) and any other placement the worker
+      // holds in the target's group is displaced (C-a); from Unallocated
+      // (`fromOuId: null`) a new manual row is inserted. A worker no longer on
+      // the source raises P0002, as loud as the legacy counted delete.
+      // `keepInParent: false`: this dialog never created a placement on the
+      // target's parent container, and must not start to.
+      await structureApi(supabase).placements.move({
+        campaignId: Number(campaignId),
+        workerIds,
+        fromOuId,
+        toOuId,
+        keepInParent: false,
+      });
     },
     onSuccess: () => {
       setUnitSelection(null);
@@ -815,11 +812,11 @@ export function CampaignUnitsSection({
       setReallocateTarget(null);
       setReallocateSelectedOuId("");
     },
-    onError: (e: Error) => window.alert(e.message || "Could not reallocate workers"),
-    // Invalidate on settle, not only on success: the upsert above may have
-    // landed before the source delete was filtered by RLS, leaving the workers
-    // in both units — the list must refetch to show that (WP2.2's
-    // transactional RPC removes the partial state itself).
+    onError: (e: Error) => window.alert(structureErrorMessage(e, "Could not reallocate workers")),
+    // Invalidate on settle, not only on success: the move is one transaction
+    // now, so there is no partial state to show, but a refused move must
+    // still refetch so the list reflects the database rather than the
+    // selection the user built.
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-worker-ou", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["campaign-ou-coverage", campaignId] });
@@ -1902,8 +1899,8 @@ export function CampaignUnitsSection({
       <Dialog
         open={ouDialog}
         onOpenChange={(open) => {
-          setOuDialog(open);
-          if (!open) setEditingOuId(null);
+          if (open) setOuDialog(true);
+          else closeUnitDialog();
         }}
       >
         <DialogContent>
@@ -1923,6 +1920,7 @@ export function CampaignUnitsSection({
               <Select
                 value={ouForm.ou_type}
                 onValueChange={(v) => setOuForm({ ...ouForm, ou_type: v as CampaignOuType })}
+                disabled={editingOuId != null}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -1935,6 +1933,11 @@ export function CampaignUnitsSection({
                   ))}
                 </SelectContent>
               </Select>
+              {editingOuId != null && (
+                <p className="text-xs text-muted-foreground">
+                  The type is fixed once a unit exists — it decides which group the unit belongs to.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Estimated workers in unit</Label>
@@ -1990,8 +1993,16 @@ export function CampaignUnitsSection({
               </Select>
             </div>
           </div>
+          {(editingOuId != null ? updateOu.error : createOu.error) && (
+            <p role="alert" className="text-sm text-destructive">
+              {structureErrorMessage(
+                editingOuId != null ? updateOu.error : createOu.error,
+                editingOuId != null ? "Could not save the unit." : "Could not create the unit."
+              )}
+            </p>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setOuDialog(false); setEditingOuId(null); }}>
+            <Button variant="outline" onClick={closeUnitDialog}>
               Cancel
             </Button>
             <Button

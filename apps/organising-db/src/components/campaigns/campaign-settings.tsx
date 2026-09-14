@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { savePlacements, saveUnitDrafts } from "@/lib/campaign/structure-save";
+import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { useAuthAwareMutation, withSessionGuard } from "@/lib/hooks/useAuthAwareMutation";
 import { Button } from "@/components/ui/button";
@@ -176,7 +178,12 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
           .eq("campaign_id", campaignId),
         supabase
           .from("campaign_organising_units")
-          .select("ou_id, ou_type, name, total_workers_estimated, unit_basis")
+          // D56: the hierarchy columns too, as the wizard hydrates them, so a
+          // container is known as one (the grid filter) and members nest
+          // under it in the units editor instead of reading as plain units.
+          .select(
+            "ou_id, ou_type, name, total_workers_estimated, unit_basis, parent_ou_id, is_group_container, ou_group_id"
+          )
           .eq("campaign_id", campaignId)
           .order("display_order", { ascending: true }),
         supabase
@@ -214,6 +221,9 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
           name: string;
           total_workers_estimated: number | null;
           unit_basis: CampaignOuUnitBasis | null;
+          parent_ou_id: number | null;
+          is_group_container: boolean;
+          ou_group_id: number | null;
         }>).map((r) => ({
           draft_id: `srv_${r.ou_id}`,
           ou_id: r.ou_id,
@@ -221,6 +231,10 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
           name: r.name,
           total_workers_estimated: r.total_workers_estimated,
           unit_basis: r.unit_basis,
+          parent_ou_id: r.parent_ou_id ?? null,
+          parent_draft_id: r.parent_ou_id != null ? `srv_${r.parent_ou_id}` : null,
+          is_group_container: r.is_group_container ?? false,
+          ou_group_id: r.ou_group_id ?? null,
         })) satisfies CampaignUnitDraft[],
         workerUnitAllocations: (() => {
           const out: WorkerUnitAllocation = {};
@@ -477,71 +491,14 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
   const saveUnitsMutation = useAuthAwareMutation({
     mutationFn: async () => {
       await withSessionGuard("settings:saveUnits", async () => {
-        const { data: existing } = await supabase
-          .from("campaign_organising_units")
-          .select("ou_id")
-          .eq("campaign_id", campaignId);
-        const existingIds = new Set(
-          (existing ?? []).map((r) => r.ou_id as number)
-        );
-        const keepIds = new Set(
-          units.filter((u) => u.ou_id != null).map((u) => u.ou_id as number)
-        );
-        const toDelete = Array.from(existingIds).filter(
-          (id) => !keepIds.has(id)
-        );
-        if (toDelete.length > 0) {
-          const { error } = await supabase
-            .from("campaign_organising_units")
-            .delete()
-            .in("ou_id", toDelete);
-          if (error) throw error;
-        }
-
-        for (const u of units) {
-          if (u.ou_id == null) continue;
-          const { error } = await supabase
-            .from("campaign_organising_units")
-            .update({
-              ou_type: u.ou_type,
-              name: u.name,
-              total_workers_estimated: u.total_workers_estimated,
-              unit_basis: u.unit_basis,
-            })
-            .eq("ou_id", u.ou_id);
-          if (error) throw error;
-        }
-
-        const drafts = units.filter((u) => u.ou_id == null);
-        if (drafts.length > 0) {
-          const { data: inserted, error } = await supabase
-            .from("campaign_organising_units")
-            .insert(
-              drafts.map((u, i) => ({
-                campaign_id: campaignId,
-                ou_type: u.ou_type,
-                name: u.name,
-                total_workers_estimated: u.total_workers_estimated,
-                unit_basis: u.unit_basis,
-                display_order: existingIds.size + i,
-              }))
-            )
-            .select("ou_id");
-          if (error) throw error;
-          const insertedIds = (inserted ?? []).map((r) => r.ou_id as number);
-          const draftIdToOuId = new Map<string, number>();
-          drafts.forEach((d, i) => {
-            const id = insertedIds[i];
-            if (id != null) draftIdToOuId.set(d.draft_id, id);
-          });
-          setUnits(
-            units.map((u) =>
-              u.ou_id == null && draftIdToOuId.has(u.draft_id)
-                ? { ...u, ou_id: draftIdToOuId.get(u.draft_id)! }
-                : u
-            )
-          );
-        }
+        // WP2.2 §3.11 row 11: the delete / update / insert sequence is ONE
+        // `structure_units_bulk_save` (lib/campaign/structure-save.ts). A
+        // scope unit toggled off and on again is updated in place rather than
+        // deleted and re-created (D42); a group drafted here is saved as a
+        // group (container + members), which the legacy flat insert dropped
+        // (D45). The returned drafts carry the server ids.
+        const saved = await saveUnitDrafts(supabase, campaignId, units);
+        setUnits(saved.drafts);
       });
     },
     onSuccess: () => {
@@ -549,13 +506,13 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
       toast.success("Campaign units saved.");
     },
     onError: (error: Error) => {
-      toast.error(error.message || "Could not save campaign units.");
+      toast.error(structureErrorMessage(error, "Could not save campaign units."));
     },
   });
 
   const saveWorkersMutation = useAuthAwareMutation({
     mutationFn: async () => {
-      await withSessionGuard("settings:saveWorkers", async () => {
+      return await withSessionGuard("settings:saveWorkers", async () => {
         await supabase
           .from("campaign_worker_membership")
           .delete()
@@ -571,36 +528,38 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
             );
           if (error) throw error;
         }
+        // WP2.2 §3.11 row 11: the grid is saved as the difference between the
+        // placements on this campaign's units and the rows the grid wants —
+        // `structure_placements_unassign` per unit for the extra rows, then
+        // `structure_placements_assign` (manual, skip on a same-group
+        // conflict) per unit for the missing ones (lib/campaign/structure-save.ts,
+        // D43). Rows the grid keeps are not touched, so they keep their
+        // primary flag and provenance instead of being wiped and re-inserted.
         const ouIds = units
           .map((u) => u.ou_id)
           .filter((x): x is number => x != null);
-        if (ouIds.length > 0) {
-          const { error } = await supabase
-            .from("campaign_worker_ou")
-            .delete()
-            .in("ou_id", ouIds);
-          if (error) throw error;
-        }
         const allocationRows: { ou_id: number; worker_id: number }[] = [];
         for (const wid of selectedWorkers) {
           const set = workerUnitAllocations[wid];
           if (!set) continue;
           for (const ouId of set) allocationRows.push({ ou_id: ouId, worker_id: wid });
         }
-        if (allocationRows.length > 0) {
-          const { error } = await supabase
-            .from("campaign_worker_ou")
-            .insert(allocationRows);
-          if (error) throw error;
-        }
+        return await savePlacements(supabase, campaignId, ouIds, allocationRows);
       });
     },
-    onSuccess: () => {
+    onSuccess: (outcome) => {
       invalidateScope();
-      toast.success("Worker allocation saved.");
+      // A same-group conflict is skipped by the RPC (rule C-a), never written
+      // silently: the toast says how many rows were left out (D43).
+      const skipped = outcome?.skipped ?? 0;
+      toast.success(
+        skipped > 0
+          ? `Worker allocation saved. ${skipped} placement${skipped === 1 ? "" : "s"} skipped: already in another unit of the same group.`
+          : "Worker allocation saved."
+      );
     },
     onError: (error: Error) => {
-      toast.error(error.message || "Could not save worker allocation.");
+      toast.error(structureErrorMessage(error, "Could not save worker allocation."));
     },
   });
 
@@ -1108,7 +1067,9 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
               workerUnitAllocations={workerUnitAllocations}
               setWorkerUnitAllocations={setWorkerUnitAllocations}
               units={units
-                .filter((u) => u.ou_id != null)
+                // D56: containers hold no placements (C-e); the wizard's grid
+                // already leaves them out, this one now does too.
+                .filter((u) => u.ou_id != null && !u.is_group_container)
                 .map((u) => ({
                   ou_id: u.ou_id as number,
                   name: u.name,

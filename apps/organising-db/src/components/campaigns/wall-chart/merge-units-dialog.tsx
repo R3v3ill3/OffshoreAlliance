@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { structureErrorMessage } from "./structure-error-message";
+import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import { ouDisplayName, type WallChartOU } from "./types";
 
 export type MergeUnitsDialogProps = {

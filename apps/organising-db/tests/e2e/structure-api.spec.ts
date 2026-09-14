@@ -1,14 +1,20 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 import { STORAGE_STATE } from "../../playwright.config";
-import { NO_CREDENTIALS_MESSAGE, hasE2ECredentials } from "./env";
+import {
+  E2E_FOREIGN_CAMPAIGN_ID,
+  NO_CREDENTIALS_MESSAGE,
+  NO_FOREIGN_CAMPAIGN_MESSAGE,
+  hasE2ECredentials,
+  hasE2EForeignCampaign,
+} from "./env";
 import {
   deleteUnitsByNamePrefix,
   restClientFor,
   sessionFromStorageState,
   type RestClient,
 } from "./roles/campaign-cleanup";
-import { openWallChart } from "./roles/unit-lifecycle";
+import { UNITS_URL, collectAlerts, gotoDocument, openWallChart } from "./roles/unit-lifecycle";
 import { withUserMode } from "./workspace-mode";
 
 /**
@@ -25,7 +31,10 @@ import { withUserMode } from "./workspace-mode";
  *      moved worker (rule C-k); the "keep in parent" switch is not offered
  *      for that shape (D33).
  *
- * Items 4–6 (merge, settings bulk save, the `user` role) are Stage 5.
+ * Items 4–6 (merge from the Units tab, the settings "save units" round trip
+ * through `structure_units_bulk_save`, and the `user` role's visible error)
+ * are the second describe block (Stage 5, wp2.2.md §11.12). Neither block
+ * has run yet: both run on the branch preview when the operator schedules it.
  *
  * **What this spec writes, and how it leaves the campaign as found.** It runs
  * on the approved deterministic dev campaign (`CAMPAIGN_ID`), which the e2e
@@ -496,5 +505,243 @@ test.describe("WP2.2 structure API — wall-chart writers on the preview", () =>
     expect(childRow.group_id, "the child is in the source's group").toBe(unitA.group_id);
     expect(placements.some((p) => p.ou_id === unitA.ou_id), "the source no longer holds the moved worker").toBe(false);
     expect(placements.some((p) => p.ou_id === childRow.ou_id), "the child holds the worker").toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Stage 5 — §4.5 items 4–6 (wp2.2.md §11.12). Same fixture discipline as
+// above: every unit is created by this block under STAGE5_PREFIX (which the
+// first block's `UNIT_PREFIX` sweep also matches, so a crash in either block
+// is swept by the next run), the worker's original placements are recorded
+// before any write and restored in afterAll, and every selector is an anchor
+// the product already relies on (button names, dialog titles, the units
+// section's row markup that unit-lifecycle.ts `renameUnit` uses).
+// ---------------------------------------------------------------------------
+
+const STAGE5_PREFIX = `${UNIT_PREFIX}s5 `;
+const FORBIDDEN_MESSAGE = "You don't have permission to change this campaign's units.";
+
+interface UnitRow {
+  ou_id: number;
+  name: string;
+  ou_type: string;
+}
+
+/** Every unit of a campaign, by id, through REST as the signed-in user. */
+async function unitsOf(client: RestClient, campaignId: string | number): Promise<UnitRow[]> {
+  const res = await client.get(
+    `/rest/v1/campaign_organising_units?campaign_id=eq.${campaignId}&select=ou_id,name,ou_type&order=ou_id`
+  );
+  ok(res, `reading campaign_organising_units of campaign ${campaignId}`);
+  return (res.body as UnitRow[]).map(({ ou_id, name, ou_type }) => ({ ou_id, name, ou_type }));
+}
+
+/** A rule on one unit (`campaign_unit_rules` is not a structure table; test fixture, not product code). */
+async function createRule(client: RestClient, ouId: number): Promise<number> {
+  const res = await client.post(
+    "/rest/v1/campaign_unit_rules",
+    {
+      campaign_id: CAMPAIGN_ID,
+      ou_id: ouId,
+      include: true,
+      dimension_type: "occupation",
+      operator: "contains",
+      value_text: "wp2.2 e2e",
+    },
+    "return=representation"
+  );
+  ok(res, `creating a rule on unit ${ouId}`);
+  const row = (res.body as { rule_id: number }[])[0];
+  if (!row) throw new Error("campaign_unit_rules insert returned no row");
+  return row.rule_id;
+}
+
+/** The settings accordion section "Campaign units" (collapsed by default), expanded. */
+async function openSettingsUnits(page: Page, campaignId: string | number): Promise<void> {
+  await gotoDocument(page, `/campaigns/${campaignId}/settings`, `settings of campaign ${campaignId}`);
+  const trigger = page.getByRole("button", { name: /^Campaign units/ });
+  await expect(trigger, "the settings page must render its Campaign units section").toBeVisible({ timeout: 30_000 });
+  if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
+  await expect(page.getByRole("button", { name: "Save campaign units", exact: true })).toBeVisible({ timeout: 30_000 });
+}
+
+/** One "Save campaign units" click, resolved with the bulk-save RPC's HTTP status. */
+async function saveCampaignUnits(page: Page): Promise<number> {
+  const rpc = page.waitForResponse((r) => r.url().includes("/rest/v1/rpc/structure_units_bulk_save"));
+  await page.getByRole("button", { name: "Save campaign units", exact: true }).click();
+  return (await rpc).status();
+}
+
+/** The units-step row (step-campaign-units.tsx UnitRow) whose name input holds `name`. */
+function unitRowNamed(page: Page, name: string) {
+  return page.locator("div.rounded-md.border", { has: page.locator(`input[value="${name}"]`) }).first();
+}
+
+test.describe("WP2.2 structure API — Stage 5 writers on the preview (§4.5 items 4–6)", () => {
+  test.describe.configure({ timeout: 180_000 });
+  test.skip(!hasE2ECredentials, NO_CREDENTIALS_MESSAGE);
+  withUserMode("full");
+
+  let client: RestClient | null = null;
+  let chosen: { worker: Fixture["worker"]; originalPlacements: PlacementRow[] } | null = null;
+  let apiForCleanup: APIRequestContext | null = null;
+
+  test.beforeAll(async ({ playwright }) => {
+    if (!hasE2ECredentials) return;
+    test.setTimeout(120_000);
+    apiForCleanup = await playwright.request.newContext();
+    client = restClientFor(apiForCleanup, sessionFromStorageState(STORAGE_STATE));
+    if (!client) return;
+    const swept = await deleteUnitsByNamePrefix(client, STAGE5_PREFIX, CAMPAIGN_ID);
+    if (swept > 0) console.log(`[cleanup] removed ${swept} leftover "${STAGE5_PREFIX}" unit(s) on campaign ${CAMPAIGN_ID}.`);
+    const worker = await pickWorker(client);
+    if (!worker) return;
+    chosen = { worker, originalPlacements: await placementsOf(client, worker.worker_id) };
+  });
+
+  test.afterAll(async () => {
+    if (!client) return;
+    try {
+      const removed = await deleteUnitsByNamePrefix(client, STAGE5_PREFIX, CAMPAIGN_ID);
+      console.log(`[cleanup] removed ${removed} "${STAGE5_PREFIX}" unit(s) (their placements and rules went with them).`);
+      if (chosen) {
+        for (const note of await restoreWorker(client, chosen.worker.worker_id, chosen.originalPlacements)) {
+          console.log(`[cleanup] ${note}`);
+        }
+      }
+    } finally {
+      await apiForCleanup?.dispose();
+    }
+  });
+
+  test("4. merge from the Units tab: the survivor holds the union, the sources are gone, the unit rule is re-pointed", async ({
+    page,
+  }) => {
+    test.skip(!client, "Skipped: no REST client for the signed-in session (see the [cleanup] line above).");
+    test.skip(!chosen, "Skipped: campaign 1 has no members to place.");
+    if (!client || !chosen) return;
+    const stamp = Date.now();
+    const created = await createUnits(client, [
+      { client_ref: "a", name: `${STAGE5_PREFIX}merge A ${stamp}`, ou_type: "shift", source: "manual" },
+      { client_ref: "b", name: `${STAGE5_PREFIX}merge B ${stamp}`, ou_type: "shift", source: "manual" },
+    ]);
+    const unitA = created.find((u) => u.client_ref === "a")!;
+    const unitB = created.find((u) => u.client_ref === "b")!;
+    expect(unitA.group_id, "A and B must share a group (C-j)").toBe(unitB.group_id);
+    const nameA = `${STAGE5_PREFIX}merge A ${stamp}`;
+    const nameB = `${STAGE5_PREFIX}merge B ${stamp}`;
+
+    // Precondition: the worker sits on B only (one shift placement, C-a); a rule points at B.
+    await placeOnlyOn(client, chosen.worker.worker_id, unitB.ou_id);
+    const ruleId = await createRule(client, unitB.ou_id);
+    const alerts = collectAlerts(page);
+
+    await gotoDocument(page, UNITS_URL(CAMPAIGN_ID), `Units tab of campaign ${CAMPAIGN_ID}`);
+    await expect(page.getByRole("tab", { name: "Campaign Units" })).toHaveAttribute("aria-selected", "true", {
+      timeout: 30_000,
+    });
+    await page.getByRole("button", { name: "Merge units", exact: true }).click();
+    const picker = page.getByRole("dialog", { name: "Select units to merge" });
+    await expect(picker).toBeVisible();
+    await picker.locator("label", { hasText: nameA }).getByRole("checkbox").click();
+    await picker.locator("label", { hasText: nameB }).getByRole("checkbox").click();
+    await picker.getByRole("button", { name: "Choose survivor (2 selected)", exact: true }).click();
+
+    const dialog = page.getByRole("dialog", { name: "Merge duplicate units" });
+    await expect(dialog).toBeVisible();
+    await dialog.locator(`label[for="merge-survivor-${unitA.ou_id}"]`).click();
+    const merge = page.waitForResponse((r) => r.url().includes("/rest/v1/rpc/structure_unit_merge"));
+    await dialog.getByRole("button", { name: `Merge (keep ${nameA})`, exact: true }).click();
+    expect((await merge).status(), "structure_unit_merge must succeed").toBe(200);
+    await expect(dialog).toBeHidden({ timeout: 30_000 });
+
+    const placements = await placementsOf(client, chosen.worker.worker_id);
+    expect(placements.some((p) => p.ou_id === unitA.ou_id), "the survivor holds the worker moved from B").toBe(true);
+    expect(placements.some((p) => p.ou_id === unitB.ou_id), "the source no longer holds the worker").toBe(false);
+    const units = await unitsOf(client, CAMPAIGN_ID);
+    expect(units.some((u) => u.ou_id === unitB.ou_id), "the source unit is gone").toBe(false);
+    expect(units.some((u) => u.ou_id === unitA.ou_id), "the survivor remains").toBe(true);
+    const rule = await client.get(`/rest/v1/campaign_unit_rules?rule_id=eq.${ruleId}&select=rule_id,ou_id`);
+    ok(rule, "reading the re-pointed rule");
+    expect((rule.body as { ou_id: number }[]).map((r) => r.ou_id), "campaign_unit_rules re-pointed to the survivor").toEqual([
+      unitA.ou_id,
+    ]);
+    expect(alerts, "no window.alert: the merge dialog announces failures that way").toEqual([]);
+  });
+
+  test("5. settings 'Save campaign units' round trip through structure_units_bulk_save: create, rename in place, delete", async ({
+    page,
+  }) => {
+    test.skip(!client, "Skipped: no REST client for the signed-in session (see the [cleanup] line above).");
+    if (!client) return;
+    const stamp = Date.now();
+    const name = `${STAGE5_PREFIX}settings ${stamp}`;
+    const renamed = `${name} renamed`;
+    const before = await unitsOf(client, CAMPAIGN_ID);
+    const alerts = collectAlerts(page);
+
+    // Create: "Add a single unit" → Custom unit → Add → Save.
+    await openSettingsUnits(page, CAMPAIGN_ID);
+    const addCard = page.locator("div.rounded-md.border", { has: page.getByText("Add a single unit", { exact: true }) }).first();
+    await addCard.getByRole("combobox").first().click();
+    await page.getByRole("option", { name: "Custom unit", exact: true }).click();
+    await addCard.getByPlaceholder("e.g. Day shift, Drilling crew, Catering…").fill(name);
+    await addCard.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(unitRowNamed(page, name)).toBeVisible();
+    expect(await saveCampaignUnits(page), "structure_units_bulk_save (create) must succeed").toBe(200);
+    await expect(page.getByText("Campaign units saved.").first()).toBeVisible({ timeout: 15_000 });
+
+    const afterCreate = await unitsOf(client, CAMPAIGN_ID);
+    const createdRow = afterCreate.find((u) => u.name === name);
+    expect(createdRow, "the new unit exists after the save").toBeTruthy();
+    expect(createdRow!.ou_type).toBe("custom");
+    expect(
+      afterCreate.filter((u) => u.name !== name).map((u) => u.ou_id),
+      "every other unit is untouched by the save"
+    ).toEqual(before.map((u) => u.ou_id));
+
+    // Rename: the same row, updated in place (same ou_id), never deleted and re-created.
+    await unitRowNamed(page, name).getByRole("textbox").first().fill(renamed);
+    expect(await saveCampaignUnits(page), "structure_units_bulk_save (update) must succeed").toBe(200);
+    await expect(page.getByText("Campaign units saved.").first()).toBeVisible({ timeout: 15_000 });
+    const afterRename = await unitsOf(client, CAMPAIGN_ID);
+    expect(afterRename.find((u) => u.ou_id === createdRow!.ou_id)?.name, "renamed in place").toBe(renamed);
+    expect(afterRename.some((u) => u.name === name), "no unit with the old name").toBe(false);
+    expect(afterRename.map((u) => u.ou_id), "the id set is unchanged by a rename").toEqual(afterCreate.map((u) => u.ou_id));
+
+    // Delete: remove the row, save.
+    await unitRowNamed(page, renamed).getByTitle("Remove unit").click();
+    await expect(unitRowNamed(page, renamed)).toHaveCount(0);
+    expect(await saveCampaignUnits(page), "structure_units_bulk_save (delete) must succeed").toBe(200);
+    await expect(page.getByText("Campaign units saved.").first()).toBeVisible({ timeout: 15_000 });
+    const afterDelete = await unitsOf(client, CAMPAIGN_ID);
+    expect(afterDelete.map((u) => u.ou_id), "back to the units the campaign had before").toEqual(before.map((u) => u.ou_id));
+    expect(alerts).toEqual([]);
+  });
+
+  test("6. a `user` without write permission on the campaign gets a visible error on a structure write, not a silent no-op", async ({
+    page,
+  }) => {
+    test.skip(!hasE2EForeignCampaign, NO_FOREIGN_CAMPAIGN_MESSAGE);
+    test.skip(!client, "Skipped: no REST client for the signed-in session (see the [cleanup] line above).");
+    if (!client) return;
+    const alerts = collectAlerts(page);
+    // May be empty under RLS; the point is that it is the same afterwards.
+    const before = await unitsOf(client, E2E_FOREIGN_CAMPAIGN_ID);
+
+    // The settings page is gated on the account's role, not on the campaign
+    // (campaign-settings.tsx `useAuth().canWrite`), so a `user` reaches the
+    // save button on a campaign they cannot write to. Before WP2.2 the RLS
+    // filtered writes returned 2xx with no rows and the page toasted
+    // "Campaign units saved."; the RPC's permission pre-check (42501) is the
+    // visible refusal (wp2.2.md D41).
+    await openSettingsUnits(page, E2E_FOREIGN_CAMPAIGN_ID);
+    const status = await saveCampaignUnits(page);
+    expect(status, "structure_units_bulk_save must be refused for a campaign the account cannot write to").toBeGreaterThanOrEqual(400);
+    await expect(page.getByText(FORBIDDEN_MESSAGE).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Campaign units saved.")).toHaveCount(0);
+
+    expect(await unitsOf(client, E2E_FOREIGN_CAMPAIGN_ID), "nothing changed on the foreign campaign").toEqual(before);
+    expect(alerts).toEqual([]);
   });
 });

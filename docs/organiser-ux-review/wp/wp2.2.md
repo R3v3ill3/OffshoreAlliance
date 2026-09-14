@@ -689,6 +689,18 @@ production deploy without WP2.1 + WP2.2a would fail every move/create/delete wit
    read-only WP2.2b check. Before/after evidence compares hazard counts and checksums, not row totals
    (sync-on-open moves the totals whenever a campaign is opened; §2.3 row 15a).
 4. Only after step 3 completes on production may WP2.4 begin and consume `campaign_group_membership`.
+4a. **Supabase GitHub integration (found 2026-09-14, operator report):** the production project's GitHub
+   integration has "deploy" set to **automatic on branch `main`**. If that deploy runs the repository's
+   pending migrations on a push to `main`, the merge of PR #41 would apply whatever is not yet on
+   production's ledger — after step 2 that is exactly WP2.2b, ahead of `10`/`20`/`00`/`04` (the order
+   step 3 requires) and outside the run-sheet rule; the same hazard the Stage 7 review recorded for
+   `supabase db push` (§8.2). Evidence that it may not fire: PR #40 (WP2.1) merged with a migration on
+   2026-09-12 and production did not receive it until the operator's run sheet on 2026-09-13
+   (`PROGRESS.md` WP2.1 row); the PR #41 "Supabase Preview" check is `skipped` and the integration
+   comment said the PR was "ignored". Whether it fires or not is not to be tested on production:
+   **before the merge the operator switches that deploy off (or to manual) and confirms it here**, and
+   switches it back only after step 3 completes, when production's ledger carries both files and a
+   deploy would apply nothing. Recorded as a human task in `PROGRESS.md`.
 5. Side effect: with WP2.1 + WP2.2a on production before the merge, `gen-types.yml` regenerates **with**
    the symbols on the merge push. With `develop` parked there is no second integration branch, so the
    `generated.ts` divergence of `5fe7c93`/`1666660` cannot recur. (The RPC `Functions` entries still are

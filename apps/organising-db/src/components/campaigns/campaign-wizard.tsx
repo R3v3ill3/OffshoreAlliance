@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import { savePlacements, saveUnitDrafts } from "@/lib/campaign/structure-save";
 import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -262,7 +263,16 @@ export function CampaignWizard() {
       const [ce, cw, cw2, ca, cou, cwo, cam, csa] = await Promise.all([
         supabase.from("campaign_employers").select("employer_id").eq("campaign_id", cid),
         supabase.from("campaign_worksites").select("worksite_id, sector_wide").eq("campaign_id", cid),
-        supabase.from("campaign_worker_membership").select("worker_id").eq("campaign_id", cid),
+        // Paged (WP2.2 Stage 7, D77): step 6's `desired` set is built from
+        // these reads; a truncated read would make the save unassign the rest.
+        fetchAllRows<{ worker_id: number }>((from, to) =>
+          supabase
+            .from("campaign_worker_membership")
+            .select("worker_id")
+            .eq("campaign_id", cid)
+            .order("worker_id", { ascending: true })
+            .range(from, to)
+        ),
         supabase
           .from("campaign_agreements")
           .select("agreement_id, relationship_type, is_primary, sort_order")
@@ -275,10 +285,15 @@ export function CampaignWizard() {
           )
           .eq("campaign_id", cid)
           .order("display_order", { ascending: true }),
-        supabase
-          .from("campaign_worker_ou")
-          .select("ou_id, worker_id, campaign_organising_units!inner(campaign_id)")
-          .eq("campaign_organising_units.campaign_id", cid),
+        fetchAllRows<{ ou_id: number; worker_id: number }>((from, to) =>
+          supabase
+            .from("campaign_worker_ou")
+            .select("ou_id, worker_id, campaign_organising_units!inner(campaign_id)")
+            .eq("campaign_organising_units.campaign_id", cid)
+            .order("ou_id", { ascending: true })
+            .order("worker_id", { ascending: true })
+            .range(from, to)
+        ),
         supabase
           .from("campaign_ambitions")
           .select(
@@ -300,12 +315,11 @@ export function CampaignWizard() {
       ]);
       if (ce.error) throw ce.error;
       if (cw.error) throw cw.error;
-      if (cw2.error) throw cw2.error;
       // The Phase 1–3 tables may not exist on environments where the migrations
       // haven't been applied yet — degrade gracefully rather than failing.
       const agreementRows = ca.error ? [] : (ca.data ?? []);
       const ouRows = cou.error ? [] : (cou.data ?? []);
-      const cwoRows = cwo.error ? [] : (cwo.data ?? []);
+      const cwoRows = cwo;
       const camRows = cam.error ? [] : (cam.data ?? []);
       // Returns null when the campaign has no situation analysis yet, or
       // when the table is missing on older environments.
@@ -319,7 +333,7 @@ export function CampaignWizard() {
         employers: (ce.data ?? []).map((r) => r.employer_id),
         sectorWide,
         worksites: worksiteRows.filter((w) => w.worksite_id != null).map((w) => w.worksite_id!),
-        workers: (cw2.data ?? []).map((r) => r.worker_id),
+        workers: cw2.map((r) => r.worker_id),
         agreements: (agreementRows as Array<{
           agreement_id: number;
           relationship_type: string;

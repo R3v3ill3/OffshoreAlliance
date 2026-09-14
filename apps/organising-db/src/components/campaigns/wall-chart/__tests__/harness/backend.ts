@@ -193,8 +193,11 @@ class FakePostgrestQuery implements PromiseLike<FakePostgrestResult> {
   order(...args: unknown[]): this {
     return this.note("order", args);
   }
-  range(...args: unknown[]): this {
-    return this.note("range", args);
+  /** Stage 7 (D77): slices like PostgREST (`from`..`to` inclusive) so a paged read over a large fixture terminates. */
+  range(from: number, to: number): this {
+    this.note("range", [from, to]);
+    this.rows = this.rows.slice(from, to + 1);
+    return this;
   }
   limit(count: number): this {
     this.note("limit", [count]);

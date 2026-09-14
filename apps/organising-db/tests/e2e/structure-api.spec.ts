@@ -49,6 +49,13 @@ import { withUserMode } from "./workspace-mode";
  * `afterAll` through `structure_placements_assign` (source and primary flag
  * preserved). The background universe sync is intercepted in the browser, as
  * in wall-chart-decomposition.spec.ts, so opening the chart writes nothing.
+ * NOT intercepted (Stage 7, D78): the client-side `syncWorkersToMatchingCampaigns`
+ * that `useMoveWorkersMutation` runs after every successful drop — after
+ * WP2.2 Stage 6 it may give the worker `universe` rows on any unit of
+ * campaign 1 whose basis matches the worker's global employer / worksite
+ * (and on that unit's Employer container). Assertions on the worker's whole
+ * placement set therefore exclude `assignment_source === "universe"`, and the
+ * cleanup removes any same-group row before restoring an original placement.
  * `withUserMode("full")` makes and restores one dev preference write.
  *
  * Every selector is an anchor the product already relies on: the
@@ -242,6 +249,19 @@ async function restoreWorker(client: RestClient, workerId: number, originalPlace
   const have = new Set(now.map((p) => p.ou_id));
   for (const p of originalPlacements) {
     if (have.has(p.ou_id)) continue;
+    // Stage 7 (D78): a `universe` row the in-browser sync gave the worker in
+    // the same group during the run would make the re-insert collide under
+    // WP2.2b (23505) or the assign below report `skipped` on the wrong unit;
+    // remove any row of the worker in that group first (`group_id` is the
+    // trigger-derived column on campaign_worker_ou; groups are campaign-scoped).
+    if (p.group_id != null) {
+      const cleared = now.filter((q) => q.group_id === p.group_id);
+      if (cleared.length > 0) {
+        const del = await client.delete(`/rest/v1/campaign_worker_ou?worker_id=eq.${p.worker_id}&group_id=eq.${p.group_id}`);
+        ok(del, `clearing group ${p.group_id} rows of worker ${p.worker_id} before restore`);
+        console.log(`[cleanup] cleared ${cleared.map((q) => `${q.ou_id} (${q.assignment_source})`).join(", ")} from group ${p.group_id} before restoring unit ${p.ou_id}`);
+      }
+    }
     if (p.assigned_rule_id == null) {
       // `p_on_conflict: "skip"` never moves a row, so the one worker is either
       // inserted or (already there) skipped; anything else means the restore
@@ -265,6 +285,13 @@ async function restoreWorker(client: RestClient, workerId: number, originalPlace
         },
         "return=minimal"
       );
+      if (res.status === 409) {
+        // Still refused (a row appeared between the clear and the insert):
+        // say so and carry on — afterAll must not throw after the unit sweep.
+        console.log(`[cleanup] NOT restored: rule placement (${p.ou_id}, ${p.worker_id}, rule ${p.assigned_rule_id}) refused with 409: ${JSON.stringify(res.body)}`);
+        notes.push(`NOT restored: worker ${p.worker_id} on unit ${p.ou_id} (rule ${p.assigned_rule_id}) — 409`);
+        continue;
+      }
       ok(res, `restoring rule placement (${p.ou_id}, ${p.worker_id})`);
     }
     notes.push(
@@ -390,7 +417,9 @@ test.describe("WP2.2 structure API — wall-chart writers on the preview", () =>
     await expectTileIn(page, unitB.ou_id, worker.worker_id, true);
     await expectTileIn(page, unitA.ou_id, worker.worker_id, false);
 
-    const inGroup = (await placementsOf(client, worker.worker_id)).filter((p) => p.group_id === unitA.group_id);
+    const inGroup = (await placementsOf(client, worker.worker_id)).filter(
+      (p) => p.group_id === unitA.group_id && p.assignment_source !== "universe"
+    );
     expect(inGroup.map((p) => p.ou_id), "exactly one placement in the group, on B").toEqual([unitB.ou_id]);
 
     // B → Unassigned: every placement of the worker in the campaign goes.
@@ -449,7 +478,8 @@ test.describe("WP2.2 structure API — wall-chart writers on the preview", () =>
     await expectTileIn(page, unitC.ou_id, worker.worker_id, true);
     await expectTileIn(page, unitA.ou_id, worker.worker_id, true);
 
-    const after = await placementsOf(client, worker.worker_id);
+    // `universe` rows the un-intercepted post-drop sync may have added are not this test's (D78).
+    const after = (await placementsOf(client, worker.worker_id)).filter((p) => p.assignment_source !== "universe");
     expect(after.map((p) => p.ou_id).sort((x, y) => x - y)).toEqual([unitA.ou_id, unitC.ou_id].sort((x, y) => x - y));
   });
 

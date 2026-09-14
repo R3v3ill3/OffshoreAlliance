@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllRows } from "@/lib/supabase/fetch-all-rows";
 import { savePlacements, saveUnitDrafts } from "@/lib/campaign/structure-save";
 import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import { useAuth } from "@/lib/supabase/auth-context";
@@ -172,10 +173,17 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
           .from("campaign_worksites")
           .select("worksite_id, sector_wide")
           .eq("campaign_id", campaignId),
-        supabase
-          .from("campaign_worker_membership")
-          .select("worker_id")
-          .eq("campaign_id", campaignId),
+        // Paged (WP2.2 Stage 7, D77): the allocation grid's `desired` set is
+        // built from these two reads; an unranged read truncated at PostgREST's
+        // max-rows would make the save unassign every row past the first page.
+        fetchAllRows<{ worker_id: number }>((from, to) =>
+          supabase
+            .from("campaign_worker_membership")
+            .select("worker_id")
+            .eq("campaign_id", campaignId)
+            .order("worker_id", { ascending: true })
+            .range(from, to)
+        ),
         supabase
           .from("campaign_organising_units")
           // D56: the hierarchy columns too, as the wizard hydrates them, so a
@@ -186,10 +194,15 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
           )
           .eq("campaign_id", campaignId)
           .order("display_order", { ascending: true }),
-        supabase
-          .from("campaign_worker_ou")
-          .select("ou_id, worker_id, campaign_organising_units!inner(campaign_id)")
-          .eq("campaign_organising_units.campaign_id", campaignId),
+        fetchAllRows<{ ou_id: number; worker_id: number }>((from, to) =>
+          supabase
+            .from("campaign_worker_ou")
+            .select("ou_id, worker_id, campaign_organising_units!inner(campaign_id)")
+            .eq("campaign_organising_units.campaign_id", campaignId)
+            .order("ou_id", { ascending: true })
+            .order("worker_id", { ascending: true })
+            .range(from, to)
+        ),
         supabase
           .from("campaign_ambitions")
           .select(
@@ -200,9 +213,8 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
       ]);
       if (ce.error) throw ce.error;
       if (cw.error) throw cw.error;
-      if (cw2.error) throw cw2.error;
       const ouRows = cou.error ? [] : (cou.data ?? []);
-      const cwoRows = cwo.error ? [] : (cwo.data ?? []);
+      const cwoRows = cwo;
       const camRows = cam.error ? [] : (cam.data ?? []);
       const worksiteRows = cw.data ?? [];
       const sectorWide = worksiteRows.some(
@@ -214,7 +226,7 @@ export function CampaignSettings({ campaignId }: CampaignSettingsProps) {
         worksites: worksiteRows
           .filter((w) => w.worksite_id != null)
           .map((w) => w.worksite_id!),
-        workers: (cw2.data ?? []).map((r) => r.worker_id),
+        workers: cw2.map((r) => r.worker_id),
         units: (ouRows as Array<{
           ou_id: number;
           ou_type: string;

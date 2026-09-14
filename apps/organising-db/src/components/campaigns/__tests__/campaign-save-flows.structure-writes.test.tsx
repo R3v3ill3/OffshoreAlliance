@@ -430,6 +430,33 @@ describe("wizard and settings save flows through the structure API (wp2.2.md §1
       );
     });
 
+    it("D77 (Stage 7): the hydration reads are paged — 2,500 placement rows arrive in three ordered ranges, so the grid's desired set is never a truncated first page", async () => {
+      const rows = Array.from({ length: 2_500 }, (_, i) => ({ ou_id: 20, worker_id: 10_000 + i }));
+      const { container } = await mountSettings(buildFixture({ campaign_worker_ou: rows }));
+      await openAllocate(container);
+
+      const placementReads = queryInvocations().filter(
+        (q) => q.table === "campaign_worker_ou" && q.ops.some((o) => o.method === "eq" && o.args[0] === "campaign_organising_units.campaign_id")
+      );
+      expect(placementReads.map((q) => q.ops.filter((o) => o.method !== "select"))).toEqual(
+        [0, 1000, 2000].map((from) => [
+          { method: "eq", args: ["campaign_organising_units.campaign_id", CAMPAIGN] },
+          { method: "order", args: ["ou_id", { ascending: true }] },
+          { method: "order", args: ["worker_id", { ascending: true }] },
+          { method: "range", args: [from, from + 999] },
+        ])
+      );
+      const membershipReads = queryInvocations().filter((q) => q.table === "campaign_worker_membership");
+      expect(membershipReads.map((q) => q.ops.filter((o) => o.method !== "select"))).toEqual([
+        [
+          { method: "eq", args: ["campaign_id", CAMPAIGN] },
+          { method: "order", args: ["worker_id", { ascending: true }] },
+          { method: "range", args: [0, 999] },
+        ],
+      ]);
+      expect(rpcInvocations()).toEqual([]);
+    });
+
     it("a refused save toasts the permission sentence", async () => {
       answerRpc("structure_placements_unassign", { data: null, error: FORBIDDEN });
       const { container } = await mountSettings();

@@ -92,6 +92,14 @@ of a mutating file, a read-only verification `SELECT` after the final
 and unique index are absent and stops otherwise, wp2.2.md D27) → WP2.2b (its
 post-assertions are the WP2.2b postflight) → read-only WP2.2b check.
 
+**Never run `supabase db push` from this checkout** (wp2.2.md Stage 7 review, A7):
+`supabase/.temp/project-ref` is tracked in git and names **production**
+(`gteygwfgjvczanmrwgbr`), so wp2.2.md §5's project-ref precondition fails on a
+fresh clone, and a `db push` without relinking would push **both** pending
+files — 2.2a and 2.2b — to production in one go, breaking the order above
+(2.2b only after the code deploy and `04_postflight`). Production receives one
+file at a time through the SQL Editor, as the checklist says.
+
 ## Rollback order
 
 1. `91_rollback_wp2_2_enforcement.sql` (only if WP2.2b was applied).

@@ -767,7 +767,7 @@ WP2.2, recorded in PROGRESS.md incidental findings), any `campaigns` creation pa
 | WP2.3 nested-card double `move` | second call is a no-op (`moved: 0`) — verified by an interaction test; advisory remains open for WP2.4 UI fix. *Stage 4 (D31): the no-op holds only when both calls name the same target; on the nested-card drop the second call named the parent container, so it was a second, different move. **Fixed in the Stage 4 fix round (D32): the parent card ignores a drop a nested card already consumed; one call per drop, pinned by the WP2.3 characterisation and a Stage 4 test (§11.9).* |
 | e2e hygiene (`tests/e2e/structure-api.spec.ts`, review round 2 N4, advisory) | The chosen worker's original placements (`chosen`) live only in memory: a hard kill between `placeOnlyOn` and `afterAll` loses them and the worker is left as the last test placed it. **Deferred to Stage 5**, when the spec first runs on the preview: persist `chosen` to `test-results/` before the first write and restore from that file in the next `beforeAll` before sweeping. Until then the risk is one dev worker on campaign 1 whose placements must be put back by hand from the `[wp2.2] fixture` log line. |
 | Merge loses dependants | explicit re-point list in `structure_unit_merge`; contract test per dependant table. |
-| Unpaged placement read in `savePlacements` (Stage 5 review round 1, advisory 5) | `lib/campaign/structure-save.ts` reads `campaign_worker_ou … .in("ou_id", ouIds)` for the units the screen knows, without `.range()`; PostgREST's max-rows setting would truncate it silently. A truncated row is treated as absent, so it is neither unassigned nor re-assigned — it **survives** (safer than the legacy wipe-and-reinsert, which deleted every row regardless). Stage 6's paging of `loadOuTargets` (§3.10) does not cover this read; Stage 6 decides whether to page it with the same `PAGE_SIZE` loop. **Stage 6: paged** — `.order("ou_id").order("worker_id").range(from, from + PAGE_SIZE - 1)` until a short page, through the same helper as `loadOuTargets` (D71); 2,500-row test in `structure-save.test.ts`. |
+| Unpaged placement read in `savePlacements` (Stage 5 review round 1, advisory 5) | `lib/campaign/structure-save.ts` reads `campaign_worker_ou … .in("ou_id", ouIds)` for the units the screen knows, without `.range()`; PostgREST's max-rows setting would truncate it silently. A truncated row is treated as absent, so it is neither unassigned nor re-assigned — it **survives** (safer than the legacy wipe-and-reinsert, which deleted every row regardless). Stage 6's paging of `loadOuTargets` (§3.10) does not cover this read; Stage 6 decides whether to page it with the same `PAGE_SIZE` loop. **Stage 6: paged** — `.order("ou_id").order("worker_id").range(from, from + PAGE_SIZE - 1)` until a short page, through the same helper as `loadOuTargets` (D71); 2,500-row test in `structure-save.test.ts`. **Stage 7 (A1, D77): the rationale above was inverted by D71 alone** — with `current` complete and the screens' hydration reads (`campaign_worker_ou` and `campaign_worker_membership` in `campaign-settings.tsx` / `campaign-wizard.tsx`) still unranged, a truncated `desired` would have made the save unassign every row past the first page (the legacy loss, not a regression against `main`; today's ~1,400 placements do not reach it). Both hydration reads on both screens are now paged through the same helper with a stable order, so `current` and `desired` are both complete; mounted 2,500-row case in `campaign-save-flows.structure-writes.test.tsx`. |
 | Read-failure asymmetry in `structure-save.ts` (review round 2, A4 — carry to Stage 6) | `saveUnitDrafts` swallows the scope read's error as the legacy sequence did (`existing = []`: nothing deleted, `display_order` restarts at 0, no D42 reuse), while `savePlacements` throws on the same condition. Recommendation for Stage 6: make both throw (a failed read must not plan a save). **Stage 6: done** — `saveUnitDrafts` throws the read's error before planning; no RPC is issued (D70). |
 | Membership rewritten before a refused placement save (review round 2, A5 — Stage 6 / WP2.4) | Wizard step 6 and the settings allocation save delete and re-insert `campaign_worker_membership` before `savePlacements`; a refused placement save (42501 or otherwise) leaves the membership rewritten and the placements as they were — the legacy order, now visible through the D53 line / toast rather than silent. Whether membership should follow the placements, or both go into one transaction, is a Stage 6 / WP2.4 question. **Stage 6: left to WP2.4 unchanged** (D72). |
 | Bulk toolbar hides skipped placements (D46 follow-up, Stage 6 one-liner) | `components/campaigns/workforce/workforce-bulk-toolbar.tsx` ~:262 toasts `Allocated ${res.inserted} workers …` and ignores the hook's `skipped`; outside rows 9–13 — Stage 6 (or WP2.4) adds "N skipped: already in a unit of that group" (also recorded in §11.12). **Stage 6: done** — the toast appends `N skipped: already in a unit of that group.` when `skipped > 0` (D73; `allocate-toast-message.ts` + test). |
@@ -776,6 +776,8 @@ WP2.2, recorded in PROGRESS.md incidental findings), any `campaigns` creation pa
 | Contract suite accidentally targets production | hard throw on production host; env names distinct from app env; no `.env` file read. |
 | Legacy `check_worker_ou_group_exclusivity` (one container per `ou_type`) refuses cross-container same-type moves and merges (`P0001`) | Unchanged behaviour (D17); surfaced as `rule_violation` with the trigger's message; contract tests pin it so Stage 4 knows before the UI does; retirement of the trigger is a later package (§1.5). |
 | Regen strips symbols again on promotion | G1 step 5; wrapper never uses generated `Functions`. |
+| **Stage 7 advisories carried to WP2.4** (review round 1, A3 / A4 / A5 / A8; no code change in this PR) | **A3** — `create-organising-unit-dialog.tsx` drops `units.create`'s `moved` / `displaced` counts, so a picked worker who already held another unit of the new unit's group is moved silently (the RPC applies `p_assignments` with `move` semantics, §3.3); every sibling flow reports its skips (D43, D73, A6) — WP2.4 adds "N moved from another unit of the same group" to the dialog's summary. **A4** — record next to D22(e): under 2.2b, `structure__delete_unit` with `p_delete_children = false` detaches a custom-kind container's members, `cou_after_group_change` re-derives their placements' `group_id`, and the `cwo_set_group_id` pre-check can raise `23505 campaign_worker_ou_one_unit_per_group`, which `structureErrorMessage` renders as the K1 "Already in this group — use Move." in a delete context; reachable only through `structure_units_bulk_save` deleting a container without its members (the editor removes both, D52) or `structure_group_delete cascade_units` — WP2.4 gives the settings units-save toast `duplicateInGroupMessage(err, "A member's worker would be in two units of one group")`. **A5** — one intent, three conflict policies: `error` in the units-section assign dialog (D49) vs `skip` in the toolbar (D46), the grid (D43) and rows 16–18 / 21 (D66); each documented — WP2.4's UI consistency pass decides one. **A8** — row 5 (`worker-detail-sheet.tsx` `setPrimary` / `removeFromUnit`) has no `onError`; a `forbidden` is a stored mutation error nobody displays (legacy: RLS-silent 2xx; the tab is gated on `canWrite`, so unreachable for a refused user in practice) — same shape as D36; WP2.4 adds the toast. |
+| **Operator note for G1 (Stage 7 review A7)** — `supabase/.temp/project-ref` is tracked and names production | On this checkout `supabase/.temp/project-ref` reads `gteygwfgjvczanmrwgbr` (production), so §5's "must print `dpnnmkhabysfdogllsyh` or `yqjkuobcawvigsfpgrcm`" precondition fails on a fresh clone, and a `supabase db push` without relinking would push **both** pending files (2.2a and 2.2b) to production at once, breaking G1 step 3's order (2.2b only after the code deploy and `04_postflight`). The G1 run sheet submits one file at a time through the SQL Editor; `scripts/data-hygiene/oux-wp2.2/README.md` (production section) now says "never run `supabase db push` from this checkout". Untracking `supabase/.temp/` is a follow-up outside this PR. |
 | Lint total creep from 21 touched files | touched lines clean; each stage records the total. |
 
 ### 8.3 Deviations from plan (implementer keeps)
@@ -907,6 +909,13 @@ Stage 6 (2026-09-14, lib and API-route writers, rows 14–21; §11.15):
 | **D74** | `SplitOuSubUnitInput`, `SplitOuAssignmentInput`, `SplitOuRpcArgs`, `SplitOuRpcResultRow` deleted from `src/types/organising-row-types.ts` (`rg` over the repo: no importer since Stage 4 dropped the split dialog's use; only `packages/db-types/generated.ts` still names the legacy function, and it is regenerated). | The doc comment referred to the legacy split RPC nothing calls; deletion preferred by the brief. | §11.8 note. |
 | **D75** | Test fake `fake-structure-client.ts`: `range(from, to)` records and **slices** the table's rows (the paging tests), `single()` / `not()` / `ilike()` / `neq()` recorded, defaults for `structure_units_create` and `structure_placements_replace_rule_rows`; a private field renamed (`single` → `singleRow`) to make room for the builder method. Existing Stage 5 tests unchanged by it. | Needed by the Stage 6 tests; the harness stays plain data. | §4.1 (harness note). |
 | **D76** | eslint on the changed files reports 4 findings on lines Stage 6 did not touch: `campaign-import/apply/route.ts:415` (`_e164` / `_consent` unused, HEAD `:413`) and `create-worker/route.ts:47–49` (an unused `eslint-disable` directive and the `any` it was meant for, HEAD `:45–47`) — both pre-existing, shifted by the two new import lines; the lint total is unchanged at 294. Not fixed (outside the switch; touched lines are clean). | Touched-lines-clean rule; recorded rather than silently left. | §5. |
+
+Stage 7 fix round 1 (2026-09-14, whole-PR review advisories A1, A2, A6, A7; §11.17):
+
+| # | Deviation | Reason | Plan section changed |
+|---|---|---|---|
+| **D77** | The four hydration reads that build the allocation grid's `desired` set — `campaign_worker_membership` (`select("worker_id").eq("campaign_id", …)`) and `campaign_worker_ou` (`select("ou_id, worker_id, campaign_organising_units!inner(campaign_id)").eq("campaign_organising_units.campaign_id", …)`) in `campaign-settings.tsx` and `campaign-wizard.tsx` — go through `fetchAllRows` with a stable order (`.order("worker_id")`; `.order("ou_id").order("worker_id")`) and `.range(from, to)` pages of `POSTGREST_PAGE_SIZE`. Consequence: a failed read of either now **throws** the scope query (the legacy `cwoRows = cwo.error ? [] : …` swallowed a failed placement read into an empty `desired`, which after D43 would have meant "unassign everything" on the next save; the membership read already threw). The wall-chart test harness's `range()` now slices rows inclusively (as PostgREST, and as its `limit()` already did) so a paged read over a large fixture terminates. Test: mounted settings page with 2,500 placement rows → three `campaign_worker_ou` reads with `eq / order ou_id / order worker_id / range [0,999] [1000,1999] [2000,2999]`, one membership read with `eq / order worker_id / range [0,999]`, no RPC. | Stage 7 review A1: D71 paged the write side's `current` read while `desired` stayed unranged, which inverted §8.2's rationale (a truncated `desired` against a complete `current` = unassign the rest). | §8.2 "Unpaged placement read"; D71. |
+| **D78** | `tests/e2e/structure-api.spec.ts`: (A2) the header states that the client-side `syncWorkersToMatchingCampaigns` `useMoveWorkersMutation` runs after a successful drop is **not** intercepted (only the sync-on-open route is), so a worker whose global employer / worksite matches a unit of campaign 1 can gain `universe` rows mid-test; test 2's whole-set assertion and test 1's `inGroup` filter exclude `assignment_source === "universe"`. (A6) `restoreWorker` first deletes, via REST, any row of the worker in the original placement's group (`campaign_worker_ou?worker_id=eq.&group_id=eq.` — `group_id` is the trigger-derived column, groups are campaign-scoped; applied before both the `assign` branch and the rule-row REST insert, so the restore lands on the original unit rather than being `skipped` against a sync-created row), and a 409 on the rule-row insert is logged and noted (`NOT restored …`) instead of thrown, so `afterAll` never fails after the unit sweep. Not run (no Playwright in this session); `tsc` covers `tests/e2e/**`. | Stage 7 review A2 / A6. | §4.5. |
 
 ### 8.4 Stop conditions (implementer stops and reports; no workaround)
 
@@ -2450,6 +2459,35 @@ deviation from what Stage 6 (§11.15) itself reported.
   the 19 touched suites 311/311; eslint only the D76 findings; the acceptance `rg` empty; all edits under
   `apps/organising-db/src/` and this file; nothing under `supabase/`).
 - Fix rounds used at Stage 6: one reviewer round (of the maximum two). 1,368 tests / 1,367 passing.
+
+**Stage 7 — whole pull request (2026-09-14)**
+
+- **Review 1 (fresh Fable, full diff `f5529a4a...1a1293f2`, static, no database): APPROVE WITH ADVISORIES** —
+  no blocking finding. Checked independently: `validate:migrations` 13 OK; `tsc` clean including `tests/e2e`;
+  1,367/1,368 tests; eslint total below baseline; the §5 acceptance `rg` empty; no caller of the legacy
+  split RPC; nothing under `.github/`, `supabase/config.toml`, `supabase/.temp`, `.env*` or `generated.ts`
+  touched. Migrations: all 31 functions `SECURITY INVOKER` with a `pg_catalog`-first `search_path` and
+  schema-qualified calls; the pre-check predicate matches the `wp16_*` policies; C-a…C-l implemented as
+  §3.4 states with delete-before-write so the bodies hold with and without 2.2b's index; both files
+  non-repeatable; `90`/`91` genuinely reverse; the legacy `merge_workers` → `remap_worker_id` path stays
+  correct under the unique index. Wrapper: every `p_*` name, default and result key matches the SQL; error
+  mapping covers both 23505 forms and `PGRST202`. Writers: all 21 rows plus split/copy through
+  `structureApi`; the 48 remaining `.from(...)` sites are reads; the D56/`savePlacements` container hazard
+  chased and cleared. Contract suite: one `describe` per RPC, every C-a…C-l rule has an `it`, refuses the
+  production host. Advisories: A1 hydration reads unpaged (inverts the §8.2 rationale of D71); A2 e2e test 2
+  races the un-intercepted client-side universe sync; A3 create dialog silently `move`-displaces; A4 K1
+  sentence reachable in a delete context after 2.2b; A5 three conflict policies for one intent (WP2.4); A6
+  e2e rule-row restore can 23505 under 2.2b; A7 tracked `supabase/.temp/project-ref` names production, so
+  `db push` from this checkout would push 2.2a and 2.2b together (operator note for G1); A8 row-5
+  mutations have no error surface (legacy-identical). **Resolution (fix round 1, §11.17):** A1 (D77), A2 and
+  A6 (D78) applied; A7 written into the README's production section and §8.2; A3, A4, A5, A8 carried to
+  WP2.4 in §8.2. Orchestrator verified the round directly (`tsc` clean; the campaign, wall-chart and
+  lib/campaign suites 397/398 with only the render-cost timing test failing; eslint clean on the changed
+  files; the universe filter and the group-scoped pre-delete present in the e2e spec).
+- Fix rounds used at Stage 7: one reviewer round (of the maximum two). 1,369 tests / 1,368 passing.
+- Still outstanding for Stage 7: the contract suite (Stage 3, both runs), the e2e run on the preview, the
+  types regeneration from dev, and 2.2b on dev — all waiting on the operator (§9.1 items 4–6 and the
+  environment network setting).
 
 ## 10. Revision history
 
@@ -4032,3 +4070,63 @@ Reading: `tsc` clean; 1,368 tests (+2 since §11.15), 1,367 passing — the only
 render-cost timing test; guard cases 1–3 green with an empty inventory; eslint on the fix-round files reports
 only the two pre-existing D76 warnings; lint total 294 = baseline. Stage 6 fix round 1 stops here; the working
 tree is left uncommitted for the orchestrator.
+
+### 11.17 Stage 7 fix round 1 (2026-09-14)
+
+The whole-PR fresh review (Stage 7, round 1; review saved in the session scratchpad) approved with
+advisories A1–A8. This round takes A1, A2, A6 and A7 in code / README, and records A3, A4, A5 and A8 as §8.2
+rows carried to WP2.4. Same constraints as Stages 6: no database, CLI, Playwright, commit or migration
+change; edits under `apps/organising-db/` (`src/` and `tests/e2e/`), `scripts/data-hygiene/oux-wp2.2/README.md`
+and this file only.
+
+| Advisory | Change | Test |
+|---|---|---|
+| A1 — hydration reads unpaged (D71 inverted the §8.2 rationale) | `campaign-settings.tsx` and `campaign-wizard.tsx`: the `campaign_worker_membership` and `campaign_worker_ou` scope reads go through `fetchAllRows` with `.order("worker_id")` / `.order("ou_id").order("worker_id")` and `.range(from, to)`; the two `cw2.error` / `cwo.error` branches are gone (the helper throws). Harness `range()` slices. §8.2 row corrected. D77. | `campaign-save-flows.structure-writes.test.tsx` +1 (mounted settings, 2,500 placement rows): the three ordered `range` triples on `campaign_worker_ou`, the one on `campaign_worker_membership`, no RPC. All 15 pass; the Stage 4/5 wall-chart suites re-run green under the slicing `range()` (152/153, the one failure the render-cost timing test). |
+| A2 — e2e test 2 whole-set equality races the un-intercepted post-drop sync | `tests/e2e/structure-api.spec.ts`: header sentence; test 2's `after` and test 1's `inGroup` exclude `assignment_source === "universe"`. D78. | Not run; `tsc` covers the spec (exit 0). |
+| A6 — `restoreWorker`'s REST insert can collide under 2.2b | Same file: same-group rows of the worker are deleted via REST before either restore branch; a 409 on the rule-row insert is logged and noted, not thrown. D78. | As above. |
+| A7 — `supabase/.temp/project-ref` names production | `scripts/data-hygiene/oux-wp2.2/README.md` production section: "Never run `supabase db push` from this checkout …" paragraph; §8.2 operator note for G1. | — |
+| A3 / A4 / A5 / A8 | §8.2 row "Stage 7 advisories carried to WP2.4" (A4 recorded next to D22(e) by reference). | — |
+
+**Raw command output** (this session, after the changes):
+
+```
+$ pnpm --filter organising-db exec tsc --noEmit
+[exit=0]
+
+$ cd apps/organising-db && pnpm exec vitest run src/components/campaigns/__tests__/campaign-save-flows.structure-writes.test.tsx src/components/campaigns/wall-chart/__tests__ src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+ ✓ src/components/campaigns/__tests__/campaign-save-flows.structure-writes.test.tsx (15 tests) 2156ms
+ ✓ src/components/campaigns/wall-chart/__tests__/wall-chart.nested-scope-wiring.test.tsx (3 tests) 397ms
+ ✓ src/components/campaigns/wall-chart/__tests__/wall-chart.nested-scopes.test.tsx (5 tests) 4329ms
+ ✓ src/components/campaigns/wall-chart/__tests__/wall-chart.interaction.test.tsx (21 tests) 11337ms
+ ✓ src/components/campaigns/wall-chart/__tests__/wall-chart.structure-writes.test.tsx (46 tests) 13218ms
+ ✓ src/components/campaigns/wall-chart/__tests__/wall-chart.harness-cleanup.test.tsx (2 tests) 1619ms
+ ✓ src/components/campaigns/wall-chart/__tests__/wall-chart-model.test.ts (24 tests) 11ms
+ ✓ src/components/campaigns/wall-chart/__tests__/filters.test.ts (25 tests) 8ms
+ ✓ src/lib/campaign/__tests__/no-direct-structure-writes.test.ts (3 tests) 178ms
+ ✓ src/components/campaigns/wall-chart/__tests__/wall-chart.characterization.test.tsx (8 tests) 5089ms
+ ❯ src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx (1 test | 1 failed) 25908ms
+   × CampaignWallChart render cost > renders 305 members across 161 units within budget 25907ms
+ Test Files  1 failed | 10 passed (11)
+      Tests  1 failed | 152 passed (153)
+
+$ pnpm --filter organising-db test 2>&1 | grep -E "Test Files|Tests |×|FAIL|AssertionError"
+   × CampaignWallChart render cost > renders 305 members across 161 units within budget 29113ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > CampaignWallChart render cost > renders 305 members across 161 units within budget
+AssertionError: expected 8862.486469 to be less than 6000
+ Test Files  1 failed | 98 passed (99)
+      Tests  1 failed | 1368 passed (1369)
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  organising-db@0.1.0 test: `vitest run`
+[exit=1]
+
+$ pnpm --filter organising-db exec eslint src/components/campaigns/campaign-settings.tsx src/components/campaigns/campaign-wizard.tsx src/components/campaigns/wall-chart/__tests__/harness/backend.ts src/components/campaigns/__tests__/campaign-save-flows.structure-writes.test.tsx tests/e2e/structure-api.spec.ts
+[exit=0]   (no findings)
+
+$ pnpm --filter organising-db lint 2>&1 | grep -F problems | tail -1
+✖ 294 problems (143 errors, 151 warnings)
+```
+
+Reading: `tsc` clean (the e2e spec included); 1,369 tests (+1), 1,368 passing — the only failure is the
+pre-existing render-cost timing test; the guard is green with an empty inventory; eslint reports nothing on
+the changed files; lint total 294 = baseline. Stage 7 fix round 1 stops here; the working tree is left
+uncommitted for the orchestrator.

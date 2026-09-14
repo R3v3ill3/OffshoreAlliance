@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-import { STORAGE_STATE } from "../../playwright.config";
+import { E2E_IGNORE_HTTPS_ERRORS, STORAGE_STATE } from "../../playwright.config";
 import {
   E2E_FOREIGN_CAMPAIGN_ID,
   NO_CREDENTIALS_MESSAGE,
@@ -361,7 +361,7 @@ test.describe("WP2.2 structure API — wall-chart writers on the preview", () =>
   test.beforeAll(async ({ playwright }) => {
     if (!hasE2ECredentials) return;
     test.setTimeout(120_000);
-    apiForCleanup = await playwright.request.newContext();
+    apiForCleanup = await playwright.request.newContext({ ignoreHTTPSErrors: E2E_IGNORE_HTTPS_ERRORS });
     client = restClientFor(apiForCleanup, sessionFromStorageState(STORAGE_STATE));
     if (!client) return;
     const swept = await deleteUnitsByNamePrefix(client, UNIT_PREFIX, CAMPAIGN_ID);
@@ -619,7 +619,7 @@ test.describe("WP2.2 structure API — Stage 5 writers on the preview (§4.5 ite
   test.beforeAll(async ({ playwright }) => {
     if (!hasE2ECredentials) return;
     test.setTimeout(120_000);
-    apiForCleanup = await playwright.request.newContext();
+    apiForCleanup = await playwright.request.newContext({ ignoreHTTPSErrors: E2E_IGNORE_HTTPS_ERRORS });
     client = restClientFor(apiForCleanup, sessionFromStorageState(STORAGE_STATE));
     if (!client) return;
     const swept = await deleteUnitsByNamePrefix(client, STAGE5_PREFIX, CAMPAIGN_ID);

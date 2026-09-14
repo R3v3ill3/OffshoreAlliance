@@ -19,6 +19,18 @@ import { defineConfig, devices } from "@playwright/test";
 
 export const E2E_BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 
+/**
+ * Sandboxed runners whose outbound HTTPS is intercepted by a proxy CA that
+ * Chromium does not trust set E2E_IGNORE_HTTPS_ERRORS=1; never set in CI or
+ * locally; the target is still the branch preview against normal dev.
+ * (WP2.2 D80: the cloud verifier's agent proxy installs its CA for Node and
+ * the system store but not for the bundled Chromium, so every `page.goto`
+ * failed with net::ERR_CERT_AUTHORITY_INVALID before any test body ran.)
+ * Flows to both projects and to the `request` fixture through the top-level
+ * `use`; contexts created by hand pass it explicitly.
+ */
+export const E2E_IGNORE_HTTPS_ERRORS = process.env.E2E_IGNORE_HTTPS_ERRORS === "1";
+
 /** Written by global setup — always exists, even with no credentials. */
 export const STORAGE_STATE = "tests/e2e/.auth/user.json";
 /** Written by global setup — always exists, even with no admin credentials. */
@@ -43,6 +55,7 @@ export default defineConfig({
   use: {
     baseURL: E2E_BASE_URL,
     storageState: STORAGE_STATE,
+    ignoreHTTPSErrors: E2E_IGNORE_HTTPS_ERRORS,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },

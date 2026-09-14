@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 import { request as playwrightRequest, type APIRequestContext } from "@playwright/test";
 
-import { REST_CONFIG_PATH } from "../../../playwright.config";
+import { E2E_IGNORE_HTTPS_ERRORS, REST_CONFIG_PATH } from "../../../playwright.config";
 
 /**
  * Fixture cleanup for the WP1.6 role specs, through the same signed-in
@@ -210,7 +210,7 @@ export async function deleteUnitsByNamePrefix(
  * available in beforeAll). Logs what it did; a missing REST config skips.
  */
 export async function sweepRoleCheckCampaigns(storageStatePath: string): Promise<void> {
-  const api = await playwrightRequest.newContext();
+  const api = await playwrightRequest.newContext({ ignoreHTTPSErrors: E2E_IGNORE_HTTPS_ERRORS });
   try {
     const client = restClientFor(api, sessionFromStorageState(storageStatePath));
     if (!client) return;
@@ -230,7 +230,7 @@ export async function sweepRoleCheckCampaigns(storageStatePath: string): Promise
 
 /** beforeAll sweep for the admin spec: leftover "WP1.6 admin unit …" units on any campaign. */
 export async function sweepAdminUnits(storageStatePath: string): Promise<void> {
-  const api = await playwrightRequest.newContext();
+  const api = await playwrightRequest.newContext({ ignoreHTTPSErrors: E2E_IGNORE_HTTPS_ERRORS });
   try {
     const client = restClientFor(api, sessionFromStorageState(storageStatePath));
     if (!client) return;

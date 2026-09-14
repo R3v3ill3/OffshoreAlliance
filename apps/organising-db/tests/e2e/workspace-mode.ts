@@ -5,7 +5,7 @@ import { expect, test, type Browser, type BrowserContext } from "@playwright/tes
 import { parseWorkspacePrefs, type WorkspacePrefs } from "@/lib/workspace/prefs-schema";
 import type { WorkspaceMode } from "@/lib/workspace/resolve";
 
-import { ADMIN_STORAGE_STATE, E2E_BASE_URL } from "../../playwright.config";
+import { ADMIN_STORAGE_STATE, E2E_BASE_URL, E2E_IGNORE_HTTPS_ERRORS } from "../../playwright.config";
 import {
   E2E_USER_EMAIL,
   NO_ADMIN_CREDENTIALS_MESSAGE,
@@ -72,6 +72,7 @@ export async function openAdminContext(browser: Browser): Promise<BrowserContext
   return browser.newContext({
     baseURL: E2E_BASE_URL,
     storageState: resolve(__dirname, "../..", ADMIN_STORAGE_STATE),
+    ignoreHTTPSErrors: E2E_IGNORE_HTTPS_ERRORS,
   });
 }
 

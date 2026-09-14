@@ -38,6 +38,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { CommsPlatform, DraftStatus } from "@/types/planner-types";
+import { EmailEngagementReport } from "@/components/email/EmailEngagementReport";
+import {
+  hasPlatformSend,
+  useEmailPlatformStats,
+} from "@/lib/hooks/useEmailPlatformStats";
 
 export interface PreparedTag {
   tag_id: string;
@@ -184,6 +189,12 @@ export function CampaignSendPanel({
   );
 
   const selectedDraft = drafts.find((d) => d.draft_id === selectedDraftId) ?? null;
+  const { data: platformStats, isLoading: platformStatsLoading } =
+    useEmailPlatformStats(
+      selectedDraft?.platform === "email" ? numericId : null,
+      selectedDraft?.platform === "email" ? selectedDraft.draft_id : null,
+    );
+  const showPlatformReport = hasPlatformSend(platformStats);
 
   const saveMutation = useAuthAwareMutation({
     mutationFn: async () => {
@@ -561,8 +572,32 @@ export function CampaignSendPanel({
                         {pollStatsMutation.error?.message ?? "Failed to refresh stats"}
                       </p>
                     )}
+                    {showPlatformReport && platformStats && (
+                      <div className="pt-2">
+                        <EmailEngagementReport
+                          engagement={platformStats.engagement}
+                          list={platformStats.list}
+                          isLoading={platformStatsLoading}
+                          compact
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
+
+                {selectedDraft.platform === "email" &&
+                  selectedDraft.status !== "sent" &&
+                  showPlatformReport &&
+                  platformStats && (
+                    <div className="rounded-md border bg-muted/20 p-3">
+                      <EmailEngagementReport
+                        engagement={platformStats.engagement}
+                        list={platformStats.list}
+                        isLoading={platformStatsLoading}
+                        compact
+                      />
+                    </div>
+                  )}
 
                 {/* Action buttons */}
                 {canWrite && (

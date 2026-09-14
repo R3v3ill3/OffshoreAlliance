@@ -212,6 +212,20 @@ describe('shapeEmailRow', () => {
     expect(row.results).toBe('288/300 delivered · 12 failed')
   })
 
+  it('appends open and click rates when the activity row has them', () => {
+    const row = shapeEmailRow(
+      emailRow({
+        status: 'sent',
+        delivered_items: 200,
+        failed_items: 0,
+        opened_items: 80,
+        clicked_items: 20,
+      }),
+      CTX,
+    )
+    expect(row.results).toBe('200/300 delivered · 40% opened · 10% clicked')
+  })
+
   it('keeps an email on the standing campaign campaign-scoped', () => {
     // Email has no standing convention; only SMS episodes and the
     // phone container use those flags. If email ever lands there it

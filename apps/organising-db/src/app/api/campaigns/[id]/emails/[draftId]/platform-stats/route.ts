@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { withEngagementRates } from '@/lib/email/engagement-stats'
 
 export async function GET(
   _req: NextRequest,
@@ -75,6 +76,14 @@ export async function GET(
     draft_status: draft.status,
     sent_via: draft.sent_via,
     list,
-    engagement: { total, delivered, opened, clicked, bounced, unsubscribed, replied },
+    engagement: withEngagementRates({
+      total,
+      delivered,
+      opened,
+      clicked,
+      bounced,
+      unsubscribed,
+      replied,
+    }),
   })
 }

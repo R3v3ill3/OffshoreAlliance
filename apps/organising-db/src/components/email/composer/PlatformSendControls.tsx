@@ -17,6 +17,8 @@
 
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEmailPlatformStats } from '@/lib/hooks/useEmailPlatformStats'
+import { formatRatePct } from '@/lib/email/engagement-stats'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -60,35 +62,6 @@ interface WrapperRow {
   name: string
   is_default: boolean
   is_active: boolean
-}
-
-interface PlatformStats {
-  draft_status: string | null
-  sent_via: string | null
-  list: {
-    list_id: number
-    list_status: string
-    item_count: number
-    pending_count: number
-    queued_count: number
-    sending_count: number
-    sent_count: number
-    delivered_count: number
-    failed_count: number
-    skipped_count: number
-    bounced_count: number
-    unsubscribed_count: number
-    opted_out_count: number
-  } | null
-  engagement: {
-    total: number
-    delivered: number
-    opened: number
-    clicked: number
-    bounced: number
-    unsubscribed: number
-    replied: number
-  }
 }
 
 export interface PlatformSendControlsProps {
@@ -135,22 +108,7 @@ export function PlatformSendControls({
   )
   const effectiveWrapperId = wrapperId || (defaultWrapper ? String(defaultWrapper.wrapper_id) : '')
 
-  const { data: stats } = useQuery({
-    queryKey: ['email-platform-stats', campaignId, draftId],
-    queryFn: async () => {
-      const res = await fetchApi(
-        `/api/campaigns/${campaignId}/emails/${draftId}/platform-stats`,
-      )
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Failed to load stats')
-      return json as PlatformStats
-    },
-    enabled: ready,
-    refetchInterval: (query) => {
-      const s = query.state.data?.list?.list_status
-      return s === 'queued' || s === 'sending' ? 10_000 : false
-    },
-  })
+  const { data: stats } = useEmailPlatformStats(campaignId, draftId)
 
   const queueMutation = useMutation({
     mutationFn: async () => {
@@ -238,7 +196,8 @@ export function PlatformSendControls({
             `${list.sent_count} sent, ${list.delivered_count} delivered, ` +
             `${list.failed_count} failed, ${list.skipped_count} skipped, ` +
             `${list.opted_out_count} unsubscribed. ` +
-            `Opens ${stats?.engagement.opened ?? 0}, clicks ${stats?.engagement.clicked ?? 0}.`
+            `Opens ${stats?.engagement.opened ?? 0} (${formatRatePct(stats?.engagement.open_rate_pct ?? null)}), ` +
+              `clicks ${stats?.engagement.clicked ?? 0} (${formatRatePct(stats?.engagement.click_rate_pct ?? null)}).`
           }
         >
           {inFlight ? (
@@ -248,7 +207,7 @@ export function PlatformSendControls({
           )}
           Platform: {doneCount}/{list.item_count} {list.list_status}
           {(stats?.engagement.opened ?? 0) > 0 &&
-            ` · ${stats?.engagement.opened} opened`}
+            ` · ${formatRatePct(stats?.engagement.open_rate_pct ?? null)} opened`}
         </Badge>
       )}
 

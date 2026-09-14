@@ -72,6 +72,11 @@ import { SubjectLineField, PreheaderField } from './SubjectLineField'
 import { EmailPreviewPane, type PreviewSampleContact } from './EmailPreviewPane'
 import { RecipientPanel, type RecipientRow } from './RecipientPanel'
 import { SendActions } from './SendActions'
+import { EmailEngagementReport } from '@/components/email/EmailEngagementReport'
+import {
+  hasPlatformSend,
+  useEmailPlatformStats,
+} from '@/lib/hooks/useEmailPlatformStats'
 import {
   AiBriefPanel,
   type AiBriefSelections,
@@ -147,6 +152,11 @@ export function EmailComposer() {
     const n = Number(draftIdParam)
     return Number.isFinite(n) ? n : null
   }, [draftIdParam])
+  const { data: platformStats, isLoading: platformStatsLoading } =
+    useEmailPlatformStats(
+      Number.isFinite(campaignId) ? campaignId : null,
+      draftId,
+    )
 
   const returnTo = searchParams.get('returnTo')
   const backHref =
@@ -1276,6 +1286,16 @@ export function EmailComposer() {
             </ul>
           </details>
         </section>
+      )}
+
+      {hasPlatformSend(platformStats) && platformStats && (
+        <div className="border-t bg-background px-4 py-3">
+          <EmailEngagementReport
+            engagement={platformStats.engagement}
+            list={platformStats.list}
+            isLoading={platformStatsLoading}
+          />
+        </div>
       )}
 
       {/* Footer send actions */}

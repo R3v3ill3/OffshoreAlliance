@@ -35,6 +35,8 @@ interface EmailSendRow {
   latest_reply_message_id: string | null
   bounced_at: string | null
   bounce_reason: string | null
+  first_open_at: string | null
+  open_count: number
   first_click_at: string | null
   click_count: number
   draft: {
@@ -90,7 +92,7 @@ export function EmailHistorySection({ workerId }: Props) {
           `send_id, draft_id, campaign_id, recipient_email, send_method,
            conversation_id, created_at, replied_at, reply_count,
            latest_reply_message_id, bounced_at, bounce_reason,
-           first_click_at, click_count,
+           first_open_at, open_count, first_click_at, click_count,
            draft:campaign_comms_drafts(
              subject,
              campaign:campaigns(name)
@@ -208,6 +210,7 @@ export function EmailHistorySection({ workerId }: Props) {
                 const subject = send.draft?.subject ?? '(no subject)'
                 const isBounced = !!send.bounced_at
                 const isReplied = !!send.replied_at
+                const isOpened = !!send.first_open_at
                 const isClicked = !!send.first_click_at
                 const hasThread = !!send.conversation_id
 
@@ -241,6 +244,15 @@ export function EmailHistorySection({ workerId }: Props) {
                             {send.reply_count > 1
                               ? `${send.reply_count} replies`
                               : 'Replied'}
+                          </Badge>
+                        )}
+                        {isOpened && (
+                          <Badge
+                            className="text-[10px] bg-violet-100 text-violet-800 border-violet-200"
+                            variant="outline"
+                          >
+                            Opened
+                            {send.open_count > 1 ? ` ×${send.open_count}` : ''}
                           </Badge>
                         )}
                         {isClicked && (

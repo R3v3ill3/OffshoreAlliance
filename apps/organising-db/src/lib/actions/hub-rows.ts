@@ -24,6 +24,7 @@ import {
   type SmsActionKind,
   type SmsActionRef,
 } from '@/lib/sms/hub-actions'
+import { formatEmailHubResults } from '@/lib/email/engagement-stats'
 import type { SmsActivityResponse, SmsActivityRow } from '@/app/api/sms/activity/route'
 
 /** The hub's own route. One constant so `/sms` and `/actions` cannot disagree. */
@@ -162,6 +163,10 @@ export interface EmailActivityRow {
   total_items: number
   delivered_items: number
   failed_items: number
+  /** Unique opens from email_send_log. Absent on unsent drafts. */
+  opened_items?: number
+  /** Unique clicks from email_send_log. Absent on unsent drafts. */
+  clicked_items?: number
   created_by: string | null
   created_at: string
   updated_at: string
@@ -355,12 +360,7 @@ export function shapeEmailRow(row: EmailActivityRow, ctx: ShapeCtx): HubActionRo
   const scope = scopeFor(row.campaign_id, row.campaign)
   // A draft that already owns a list is listed once, as the list; the
   // route filters those out, so a `draft` row here has no send record.
-  const results =
-    row.source === 'draft'
-      ? 'Not sent yet'
-      : `${row.delivered_items}/${row.total_items} delivered${
-          row.failed_items > 0 ? ` · ${row.failed_items} failed` : ''
-        }`
+  const results = formatEmailHubResults(row)
   const href =
     row.draft_id != null
       ? `/campaigns/${row.campaign_id}/email/wizard?draft_id=${row.draft_id}`

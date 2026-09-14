@@ -147,6 +147,36 @@ export async function GET(req: NextRequest) {
       })
     }
 
+    // Unique opens/clicks per draft from the send log — only rows that
+    // already have an event, so a busy org does not pull every recipient.
+    const draftIds = [
+      ...new Set(
+        listRows
+          .map((l) => l.draft_id)
+          .filter((id): id is number => id != null),
+      ),
+    ]
+    const openedByDraft = new Map<number, number>()
+    const clickedByDraft = new Map<number, number>()
+    if (draftIds.length > 0) {
+      const { data: events, error: eErr } = await supabase
+        .from('email_send_log')
+        .select('draft_id, first_open_at, first_click_at')
+        .in('draft_id', draftIds)
+        .eq('send_method', 'sendgrid')
+        .or('first_open_at.not.is.null,first_click_at.not.is.null')
+      if (eErr) throw eErr
+      for (const row of events ?? []) {
+        const draftId = row.draft_id as number
+        if (row.first_open_at) {
+          openedByDraft.set(draftId, (openedByDraft.get(draftId) ?? 0) + 1)
+        }
+        if (row.first_click_at) {
+          clickedByDraft.set(draftId, (clickedByDraft.get(draftId) ?? 0) + 1)
+        }
+      }
+    }
+
     const payload: EmailActivityResponse = {
       lists: listRows.map((l) => ({
         source: 'list',
@@ -158,6 +188,8 @@ export async function GET(req: NextRequest) {
         total_items: l.total_items ?? 0,
         delivered_items: l.delivered_items ?? 0,
         failed_items: l.failed_items ?? 0,
+        opened_items: l.draft_id != null ? (openedByDraft.get(l.draft_id) ?? 0) : 0,
+        clicked_items: l.draft_id != null ? (clickedByDraft.get(l.draft_id) ?? 0) : 0,
         created_by: l.created_by,
         created_at: l.created_at,
         updated_at: l.updated_at,

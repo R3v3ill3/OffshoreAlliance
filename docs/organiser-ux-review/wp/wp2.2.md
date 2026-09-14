@@ -1151,8 +1151,16 @@ Result across both runs: run 1 median 6682ms (runs 6682/5688/7090), run 2 median
   `RAISE EXCEPTION`); final row `17 / 14 / 0 / false / true / probe campaign 52`; rolled back — campaign 52
   absent afterwards, counts unchanged (5 campaigns / 111 placements / 111 memberships / 8 units / 4 groups).
   Probe 4 was not skipped: the probe user has 5 non-writable campaigns, so the `42501` path was exercised.
-- Not yet run on dev: `01_environment_marker` (WP2.1 file, `oux.marker_env = 'dev'`), `10`, `20`,
-  contract suite (Stage 3), 2.2b.
+- **`oux-wp2.1/01_environment_marker.sql` (connector, `SET LOCAL oux.marker_env = 'dev';` after `BEGIN;`):**
+  committed; result `env = dev`, `marked_at 2026-09-14 07:54:23+00`.
+- **`10_materialise_employer_placements.sql` (exact file, connector, as `postgres`):** guard and
+  required-object checks passed; STOP condition 0; per campaign (1, 3, 4, 5, 6) `inserted 0 /
+  skipped_existing 0 / containers 0 / multi_container_workers 0`; TOTAL placements 111 → 111; H9 0 → 0;
+  post-checks passed; committed. Dev has no Employer containers, so the idempotence re-run is deferred to the
+  clone, where it is meaningful.
+- **`20_relabel_unattributed_rule_rows.sql` (exact file, connector):** `rule_null_rule_id` 0 → 0;
+  `universe` 0 → 0; `manual` 111 unchanged; total 111; `rows_logged` 0; post-checks passed; committed.
+- Not yet run on dev: contract suite (Stage 3, needs `OUX_CONTRACT_*` credentials), 2.2b (after Stage 6).
 
 ### 9.3 Reviewer findings and resolution
 

@@ -328,7 +328,7 @@ All functions take `p_campaign_id integer` first. `p_actor` is never a parameter
 | Rule | Statement | Enforced by |
 |---|---|---|
 | **C-a** | A worker has at most one placement per `(campaign, group)`. | Every RPC deletes/moves the existing same-group row before writing; WP2.2b adds the unique index and trigger check. |
-| **C-b** | Move onto a unit displaces the worker's existing placement in the **target's** group (whatever unit it is on) and removes the source placement. | `structure_placements_move`. |
+| **C-b** | Move onto a unit displaces the worker's existing placement in the **target's** group (whatever unit it is on) and removes the source placement. *Fix round 1 note (D17):* the legacy `trg_check_worker_ou_group_exclusivity` (baseline `:22421`, BEFORE INSERT OR UPDATE OF `ou_id`) still refuses, with `P0001` → `rule_violation`, a move between worksites of two **different** Employer containers, because during BEFORE UPDATE the re-pointed row is still visible with its old `ou_id`. Not a regression (today's insert-before-delete fails the same way); pinned by a contract test. | `structure_placements_move`. |
 | **C-c** | Copy (keep source) is allowed only across groups. **K1 (recommended):** same-group copy raises `23505 duplicate_in_group` and the UI shows "already in this group — use Move". **K2:** silently convert to move. K1 is the E2 handoff's stated semantics ("copy_worker_placement (cross-group only)"). | `structure_placements_move` with `p_keep_source`. |
 | **C-d** | Dropping on a group's Unassigned removes only that group's placement; the legacy global Unassigned removes all. | `p_within_group_id` vs null. |
 | **C-e** | Legacy containers accept placements only when they carry a `group_id` (Employer-group units after WP2.1). Custom-kind containers (`group_id IS NULL`) still reject. | `check_no_worker_on_group_container()` relaxed in WP2.2a (§3.6) + RPC `P0001`. |
@@ -336,7 +336,7 @@ All functions take `p_campaign_id integer` first. `p_actor` is never a parameter
 | **C-g** | Fixed-kind units get their group from `ou_type` (trigger); callers cannot choose it. Custom units may be pinned to a custom group. | `structure_units_create` / `_split` argument validation. |
 | **C-h** | `is_primary` is campaign-wide single-valued (today's semantics). RPCs never leave two primaries or zero primaries when a worker still has placements. | `_assign`, `_move`, `_merge`, `_delete`, `_set_primary`. |
 | **C-i** | Every id argument must belong to `p_campaign_id`. | `22023` pre-check. |
-| **C-j** | Merge requires all units in one group; the survivor cannot be a source. | `structure_unit_merge`. |
+| **C-j** | Merge requires all units in one group; the survivor cannot be a source. *Fix round 1 note (D17):* merging worksites of two different Employer containers is refused by the same legacy trigger (`P0001` → `rule_violation`), as the merge dialog's upsert is today; pinned by a contract test. | `structure_unit_merge`. |
 | **C-k** | Same-group split children take the worker **out** of the source (siblings partition the group); `p_keep_in_source` applies only to cross-group children. | `structure_unit_split`. Full-mode behaviour change sanctioned by E2/§6.4 step 1; approved here. |
 | **C-l** | Provenance is preserved on move/merge (`assignment_source`, `assigned_rule_id`, `id`); new rows from user actions are `manual`. | `UPDATE … SET ou_id` rather than delete+insert wherever a source row exists. |
 
@@ -565,6 +565,9 @@ deliberate design choice for approval).
 - Enforcement-agnostic: the suite passes on a database with WP2.2a only **and** with WP2.2b applied (the
   duplicate tests accept the RPC pre-check's `23505` or the index's `23505`, same constraint name). Run
   twice on normal dev (before and after WP2.2b) and once on the clone; all three outputs are pasted in §9.
+- *Fix round 1 (D18):* `OUX_CONTRACT_FOREIGN_CAMPAIGN_ID` is **required** (the forbidden-campaign test
+  always runs); the foreign-user pair is optional but must be set as a pair. The only skip the suite can
+  produce is the foreign-user test, named as such; **every Stage 3 paste must report the skipped count.**
 
 ### 4.3 Migration validation (CI + local)
 
@@ -752,12 +755,47 @@ WP2.2, recorded in PROGRESS.md incidental findings), any `campaigns` creation pa
 | Same-group copy now errors (K1) | approved behaviour change; message + e2e 2. |
 | Employer materialisation changes full-mode observables | M2-a keeps it operator-timed; e2e asserts render + one worksite card per member. |
 | Contract suite accidentally targets production | hard throw on production host; env names distinct from app env; no `.env` file read. |
+| Legacy `check_worker_ou_group_exclusivity` (one container per `ou_type`) refuses cross-container same-type moves and merges (`P0001`) | Unchanged behaviour (D17); surfaced as `rule_violation` with the trigger's message; contract tests pin it so Stage 4 knows before the UI does; retirement of the trigger is a later package (§1.5). |
 | Regen strips symbols again on promotion | G1 step 5; wrapper never uses generated `Functions`. |
 | Lint total creep from 21 touched files | touched lines clean; each stage records the total. |
 
 ### 8.3 Deviations from plan (implementer keeps)
 
-_None yet._
+Stage 1 (2026-09-14, static implementation; nothing below has run against a database yet — §11).
+
+| # | Deviation | Reason | Plan section changed |
+|---|---|---|---|
+| **D1** | The `structure__*` helpers live in a private schema `oux_internal` (USAGE + EXECUTE granted to `authenticated` and `service_role`, revoked from `PUBLIC` and `anon`), not in `public` with EXECUTE revoked from `authenticated`. Every helper call is schema-qualified. The role probe asserts that `anon` cannot execute any `structure_*` / `oux_internal` function and that no `structure__*` function exists in `public`; it does **not** assert that `authenticated` gets `42501` on a helper. | A `SECURITY INVOKER` function runs as its caller, so the caller needs EXECUTE on every function the body calls; revoking the helpers from `authenticated` would break every public RPC for real users. Keeping them off the REST surface is done by schema: PostgREST exposes only the configured schemas (project default `public, graphql_public`; `supabase/config.toml` has no `[api]` section). **Operator check before Stage 2:** confirm in the dev/production API settings that `oux_internal` is not (and is never added to) the exposed schemas. | §3.5 item 3; §4.4 role probes; §8.2 "Helper functions callable directly". |
+| **D2** | New file `scripts/data-hygiene/oux-wp2.2/95_role_probes.sql` instead of extending the rehearsed `oux-wp2.1/95_role_probes.sql`. | The WP2.1 file is rehearsed evidence and must stay byte-identical. | §4.4; §7 "Modified". |
+| **D3** | `campaign_organising_units` has no `description` and no `leader_worker_id` column (the latter is on `campaign_ou_coverage`, baseline `:9500–9518`), and the estimate column is `total_workers_estimated`. The unit element shape (`structure_units_create` / `_split` / `_bulk_save`) and the `structure_unit_update` whitelist use the real columns: `name, ou_type, total_workers_estimated (alias estimated_size), target_size, commonality_logic, display_order, is_group_container, parent_ou_id, ou_group_id, ou_group_name, group_id, unit_basis, source, anchor_worker_id, user_rating, source_metadata` (update: `name, total_workers_estimated/estimated_size, target_size, commonality_logic, display_order, user_rating, anchor_worker_id, unit_basis, source_metadata`). `description` / `leader_worker_id` raise `22023`. | The plan's key names do not exist in the schema (`packages/db-types/generated.ts:6467–6486` confirms). | §3.3 `structure_units_create`, `structure_unit_update`. |
+| **D4** | `structure_placements_move` gains `p_keep_in_parent boolean DEFAULT true` and returns two extra keys, `skipped` and `parent_inserted`. With a sub-unit target whose parent has a group of its own (the Employer container), the parent placement is kept/created (`skip` semantics); a source that *is* that parent is retained (copy semantics for that worker); when the parent has no `group_id`, or shares the target's group, nothing is written for the parent. | §3.11 row 1 assigns the legacy `keepInParent` inserts (`move-worker-mutation.ts:184–207, 265–289`) to the RPC, but §3.3 gave the RPC no way to express it; default `true` = today's default. Additive. | §3.3 `structure_placements_move`; §3.9 `move` args. |
+| **D5** | `apps/organising-db/vitest.config.ts` gains `exclude: [...configDefaults.exclude, "src/**/__contract__/**"]`. | Its existing `src/**/*.test.{ts,tsx}` glob collected `structure-api.contract.test.ts`, which throws without the `OUX_CONTRACT_*` variables — `pnpm test` was no longer hermetic (§4.2 requires it to be). One-line change to an existing file outside the plan's "Modified" list. | §4.2; §7 "Modified". |
+| **D6** | The RPC family is 17 functions: the 16 rows of §3.3 (4 group + 7 unit + 5 placement) plus `structure_materialise_employer_placements`. | §3.5 item 4's "the public RPCs of §3.3" was counted as 15 in the Stage-1 brief; the table has 16 + M2. No design change. | §3.5 item 4 (count only). |
+| **D7** | §2.3 row 13's real path is `lib/campaign/use-allocate-workers-to-ou.ts` (not `lib/hooks/`). The guard test's scanner accepts the `as never` cast **inside** `.from("campaign_worker_ou" as never)` (rows 8, 9) as well as after the paren, and chains broken across lines; the plan's single-line `rg` command in §5 finds only 6 of the 21 files today. The guard test is the authoritative inventory; the `rg` line is kept as a secondary check. | Verified by hand: the scanner finds exactly the 21 files of §2.3 and nothing else (§11). | §2.3 row 13; §5 acceptance command (advisory). |
+| **D8** | `structure_unit_merge` refuses a source that has child units (`P0001`) instead of re-pointing `parent_ou_id` / `ou_group_id`. Unique keys found on the re-point list: `campaign_ou_coverage(ou_id)`, `woc_scope_units(woc_id, ou_id)`, `structure_test_results(structure_test_id, ou_id)`, `section_plan_workforce_mapping_overrides(section_plan_id, worksite_ou_id)` — for each, the survivor's own row wins and the leftover source row goes with the source unit's `ON DELETE CASCADE`; `campaign_unit_rules`, `campaign_worker_list_items.source_ou_id`, `campaign_wocs.scope_ou_id`, `campaign_stage_workplan_tasks.assigned_ou_id`, `campaign_ou_candidates.accepted_ou_id` have no unique key on the column and are re-pointed outright. Every re-point asserts its visible row count (`P0002` on an RLS gap, never silent loss). | Child units are not in the plan's re-point list; today's dialog fails on the same case with `23503` (`ou_group_id` FK is `NO ACTION`). Not stop condition §8.4 item 5: every unique key is covered by the plan's "`ON CONFLICT DO NOTHING` where a unique key exists" rule. | §3.3 `structure_unit_merge`. |
+| **D9** | C-h is implemented as: an RPC never creates a second primary, and never drops a primary the worker had **by its own action** (moved/collapsed/displaced/reassigned rows carry the flag to the target row). A plain `unassign` of a primary row does not promote another placement, matching today's `worker-detail-sheet` remove. | Today's data routinely has workers with placements and no primary (sync and assign write `is_primary = false`), so a literal "never zero primaries" would change behaviour for every assign. | §3.4 C-h (interpretation). |
+| **D10** | `oux_internal.structure__assert_can_write` (a) applies the same predicate as the `wp16_*` write policies, `get_user_role() IN ('admin','user') AND can_write_to_campaign()`, so a viewer gets `42501` rather than a zero-row no-op; (b) admits a session with `auth.uid() IS NULL` only when `current_user` has `rolsuper` or `rolbypassrls` (`postgres`, `service_role`) — how `10_materialise_employer_placements.sql` calls the RPC; (c) raises `P0002` for a missing campaign. | The plan named only `can_write_to_campaign`; the operator script needs a JWT-less path. | §3.1 principle 1; §3.7 M2-a. |
+| **D11** | `structure_placements_move` with `p_to_ou_id = null` ignores `p_from_ou_id` (legacy `toOuId: null` strips all placements); a single placement is removed through `structure_placements_unassign(p_ou_id)`. `structure_group_delete cascade_units` does not delete a legacy custom-kind container whose group is removed (the container is not a unit of the group; its next update re-creates the group through the WP2.1 AFTER trigger). | Plan-literal semantics made explicit in the function comments. | §3.3 (clarification). |
+| **D12** | `structure_materialise_employer_placements` considers a container only for children whose `group_id` differs from the container's (Employer container → worksite children). A same-kind container/member pair (the create dialog's shape) is skipped because C-a forbids a worker on both. | §3.7 said "container units with `is_group_container AND group_id IS NOT NULL`"; production data is employer→worksite (wp2.1.md §1.3), so the result is the same there. | §3.7. |
+| **D13** | `loadOuTargets` (`sync-campaign-universe.ts:229–279`) does **not** exclude containers in its query; the exclusion is in `matchingOusForWorker` at `:110` (`if (ou.isGroupContainer \|\| !ou.autoMatch \|\| ou.futureGroupKey == null) continue;`). Recorded for Stage 6 as §3.7 asks. | Fact-finding only. | §3.7 (record). |
+| **D14** | Placement `is_primary` semantics inside `structure_placements_assign`: with `p_is_primary`, a worker already on the unit still becomes primary there (clear-then-set). *Fix round 1 (8c):* with `p_on_conflict = 'skip'` and the worker elsewhere in the unit's group, the call returns `skipped` and does **not** touch the primary flag (the worker never lands on the unit). | Makes `assign(isPrimary: true)` mean "ensure on unit and primary", which is what the import route's upsert `{is_primary: true}` intends (§2.3 row 16). | §3.3 `structure_placements_assign`. |
+
+Fix round 1 (2026-09-14, reviewer findings; §11.6):
+
+| # | Deviation | Reason | Plan section changed |
+|---|---|---|---|
+| **D15** | WP2.2b grants on `campaign_group_membership` are `REVOKE ALL … FROM PUBLIC, anon, authenticated, service_role; GRANT SELECT … TO authenticated, service_role;` (the view text stays verbatim). The post-assertion additionally checks `service_role` has no INSERT/UPDATE/DELETE. | The view is created by `postgres` in `public`, where the baseline's `ALTER DEFAULT PRIVILEGES … GRANT ALL ON TABLES TO anon/authenticated/service_role` (`20260908050000:33393–33396`) applies; the wp2.1.md §2.3 revoke (`public, anon`) would have left `authenticated` with full privileges and failed the post-assertion, rolling back the file (blocking finding 1). The default privileges are scoped `IN SCHEMA public`; `oux_internal` holds functions only (PUBLIC EXECUTE already revoked), so nothing else is affected. | §3.6 item 5; wp2.1.md §2.3 grant lines. |
+| **D16** | `90_rollback_wp2_2_structure_api.sql` drops the functions and the schema and restores the trigger body unconditionally; only the two-value CHECK restore is conditional (NOTICE with the `universe` row count, three-value CHECK left in place when rows exist). Final result set reports the CHECK definition after and the blocking row count. README updated. | §3.5 says only the CHECK restore is conditional (finding 3). | Rollback paragraph of §3.5; README. |
+| **D17** | Recorded, not changed: the legacy `trg_check_worker_ou_group_exclusivity` refuses `UPDATE … SET ou_id` between worksites of two different Employer containers (move) and a merge of such worksites, with `P0001` → `rule_violation`, because the BEFORE UPDATE trigger still sees the row's old `ou_id`. The contract fixture gains a second Employer container with a worksite child and two tests pin the behaviour. *Round 2 (A4):* the asymmetry is deliberate and correct as written — the parent-container-source branch of `structure_placements_move` (D19: delete then insert) **succeeds** when the displaced row sat under another Employer's worksite, whereas the plain move path (`UPDATE … SET ou_id`) raises `P0001` from the legacy trigger for the same target; Stage 4 should expect both in the UI. | Not a regression — today's insert-before-delete fails identically — but Stage 4 must know before the UI does (finding 2). | §3.4 C-b, C-j; §8.2. |
+| **D18** | Contract suite: `OUX_CONTRACT_FOREIGN_CAMPAIGN_ID` is required (throws with the other variables); the forbidden-campaign test always runs and exercises three RPCs. The foreign-user pair stays optional but one-without-the-other throws; the gated test's name states the skip reason; README/§4.2 require the Stage 3 paste to report the skipped count. | `it.skipIf` tests could vanish silently (finding 4). | §4.2; README. |
+| **D19** | D4 corner: when the move's source is the target's parent Employer container, the RPC now displaces the worker's other placement in the target's group first (C-b), then inserts the target placement, keeping the parent row (copy semantics for the parent only). Previously that path used `structure__place(…, 'error')` and raised `23505` when the worker already sat on another worksite of the employer. *Round 2 (A4):* because this branch deletes before it inserts, it succeeds even when the displaced row was under **another** Employer's worksite, while the plain move path (`UPDATE … SET ou_id`) raises `P0001` from the legacy exclusivity trigger for that same target (D17) — correct as written; Stage 4 should expect the asymmetry. | The same drop from any other source displaces; the parent-source case must not differ (finding 5). | §3.3 `structure_placements_move`; D4. |
+| **D20** | `structure__create_units` rejects a blank-string `parent_ou_id` / `ou_group_id` reference with `22023`. | `coalesce(v_ref, '')` let `""` resolve to the first element without a `client_ref` (finding 6). | §3.3 `structure_units_create`. |
+| **D21** | Recorded, not changed: on the remove-only paths (`structure_placements_unassign`, the unassign branch of `structure_placements_move`, `structure_placements_set_primary`) worker ids are verified to exist (`P0002`) but **not** to be members; a non-member id yields `removed: 0` (or `P0002` "no placement" for `set_primary`) rather than `22023`. Deletes are scoped to the campaign's units, so nothing outside the campaign can be touched. §3.1 principle 2 holds for every argument that can create or move a row. | Exact semantics stated so the principle is not over-claimed (finding 7). | §3.1 principle 2 (scope). |
+| **D22** | Minor SQL: (a) `structure_group_update`'s container rename asserts one row with `GET DIAGNOSTICS` (`P0002` otherwise); (b) the "avoids a scan under lock" comment on the CHECK drop/add is corrected — inside the single transaction the DROP already holds ACCESS EXCLUSIVE, the two-step form is kept for run-sheet/rollback symmetry; (c) see D14; (d) `structure_placements_replace_rule_rows` deletes every `rule` row, including one that was `is_primary`, and re-inserts non-primary — a worker whose only primary was a rule row ends the Recompute with no primary (today's Recompute does the same; D9 reading); (e) `structure__delete_unit`'s detach path (`p_delete_children = false`) re-derives the children's group through the WP2.1 BEFORE trigger; for a custom-kind container named like a reserved type label (e.g. "Custom") `campaign_group_ensure` can raise its own `23505` — the delete dialog passes `deleteChildren: true` (§3.11 row 3), so this is reachable only by a direct caller; (f) 2.2a's post-assertion and `95` assert `anon`/`authenticated` are `NOT rolsuper AND NOT rolbypassrls` (the D10(b) bypass depends on it). | Finding 8. | §3.3, §3.5, §3.8, §4.4. |
+| **D23** | 2.2a section 1 is tolerant of an already-widened CHECK: the precondition accepts exactly the two-value or the three-value shape (values extracted from `pg_get_constraintdef`; anything else raises) and rows in `(manual, rule, universe)`; a `DO` block skips the drop/add/validate with a NOTICE when `universe` is already allowed. Post-assertion unchanged. README states that a re-forward after a `90` that left the three-value CHECK is supported and that `10`/`20` are never reversed automatically. | Round 2 A1: after `90` with `universe` rows (D16) the original preconditions made 2.2a un-reapplicable. | §3.5 item 1; README. |
+| **D24** | The role assertions in 2.2a's post-assertion block and in `95` now require `count(*) FILTER (WHERE NOT rolsuper AND NOT rolbypassrls) = 2` over exactly `anon` and `authenticated` (raise otherwise). | Round 2 A2: the previous `count(*) … = 0` form passed vacuously if a role row was missing. | §3.5 item 7; §4.4. |
+| **D25** | Contract suite's forbidden-campaign test reads the foreign campaign's placements through the main client before and after the three refused calls and asserts equality (may be RLS-empty), matching the foreign-user test's shape. | Round 2 A3. | §4.2. |
+| **D26** | Evidence correction: the "PL/pgSQL balance check" in §11.4/§11.6 was a Python keyword-pairing check (`IF`/`END IF`, `LOOP`/`END LOOP`, `BEGIN`/`END` with SQL `CASE … END` discounted, comments and string literals stripped) over every `$tag$ … $tag$` block, not a libpg-query PL/pgSQL parse; the scratchpad `check.mjs` never ran (no `parseQuery`/`parsePlPgSQL` export in the installed build). Only `check-sql.mjs` (`parse`, SQL grammar) was used. §11.6 reworded; the keyword check re-run and labelled accurately in §11.7. | Round 2 evidence note. | §11.4, §11.6. |
 
 ### 8.4 Stop conditions (implementer stops and reports; no workaround)
 
@@ -811,11 +849,313 @@ overrule them before Stage 4.
 
 ### 9.2 Verification output (verifier pastes raw output)
 
-_pending_
+#### Stage 1 verifier run (2026-09-14, Sonnet, no database)
+
+**1. `pnpm validate:migrations`**
+
+```
+> offshore-alliance-monorepo@ validate:migrations /home/user/OffshoreAlliance
+> node scripts/validate-supabase-migrations.mjs
+
+Validated 13 Supabase migrations with unique 14-digit versions.
+```
+Exit code: 0
+
+**2. `pnpm --filter organising-db exec tsc --noEmit`**
+
+```
+(no output)
+```
+Exit code: 0
+
+**3. `pnpm --filter organising-db test` (full run)**
+
+```
+> organising-db@0.1.0 test /home/user/OffshoreAlliance/apps/organising-db
+> vitest run
+
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 /home/user/OffshoreAlliance/apps/organising-db
+
+[... 89 passing test files trimmed to summary; full list of files is unchanged from the pre-Stage-1 baseline except for the two new files below ...]
+
+ ✓ src/lib/campaign/__tests__/structure-api.test.ts (51 tests) 32ms
+ ❯ src/lib/campaign/__tests__/no-direct-structure-writes.test.ts (3 tests | 1 failed) 111ms
+   × no direct structure writes (wp2.2.md §3.9 guard) > no direct writers remain (acceptance criterion; expected to fail until Stage 6) 50ms
+     → 21 file(s) still write directly to campaign_organising_units / campaign_worker_ou:
+  app/api/campaign-import/apply/route.ts
+  app/api/campaigns/[id]/add-workers/route.ts
+  app/api/campaigns/[id]/create-worker/route.ts
+  app/api/campaigns/[id]/workers/duplicates/route.ts
+  app/api/worker-import/apply/route.ts
+  app/api/worker-import/organising-units/route.ts
+  components/campaigns/campaign-settings.tsx
+  components/campaigns/campaign-units-section.tsx
+  components/campaigns/campaign-wizard.tsx
+  components/campaigns/wall-chart/create-organising-unit-dialog.tsx
+  components/campaigns/wall-chart/delete-organising-unit-dialog.tsx
+  components/campaigns/wall-chart/hooks/use-wall-chart-actions.ts
+  components/campaigns/wall-chart/hooks/use-wall-chart-structure.ts
+  components/campaigns/wall-chart/merge-units-dialog.tsx
+  components/campaigns/wall-chart/move-worker-mutation.ts
+  components/campaigns/wall-chart/unit-rating-control.tsx
+  components/campaigns/wall-chart/worker-detail-sheet.tsx
+  lib/campaign/recompute-ou-assignments.ts
+  lib/campaign/use-allocate-workers-to-ou.ts
+  lib/hooks/useRemoveWorkerFromCampaign.ts
+  lib/workers/sync-campaign-universe.ts: expected [ …(21) ] to deeply equal []
+
+[... remaining passing test files trimmed to summary ...]
+
+stdout | src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > CampaignWallChart render cost > renders 305 members across 161 units within budget
+[wp2.3] render-cost median 6682ms over 3 runs (runs: 6682, 5688, 7090; tiles=250, cards=162)
+
+ ❯ src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx (1 test | 1 failed) 20608ms
+   × CampaignWallChart render cost > renders 305 members across 161 units within budget 20608ms
+     → expected 6681.761664 to be less than 6000
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/lib/campaign/__tests__/no-direct-structure-writes.test.ts > no direct structure writes (wp2.2.md §3.9 guard) > no direct writers remain (acceptance criterion; expected to fail until Stage 6)
+AssertionError: 21 file(s) still write directly to campaign_organising_units / campaign_worker_ou:
+  app/api/campaign-import/apply/route.ts
+  app/api/campaigns/[id]/add-workers/route.ts
+  app/api/campaigns/[id]/create-worker/route.ts
+  app/api/campaigns/[id]/workers/duplicates/route.ts
+  app/api/worker-import/apply/route.ts
+  app/api/worker-import/organising-units/route.ts
+  components/campaigns/campaign-settings.tsx
+  components/campaigns/campaign-units-section.tsx
+  components/campaigns/campaign-wizard.tsx
+  components/campaigns/wall-chart/create-organising-unit-dialog.tsx
+  components/campaigns/wall-chart/delete-organising-unit-dialog.tsx
+  components/campaigns/wall-chart/hooks/use-wall-chart-actions.ts
+  components/campaigns/wall-chart/hooks/use-wall-chart-structure.ts
+  components/campaigns/wall-chart/merge-units-dialog.tsx
+  components/campaigns/wall-chart/move-worker-mutation.ts
+  components/campaigns/wall-chart/unit-rating-control.tsx
+  components/campaigns/wall-chart/worker-detail-sheet.tsx
+  lib/campaign/recompute-ou-assignments.ts
+  lib/campaign/use-allocate-workers-to-ou.ts
+  lib/hooks/useRemoveWorkerFromCampaign.ts
+  lib/workers/sync-campaign-universe.ts: expected [ …(21) ] to deeply equal []
+
+- Expected
++ Received
+
+- Array []
++ Array [
++   "app/api/campaign-import/apply/route.ts",
++   "app/api/campaigns/[id]/add-workers/route.ts",
++   "app/api/campaigns/[id]/create-worker/route.ts",
++   "app/api/campaigns/[id]/workers/duplicates/route.ts",
++   "app/api/worker-import/apply/route.ts",
++   "app/api/worker-import/organising-units/route.ts",
++   "components/campaigns/campaign-settings.tsx",
++   "components/campaigns/campaign-units-section.tsx",
++   "components/campaigns/campaign-wizard.tsx",
++   "components/campaigns/wall-chart/create-organising-unit-dialog.tsx",
++   "components/campaigns/wall-chart/delete-organising-unit-dialog.tsx",
++   "components/campaigns/wall-chart/hooks/use-wall-chart-actions.ts",
++   "components/campaigns/wall-chart/hooks/use-wall-chart-structure.ts",
++   "components/campaigns/wall-chart/merge-units-dialog.tsx",
++   "components/campaigns/wall-chart/move-worker-mutation.ts",
++   "components/campaigns/wall-chart/unit-rating-control.tsx",
++   "components/campaigns/wall-chart/worker-detail-sheet.tsx",
++   "lib/campaign/recompute-ou-assignments.ts",
++   "lib/campaign/use-allocate-workers-to-ou.ts",
++   "lib/hooks/useRemoveWorkerFromCampaign.ts",
++   "lib/workers/sync-campaign-universe.ts",
++ ]
+
+ ❯ src/lib/campaign/__tests__/no-direct-structure-writes.test.ts:100:7
+     98|       found,
+     99|       `${found.length} file(s) still write directly to campaign_organi…
+    100|     ).toEqual([]);
+       |       ^
+    101|   });
+    102| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > CampaignWallChart render cost > renders 305 members across 161 units within budget
+AssertionError: expected 6681.761664 to be less than 6000
+ ❯ src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx:97:16
+     95|     expect(tiles).toBe(EXPECTED_TILES);
+     96|     expect(cards).toBe(162);
+     97|     expect(ms).toBeLessThan(BUDGET_MS);
+       |                ^
+     98|   }, 120_000);
+     99| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+ Test Files  2 failed | 89 passed (91)
+      Tests  2 failed | 1232 passed (1234)
+   Start at  05:53:09
+   Duration  41.48s (transform 3.44s, setup 0ms, collect 18.16s, tests 39.25s, environment 3.88s, prepare 5.21s)
+
+/home/user/OffshoreAlliance/apps/organising-db:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  organising-db@0.1.0 test: `vitest run`
+Exit status 1
+```
+Exit code: 1
+
+**4. `pnpm exec eslint` (from `apps/organising-db`) on the Stage 1 files**
+
+Files: `src/lib/campaign/structure-api.ts src/lib/campaign/__tests__/structure-api.test.ts src/lib/campaign/__tests__/no-direct-structure-writes.test.ts src/lib/campaign/__contract__/structure-api.contract.test.ts vitest.contract.config.ts vitest.config.ts`
+
+```
+(no output)
+```
+Exit code: 0
+
+**5. `pnpm --filter organising-db lint 2>&1 | tail -6`**
+
+```
+✖ 294 problems (143 errors, 151 warnings)
+  7 errors and 16 warnings potentially fixable with the `--fix` option.
+
+/home/user/OffshoreAlliance/apps/organising-db:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  organising-db@0.1.0 lint: `eslint`
+Exit status 1
+```
+Exit code: 1
+
+**6. `rg -n --pcre2` direct-write scan (excluding `__tests__` and `__contract__`)**
+
+```
+/home/user/OffshoreAlliance/apps/organising-db/src/lib/workers/sync-campaign-universe.ts
+/home/user/OffshoreAlliance/apps/organising-db/src/lib/campaign/recompute-ou-assignments.ts
+/home/user/OffshoreAlliance/apps/organising-db/src/components/campaigns/campaign-units-section.tsx
+/home/user/OffshoreAlliance/apps/organising-db/src/components/campaigns/wall-chart/move-worker-mutation.ts
+/home/user/OffshoreAlliance/apps/organising-db/src/components/campaigns/wall-chart/delete-organising-unit-dialog.tsx
+/home/user/OffshoreAlliance/apps/organising-db/src/app/api/campaigns/[id]/create-worker/route.ts
+```
+Exit code: 0
+
+**7. `git status --short`**
+
+```
+ M apps/organising-db/package.json
+ M apps/organising-db/vitest.config.ts
+ M docs/organiser-ux-review/wp/wp2.2.md
+?? apps/organising-db/src/lib/campaign/__contract__/
+?? apps/organising-db/src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+?? apps/organising-db/src/lib/campaign/__tests__/structure-api.test.ts
+?? apps/organising-db/src/lib/campaign/structure-api.ts
+?? apps/organising-db/vitest.contract.config.ts
+?? scripts/data-hygiene/oux-wp2.2/
+?? supabase/migrations/20260914090000_wp2_2_structure_api.sql
+?? supabase/migrations/20260914090100_wp2_2_one_unit_per_group_enforcement.sql
+```
+Exit code: 0
+
+**8. `git diff --stat`**
+
+```
+ apps/organising-db/package.json      |   1 +
+ apps/organising-db/vitest.config.ts  |   5 +-
+ docs/organiser-ux-review/wp/wp2.2.md | 247 ++++++++++++++++++++++++++++++++++-
+ 3 files changed, 251 insertions(+), 2 deletions(-)
+```
+Exit code: 0
+
+**9. `wc -l` of new migration files and everything under `scripts/data-hygiene/oux-wp2.2/`**
+
+```
+  3256 /home/user/OffshoreAlliance/supabase/migrations/20260914090000_wp2_2_structure_api.sql
+   281 /home/user/OffshoreAlliance/supabase/migrations/20260914090100_wp2_2_one_unit_per_group_enforcement.sql
+  3537 total
+
+  130 /home/user/OffshoreAlliance/scripts/data-hygiene/oux-wp2.2/20_relabel_unattributed_rule_rows.sql
+   88 /home/user/OffshoreAlliance/scripts/data-hygiene/oux-wp2.2/README.md
+  134 /home/user/OffshoreAlliance/scripts/data-hygiene/oux-wp2.2/91_rollback_wp2_2_enforcement.sql
+  222 /home/user/OffshoreAlliance/scripts/data-hygiene/oux-wp2.2/95_role_probes.sql
+  192 /home/user/OffshoreAlliance/scripts/data-hygiene/oux-wp2.2/90_rollback_wp2_2_structure_api.sql
+  187 /home/user/OffshoreAlliance/scripts/data-hygiene/oux-wp2.2/10_materialise_employer_placements.sql
+  953 total
+```
+Exit code: 0 (both invocations)
+
+**10. Repeat run, restricted to the timing test (for flakiness visibility)**
+
+Command: `pnpm --filter organising-db exec vitest run src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx`
+
+(Path guess confirmed via `find` — matches exactly `src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx`.)
+
+```
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 /home/user/OffshoreAlliance/apps/organising-db
+
+stdout | src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > CampaignWallChart render cost > renders 305 members across 161 units within budget
+[wp2.3] render-cost median 6778ms over 3 runs (runs: 6778, 5818, 6942; tiles=250, cards=162)
+
+ ❯ src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx (1 test | 1 failed) 20630ms
+   × CampaignWallChart render cost > renders 305 members across 161 units within budget 20630ms
+     → expected 6778.459658 to be less than 6000
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > CampaignWallChart render cost > renders 305 members across 161 units within budget
+AssertionError: expected 6778.459658 to be less than 6000
+ ❯ src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx:97:16
+     95|     expect(tiles).toBe(EXPECTED_TILES);
+     96|     expect(cards).toBe(162);
+     97|     expect(ms).toBeLessThan(BUDGET_MS);
+       |                ^
+     98|   }, 120_000);
+     99| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  05:55:50
+   Duration  24.54s (transform 1.15s, setup 0ms, collect 2.93s, tests 20.63s, environment 526ms, prepare 49ms)
+
+undefined
+/home/user/OffshoreAlliance/apps/organising-db:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx
+```
+Exit code: 1
+
+Result across both runs: run 1 median 6682ms (runs 6682/5688/7090), run 2 median 6778ms (runs 6778/5818/6942) — both above the 6000ms budget, consistently failing rather than flaking.
+
 
 ### 9.3 Reviewer findings and resolution
 
-_pending_
+#### Stage 1 reviews (2026-09-14, static pre-execution reviews; nothing had run on a database)
+
+- **Verifier (Sonnet, §9.2):** independently reproduced the implementer's checks — migrations validate (13), `tsc`
+  clean, lint total 294 (baseline), the six new TS files eslint-clean, 1,232 tests passing with exactly two
+  failures: the guard test's acceptance case (by design until Stage 6, listing the 21 writers) and the
+  pre-existing `wall-chart.render-cost` timing budget (untouched file, untouched subject; consistently over
+  6,000 ms in this sandbox).
+- **Review 1 (fresh Fable): CHANGES REQUIRED.** One blocking finding: 2.2b's `campaign_group_membership` view
+  inherits the baseline's `ALTER DEFAULT PRIVILEGES … GRANT ALL ON TABLES TO authenticated`, the plan's
+  `revoke … from public, anon` left `authenticated` with full rights, and the file's own post-assertion would
+  have raised and rolled the migration back on dev. Seven advisories: legacy exclusivity trigger still refuses
+  cross-container same-type moves/merges (record + pin by contract test); `90` refused the whole rollback when
+  `universe` rows exist; two `42501` contract tests could skip silently; the parent-container-source move
+  corner errored instead of displacing; blank `client_ref` references resolved silently; C-i over-claimed on
+  remove-only paths; minor SQL points (missing `GET DIAGNOSTICS`, a void comment, role-attribute probe).
+  Sections found clean: apply-ability on baseline + WP2.1 (every name verified), trigger interplay
+  (`trg_cwo_z_set_group_id` fires on `UPDATE OF ou_id, group_id`, so `UPDATE … SET ou_id` re-derives
+  `group_id`), C-a…C-l, security posture (32 functions, all `SECURITY INVOKER`, `pg_catalog`-first
+  `search_path`, zero `SECURITY DEFINER`, no `anon` EXECUTE), `90`/`91` restored bodies byte-identical to
+  their originals, wrapper/SQL `p_*` parity, guard scanner correctness, contract suite hygiene. **Resolution:**
+  all eight applied in fix round 1 (§8.3 D15–D22, §11.6).
+- **Review 2 (fresh Fable, fix-round verification): APPROVE WITH ADVISORIES.** All eight round-1 fixes
+  confirmed FIXED with `path:line` evidence. Four advisories: A1 2.2a could not be re-applied after a `90` that
+  left the three-value CHECK; A2 the role-attribute assertion passed vacuously on a missing role row; A3 the
+  forbidden-campaign contract test lacked a before/after state read; A4 document the delete-then-insert vs
+  `UPDATE` asymmetry under the legacy trigger for Stage 4. Also corrected an inaccurate evidence line in §11.6.
+  **Resolution:** all applied in fix round 2 (§8.3 D23–D26, §11.7).
+- Fix rounds used at Stage 1: two (the second advisory-only). The Stage 7 review of the whole diff is separate
+  and still to come.
 
 ## 10. Revision history
 
@@ -838,3 +1178,419 @@ _pending_
 - **Revision 1** (2026-09-13): initial plan. Recommends S1 + S2, R1 (+R1-b), M2-a, K1, G1, separate
   contract config, C-k. Two migrations (2.2a additive/compatible, 2.2b enforcement). 15 public RPCs; 21
   writer files + split dialog switched; guard test as the automated acceptance check.
+
+## 11. Stage-1 implementation evidence (2026-09-14)
+
+**Nothing in this section has been executed against a database.** No Supabase MCP tool, no `supabase` CLI
+command, no network call to any Supabase host and no local PostgreSQL were used; `supabase/.temp/project-ref`
+was not touched (it points at production and was read only to confirm that). The SQL below is statically
+checked only: (a) every file parses under the PostgreSQL 17 grammar (`libpg-query` 17.7.4, `parse`, run from
+a scratch directory — 70 / 15 / 11 / 9 / 44 / 13 / 11 statements for 2.2a / 2.2b / 10 / 20 / 90 / 91 / 95),
+(b) every PL/pgSQL block was checked for `IF/END IF`, `LOOP/END LOOP`, `BEGIN/END` balance, and (c) the
+function bodies were desk-reviewed against the baseline objects listed in §11.3. **The first execution of any
+of it is Stage 2 on normal dev after operator approval.** Deviations are in §8.3 (D1–D14).
+
+### 11.1 Files
+
+New:
+
+| File | Role |
+|---|---|
+| `supabase/migrations/20260914090000_wp2_2_structure_api.sql` | WP2.2a (§3.5): CHECK widened; relaxed container trigger; schema `oux_internal` + 14 helpers; 17 public RPCs; grants; post-assertions. 3,256 lines. |
+| `supabase/migrations/20260914090100_wp2_2_one_unit_per_group_enforcement.sql` | WP2.2b (§3.6): H9 precondition; unique index; duplicate pre-check trigger; `campaign_group_membership`; post-assertions. |
+| `scripts/data-hygiene/oux-wp2.2/README.md` | run order (dev / clone / production), rollback order, per-file output, the production `SET LOCAL` rule, never-on-production list. |
+| `scripts/data-hygiene/oux-wp2.2/10_materialise_employer_placements.sql` | M2-a, env-guarded, stop condition §8.4 item 4, idempotent. |
+| `scripts/data-hygiene/oux-wp2.2/20_relabel_unattributed_rule_rows.sql` | R1-b, env-guarded, logs to `_oux_hygiene_log`. |
+| `scripts/data-hygiene/oux-wp2.2/90_rollback_wp2_2_structure_api.sql` | recovery-only rollback of 2.2a. |
+| `scripts/data-hygiene/oux-wp2.2/91_rollback_wp2_2_enforcement.sql` | recovery-only rollback of 2.2b. |
+| `scripts/data-hygiene/oux-wp2.2/95_role_probes.sql` | grant/RLS probes, always rolls back (D2). |
+| `apps/organising-db/src/lib/campaign/structure-api.ts` | the typing boundary (§3.9). |
+| `apps/organising-db/src/lib/campaign/__tests__/structure-api.test.ts` | 51 unit tests: error mapping, serialisation, result parsing. |
+| `apps/organising-db/src/lib/campaign/__tests__/no-direct-structure-writes.test.ts` | the guard (3 cases; case 2 fails by design until Stage 6). |
+| `apps/organising-db/src/lib/campaign/__contract__/structure-api.contract.test.ts` | contract suite (§4.2), run at Stage 3. |
+| `apps/organising-db/vitest.contract.config.ts` | `pnpm test:contract` config. |
+
+Modified: `apps/organising-db/package.json` (`test:contract` script), `apps/organising-db/vitest.config.ts`
+(one `exclude` line, D5), this file (§8.3, §11). No product code, no writer file, no `generated.ts`, no
+`supabase/.temp` change. Timestamps chosen: `20260914090000` and `20260914090100` (both later than
+`20260913000000_an_survey_reports.sql`; `pnpm validate:migrations` passes).
+
+### 11.2 RPC signatures as implemented (all `RETURNS jsonb`, plpgsql, `SECURITY INVOKER`, `SET search_path TO pg_catalog, public, oux_internal`)
+
+```sql
+structure_group_create(p_campaign_id integer, p_kind text, p_name text, p_display_order integer DEFAULT NULL)
+  → {group_id, created}
+structure_group_update(p_campaign_id integer, p_group_id integer, p_name text DEFAULT NULL, p_display_order integer DEFAULT NULL)
+  → {group_id}
+structure_group_reorder(p_campaign_id integer, p_group_ids integer[])
+  → {updated, unlisted}
+structure_group_delete(p_campaign_id integer, p_group_id integer, p_mode text)
+  → {group_id, deleted_ou_ids, placements_removed}
+structure_units_create(p_campaign_id integer, p_units jsonb, p_assignments jsonb DEFAULT '[]')
+  → {units:[{client_ref, ou_id, group_id}], inserted, moved, skipped, displaced}
+structure_unit_update(p_campaign_id integer, p_ou_id integer, p_patch jsonb)
+  → {ou_id, updated_keys}
+structure_unit_reorder(p_campaign_id integer, p_ou_ids integer[])
+  → {updated}
+structure_unit_delete(p_campaign_id integer, p_ou_id integer, p_reassignments jsonb DEFAULT '[]', p_delete_children boolean DEFAULT false)
+  → {deleted_ou_ids, placements_moved, placements_removed, placements_displaced}
+structure_unit_merge(p_campaign_id integer, p_survivor_ou_id integer, p_source_ou_ids integer[])
+  → {moved, collapsed, deleted_ou_ids, repointed:{<table>: n}}
+structure_unit_split(p_campaign_id integer, p_source_ou_id integer, p_children jsonb, p_assignments jsonb, p_keep_in_source boolean DEFAULT false, p_group_id integer DEFAULT NULL)
+  → {children:[{client_ref, ou_id, group_id}], moved, copied, kept, displaced}
+structure_units_bulk_save(p_campaign_id integer, p_delete_ou_ids integer[], p_updates jsonb, p_creates jsonb)
+  → {deleted_ou_ids, updated_ou_ids, created:[…], placements_removed}
+structure_placements_assign(p_campaign_id integer, p_ou_id integer, p_worker_ids integer[], p_source text DEFAULT 'manual', p_is_primary boolean DEFAULT false, p_on_conflict text DEFAULT 'skip')
+  → {inserted, moved, skipped, displaced}
+structure_placements_move(p_campaign_id integer, p_worker_ids integer[], p_from_ou_id integer DEFAULT NULL, p_to_ou_id integer DEFAULT NULL, p_within_group_id integer DEFAULT NULL, p_keep_source boolean DEFAULT false, p_keep_in_parent boolean DEFAULT true)
+  → {moved, inserted, displaced, removed, skipped, parent_inserted}
+structure_placements_unassign(p_campaign_id integer, p_worker_ids integer[], p_ou_id integer DEFAULT NULL, p_within_group_id integer DEFAULT NULL)
+  → {removed}
+structure_placements_set_primary(p_campaign_id integer, p_worker_id integer, p_ou_id integer)
+  → {placement_id, cleared}
+structure_placements_replace_rule_rows(p_campaign_id integer, p_rows jsonb)
+  → {removed, inserted, skipped}
+structure_materialise_employer_placements(p_campaign_id integer)
+  → {inserted, skipped_existing, containers, multi_container_workers}
+```
+
+Internal (schema `oux_internal`, D1): `structure__assert_can_write(integer)`, `structure__unit(integer, integer)`,
+`structure__group(integer, integer)`, `structure__worker_ids(integer, integer[], boolean)`,
+`structure__set_primary(integer, integer, integer)`,
+`structure__place(integer, campaign_organising_units, integer, text, boolean, text, integer) → (outcome, displaced, lost_primary)`,
+`structure__json_int/_bool/_text/_object(jsonb, text, text)`, `structure__json_array(jsonb, text)`,
+`structure__create_units(integer, jsonb, jsonb)`, `structure__update_unit(integer, campaign_organising_units, jsonb)`,
+`structure__delete_unit(integer, campaign_organising_units, jsonb, boolean)`.
+
+### 11.3 Baseline objects confirmed (`supabase/migrations/20260908050000_baseline_schema.sql`)
+
+- CHECK: `campaign_worker_ou_assignment_source_check` (`:9644`), `('manual','rule')` — widened by 2.2a, restored by `90`.
+- Unique keys: `campaign_worker_ou_ou_id_worker_id_key (ou_id, worker_id)` (`:19161`); `campaign_ou_coverage_ou_id_key (ou_id)`;
+  `woc_scope_units_pkey (woc_id, ou_id)`; `structure_test_results_structure_test_id_ou_id_key`;
+  `section_plan_workforce_mappin_section_plan_id_worksite_ou_i_key (section_plan_id, worksite_ou_id)`;
+  `campaign_worker_list_items_list_id_worker_id_key` (not on the ou column). `campaign_unit_rules` carries `campaign_id`.
+- FKs to `campaign_organising_units(ou_id)` (`:23521–25126`): self `ou_group_id` NO ACTION, self `parent_ou_id` SET NULL,
+  `campaign_ou_candidates.accepted_ou_id` SET NULL, `campaign_ou_coverage.ou_id` CASCADE,
+  `campaign_stage_workplan_tasks.assigned_ou_id` SET NULL, `campaign_unit_rules.ou_id` CASCADE,
+  `campaign_wocs.scope_ou_id` SET NULL, `campaign_worker_list_items.source_ou_id` SET NULL,
+  `campaign_worker_ou.ou_id` CASCADE, `section_plan_workforce_mapping_overrides.worksite_ou_id` CASCADE,
+  `structure_test_results.ou_id` CASCADE, `woc_scope_units.ou_id` CASCADE; plus WP2.1 `campaign_groups.source_ou_id` SET NULL.
+  No later migration adds another referencer. Matches the §3.3 list; no undocumented dependant (§8.4 item 5 not triggered).
+- Trigger functions: `check_no_worker_on_group_container()` (`:1083–1102`, `LANGUAGE plpgsql`, no SECURITY/search_path
+  clause — preserved); `check_worker_ou_group_exclusivity()` (`:1209–1247`, left in place; note it fires on
+  `UPDATE OF ou_id`, so a move between member units of two *different* containers of the same `ou_type` is still
+  refused, exactly as today's insert-before-delete is); `cou_enforce_group_consistency()` (`:1626`) and
+  `cou_enforce_hierarchy_invariants()` (`:1658`) — the unit inserts respect their invariants (`ou_group_id = parent_ou_id`).
+- Write policies on the nine re-point tables all exist for `authenticated` (`FOR ALL … _write` or
+  `Admin/User can update …`); the merge asserts the re-point counts so an RLS gap raises `P0002`.
+- `can_write_to_campaign` (`:994`) is `SECURITY DEFINER`; `get_user_role()` / `is_admin()` likewise; the pre-check
+  combines them exactly as `20260909120000_wp1_6_campaign_write_policies.sql` does.
+- `packages/db-types/generated.ts:6467–6486`: no `description` / `leader_worker_id` on units (D3).
+
+### 11.4 Raw command output
+
+```
+$ pnpm validate:migrations
+
+> offshore-alliance-monorepo@ validate:migrations /home/user/OffshoreAlliance
+> node scripts/validate-supabase-migrations.mjs
+
+Validated 13 Supabase migrations with unique 14-digit versions.
+[exit=0]
+
+$ pnpm --filter organising-db exec tsc --noEmit
+[exit=0]
+
+$ pnpm --filter organising-db test 2>&1 | grep -v '^ *$' | grep -E 'Test Files|Tests |×|FAIL|AssertionError|expected|file\(s\) still write|✓|^ *\+ ' 
+… (89 passing files elided; the two new files:)
+ ✓ src/lib/campaign/__tests__/structure-api.test.ts (51 tests) 31ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/lib/campaign/__tests__/no-direct-structure-writes.test.ts > no direct structure writes (wp2.2.md §3.9 guard) > no direct writers remain (acceptance criterion; expected to fail until Stage 6)
+AssertionError: 21 file(s) still write directly to campaign_organising_units / campaign_worker_ou:
+  lib/workers/sync-campaign-universe.ts: expected [ …(21) ] to deeply equal []
++ Received
++ Array [
++   "app/api/campaign-import/apply/route.ts",
++   "app/api/campaigns/[id]/add-workers/route.ts",
++   "app/api/campaigns/[id]/create-worker/route.ts",
++   "app/api/campaigns/[id]/workers/duplicates/route.ts",
++   "app/api/worker-import/apply/route.ts",
++   "app/api/worker-import/organising-units/route.ts",
++   "components/campaigns/campaign-settings.tsx",
++   "components/campaigns/campaign-units-section.tsx",
++   "components/campaigns/campaign-wizard.tsx",
++   "components/campaigns/wall-chart/create-organising-unit-dialog.tsx",
++   "components/campaigns/wall-chart/delete-organising-unit-dialog.tsx",
++   "components/campaigns/wall-chart/hooks/use-wall-chart-actions.ts",
++   "components/campaigns/wall-chart/hooks/use-wall-chart-structure.ts",
++   "components/campaigns/wall-chart/merge-units-dialog.tsx",
++   "components/campaigns/wall-chart/move-worker-mutation.ts",
++   "components/campaigns/wall-chart/unit-rating-control.tsx",
++   "components/campaigns/wall-chart/worker-detail-sheet.tsx",
++   "lib/campaign/recompute-ou-assignments.ts",
++   "lib/campaign/use-allocate-workers-to-ou.ts",
++   "lib/hooks/useRemoveWorkerFromCampaign.ts",
++   "lib/workers/sync-campaign-universe.ts",
++ ]
+     99|       `${found.length} file(s) still write directly to campaign_organi…
+ FAIL  src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > CampaignWallChart render cost > renders 305 members across 161 units within budget
+AssertionError: expected 7478.059343 to be less than 6000
+ Test Files  2 failed | 89 passed (91)
+      Tests  2 failed | 1232 passed (1234)
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  organising-db@0.1.0 test: `vitest run`
+[exit=0]
+
+$ pnpm --filter organising-db exec eslint src/lib/campaign/structure-api.ts src/lib/campaign/__tests__/structure-api.test.ts src/lib/campaign/__tests__/no-direct-structure-writes.test.ts src/lib/campaign/__contract__/structure-api.contract.test.ts vitest.contract.config.ts vitest.config.ts
+[exit=0]
+
+$ pnpm --filter organising-db lint 2>&1 | tail -6
+✖ 294 problems (143 errors, 151 warnings)
+  7 errors and 16 warnings potentially fixable with the `--fix` option.
+
+/home/user/OffshoreAlliance/apps/organising-db:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  organising-db@0.1.0 lint: `eslint`
+Exit status 1
+
+$ rg -n --pcre2 "\.from\(['\"]campaign_(organising_units|worker_ou)['\"]\)(\s*as\s+never)?\s*\.\s*(insert|update|upsert|delete)\(" apps/organising-db/src --glob '!**/__tests__/**' --glob '!**/__contract__/**' -l
+apps/organising-db/src/lib/campaign/recompute-ou-assignments.ts
+apps/organising-db/src/lib/workers/sync-campaign-universe.ts
+apps/organising-db/src/app/api/campaigns/[id]/create-worker/route.ts
+apps/organising-db/src/components/campaigns/campaign-units-section.tsx
+apps/organising-db/src/components/campaigns/wall-chart/delete-organising-unit-dialog.tsx
+apps/organising-db/src/components/campaigns/wall-chart/move-worker-mutation.ts
+[exit=0]
+
+$ git status --short
+ M apps/organising-db/package.json
+ M apps/organising-db/vitest.config.ts
+ M docs/organiser-ux-review/wp/wp2.2.md
+?? apps/organising-db/src/lib/campaign/__contract__/
+?? apps/organising-db/src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+?? apps/organising-db/src/lib/campaign/__tests__/structure-api.test.ts
+?? apps/organising-db/src/lib/campaign/structure-api.ts
+?? apps/organising-db/vitest.contract.config.ts
+?? scripts/data-hygiene/oux-wp2.2/
+?? supabase/migrations/20260914090000_wp2_2_structure_api.sql
+?? supabase/migrations/20260914090100_wp2_2_one_unit_per_group_enforcement.sql
+[exit=0]
+```
+
+Reading: 1,234 tests, 1,232 passing (baseline before Stage 1: 1,180 total, 1,179 passing + the same
+render-cost failure). The two failures are (1) guard case 2, failing by design with the 21-file listing above,
+and (2) `wall-chart.render-cost.test.tsx`, a timing budget (6,000 ms) that this sandbox misses before and after
+Stage 1 (baseline 6,581 ms; in isolation after Stage 1 7,134 ms) — not a WP2.2 file, not caused by WP2.2, and
+not skipped or weakened. Lint total 294 = the recorded baseline (the new files contribute 0 problems; the
+`tail -3` form of the §5 command shows only the pnpm error lines, hence `tail -6`). The `rg` line finds 6
+files because it is single-line and expects the cast after the paren (D7); the guard test's scanner finds
+exactly the 21 files of §2.3.
+
+### 11.5 Open questions for the orchestrator / operator before Stage 2
+
+1. **PostgREST exposed schemas (D1).** Confirm on dev and production that the API "Exposed schemas" setting
+   does not include `oux_internal` (default `public, graphql_public`). The helpers are `SECURITY INVOKER` and
+   executable by `authenticated`; their only REST protection is the schema not being exposed.
+2. **`10_` execution path.** The script must run as `postgres` (SQL editor) or `service_role`; an
+   `authenticated` session is refused per campaign by the pre-check. Confirm this matches the operator's run
+   sheet. No automated reversal of `10_`/`20_` is provided; `90` refuses while `universe` rows exist.
+3. **Contract-suite prerequisites on dev:** a `user`-role account that can create campaigns
+   (`OUX_CONTRACT_USER_*`); at least four `workers` rows (the suite uses the first six by id or
+   `OUX_CONTRACT_WORKER_IDS`, because a user-role account cannot delete workers it creates); optionally a second
+   non-admin account (`OUX_CONTRACT_FOREIGN_USER_*`) and a campaign the main account cannot write to
+   (`OUX_CONTRACT_FOREIGN_CAMPAIGN_ID`) for the `42501` tests (`it.skipIf` when absent — the only visible skips
+   in the suite). The suite inserts one `campaign_unit_rules` row on its own fixture unit for the merge
+   re-point test and deletes it. `delete_campaign` cascades the rest; `afterAll` asserts zero leftovers.
+4. **`collapsed > 0` in `structure_unit_merge`** needs a pre-WP2.2b duplicate the API cannot create; it is
+   covered only by the clone rehearsal on real H9 data (§0 step 5), not by the contract suite.
+5. **Plan-text corrections to approve:** D3 (column names), D4 (`p_keep_in_parent`), D8 (merge refuses
+   sources with children), D9 (C-h reading), D12 (M2 predicate).
+6. **Pre-existing failing test** `wall-chart.render-cost.test.tsx` (timing) — outside WP2.2; decide whether the
+   verifier's environment is expected to pass it.
+
+### 11.6 Fix round 1 (2026-09-14)
+
+Still no database, CLI, commit or product-code change. Findings from the fresh reviewer and what changed
+(deviation rows D15–D22 in §8.3):
+
+| # | Finding | Change |
+|---|---|---|
+| 1 (blocking) | 2.2b view grants: baseline default privileges (`:33393–33396`) give `authenticated` ALL on new `public` relations; the wp2.1.md §2.3 revoke (`public, anon`) would have failed the post-assertion and rolled back the file. | `REVOKE ALL … FROM PUBLIC, anon, authenticated, service_role; GRANT SELECT … TO authenticated, service_role;` (view text verbatim). Post-assertion also checks `service_role` has no INSERT/UPDATE/DELETE. Checked the rest: the default privileges are `IN SCHEMA public` only; `oux_internal` holds functions only (their PUBLIC EXECUTE was already revoked); no table or sequence was created anywhere. **D15.** |
+| 2 | Legacy `trg_check_worker_ou_group_exclusivity` refuses cross-container same-type `UPDATE … SET ou_id` (move) and merge with `P0001`. | Recorded under §3.4 C-b/C-j and §8.2; contract fixture gains `employerB` + `siteB`; two tests pin `rule_violation` for the move (`keepInParent: false`) and the merge, asserting unchanged state. The materialise test's `containers` expectation becomes 2. **D17.** |
+| 3 | `90` refused the whole rollback while `universe` rows existed. | Functions/schema/trigger body rolled back unconditionally; CHECK restore in its own conditional `DO` (NOTICE + count, three-value CHECK left in place); post-assertion accepts either outcome consistently; result set adds `universe_rows_blocking_check_restore`. README updated. **D16.** |
+| 4 | `42501` tests were `it.skipIf` and could vanish. | `OUX_CONTRACT_FOREIGN_CAMPAIGN_ID` required (throws when absent); its test always runs and covers three RPCs; foreign-user pair must be both-or-neither (throws otherwise); the gated test's name states the skip; README/§4.2 require the Stage 3 paste to report the skipped count. **D18.** |
+| 5 | Parent-container source → worksite target routed to `structure__place(…, 'error')`, raising `23505` where every other source displaces. | New `ELSIF` branch: displace the worker's rows in the target's group, insert the target placement, keep the parent row (copy semantics for the parent only), carry a displaced primary. **D19.** |
+| 6 | `coalesce(v_ref, '')` let a blank `parent_ou_id` / `ou_group_id` string resolve to an unnamed element. | Blank string references raise `22023`. **D20.** |
+| 7 | Remove-only paths verify worker existence, not membership. | No code change; exact semantics recorded. **D21.** |
+| 8a | `structure_group_update` container rename lacked `GET DIAGNOSTICS`. | Filter `name IS DISTINCT FROM` dropped; one row asserted (`P0002`). **D22.** |
+| 8b | "avoids a scan under lock" comment void inside one transaction. | Comment corrected; code kept. **D22.** |
+| 8c | `'skip'` + `p_is_primary` with the worker elsewhere in the group leaves the flag untouched. | Added to D14. |
+| 8d | `replace_rule_rows` re-inserts a previously primary rule row as non-primary. | Recorded (D22, §3.8/D9). |
+| 8e | Detach path on a custom-kind container named like a type label can hit `campaign_group_ensure`'s `23505`. | Recorded (D22); dialog passes `deleteChildren: true`. |
+| 8f | D10(b) bypass depends on `anon`/`authenticated` not being superuser/bypassrls. | Assertion added to 2.2a's post-assertion `DO` block and to `95_role_probes.sql`. **D22.** |
+
+Files touched in this round: both migrations, `oux-wp2.2/90_…`, `oux-wp2.2/95_…`, `oux-wp2.2/README.md`,
+`__contract__/structure-api.contract.test.ts`, this file (§3.4, §4.2, §8.2, §8.3, §11.6). Grammar parse
+(libpg-query 17, PostgreSQL 17 grammar, `check-sql.mjs` → `parse`) of the four changed SQL files passes
+(statement counts below; `90` is now 42 statements, `DoStmt` 4). The line "plpgsql blocks with structural
+mismatches: 0" below is the output of a Python **keyword-pairing** check, not a PL/pgSQL parse (D26): for every
+`$tag$ … $tag$` block in all seven files, with comments and string literals stripped, it requires `IF` = `END IF`,
+`LOOP` = `END LOOP`, and `BEGIN` = `END` − SQL `CASE` count. No PL/pgSQL parser was available (the installed
+libpg-query builds export `parse` only).
+
+Raw output:
+
+```
+$ node /tmp/claude-0/-home-user-OffshoreAlliance/a610ec8e-ce19-5d90-bc84-f9d8f12d581b/scratchpad/pgparse/check-sql.mjs supabase/migrations/20260914090000_wp2_2_structure_api.sql supabase/migrations/20260914090100_wp2_2_one_unit_per_group_enforcement.sql scripts/data-hygiene/oux-wp2.2/90_rollback_wp2_2_structure_api.sql scripts/data-hygiene/oux-wp2.2/95_role_probes.sql
+OK  supabase/migrations/20260914090000_wp2_2_structure_api.sql: 70 statements {"DoStmt":3,"AlterTableStmt":3,"CommentStmt":29,"CreateFunctionStmt":32,"CreateSchemaStmt":1,"GrantStmt":2}
+OK  supabase/migrations/20260914090100_wp2_2_one_unit_per_group_enforcement.sql: 15 statements {"DoStmt":2,"CreateStmt":1,"InsertStmt":1,"DropStmt":1,"IndexStmt":1,"CommentStmt":3,"CreateFunctionStmt":1,"ViewStmt":1,"GrantStmt":2,"AlterTableStmt":1,"SelectStmt":1}
+OK  scripts/data-hygiene/oux-wp2.2/90_rollback_wp2_2_structure_api.sql: 42 statements {"TransactionStmt":2,"DoStmt":4,"CreateTableAsStmt":1,"DropStmt":32,"CreateFunctionStmt":1,"CommentStmt":1,"SelectStmt":1}
+OK  scripts/data-hygiene/oux-wp2.2/95_role_probes.sql: 11 statements {"TransactionStmt":2,"DoStmt":4,"VariableSetStmt":4,"SelectStmt":1}
+[exit=0]
+
+$ pnpm validate:migrations
+
+> offshore-alliance-monorepo@ validate:migrations /home/user/OffshoreAlliance
+> node scripts/validate-supabase-migrations.mjs
+
+Validated 13 Supabase migrations with unique 14-digit versions.
+[exit=0]
+
+$ pnpm --filter organising-db exec tsc --noEmit
+[exit=0]
+
+$ pnpm --filter organising-db test 2>&1 | grep -E 'Test Files|Tests |×|FAIL|AssertionError|structure-api.test|no-direct-structure-writes.test'
+ ✓ src/lib/campaign/__tests__/structure-api.test.ts (51 tests) 26ms
+ ❯ src/lib/campaign/__tests__/no-direct-structure-writes.test.ts (3 tests | 1 failed) 110ms
+   × no direct structure writes (wp2.2.md §3.9 guard) > no direct writers remain (acceptance criterion; expected to fail until Stage 6) 55ms
+   × CampaignWallChart render cost > renders 305 members across 161 units within budget 22931ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/lib/campaign/__tests__/no-direct-structure-writes.test.ts > no direct structure writes (wp2.2.md §3.9 guard) > no direct writers remain (acceptance criterion; expected to fail until Stage 6)
+AssertionError: 21 file(s) still write directly to campaign_organising_units / campaign_worker_ou:
+ ❯ src/lib/campaign/__tests__/no-direct-structure-writes.test.ts:100:7
+ FAIL  src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > CampaignWallChart render cost > renders 305 members across 161 units within budget
+AssertionError: expected 7215.946166 to be less than 6000
+ Test Files  2 failed | 89 passed (91)
+      Tests  2 failed | 1232 passed (1234)
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  organising-db@0.1.0 test: `vitest run`
+[exit=0]
+
+$ pnpm --filter organising-db exec eslint src/lib/campaign/structure-api.ts src/lib/campaign/__tests__/structure-api.test.ts src/lib/campaign/__tests__/no-direct-structure-writes.test.ts src/lib/campaign/__contract__/structure-api.contract.test.ts vitest.contract.config.ts vitest.config.ts
+[exit=0]
+
+$ pnpm --filter organising-db lint 2>&1 | tail -3
+/home/user/OffshoreAlliance/apps/organising-db:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  organising-db@0.1.0 lint: `eslint`
+Exit status 1
+[exit=0]
+
+$ git status --short
+ M apps/organising-db/package.json
+ M apps/organising-db/vitest.config.ts
+ M docs/organiser-ux-review/wp/wp2.2.md
+?? apps/organising-db/src/lib/campaign/__contract__/
+?? apps/organising-db/src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+?? apps/organising-db/src/lib/campaign/__tests__/structure-api.test.ts
+?? apps/organising-db/src/lib/campaign/structure-api.ts
+?? apps/organising-db/vitest.contract.config.ts
+?? scripts/data-hygiene/oux-wp2.2/
+?? supabase/migrations/20260914090000_wp2_2_structure_api.sql
+?? supabase/migrations/20260914090100_wp2_2_one_unit_per_group_enforcement.sql
+[exit=0]
+
+$ pnpm --filter organising-db lint 2>&1 | grep -F problems | tail -1
+✖ 294 problems (143 errors, 151 warnings)
+
+plpgsql blocks with structural mismatches: 0
+```
+
+Reading: unchanged from §11.4 — 1,234 tests, 1,232 passing; the two failures are guard case 2 (by design)
+and the pre-existing render-cost timing test (7,216 ms vs the 6,000 ms budget in this sandbox); eslint on
+every new/changed TS file clean; lint total 294 = baseline; `git status` shows the same 11 entries.
+
+### 11.7 Fix round 2 (2026-09-14)
+
+Still no database, CLI, commit or product-code change. Reviewer advisories A1–A4 plus the evidence note
+(deviation rows D23–D26 in §8.3):
+
+| # | Change |
+|---|---|
+| A1 | 2.2a section 0 accepts a CHECK whose values are exactly `(manual, rule)` or exactly `(manual, rule, universe)` (values extracted from `pg_get_constraintdef`; any other shape raises) and rows in the three values; section 1 is a `DO` block that skips the drop/add/validate with a NOTICE when `universe` is already allowed. Post-assertion unchanged. README rollback section: a re-forward after a `90` that left the three-value CHECK is supported for that reason; `10`/`20` are never reversed automatically. **D23.** |
+| A2 | 2.2a post-assertion and `95` now require `count(*) FILTER (WHERE NOT rolsuper AND NOT rolbypassrls) = 2` over exactly `anon` and `authenticated`. **D24.** |
+| A3 | Forbidden-campaign contract test reads the foreign campaign's placements through the main client before and after the three refused calls and asserts equality. **D25.** |
+| A4 | One sentence added to D17 and D19 stating the delete-then-insert (parent-source) vs `UPDATE … SET ou_id` (plain move) asymmetry under the legacy exclusivity trigger; correct as written, Stage 4 should expect it. |
+| Evidence note | §11.6 reworded: the "structural mismatches: 0" line came from a Python keyword-pairing check, not a PL/pgSQL parse; the scratchpad `check.mjs` never ran (no `parseQuery`/`parsePlPgSQL` in the installed libpg-query build); only `check-sql.mjs` (`parse`, SQL grammar) was used. The keyword check is re-run below under an accurate label. **D26.** |
+
+Files touched this round: 2.2a migration, `oux-wp2.2/95_role_probes.sql`, `oux-wp2.2/README.md`, the
+contract suite, this file (§8.3 D17/D19/D23–D26, §11.6, §11.7). 2.2a is now 68 statements (`DoStmt` 4):
+the three section-1 `ALTER TABLE` statements moved inside a `DO` block.
+
+Raw output:
+
+```
+$ node /tmp/claude-0/-home-user-OffshoreAlliance/a610ec8e-ce19-5d90-bc84-f9d8f12d581b/scratchpad/pgparse/check-sql.mjs supabase/migrations/20260914090000_wp2_2_structure_api.sql scripts/data-hygiene/oux-wp2.2/95_role_probes.sql
+OK  supabase/migrations/20260914090000_wp2_2_structure_api.sql: 68 statements {"DoStmt":4,"CommentStmt":29,"CreateFunctionStmt":32,"CreateSchemaStmt":1,"GrantStmt":2}
+OK  scripts/data-hygiene/oux-wp2.2/95_role_probes.sql: 11 statements {"TransactionStmt":2,"DoStmt":4,"VariableSetStmt":4,"SelectStmt":1}
+[exit=0]
+
+$ python3 /tmp/claude-0/-home-user-OffshoreAlliance/a610ec8e-ce19-5d90-bc84-f9d8f12d581b/scratchpad/plpgsql-keyword-check.py
+keyword-pairing check (IF/END IF, LOOP/END LOOP, BEGIN/END minus SQL CASE) over 60 dollar-quoted blocks in 7 files: 0 mismatches
+[exit=0]
+
+$ pnpm validate:migrations
+
+> offshore-alliance-monorepo@ validate:migrations /home/user/OffshoreAlliance
+> node scripts/validate-supabase-migrations.mjs
+
+Validated 13 Supabase migrations with unique 14-digit versions.
+[exit=0]
+
+$ pnpm --filter organising-db exec tsc --noEmit
+[exit=0]
+
+$ pnpm --filter organising-db test 2>&1 | grep -E 'Test Files|Tests |×|FAIL|AssertionError|structure-api.test|no-direct-structure-writes.test'
+ ✓ src/lib/campaign/__tests__/structure-api.test.ts (51 tests) 30ms
+ ❯ src/lib/campaign/__tests__/no-direct-structure-writes.test.ts (3 tests | 1 failed) 117ms
+   × no direct structure writes (wp2.2.md §3.9 guard) > no direct writers remain (acceptance criterion; expected to fail until Stage 6) 58ms
+   × CampaignWallChart render cost > renders 305 members across 161 units within budget 20725ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/lib/campaign/__tests__/no-direct-structure-writes.test.ts > no direct structure writes (wp2.2.md §3.9 guard) > no direct writers remain (acceptance criterion; expected to fail until Stage 6)
+AssertionError: 21 file(s) still write directly to campaign_organising_units / campaign_worker_ou:
+ ❯ src/lib/campaign/__tests__/no-direct-structure-writes.test.ts:100:7
+ FAIL  src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx > CampaignWallChart render cost > renders 305 members across 161 units within budget
+AssertionError: expected 6715.741373000001 to be less than 6000
+ Test Files  2 failed | 89 passed (91)
+      Tests  2 failed | 1232 passed (1234)
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  organising-db@0.1.0 test: `vitest run`
+[exit=0]
+
+$ pnpm --filter organising-db exec eslint src/lib/campaign/structure-api.ts src/lib/campaign/__tests__/structure-api.test.ts src/lib/campaign/__tests__/no-direct-structure-writes.test.ts src/lib/campaign/__contract__/structure-api.contract.test.ts vitest.contract.config.ts vitest.config.ts
+[exit=0]
+
+$ pnpm --filter organising-db lint 2>&1 | tail -3
+/home/user/OffshoreAlliance/apps/organising-db:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  organising-db@0.1.0 lint: `eslint`
+Exit status 1
+[exit=0]
+
+$ pnpm --filter organising-db lint 2>&1 | grep -F problems | tail -1
+✖ 294 problems (143 errors, 151 warnings)
+[exit=0]
+
+$ git status --short
+ M apps/organising-db/package.json
+ M apps/organising-db/vitest.config.ts
+ M docs/organiser-ux-review/wp/wp2.2.md
+?? apps/organising-db/src/lib/campaign/__contract__/
+?? apps/organising-db/src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+?? apps/organising-db/src/lib/campaign/__tests__/structure-api.test.ts
+?? apps/organising-db/src/lib/campaign/structure-api.ts
+?? apps/organising-db/vitest.contract.config.ts
+?? scripts/data-hygiene/oux-wp2.2/
+?? supabase/migrations/20260914090000_wp2_2_structure_api.sql
+?? supabase/migrations/20260914090100_wp2_2_one_unit_per_group_enforcement.sql
+[exit=0]
+```
+
+Reading: unchanged — 1,234 tests, 1,232 passing; the two failures are guard case 2 (by design) and the
+pre-existing render-cost timing test (6,716 ms vs 6,000 ms); eslint clean on every new/changed TS file; lint
+total 294 = baseline; `git status` shows the same 11 entries. Stage 1 stops here.

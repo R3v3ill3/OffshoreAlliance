@@ -1803,4 +1803,7 @@ read-only simulation (§14.5). Every `ou_dependant` checksum is unchanged from t
   WP2.2's `03b` re-run before enforcement).
 - `main`'s `generated.ts` now regenerates **with** the WP2.1 symbols; the develop/main divergence
   recorded in `PROGRESS.md` is closed.
-- Normal dev `dpnnmkhabysfdogllsyh` still does **not** have the migration: `wp/wp2.2.md` §0 step 2.
+- Normal dev `dpnnmkhabysfdogllsyh` **does** have the migration (verified read-only 2026-09-14 via the Supabase connector: ledger row `20260912035329 wp2_1_campaign_groups` (and `20260913000000 an_survey_reports`) present; `campaign_groups` and `user_campaign_prefs` tables, both `group_id` columns, 4 groups, 8 units all grouped, 111 placements / 111 memberships, 0 flagged units, no membership view, no unique index). It was not
+  applied in this session and who pushed it is not recorded; it sits in dev's ledger together with
+  `20260913000000_an_survey_reports`, so it most likely arrived with that package's `db push`. Dev's F1/H10
+  residuals were already 0 (§14.12), so no cleanup is needed there. `wp/wp2.2.md` §0 step 2 is done.

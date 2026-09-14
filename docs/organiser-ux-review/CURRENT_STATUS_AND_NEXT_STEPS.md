@@ -7,7 +7,7 @@
 - **Phase 0 and phase 1 are complete and live on production.** Do not rerun the phase-1 production run sheet.
 - **WP2.1 and WP2.3 code are on `main` and deployed to Vercel Production** ([PR #39](https://github.com/R3v3ill3/OffshoreAlliance/pull/39) → `develop` at `de338b5`; [PR #40](https://github.com/R3v3ill3/OffshoreAlliance/pull/40) → `main` at `82ff71c`, both 2026-09-12 UTC). **The WP2.1 schema IS applied to production** (migration 2026-09-13; cleanup and passing postflight 2026-09-14; `wp/wp2.1.md` §15). The live app still does not consume `campaign_groups`, `group_id` or `user_campaign_prefs`; only the F1 matcher (legacy columns) is live.
 - **Do not re-run any WP2.1 script or the migration on production.** The Track B run sheet below is retained as the record of what ran and as the template for WP2.2's own migrations; it is finished for WP2.1.
-- **Next package is WP2.2 Structure API.** Its plan is `docs/organiser-ux-review/wp/wp2.2.md` (approved). §0 step 1 is done; **step 2 — one `supabase db push` of the WP2.1 migration to normal dev — is the next operator action.** Stage 1 (migrations, wrapper, unit tests, guard test) needs no database and may start now.
+- **Next package is WP2.2 Structure API.** Its plan is `docs/organiser-ux-review/wp/wp2.2.md` (approved). §0 steps 1 and 2 are done: production and normal dev both carry the WP2.1 migration (dev verified read-only 2026-09-14 via the Supabase connector: ledger row `20260912035329 wp2_1_campaign_groups` (and `20260913000000 an_survey_reports`) present; `campaign_groups` and `user_campaign_prefs` tables, both `group_id` columns, 4 groups, 8 units all grouped, 111 placements / 111 memberships, 0 flagged units, no membership view, no unique index). **No database action is outstanding.** Stage 1 (migrations, wrapper, unit tests, guard test) may start now.
 - **Agents never read or mutate production** (`gteygwfgjvczanmrwgbr`), including via Supabase MCP, CLI, or SQL Editor.
 - **`groups_v2` is not introduced.** No application code consumes `campaign_groups`, `user_campaign_prefs`, or unit/placement `group_id`.
 - Local `apps/organising-db/.env.local` points at production. Agents must not run `pnpm dev` / `pnpm start`. Verify on Vercel previews.
@@ -50,7 +50,7 @@ The initiating chat asked an orchestrator to (1) finish phase 1 onto production 
 | WP0.4 leftover | Orphaned historical rule placements | **Deferred into WP2.1 cleanup**, not an incomplete phase-1 rollout. Do not rerun old WP0.4 script 03 for those rows. |
 | WP2.3 | Behaviour-preserving wall-chart split | **Merged** [PR #38](https://github.com/R3v3ill3/OffshoreAlliance/pull/38) at `4d2ff4b`. Shell 2635 → 320 lines. Reviewer: APPROVE WITH ADVISORIES. |
 | WP2.1 | Campaign groups schema + F1 matcher + data cleanup | **Complete.** Code merged ([PR #39](https://github.com/R3v3ill3/OffshoreAlliance/pull/39) at `de338b5`, promoted by [PR #40](https://github.com/R3v3ill3/OffshoreAlliance/pull/40) at `82ff71c`). **Production DB applied 2026-09-13; cleanup and passing `04` 2026-09-14** (`wp/wp2.1.md` §15). |
-| WP2.2 | Structure API | **Plan approved 2026-09-13** (R1, M2-a, K1, G1). §0 step 1 done; step 2 (WP2.1 to dev) pending; draft [PR #41](https://github.com/R3v3ill3/OffshoreAlliance/pull/41) holds the plan; implementation not started. |
+| WP2.2 | Structure API | **Plan approved 2026-09-13** (R1, M2-a, K1, G1). §0 step 1 done; step 2 (WP2.1 to dev) found already done 2026-09-14; draft [PR #41](https://github.com/R3v3ill3/OffshoreAlliance/pull/41) holds the plan; implementation not started. |
 | WP2.4–2.9 | Group UI, compare, list, editor, consumers, guides | **Not started.** |
 | WP3.3 / WP3.5 | May start after phase 1 | **Not started.** |
 
@@ -74,7 +74,7 @@ supabase/migrations/20260911100000_user_hint_dismissals_check.sql
 - **Types regeneration on `main`:** `.github/workflows/gen-types.yml` runs on every push to `main` that touches `supabase/migrations/**` and generates from **production**. Because production then lacked the WP2.1 schema, its auto-commit `5fe7c93` (`chore: regenerate database types`) removed `campaign_groups`, `user_campaign_prefs`, the three `campaign_group_*` functions, both `group_id` columns and the `_oux_*` helper tables from `packages/db-types/generated.ts` (and added a `graphql_public` block). This is harmless on `main` today because no application code consumes those symbols and the browser client is untyped (`createClient(): SupabaseClient`).
 - **Reconciliation 2026-09-13:** `develop` merged `main` at `1666660` (`--no-ff`, `generated.ts` kept byte-identical to `332331d`, so WP2.1 symbols remain on `develop`). `develop` is now `main` + the WP2.1 types. **Resolved for WP2.1 on 2026-09-13:** the next regen, `9138424f` (after PR #42, generated from production with the schema applied), kept every WP2.1 symbol. `main` is now `develop` + that regen (`graphql_public` block, fkey ordering swap); `develop` should merge `main` before WP2.2 Stage 1. The same hazard recurs for WP2.2a's RPC symbols until they reach production (G1); WP2.2 must not depend on generated `Functions` types for its RPC contract (see `wp/wp2.2.md`).
 - Reviewer verdict recorded: **APPROVE FOR PR/MAIN WITH PRODUCTION DB GATE**.
-- Operator dated waiver (2026-09-13): skip normal-dev schema apply and e2e for this shipment. Thin-dev read-only `00` was clean (8 units / 111 memberships / 111 placements / F1 and H10 residual 0). That is a recorded gap, not a pass. **Normal dev still does not have the WP2.1 migration. Production does (see "WP2.1 production database rollout" below).**
+- Operator dated waiver (2026-09-13): skip normal-dev schema apply and e2e for this shipment. Thin-dev read-only `00` was clean (8 units / 111 memberships / 111 placements / F1 and H10 residual 0). That is a recorded gap, not a pass. **Superseded 2026-09-14: normal dev does have the WP2.1 migration (verified read-only 2026-09-14 via the Supabase connector: ledger row `20260912035329 wp2_1_campaign_groups` (and `20260913000000 an_survey_reports`) present; `campaign_groups` and `user_campaign_prefs` tables, both `group_id` columns, 4 groups, 8 units all grouped, 111 placements / 111 memberships, 0 flagged units, no membership view, no unique index), and production does too (see "WP2.1 production database rollout" below).**
 
 WP2.1 ships:
 
@@ -125,7 +125,7 @@ These are two separate tracks. A cloud agent can do Track A with GitHub + the re
 
 Steps 1–5 are done: CI fix `57a92b7`; [PR #39](https://github.com/R3v3ill3/OffshoreAlliance/pull/39) merged to `develop` at `de338b5`; [PR #40](https://github.com/R3v3ill3/OffshoreAlliance/pull/40) merged to `main` at `82ff71c`; Vercel Production succeeded. The F1 matcher is live; the schema types are present on `develop` (and stripped again on `main` by the production regen — see above). **No production database change happened.** Full mode keeps working. `groups_v2` remains unintroduced.
 
-Step 6 (decided 2026-09-13, `wp/wp2.2.md` §0): the operator applies WP2.1 to **production** (**done 2026-09-13/14**, see above) and to **dev** `dpnnmkhabysfdogllsyh` by one `supabase db push` (**pending**); WP2.2's own migrations (2.2a additive RPCs, 2.2b enforcement) follow the same two targets, with one optional clone pass of the new SQL, and production receives 2.2a → WP2.2 code → scripts → 2.2b (gate G1).
+Step 6 (decided 2026-09-13, `wp/wp2.2.md` §0): the operator applies WP2.1 to **production** (**done 2026-09-13/14**, see above) and to **dev** `dpnnmkhabysfdogllsyh` by one `supabase db push` (**found already applied 2026-09-14**); WP2.2's own migrations (2.2a additive RPCs, 2.2b enforcement) follow the same two targets, with one optional clone pass of the new SQL, and production receives 2.2a → WP2.2 code → scripts → 2.2b (gate G1).
 
 Git rules for any agent: no worktrees, no sub-branches, one commit per completed unit, every exact `git` command needs operator approval, never force-push, never skip hooks.
 
@@ -215,11 +215,11 @@ A cloud agent picking this up with only GitHub + this repo should:
 4. Not run the app locally.
 5. Continue with WP2.2 under the protocol: plan approved by the operator → implement on `feat/oux-wp2.2-structure-api` → verify → fresh review → draft PR into `develop`. Ask before every exact git command, before opening/merging PRs, and before any database mutation.
 6. Update `PROGRESS.md` / `HANDOFF.md` only after evidence exists (CI green, merge SHAs, operator confirmation).
-7. Track B for WP2.1 is done; the next database action is the operator's `db push` of WP2.1 to normal dev (`wp/wp2.2.md` §0 step 2). Prepare WP2.2a/2.2b run sheets the same way (one file per submission, guard line pre-inserted, read-only verification appended).
+7. Track B for WP2.1 is done on production and dev; no database action is outstanding until WP2.2a exists. Prepare WP2.2a/2.2b run sheets the same way (one file per submission, guard line pre-inserted, read-only verification appended). Dev may be applied by the operator's CLI `db push` or, with the operator's approval, by the agent through the Supabase connector's `apply_migration` — never production.
 
 Suggested opening prompt for a new orchestrating session:
 
-> You are continuing the Organiser UX programme. Read `docs/organiser-ux-review/CURRENT_STATUS_AND_NEXT_STEPS.md` first. Phase 0/1 are live on production. WP2.3 and WP2.1 are complete, including the WP2.1 schema, cleanup and passing postflight on production (`wp/wp2.1.md` §15). Your job is WP2.2 Structure API per the approved `docs/organiser-ux-review/wp/wp2.2.md`: Stage 1 needs no database; Stages 2+ need the operator to push WP2.1 to normal dev first (§0 step 2). Do not touch production. Do not introduce `groups_v2`. Follow `IMPLEMENTATION_ORCHESTRATION_PROMPT.md`.
+> You are continuing the Organiser UX programme. Read `docs/organiser-ux-review/CURRENT_STATUS_AND_NEXT_STEPS.md` first. Phase 0/1 are live on production. WP2.3 and WP2.1 are complete, including the WP2.1 schema, cleanup and passing postflight on production (`wp/wp2.1.md` §15). Your job is WP2.2 Structure API per the approved `docs/organiser-ux-review/wp/wp2.2.md`: production and normal dev both carry the WP2.1 migration, so no database action is outstanding (§0 steps 1–2 done). Do not touch production. Do not introduce `groups_v2`. Follow `IMPLEMENTATION_ORCHESTRATION_PROMPT.md`.
 
 ## Open advisories (do not silently fold into a WP)
 
@@ -228,7 +228,7 @@ Suggested opening prompt for a new orchestrating session:
 - WP2.3 fake PostgREST harness does not fully emulate projection / predicate / order.
 - Nested-card drop bubbling can invoke move twice; characterisation pins current behaviour.
 - Recovered WP2.1 cleanup bytes ran on production without the clone re-rehearsal and passed their own checks; `03a_rollback` / `03b_rollback` have never run on those bytes — rehearse on a fresh clone before any production rollback.
-- Normal-dev schema/e2e waiver is a conscious gap; normal dev still lacks the WP2.1 migration.
+- Normal-dev e2e was waived for the WP2.1 shipment (conscious gap). Normal dev now has the WP2.1 migration (found applied 2026-09-14), so WP2.2 previews and contract tests can run against it; the WP2.1 e2e gap itself stays recorded.
 - Generated types: `campaign_worker_ou.Insert.group_id` required despite trigger; harmless `user_profiles_organiser_id_fkey` relationship ordering swap.
 - `supabase/.temp/` still tracked.
 - Production `00` (2026-09-14) showed `malformed_or_nonpositive_basis_units = 0`; F1 may be relied on.
@@ -242,4 +242,4 @@ A later agent can complete the programme from this file plus the repo if it can:
 1. Explain that production organisers already have phase-1 UX and must not be “enabled” by more phase-1 SQL.
 2. Point at PRs #39/#40 (merged), the types-regen reconciliation, and the production DB gate without asking this chat.
 3. Run WP2.2 under the protocol without touching production, per the approved `wp/wp2.2.md` (§0 sequence, G1 promotion gate).
-4. Explain that WP2.1 is fully applied on production (schema, C1, 03b, passing `04`) and that the next database action is the dev `db push`, then hand the operator a stop-gated sequence for WP2.2a/2.2b when — and only when — they ask.
+4. Explain that WP2.1 is fully applied on production (schema, C1, 03b, passing `04`) and on normal dev (schema only; no cleanup needed), then hand the operator a stop-gated sequence for WP2.2a/2.2b when — and only when — they ask.

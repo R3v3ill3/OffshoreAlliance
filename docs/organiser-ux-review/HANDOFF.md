@@ -28,7 +28,7 @@ credentialled e2e green repeatedly on Vercel previews.
 **Phase 2 current edge (2026-09-13).** WP2.3 is merged as [PR #38](https://github.com/R3v3ill3/OffshoreAlliance/pull/38)
 at `4d2ff4b`. WP2.1 **code** is merged as [PR #39](https://github.com/R3v3ill3/OffshoreAlliance/pull/39)
 at `de338b5` and is on `main`/production via PR #40. **Update 2026-09-14: the WP2.1 schema is applied to
-production, with the C1/03b cleanup and a passing `04` (`wp/wp2.1.md` §15); normal dev still lacks it.**
+production, with the C1/03b cleanup and a passing `04` (`wp/wp2.1.md` §15); normal dev also has the migration (found applied 2026-09-14, §15.6).**
 The paragraph below is the 2026-09-13 state, kept for context. On 2026-09-13 the operator explicitly
 waived WP2.1 normal-dev schema/e2e for that shipment because dev is thin, noncritical and materially
 different; the production-shaped clone is the migration acceptance environment. This is a verification

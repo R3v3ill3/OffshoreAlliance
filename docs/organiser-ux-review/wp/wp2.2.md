@@ -3,7 +3,7 @@
 Status: **approved 2026-09-13 (R1, M2-a, K1, G1; §0 sequence clarified). Implementation not started.**
 Written 2026-09-13 against `develop` at `1666660` (main `5fe7c93`). Depends on WP2.1 (code merged via
 PR #39 `de338b5` / #40 `82ff71c`; **schema applied to production 2026-09-13, cleanup and postflight
-complete 2026-09-14 — `wp/wp2.1.md` §15; not yet on normal dev**).
+complete 2026-09-14 — `wp/wp2.1.md` §15; also on normal dev, found applied 2026-09-14**).
 
 Branch (not yet created): `feat/oux-wp2.2-structure-api` off `develop`; draft PR into `develop`.
 
@@ -33,13 +33,14 @@ nothing to call. Each dev step is one `supabase db push`, no scripts, no rehears
 
 As written (2026-09-13): WP2.1's migration was on the clone only. **Update 2026-09-14:** production
 `gteygwfgjvczanmrwgbr` now has it, with cleanup and a passing `04` (`wp/wp2.1.md` §15) — step 1 below is
-done. Dev `dpnnmkhabysfdogllsyh` still lacks `campaign_groups` / `group_id` — step 2 is next. WP2.1
+done. Dev `dpnnmkhabysfdogllsyh` was found to have it too on 2026-09-14 (ledger row present, 4 groups, 8
+units grouped, 111/111 placements and memberships, no view, no unique index) — step 2 is done. WP2.1
 **code** is live on `main`.
 
 | Step | Database | Who | What | Why |
 |---|---|---|---|---|
 | 1 | **Production** | operator (Track B) | **Done 2026-09-13/14** (`wp/wp2.1.md` §15): migration applied 2026-09-13; `04` stopped at 134 F1 residuals; `02a`/13 mappings/`02b`/`03a`/`03b` run 2026-09-14; `04` passed. | Code is already on `main`; PITR (7 days) is the safety margin; this also ends the `generated.ts` regen divergence (§2.7). Does not wait for WP2.2. |
-| 2 | **Dev** | operator | `supabase db push` of the WP2.1 migration. Nothing else. | Previews and contract tests connect to dev. |
+| 2 | **Dev** | operator | **Done** (found applied 2026-09-14; `wp/wp2.1.md` §15.6). | Previews and contract tests connect to dev. |
 | 3 | — | implementer | Build WP2.2: code + two new migrations (2.2a additive RPCs, 2.2b enforcement) + two small scripts (§3.7 materialisation, §3.8 relabel). | — |
 | 4 | **Dev** | operator | `supabase db push` of 2.2a when Stage 1 is ready. | Contract tests (§4.2) and preview e2e (§4.5) need the RPCs. |
 | 5 | **Clone** (optional, recommended) | operator links, implementer runs approved commands | One pass of the **new** SQL only: 2.2a forward/rollback/forward, `10_materialise…`, `20_relabel…`, 2.2b forward/rollback/forward (§4.4). | These files have never run anywhere; this is what caught the deferred-FK bug in WP2.1. It is not a re-test of WP2.1. With PITR in place the operator may skip it. |
@@ -800,8 +801,8 @@ _pending_
 ## 10. Revision history
 
 - **Revision 3** (2026-09-14): §0 step 1 recorded as done (production has WP2.1 with cleanup and a passing
-  postflight; `wp/wp2.1.md` §15). Step 2 (dev `db push`) is the next operator action; Stage 1 needs no
-  database and may start. §2.7's regen hazard no longer applies to WP2.1 symbols (G1 still applies to
+  postflight; `wp/wp2.1.md` §15). Step 2 (dev) was found already applied the same day, so no
+  database action is outstanding; Stage 1 may start. §2.7's regen hazard no longer applies to WP2.1 symbols (G1 still applies to
   WP2.2a).
 - **Revision 2** (2026-09-13): §0 rewritten as a plain six-step table after operator feedback; approvals
   recorded in §9.1 (R1, M2-a, K1, G1).

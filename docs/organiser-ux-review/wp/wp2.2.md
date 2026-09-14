@@ -2,7 +2,8 @@
 
 Status: **approved 2026-09-13 (R1, M2-a, K1, G1; §0 sequence clarified). Implementation not started.**
 Written 2026-09-13 against `develop` at `1666660` (main `5fe7c93`). Depends on WP2.1 (code merged via
-PR #39 `de338b5` / #40 `82ff71c`; **schema not applied to production or normal dev**).
+PR #39 `de338b5` / #40 `82ff71c`; **schema applied to production 2026-09-13, cleanup and postflight
+complete 2026-09-14 — `wp/wp2.1.md` §15; not yet on normal dev**).
 
 Branch (not yet created): `feat/oux-wp2.2-structure-api` off `develop`; draft PR into `develop`.
 
@@ -30,12 +31,14 @@ the basis for applying WP2.1 to production now. Dev is not a test bed for data; 
 the Vercel previews and the WP2.2 contract tests connect to, so it needs the same tables or the new code has
 nothing to call. Each dev step is one `supabase db push`, no scripts, no rehearsal.
 
-Today: WP2.1's migration is on the clone only. Neither dev `dpnnmkhabysfdogllsyh` nor production
-`gteygwfgjvczanmrwgbr` has `campaign_groups` / `group_id`. WP2.1 **code** is already live on `main`.
+As written (2026-09-13): WP2.1's migration was on the clone only. **Update 2026-09-14:** production
+`gteygwfgjvczanmrwgbr` now has it, with cleanup and a passing `04` (`wp/wp2.1.md` §15) — step 1 below is
+done. Dev `dpnnmkhabysfdogllsyh` still lacks `campaign_groups` / `group_id` — step 2 is next. WP2.1
+**code** is live on `main`.
 
 | Step | Database | Who | What | Why |
 |---|---|---|---|---|
-| 1 | **Production** | operator (Track B) | Apply WP2.1 now, using the runbook already rehearsed on the clone: `00_preflight` → `03a`/`03b` only if the preflight says so → migration (`supabase db push` or `psql -1`) → `04_postflight`. | Code is already on `main`; PITR (7 days) is the safety margin; this also ends the `generated.ts` regen divergence (§2.7). Does not wait for WP2.2. |
+| 1 | **Production** | operator (Track B) | **Done 2026-09-13/14** (`wp/wp2.1.md` §15): migration applied 2026-09-13; `04` stopped at 134 F1 residuals; `02a`/13 mappings/`02b`/`03a`/`03b` run 2026-09-14; `04` passed. | Code is already on `main`; PITR (7 days) is the safety margin; this also ends the `generated.ts` regen divergence (§2.7). Does not wait for WP2.2. |
 | 2 | **Dev** | operator | `supabase db push` of the WP2.1 migration. Nothing else. | Previews and contract tests connect to dev. |
 | 3 | — | implementer | Build WP2.2: code + two new migrations (2.2a additive RPCs, 2.2b enforcement) + two small scripts (§3.7 materialisation, §3.8 relabel). | — |
 | 4 | **Dev** | operator | `supabase db push` of 2.2a when Stage 1 is ready. | Contract tests (§4.2) and preview e2e (§4.5) need the RPCs. |
@@ -796,6 +799,10 @@ _pending_
 
 ## 10. Revision history
 
+- **Revision 3** (2026-09-14): §0 step 1 recorded as done (production has WP2.1 with cleanup and a passing
+  postflight; `wp/wp2.1.md` §15). Step 2 (dev `db push`) is the next operator action; Stage 1 needs no
+  database and may start. §2.7's regen hazard no longer applies to WP2.1 symbols (G1 still applies to
+  WP2.2a).
 - **Revision 2** (2026-09-13): §0 rewritten as a plain six-step table after operator feedback; approvals
   recorded in §9.1 (R1, M2-a, K1, G1).
 - **Revision 1** (2026-09-13): initial plan. Recommends S1 + S2, R1 (+R1-b), M2-a, K1, G1, separate

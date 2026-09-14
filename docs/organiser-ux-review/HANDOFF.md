@@ -27,8 +27,9 @@ credentialled e2e green repeatedly on Vercel previews.
 
 **Phase 2 current edge (2026-09-13).** WP2.3 is merged as [PR #38](https://github.com/R3v3ill3/OffshoreAlliance/pull/38)
 at `4d2ff4b`. WP2.1 **code** is merged as [PR #39](https://github.com/R3v3ill3/OffshoreAlliance/pull/39)
-at `de338b5` and is on `main`/production via PR #40. **The WP2.1 schema is not applied to production,
-and not to normal dev either; only the disposable clone has it.** On 2026-09-13 the operator explicitly
+at `de338b5` and is on `main`/production via PR #40. **Update 2026-09-14: the WP2.1 schema is applied to
+production, with the C1/03b cleanup and a passing `04` (`wp/wp2.1.md` §15); normal dev still lacks it.**
+The paragraph below is the 2026-09-13 state, kept for context. On 2026-09-13 the operator explicitly
 waived WP2.1 normal-dev schema/e2e for that shipment because dev is thin, noncritical and materially
 different; the production-shaped clone is the migration acceptance environment. This is a verification
 gap, not a pass. `groups_v2` is not yet introduced and no app code consumes the new schema. After PR #40,
@@ -155,7 +156,8 @@ WP2.4 → WP2.5, WP2.6, WP2.7 (2.7 needs only 2.2) → WP2.8 → WP2.9. WP3.3 an
 that phase 1 is merged.
 
 **WP2.1 Schema and migration — code merged ([PR #39](https://github.com/R3v3ill3/OffshoreAlliance/pull/39)
-at `de338b5`, on `main` via PR #40); production schema not applied.** The package follows
+at `de338b5`, on `main` via PR #40); production schema applied 2026-09-13, cleanup and passing postflight
+2026-09-14 — package complete (`wp/wp2.1.md` §15).** The package follows
 E2/M2/C1/F1: uniqueness and `campaign_group_membership` are deferred to WP2.2; Employer placements are
 deferred; duplicate bases are canonicalised non-destructively; F1 uses legacy columns and maximum
 specificity. The clone proved cleanup forward/rollback/reapply, migration recovery/reapply, postflight and
@@ -199,7 +201,8 @@ loader, implement the transactional writer RPCs, materialise Employer placements
 Recompute removal risk, then re-clean H9 before adding uniqueness and the membership view. No
 later group-model consumer is introduced before those steps.
 
-**WP2.1 production application remains blocked.** Shipping code first is compatible because F1 only reads
+**WP2.1 production application — done 2026-09-13/14 (`wp/wp2.1.md` §15); the paragraph below is the
+pre-application rule, kept because WP2.2 §0 step 6 reuses it.** Shipping code first is compatible because F1 only reads
 legacy columns and reduces matching, while the schema/view/unique consumers are deferred and
 `groups_v2` is not yet introduced. The operator—not an agent—must run current production `00`, require
 `malformed_or_nonpositive_basis_units = 0`, supply reviewed canonical and placement mappings, run the

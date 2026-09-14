@@ -700,7 +700,9 @@ production deploy without WP2.1 + WP2.2a would fail every move/create/delete wit
    comment said the PR was "ignored". Whether it fires or not is not to be tested on production:
    **before the merge the operator switches that deploy off (or to manual) and confirms it here**, and
    switches it back only after step 3 completes, when production's ledger carries both files and a
-   deploy would apply nothing. Recorded as a human task in `PROGRESS.md`.
+   deploy would apply nothing. Recorded as a human task in `PROGRESS.md`. **Operator confirmation
+   2026-09-14: "i have switched the github deploy to manual."** The merge condition of this step is met;
+   the switch-back stays a step-3 follow-up.
 5. Side effect: with WP2.1 + WP2.2a on production before the merge, `gen-types.yml` regenerates **with**
    the symbols on the merge push. With `develop` parked there is no second integration branch, so the
    `generated.ts` divergence of `5fe7c93`/`1666660` cannot recur. (The RPC `Functions` entries still are

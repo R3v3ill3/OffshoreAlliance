@@ -1183,8 +1183,20 @@ Result across both runs: run 1 median 6682ms (runs 6682/5688/7090), run 2 median
   campaign_unit_rules 2 / `3da92745…`, campaign_worker_list_items 818 / `6384f89f…`, all others 0;
   all ten `view:*` present (`46cd5f4b…`, `df730743…`, `fda9dfd3…`, `1e4a878f…`, `a37a221c…`, `a0ec642b…`,
   `6d35c54b…`, `8fff6560…`, `d60b5f5a…`, `530614e3…`). No STOP raised.
-- Next (each under per-file approval): `20260913000000_an_survey_reports` (ledger catch-up) → 2.2a forward
-  (operator paste) → `90` → 2.2a forward → `10` twice → `20` → `03b` if H9 > 0 → 2.2b forward → `91` →
+- **Step 1 — `20260913000000_an_survey_reports` (connector, exact file + ledger row in one submission):**
+  5 `an_survey_*` tables created; ledger 11 rows, top `20260913000000 an_survey_reports`. The clone's ledger
+  now matches the repo (end-of-programme task in `PROGRESS.md`).
+- **Step 2 — 2.2a forward (operator paste of the prepared file: `BEGIN;` + exact bytes at `5f61208f` +
+  `COMMIT;` + check):** `public_structure_rpcs` 17; `oux_internal_helpers` 14; CHECK lists `universe`;
+  `anon_can_execute_group_create` false; `container_trigger_relaxed` true; `unattributed_rule_rows_unchanged`
+  207. Connector read-back: `md5(prosrc)` of all 32 functions equals the file; 0 `SECURITY DEFINER`.
+- **Step 3 — `90_rollback_wp2_2_structure_api.sql` (exact file, connector):** `public_rpcs_before` 17 →
+  `public_rpcs_after` 0; `helpers_before` 14; `internal_schema_remains` false; `check_definition_after` =
+  two-value `(manual, rule)`; `universe_rows_blocking_check_restore` 0; placements 1,618 and units 239
+  unchanged; committed. Restored `check_no_worker_on_group_container()` body `md5(prosrc)` =
+  `cccde5a9642091135737f8ccadce27f4` = the baseline file's body (byte-identical), `prosecdef` false,
+  `proconfig` null (as the baseline).
+- Next: 2.2a forward again (operator paste) → `10` twice → `20` → `03b` if H9 > 0 → 2.2b forward → `91` →
   2.2b forward → `04` → `95`.
 
 ### 9.3 Reviewer findings and resolution

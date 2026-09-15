@@ -2640,6 +2640,19 @@ the WP2.1 postflight (sync-on-open, §2.3 row 15a; `wp/wp2.1.md` §15.3): `03b` 
 (R1-b) handle them in the post-merge sequence of §6.4 step 3. Production now has WP2.1 + 2.2a; **G1 step 2 is met** and
 PR #41 may be merged (the production project's GitHub deploy is on manual, §6.4 step 4a).
 
+#### PR #41 merged into `main` (2026-09-15, orchestrator on the operator's instruction)
+
+G1 step 3 begins. The operator, working in the Claude Code app without a browser, asked for the merge to be done from the
+session; the promotion gate was met (2.2a on production, GitHub deploy on manual), so the orchestrator merged PR #41
+through the GitHub API with a merge commit: `cecdc380` (head `187af4a0`, base `main` which by then also carried the
+unrelated `fc0d5bd5 feat(email): show SendGrid open and click rates in the UI`). `gen-types.yml` then regenerated
+`packages/db-types/generated.ts` from production in `c1967d2a`: the 17 `structure_*` entries are kept (production has
+2.2a), the `graphql_public` block is back and the dev-only `_oux_env_marker` table is gone — the D79 prediction held.
+Vercel Production deploys from `main`. Post-merge checklist (§6.4 step 3): step 1 (operator UI check of wall-chart
+writes on production) pending; steps 2–8 run-sheet files prepared (`10`, `20`, `00`, `03b`, `04`, 2.2b, read-only
+check), each with `SET LOCAL oux.env = 'production';` after every `BEGIN;`, handed over one at a time. The Supabase
+GitHub deploy stays on manual until step 8.
+
 ### 9.2a Stage 6 verifier run (2026-09-14)
 
 Independent verifier, fresh session. Repo `/home/user/OffshoreAlliance`, branch `feat/oux-wp2.2-structure-api`,

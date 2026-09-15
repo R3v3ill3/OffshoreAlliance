@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       _archive_call_attempt_outcomes_20260613: {
@@ -125,24 +150,6 @@ export type Database = {
         }
         Relationships: []
       }
-      _oux_env_marker: {
-        Row: {
-          env: string
-          marked_at: string
-          singleton: boolean
-        }
-        Insert: {
-          env: string
-          marked_at?: string
-          singleton?: boolean
-        }
-        Update: {
-          env?: string
-          marked_at?: string
-          singleton?: boolean
-        }
-        Relationships: []
-      }
       _oux_hygiene_log: {
         Row: {
           action: string
@@ -181,6 +188,165 @@ export type Database = {
           table_name?: string
         }
         Relationships: []
+      }
+      _oux_wp21_canonical_basis: {
+        Row: {
+          campaign_id: number
+          canonical_ou_id: number
+          employer_id: number | null
+          fgk: string
+          mapping_id: number
+          note: string | null
+          worksite_id: number | null
+        }
+        Insert: {
+          campaign_id: number
+          canonical_ou_id: number
+          employer_id?: number | null
+          fgk: string
+          mapping_id?: never
+          note?: string | null
+          worksite_id?: number | null
+        }
+        Update: {
+          campaign_id?: number
+          canonical_ou_id?: number
+          employer_id?: number | null
+          fgk?: string
+          mapping_id?: never
+          note?: string | null
+          worksite_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "_oux_wp21_canonical_basis_canonical_ou_id_fkey"
+            columns: ["canonical_ou_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_organising_units"
+            referencedColumns: ["ou_id"]
+          },
+          {
+            foreignKeyName: "_oux_wp21_canonical_basis_canonical_ou_id_fkey"
+            columns: ["canonical_ou_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_unit_assignment_summary"
+            referencedColumns: ["ou_id"]
+          },
+          {
+            foreignKeyName: "_oux_wp21_canonical_basis_canonical_ou_id_fkey"
+            columns: ["canonical_ou_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_unit_hierarchy_summary"
+            referencedColumns: ["parent_ou_id"]
+          },
+          {
+            foreignKeyName: "_oux_wp21_canonical_basis_canonical_ou_id_fkey"
+            columns: ["canonical_ou_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_coverage_map"
+            referencedColumns: ["ou_id"]
+          },
+          {
+            foreignKeyName: "_oux_wp21_canonical_basis_canonical_ou_id_fkey"
+            columns: ["canonical_ou_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_workforce_mapping"
+            referencedColumns: ["worksite_ou_id"]
+          },
+        ]
+      }
+      _oux_wp21_conflicts: {
+        Row: {
+          applied_at: string | null
+          campaign_id: number
+          detected_at: string
+          fgk: string
+          rolled_back_at: string | null
+          rows: Json
+          status: string
+          worker_id: number
+        }
+        Insert: {
+          applied_at?: string | null
+          campaign_id: number
+          detected_at?: string
+          fgk: string
+          rolled_back_at?: string | null
+          rows: Json
+          status: string
+          worker_id: number
+        }
+        Update: {
+          applied_at?: string | null
+          campaign_id?: number
+          detected_at?: string
+          fgk?: string
+          rolled_back_at?: string | null
+          rows?: Json
+          status?: string
+          worker_id?: number
+        }
+        Relationships: []
+      }
+      _oux_wp21_placement_mapping: {
+        Row: {
+          campaign_id: number
+          fgk: string
+          keep_ou_id: number | null
+          note: string | null
+          worker_id: number
+        }
+        Insert: {
+          campaign_id: number
+          fgk: string
+          keep_ou_id?: number | null
+          note?: string | null
+          worker_id: number
+        }
+        Update: {
+          campaign_id?: number
+          fgk?: string
+          keep_ou_id?: number | null
+          note?: string | null
+          worker_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "_oux_wp21_placement_mapping_keep_ou_id_fkey"
+            columns: ["keep_ou_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_organising_units"
+            referencedColumns: ["ou_id"]
+          },
+          {
+            foreignKeyName: "_oux_wp21_placement_mapping_keep_ou_id_fkey"
+            columns: ["keep_ou_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_unit_assignment_summary"
+            referencedColumns: ["ou_id"]
+          },
+          {
+            foreignKeyName: "_oux_wp21_placement_mapping_keep_ou_id_fkey"
+            columns: ["keep_ou_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_unit_hierarchy_summary"
+            referencedColumns: ["parent_ou_id"]
+          },
+          {
+            foreignKeyName: "_oux_wp21_placement_mapping_keep_ou_id_fkey"
+            columns: ["keep_ou_id"]
+            isOneToOne: false
+            referencedRelation: "v_campaign_coverage_map"
+            referencedColumns: ["ou_id"]
+          },
+          {
+            foreignKeyName: "_oux_wp21_placement_mapping_keep_ou_id_fkey"
+            columns: ["keep_ou_id"]
+            isOneToOne: false
+            referencedRelation: "v_section_plan_workforce_mapping"
+            referencedColumns: ["worksite_ou_id"]
+          },
+        ]
       }
       activist_tasks: {
         Row: {
@@ -22621,14 +22787,14 @@ export type Database = {
           },
           {
             foreignKeyName: "user_profiles_organiser_id_fkey"
-            columns: ["granted_to_organiser_id"]
+            columns: ["granted_by_organiser_id"]
             isOneToOne: false
             referencedRelation: "organisers"
             referencedColumns: ["organiser_id"]
           },
           {
             foreignKeyName: "user_profiles_organiser_id_fkey"
-            columns: ["granted_by_organiser_id"]
+            columns: ["granted_to_organiser_id"]
             isOneToOne: false
             referencedRelation: "organisers"
             referencedColumns: ["organiser_id"]
@@ -27799,6 +27965,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       campaign_phase_enum: [

@@ -4,6 +4,7 @@ exports[`CampaignWallChartV2 characterization > all-unassigned: no placements at
 {
   "a11y": [
     "Campaign summary",
+    "Colour by",
     "Expand assessment distribution",
     "Group",
     "Health and Safety Representative",
@@ -41,7 +42,7 @@ exports[`CampaignWallChartV2 characterization > all-unassigned: no placements at
       "controls": [
         "Group | expanded=false | state=closed",
         "Show empty units | state=unchecked",
-        "Cumulative | expanded=false | state=closed",
+        "Colour by | expanded=false | state=closed",
         "Filter | expanded=false | state=closed",
         "Badges: none | expanded=false | state=closed",
         "% | pressed=true",
@@ -365,6 +366,7 @@ exports[`CampaignWallChartV2 characterization > default: writable, hints dismiss
     "Acme North",
     "Acme South",
     "Campaign summary",
+    "Colour by",
     "Expand assessment distribution",
     "Group",
     "Health and Safety Representative",
@@ -410,7 +412,7 @@ exports[`CampaignWallChartV2 characterization > default: writable, hints dismiss
       "controls": [
         "Group | expanded=false | state=closed",
         "Show empty units | state=unchecked",
-        "Cumulative | expanded=false | state=closed",
+        "Colour by | expanded=false | state=closed",
         "Filter | expanded=false | state=closed",
         "Badges: none | expanded=false | state=closed",
         "% | pressed=true",
@@ -733,6 +735,7 @@ exports[`CampaignWallChartV2 characterization > hidden-unit: one unit hidden by 
   "a11y": [
     "Acme South",
     "Campaign summary",
+    "Colour by",
     "Expand assessment distribution",
     "Group",
     "Health and Safety Representative",
@@ -775,7 +778,7 @@ exports[`CampaignWallChartV2 characterization > hidden-unit: one unit hidden by 
       "controls": [
         "Group | expanded=false | state=closed",
         "Show empty units | state=unchecked",
-        "Cumulative | expanded=false | state=closed",
+        "Colour by | expanded=false | state=closed",
         "Filter | expanded=false | state=closed",
         "Badges: none | expanded=false | state=closed",
         "% | pressed=true",
@@ -1045,6 +1048,7 @@ exports[`CampaignWallChartV2 characterization > hint-visible: group-selector hin
     "Acme North",
     "Acme South",
     "Campaign summary",
+    "Colour by",
     "Expand assessment distribution",
     "Group",
     "Health and Safety Representative",
@@ -1090,7 +1094,7 @@ exports[`CampaignWallChartV2 characterization > hint-visible: group-selector hin
       "controls": [
         "Group | expanded=false | state=closed",
         "Show empty units | state=unchecked",
-        "Cumulative | expanded=false | state=closed",
+        "Colour by | expanded=false | state=closed",
         "Filter | expanded=false | state=closed",
         "Badges: none | expanded=false | state=closed",
         "% | pressed=true",
@@ -1412,6 +1416,7 @@ exports[`CampaignWallChartV2 characterization > no-groups: the whole membership 
 {
   "a11y": [
     "Campaign summary",
+    "Colour by",
     "Expand assessment distribution",
     "Group",
     "Health and Safety Representative",
@@ -1449,7 +1454,7 @@ exports[`CampaignWallChartV2 characterization > no-groups: the whole membership 
       "controls": [
         "Group | expanded=false | state=closed",
         "Show empty units | state=unchecked | disabled",
-        "Cumulative | expanded=false | state=closed",
+        "Colour by | expanded=false | state=closed",
         "Filter | expanded=false | state=closed",
         "Badges: none | expanded=false | state=closed",
         "% | pressed=true",
@@ -1699,6 +1704,7 @@ exports[`CampaignWallChartV2 characterization > not-in-any-group: ?group=none 1`
 {
   "a11y": [
     "Campaign summary",
+    "Colour by",
     "Expand assessment distribution",
     "Group",
     "No email. Open worker details, focus email.",
@@ -1722,7 +1728,7 @@ exports[`CampaignWallChartV2 characterization > not-in-any-group: ?group=none 1`
       "controls": [
         "Group | expanded=false | state=closed",
         "Show empty units | state=unchecked | disabled",
-        "Cumulative | expanded=false | state=closed",
+        "Colour by | expanded=false | state=closed",
         "Filter | expanded=false | state=closed",
         "Badges: none | expanded=false | state=closed",
         "% | pressed=true",
@@ -1883,6 +1889,7 @@ exports[`CampaignWallChartV2 characterization > read-only: canWrite false 1`] = 
     "Acme North",
     "Acme South",
     "Campaign summary",
+    "Colour by",
     "Expand assessment distribution",
     "Group",
     "Health and Safety Representative",
@@ -1915,7 +1922,7 @@ exports[`CampaignWallChartV2 characterization > read-only: canWrite false 1`] = 
       "controls": [
         "Group | expanded=false | state=closed",
         "Show empty units | state=unchecked",
-        "Cumulative | expanded=false | state=closed",
+        "Colour by | expanded=false | state=closed",
         "Filter | expanded=false | state=closed",
         "Badges: none | expanded=false | state=closed",
         "% | pressed=true",

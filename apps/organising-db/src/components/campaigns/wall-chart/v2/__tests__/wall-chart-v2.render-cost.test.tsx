@@ -10,9 +10,9 @@
  * file so the comparison is between numbers from one process on one machine.
  *
  * The standard (§4.4, §8.4 item 5): the v2 numbers are reported alongside the
- * legacy number from the same run and are not worse. The legacy suite's own
- * absolute budget (6 s) is known to fail on sandboxed runners, so the
- * assertion here is the relative one, with the absolute figure printed.
+ * legacy number from the same run and are not worse — and, since the v2 chart
+ * is well inside it, the legacy suite's own absolute budget (6 s) is asserted
+ * too (fix round 2, A5).
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -47,7 +47,7 @@ import { CampaignWallChart } from "../../../campaign-wall-chart";
 import { CampaignWallChartV2 } from "../../../campaign-wall-chart-v2";
 
 const RUNS = 3;
-/** The legacy suite's budget, printed for reference; the assertion is relative (§4.4). */
+/** The legacy suite's budget (`wall-chart.render-cost.test.tsx`), asserted here as well. */
 const LEGACY_BUDGET_MS = 6000;
 /** Tolerance on "not worse": run-to-run noise on a shared machine is ~10 %. */
 const NOT_WORSE_FACTOR = 1.1;
@@ -109,5 +109,10 @@ describe("CampaignWallChartV2 render cost (same run as the legacy chart)", () =>
 
     expect(largest.ms).toBeLessThanOrEqual(legacy.ms * NOT_WORSE_FACTOR);
     expect(allUnassigned.ms).toBeLessThanOrEqual(legacy.ms * NOT_WORSE_FACTOR);
+    // And the absolute budget the legacy suite sets (fix round 2, A5): a
+    // relative check alone would pass a v2 regression up to ~9 s on a runner
+    // where the legacy chart takes 8 s.
+    expect(largest.ms).toBeLessThan(LEGACY_BUDGET_MS);
+    expect(allUnassigned.ms).toBeLessThan(LEGACY_BUDGET_MS);
   }, 240_000);
 });

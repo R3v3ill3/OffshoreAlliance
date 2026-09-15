@@ -1111,7 +1111,8 @@ under `supabase/`; `packages/db-types/generated.ts`; any existing e2e spec or he
 | SY-c keeps a silent writer's side effects on page open (totals drift; the 334-worker case) | accepted by the operator; evidence rules stay "hazard counts, not row totals" (`PROGRESS.md` standing notes); the notice makes the drift visible to the person who caused it |
 | `sync-campaign-universe.ts` edited by a parallel Cursor session while WP2.4 adds `membersAdded` | the edit is 15 additive lines; the implementer merges `main` into the branch before Stage 1's commit and re-runs the 53 sync tests; stop condition 11 if the file has moved again under a still-active session |
 | SM deferred: until WP2.4b lands, a drag in one campaign still leaves a stale universe placement in another | the operator's requirement is met by WP2.4b, scheduled here with a bounded scope; the §3.14 notice already accepts its counts so no second UI change is needed |
-| The pre-existing render-cost timing failure in sandboxed runners | v2 and legacy numbers reported from the same run; "not worse" is the standard (§4.4) |
+| The pre-existing render-cost timing failure in sandboxed runners | v2 and legacy numbers reported from the same run; "not worse" is the standard (§4.4); the v2 test also asserts the 6 s absolute budget (D23, A5) |
+| `?ou=` deep link into a unit the user has hidden lands on nothing (A7) | Recorded (D24); search un-hides (§3.12); a follow-up may call `toggleHidden(focusOuId)` on focus |
 | Lint creep from the new tree | touched lines clean; total ≤ 294 |
 | WP2.5/2.6/2.7 collide on `workforce-board.tsx`, `filters.ts`, `events.ts` | §3.18 boundaries; WP2.4 merges first; the later packages branch from the merged `main` |
 
@@ -1139,6 +1140,10 @@ under `supabase/`; `packages/db-types/generated.ts`; any existing e2e spec or he
 | D18 | Census counting rule (`wall-chart-v2.control-census.test.tsx`): the five level buttons of one rating control count as one control; the "Select all" click on the card count is reported on its own line (appendix A #37 becomes a click on existing text); the build-list drag handle is reported on its own line. With the build list closed the selection bar has 5 controls (Add to build list needs the panel), so the fixed page is **24**; with it open, **25**. | §2.3's 25 assumes Add to build list is on screen; the count is reported both ways so the reviewer sees each. | §2.3, §4.3 |
 | D19 | The v2 render-cost test mounts the legacy chart in the same file (same process) and asserts the v2 medians are ≤ 1.1 × the legacy median, printing every number and the legacy 6 s budget; it does not assert the absolute budget. | §4.4 makes "not worse in the same run" the standard because the legacy budget fails on sandboxed runners (8.1–8.5 s here). | §4.4, §8.4 item 5 |
 | D20 | Toolbar order: `WallChartSummaryHeader` fixes its control row, so the row reads Group, Show empty units, Colour by, Filter (+ chips) in the `assessmentSelector` slot, then Badges, %, #, Links, Find worker, Add worker, Import Workers, Units — the same twelve controls as §3.5, not its exact left→right order. `trackWallchartGroupSelected.ou_type` carries the group's `kind` (the nearest value the event has). | The header is reused unchanged (principle 3). | §3.5, §3.16 |
+| D21 | Participation is a **real filter** (fix round 2, A2): a non-`any` source keeps only the workers its predicate names, applied in D′'s `visibleIds` after the pure `applyFilters` (the predicate needs a query, D5), so the "Filter (n)" count, the chip, the tiles and the metrics' participation denominator agree. | The review found the chip promised a filter that was not applied; the orchestrator chose "apply it". | §3.10, D5 |
+| D22 | The board's invalidation effect and the notice are gated on `sync.isFetchedAfterMount` (A1): a re-mount within the 5-minute `staleTime` reads the cached result and neither refetches members/placements nor re-shows a dismissed notice (board test with an in-root remount). | Legacy invalidated inside `queryFn`, i.e. only on a real POST; the Stage 2 effect re-fired on every board re-mount. | §3.14 |
+| D23 | Accessible names (A4): `AssessmentSelector` gains `triggerAriaLabel?` (default `undefined`, legacy DOM unchanged) and the v2 toolbar passes "Colour by"; the toolbar's "Filter" caption is a decorative `<span aria-hidden>` (the trigger is named "Filter" by its text). The v2 characterisation snapshots changed by exactly that attribute. Also (A3) `units.reorder` toasts a refusal through `structureErrorMessage`; (A6) a valid `?group=` that `?ou=` overrode is rewritten to the unit's group; (A8) the provider memoises the `groups` array; (A9) C′ exports `hiddenInGroupIds`; (A10) stale hidden ids (no such unit) are pruned on the next hidden-set write; (A5) the v2 render-cost test also asserts the 6 s absolute budget. | Review advisories, each a few lines. | §3.5, §3.11, §3.12, §4.4 |
+| D24 | Recorded, not changed (fix round 2): A7 — `?ou=` naming a hidden unit neither un-hides nor highlights it (§3.12 specifies un-hide for search only); A11 — `should-show.test.ts` mutates the registry entry inside a `try/finally` for its pending case (switch to an injected fixture if `shouldShowHint` ever takes an entry). | Out of the review's "few lines" scope or a design choice the plan already makes. | §3.12, D13 |
 
 Notes (not deviations): the lint ceiling of §5 (294) was measured before the Cursor commits; a clean export of the
 branch base `f05a14d3` lints to **295** (143 errors / 152 warnings), and the Stage-1 tree lints to the same 295
@@ -1743,3 +1748,69 @@ levels and Unit actions, with no combobox. A8: a refused Remove in the sheet's U
 6. **D20** — the toolbar's row order is the reused header's, not §3.5's exact left→right.
 7. Not in this stage (Stage 3): `tests/e2e/groups-v2/*`, `tests/e2e/user-prefs.ts`, the E2-b checklist, the metrics
    SQL run on dev, `PROGRESS.md` ledger row.
+
+## 11.8 Fix round 2 (2026-09-15) — Stage 2 review advisories A1–A11
+
+Review verdict APPROVE, no blocking items (`scratchpad/wp24-stage2-review.md`); Stage 2 committed at `d20edc2d`.
+Applied on top, nothing committed: A1, A2 (orchestrator decision: Participation is a real filter), A3, A4, A5, A6,
+A8, A9, A10; A7 and A11 recorded (D24). Deviations D21–D24 in §8.3; §8.2 gains two rows.
+
+| Item | Change | Test |
+|---|---|---|
+| **A1** | `workforce-board.tsx`: `syncResult = sync.isFetchedAfterMount ? sync.data : undefined` gates both the invalidation effect and the notice. | `workforce-board.test.tsx` "A1: a re-mount against the cached result neither invalidates again nor re-shows the dismissed notice" — a host component unmounts and remounts the board inside one React root on one QueryClient; `dataUpdateCount` stays 1, no notice, no further `invalidateQueries`. |
+| **A2** | `use-wall-chart-view-v2.ts` `visibleIds`: after `applyFilters`, `hasParticipationFilter(filter) && participationPredicate` → keep only `participationPredicate(id)`. | Interaction "the Participation source lives inside the Filter popover and counts as a filter" now asserts the tiles: Latest activity (501, rated Ada/Ben/Cara) → Acme North `[102]`, Acme South `[103]`, Unassigned `[101]`. |
+| **A3** | `use-wall-chart-group-view.ts` `reorderOus.onError` → `toast.error(structureErrorMessage(e, "Reordering the Units failed."))`. | — (parity with the other v2 writers' toasts). |
+| **A4** | `AssessmentSelector.triggerAriaLabel?` (default `undefined`); toolbar passes `"Colour by"`; the Filter caption is `<span aria-hidden>`. | Interaction "A4: Colour by and Filter carry accessible names"; the census names the control "Colour by"; 7 v2 snapshots updated by exactly `Colour by` (a11y list + the control's name). Legacy snapshots unchanged (8/8 green). |
+| **A5** | Render-cost test asserts `< 6000 ms` for both v2 shapes beside the ≤ 1.1 × legacy check. | Same test; this run: legacy 8182 ms, v2 largest group 2817 ms, v2 all-Unassigned 1325 ms. |
+| **A6** | `use-wall-chart-groups.ts`: a valid `?group=` is still rewritten when `resolved.source === "ou"` and it differs from the unit's group. | Interaction "?ou= wins over a conflicting valid ?group= …": `?ou=20&group=1` → one `replace("/campaigns/1?ou=20&group=2")`. |
+| **A8** | Provider memoises `dialogGroups` per registration. | — |
+| **A9** | C′ returns `hiddenInGroupIds` (memoised); the toolbar passes it to the Units manager. | Existing Units-manager cases. |
+| **A10** | `toggleHidden` / `showAllHidden` start from `liveHiddenIds()` (ids that name a unit of the campaign), so a stale id is pruned on the next write. | Interaction "A10: a stored hidden id that names no unit is pruned…": `[11, 999]` → tick 12 hidden → payload `hiddenOuIds: [11, 12]`. |
+
+Raw output:
+
+```
+$ cd apps/organising-db && pnpm exec tsc --noEmit
+tsc exit=0
+
+$ pnpm vitest run          # whole app
+ ✓ src/components/campaigns/wall-chart/v2/__tests__/wall-chart-v2.interaction.test.tsx (41 tests) 14034ms
+ ✓ src/components/campaigns/wall-chart/v2/__tests__/wall-chart-v2.control-census.test.tsx (2 tests) 1513ms
+ ✓ src/components/campaigns/workforce/__tests__/workforce-board.test.tsx (8 tests) 4780ms
+ ✓ src/components/campaigns/wall-chart/v2/__tests__/wall-chart-v2.characterization.test.tsx (8 tests) 3018ms
+ ✓ src/components/campaigns/wall-chart/__tests__/wall-chart.characterization.test.tsx (8 tests) 4455ms
+ ✓ src/components/campaigns/wall-chart/__tests__/wall-chart.interaction.test.tsx (21 tests) 9148ms
+[wp2.4] render-cost legacy: median 8182ms over 3 runs (runs: 8841, 7898, 8182; tiles=250, cards=162; legacy budget 6000ms)
+[wp2.4] render-cost v2 largest group (Worksite): median 2817ms over 3 runs (runs: 2817, 2743, 3328; tiles=305, cards=155; legacy budget 6000ms)
+[wp2.4] render-cost v2 all-Unassigned (decision 4): median 1325ms over 3 runs (runs: 1616, 1296, 1325; tiles=305, cards=2; legacy budget 6000ms)
+ ✓ src/components/campaigns/wall-chart/v2/__tests__/wall-chart-v2.render-cost.test.tsx (1 test) 41044ms
+[wp2.3] render-cost median 8465ms over 3 runs (runs: 9371, 8465, 8087; tiles=250, cards=162)
+ ❯ src/components/campaigns/wall-chart/__tests__/wall-chart.render-cost.test.tsx (1 test | 1 failed)
+   × CampaignWallChart render cost > renders 305 members across 161 units within budget
+     → expected 8464.616276999997 to be less than 6000
+ Test Files  1 failed | 112 passed (113)
+      Tests  1 failed | 1562 passed (1563)        # Stage 2: 1559 / 1558; +4 cases this round, same single timing failure
+   Duration  67.02s
+
+$ pnpm exec eslint src/components/campaigns/wall-chart/v2 src/components/campaigns/workforce src/components/campaigns/campaign-worker-detail-provider.tsx src/components/campaigns/wall-chart/assessment-selector.tsx tests/e2e/groups-v2 tests/e2e/user-prefs.ts
+eslint(changed) exit=0 (no output)
+$ pnpm lint
+✖ 295 problems (143 errors, 152 warnings)      # = the branch base; this round adds 0
+$ pnpm vitest run src/lib/campaign/__tests__/no-direct-structure-writes.test.ts
+      Tests  3 passed (3)
+```
+
+## 11.9 Stage 3 — e2e spec, prefs helper, operator checklist (2026-09-15; written and type-checked, not run)
+
+No Playwright run, no database access, nothing committed. Files:
+
+| File | Role |
+|---|---|
+| `apps/organising-db/tests/e2e/user-prefs.ts` | `withUserPrefs(document)` (§4.5): records the e2e account's whole `workspace_prefs`, pins the given document through `PATCH /api/admin/update-user` (the strict schema accepts `flags.groups_v2`), restores exactly what was recorded in `afterAll`; one record/restore per suite; skips without user or admin credentials. Built on `workspace-mode.ts`'s exported `openAdminContext` / `findE2EUserId` / `readUserPrefs` / `setUserPrefs` / `restoreUserPrefs` (no existing helper edited). |
+| `apps/organising-db/tests/e2e/groups-v2/helpers.ts` | Campaign-1 fixture over the group model: `groupsOf`, `unitsOf`, `placementsOf`, the oracle `membershipOf` (`campaign_group_membership`), `createUnits` / `assign` / `unassignAll` / `placeOnlyOn` / `pickWorker` / `restoreWorker` (the structure-api.spec.ts patterns restated), `findOrCreateFixture` (two groups with a unit, else two units through `structure_units_create` with the trigger deriving their groups, swept by `UNIT_PREFIX`), `scriptUniverseSync`, v2 locators (`data-ou-id` unit / `unassigned` / `not-in-any-group`, the Group combobox). |
+| `apps/organising-db/tests/e2e/groups-v2/groups-v2.spec.ts` | Five tests = §4.5 steps 1–5: flow two (place W on A, open on G1, choose G2 → `?group=<G2>` and W in "Unassigned in <G2>", drag onto C, oracle G1 → A / G2 → C, reload without `?group=` opens on G2 and rewrites it, choose G1 → W in A); flow three (drag C → Unassigned in G2 with `p_to_ou_id: null, p_within_group_id: G2` asserted on the request body, oracle G2 null / G1 A, Remove from <G1> → `structure_placements_unassign`, W in Not in any group); hidden units + search (prefs survive reload; Find worker un-hides, highlights, opens the sheet); control inventory (no View/Badges/Sort/Filter/Apply to all/Expand/Collapse on the card, no Copy in the bar, the K1 line in the sheet's copy dialog); SY-c (scripted `{ membersAdded: 1, ouAssignmentsUpserted: 2, ouAssignmentsSkipped: 1 }` → the exact sentence, Dismiss, zeros → nothing). `withUserPrefs({ mode: "full", flags: { groups_v2: true } })`; both hint dismissals seeded per §3.16; `restClientFor` refuses production. |
+| `docs/organiser-ux-review/wp/wp2.4-acceptance-checklist.md` | The operator's E2-b click-by-click checklist on the branch preview: Setup (admin ticks the flag for the e2e user, sign out/in) then steps 1–5 with one expected sentence each, including the sync notice (how to make the sync change something, or accept the jsdom board test per §4.5 step 5) and "legacy chart unchanged for a user without the flag". |
+| `docs/organiser-ux-review/PROGRESS.md` | WP2.4 row: "Stage 2 complete 2026-09-15; Stage 3 pending the operator (E2-b)", verification figures, open items. |
+
+`tsc --noEmit` covers `tests/e2e` (tsconfig `**/*.ts`): exit 0 with the spec and helpers; `eslint` on both: clean.
+Not done here (needs credentials / the operator): running the spec, the E2-b checklist, the metrics SQL on dev.

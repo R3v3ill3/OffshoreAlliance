@@ -6,6 +6,7 @@
  * invalidations only when something changed).
  */
 
+import { act, useSyncExternalStore } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -25,6 +26,21 @@ import { createWallChartQueryClient } from "../../wall-chart/__tests__/harness/q
 
 const flags = vi.hoisted(() => ({ groupsV2: false }));
 
+/** A host that can unmount and remount the board inside one React root, keeping the QueryClient's cache. */
+const host = { visible: true, listeners: new Set<() => void>() };
+function subscribe(listener: () => void) {
+  host.listeners.add(listener);
+  return () => host.listeners.delete(listener);
+}
+async function setBoardVisible(visible: boolean): Promise<void> {
+  await act(async () => {
+    host.visible = visible;
+    for (const l of host.listeners) l();
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 vi.mock("next/navigation", () => navigationMock());
 vi.mock("@/lib/supabase/client", () => supabaseClientMock());
 vi.mock("@/lib/api/fetch-api", () => fetchApiMock());
@@ -42,6 +58,11 @@ vi.mock("@/lib/workspace/use-workspace", () => ({
 
 // Imported last: this module pulls in every mocked edge above.
 import { WorkforceBoard } from "../workforce-board";
+
+function RemountableBoard(props: { campaignId: string; canWrite: boolean }) {
+  const visible = useSyncExternalStore(subscribe, () => host.visible, () => host.visible);
+  return visible ? <WorkforceBoard {...props} /> : null;
+}
 
 const LEGACY_SENTENCE = "Campaign default view can be overridden per unit";
 const V2_SENTENCE = "Each card is a Unit of the selected Group.";
@@ -145,6 +166,34 @@ describe("WorkforceBoard — sync-on-open notice (SY-c)", () => {
 
     mounted = await mountWallChart({ Component: WorkforceBoard, fixture: buildWallChartFixtureV2("small"), search: "view=wall-chart" });
     expect(status(mounted.container)).toBeNull();
+  });
+
+  it("A1: a re-mount against the cached result neither invalidates again nor re-shows the dismissed notice", async () => {
+    const client = createWallChartQueryClient();
+    const spy = vi.spyOn(client, "invalidateQueries");
+    host.visible = true;
+    mounted = await mountWallChart({
+      Component: RemountableBoard,
+      fixture: buildWallChartFixtureV2("small", { syncResult: CHANGED }),
+      search: "view=wall-chart",
+      queryClient: client,
+    });
+    expect(status(mounted.container)?.textContent).toContain("Sync on open:");
+    const firstMountCalls = spy.mock.calls.length;
+    expect(firstMountCalls).toBeGreaterThanOrEqual(2);
+    await click(button(status(mounted.container) as HTMLElement, "Dismiss sync notice"));
+
+    // Leave the board (as switching tabs does) and come back within staleTime:
+    // the cached result is fresh, so no POST is made and nothing re-fires.
+    await setBoardVisible(false);
+    expect(mounted.container.querySelector('button[aria-pressed]')).toBeNull();
+    await setBoardVisible(true);
+    await setBoardVisible(true);
+
+    expect(mounted.container.textContent).toContain(LEGACY_SENTENCE);
+    expect(client.getQueryState(["sync-universe-workers", "1"])?.dataUpdateCount).toBe(1);
+    expect(status(mounted.container)).toBeNull();
+    expect(spy.mock.calls.length).toBe(firstMountCalls);
   });
 
   it("invalidates members and placements only when something changed", async () => {

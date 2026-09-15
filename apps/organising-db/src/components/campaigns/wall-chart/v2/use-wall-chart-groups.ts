@@ -140,12 +140,14 @@ export function useWallChartGroups({
     if (!ready || chosen !== null) return;
     const fromUrl = parseGroupParam(groupParam);
     const valid = fromUrl !== null && (fromUrl === "none" || groupById.has(fromUrl));
-    if (valid) return;
     const value = groupParamValue(resolved.selection);
+    // A valid `?group=` is left alone — unless `?ou=` won over it, in which
+    // case the copied link would name the wrong group (fix round 2, A6).
+    if (valid && !(resolved.source === "ou" && groupParam !== value)) return;
     if (written.current === value) return;
     written.current = value;
     replaceParams((params) => params.set("group", value));
-  }, [ready, chosen, groupParam, groupById, resolved.selection, replaceParams]);
+  }, [ready, chosen, groupParam, groupById, resolved.selection, resolved.source, replaceParams]);
 
   const setSelection = useCallback(
     (next: GroupSelection) => {

@@ -172,6 +172,8 @@ export function CampaignWorkerDetailProvider({
     [openWorkerDetail, registerGroups]
   );
 
+  // One array per registration, not per render (fix round 2, A8).
+  const dialogGroups = useMemo(() => (groups ? [...groups] : undefined), [groups]);
   const groupNameById = useMemo(() => {
     if (!groups) return undefined;
     const m = new Map<number, string>();
@@ -240,7 +242,7 @@ export function CampaignWorkerDetailProvider({
         }
         ous={ous}
         currentOuIds={copyWorkerId != null ? unitsByWorker.get(copyWorkerId) ?? [] : []}
-        groups={groups ? [...groups] : undefined}
+        groups={dialogGroups}
       />
     </CampaignWorkerDetailContext.Provider>
   );

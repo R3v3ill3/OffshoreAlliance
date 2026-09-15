@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { toast } from "sonner";
+
 import { structureApi } from "@/lib/campaign/structure-api";
+import { structureErrorMessage } from "@/lib/campaign/structure-error-message";
 import {
   deriveGroupView,
   notInAnyGroup,
@@ -96,6 +99,8 @@ export function useWallChartGroupView({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["campaign-ous", campaignId] });
     },
+    // The one v2 write that was silent on refusal (fix round 2, A3).
+    onError: (e: Error) => toast.error(structureErrorMessage(e, "Reordering the Units failed.")),
   });
 
   const ouIdsKey = ous.map((o) => o.ou_id).join(",");
@@ -249,22 +254,32 @@ export function useWallChartGroupView({
     () => groupUnits.filter((u) => !hiddenOuIds.has(u.ou_id)),
     [groupUnits, hiddenOuIds]
   );
-  const hiddenInGroupCount = groupUnits.length - shownUnits.length;
+  /** The hidden ids that are units of the selected group — what the Units manager shows (fix round 2, A9). */
+  const hiddenInGroupIds = useMemo(
+    () => new Set(groupUnits.filter((u) => hiddenOuIds.has(u.ou_id)).map((u) => u.ou_id)),
+    [groupUnits, hiddenOuIds]
+  );
+  const hiddenInGroupCount = hiddenInGroupIds.size;
 
+  /** Every hidden id that still names a unit of this campaign: a stale id is pruned on the next write (fix round 2, A10). */
+  const liveHiddenIds = useCallback(
+    () => [...hiddenOuIds].filter((id) => ouById.has(id)),
+    [hiddenOuIds, ouById]
+  );
   const toggleHidden = useCallback(
     (ouId: number) => {
-      const next = new Set(hiddenOuIds);
+      const next = new Set(liveHiddenIds());
       if (next.has(ouId)) next.delete(ouId);
       else next.add(ouId);
       setWallChart({ hiddenOuIds: [...next].sort((a, b) => a - b) });
     },
-    [hiddenOuIds, setWallChart]
+    [liveHiddenIds, setWallChart]
   );
   /** "Show all" clears the selected group's units only; other groups' hidden units are untouched (§3.12). */
   const showAllHidden = useCallback(() => {
-    const next = [...hiddenOuIds].filter((id) => !groupUnitIds.has(id)).sort((a, b) => a - b);
+    const next = liveHiddenIds().filter((id) => !groupUnitIds.has(id)).sort((a, b) => a - b);
     setWallChart({ hiddenOuIds: next });
-  }, [hiddenOuIds, groupUnitIds, setWallChart]);
+  }, [liveHiddenIds, groupUnitIds, setWallChart]);
 
   /** The whole-groups map the delete dialog and the sheet's "other groups" need. */
   const unitsByGroup = useMemo(() => {
@@ -368,6 +383,7 @@ export function useWallChartGroupView({
     groupUnits,
     groupUnitIds,
     shownUnits,
+    hiddenInGroupIds,
     hiddenInGroupCount,
     toggleHidden,
     showAllHidden,

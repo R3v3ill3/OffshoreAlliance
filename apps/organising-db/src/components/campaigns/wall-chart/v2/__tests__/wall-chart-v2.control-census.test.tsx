@@ -216,7 +216,7 @@ describe("WP2.4 control census (appendix A §3 re-count)", () => {
     expect(c.toolbar.controls).toEqual([
       "Group",
       "Show empty units",
-      "Cumulative",
+      "Colour by",
       "Filter",
       "Badges: none",
       "%",

@@ -153,9 +153,13 @@ export function WallChartToolbar({
                   value={view.colourBy}
                   onChange={view.setColourBy}
                   label="Colour by"
+                  triggerAriaLabel="Colour by"
                 />
                 <div className="flex flex-col gap-1 pb-0.5">
-                  <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Filter</Label>
+                  {/* Decorative: the trigger below is already named "Filter" by its text (fix round 2, A4). */}
+                  <span aria-hidden className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    Filter
+                  </span>
                   <WallChartFilterBar
                     compact
                     sortInPopover
@@ -275,7 +279,7 @@ export function WallChartToolbar({
               <WallChartUnitManager
                 ous={structure.groupUnits}
                 canWrite={canWrite}
-                hiddenOuIds={new Set(structure.groupUnits.filter((u) => !structure.shownUnits.includes(u)).map((u) => u.ou_id))}
+                hiddenOuIds={structure.hiddenInGroupIds}
                 onToggleHidden={structure.toggleHidden}
                 onShowAllHidden={structure.showAllHidden}
                 onReorder={(ids) => structure.reorderOus.mutate(ids)}

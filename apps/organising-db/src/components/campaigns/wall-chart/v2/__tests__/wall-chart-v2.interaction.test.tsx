@@ -254,6 +254,14 @@ describe("Group selector, ?group= and prefs", () => {
     expect(spies.replace).toHaveBeenCalledWith("/campaigns/1?ou=20&group=2", { scroll: false });
   });
 
+  it("?ou= wins over a conflicting valid ?group= and the link is rewritten to the unit's group (A6)", async () => {
+    const { container } = await mount({ search: "ou=20&group=1" });
+
+    expect(groupTrigger(container).textContent).toBe("Worksite");
+    expect(spies.replace).toHaveBeenCalledTimes(1);
+    expect(spies.replace).toHaveBeenCalledWith("/campaigns/1?ou=20&group=2", { scroll: false });
+  });
+
   it("an invalid ?group= falls through and is rewritten", async () => {
     const { container } = await mount({ search: "group=99" });
 
@@ -524,6 +532,22 @@ describe("Filter, Colour by and Show empty units (campaign-wide)", () => {
     expect(container.querySelector('[aria-label="Active filters"]')?.textContent).toContain(
       "Participation: Latest activity"
     );
+    // A2: the source is a real filter — only the workers rated on the latest
+    // activity (501: Ada, Ben, Cara) stay on screen, in every card.
+    expect(cardTiles(unitCard(container, "Acme North"))).toEqual(["102 Ben Baker"]);
+    expect(cardTiles(unitCard(container, "Acme South"))).toEqual(["103 Cara Carter"]);
+    expect(cardTiles(unitCard(container, EMPLOYER))).toEqual(["101 Ada Adams"]);
+  });
+
+  it("A4: Colour by and Filter carry accessible names", async () => {
+    const { container } = await mount();
+
+    const colourBy = container.querySelector<HTMLButtonElement>('button[aria-label="Colour by"]');
+    expect(colourBy?.getAttribute("role")).toBe("combobox");
+    expect(colourBy?.textContent).toBe("Cumulative");
+    expect(button(container, "Filter")).toBeTruthy();
+    expect(button(container, "Group").getAttribute("role")).toBe("combobox");
+    expect(container.querySelector('[role="switch"][aria-label="Show empty units"]')).not.toBeNull();
   });
 
   it("'In unit of another group' keeps only workers who hold one of the ticked units", async () => {
@@ -552,9 +576,7 @@ describe("Filter, Colour by and Show empty units (campaign-wide)", () => {
     const { container } = await mount();
     expect(tileButton(container, BEN).title).not.toContain("Petition ask");
 
-    const colourBy = [...container.querySelectorAll('button[role="combobox"]')].find(
-      (b) => b.textContent === "Cumulative"
-    );
+    const colourBy = container.querySelector<HTMLButtonElement>('button[aria-label="Colour by"]');
     if (!colourBy) throw new Error("No Colour by control");
     await click(colourBy);
     // The option's suffix carries a locale-formatted date, so match its head.
@@ -625,6 +647,20 @@ describe("hidden units, the Units manager and search (HU-a, appendix A 2.3)", ()
 
     expect(unitTitles(container)).toEqual(["Acme North", "Acme South", EMPLOYER]);
     expect(prefsUpserts().at(-1)).toMatchObject({ prefs: { wallChart: { hiddenOuIds: [20] } } });
+  });
+
+  it("A10: a stored hidden id that names no unit is pruned on the next hidden-set write", async () => {
+    const { container } = await mount({
+      fixture: buildWallChartFixtureV2("small", { prefs: { wallChart: { v: 1, hiddenOuIds: [11, 999] } } }),
+    });
+    expect(button(container, "Units (1/2)")).toBeTruthy();
+
+    await click(button(container, "Units (1/2)"));
+    const box = document.body.querySelector<HTMLElement>("#wc-ou-vis-12");
+    if (!box) throw new Error("No visibility checkbox for Acme South");
+    await click(box);
+
+    expect(prefsUpserts().at(-1)).toMatchObject({ prefs: { wallChart: { hiddenOuIds: [11, 12] } } });
   });
 
   it("finding a worker in a hidden unit un-hides it, highlights it, and opens the sheet", async () => {

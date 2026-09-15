@@ -90,7 +90,10 @@ export function WorkforceBoard({
     refetchOnWindowFocus: false,
     retry: false,
   });
-  const syncResult = sync.data;
+  // Only a POST this mount actually made counts: a re-mount within `staleTime`
+  // reads the cached result and must neither refetch nor re-show a notice the
+  // user dismissed (fix round 2, A1).
+  const syncResult = sync.isFetchedAfterMount ? sync.data : undefined;
   useEffect(() => {
     if (!syncResult || !syncChangedSomething(syncResult)) return;
     queryClient.invalidateQueries({ queryKey: ["campaign-members-full", campaignId] });

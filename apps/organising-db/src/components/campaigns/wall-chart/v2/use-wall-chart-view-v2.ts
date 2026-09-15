@@ -20,6 +20,7 @@ import {
   applyFilters,
   applySort,
   factSortOpts,
+  hasParticipationFilter,
   type WallChartFilterState,
 } from "../filters";
 import { computeMetrics, type WallChartMetrics } from "../metrics";
@@ -213,7 +214,7 @@ export function useWallChartViewV2({
   );
   const visibleIds = useCallback(
     (ids: number[]): number[] => {
-      const filtered = applyFilters(
+      const byState = applyFilters(
         ids,
         workerById,
         ratingByWorker,
@@ -224,6 +225,15 @@ export function useWallChartViewV2({
         ratingLookup,
         unitsByWorkerAll
       );
+      // Participation is a real filter (fix round 2, A2): a non-`any` source
+      // keeps only the workers its predicate names, so the chip, the tiles
+      // and the metrics' participation denominator agree. The predicate is
+      // still computed by `useParticipationPredicate` (it needs a query), so
+      // it is applied here rather than inside the pure `applyFilters`.
+      const filtered =
+        hasParticipationFilter(filter) && participationPredicate
+          ? byState.filter((id) => participationPredicate(id))
+          : byState;
       return applySort(filtered, workerById, ratingByWorker, filter.sort, {
         ...(colourBy.kind === "assessment" && colourByRatings
           ? { assessmentSort: { selection: colourBy, activityRatings: colourByRatings } }
@@ -232,7 +242,7 @@ export function useWallChartViewV2({
         ...factSortOpts(filter, factsByWorker),
       });
     },
-    [workerById, ratingByWorker, filter, colourByRatings, colourBy, factsByWorker, ratingLookup, unitsByWorkerAll, leaderLinks]
+    [workerById, ratingByWorker, filter, colourByRatings, colourBy, factsByWorker, ratingLookup, unitsByWorkerAll, leaderLinks, participationPredicate]
   );
   const visibleByUnit = useMemo(() => {
     const m = new Map<number, number[]>();

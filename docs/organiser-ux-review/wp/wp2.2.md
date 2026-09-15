@@ -2757,6 +2757,21 @@ Production now carries WP2.1 + 2.2a + `10` + `20` + 2.2b, the same end state as 
 function md5, view grants, `oux_internal` not usable by `anon`, ledger, sources) closes the sequence; then the operator
 switches the Supabase GitHub deploy back (§6.4 step 4a).
 
+#### Production step 8 — read-only closure and G1 complete (2026-09-15)
+
+```
+cwo_set_group_id_md5 e1be39ecea849c6127934eeb84557307 | anon_select_on_view false | authenticated_select_on_view true |
+authenticated_write_on_view false | service_role_write_on_view false | anon_usage_on_oux_internal false |
+ledger_all_wp2 20260912035329 wp2_1_campaign_groups; 20260914090000 wp2_2_structure_api; 20260914090100 wp2_2_one_unit_per_group_enforcement |
+h9_partitions 0 | placements_by_source manual=1440, universe=961
+```
+
+The operator then switched the production project's Supabase GitHub deploy back to automatic (§6.4 step 4a
+switch-back; safe because both files are on production's ledger). **WP2.2 is complete on production**: G1 steps 1–3
+done; WP2.4 may consume `campaign_group_membership` (§6.4 step 4). Process change recorded 2026-09-15: the operator
+instructed that follow-up fixes go straight to `main` (and `develop`) without a branch or pull request; the ledger
+closure below and the sub-unit assessment-view fix are the first commits under that instruction.
+
 ### 9.2a Stage 6 verifier run (2026-09-14)
 
 Independent verifier, fresh session. Repo `/home/user/OffshoreAlliance`, branch `feat/oux-wp2.2-structure-api`,

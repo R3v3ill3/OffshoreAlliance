@@ -2739,6 +2739,24 @@ hazards `f1_max_specificity_excess_targets 0`, `f1_max_specificity_multi_target_
 `f1_fallback_targets_suppressed 225`, `h10_enabled_duplicate_basis_sets 0`; every `ou_dependant` row and all ten
 `view:*` checksums identical to step 4. The WP2.1 boundary assertion (no view, no unique index) held, so 2.2b may follow.
 
+#### Production step 7 — 2.2b applied to production (2026-09-15, operator run sheet)
+
+`prod-step7-wp2_2b-enforcement.sql` (header + `BEGIN;` + `SET LOCAL oux.env = 'production';` + the byte-identical
+migration at `187af4a0`/`5f61208f`, sha256 prefix `593430d2` + ledger row `20260914090100
+wp2_2_one_unit_per_group_enforcement` + `COMMIT;` + read-only verification), one submission as `postgres`. The file's
+own precondition (H9 = 0, 2.2a present, objects absent) and postcondition blocks (unique valid index, support index
+gone, pre-check in `cwo_set_group_id()`, trigger enabled, `security_invoker` view, grants, view row arithmetic, counts
+unchanged) passed. Verification rows pasted back:
+
+```
+unique_index true | unique_index_is_unique true | membership_view true | support_index_dropped true |
+cwo_set_group_id_has_precheck true | ledger_2_2b 1 | h9_partitions 0 | view_rows_vs_placements 4714 / 2401
+```
+
+Production now carries WP2.1 + 2.2a + `10` + `20` + 2.2b, the same end state as dev and the clone. Step 8 (read-only:
+function md5, view grants, `oux_internal` not usable by `anon`, ledger, sources) closes the sequence; then the operator
+switches the Supabase GitHub deploy back (§6.4 step 4a).
+
 ### 9.2a Stage 6 verifier run (2026-09-14)
 
 Independent verifier, fresh session. Repo `/home/user/OffshoreAlliance`, branch `feat/oux-wp2.2-structure-api`,

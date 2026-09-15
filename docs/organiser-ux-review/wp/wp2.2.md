@@ -2715,6 +2715,13 @@ above and H9 = 2), deletes 21888 and 22958, logs both to `_oux_hygiene_log` unde
 `wp2_2_step5b_remove_duplicate_universe_rows`, post-checks H9 = 0, placements −2, membership unchanged, kept rows
 present. Dry-run on normal dev stopped at the `H9 = 2` precondition as designed (nothing committed).
 
+#### Production step 5b — operator deleted the two rows by hand (2026-09-15)
+
+The operator did not run `prod-step5b-…sql`; instead: "i did not run that - instead i manually deleted the two
+incorrect entries" (placements 21888 and 22958, through the dashboard). No `_oux_hygiene_log` rows exist for these
+two deletions; the record of what was removed is the step 5a listing above. Step 5c (read-only) confirms the kept and
+deleted ids, H9 = 0 and the counts before the postflight gate.
+
 ### 9.2a Stage 6 verifier run (2026-09-14)
 
 Independent verifier, fresh session. Repo `/home/user/OffshoreAlliance`, branch `feat/oux-wp2.2-structure-api`,

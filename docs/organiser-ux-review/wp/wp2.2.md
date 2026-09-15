@@ -2663,6 +2663,19 @@ after its `BEGIN;`), run twice as `postgres`. First run: 22 campaigns listed; on
 row, campaign 57 `skipped_existing = 393`, `TOTAL` 2372 → 2372, H9 2 / 2. Idempotency and the post-checks held. (Clone
 rehearsal had 303 for the same campaign; production grew in the meantime.)
 
+#### Production step 3 — `20_relabel_unattributed_rule_rows.sql` (2026-09-15, operator run sheet)
+
+`prod-step3-20_relabel_unattributed_rule_rows.sql`, run once as `postgres`:
+
+```
+rule_null_rule_id_before 332 | rule_null_rule_id_after 0 | rule_attributed_unchanged 0 | universe_before 634 |
+universe_after 966 | manual_unchanged 1406 | total_placements 2372 | rows_logged 332
+```
+
+R1-b done: the 332 pre-WP2.2 sync rows are `universe` and logged to `_oux_hygiene_log`; `universe_before` (634) =
+the 393 Employer placements of step 2 + 241 rows the new sync-on-open path wrote as `universe` since the deploy;
+0 + 966 + 1406 = 2372.
+
 ### 9.2a Stage 6 verifier run (2026-09-14)
 
 Independent verifier, fresh session. Repo `/home/user/OffshoreAlliance`, branch `feat/oux-wp2.2-structure-api`,

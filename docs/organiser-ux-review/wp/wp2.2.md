@@ -2722,6 +2722,15 @@ incorrect entries" (placements 21888 and 22958, through the dashboard). No `_oux
 two deletions; the record of what was removed is the step 5a listing above. Step 5c (read-only) confirms the kept and
 deleted ids, H9 = 0 and the counts before the postflight gate.
 
+#### Production step 5c — read-only confirmation (2026-09-15)
+
+```
+kept_rows_present 2 | deleted_rows_still_present 0 | h9_partitions 0 | placements 2401 | memberships 3589
+```
+
+Ids 2860 and 3031 present, 21888 and 22958 gone, H9 = 0. Placements 2370 → 2401 and memberships 3592 → 3589 are live
+activity between steps 4 and 5c (page opens add universe rows; a worker removal takes a membership). Step 6 may run.
+
 ### 9.2a Stage 6 verifier run (2026-09-14)
 
 Independent verifier, fresh session. Repo `/home/user/OffshoreAlliance`, branch `feat/oux-wp2.2-structure-api`,

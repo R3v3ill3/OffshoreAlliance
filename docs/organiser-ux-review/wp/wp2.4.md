@@ -1204,6 +1204,15 @@ Approvals still required, in order:
 
 _pending._
 
+#### Operator acceptance on the branch preview (E2-b, 2026-09-15)
+
+The operator ran `wp2.4-acceptance-checklist.md` (setup + steps 1–5) on the branch preview
+`https://offshore-alliance-git-feat-oux-wp24-gr-ee1a8f-reveille-strategy.vercel.app` (branch at `0a22d594`, dev data)
+in a temporary test unit. **Operator report: "all tests are green in the temporary test unit — features all work as
+expected."** No anomalies reported. The operator also confirmed the parallel Cursor session has been stopped
+(stop condition 11 cleared for good). The Playwright spec `tests/e2e/groups-v2/groups-v2.spec.ts` remains
+type-checked but unrun (D80/D81 of WP2.2 apply).
+
 ### 9.3 Reviewer findings and resolution
 
 _pending._

@@ -2699,6 +2699,22 @@ duplicate rows are removed either through the product (Unassign from the extra u
 reviewed `structure_placements_unassign`) or, if the operator prefers a script, by a targeted, id-explicit delete
 logged to `_oux_hygiene_log` under a WP2.2 script name — decided after the listing.
 
+#### Production step 5a — the two H9 partitions (2026-09-15, read-only)
+
+```
+campaign 42, worker 1374, group 13 (Worksite): placement 2860 ou 51 Gorgon LNG      manual   2026-08-09 08:41  (keep)
+                                               placement 21888 ou 52 Wheatstone LNG  universe 2026-09-14 08:53  (delete)
+campaign 64, worker 2868, group 20 (Employer): placement 3031 ou 647 FUGRO AUSTRALIA manual   2026-08-21 04:54  (keep)
+                                               placement 22958 ou 653 TOTAL MARINE   universe 2026-09-15 00:24  (delete)
+```
+
+Both extra rows are `universe` rows written by the pre-WP2.2 sync-on-open (before the 01:20 UTC deploy) for a worker
+who already had a manual placement in the group — exactly the case rule C-a's `skip` now prevents. Resolution chosen
+(D82): `prod-step5b-remove-duplicate-universe-rows.sql`, id-explicit (refuses unless each row still matches the listing
+above and H9 = 2), deletes 21888 and 22958, logs both to `_oux_hygiene_log` under
+`wp2_2_step5b_remove_duplicate_universe_rows`, post-checks H9 = 0, placements −2, membership unchanged, kept rows
+present. Dry-run on normal dev stopped at the `H9 = 2` precondition as designed (nothing committed).
+
 ### 9.2a Stage 6 verifier run (2026-09-14)
 
 Independent verifier, fresh session. Repo `/home/user/OffshoreAlliance`, branch `feat/oux-wp2.2-structure-api`,

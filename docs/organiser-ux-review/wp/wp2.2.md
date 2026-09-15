@@ -2731,6 +2731,14 @@ kept_rows_present 2 | deleted_rows_still_present 0 | h9_partitions 0 | placement
 Ids 2860 and 3031 present, 21888 and 22958 gone, H9 = 0. Placements 2370 → 2401 and memberships 3592 → 3589 are live
 activity between steps 4 and 5c (page opens add universe rows; a worker removal takes a membership). Step 6 may run.
 
+#### Production step 6 — `oux-wp2.1/04_postflight_hazards.sql` (2026-09-15, operator run sheet)
+
+Passed (no STOP). Evidence table: `campaign_organising_units 240` (239 at step 4; one sub-unit created by users in between,
+`parent_ou_id` links 150 → 151), `campaign_unit_rules 2`, `campaign_worker_membership 3589`, `campaign_worker_ou 2401`;
+hazards `f1_max_specificity_excess_targets 0`, `f1_max_specificity_multi_target_partitions 0`,
+`f1_fallback_targets_suppressed 225`, `h10_enabled_duplicate_basis_sets 0`; every `ou_dependant` row and all ten
+`view:*` checksums identical to step 4. The WP2.1 boundary assertion (no view, no unique index) held, so 2.2b may follow.
+
 ### 9.2a Stage 6 verifier run (2026-09-14)
 
 Independent verifier, fresh session. Repo `/home/user/OffshoreAlliance`, branch `feat/oux-wp2.2-structure-api`,

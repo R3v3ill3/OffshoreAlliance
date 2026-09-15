@@ -9,6 +9,7 @@ import {
   planUniverseSyncTargets,
   syncCampaignUniverseFromEmployersWorksites,
   syncWorkersToMatchingCampaigns,
+  universeMatchModeFromFlags,
   workerMatchesCampaignUniverse,
   type CampaignUniverse,
   type OuPlacementTarget,
@@ -68,18 +69,21 @@ const programmedCampaign: CampaignUniverse = {
   campaignId: 10,
   employerIds: [5],
   worksiteIds: [20],
+  matchMode: "and",
 };
 
 const rovSectorCampaign: CampaignUniverse = {
   campaignId: 11,
   employerIds: [5, 6, 7],
   worksiteIds: [20, 21],
+  matchMode: "or",
 };
 
 const otherEmployerCampaign: CampaignUniverse = {
   campaignId: 12,
   employerIds: [99],
   worksiteIds: [88],
+  matchMode: "and",
 };
 
 const programmedWorker: WorkerPlacement = {
@@ -100,12 +104,37 @@ const unplaced: WorkerPlacement = {
   worksiteId: null,
 };
 
+describe("universeMatchModeFromFlags", () => {
+  it("defaults to AND unless a sector-wide flag is set", () => {
+    expect(universeMatchModeFromFlags({})).toBe("and");
+    expect(universeMatchModeFromFlags({ campaignSectorWide: false })).toBe("and");
+    expect(universeMatchModeFromFlags({ campaignSectorWide: true })).toBe("or");
+    expect(universeMatchModeFromFlags({ worksiteSectorWide: true })).toBe("or");
+  });
+});
+
 describe("workerMatchesCampaignUniverse", () => {
-  it("matches a bargaining campaign by employer even when the worksite differs", () => {
-    expect(workerMatchesCampaignUniverse(programmedOtherSite, programmedCampaign)).toBe(true);
+  it("AND: requires both employer and worksite when both lists are declared", () => {
+    expect(workerMatchesCampaignUniverse(programmedWorker, programmedCampaign)).toBe(true);
+    expect(workerMatchesCampaignUniverse(programmedOtherSite, programmedCampaign)).toBe(false);
+    expect(
+      workerMatchesCampaignUniverse(
+        { workerId: 4, employerId: null, worksiteId: 20 },
+        programmedCampaign
+      )
+    ).toBe(false);
   });
 
-  it("matches a sector campaign that lists the same employer", () => {
+  it("OR (sector): matches a bargaining campaign by employer even when the worksite differs", () => {
+    expect(
+      workerMatchesCampaignUniverse(programmedOtherSite, {
+        ...programmedCampaign,
+        matchMode: "or",
+      })
+    ).toBe(true);
+  });
+
+  it("OR (sector): matches a sector campaign that lists the same employer", () => {
     expect(workerMatchesCampaignUniverse(programmedWorker, rovSectorCampaign)).toBe(true);
   });
 
@@ -117,13 +146,18 @@ describe("workerMatchesCampaignUniverse", () => {
     expect(workerMatchesCampaignUniverse(unplaced, programmedCampaign)).toBe(false);
   });
 
-  it("matches by worksite alone when employer is unset", () => {
+  it("AND: matches by worksite alone only when the campaign lists no employers", () => {
     expect(
       workerMatchesCampaignUniverse(
         { workerId: 4, employerId: null, worksiteId: 20 },
-        programmedCampaign
+        { ...programmedCampaign, employerIds: [] }
       )
     ).toBe(true);
+  });
+
+  it("defaults to AND when matchMode is omitted", () => {
+    const { matchMode: _ignored, ...withoutMode } = programmedCampaign;
+    expect(workerMatchesCampaignUniverse(programmedOtherSite, withoutMode)).toBe(false);
   });
 });
 
@@ -607,6 +641,30 @@ describe("universe sync writes only through structure_placements_assign (wp2.2.m
         .fromCalls()
         .filter((c) => c.table === "campaign_worker_ou" || (c.table === "campaign_organising_units" && c.ops.some((o) => o.method !== "select" && o.method !== "in" && o.method !== "order" && o.method !== "range")))
     ).toEqual([]);
+  });
+
+  it("AND mode drops worksite-only candidates when the campaign also lists an employer", async () => {
+    const fake = createFakeStructureClient({
+      tables: {
+        campaigns: [{ campaign_id: CAMPAIGN, status: "active", is_sms_episode: false, sector_wide: false }],
+        campaign_employers: [{ employer_id: 5 }],
+        campaign_worksites: [{ worksite_id: 20, sector_wide: false }],
+        workers: [
+          { worker_id: 101, employer_id: 5, worksite_id: 20 },
+          { worker_id: 199, employer_id: 99, worksite_id: 20 },
+        ],
+        campaign_organising_units: units,
+      },
+    });
+    fake.answerRpc("structure_placements_assign", { data: { inserted: 1, moved: 0, skipped: 0, displaced: 0 } });
+    fake.answerRpc("structure_placements_assign", { data: { inserted: 0, moved: 0, skipped: 1, displaced: 0 } });
+
+    const result = await syncCampaignUniverseFromEmployersWorksites(fake.client, CAMPAIGN);
+
+    expect(result.workersAdded).toBe(1);
+    const membershipUpsert = fake.fromCalls().find((c) => c.table === "campaign_worker_membership");
+    const upsertOp = membershipUpsert?.ops.find((o) => o.method === "upsert");
+    expect(upsertOp?.args[0]).toEqual([{ campaign_id: CAMPAIGN, worker_id: 101 }]);
   });
 
   it("syncWorkersToMatchingCampaigns: the same call shape per campaign and unit, counts from the RPC result", async () => {

@@ -710,6 +710,12 @@ export function CampaignWizard() {
           }
         }
 
+        const { error: matchErr } = await supabase
+          .from("campaigns")
+          .update({ sector_wide: worksiteSectorWide || basics.sector_wide })
+          .eq("campaign_id", campaignId);
+        if (matchErr) throw matchErr;
+
         if (worksiteSectorWide) {
           const { error } = await supabase.from("campaign_worksites").insert({
             campaign_id: campaignId,
@@ -1611,11 +1617,10 @@ export function CampaignWizard() {
                 <span className="text-sm font-medium">Sector-wide campaign</span>
               </label>
               <p className="text-xs text-muted-foreground">
-                Tick this when the campaign covers an entire sector rather than specific
-                employers/worksites — e.g., a bargaining round across all offshore drilling
-                operators. Reporting and rollups treat sector-wide campaigns as covering
-                every active worker in the relevant sectors instead of a discrete worksite
-                list, and worker assignment is no longer gated by the worksite picker.
+                Tick this for a sector campaign. Worker matching then uses employer{" "}
+                <span className="font-medium">or</span> worksite (anyone at a listed site
+                is included). Leave it off for a single-employer campaign so only that
+                employer’s workers at the listed sites are added.
               </p>
             </div>
             <div className="space-y-2">
@@ -1671,6 +1676,10 @@ export function CampaignWizard() {
           setSelectedWorksites={setSelectedWorksites}
           worksiteSectorWide={worksiteSectorWide}
           setWorksiteSectorWide={setWorksiteSectorWide}
+          campaignSectorWide={basics.sector_wide}
+          setCampaignSectorWide={(v) =>
+            setBasics((prev) => ({ ...prev, sector_wide: v }))
+          }
           isPending={saveScopeMutation.isPending}
           onBack={() => setStep(1)}
           onContinue={() => saveScopeMutation.mutate()}

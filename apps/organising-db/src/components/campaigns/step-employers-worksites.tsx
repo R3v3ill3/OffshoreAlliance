@@ -25,6 +25,7 @@ import type { CampaignScopeType } from "@/types/database";
 import type { PostgrestError } from "@supabase/supabase-js";
 import { invalidateEmployerQueries } from "@/lib/query-invalidation/employers";
 import { WorkerImportWizard } from "@/components/import/worker-import-wizard";
+import { UniverseMatchModeControl } from "@/components/campaigns/universe-match-mode-control";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,9 @@ interface StepEmployersWorksitesProps {
   setSelectedWorksites: (v: number[]) => void;
   worksiteSectorWide: boolean;
   setWorksiteSectorWide: (v: boolean) => void;
+  /** campaigns.sector_wide — OR membership when true. */
+  campaignSectorWide?: boolean;
+  setCampaignSectorWide?: (v: boolean) => void;
   isPending: boolean;
   onBack: () => void;
   onContinue: () => void;
@@ -306,6 +310,8 @@ export function StepEmployersWorksites({
   setSelectedWorksites,
   worksiteSectorWide,
   setWorksiteSectorWide,
+  campaignSectorWide = false,
+  setCampaignSectorWide,
   isPending,
   onBack,
   onContinue,
@@ -834,7 +840,10 @@ export function StepEmployersWorksites({
                 checked={worksiteSectorWide}
                 onChange={(e) => {
                   setWorksiteSectorWide(e.target.checked);
-                  if (e.target.checked) setSelectedWorksites([]);
+                  if (e.target.checked) {
+                    setSelectedWorksites([]);
+                    setCampaignSectorWide?.(true);
+                  }
                 }}
               />
               <span className="text-sm font-normal">Sector-wide worksites (no specific site)</span>
@@ -905,6 +914,19 @@ export function StepEmployersWorksites({
               </div>
             )}
           </>
+        )}
+
+        {setCampaignSectorWide && (
+          <UniverseMatchModeControl
+            orMatching={campaignSectorWide || worksiteSectorWide}
+            onOrMatchingChange={(next) => setCampaignSectorWide(next)}
+            disabled={worksiteSectorWide}
+            disabledReason={
+              worksiteSectorWide
+                ? "Sector-wide worksites always use employer or worksite matching. Switch back to specific sites to use employer and worksite."
+                : undefined
+            }
+          />
         )}
 
         {/* ── Selected summary chips ───────────────────────────────────────── */}

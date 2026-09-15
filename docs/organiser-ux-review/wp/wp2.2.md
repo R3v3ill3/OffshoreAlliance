@@ -986,6 +986,8 @@ approved; K1 approved; G1 approved; production timing clarified as §0 steps 1�
 item 2 approved. Decisions T and C-k were not objected to and are carried as recommended; the operator may
 overrule them before Stage 4.
 
+**Operator decision 2026-09-15 (e2e acceptance):** the operator declined to add the four `E2E_*` repository secrets and will not use the `e2e-preview` workflow (D81) for WP2.2; acceptance of §4.5 items 1–6 is done by the operator **by hand on the branch preview** (which talks to normal dev, now at 2.2b), using the checklist the orchestrator supplied, with the result recorded in §9.2 by the orchestrator from the operator's report. The operator also asked for the commit to be pushed to `main` for testing with a rollback if needed; **declined by the orchestrator** under the standing rules (never push to `main`; G1: a merge deploys to Vercel Production and the WP2.2 code requires 2.2a on production, so production writes would fail with `PGRST202` until the run sheet is applied). Order kept: preview acceptance → production 2.2a run sheet → PR marked ready, operator merges → operator tests production → post-merge checklist. The workflow file stays in the repository for later packages.
+
 **Orchestrator approval:** plan approved for implementation on `feat/oux-wp2.2-structure-api` subject to
 §0 steps 1–2 being scheduled by the operator (Stage 1 does not need a database; Stages 3–6 do).
 

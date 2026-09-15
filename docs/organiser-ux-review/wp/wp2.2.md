@@ -2617,6 +2617,29 @@ with same-group children moves the members out of the source, no keep-in-parent 
 sees a visible error. **Operator report 2026-09-15: "all six tests passed."** No anomalies reported. The automated
 spec `tests/e2e/structure-api.spec.ts` remains unrun (D80/D81); it can run from the workflow whenever secrets exist.
 
+#### Production step 1 — 2.2a applied to production (2026-09-15, operator run sheet)
+
+G1 step 2 (§6.4). The operator pasted `prod-step1-wp2_2a-structure-api.sql` (header + `BEGIN;` + `SET LOCAL oux.env =
+'production';` + the byte-identical migration file at `5f61208f`, sha256 prefix `060f9e7daa606361` + the ledger row
+`20260914090000 wp2_2_structure_api` + `COMMIT;` + read-only verification) into the production SQL Editor as one query,
+`postgres` role. Result rows pasted back by the operator:
+
+```
+public_structure_rpcs             17
+oux_internal_helpers              14
+assignment_source_check           CHECK (((assignment_source)::text = ANY (ARRAY[('manual'::character varying)::text, ('rule'::character varying)::text, ('universe'::character varying)::text])))
+anon_can_execute_group_create     false
+container_trigger_relaxed         true
+ledger_2_2a                       1
+h9_partitions                     2
+unattributed_rule_rows_unchanged  332
+```
+
+All five schema rows match dev and the clone. `h9_partitions = 2` and 332 unattributed rule rows are live drift since
+the WP2.1 postflight (sync-on-open, §2.3 row 15a; `wp/wp2.1.md` §15.3): `03b` (H9 > 0, required before 2.2b) and `20`
+(R1-b) handle them in the post-merge sequence of §6.4 step 3. Production now has WP2.1 + 2.2a; **G1 step 2 is met** and
+PR #41 may be merged (the production project's GitHub deploy is on manual, §6.4 step 4a).
+
 ### 9.2a Stage 6 verifier run (2026-09-14)
 
 Independent verifier, fresh session. Repo `/home/user/OffshoreAlliance`, branch `feat/oux-wp2.2-structure-api`,

@@ -2649,7 +2649,8 @@ unrelated `fc0d5bd5 feat(email): show SendGrid open and click rates in the UI`).
 `packages/db-types/generated.ts` from production in `c1967d2a`: the 17 `structure_*` entries are kept (production has
 2.2a), the `graphql_public` block is back and the dev-only `_oux_env_marker` table is gone — the D79 prediction held.
 Vercel Production deploys from `main`. Post-merge checklist (§6.4 step 3): step 1 (operator UI check of wall-chart
-writes on production) pending; steps 2–8 run-sheet files prepared (`10`, `20`, `00`, `03b`, `04`, 2.2b, read-only
+writes on production) **passed 2026-09-15** ("drag works. copy and paste to another unit in the same group fails
+with the expected warning message" — the K1 sentence, §3.4 C-c); steps 2–8 run-sheet files prepared (`10`, `20`, `00`, `03b`, `04`, 2.2b, read-only
 check), each with `SET LOCAL oux.env = 'production';` after every `BEGIN;`, handed over one at a time. The Supabase
 GitHub deploy stays on manual until step 8.
 

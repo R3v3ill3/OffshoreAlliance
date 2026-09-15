@@ -1006,6 +1006,8 @@ Approvals required, in order:
 
 **Orchestrator approval:** _pending (Revision 1)._
 
+**Operator answers (2026-09-15): "approve all" — every recommendation in this section is adopted (NE-a, NV-a, NP-a with NP-b optional after the production counts, NC-a, NX-a, NS-a, SG-a, CG-a, XP-a, SP-a, AP-a, HT-a); branch `feat/oux-wp2.4c-nested-units` off `main`, draft PR into `main`, stage commits and pushes approved.**
+
 ### 9.2 Verification output (verifier pastes raw output)
 
 _pending._

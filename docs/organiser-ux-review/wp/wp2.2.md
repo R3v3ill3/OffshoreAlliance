@@ -2654,6 +2654,15 @@ with the expected warning message" — the K1 sentence, §3.4 C-c); steps 2–8 
 check), each with `SET LOCAL oux.env = 'production';` after every `BEGIN;`, handed over one at a time. The Supabase
 GitHub deploy stays on manual until step 8.
 
+#### Production step 2 — `10_materialise_employer_placements.sql` (2026-09-15, operator run sheet)
+
+`prod-step2-10_materialise_employer_placements.sql` (the committed script with `SET LOCAL oux.env = 'production';`
+after its `BEGIN;`), run twice as `postgres`. First run: 22 campaigns listed; only campaign 57 has Employer containers
+(18): placements 393 → 786, `inserted = 393`, `skipped_existing = 0`, `multi_container_workers = 0` everywhere;
+`TOTAL` 1979 → 2372 (= before + inserted); `H9_PARTITIONS_BEFORE_AFTER` 2 / 2. Second run: `inserted = 0` on every
+row, campaign 57 `skipped_existing = 393`, `TOTAL` 2372 → 2372, H9 2 / 2. Idempotency and the post-checks held. (Clone
+rehearsal had 303 for the same campaign; production grew in the meantime.)
+
 ### 9.2a Stage 6 verifier run (2026-09-14)
 
 Independent verifier, fresh session. Repo `/home/user/OffshoreAlliance`, branch `feat/oux-wp2.2-structure-api`,

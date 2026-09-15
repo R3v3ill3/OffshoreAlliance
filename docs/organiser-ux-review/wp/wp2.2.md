@@ -2676,6 +2676,17 @@ R1-b done: the 332 pre-WP2.2 sync rows are `universe` and logged to `_oux_hygien
 the 393 Employer placements of step 2 + 241 rows the new sync-on-open path wrote as `universe` since the deploy;
 0 + 966 + 1406 = 2372.
 
+#### Production step 4 — `oux-wp2.1/00_preflight_hazards.sql` (2026-09-15, operator run sheet)
+
+Evidence table (last result set of the file; the SQL Editor shows only that): application rows
+`campaign_organising_units 239 / campaign_unit_rules 2 / campaign_worker_membership 3592 / campaign_worker_ou 2372`;
+hazards `f1_max_specificity_excess_targets 0`, `f1_max_specificity_multi_target_partitions 0`,
+`f1_fallback_targets_suppressed 225` (WP2.1 postflight: 226), `f1_pre_specificity_* 225`, `h10_enabled_duplicate_basis_sets 0`;
+ou_dependant rows: `_oux_wp21_canonical_basis 13`, `_oux_wp21_placement_mapping 1`, `campaign_groups.source_ou_id 2`,
+`ou_group_id`/`parent_ou_id` 150 each, `campaign_unit_rules.ou_id 2`, `campaign_worker_list_items.source_ou_id 976`, the
+rest 0; all ten dependent views present with checksums (recorded verbatim in the operator's paste; step 6 compares
+against them). H9 = 2 from steps 1–2 → step 5 (`03b`) required.
+
 ### 9.2a Stage 6 verifier run (2026-09-14)
 
 Independent verifier, fresh session. Repo `/home/user/OffshoreAlliance`, branch `feat/oux-wp2.2-structure-api`,
